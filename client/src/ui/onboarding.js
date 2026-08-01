@@ -26,10 +26,11 @@
 //     `--ship wreck` (`hosts/web/Program.cs:61`).
 //
 // ⚠️ WHAT THE CARD DELIBERATELY DOES *NOT* PROMISE. The premise ends "…and the rest thaw one at a
-// time through MOSS". THE PODS DO NOTHING TODAY — there is no CryoSystem, no thaw command, no MOSS
-// thaw op (`sim/Sim.Gen/AuthoredShips.cs`, the PeriluneWreck header, and W5 in
-// `docs/design/perilune-wreck-start.plan.md`). So the card states the seven sleepers as a FACT and
-// never as a verb. When W5 lands, that is the sentence to add.
+// time through MOSS". THE PODS STILL DO NOTHING THE PLAYER CAN ASK FOR — M3-2 added `CryoSystem`
+// (a pod cycles, opens and produces a person), but there is still no thaw command and no MOSS thaw
+// op (both M3-3), so nothing in play starts a cycle (`sim/Sim.Gen/AuthoredShips.cs`, the
+// PeriluneWreck header). So the card states the seven sleepers as a FACT and never as a verb.
+// When M3-3/M3-4 land, that is the sentence to add.
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // ⚠️ THE SEND-BACK: THE PASS THAT DELETED FALSE SENTENCES SHIPPED TWO NEW ONES. Recorded in full,

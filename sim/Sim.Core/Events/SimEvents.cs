@@ -135,4 +135,31 @@ namespace Perilune.Sim
         /// and the Chronicle line it feeds are pin-neutral.</summary>
         public byte YieldKind;
     }
+
+    /// <summary>
+    /// ⭐ M3-2 — A CAPSULE OPENED AND A PERSON CAME OUT. Published by
+    /// <see cref="CryoSystem"/> exactly once per thaw, on the tick the pod actually opens —
+    /// never on a cycle that merely finished counting and found nowhere to put anybody
+    /// (<c>CryoSystem.TryFindExitTile</c> holds the pod shut in that case, and a capsule that
+    /// did not open announces nothing). Mirrors <see cref="DeconstructCompletedEvent"/>'s shape:
+    /// a position plus the two entity ids, no strings.
+    ///
+    /// <para>The person's name is deliberately NOT on the event. <see cref="CitizenId"/> resolves
+    /// to a live <see cref="Citizen"/> that is still in the store when readers run one tick later
+    /// — unlike <c>DeconstructCompletedEvent.Device</c> or <c>CitizenDiedEvent.Name</c>, which
+    /// carry data BECAUSE their subject is gone by then. A thaw is a birth, not a removal.</para>
+    ///
+    /// <para>This bus is TRANSIENT: events are neither saved nor folded into
+    /// <c>Simulation.StateHash</c>, so this type is pin-neutral by itself — the pin this package
+    /// moves comes from <c>CryoSystem</c>'s <see cref="IStatefulSystem"/> fold.</para>
+    /// </summary>
+    public struct CitizenThawedEvent : ISimEvent
+    {
+        /// <summary>The tile the new crew member is standing on (the pod's exit neighbour).</summary>
+        public Int3 Pos;
+        /// <summary>The freshly added <see cref="Citizen"/>.</summary>
+        public uint CitizenId;
+        /// <summary>The capsule that opened; its <see cref="Device.Name"/> is the sleeper's identity.</summary>
+        public uint PodId;
+    }
 }

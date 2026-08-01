@@ -1292,13 +1292,15 @@ namespace Perilune.Gen
         // ---------------------------------------------------------------------------------------
         // ⚠️ WHAT IS *NOT* HERE, SO NOBODY MISTAKES INERT FOR BROKEN
         // ---------------------------------------------------------------------------------------
-        // THE PODS DO NOTHING. There is no CryoSystem, no ThawCommand, no MOSS thaw op and no
-        // emergency thaw. `DeviceKind.CryoPod` is a PROP with a Condition: it draws power, sheds
-        // waste heat, wears at the table's slowest rate and draws a glyph, and that is the entire
-        // list. The thaw is W5 — it adds a registered system (which moves all three STATE pins by
-        // itself, exactly as W0-6's four EMPTY systems did), a command, a headroom gate and a MOSS
-        // screen verb, and it needs its own review. A pod that will not open is therefore CORRECT
-        // on this ship today. Do not "fix" it here.
+        // THE PODS STILL DO NOTHING IN PLAY, AND THE REASON CHANGED WITH M3-2. `CryoSystem` now
+        // exists (sim/Sim.Core/Systems/CryoSystem.cs, registered in the default stack) and a pod
+        // whose `Progress` is above zero cycles, opens and produces a named Citizen — but NOTHING
+        // ON THIS SHIP STARTS A CYCLE. There is no ThawCommand, no MOSS thaw op (both M3-3), no
+        // countdown badge (M3-4) and no emergency thaw (M3-5); the only writer of a pod's
+        // `Progress` on this tree is a test. So a pod that will not open is STILL CORRECT here —
+        // it is now waiting for a verb rather than waiting for a mechanic. Do not "fix" it here.
+        // (M3-2 moved the STATE pins by itself exactly as W0-6's four empty systems did, and for
+        // the same reason: it implements IStatefulSystem, which is what folds a seed at all.)
         //
         // ⚠️ AND THE PLAYER CANNOT YET BE TOLD WHY AN ORDER IN VACUUM DOES NOTHING. That is W4's
         // `blocked` channel, on a sibling lane. Until it lands, painting a DIG or a STRIP in an

@@ -470,11 +470,12 @@ test('the LEDE agrees with the SHIP about where the air is (the R1 defect)', () 
   assert.match(LEDE, /reactor/i, 'the LEDE no longer names the REACTOR, which boots breathable');
 });
 
-test('the card does not promise a thaw — the pods do nothing until W5', () => {
-  // ⚠️ The premise ends "the rest thaw one at a time through MOSS", and that is NOT BUILT: there is
-  // no CryoSystem, no thaw command, no MOSS thaw op (AuthoredShips.cs's PeriluneWreck header says
-  // so in full). A first screen that told the player to wake somebody would be the same class of
-  // defect as the B row — a plausible sentence nobody drove.
+test('the card does not promise a thaw — the player still cannot ask for one', () => {
+  // ⚠️ The premise ends "the rest thaw one at a time through MOSS", and the VERB is still NOT BUILT:
+  // M3-2 landed CryoSystem (a pod cycles and opens), but there is no thaw command and no MOSS thaw
+  // op, so nothing in play starts a cycle (AuthoredShips.cs's PeriluneWreck header says so in full).
+  // A first screen that told the player to wake somebody would be the same class of defect as the
+  // B row — a plausible sentence nobody drove.
   assert.ok(!/\bthaw|\bwake (someone|somebody|the|another)/i.test(HTML),
     'the card promises a thaw the game cannot deliver');
 });

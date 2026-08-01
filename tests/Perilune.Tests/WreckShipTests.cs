@@ -40,9 +40,11 @@ namespace Perilune.Tests
     /// against the real system stack — that is the E0-4 lesson (a ship that HAS content no crew can
     /// reach is not playable) and the whole reason this file is slower than a census would be.
     ///
-    /// ⚠️ WHAT THIS FILE DELIBERATELY DOES NOT TEST: a thaw. There is no <c>CryoSystem</c>, no
-    /// <c>ThawCommand</c> and no MOSS thaw op in this lane — pods are visible, INERT props. A pod
-    /// that will not open is correct today. That is W5.
+    /// ⚠️ WHAT THIS FILE DELIBERATELY DOES NOT TEST: a thaw. Since M3-2 there IS a
+    /// <c>CryoSystem</c> (and <c>CryoSystemTests</c> drives it), but there is still no
+    /// <c>ThawCommand</c> and no MOSS thaw op — nothing on this ship starts a cycle, so every pod
+    /// this file censuses is shut and stays shut. A pod that will not open is correct today. The
+    /// verb is M3-3.
     /// </summary>
     public class WreckShipTests
     {

@@ -52,6 +52,17 @@ namespace Perilune.Sim
                 new OreRegistrySystem(),   // 'ORES' — E-MINE ore registry, a job-source's state (empty)
                 new TradeSystem(),         // 'TRAD' — E-VOY trade (empty)
                 new HydroponicsSystem(),
+                new CryoSystem(),          // M3-2 'CRYO' — a pod counts down, opens, and a person
+                                           // steps out. Beside Hydroponics because it is the same
+                                           // shape (a device advances Device.Progress and yields
+                                           // something on completion), and after Power so a later
+                                           // power gate — should the thaw ever want one — reads
+                                           // this tick's brownout. Before Needs, so a person thawed
+                                           // this tick has their needs ticked the same tick they
+                                           // exist rather than spending one tick outside physiology.
+                                           // ORDER IS LOAD-BEARING: it fixes the SYSS fold order
+                                           // and therefore the pin, so a later reorder is another
+                                           // pin move.
                 new NeedsSystem(),
                 new SafetySystem(),        // after Needs: acts on this tick's fresh Suffocation — a crew
                                            // member in lethal air drops its job and flees to breathable air
