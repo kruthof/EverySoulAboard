@@ -9,8 +9,11 @@ citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resol
 ## Current state (2026-08-01 session C, IN PROGRESS — doc sweep + M3-3 merged, M3-15 in flight)
 
 **Gate on `main` (`03b2153`): 1599 dotnet + 1138 node, twin hashes MATCH at P1
-`25f604dd61b221fb`** (re-measure before quoting). **No pin moved this session** — the
-CLAUDE.md pin table stands (last mover M3-2, tag `pin/m3-a`). Next pin row: M3-b (M3-7).
+`25f604dd61b221fb`** (re-measure before quoting). ⚠️ **PIN M3-e MOVES P1 IN THE M3-15 LANE:
+`25f604dd61b221fb` → `13674ebc4f8a14a9`** — OD-N's actuation gate met a fixture with NO Terminal
+(`hosts/scenario`'s `BuildScenario`), so its life-support watch's day-2 `open(vent)` was refused;
+`term_main` is now authored as a real Terminal so the watch fires through the gate. P2/P3/P4/P5
+held; tag `pin/m3-e` pending at merge. Next pin row after it: M3-b (M3-7).
 
 **Session mode**: owner away ~8 h (authorized autonomous run); the orchestrator is merging
 the M3 queue in order, one Opus implementer + one independent reviewer per package, design

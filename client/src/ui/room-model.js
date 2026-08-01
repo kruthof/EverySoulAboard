@@ -53,18 +53,21 @@ export const U = 32;
  *  two are the most confusable pair on this bar (DEMOLISH takes a THING off the floor, ERASE takes
  *  an ORDER off a tile), and putting them adjacent would make a mis-click cost a building.
  *
- *  MOVE sits IMMEDIATELY AFTER OPERATE and BEFORE DEMOLISH, which keeps the bar's existing grouping
- *  intact: everything before DIG builds something, DIG…ERASE are orders on tiles, and OPERATE + MOVE
- *  are the two tools that act on a thing ALREADY THERE (a device, a person) with one click and no
- *  sweep. DEMOLISH stays last, at the destructive end, for the same mis-click reason ERASE is kept
- *  away from it.
+ *  MOVE sits IMMEDIATELY BEFORE DEMOLISH, which keeps the bar's existing grouping intact: everything
+ *  before DIG builds something, DIG…ERASE are orders on tiles, and MOVE acts on a thing ALREADY THERE
+ *  (a person) with one click and no sweep. DEMOLISH stays last, at the destructive end, for the same
+ *  mis-click reason ERASE is kept away from it.
+ *
+ *  ⛔ ⭐ OPERATE STOOD BETWEEN ERASE AND MOVE UNTIL M3-15 (OD-N, 2026-07-31) DELETED IT. Doors and
+ *  vents are actuated through the MOSS console now and through nothing else, so the bar is 17 tools,
+ *  not 18. The paragraph above used to describe OPERATE + MOVE as a PAIR; only MOVE is left.
  *
  *  ⚠️ MOVE IS THE FIRST PAWN-DIRECTED TOOL ON THIS PALETTE and that is a real widening of the bar's
  *  vocabulary — see the `move` row in PALETTE_CMD for the argument and for what RimWorld does
  *  instead. */
 export const ROOM_TOOLS = Object.freeze([
   'wall', 'floor', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant',
-  'dig', 'stockpile', 'strip', 'erase', 'operate', 'move', 'demolish',
+  'dig', 'stockpile', 'strip', 'erase', 'move', 'demolish',
 ]);
 
 /** Tool → uppercase palette label (⌫ prefix on demolish, VS-Z-46). The ▦ is the same glyph the
@@ -74,7 +77,7 @@ export const TOOL_LABEL = Object.freeze({
   wall: 'WALL', floor: 'FLOOR', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR',
   locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT',
   dig: '⛏ DIG', stockpile: '▦ STOCKPILE', strip: '⚒ STRIP', erase: '↺ ERASE',
-  operate: '⇄ OPERATE', move: '➤ MOVE', demolish: '⌫ DEMOLISH',
+  move: '➤ MOVE', demolish: '⌫ DEMOLISH',
 });
 
 /** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
@@ -109,20 +112,10 @@ const PALETTE_CMD = Object.freeze({
   dig:   { cls: 'order',      verb: 'dig' },
   stockpile: { cls: 'order',  verb: 'stockpile' },
   strip: { cls: 'order',      verb: 'strip' },
-  // OPERATE class — the door/vent OPEN⇄SHUT toggle. Its own class, and NOT `order`, for three
-  // reasons that are each enough on their own:
-  //   1. IT IS NOT A DESIGNATION. An order paints intent on a tile and waits for a crew member; this
-  //      throws a switch that the sim applies at the next command drain, with nobody walking
-  //      anywhere. Classing it `order` would put it through `orderPayloads`, which lowers to the
-  //      designation boards.
-  //   2. IT IS NOT SWEPT. `isSweepTool` is `structural || order`, and a drag across a compartment
-  //      would toggle every door in the rectangle — including toggling one twice on a rectangle that
-  //      overlaps itself. One device, one click.
-  //   3. IT IS THE ONLY TOOL WHOSE TARGET IS A SPECIFIC DEVICE rather than a tile. Everything else
-  //      on this palette either builds on an empty tile or marks whatever is there.
-  operate: { cls: 'operate',  verb: 'operate' },
-  // ERASE class — the un-designate verb (M1-C). Its OWN class, and emphatically NOT `order`, for the
-  // same shape of reason OPERATE gives above, but for one reason rather than three:
+  // ⛔ THE `operate` ROW IS DELETED (M3-15, OD-N). It was its own class — not `order`, not swept,
+  // the only tool whose target was a specific DEVICE rather than a tile — and all three of those
+  // facts are now facts about the MOSS console instead.
+  // ERASE class — the un-designate verb (M1-C). Its OWN class, and emphatically NOT `order`:
   //   IT IS NOT A DESIGNATION AND IT CARRIES NO VERB OF ITS OWN. Every `order` row names the ONE
   //   wire verb its tile emits; erase names none, because which verb it sends is a property of THE
   //   TILE (`eraseTarget` below), not of the tool. Routing it through `orderPayloads` — whose whole
@@ -139,7 +132,7 @@ const PALETTE_CMD = Object.freeze({
   // AND of a selection that lives on the HOST (`GameSession._selected`, set only by `ContextAction`).
   // With nothing selected the host answers `"no crew selected"` and does nothing, so the client must
   // ask before it sends; no other class has a precondition outside the room at all. That is why it
-  // is not `order` (it paints no designation and reaches no job board), not `operate` (that verb
+  // is not `order` (it paints no designation and reaches no job board), not the deleted `operate` (that verb
   // targets a device standing on the tile and refuses an empty one — MOVE wants an EMPTY tile), and
   // emphatically not swept: `isSweepTool` is `structural || order || erase`, and a drag would emit
   // one move order per tile in the rectangle, of which only the last could possibly survive.
@@ -168,7 +161,7 @@ const PALETTE_CMD = Object.freeze({
 /**
  * Classify a palette tool into its command class + wire verb (IX-Z-15). Unknown → 'none'. PURE.
  * @param {string|null} tool
- * @returns {{cls:'structural'|'functional'|'cosmetic'|'order'|'erase'|'operate'|'move'|'demolish'|'none', verb:string|null, kind?:string, deviceKind?:string, itemId?:string}}
+ * @returns {{cls:'structural'|'functional'|'cosmetic'|'order'|'erase'|'move'|'demolish'|'none', verb:string|null, kind?:string, deviceKind?:string, itemId?:string}}
  */
 export function paletteCommand(tool) {
   const c = tool && PALETTE_CMD[tool];
@@ -1043,11 +1036,11 @@ export function itemIdForStockKind(kind) {
  * is exactly how a stale comment survives: the copies that are read get fixed and the copy that is
  * TRUE of the live path does not.)
  *
- * ⇒ AND EVERY BYTE OF THE ROW IS NOW DRAWN, BY TWO DIFFERENT LANES THAT MERGED HERE. `cond` feeds the
- * wrecked-twin join above; `open` — the seventh element, appended by the OPERATE verb the same day —
- * is drawn by `operateLayerSvg` and by nothing else. The two arrived independently and neither knew
- * the other was coming, which is why this comment is written from the merged file rather than from
- * either lane's view of it.
+ * ⇒ `cond` FEEDS THE WRECKED-TWIN JOIN ABOVE. ⚠️ `open` — the seventh element, appended by the
+ * OPERATE verb on the same day — WAS drawn by `operateLayerSvg` and by nothing else, and M3-15 (OD-N)
+ * deleted that layer, so `open` is carried here with no client reader at all. It is kept for shape
+ * parity with the channel and with `deckDeviceConditions` (see that function's own note); dropping it
+ * would make this model a lossy view of a row the host still sends.
  *
  * A MAP AND NOT A LIST, unlike `roomMarkTiles`/`roomItemTiles`. Those two layers can legitimately hold
  * several rows per tile (an order and a zone; several stacks), so a list is their honest shape. A
@@ -1105,70 +1098,34 @@ export function deckDeviceConditions(devices, deck) {
     if (!d || (d.deck | 0) !== dz) continue;
     const tx = d.x | 0, ty = d.y | 0;
     // `open` is carried for SHAPE PARITY with `roomDeviceConditions`, not because this deck-scoped
-    // model has a consumer for it — the OPERATE verb is Room-Zoom-only by a deliberate decision, and
-    // the Overview draws no OPEN⇄SHUT affordance. It is here because `client/src/items/wear.js` is
+    // model has a consumer for it — and since M3-15 (OD-N) deleted the OPERATE affordance, NEITHER
+    // model has one: no client surface draws OPEN⇄SHUT any more. It is here because `client/src/items/wear.js` is
     // the ONE join both surfaces call, and a field present on one model and absent on the other is
     // two contracts wearing one name: the day anything in `wear.js` keys on `open`, the Overview
     // would silently read `undefined` and draw a different picture from the Room Zoom for the same
-    // machine. ⚠️ ADDED AT THE MERGE of the OPERATE verb with the wear join — the verb added `open`
-    // to the room-scoped model only, and `wear-join.test.js`'s shape-parity assertion is what caught
-    // the divergence.
+    // machine. ⚠️ ADDED AT THE MERGE of the (since-deleted) OPERATE verb with the wear join — the
+    // verb added `open` to the room-scoped model only, and `wear-join.test.js`'s shape-parity
+    // assertion is what caught the divergence. The parity outlives the verb.
     out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0, open: d.open | 0 });
   }
   return out;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// THE OPERATE LAYER — the door/vent OPEN⇄SHUT verb's targets and their state.
-//
-// WHAT IT REPLACES: NOTHING on either standard surface. `SetDeviceStateCommand`'s `IsOpen` toggle has
-// existed in the sim since M1 and the ONLY route to it from a browser was the DEPRECATED console's
-// invisible inspection cursor (`Cmd.click` → `GameSession.ContextAction`), which has no button and no
-// visible target. `KNOWN_GAPS_SEALED` is `['dig','stockpile','strip']`, so the console-retirement
-// guard never censused this verb and structurally cannot see that it is missing.
-//
-// On `--ship wreck` that is the missing FIRST MOVE: the premise opens on a sealed compartment and the
-// player's opening gesture is "restore the vent and it fills the compartment" (OD-D: a vent injects
-// into its own room; there is no neighbour term).
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * The sim `DeviceKind` BYTES that have an open/shut control, mirroring
- * `GameSession.IsOperableKind`. `Door = 0`, `AirVent = 1`.
- *
- * ⚠️ IT IS A HAND MIRROR OF A C# ENUM, WHICH THIS REPO HAS BEEN BURNED BY (`ROLE_TO_ITEM`,
- * `MARK_FOR_FG`), SO IT IS PINNED BY DERIVATION AND NOT BY A COMMENT. `client/test/operate-model.test.js`
- * PARSES `sim/Sim.Core/Entities/Device.cs` and requires this table to equal `{Door, AirVent}` by NAME
- * — the same technique `stock-filter-model.test.js` uses on `ItemStack.cs` and `palette.test.js` uses
- * on `GlyphColor.cs`. Renumbering the enum, or inserting a member above `AirVent`, reddens there.
- *
- * WHY THE CLIENT NEEDS IT AT ALL, given that the host is the authority on whether a toggle is legal:
- * this table drives only the AFFORDANCE — which tiles get a state chip while OPERATE is armed. The
- * host re-resolves the device and answers every click on the `operate` reply, so a stale mirror could
- * at worst chip the wrong tile, never operate the wrong device. The alternative — a per-row
- * `operable` byte on the `devices` channel — was rejected as a SECOND encoding of a fact the `kind`
- * byte already carries.
- *
- * ⚠️ `CryoPod` (27) IS DELIBERATELY ABSENT even though W5 stores "occupied/open" on a pod's `IsOpen`.
- * Opening a pod is a THAW — gated on life-support headroom, priced in Parts, performed at MOSS
- * (`docs/design/perilune-wreck-start.plan.md` W5) — and chipping a pod here would advertise a
- * one-click bypass of that gate. `GameSession.IsOperableKind` refuses it on the same grounds.
- */
 /**
  * ⭐ M2-10 — THE `DeviceKind` ENUM, BY INDEX: `DEVICE_KIND_NAMES[byte]` is the sim's own member name.
  * The `devices` channel carries `kind` on every row (`decodeDevices`, `wire/messages.js`), and
  * `roomDeviceConditions` keeps it — so a surface can name the machine standing on a tile from the
  * SIM'S OWN IDENTITY rather than from the picture drawn there.
  *
- * ⚠️ IT IS THE **ONE** TABLE, AND `OPERABLE_KINDS` IS NOW DERIVED FROM IT. The two used to be one
- * table each, which is how the same enum gets mirrored twice and drifts once. A second naming
- * predicate beside this one is the defect, not the fix.
+ * ⚠️ IT IS THE **ONE** TABLE. It absorbed `OPERABLE_KINDS` (M2-10) and then OUTLIVED it: M3-15 (OD-N)
+ * deleted the OPERATE affordance and the operable pair with it, so this array is the client's only
+ * mirror of `DeviceKind`. A second naming predicate beside it is the defect, not the fix.
  *
  * ⚠️ IT IS A HAND MIRROR OF A C# ENUM AND IT IS PINNED BY DERIVATION, not by this comment:
  * `client/test/prioritise-menu.test.js` PARSES `sim/Sim.Core/Entities/Device.cs` and requires this
  * array to equal every member IN ORDER, by name and by index. A renumber, an insertion, or an
- * appended member reddens there — the technique `operate-model.test.js` already uses on the operable
- * pair, `stock-filter-model.test.js` on `ItemStack.cs` and `palette.test.js` on `GlyphColor.cs`.
+ * appended member reddens there — the technique `stock-filter-model.test.js` uses on `ItemStack.cs`
+ * and `palette.test.js` on `GlyphColor.cs`.
  *
  * ⚠️ WHY NAMING FROM THE ART WOULD BE WRONG, MEASURED. `itemForGlyph` resolves a tile's glyph to a
  * registry piece, and `items/glyph-map.js`'s `GLYPH_SUBSTITUTE` deliberately lets a device WEAR
@@ -1196,111 +1153,6 @@ export const DEVICE_KIND_NAMES = Object.freeze([
 export function deviceKindName(kind) {
   if (typeof kind !== 'number' || !Number.isFinite(kind)) return '';
   return DEVICE_KIND_NAMES[kind | 0] || '';
-}
-
-/**
- * ⚠️ DERIVED FROM `DEVICE_KIND_NAMES` SINCE M2-10, not restated. It still evaluates to
- * `{Door: 0, AirVent: 1}` and every consumer is unchanged; what is gone is the second copy of two
- * enum members. A name that fell out of the array would make `indexOf` answer **-1** here — and that
- * cannot ship silently, because `operate-model.test.js` pins this object against `Device.cs` BY NAME
- * and a `-1` fails it immediately. The safety net is a test, which is the only kind this repo counts.
- */
-const OPERABLE_MEMBERS = ['Door', 'AirVent'];
-export const OPERABLE_KINDS = Object.freeze(Object.fromEntries(
-  OPERABLE_MEMBERS.map((n) => [n, DEVICE_KIND_NAMES.indexOf(n)]),
-));
-
-/** The `DeviceKind` byte → its name, for the two operable kinds only. PURE. */
-const OPERABLE_NAME_BY_KIND = Object.freeze(Object.fromEntries(
-  Object.entries(OPERABLE_KINDS).map(([name, kind]) => [kind, name]),
-));
-
-/**
- * True when this `DeviceKind` byte has an open/shut control. PURE and TOTAL.
- *
- * ⚠️ THE `typeof` GUARD IS LOAD-BEARING AND WAS FOUND BY A TEST, not by reading. `null | 0`,
- * `undefined | 0` and `NaN | 0` are all **0**, and `DeviceKind.Door` **IS 0** — so the obvious
- * one-liner answers TRUE for every absent value. `doOperate` calls this on a row that may not exist,
- * so that spelling would have offered to open a bare floor tile and sent the click to the host.
- */
-export function isOperableKind(kind) {
-  if (typeof kind !== 'number' || !Number.isFinite(kind)) return false;
-  return OPERABLE_NAME_BY_KIND[kind | 0] !== undefined;
-}
-
-/**
- * The room's OPERABLE devices — one row per in-rect door/vent — derived from the SAME map the wear
- * layer uses, so the chips and the wear data can never disagree about what stands on a tile. Returns
- * `{tx, ty, kind, name, open, oper}` rows in tile order (row-major, by the map's insertion order,
- * which is the host's device-store order). PURE.
- *
- * ⚠️ IT READS THE `devices` CHANNEL AND NEVER THE FRAME. Not a preference — the sixth trap shape
- * (`CLAUDE.md`) is that a predicate over "what a glyph resolves to" is defeated by `GLYPH_SUBSTITUTE`,
- * and there are two concrete failures here on top of that principle: `Glyphs.ForDevice` returns `'^'`
- * for an AirVent whether it is open or shut (so the frame does not carry a vent's state AT ALL), and
- * `GlyphMapper` pass 5 writes `Glyphs.Citizen` over the whole cell when a crew member stands on the
- * tile — which on this ship is exactly when someone is servicing the machine.
- *
- * @param {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number}>} deviceMap
- *        roomDeviceConditions() output
- * @returns {{tx:number,ty:number,kind:number,name:string,open:number,oper:number}[]}
- */
-export function roomOperableTiles(deviceMap) {
-  const out = [];
-  if (!deviceMap || typeof deviceMap.values !== 'function') return out;
-  for (const d of deviceMap.values()) {
-    const name = OPERABLE_NAME_BY_KIND[d.kind | 0];
-    if (name === undefined) continue;
-    out.push({ tx: d.tx | 0, ty: d.ty | 0, kind: d.kind | 0, name, open: d.open | 0, oper: d.oper | 0 });
-  }
-  return out;
-}
-
-/**
- * The OPERATE affordance layer: a ring + an OPEN/SHUT plate on every door and vent in the room.
- *
- * ⚠️ SHOWN ONLY WHILE OPERATE IS ARMED, which is the same reveal rule `#rz-matstrip` and `#rz-accepts`
- * already use for the options belonging to the armed tool. Always-on would put a text plate on every
- * door in the game permanently, competing with the door art the parallel lane is drawing.
- *
- * ⚠️ A PLATE, NOT ART, AND THAT IS A SCOPE DECISION RATHER THAN A TASTE. `client/src/items/` — the art
- * registry and the `NO_*_SPRITE` ledgers — belongs to a PARALLEL LANE this run (`lane/w0b-wrecked-art`),
- * so this layer is built from primitives only. What it would have wanted: an open/shut pair for the
- * `sliding-door` and `blast-door` pieces, and a vent piece with a visibly open louvre. Recorded here
- * so the art lane can find it. The vocabulary itself is not new — the `items` channel already ships a
- * label PLATE (`REGO 40`) on this surface for the same reason.
- *
- * `oper === 0` (the sim's own `IsOperational`, which the client cannot derive) tints the ring and the
- * plate red and appends nothing else: the WORDS for why belong to the host's `operate` reply, which
- * knows about power and about whether the ship holds anything to repair it with. Two different
- * statements — "this one is dead" on the floor, "and here is why your click did nothing" in the toast.
- *
- * @param {{tx:number,ty:number,name:string,open:number,oper:number}[]} tiles roomOperableTiles output
- * @param {{rx:number,ry:number}} focus
- * @param {number} unit the logical tile side (U)
- * @returns {string} SVG, or '' when there is nothing to draw
- */
-export function operateLayerSvg(tiles, focus, unit) {
-  if (!Array.isArray(tiles) || !tiles.length || !focus) return '';
-  const U_ = unit || U;
-  const out = [];
-  for (const t of tiles) {
-    const lx = ((t.tx | 0) - (focus.rx | 0)) * U_;
-    const ly = ((t.ty | 0) - (focus.ry | 0)) * U_;
-    const dead = !(t.oper | 0);
-    const stroke = dead ? '#c25a3f' : '#7fb2e0';
-    const label = (t.open | 0) ? 'OPEN' : 'SHUT';
-    const w = label.length * 5.2 + 6;
-    out.push('<g class="rz-operable" transform="translate(' + lx + ' ' + ly + ')">' +
-      '<rect x="1.5" y="1.5" width="' + (U_ - 3) + '" height="' + (U_ - 3) + '" rx="3" fill="none" ' +
-        'stroke="' + stroke + '" stroke-width="1.5" stroke-dasharray="4 2"/>' +
-      '<rect x="' + (U_ / 2 - w / 2).toFixed(1) + '" y="' + (U_ - 11) + '" width="' + w.toFixed(1) +
-        '" height="9" rx="1.5" fill="rgba(12,10,8,.88)" stroke="' + stroke + '" stroke-width="0.75"/>' +
-      '<text x="' + (U_ / 2).toFixed(1) + '" y="' + (U_ - 6.2) + '" font-size="6.5" letter-spacing=".4" ' +
-        'fill="' + stroke + '" text-anchor="middle" dominant-baseline="central" ' +
-        'font-family="\'Space Mono\', ui-monospace, monospace">' + label + '</text></g>');
-  }
-  return '<g class="rz-operate-layer" pointer-events="none">' + out.join('') + '</g>';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

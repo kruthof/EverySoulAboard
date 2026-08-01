@@ -3110,7 +3110,11 @@ the authoring options named in that paragraph were **not** the route taken.
   (manual actuation, one command at a time) as soon as `term_moss` is **REPAIRED**; commissioning
   gates *programs and the pod bay*, not the console. ⇒ **A repaired console opens ANY named door on
   the ship remotely**, so *every* machine behind a shut door — not just this one — stops being
-  unreachable by geometry. Package **M3-15**, queue position **6b**.
+  unreachable by geometry. Package **M3-15**, queue position **6b** — ✅ **SHIPPED 2026-08-01; the
+  mechanism is live and recorded in §13.31.** ⚠️ The reachability sentence above is now literally
+  true rather than planned: the console really does open a named door, and the corrected gate term is
+  `Condition >= maintain` (0.20), not `>= fail` — `term_moss`'s authored 0.14 clears `fail` at boot,
+  so the chartered term would have shipped the gate OPEN and delivered nothing.
 - **BLOCKER 2 (survivability) is DISSOLVED FOR `vent_d1` ALONE by OD-O** (§5 row O), and this half
   is authored content, not a mechanism. The vent is re-authored **mechanically fine** — `Condition`
   above `AirVent`'s `fail` of 0.10 — with a **dead control board**: the direct actuation refuses
@@ -3899,3 +3903,225 @@ crosses **all six** interior edges (0.92 · 0.90 · 0.87 · 0.85 · 0.82 · 0.80
 contract with every ladder item stripped, and asserts the rung steps by exactly one AND that the
 SENTENCE differs either side. Six, not four: *the edge that is never crossed is the edge nobody
 chose.*
+
+---
+
+### 13.31 ⭐⭐ The ship's doors and vents answer ONLY to a live MOSS server (M3-15 / OD-N, 2026-08-01)
+
+**The player sentence.** Before this package, on `--ship wreck` at tick 0, a door opened with a free
+click AND `open door_d0_s1` typed into an ungated MOSS prompt. After it, the two remote-actuation
+commands refuse on a ship with no live MOSS server, the Room Zoom's click verb is deleted outright,
+and **bringing the computer back is the first thing the wreck asks of you.**
+
+#### THE PREDICATE, AND WHY IT IS `maintain` AND NOT `fail`
+
+```
+a MOSS server is LIVE  ⇔  ∃ Device d : d.Kind == Terminal && d.Powered
+                             && d.Condition >= Defs.Machines[(int)Terminal].MaintainBelow   // 0.20
+```
+
+`MossGate.IsServerLive` (`sim/Sim.Core/MossGate.cs:81`) — a zero-alloc static, sibling of
+`ThawGate`, **holding nothing**: no instance field, no mutable static, no def field, no hashed
+state. ⚠️ **The threshold is the correction this package measured rather than inherited.** The
+charter's own term was `Powered && IsOperational`, and `Device.IsOperational` is `Condition >=
+FailBelow` (`Device.cs:119`), `Terminal`'s `fail` is **0.02** (`MachineDefs.cs:42`) while `term_moss`
+is authored at **0.14** (`AuthoredShips.cs:2059`) — so **that term is TRUE at boot** and the gate
+would have shipped OPEN. `MaintainBelow` (0.20) is the sim's own *"this machine wants a service"*
+line; `term_moss` fails it by 0.06 and clears it after **any** service (bare hands ⇒ 0.60). Pinned
+with its own non-vacuity precondition (`IsOperational == true` asserted in the same test) by
+`MossGateTests.TheWreckBootsWithADarkConsole_AndItIsTheMaintainThresholdThatMakesItDark`.
+
+⚠️ **`Powered` is asked separately and that is not double-stating** — `IsOperational` never reads it.
+⚠️ **`Powered` is stamped by `PowerSystem`, not by authoring**: a freshly built plan reads
+`Powered = true` on every device, so any census of this predicate must tick first (measured at 40).
+
+⚠️ **ANY healthy powered Terminal is a MOSS server — there is deliberately no name literal in
+`sim/`.** Integrator ruling 2026-07-31: on the wreck the back door is theoretical (`term_nav` is at
+(41,2,1), `Powered = false`, `NetworkId = 0`, unreachable in the boot flood, and authored at 0.03 —
+below `maintain` twice over), and a `Name == "term_moss"` test would make every other ship
+ungateable. **It goes live the moment content authors a second reachable powered Terminal on a
+wrecked ship — a content-review item, not a code one**, and it is pinned as a FACT by
+`ANY_HealthyPoweredTerminalIsAServer_AndTheWreckSecondOneIsNeither`.
+
+#### WHERE THE GATE LIVES: THE COMMANDS, BECAUSE THERE ARE FIVE ROUTES
+
+`SetDoorStateCommand.Execute` (`Commands.cs:39`) and `SetDeviceStateCommand.Execute` (`:77`), each
+one line, first statement. Not a host, because a host-side check is *"not replayed on load, not
+folded into the hash, and not present in the TUI"* (M3-3's precedent) and would leave four back
+doors — the deprecated console cursor, the TUI, `hosts/scenario`, and **MOSS's own DSL adapters**
+(`Sim.Dsl/DeviceAdapters.cs:38`), which every installed program and every typed console line goes
+through. Driven, with no host in the picture, by
+`ADoorDoesNotMoveOnADeadServerShip_DrivenOnTheSimWithNoHost` and
+`TheMOSS_DSL_AdapterIsGatedToo_AndItIsTheRouteAHostCouldNotClose`.
+
+⛔ **AUTHORING AND SAVES ARE NOT COMMANDS AND ARE NOT GATED.** `AuthoredShips.cs:508` /
+`ShipPlanBuilder.cs:31` / `SaveReader.cs:345` write `Device.IsOpen` as a **field**. The wreck still
+boots with its authored-open doors open and a save still restores an open door on a dead-server
+ship (`AuthoredOpenDoorsStillBootOpen_OnADeadServerWreckAndOnTheGrid`,
+`ASaveRestoresAnOpenDoorOnADeadServerShip`).
+
+#### THE SPLIT GATE — the console, op by op, as shipped
+
+Two tiers, two predicates, two files, named so the split reads in the code.
+
+| `HandleMoss` op | tier | predicate | the refusal |
+|---|---|---|---|
+| `sys` (`GameSession.cs:452`) · `audit` (`:506`) · `exec` (`:465`) | **REPAIRED** | `MossGate.IsServerLive` | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS` |
+| `exec` → `open`/`close`/`lock`/`unlock`, `set <dev>.rate`, bare `<dev>.<prop>` reads | **REPAIRED** | (inside `exec`) | same |
+| `open` (program source, `:472`) · `set` (program install, `:495`) | **COMMISSIONED** | `MossGate.CanInstallProgram` (`MossGate.cs:146`) | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO TERM_MOSS` |
+| `thaw` (M3-3) · the pod bay (M3-4) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **unchanged** | `NO CONSOLE — MOSS IS OFFLINE` |
+
+⚠️ **THE COMMISSIONED TIER IS TWO DIFFERENT PREDICATES AND THAT IS DELIBERATE.**
+`ThawGate.IsCommissionedConsole` additionally requires the named terminal to EXIST, be `Powered` and
+be above `fail` — right for a thaw performed at a specific console, **wrong for a program**, because
+`SetScriptCommand` deliberately allows a tid with no device behind it (a free-text key `hosts/scenario`
+and several tests drive). `MossGate.CanInstallProgram` **is** `SetScriptCommand.Execute`'s own
+predicate, so the console cannot report a refusal the command it is about to enqueue would not make.
+
+⭐ **`set <dev>.rate` sits at the REPAIRED tier and that is the CHARTER'S ruling, not the owner's.**
+OD-N's line is *manual vs scripted*; it says nothing about which field a manual command writes. The
+reason: `set rate` is one typed line producing one immediate write through the SAME
+`SetDeviceStateCommand` as `open`, so scoping it with the device verbs is the only cut that does not
+split one command across two tiers. **Consequence, stated once: OD-O's puzzle straddles the gate** —
+diagnose and probe are repaired-tier, the `every 1s:` fix is a program and therefore commission-tier.
+That gap is OD-O's own, not a scheduling error.
+
+⛔ **EVALUATION ORDER IS CONTRACT: SHIP FIRST, TARGET SECOND.** The two predicates are disjoint, both
+can be true at once, and nothing else states which sentence the player gets. A player on a
+dead-computer ship must be told **MOSS IS OFFLINE**, not sent across the pressure frontier to fit a
+module (`OnADeadShipTheOfflineSentenceWinsOverTheCommissioningOne`). M3-16's `CONTROLLER FAULT —
+BOARD UNRESPONSIVE` is a THIRD sentence from a fourth predicate about the TARGET; the offline
+sentence is asserted **not** to contain the word CONTROLLER so the two cannot be confused.
+
+#### THE REFUSAL IS REPORTED BY THE SAME STATIC IT IS REFUSED BY — THREE SURFACES, NO NEW EVENT
+
+`GameSession.Refuse` (`:560`) puts it on `MossExec`'s **stream-2** line, which the MOSS transcript
+renders on **every** screen. A refused `sys` **also** emits an empty `MossSys` carrying the sentence
+as its derivation note — without it the DETAIL screen would sit on `LOADING…` for ever beside a
+transcript line saying why. The operate reply (`GameSession.cs:1308`) and the TUI `_status`
+(`GameLoop.cs:274`, `:310`) call the same static. **A refusal event on the bus was refused**:
+`DoorStateChangedEvent` is published after a SUCCESSFUL write, and a refusal event would be a new
+type consumed by one host where the constant is consumed by three.
+
+#### WHAT THE CLIENT LOST
+
+Deleted from `client/src/`: the OPERATE help line, `_operableTiles` + its derivation, the ring +
+OPEN/SHUT plate layer, the click branch, `doOperate`, the reply renderer, the `O` key, `arm()`'s
+`wasOperate` crossing (`roomzoom-view.js`); `roomOperableTiles`, `operateLayerSvg`, `OPERABLE_KINDS`,
+`OPERABLE_NAME_BY_KIND`, `isOperableKind` and the palette row (`room-model.js`); `Cmd.operate`
+(`session.js`); `decodeOperate` (`messages.js`); the `case 'operate'` dispatch (`main.js`); the
+`OPERATE` order verb and its `O` control row (`onboarding.js`). Also deleted:
+`client/test/operate-model.test.js` and `client/tools/operate-shot.mjs`. **`ROOM_TOOLS` is 18 → 17 —
+the first time that number has gone DOWN.** Anti-resurrection guard: `surface-boundary.test.js` §3b,
+six per-file scans over `codeOnly` plus one negative control and **18 inclusion controls** (one per
+token, planted as live code into the very file that must not contain it).
+
+⛔ **WHAT SURVIVES ONE MORE PACKAGE, stated so a reader can tell excluded from missed:**
+`GameSession.HandleOperate`, `CmdKind.Operate`, `hosts/web/WireFormat.Operate.cs` and
+`OperateVerbTests.cs`. M3-14 landed a rung-3 pin inside `OperateAdvisory` the day before, and the
+host handler is the cheapest place to prove the sim gate bites from a surface. **FILED: they become
+dead player-facing code at 6b and retire inside M4-8's console-deletion sweep.**
+
+⭐ **AND ONE FILED DEFECT CLOSES ON THE WAY.** `GameSession.cs` recorded that *"the premise's opening
+move is still not expressible"* — `vent_ls` reads `Explored = false` at tick 0, 600 and 36 000, so
+the fog-gated OPERATE verb honestly refused it. **MOSS addresses devices by NAME, not by tile, so the
+fog gate does not apply**, and all 19 doors and vents resolve in the MOSS registry at boot. The M1
+gate sentence is expressible for the first time — through the console, after one repair.
+
+#### ⛔⭐ PIN STORY — **P1 MOVED (PIN M3-e)**, AND THE CHARTER'S CENSUS OF IT WAS WRONG
+
+⚠️ **Check A is NOT zero on this package, and it is the pin ritual that makes it non-zero — nothing
+else.** `git diff main -- tests/Perilune.Tests/Golden/` = **0 lines** and
+`git diff main -- content/` = **0 lines** (no golden rewritten, no def touched); the whole of check A's
+output is `ci.sh`, carrying the new P1 literal, its FAIL text and the why-paragraph below. A diff in
+either of the other two paths would mean something else moved and is a STOP.
+**P2, P3, P4 and P5 HOLD** — the two tick-3000 goldens are green in the suite and the two defs
+checksums print `0c5ddbc07e41f07d` / `09900b9a44119272` unchanged. ⛔ **P1 MOVED — PIN ROW M3-e, 2026-08-01: `25f604dd61b221fb` →
+`13674ebc4f8a14a9`**, twin hashes MATCH on the new value.
+
+⭐ **THE CAUSAL CONTROL IS A 2×2, ALL FOUR CELLS DRIVEN, AND THE HEADLINE IS THE FOURTH:**
+
+| tree | gate ON | gate OFF (the two lines deleted, nothing else) |
+|---|---|---|
+| **no `term_main`** (as the lane found it) | `6d6e009299e6e86e` | `25f604dd61b221fb` — the pre-OD-N baseline, **to the digit** |
+| **`term_main` authored** (as shipped) | ⭐ **`13674ebc4f8a14a9`** | ⭐ **`13674ebc4f8a14a9` — IDENTICAL** |
+
+⇒ ⛔ **ON THE SHIPPED TREE THE GATE IS INERT ON THIS PIN.** Once the fixture has the terminal its own
+program has always claimed, the gate refuses nothing there — so **every bit of P1's move is the one
+authored device** (a `Terminal` draws 0.1 kW and sheds 0.1 kW of waste heat into a compartment this
+fixture keeps deliberately tight), and **none of it is the gate**. It is also not cached state:
+`MossGate` holds nothing (`TheGateAddsNoHashedState` — no instance field, no mutable static), no save
+chapter moved, no def field exists.
+
+⚠️ **The bottom-left cell is what the lane measured FIRST and it is the weaker claim** — "delete the
+gate and the old hash returns" is true of the tree BEFORE the fix and would be false, and misleading,
+if quoted about the tree that shipped. Both rows are recorded because a reader who takes one number
+out of this table gets the wrong story; it is this repo's own eighth-trap shape (*a merged file's
+truth is a number neither lane could compute*) pointing at a pin note instead of a census.
+
+⭐ **THE CAUSE: P1'S FIXTURE IS NOT A SHIP THE CHARTER SURVEYED.** `--days 3 --seed 42` runs
+`hosts/scenario/Program.cs`'s hand-built `BuildScenario` — a 22×6 ASCII section — and **it authors no
+`DeviceKind.Terminal` at all**. Its life-support watch is installed on `term_main`, a script id with
+no device behind it (`SetScriptCommand`'s own remarks record that this is deliberate and that
+`hosts/scenario` relies on it). So on that fixture `MossGate.IsServerLive` is **false forever**, and
+the watch's `open(vent)` — which fires in **day 2**, when hydro dips below its 96 kPa trigger — is
+refused. Measured, day by day: hydro `96.2 → 98.4 → 97.7` before, `96.2 → 95.1 → 94.3` after.
+
+⚠️ **The charter's own table said "P1 — the full 3 days — 0 `IsOpen` transitions, 0 `Rate`
+transitions".** Re-measured here, that is true of a PROCEDURAL ship (`ProceduralShips.Generate`,
+which does carry a `Terminal`: driven, 0 flips, hash identical gated and ungated) and **false of the
+ship P1 actually runs**. The fixture table's four rows — perilune / slice / grid / wreck — never
+included the scenario ship. **The lesson is the repo's own: a count you did not measure yourself is
+not evidence, even from a charter.**
+
+⭐ **BOTH OPTIONS PRICED, BECAUSE NEITHER IS FREE:**
+
+| option | P1 | what the fixture then does |
+|---|---|---|
+| ship the gate as-is | `6d6e009299e6e86e` | the watch is inert; hydro coasts to 94.3 kPa by day 3 |
+| ✅ **TAKEN — also author `term_main` as a real `Terminal`** (one line in `BuildScenario`) | ⭐ **`13674ebc4f8a14a9`** | the watch works again (98.4 at day 2, 98.1 at day 3), and the fixture's fiction — a program running on a terminal — becomes physically true |
+| revert the gate | `25f604dd61b221fb` | OD-N not shipped |
+
+⇒ **There is no zero-move option.** Adding the device moves the hash too (a Terminal draws 0.1 kW and
+sheds 0.1 kW of heat into a compartment this fixture deliberately keeps thermally tight).
+
+✅ ⭐ **INTEGRATOR DECISION, 2026-08-01 — OPTION 2 TAKEN, AND PIN ROW M3-e IS THE COST.**
+`hosts/scenario/Program.cs`'s `BuildScenario` now authors `term_main` as a REAL
+`DeviceKind.Terminal` at (17,3,0) — adjacent to the `c_leg1` conduit, so `PowerSystem` really wires
+it. **Three reasons, and the second is the load-bearing one.** (i) OD-N is binding, so reverting is
+not available. (ii) ⛔ **Shipping as-is would leave the fixture's authored watch permanently inert,
+which removes the pinned window's ONLY script→device actuation path** — the ninth trap shape, an
+instrument narrowed until it goes blind, on the one pin that watches a MOSS program drive hardware.
+(iii) It makes the fixture's own fiction physically true and aligns it with every other fixture ship
+(a healthy Terminal ⇒ the gate is open at boot — this package's own fixture-ship rule).
+**Re-measured on the merged tree, never quoted:** hydro is back to `96.2 / 98.4 / 98.1` kPa and the
+twin match reads `13674ebc4f8a14a9`. `ci.sh`, this file, `CLAUDE.md` and `HANDOVER.md` move in the
+SAME commit; the `pin/m3-e` tag is the integrator's at merge.
+
+**What DOES hold, and is pinned:** every AUTHORED fixture ship — perilune, slice, grid — boots with
+the gate OPEN (`term_hydro`, `Condition 1.000`, `Powered`), by
+`EveryFixtureShipBootsWithTheGateOPEN`; and the authored `DefaultProgram`'s `open(vent_hydro)` still
+reaches `Device.IsOpen` on the pinned ship (`ThePeriluneProgramsVentStillOpens`) — the non-vacuity
+control for a neutrality that is otherwise a zero. ⚠️ **P2/P3's neutrality remains a measurement of a
+WINDOW, not a proof about the mechanism**: a content change that made hydro pressure dip inside
+3 000 ticks would move them **through this gate**, exactly as it just moved P1 at 3 days.
+
+⚠️ **THE ARCHITECTURE CARVE-OUT.** `ArchitectureBoundaryTests.Economy_KnowsNothingAbout…` forbids the
+identifier `Moss` in economy code; `Commands.cs` now carries it twice. Declared as a **NOMINAL**
+crossing with its count pinned at 2: `MossGate` is a Sim.Core static, not `Sim.Dsl`, so no `using`,
+no DSL type and no runtime reach is acquired — only the word, because the rule is named after the
+fiction it enforces. **A third occurrence fails that test and must be argued.**
+
+#### WHAT THIS DOES NOT DO — filed, not fixed
+
+- **The onboarding still teaches the OLD first order.** OD-N re-cuts the opening beat from *"repair
+  something so the lights come back"* to *"repair the computer"*, and three surfaces still say
+  otherwise: `client/src/ui/onboarding.js` (prose), `GameSession.AwaitingOrdersLabel` (M2-20) and the
+  boot tile reason (M2-18). **M4-5 owns the onboarding rewrite**; this package edited exactly one
+  thing there — the deleted OPERATE verb — because a card advertising a verb that no longer exists is
+  a lie, not a narrative choice.
+- **Fixtures that had no computer now need one.** A hand-built world has no authored Terminal, so
+  `SetDoorStateCommand` refuses in it. `BuildHaulSiteBackoffTests` adds a pristine `term_fixture`;
+  `OperateVerbTests.Boot` services `term_moss`; `WreckRepairEconomyTests` **drives** the repair rather
+  than writing the field, because writing it removes a maintenance job AND the consumable that job
+  would have spent (measured: `wing_b` ended at 0.883 instead of below the 0.25 floor).

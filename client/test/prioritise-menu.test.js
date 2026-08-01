@@ -34,7 +34,7 @@ import { dirname, join } from 'node:path';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { Cmd } from '../src/wire/session.js';
 import {
-  roomTileRect, U, DEVICE_KIND_NAMES, deviceKindName, OPERABLE_KINDS, itemForGlyph,
+  roomTileRect, U, DEVICE_KIND_NAMES, deviceKindName, itemForGlyph,
 } from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { deviceDisplayName, prioritiseCrew, prioritiseOffer } from '../src/ui/prioritise-model.js';
@@ -84,13 +84,12 @@ test('DEVICE_KIND_NAMES equals the sim DeviceKind enum, in order, by name AND in
   }
 });
 
-// MUTATION: remove 'Door' from DEVICE_KIND_NAMES ⇒ `indexOf` answers -1 and this fails (as does
-// operate-model.test.js's own pin, independently).
-test('OPERABLE_KINDS is still {Door:0, AirVent:1} after being DERIVED from the one table', () => {
-  assert.deepEqual({ ...OPERABLE_KINDS }, { Door: 0, AirVent: 1 },
-    'deriving the operable pair from DEVICE_KIND_NAMES changed its value. Every consumer of '
-    + '`isOperableKind` and the OPERATE chip layer reads this.');
-});
+// ⛔ THE `OPERABLE_KINDS` DERIVATION TEST IS DELETED WITH ITS SUBJECT (M3-15 / OD-N, 2026-07-31).
+// `OPERABLE_KINDS`, `isOperableKind` and the OPERATE chip layer they served are gone from
+// `room-model.js`; `DEVICE_KIND_NAMES` is now the client's ONLY mirror of `DeviceKind`, and the
+// enum-by-index pin directly above is what holds it against `Device.cs`. ⚠️ Stated rather than
+// silently dropped: the derivation this deleted test measured (`indexOf` answering -1 when a member
+// falls out of the array) is still measured by that pin, on the array itself.
 
 test('deviceDisplayName speaks the enum member as words, upper-cased', () => {
   assert.equal(deviceDisplayName(5), 'SOLAR WING');
@@ -106,7 +105,8 @@ test('an absent or unknown kind byte answers MACHINE, never a confident guess', 
   assert.equal(deviceDisplayName(NaN), 'MACHINE');
   assert.equal(deviceDisplayName(250), 'MACHINE');
   // ⚠️ AND `0` MUST NOT BE SWALLOWED. `DeviceKind.Door` IS 0, so a truthiness guard anywhere on this
-  // path would answer MACHINE for a real door — `isOperableKind`'s own recorded near-miss.
+  // path would answer MACHINE for a real door — the near-miss the deleted `isOperableKind` recorded,
+  // kept here because the hazard is the enum's zero member, not the function that once tripped on it.
   assert.equal(deviceDisplayName(0), 'DOOR');
 });
 
@@ -471,12 +471,20 @@ function arm(tool) {
   }
   fire(b, 'click', {});
 }
-/** Is a tool still armed? Observed through BEHAVIOUR, not through module state: with OPERATE armed a
- *  left click on a device sends `Cmd.operate`, and with nothing armed it sends nothing. */
+/** Is a tool still armed? Observed through BEHAVIOUR, not through module state: with LAMP armed a
+ *  left click sends `Cmd.place`, and with nothing armed a click on the same tile sends nothing (it
+ *  falls through to the pawn-select branch, which finds no crew there).
+ *
+ *  ⭐ RE-POINTED FROM `operate` TO `lamp` BY M3-15 (OD-N), which deleted the OPERATE verb. The probe
+ *  needs a tool whose SINGLE CLICK emits a command — a swept tool (dig/stockpile/strip/wall) commits
+ *  on the press-drag-release gesture and sends nothing on a bare click, and MOVE needs a host-side
+ *  selection this rig does not prime. `lamp` is `cls: 'functional'`, which is exactly one click and
+ *  one `Cmd.place`. ⚠️ Re-pointed and not deleted: the ESC-stack rung it measures (the menu closes
+ *  FIRST, the armed tool survives) has no other instrument. */
 function armedNow() {
   sent.length = 0;
   fire(canvas(), 'click', atTile(WING));
-  const yes = orders().some((o) => o.cmd === 'operate');
+  const yes = orders().some((o) => o.cmd === 'place');
   sent.length = 0;
   return yes;
 }
@@ -801,7 +809,7 @@ test('…and when there is no room to the left, it drops BELOW the circle instea
 // tool: the box goes and the palette selection survives.
 test('ESC closes the menu FIRST and leaves the armed tool alone', () => {
   prime([ADA], null);
-  arm('operate');
+  arm('lamp');
   rightClick(WING);
   assert.equal(menu().hidden, false);
   key('Escape');

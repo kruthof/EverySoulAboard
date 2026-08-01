@@ -1,6 +1,28 @@
 namespace Perilune.Sim
 {
-    /// <summary>Open/close/lock/unlock a door (from UI, MOSS, or LLM effects).</summary>
+    /// <summary>Open/close/lock/unlock a door (from UI, MOSS, or LLM effects).
+    ///
+    /// <para>⛔ ⭐ <b>OD-N — GATED ON <see cref="MossGate.IsServerLive"/>, AND THE GATE IS HERE
+    /// RATHER THAN IN A HOST BECAUSE THERE ARE FIVE ROUTES TO THIS COMMAND.</b> The Room Zoom's
+    /// operate reply (<c>hosts/web/GameSession.cs</c> <c>HandleOperate</c>), the deprecated console's
+    /// cursor toggle (<c>ContextAction</c>), the TUI (<c>hosts/tui/GameLoop.cs:275,295</c>), the
+    /// headless scenario host, and — decisively — <b>MOSS itself</b>
+    /// (<c>Sim.Dsl/DeviceAdapters.cs:38</c>), which every installed program and every typed console
+    /// line goes through. A host-side check would be *"not replayed on load, not folded into the
+    /// hash, and not present in the TUI"* (M3-3's single-authority precedent) and would leave four
+    /// back doors, one of them MOSS. One rule, five routes, replayed on load.</para>
+    ///
+    /// <para>⚠️ <b>THE AUTHORING PATHS ARE NOT GATED AND MUST NOT BE.</b> <c>AuthoredShips.cs:508</c>,
+    /// <c>ShipPlanBuilder.cs:31</c> and <c>SaveReader.cs:345</c> write <see cref="Device.IsOpen"/>
+    /// as a FIELD; the gate is on the COMMAND. A ship whose doors are authored open still boots with
+    /// them open on a wreck with a dead computer, and a save restores them. Mutation 6.</para>
+    ///
+    /// <para><b>The refusal is SILENT here, on purpose, and it is not invisible.</b> An
+    /// <see cref="ISimCommand"/> has no return channel and inventing one would be a wire change for
+    /// three consumers who each already ask. <b>Refuse by predicate, report by predicate</b>: every
+    /// surface calls <see cref="MossGate.IsServerLive"/> itself and renders
+    /// <see cref="MossGate.OfflineRefusal"/> — see that constant's remarks for the three of
+    /// them.</para></summary>
     public sealed class SetDoorStateCommand : ISimCommand
     {
         private readonly uint _deviceId;
@@ -14,6 +36,7 @@ namespace Perilune.Sim
 
         public void Execute(Simulation sim)
         {
+            if (!MossGate.IsServerLive(sim)) return;   // OD-N — remote actuation needs a live server
             if (!sim.Devices.TryGet(_deviceId, out var device) || device.Kind != DeviceKind.Door) return;
             if (_locked.HasValue) device.IsLocked = _locked.Value;
             if (_open.HasValue)
@@ -28,7 +51,16 @@ namespace Perilune.Sim
         }
     }
 
-    /// <summary>Toggle a vent/scrubber-style device or set its rate.</summary>
+    /// <summary>Toggle a vent/scrubber-style device or set its rate.
+    ///
+    /// <para>⛔ ⭐ <b>OD-N GATES THIS COMMAND TOO, and the "and vents" half is the owner's own
+    /// scoping</b> (OD-N follow-up 1: <i>"MOSS-only for doors AND vents"</i>). Gating only the door
+    /// command would leave <c>vent_ls</c> — the M1 exit-gate device — and every rate write freely
+    /// clickable on a ship with a dead computer. Mutation 1b drives <c>vent_cryo</c>, the vent that
+    /// boots OPEN on the wreck, for exactly this leg.</para>
+    ///
+    /// <para>See <see cref="SetDoorStateCommand"/>'s remarks for why the gate is sim-side and why
+    /// the refusal is reported by the surfaces rather than returned from here.</para></summary>
     public sealed class SetDeviceStateCommand : ISimCommand
     {
         private readonly uint _deviceId;
@@ -42,6 +74,7 @@ namespace Perilune.Sim
 
         public void Execute(Simulation sim)
         {
+            if (!MossGate.IsServerLive(sim)) return;   // OD-N — remote actuation needs a live server
             if (!sim.Devices.TryGet(_deviceId, out var device)) return;
             if (_open.HasValue) device.IsOpen = _open.Value;
             if (_rate.HasValue) device.Rate = _rate.Value < 0f ? 0f : _rate.Value > 1f ? 1f : _rate.Value;

@@ -292,24 +292,24 @@ test('the Room Zoom derives the wear layer once per repaint, from the channel', 
 // it pins. Every number below was re-derived from the MERGED `roomzoom-view.js` with the shipped
 // `codeOnly` stripper, not adjusted from either branch.
 //
-// `deviceConditionAt: 2` likewise resolves in the verb lane's favour: W0b measured 1 and wrote "there
-// is still no in-file caller", which was true on its branch — `doOperate` calls it in the merged
-// tree. The seam's meaning is unchanged and now has two owners: exactly ONE thing draws the wear
-// (`buildTileItem`, through `furnitureSvg`) and exactly ONE thing draws `open` (`operateLayerSvg`).
+// ⭐⭐ AND RE-MEASURED A THIRD TIME BY M3-15 (OD-N, 2026-07-31), WHICH **DELETED** THE OPERATE VERB.
+// Both counts FELL by exactly the verb's two references — `_deviceCond` 5 → 4 (`roomOperableTiles`
+// is gone) and `deviceConditionAt` 3 → 2 (`doOperate` is gone) — and BOTH NUMBERS WERE READ OFF THE
+// FAILING ASSERTION'S OWN `actual`, not subtracted from 5 and 3. That is the same rule the merge
+// paragraph above records, applied to a deletion instead of a merge: a census you computed is not a
+// census you measured. The seam's MEANING is unchanged and now has ONE owner again — exactly one
+// thing draws the wear (`buildTileItem`, through `furnitureSvg`) — and `open` has NO client reader at
+// all, which is a fact about the channel, not about this seam.
 const WEAR_SEAM_CENSUS = Object.freeze({
-  // the `let` declaration, the repaint assignment, the accessor's own `.get`, the OPERATE verb's
-  // `roomOperableTiles(_deviceCond)` derivation, and the map handed to `furnitureSvg` (the draw)
-  _deviceCond: 5,
-  // the exported declaration + `doOperate`'s local "is there even a device here?" check
-  // ⭐ + M2-10's THIRD: `onCanvasContext` asks the same question for the right-click PRIORITISE menu.
-  // RE-MEASURED off the merged tree with the shipped `codeOnly` stripper (2026-07-30), not adjusted
-  // from 2 — the header two paragraphs up is about exactly the arithmetic that produces a stale
-  // number. The seam's MEANING is unchanged: the new caller is another "is there anything here?"
-  // read, not a second answer to "which picture", and it deliberately reads NOTHING but presence —
-  // `cond` and `oper` still have exactly one consumer each. The reason it is here at all is the same
-  // one `doOperate` gives: the `devices` channel is the fog-gated population the host resolves an
-  // order through, so a menu offered anywhere else promises an order the sim cannot take.
-  deviceConditionAt: 3,
+  // the `let` declaration, the repaint assignment, the accessor's own `.get`, and the map handed to
+  // `furnitureSvg` (the draw)
+  _deviceCond: 4,
+  // the exported declaration + M2-10's `onCanvasContext`, which asks the same "is there anything
+  // here?" question for the right-click PRIORITISE menu. It reads NOTHING but presence — `cond` and
+  // `oper` still have exactly one consumer each — and it is here because the `devices` channel is the
+  // fog-gated population the host resolves an order through, so a menu offered anywhere else would
+  // promise an order the sim cannot take.
+  deviceConditionAt: 2,
   roomDeviceConditions: 2,  // the import + the one repaint call
   decodeDevices: 2,         // the import + the one repaint call
   getDevices: 1,            // the single `Hud.getDevices()` inside that same repaint call

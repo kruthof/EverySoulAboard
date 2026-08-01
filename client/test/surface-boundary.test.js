@@ -1047,6 +1047,112 @@ test('every client/src/ui/*-view.js is reachable by import from main.js', () => 
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
+// 3b. ⭐⭐ THE OPERATE VERB IS DELETED AND MUST NOT COME BACK (M3-15, OD-N, 2026-07-31)
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// THE DECISION, quoted (OD-N, `docs/ROADMAP.md` §5, owner-direct): *"The doors should be open and
+// closed via MOSS and MOSS should only be accessible once a MOSS server has been repaired (has to be
+// in an open room of course)."* ⇒ the Room Zoom's one-click door/vent toggle — the ring, the
+// OPEN/SHUT plate, the `O` key, the `Cmd.operate` sender and the reply parser — is REMOVED, for
+// doors AND vents. Remote actuation happens at the MOSS console and nowhere else.
+//
+// ⚠️ WHY A GUARD AND NOT JUST A DELETION. This is the one deletion in the programme that a later
+// lane will be TEMPTED to undo, because re-adding it looks like a bug fix: a door on the floor with
+// no way to click it reads as a missing affordance rather than as a decision. The gate that makes
+// the click pointless lives in `sim/Sim.Core/MossGate.cs`, three repositories of context away from
+// whoever is looking at the Room Zoom. So the boundary is mechanised here, in the file whose whole
+// purpose is putting a surface decision into a diff.
+//
+// ⛔ WHAT THIS GUARD DOES **NOT** FORBID, stated so a reader can tell excluded from missed:
+// `GameSession.HandleOperate`, `CmdKind.Operate`, `hosts/web/WireFormat.Operate.cs` and
+// `OperateVerbTests.cs` all SURVIVE — M3-14 landed a rung-3 pin inside `OperateAdvisory` the day
+// before, and the host handler is the cheapest place to prove the SIM gate bites from a surface.
+// They retire inside M4-8's console-deletion sweep. This guard is about `client/src/` only.
+//
+// ⚠️ TRAP 1: the scan runs over `codeOnly` output, and both controls below are real — a NEGATIVE one
+// (the tokens as prose must NOT fire, or the guard teaches people to delete the comments explaining
+// the deletion) and a POSITIVE one per token (each planted as CODE into the shipped source must
+// fire, which is the INCLUSION half — a population count would only prove the matcher matched
+// something, never that it would match THE THING).
+
+/** The identifiers the deleted verb would have to re-introduce, per file it lived in. */
+const OPERATE_TOKENS = Object.freeze({
+  'src/ui/roomzoom-view.js': ["arm('operate')", 'doOperate', 'onOperateReply', 'operateLayerSvg',
+                              'roomOperableTiles', 'decodeOperate', '_operableTiles'],
+  'src/ui/room-model.js': ["'operate'", 'operateLayerSvg', 'roomOperableTiles', 'OPERABLE_KINDS',
+                           'isOperableKind'],
+  'src/wire/session.js': ['operate:'],
+  'src/wire/messages.js': ['decodeOperate'],
+  'src/main.js': ["case 'operate'", 'onOperateReply'],
+  'src/ui/onboarding.js': ["'OPERATE'", "arm('operate')"],
+});
+
+/** Which of `tokens` appear in `src`'s CODE (comments and string-quoted markers stripped). */
+function operateHits(src, tokens) {
+  const code = codeOnly(src);
+  return tokens.filter((t) => code.includes(t));
+}
+
+for (const [rel_, tokens] of Object.entries(OPERATE_TOKENS)) {
+  // ⚠️ ONE test PER FILE, and a `deepEqual` on the FULL hit list rather than a loop of `ok`s:
+  // `assert` throws, so a loop reports only its first offender and a resurrection that re-added the
+  // layer AND the key would look like a one-line slip (the fifth trap shape).
+  test(`OD-N: the OPERATE verb has not come back in ${rel_}`, () => {
+    const src = readOrNull(rel_);
+    assert.ok(src, `${rel_} is gone — this guard cannot see a resurrection in a file it cannot read`);
+    assert.deepEqual(operateHits(src, tokens), [],
+      `${rel_} names a deleted OPERATE identifier in LIVE CODE.\n` +
+      '\n' +
+      'THE BOUNDARY: OD-N (owner-direct, 2026-07-31) removed the Room Zoom\'s door/vent click verb ' +
+      'entirely — doors and vents answer to MOSS, and MOSS answers only once a ship terminal has ' +
+      'been repaired (`sim/Sim.Core/MossGate.cs`). The two commands the verb sent, ' +
+      '`SetDoorStateCommand` and `SetDeviceStateCommand`, now REFUSE on a ship with no live server, ' +
+      'so a resurrected click would report a confident success and move nothing — the exact ' +
+      '"invisible feedback is FUNCTIONAL" defect this repo has paid three owner reports for.\n' +
+      '\n' +
+      'THE TWO LEGITIMATE EXITS: put the verb on the MOSS console instead (that is where it lives ' +
+      'now) — or, if the owner has reversed OD-N, delete this guard IN THE SAME COMMIT and say so.');
+  });
+}
+
+// ⚠️ THE NEGATIVE CONTROL. The paragraphs above and the ones in the shipped sources DO name these
+// identifiers, in prose, on purpose — a deletion nobody explains gets undone. A guard that fired on
+// them would teach the next author to delete the explanation, which is the maintenance tax this file
+// must not create.
+test('NEGATIVE CONTROL: OPERATE identifiers in comments do not trip the resurrection guard', () => {
+  const prose = [
+    "// `doOperate` called `roomOperableTiles`, and `operateLayerSvg` drew the ring. All deleted.",
+    "/* The `O` key used to run arm('operate'); decodeOperate parsed the reply. See OD-N. */",
+    "//   case 'operate': roomZoom.onOperateReply(m); break;   <- deleted with the verb",
+  ].join('\n');
+  assert.deepEqual(operateHits(prose, OPERATE_TOKENS['src/ui/roomzoom-view.js']), []);
+  assert.deepEqual(operateHits(prose, OPERATE_TOKENS['src/main.js']), []);
+});
+
+// ⭐ THE INCLUSION HALF, ONE LEG PER TOKEN, PLANTED INTO THE REAL SHIPPED SOURCE. Non-vacuity by
+// "the file is non-empty" would prove only that the scanner ran. This proves it would catch the
+// thing: each token is appended as LIVE CODE to the very file that must not contain it, and the
+// guard must name exactly that token.
+for (const [rel_, tokens] of Object.entries(OPERATE_TOKENS)) {
+  for (const token of tokens) {
+    test(`INCLUSION: a planted \`${token}\` in ${rel_} IS caught`, () => {
+      const src = readOrNull(rel_);
+      assert.ok(src, `${rel_} is unreadable`);
+      const planted = `${src}\nconst __resurrected = ${token};\n`;
+      // ⚠️ SCANNED FOR THIS ONE TOKEN, not for the file's whole list, and the difference was
+      // MEASURED: under the real mutation 5 (re-adding the `O` key branch) the whole-list form
+      // reports `["arm('operate')", token]` and six of these controls go red BESIDE the guard —
+      // a control that fails when its subject is violated is not a control. The clean-file case is
+      // already covered by the per-file test above; this leg's only job is "would the matcher see
+      // THIS identifier at all".
+      assert.deepEqual(operateHits(planted, [token]), [token],
+        `planting \`${token}\` as live code in ${rel_} did NOT trip the guard — the ` +
+        'resurrection scan cannot see the identifier it names');
+    });
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
 // 4. NEGATIVE CONTROLS — the scanner must not fire on prose
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
