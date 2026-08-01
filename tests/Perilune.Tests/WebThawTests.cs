@@ -155,6 +155,13 @@ namespace Perilune.Tests
             var term = host.Sim.Devices.Items.First(d => d.Name == Console);
             Assert.That(term.Scriptable, Is.False,
                 "PRECONDITION: " + Console + " boots UN-commissioned — otherwise this measures nothing");
+            // ⚠️ ADDED BY M3-4. The host now asks the SHIP gate (`MossGate.IsServerLive`) before it
+            // evaluates anything — ship before target, M3-15's ordering — and the shipping wreck
+            // boots DARK. Without this line the op refuses with the OFFLINE sentence and never
+            // reaches term 2, so this test would be measuring the ship gate under a name that says
+            // it is measuring the console term. The state below is OD-N's middle one: the console
+            // RUNS and is still not commissioned.
+            ThawGateTests.RepairConsole(host.Sim);
 
             var simVerdict = ThawGate.Evaluate(host.Sim, Console, Rung1Pod);
             gs.ApplyForTest(new WebCommand(CmdKind.Moss, op: "thaw", tid: Console, text: Rung1Pod));

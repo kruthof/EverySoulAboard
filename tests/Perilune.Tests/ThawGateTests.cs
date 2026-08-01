@@ -73,8 +73,31 @@ namespace Perilune.Tests
         /// <c>ControllerModule</c>; done directly here so a fixture failure can never be mistaken
         /// for a thaw failure.
         /// </summary>
+        /// <summary>
+        /// ⚠️ <b>PUT THE SHIP IN OD-N's MIDDLE STATE FIRST — added by M3-4, and it is not cosmetic.</b>
+        /// Since M3-4 the HOST asks <see cref="MossGate.IsServerLive"/> before it evaluates any thaw
+        /// (ship before target, M3-15's ordering), and the shipping wreck boots DARK: <c>term_moss</c>
+        /// sits at 0.14, under Terminal's <c>maint</c> 0.20. So a host-side fixture that only sets
+        /// <c>Scriptable</c> now measures the SHIP gate and never reaches the term it names — which
+        /// is exactly what happened to <c>WebThawTests</c> the day the gate landed.
+        ///
+        /// <para>The SIM-side tests in this file are unaffected either way (<see cref="ThawCommand"/>
+        /// asks no ship question), so this is safe to do everywhere and cheaper than two fixtures.</para>
+        /// </summary>
+        internal static void RepairConsole(Simulation sim)
+        {
+            var term = Dev(sim, Console);
+            Assert.That(term, Is.Not.Null, "the wreck must carry " + Console);
+            Assert.That(MossGate.IsServerLive(sim), Is.False,
+                "PRECONDITION: the wreck boots DARK — if this is ever false, every host-side "
+                + "ship-gate leg that depends on this fixture is measuring nothing");
+            term.Condition = 0.60f;
+            Assert.That(MossGate.IsServerLive(sim), Is.True, "the fixture must actually light MOSS");
+        }
+
         private static void CommissionConsole(Simulation sim)
         {
+            RepairConsole(sim);
             var term = Dev(sim, Console);
             Assert.That(term, Is.Not.Null, "the wreck must carry " + Console);
             Assert.That(term.Scriptable, Is.False,
@@ -385,8 +408,12 @@ namespace Perilune.Tests
             yield return ("PodAlreadyOpen", CommissionConsole, OpenPod);
             yield return ("PodNoSignal", CommissionConsole, DeadPod);
 
-            // term 2 — the console. NO arrange at all: the shipping ship boots this way.
-            yield return ("NoConsole", _ => { }, Rung1Pod);
+            // term 2 — the console. ⚠️ AMENDED BY M3-4: this used to be "NO arrange at all: the
+            // shipping ship boots this way", and it no longer reaches term 2 through a HOST, because
+            // the host now asks the SHIP gate first and the shipping ship is dark. Repairing the
+            // console (and stopping there) is the state OD-N created and the one this term is
+            // actually about: a console that RUNS and is still not commissioned.
+            yield return ("NoConsole", RepairConsole, Rung1Pod);
 
             // term 3 — the cycle.
             yield return ("PodCycling", sim =>
@@ -461,8 +488,11 @@ namespace Perilune.Tests
             Assert.That(pod.Progress, Is.EqualTo(0f),
                 "the sim accepted a thaw through an UN-commissioned console. The whole WHERE gate — "
                 + "the wreck premise's opening objective, 'restore MOSS' — is bypassed.");
+            // ⚠️ RE-WORDED BY M3-4. The old sentence was `NO CONSOLE — MOSS IS OFFLINE`, and M3-15
+            // made it FALSE for the state it fires in most: a player standing at a console that just
+            // opened a door would be told MOSS is offline and would go repair a terminal that works.
             Assert.That(ThawGate.Describe(ThawGate.Evaluate(sim, Console, Rung1Pod)),
-                Is.EqualTo("NO CONSOLE — MOSS IS OFFLINE"));
+                Is.EqualTo("NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL"));
 
             // ── and the same ship, one ControllerModule later, says yes ──────────────────────
             // The inclusion half: a refusal that never lifts would pass the clause above for the
@@ -936,6 +966,114 @@ namespace Perilune.Tests
                 + "console, no cycle gate and no ladder — ScriptRuntime.Tick consults no device at "
                 + "all. The thaw is a MOSS SCREEN verb and this is not reversible later without "
                 + "breaking saves.");
+        }
+
+        // ═══════════════════════════════════════════════ M3-4: one vocabulary, four facts
+
+        /// <summary>
+        /// ⭐⭐ <b>THE CONSOLE SENTENCES ARE PAIRWISE DISTINCT</b> — the M3-15 review found only ONE
+        /// of the three pairs guarded, and filed the rest here by name.
+        ///
+        /// <para>Four different predicates about four different facts reach the same console line:
+        /// the SHIP has no server · this CONSOLE is not commissioned (a program) · this CONSOLE is
+        /// not commissioned (a thaw) · and, from M3-16, this DEVICE's board is dead. <b>A player who
+        /// cannot tell them apart repairs the wrong machine, on the wrong deck</b> — which on this
+        /// ship means crossing a pressure frontier for nothing.</para>
+        ///
+        /// <para>⚠️ <b>DISTINCT IS NOT ENOUGH; THEY MUST NOT SHARE A LEAD.</b> Two sentences that
+        /// differ only in a trailing terminal name are two strings and one message, so the test also
+        /// requires their first four words to differ. That is what caught the first draft of M3-4's
+        /// re-wording, which read <c>MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE</c> and was
+        /// a prefix of <see cref="MossGate.NotCommissionedRefusal"/>.</para>
+        ///
+        /// <para><b>ONE ASSERTION OVER MANY LEGS</b> (fifth trap shape).</para>
+        /// </summary>
+        [Test]
+        public void TheConsoleSentences_ArePairwiseDistinct()
+        {
+            var sim = BootWreck();
+            RepairConsole(sim);
+            string thawNoConsole = ThawGate.Describe(ThawGate.Evaluate(sim, Console, Rung1Pod));
+
+            var family = new (string Label, string Text)[]
+            {
+                ("MossGate.OfflineRefusal (the SHIP has no server)", MossGate.OfflineRefusal),
+                ("MossGate.NotCommissionedRefusal (a PROGRAM)", MossGate.NotCommissionedRefusal(Console)),
+                ("ThawGate NoConsole (a THAW)", thawNoConsole),
+                // M3-16's sentence does not exist yet; its LITERAL is pinned here so that package
+                // cannot ship a fourth sentence that reads like one of these three without this
+                // test moving. If M3-16 chooses other words, it edits this line and re-runs.
+                ("M3-16 CONTROLLER FAULT (a DEVICE's board)", "CONTROLLER FAULT — BOARD UNRESPONSIVE"),
+            };
+
+            Assert.That(thawNoConsole, Is.EqualTo(ThawGate.Describe(ThawGate.Evaluate(sim, Console, Rung1Pod))),
+                "PRECONDITION: the fixture really produces the NoConsole sentence");
+            Assert.That(ThawGate.Evaluate(sim, Console, Rung1Pod).Reason, Is.EqualTo(ThawRefusal.NoConsole),
+                "PRECONDITION: …and it is term 2 producing it, not some other refusal");
+
+            var problems = new List<string>();
+            int pairs = 0;
+            for (int i = 0; i < family.Length; i++)
+                for (int j = i + 1; j < family.Length; j++)
+                {
+                    pairs++;
+                    string a = family[i].Text, b = family[j].Text;
+                    if (string.Equals(a, b, StringComparison.Ordinal))
+                    { problems.Add(family[i].Label + " == " + family[j].Label); continue; }
+                    if (Lead(a) == Lead(b))
+                        problems.Add(family[i].Label + " and " + family[j].Label
+                                     + " open with the same words: '" + Lead(a) + "'");
+                }
+
+            Assert.That(pairs, Is.EqualTo(6), "PRECONDITION: all six pairs were compared");
+            Assert.That(problems, Is.Empty,
+                "two console refusals read as one message. " + string.Join(" | ", problems));
+        }
+
+        /// <summary>The first four words of a sentence — what a player actually reads before they
+        /// decide which machine to walk to.</summary>
+        private static string Lead(string sentence)
+        {
+            var words = sentence.Split(' ');
+            return string.Join(" ", words.Take(4));
+        }
+
+        /// <summary>
+        /// ⭐ <b><see cref="ThawGate.DescribeRow"/> — the POD BAY's sentence.</b> It differs from
+        /// <see cref="ThawGate.Describe"/> for exactly ONE verdict (the allowed one: a standing
+        /// capsule states its PRICE, not that a thaw was accepted) and delegates for every other, so
+        /// the refusal vocabulary keeps exactly one implementation.
+        /// </summary>
+        [Test]
+        public void DescribeRow_SaysTheRungsPriceWhenAllowed_AndDelegatesOtherwise()
+        {
+            var sim = BootWreck();
+            CommissionConsole(sim);
+
+            var ready = ThawGate.Evaluate(sim, Console, Rung1Pod);
+            Assert.That(ready.Allowed, Is.True, "PRECONDITION: rung 1 is affordable on the boot ship");
+            Assert.That(ThawGate.DescribeRow(ready), Is.EqualTo("READY — 1 SEALS"),
+                "the charter's own mock: a standing capsule states what it will spend");
+            Assert.That(ThawGate.DescribeRow(ready), Is.Not.EqualTo(ThawGate.Describe(ready)),
+                "…and NOT the reply's sentence, which is about an act nobody performed");
+
+            var problems = new List<string>();
+            int delegated = 0;
+            foreach (var (label, arrange, pod) in RefusalFixtures())
+            {
+                var s = BootWreck();
+                arrange(s);
+                var v = ThawGate.Evaluate(s, Console, pod);
+                if (v.Allowed) { problems.Add(label + ": fixture produced no refusal"); continue; }
+                delegated++;
+                if (ThawGate.DescribeRow(v) != ThawGate.Describe(v))
+                    problems.Add(label + ": row says '" + ThawGate.DescribeRow(v)
+                                 + "' but the reply says '" + ThawGate.Describe(v) + "'");
+            }
+            Assert.That(delegated, Is.GreaterThanOrEqualTo(6),
+                "PRECONDITION: at least six distinct refusals were compared");
+            Assert.That(problems, Is.Empty,
+                "the bay and the reply have drifted into two vocabularies. " + string.Join(" | ", problems));
         }
     }
 }

@@ -71,9 +71,15 @@
  *   diag    {tid, ok, diags:[[line,col,sev,msg]]} compile diagnostics (line/col 1-based; sev string)
  *   audit   {tid, lines:[[tick,text]]}            the runtime audit ring
  *   rterror {tid, text}                           a runtime error to surface as a banner
+ *   pods    {tid, term, moss, note, rows:[[n,pod,occupant,state,stateWord,why,reason,can]]}
+ *                                                 M3-4 — the POD BAY census (spec §1.4). `term` is
+ *                                                 the console the SIM resolved; `moss` is which of
+ *                                                 OD-N's three states it is in; `can` is the gate's
+ *                                                 own verdict, never a thing a client derives.
+ *   thaw    {tid, ok, pod, why, reason}           M3-3 — the answer to one thaw ask
  * @typedef {Object} MossMsg
  * @property {'moss'} type
- * @property {'source'|'diag'|'audit'|'rterror'} ev
+ * @property {'source'|'diag'|'audit'|'rterror'|'pods'|'thaw'} ev
  * @property {string} [tid] @property {boolean} [ok] @property {number} [hash]
  * @property {[number,number,string,string][]} [diags]
  * @property {[number,string][]} [lines]

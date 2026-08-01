@@ -3773,7 +3773,7 @@ this order. Term 6 is `ThawCommand`'s, because a pure function may not spend.
 | # | term | where | the sentence |
 |---|---|---|---|
 | 1 | the pod | `:394-403` (`FindCryoPod` `:481`) | `NO SUCH POD` · `POD IS EMPTY — ALREADY THAWED` · `POD — NO SIGNAL` |
-| 2 | the console | `IsCommissionedConsole` (`:465`) | `NO CONSOLE — MOSS IS OFFLINE` |
+| 2 | the console | `IsCommissionedConsole` (`:465`) | `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL` ⚠️ **re-worded by M3-4** — see §13.32 |
 | 3 | the cycle | `FindCyclingPod` (`:500`) | `POD LINDQVIST IS CYCLING — 4 min` |
 | 4 | the rung (OD-L) | `:415-420`, over `RungOf` (`:293`) + `LooseMatter.Affordable` | `NEEDS 1 SEALS — SHIP HAS 0` · `NEEDS 3 CONTROLLER MODULE — SHIP HAS 0` |
 | 5 | the headroom | `Headroom` (`:530`) | `SCRUBBING COVERS 3 OF 4` · `FOOD 1.8 DAYS — NEEDS 3.0` · `WATER … — NEEDS 3.0` · `O2 … CREW-DAYS — NEEDS 1.0` |
@@ -3969,7 +3969,7 @@ Two tiers, two predicates, two files, named so the split reads in the code.
 | `sys` (`GameSession.cs:452`) · `audit` (`:506`) · `exec` (`:465`) | **REPAIRED** | `MossGate.IsServerLive` | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS` |
 | `exec` → `open`/`close`/`lock`/`unlock`, `set <dev>.rate`, bare `<dev>.<prop>` reads | **REPAIRED** | (inside `exec`) | same |
 | `open` (program source, `:472`) · `set` (program install, `:495`) | **COMMISSIONED** | `MossGate.CanInstallProgram` (`MossGate.cs:146`) | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO TERM_MOSS` |
-| `thaw` (M3-3) · the pod bay (M3-4) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **unchanged** | `NO CONSOLE — MOSS IS OFFLINE` |
+| `thaw` (M3-3, `:571`) · `pods` (M3-4, `:530`) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **and since M3-4 the SHIP gate is asked FIRST on both** | ship: the OFFLINE sentence · target: `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL` (`pods` answers `MossGate.NotCommissionedRefusal` instead, because it refuses before it names a capsule) |
 
 ⚠️ **THE COMMISSIONED TIER IS TWO DIFFERENT PREDICATES AND THAT IS DELIBERATE.**
 `ThawGate.IsCommissionedConsole` additionally requires the named terminal to EXIST, be `Powered` and
@@ -4125,3 +4125,117 @@ fiction it enforces. **A third occurrence fails that test and must be argued.**
   `OperateVerbTests.Boot` services `term_moss`; `WreckRepairEconomyTests` **drives** the repair rather
   than writing the field, because writing it removes a maintenance job AND the consumable that job
   would have spent (measured: `wing_b` ended at 0.883 instead of below the 0.25 floor).
+
+---
+
+### 13.32 ⭐⭐ The POD BAY — twelve capsules, and every closed one says why (M3-4, 2026-08-01)
+
+**A player can now see who is aboard.** Typing `pods` at the MOSS prompt sends
+`{"type":"moss","op":"pods","tid":"@console"}`, which reaches `GameSession.HandleMoss`'s new `pods`
+case (`hosts/web/GameSession.cs:528`) and comes back as a `moss ev:pods` reply
+(`hosts/web/WireFormat.Pods.cs:202`) carrying one row per `DeviceKind.CryoPod`. On `--ship wreck`
+that is **twelve rows: one OPEN (Rell), four NO SIGNAL (the raid's four), seven SEALED** — the
+census `AuthoredShips.WreckPods` authors, re-derived by `WebPodBayTests` rather than copied.
+
+```
+POD BAY                                            term_moss · COMMISSIONED
+  #  OCCUPANT      STATE       WHY / WHAT IT NEEDS
+  1  RELL          OPEN        —
+  2  OZAWA         SEALED      READY — 2 SEALS                        [THAW]
+  3  VANCE         NO SIGNAL   —
+  7  TORRES        SEALED      NEEDS 3 CONTROLLER MODULE — SHIP HAS 0
+  9  LINDQVIST     CYCLING     POD LINDQVIST IS CYCLING — 4 min
+```
+
+#### WHERE EACH COLUMN COMES FROM — the host asks, the client renders, NEITHER re-derives
+
+`WireFormat.BuildPods` (`WireFormat.Pods.cs:106`) calls `ThawGate.Evaluate` **once per capsule** and
+puts the answer on the wire whole. Nothing in the host or the client re-computes a term.
+
+| column | source | note |
+|---|---|---|
+| `#` | the 1-based index in `Device.Id` order | not the device id — four-digit noise in a 12-row table |
+| OCCUPANT | `CryoSystem.SleeperName` (`Systems/CryoSystem.cs:239`) | **widened `internal`→`public` by this package**: the alternative is a second copy of the `"pod_" + who` convention in another assembly |
+| STATE | derived from the VERDICT, not the device (`WireFormat.Pods.cs:118-127`) | `PodAlreadyOpen`⇒OPEN · `PodNoSignal`⇒NO SIGNAL · `PodCycling && PodId == this pod`⇒CYCLING · else SEALED |
+| WHY | `ThawGate.DescribeRow` (`sim/Sim.Core/ThawGate.cs:789`) | delegates to `Describe` for every refusal; `READY — 1 SEALS` for the one verdict that is not one |
+| `[THAW]` | `ThawVerdict.Allowed`, carried as `can` | the affordance IS the gate — see below |
+
+⭐ **CYCLING IS THE ONE NON-OBVIOUS DERIVATION.** Term 3 refuses *every* capsule while *any* capsule
+is mid-cycle, so a bay reading the refusal alone prints CYCLING twelve times. The verdict carries the
+**cycling** capsule's own `PodId`, so `PodCycling && PodId == this pod` is *"this one is running"* and
+`PodCycling && PodId != this pod` is *"the bay is busy with somebody else"* — two different things the
+player needs to read, told apart without a second pass over `Device.Progress`.
+⚠️ **The countdown is the gate's sentence, verbatim** — that is M3-3's `MinutesLeft(0f)` filing
+discharged by construction: there is no second derivation to disagree with it.
+
+#### ONE RULE, THREE DOORS (RW §2.2 + §8.4 rung 3)
+
+`[THAW]`, `ENTER` on the selected row and the typed `thaw <n|capsule|name>` all reach
+`activateThaw` (`client/src/ui/moss-model.js:958`), which reads the row's `can` bit and **nothing
+else** — never the state word, never the refusal ordinal. A refused capsule answers with **the row's
+own reason**, which is the gate's sentence. The client's refusal can at worst be one second stale;
+the sim re-evaluates and is authoritative either way.
+
+⭐ **SINGLE-FLIGHT** (M3-3's filed double-thaw): the model latches the asked-for capsule
+(`pods.thawing`) from the moment the ask leaves until a `pods` reply shows that row is no longer
+`can` — i.e. until the SHIP has moved. `HandleMoss`'s thaw op evaluates, replies, then enqueues, so
+two asks inside one tick both read `Progress == 0` and both hear ACCEPTED while only the first
+cycles; this surface can no longer produce that pair.
+
+#### THE THREE MOSS STATES, AND THE DOOR THAT REFUSES IN WORDS (OD-N)
+
+The bay is COMMISSION-gated (M3-3 term 2, unchanged). The op asks **the ship gate first**:
+
+| ship | console | what the player gets |
+|---|---|---|
+| no live server | — | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS` |
+| live | not commissioned | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO THE TERMINAL` |
+| live | commissioned | the bay, headed `term_moss · COMMISSIONED` |
+
+⛔ **NEVER AN EMPTY BAY.** Both refusals are `ev:exec` stream-2 lines and the screen does not open,
+because the command does not navigate — **the reply does** (`reducePods`, `moss-model.js:362`, gated
+on the `podsAsked` handshake so an unsolicited bay cannot yank the screen). A POD BAY drawn empty
+beside a sentence explaining why it is empty is the M3-13 defect this package was warned about by
+name.
+
+⚠️ **`ThawGate`'s term-2 sentence was RE-WORDED here** (`ThawGate.cs:750`): `NO CONSOLE — MOSS IS
+OFFLINE` → `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL`. M3-15 made the
+old wording false for the state it now fires in most — a player at a console that just opened a door
+would go and repair a terminal that works. The family (this · `MossGate.OfflineRefusal` ·
+`MossGate.NotCommissionedRefusal` · M3-16's future `CONTROLLER FAULT — BOARD UNRESPONSIVE`) is pinned
+**pairwise distinct AND with different first four words** by
+`ThawGateTests.TheConsoleSentences_ArePairwiseDistinct`; the M3-15 review found only one of the three
+pairs guarded. Refusal strings are not hashed — **no pin moved.**
+
+⭐ **AND THE `thaw` OP GAINED THE SAME SHIP GATE** (`GameSession.cs:564`), discharging M3-15's other
+filing: until this package a DARK ship answered target-side sentences (`NO SUCH POD`) from a computer
+that is off.
+
+#### WHICH CONSOLE — `ThawGate.CommissionedConsoleName` (`ThawGate.cs:507`)
+
+The prompt addresses the `@console` pseudo-tid (spec §1.3), which has **no device behind it**, so the
+bay's term 2 would refuse on every ship forever. The sim resolves the lowest-`Id` terminal its own
+`IsCommissionedConsole` accepts — the finder is *defined* as that predicate, so it is not a second
+rule — and the host puts the name on the reply as `term`; the client sends **that** name back with a
+thaw. A client picking one would be guessing at `Device.Scriptable`, which has never reached the wire.
+
+#### THE HEADROOM LINE SAYS WHICH FOOD NUMBER IT IS
+
+`WireFormat.PodsHeadroomNote` (`:155`) renders `ThawGate.Headroom` under the table and states, in
+words, that its FOOD count is **all stock aboard, carried and reserved included — not the loose stock
+a rung's `SHIP HAS` reads**. Two numbers, two questions, one screen; the sim's accounting is
+untouched (M3-3's filed item, answered as the display question it is). Driven non-vacuity: the two
+agree at boot (60 = 60) and part company the moment a stack is reserved.
+
+#### WHAT THIS DOES NOT DO — filed, not fixed
+
+- **The bay POLLS at 1 Hz while it is up** (`moss-screen.js:79`). It is a request/reply op, not a
+  pushed channel, and `GameSession.Send` drops a byte-identical payload — so re-asking on `systems`
+  would stall on a quiet ship, which is most of a cycle. A pushed `pods` channel is the tidier
+  answer and is a different package.
+- **A pod that finishes with NO free exit tile still blocks the bay forever, silently** (M3-2's
+  filing, carried). It reads CYCLING here and counts down to a number it never leaves; the gate
+  cannot see the exit tile and neither can this screen.
+- **The bay is reached through `hud.js`'s MOSS door**, which M4-8 deletes. This package added **zero**
+  hud.js state — pinned by `surface-boundary.test.js` with a negative control — so M4-8 re-homes one
+  door, not a cache.

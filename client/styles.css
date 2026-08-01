@@ -707,6 +707,19 @@ canvas{
 .moss-notes{margin-top:1.1em;border-top:1px dashed var(--moss-faint);padding-top:.6em}
 .moss-notes-head{color:var(--moss-faint);letter-spacing:.18em;margin-bottom:.3em}
 .moss-note{color:var(--moss-dim);white-space:normal;max-width:92ch;margin-top:.5em}
+/* ---- M3-4 THE POD BAY. Same monospace grid as the ledger; the WHY column is the only one allowed
+   to run long, so it is the one that never gets a fixed width. ---- */
+.moss-subhead-row{display:flex;align-items:baseline;gap:2ch;justify-content:space-between}
+.moss-subhead-row .moss-subhead{margin-bottom:.3em}
+.moss-podterm{color:var(--moss-faint);letter-spacing:.14em}
+.moss-podrow .c-podnum{color:var(--moss-faint)}
+.moss-podrow .c-podwhy{flex:0 1 auto;min-width:0;color:var(--moss-dim)}
+/* RW §2.2 — a refused capsule is GREYED AND STATES WHY; it is never hidden and never blank. */
+.moss-podrow.dim,.moss-podrow.dim .c-podstate,.moss-podrow.dim .c-podwhy{color:var(--moss-faint)}
+.moss-thaw{color:var(--moss-warn);cursor:pointer;letter-spacing:.1em}
+.moss-podrow.pending .moss-thaw{color:var(--moss-faint);cursor:default}
+.moss-row.sel .c-podnum,.moss-row.sel .c-podstate,.moss-row.sel .c-podwhy,
+.moss-row.sel .moss-thaw{color:var(--moss-ink)}
 .moss-prog-split{display:flex;gap:var(--moss-pad);align-items:flex-start;flex-wrap:wrap}
 .moss-prog-dir{flex:0 0 auto;min-width:34ch}
 .moss-prog-editor{flex:1 1 46ch;min-width:0}

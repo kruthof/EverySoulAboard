@@ -279,8 +279,18 @@ const isCapture = (opts) => opts === true || !!(opts && opts.capture === true);
 export function makeWindow() {
   const capture = [];
   const bubble = [];
+  // M3-4: the POD BAY polls. A FAKE clock, never a real one — a test that waited on wall time would
+  // be slow and flaky, and a test that never advanced it could not tell a started timer from a
+  // stopped one. `timers` records every live interval so a leak (a poll that outlives the screen) is
+  // an assertable fact rather than a stray callback nobody sees.
+  const timers = new Map();
+  let nextTimer = 1;
   return {
-    capture, bubble,
+    capture, bubble, timers,
+    setInterval(fn, ms) { const id = nextTimer++; timers.set(id, { fn, ms }); return id; },
+    clearInterval(id) { timers.delete(id); },
+    /** Fire every live interval once — the test's hand on the clock. */
+    tickTimers() { for (const t of [...timers.values()]) t.fn(); },
     addEventListener(t, fn, opts) {
       if (t !== 'keydown') return;
       (isCapture(opts) ? capture : bubble).push(fn);

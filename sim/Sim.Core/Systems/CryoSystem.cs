@@ -231,7 +231,12 @@ namespace Perilune.Sim
         /// called <c>Ay</c> out of a capsule somebody named <c>a</c>. InvariantCulture throughout
         /// (the dev machine is de-DE; a Turkish-i style case fold is a real class of bug here).</para>
         /// </summary>
-        internal static string SleeperName(string deviceName)
+        /// <remarks>⚠️ WIDENED FROM <c>internal</c> TO <c>public</c> BY M3-4. The POD BAY prints an
+        /// OCCUPANT column, and a host in another assembly that cannot call this would have to keep
+        /// a second copy of the <c>"pod_" + who</c> convention — the one thing this repo's own
+        /// "one authority" rule forbids, on the column whose whole job is to name a person
+        /// correctly. Nothing about the function changed.</remarks>
+        public static string SleeperName(string deviceName)
         {
             if (string.IsNullOrEmpty(deviceName)) return "";
             if (!deviceName.StartsWith(PodNamePrefix, System.StringComparison.Ordinal)) return deviceName;

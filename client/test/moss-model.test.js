@@ -23,6 +23,7 @@ import {
   keyPress, routeKey, editPrompt, submitCommand, parseCommand, normalizeSystemId, rowObj,
   loadBar, loadText, stateCell, faultCell, uptimeText,
   headerLines, footerHints, ledgerView, detailView, faultLogView, consoleLines,
+  podRow, reducePods, podBayView, thawPod, selectPod, POD_STATE, NO_PODS,
 } from '../src/ui/moss-model.js';
 import { decode } from '../src/wire/messages.js';
 
@@ -1147,4 +1148,256 @@ test('M-PURITY: the model is deterministic — the same inputs give the same out
     return { ledger: ledgerView(m), detail: detailView(m), header: headerLines(m), console: consoleLines(m) };
   };
   assert.deepEqual(run(), run());
+});
+
+// ═══════════════════════════════════════════════ M3-4 — THE POD BAY (the fifth screen)
+//
+// The bay is the one screen the COMMAND does not open: `pods` sends an ask, and the REPLY takes the
+// screen, because the ask is commission-gated and can come back as a refusal instead. Every test
+// below drives that handshake rather than setting `screen` by hand.
+
+/**
+ * A bay as the host serialises it: twelve capsules cut down to the four shapes that matter.
+ *
+ * ⚠️ **`pod_ozawa`'s OCCUPANT IS DELIBERATELY NOT ITS KEY'S STEM, AND IT MAY NOT BE "TIDIED".**
+ * The one capsule these tests thaw is `pod_ozawa` / `Ozawa-Reyes`, so `'pod_' + lower(occupant)`
+ * is `pod_ozawa-reyes` — a DIFFERENT string from the key. With a round-tripping fixture
+ * (`pod_ozawa` / `Ozawa`) the forbidden derivation is byte-identical to reading `row.pod`, and
+ * every assertion below stays green while the client composes the capsule key out of a display
+ * name. Measured: that mutation left this file 83/83 green. The `pod_` convention is AUTHORING's
+ * (`AuthoredShips.cs:1963`) and the sim owns its inverse (`CryoSystem.SleeperName`); a real ship
+ * is free to name a capsule and its sleeper differently, and this fixture is that ship.
+ * Guarded below by `the fixture can SEE the forbidden derivation`.
+ */
+const PODS_MSG = {
+  type: 'moss', ev: 'pods', tid: '@console', term: 'term_moss', moss: 'COMMISSIONED',
+  note: 'HEADROOM FOR 2 CREW (1 AWAKE + 1) — FOOD 60 U … CARRIED AND RESERVED INCLUDED, NOT THE LOOSE STOCK',
+  rows: [
+    [1, 'pod_rell', 'Rell', 0, 'OPEN', 2, 'POD IS EMPTY — ALREADY THAWED', 0],
+    [2, 'pod_ozawa', 'Ozawa-Reyes', 1, 'SEALED', 0, 'READY — 2 SEALS', 1],
+    [3, 'pod_vance', 'Vance', 2, 'NO SIGNAL', 3, 'POD — NO SIGNAL', 0],
+    [7, 'pod_torres', 'Torres', 1, 'SEALED', 6, 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0', 0],
+    [9, 'pod_lindqvist', 'Lindqvist', 3, 'CYCLING', 5, 'POD LINDQVIST IS CYCLING — 4 min', 0],
+  ],
+};
+
+/** Ask for the bay, then answer — the whole handshake, as the screen performs it. */
+function withBay(msg) {
+  const asked = submitCommand(openMoss(), 'pods');
+  return { model: reduceMossEvent(asked.model, msg || PODS_MSG), effects: asked.effects };
+}
+
+test('M3-4: `pods` ASKS and does not navigate — the reply is what opens the bay', () => {
+  const asked = submitCommand(openMoss(), 'pods');
+  assert.deepEqual(asked.effects, [{ k: 'moss', op: 'pods' }],
+    'the command must send the wire op');
+  assert.equal(asked.model.screen, SCREEN.LEDGER,
+    'THE BAY IS COMMISSION-GATED: a screen opened by the COMMAND would sit empty beside the ' +
+    'refusal that explains why it is empty, which is the M3-13 defect this package is warned about');
+
+  const answered = reduceMossEvent(asked.model, PODS_MSG);
+  assert.equal(answered.screen, SCREEN.PODBAY, 'the reply takes the screen');
+  assert.deepEqual(answered.stack, [SCREEN.LEDGER], 'and ESC goes back where the player came from');
+});
+
+test('M3-4: an UNSOLICITED bay updates the data and never yanks the screen', () => {
+  const m = reduceMossEvent(openMoss(), PODS_MSG);
+  assert.equal(m.screen, SCREEN.LEDGER,
+    'a reply nobody asked for must not pull the player out of what they were reading');
+  assert.equal(m.pods.rows.length, 5, '…but the data is folded, so a later `pods` renders instantly');
+});
+
+test('M3-4: the rows are the WIRE\'s — the reason is rendered verbatim, never re-composed', () => {
+  const v = podBayView(withBay().model);
+  assert.deepEqual(v.rows.map((r) => [r.num, r.occupant, r.state, r.reason, r.can]), [
+    ['1', 'RELL', 'OPEN', '—', false],
+    ['2', 'OZAWA-REYES', 'SEALED', 'READY — 2 SEALS', true],
+    ['3', 'VANCE', 'NO SIGNAL', '—', false],
+    ['7', 'TORRES', 'SEALED', 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0', false],
+    ['9', 'LINDQVIST', 'CYCLING', 'POD LINDQVIST IS CYCLING — 4 min', false],
+  ]);
+  assert.equal(v.term, 'term_moss');
+  assert.equal(v.moss, 'COMMISSIONED', 'the header states WHICH of OD-N\'s three MOSS states it is');
+  assert.match(v.note, /CARRIED AND RESERVED/, 'the headroom line says which food number it is');
+});
+
+test('M3-4: OD-L — every SEALED row carries a non-empty reason WITH a number in it', () => {
+  const v = podBayView(withBay().model);
+  const sealed = v.rows.filter((r) => r.state === 'SEALED');
+  assert.ok(sealed.length >= 2, 'precondition: sealed rows were examined');
+  const problems = [];
+  for (const r of sealed) {
+    if (!r.reason || r.reason === '—') problems.push(r.pod + ': blank reason');
+    else if (!/\d/.test(r.reason)) problems.push(r.pod + ': no number — ' + r.reason);
+  }
+  assert.deepEqual(problems, [],
+    'a sealed capsule reached the player with nothing to act on: ' + problems.join(' | '));
+});
+
+test('M3-4: `thaw` on a refused row sends NOTHING and answers with the GATE\'s own sentence', () => {
+  const { model } = withBay();
+  const out = submitCommand(model, 'thaw 7');
+  assert.deepEqual(out.effects, [],
+    'MUTATION 4: the command and the affordance share ONE rule — a row the gate refuses is not sent');
+  assert.deepEqual(out.model.console.slice(-1)[0],
+    { stream: 2, text: 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0' },
+    'and the refusal is the ROW\'s reason, not a bare no (RW §2.2)');
+});
+
+test('M3-4: `thaw` on an allowed row addresses the CONSOLE THE SIM RESOLVED, by capsule key', () => {
+  const { model } = withBay();
+  const out = submitCommand(model, 'thaw 2');
+  assert.deepEqual(out.effects, [{ k: 'moss', op: 'thaw', tid: 'term_moss', text: 'pod_ozawa' }],
+    'the tid is the wire\'s `term` (the prompt\'s own @console has no device behind it), and the ' +
+    'capsule is the wire\'s key — never "pod_" + the occupant, which is authoring\'s convention');
+});
+
+test('M3-4: the capsule resolves by number, by key and by occupant — all three are on screen', () => {
+  const { model } = withBay();
+  for (const arg of ['2', 'pod_ozawa', 'OZAWA-REYES', 'ozawa-reyes']) {
+    assert.deepEqual(submitCommand(model, 'thaw ' + arg).effects,
+      [{ k: 'moss', op: 'thaw', tid: 'term_moss', text: 'pod_ozawa' }], 'failed for: ' + arg);
+  }
+  const bad = submitCommand(model, 'thaw 44');
+  assert.deepEqual(bad.effects, []);
+  assert.match(bad.model.console.slice(-1)[0].text, /NO SUCH CAPSULE/);
+});
+
+test('M3-4: SINGLE-FLIGHT — a second thaw in the same breath sends nothing (M3-3\'s filed defect)', () => {
+  const first = submitCommand(withBay().model, 'thaw 2');
+  assert.equal(first.effects.length, 1, 'precondition: the first ask went out');
+  const second = submitCommand(first.model, 'thaw 2');
+  assert.deepEqual(second.effects, [],
+    'TWO ASKS INSIDE ONE TICK both read Progress == 0 and BOTH hear ACCEPTED, while only the first ' +
+    'capsule cycles — this surface may never be the thing that produces that pair');
+  assert.match(second.model.console.slice(-1)[0].text, /ALREADY REQUESTED/);
+});
+
+test('M3-4: the latch clears when the SHIP\'s own rows show the capsule moved — not before', () => {
+  const asked = submitCommand(withBay().model, 'thaw 2');
+  assert.equal(asked.model.pods.thawing, 'pod_ozawa');
+
+  // A bay that still shows the capsule READY (the same tick, before the command drained) must NOT
+  // release the latch — that is exactly the window the double-thaw lives in.
+  const same = reduceMossEvent(asked.model, PODS_MSG);
+  assert.equal(same.pods.thawing, 'pod_ozawa', 'the ship has not moved yet');
+
+  // …and a bay in which it is now CYCLING does.
+  const moved = JSON.parse(JSON.stringify(PODS_MSG));
+  moved.rows[1] = [2, 'pod_ozawa', 'Ozawa-Reyes', 3, 'CYCLING', 5, 'POD OZAWA IS CYCLING — 4 min', 0];
+  assert.equal(reduceMossEvent(asked.model, moved).pods.thawing, null);
+});
+
+test('M3-4: a REFUSED thaw reply clears the latch and reaches the transcript', () => {
+  const asked = submitCommand(withBay().model, 'thaw 2');
+  const after = reduceMossEvent(asked.model, { ev: 'thaw', tid: 'term_moss', ok: false,
+    pod: 'pod_ozawa', why: 5, reason: 'POD LINDQVIST IS CYCLING — 3 min' });
+  assert.deepEqual(after.console.slice(-1)[0],
+    { stream: 2, text: 'POD LINDQVIST IS CYCLING — 3 min' },
+    'M3-3 filed that nothing folded this reply at all — a thaw was answered into the void');
+  assert.equal(after.pods.thawing, null, 'a refused ask has nothing in flight');
+});
+
+test('M3-4: selection survives by CAPSULE ID across a re-arriving bay (IX-M12\'s rule)', () => {
+  let m = withBay().model;
+  m = keyPress(m, 'ArrowDown').model;
+  m = keyPress(m, 'ArrowDown').model;
+  assert.equal(m.pods.selectedPod, 'pod_vance', 'precondition: the cursor moved');
+
+  // The bay re-arrives one row shorter (a capsule was deconstructed). The cursor must not jump.
+  const shorter = { ...PODS_MSG, rows: PODS_MSG.rows.filter((r) => r[1] !== 'pod_rell') };
+  m = reduceMossEvent(m, shorter);
+  assert.equal(m.pods.selectedPod, 'pod_vance', 'a row set that changed length moved the cursor');
+});
+
+test('M3-4: ENTER on the selected row is the SAME rule as the typed command', () => {
+  let m = withBay().model;
+  m = keyPress(m, 'ArrowDown').model;            // → pod_ozawa, the allowed one
+  assert.equal(m.pods.selectedPod, 'pod_ozawa');
+  const enter = keyPress(m, 'Enter');
+  assert.deepEqual(enter.effects, [{ k: 'moss', op: 'thaw', tid: 'term_moss', text: 'pod_ozawa' }],
+    'ENTER and `thaw` must ask the same predicate and produce the same message (RW §8.4 rung 3)');
+
+  // …and on a refused row it refuses with the same sentence, again.
+  let r = keyPress(keyPress(m, 'ArrowDown').model, 'ArrowDown');   // → pod_torres
+  assert.equal(r.model.pods.selectedPod, 'pod_torres');
+  const refused = keyPress(r.model, 'Enter');
+  assert.deepEqual(refused.effects, []);
+  assert.equal(refused.model.console.slice(-1)[0].text, 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0');
+});
+
+test('M3-4: `thaw` with no bay on the link says so — it never invents a capsule', () => {
+  const out = submitCommand(openMoss(), 'thaw 2');
+  assert.deepEqual(out.effects, []);
+  assert.match(out.model.console.slice(-1)[0].text, /NO POD BAY ON THIS LINK/);
+});
+
+test('M3-4: OD-P holds — `pods` and `thaw` add no printable key to the routing table', () => {
+  for (const k of Object.keys(KEY_ROUTE)) {
+    assert.ok(k.length > 1, 'a single-character key entered KEY_ROUTE: ' + k);
+  }
+  // …and on the bay a letter still types rather than acting.
+  const m = withBay().model;
+  assert.equal(routeKey(m, 'p'), 'pass', '`p` must reach the prompt, not open anything');
+  assert.equal(routeKey(m, 't'), 'pass', 'and `t` must not thaw anything');
+});
+
+test('M3-4: podRow invents nothing — no `can` means NO, no state means UNKNOWN', () => {
+  assert.equal(podRow([1, 'pod_x', 'X', 1, 'SEALED', 6, 'NEEDS 1 PARTS — SHIP HAS 0']).can, false,
+    'the affordance to wake somebody must be GRANTED by the gate, never assumed from a gap');
+  assert.equal(podRow([1, 'pod_x', 'X']).state, 'UNKNOWN',
+    'an unreadable state must never print as the healthy one (DA-M1)');
+  assert.equal(podRow([1, '', 'X', 1, 'SEALED', 0, 'READY — 1 SEALS', 1]), null,
+    'a capsule with no key cannot be addressed, so it is not a row');
+  assert.equal(podRow(null), null);
+});
+
+test('M3-4: the CLICK path (`selectPod` + `thawPod`) is the same rule again, not a third one', () => {
+  const { model } = withBay();
+  const picked = selectPod(model, 'pod_torres');
+  assert.equal(picked.pods.selectedPod, 'pod_torres');
+  assert.equal(selectPod(model, 'pod_nobody'), model, 'a capsule not on the bay moves nothing');
+
+  assert.deepEqual(thawPod(picked, 'pod_ozawa').effects,
+    [{ k: 'moss', op: 'thaw', tid: 'term_moss', text: 'pod_ozawa' }]);
+  const refused = thawPod(picked, 'pod_torres');
+  assert.deepEqual(refused.effects, []);
+  assert.equal(refused.model.console.slice(-1)[0].text, 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0');
+  assert.equal(thawPod(picked, 'pod_nobody').handled, false, 'and an unknown capsule is not handled');
+});
+
+test('M3-4: an EMPTY bay says so — it never reads as "everybody is out"', () => {
+  const m = reducePods(submitCommand(openMoss(), 'pods').model, { ev: 'pods', rows: [] });
+  const v = podBayView(m);
+  assert.deepEqual(v.rows, []);
+  assert.equal(v.notice, NO_PODS);
+  assert.equal(podBayView(openMoss()).notice, NO_PODS, 'and so does a bay that never arrived');
+});
+
+test('M3-4: the POD_STATE codes are the host\'s, and only two of them hide their reason', () => {
+  assert.deepEqual(POD_STATE, { OPEN: 0, SEALED: 1, NO_SIGNAL: 2, CYCLING: 3 });
+  const v = podBayView(withBay().model);
+  const hidden = v.rows.filter((r) => r.reason === '—').map((r) => r.st).sort();
+  assert.deepEqual(hidden, [POD_STATE.OPEN, POD_STATE.NO_SIGNAL],
+    'a state word that already IS the reason does not repeat itself; every OTHER row must show one');
+});
+
+test('M3-4: the fixture can SEE the forbidden derivation — the capsule key is not the occupant', () => {
+  // ⛔ THE GUARD ON THE GUARD. `activateThaw` must send `row.pod`, the wire's own key, and never
+  // `'pod_' + occupant` — the `pod_` convention belongs to authoring (`AuthoredShips.cs:1963`) and
+  // its inverse to the sim (`CryoSystem.SleeperName`), so a client that rebuilds it is one rename
+  // away from addressing a capsule that does not exist. That rule is stated in three places and,
+  // until this test, pinned in none: with a round-tripping fixture (`pod_ozawa`/`Ozawa`) the
+  // forbidden expression is byte-identical to the correct one and the mutation leaves this whole
+  // file green. This asserts the FIXTURE is still shaped so the mutation can bite.
+  const compose = (occupant) => 'pod_' + String(occupant).replace(/[A-Z]/g, (c) =>
+    String.fromCharCode(c.charCodeAt(0) + 32));
+  const thawable = PODS_MSG.rows.filter((r) => r[7] === 1);
+  assert.ok(thawable.length > 0, 'precondition: the fixture offers at least one capsule');
+  const biting = thawable.filter((r) => compose(r[2]) !== r[1]);
+  assert.deepEqual(biting.map((r) => r[1]), ['pod_ozawa'],
+    'no THAWABLE fixture row has an occupant that fails to compose back to its key, so ' +
+    '`text: row.pod` → `text: "pod_" + lower(row.occupant)` is a no-op and every message ' +
+    'assertion in this file is satisfied by the defect it exists to forbid. Keep at least one ' +
+    'offered capsule whose sleeper is not simply its key with a capital letter.');
 });
