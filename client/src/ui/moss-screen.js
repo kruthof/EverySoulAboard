@@ -466,10 +466,22 @@ export class MossScreen {
    *   · any Ctrl/Alt/Meta chord — those belong to the browser and the OS, not the command line.
    *   · multi-character keys (`Tab`, `ArrowLeft`, `F5`…) — `Tab` is left unbound ON PURPOSE so
    *     focus traversal works, and stealing focus back would kill it.
+   *
+   * ⚠️ ALTGR IS NOT A CHORD, AND ON THIS PROJECT'S OWN KEYBOARD IT IS THE COMMON CASE. Chrome
+   * reports AltGr as `ctrlKey && altKey` (there is no separate flag on a keydown), so the plain
+   * "no Ctrl, no Alt" guard also refused `@ { [ ] } \ | ~` — every one of which is AltGr-typed on a
+   * German layout, and `@`/`{`/`[` are exactly the characters a MOSS command or a program line
+   * starts with. Measured: `key "@"` with `{ctrlKey:true, altKey:true}` left focus lost and the
+   * character vanished, i.e. the de-DE half of the owner's defect survived the first fix. So BOTH
+   * flags together are let through (the standard AltGr carve-out) while ctrl-only, alt-only and
+   * any meta chord still stand down. `hasMod` in `moss-model.js` is a different question — it
+   * decides ROUTING, and an AltGr key routing `'pass'` is exactly right.
    * @param {any} e the keydown
    */
   _typeIntoPrompt(e) {
-    if (!e || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!e || e.metaKey) return;
+    const altGraph = !!e.ctrlKey && !!e.altKey;          // Chrome's spelling of AltGr
+    if ((e.ctrlKey || e.altKey) && !altGraph) return;
     const key = e.key;
     if (typeof key !== 'string' || Array.from(key).length !== 1) return;
     if (!this.inputEl || e.target === this.inputEl) return;

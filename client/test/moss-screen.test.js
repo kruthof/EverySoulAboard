@@ -904,6 +904,39 @@ test('M3-17/A: the STRUCTURAL pin — render never moves programMount and never 
   assert.equal(s.root.byClass('moss-prog-row').length, 2, 'while the DIRECTORY did re-render');
 });
 
+test('M3-17/A: PROGRAM → ESC → LEDGER → P returns to the SAME editor, and it still does not blur', () => {
+  // The attach-only-when-absent branch's most likely regression: leaving the screen legitimately
+  // detaches the wrap (the LEDGER render replaces the body), so coming back must re-attach the SAME
+  // subtree rather than build a new one. If it rebuilds, the draft and the selected row are gone and
+  // the blur is back — with every other test still green, because they never leave the screen.
+  const s = openWithSystems();
+  s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }, { tid: 'term_nav', deck: 1 }]);
+  s.screen.handleKey(keyEvent('p'));
+  s.screen.selectProgram('term_nav');
+  const wrap = s.screen.programWrap;
+  const mount = s.screen.programMount;
+  const code = s.root.oneClass('moss-prog-code');
+  code.value = 'when reactor.temp > 900:';
+  fire(code, 'input');                                   // → editProgramDraft, the live buffer
+
+  s.screen.escape();                                     // PROGRAM → LEDGER (the body is replaced)
+  assert.equal(s.screen.model.screen, 'ledger');
+  assert.equal(s.root.oneClass('moss-prog-code'), null, 'the editor really did leave the document');
+
+  s.screen.handleKey(keyEvent('p'));                     // …and back
+  const at = focusProbe(s, [[code, 'editor']]);
+  assert.ok(s.screen.programWrap === wrap, 'the PROGRAM wrap is the same object, not a rebuild');
+  assert.ok(s.screen.programMount === mount, 'and so is the mount');
+  assert.ok(s.root.oneClass('moss-prog-code') === code, 'and the textarea, with its buffer');
+  assert.equal(code.value, 'when reactor.temp > 900:', 'the draft survived the round trip');
+  assert.equal(s.root.byClass('moss-prog-row')[1].classList.contains('sel'), true,
+    'and the selected terminal is still marked');
+
+  code.focus();
+  s.screen.onSystems(msgOf('systems'));
+  assert.equal(at(), 'editor', 'a wire render after the round trip blurred the editor');
+});
+
 test('M3-17/B: opening MOSS puts focus on the prompt — the takeover first, then the focus', () => {
   // Mirrors hud.js:reflectMossView, which caches channels into the screen and THEN opens it.
   const s = setup();
@@ -955,11 +988,14 @@ test('M3-17/B: a printable key with focus anywhere else lands in the prompt; hot
   assert.equal(s.screen.model.prompt, 'o', 'and the buffer took it');
 
   // 3. it stands down where it must: no chords, no Tab, no scroll keys
-  for (const [key, extra] of [['o', { ctrlKey: true }], ['o', { metaKey: true }], ['Tab', {}], [' ', {}]]) {
+  for (const [key, extra] of [['o', { ctrlKey: true }], ['o', { altKey: true }],
+    ['o', { metaKey: true }], ['o', { metaKey: true, ctrlKey: true, altKey: true }],
+    ['Tab', {}], [' ', {}]]) {
     elsewhere.focus();
     s.screen.handleKey(keyEvent(key, { target: elsewhere, ...extra }));
     assert.equal(at(), 'button',
-      `${extra.ctrlKey ? 'Ctrl+' : ''}${extra.metaKey ? 'Meta+' : ''}${key} must not pull focus into the prompt`);
+      `${extra.ctrlKey ? 'Ctrl+' : ''}${extra.altKey ? 'Alt+' : ''}${extra.metaKey ? 'Meta+' : ''}`
+      + `${key} must not pull focus into the prompt`);
   }
 
   // 4. and a key out of the IDE textarea is never touched (rule 1 still returns first)
@@ -968,6 +1004,34 @@ test('M3-17/B: a printable key with focus anywhere else lands in the prompt; hot
   s.screen.handleKey(fromEditor);
   assert.equal(fromEditor.defaultPrevented, false);
   assert.equal(at(), 'button', 'focus was not stolen out of a text-entry surface');
+});
+
+test('M3-17/B: AltGr is not a chord — `@` on a German layout reaches the prompt', () => {
+  // The dev machine is de-DE and so is the owner's. Chrome has no AltGr flag on a keydown: it
+  // reports `ctrlKey && altKey`, so a "no Ctrl, no Alt" guard silently refuses `@ { [ ] } \ | ~` —
+  // the characters a MOSS command (`open @console`) or a program line (`{`, `[`) begins with. The
+  // first keystroke after any focus loss is therefore the one most likely to be one of these.
+  const s = openWithSystems();
+  const elsewhere = s.doc.createElement('button');
+  s.doc.body.appendChild(elsewhere);
+  const at = focusProbe(s, [[elsewhere, 'button']]);
+
+  elsewhere.focus();
+  const altGr = keyEvent('@', { target: elsewhere, ctrlKey: true, altKey: true });
+  s.screen.handleKey(altGr);
+  assert.equal(altGr.defaultPrevented, false, 'an AltGr character must not be swallowed');
+  assert.equal(at(), 'prompt',
+    'AltGr+@ was treated as a Ctrl+Alt chord and left focus where it was, so the character went '
+    + 'nowhere. On a German keyboard that is the de-DE half of "I cannot type anything".');
+  editable(s.screen.inputEl, altGr);
+  fire(s.screen.inputEl, 'input');
+  assert.equal(s.screen.model.prompt, '@', 'and the buffer took it');
+
+  // ...while the real chord it is spelled like still stands down (leg 3 covers ctrl-only and
+  // alt-only; this is the pair that must NOT be read as AltGr because Meta is in it).
+  elsewhere.focus();
+  s.screen.handleKey(keyEvent('@', { target: elsewhere, ctrlKey: true, altKey: true, metaKey: true }));
+  assert.equal(at(), 'button', 'a Meta chord is never AltGr');
 });
 
 test('M3-17/B: an ordinary LEDGER render leaves the prompt focused', () => {
