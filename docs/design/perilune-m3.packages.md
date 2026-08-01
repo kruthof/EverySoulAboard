@@ -92,8 +92,12 @@ file, not a lane). **FILED for the integrator as one job.** ⚠️ **Separately,
 §5 M3-3 and §12 cite `WreckShipTests.cs:741-752` / `:749` as pinning `term_moss`'s
 `scriptable: false`. Measured, that region is a `NumberWord` helper — and it was NOT the right
 region before the merge either** (it was a strip test at `22b6d38`). **The real guard is
-`TheMossTerminal_BootsUnCommissioned` (`:1251-1262`). That is a CLAIM defect, not a pointer one, so
-it is filed rather than silently re-pointed.**
+`TheMossTerminal_BootsUnCommissioned` (`:1252-1264`), which asserts `Scriptable == false` (`:1261`)
+and `Condition < WreckThreshold` (`:1262`).**
+⭐ **BOTH WERE DISCHARGED 2026-07-31 by the `lane/doc-anchor-sweep` integrator lane** — every
+`AuthoredShips.cs` anchor in this file re-measured against the merged tree and corrected, and the
+`WreckShipTests` claim re-pointed at the guard that actually exists. **The two paragraphs above are
+kept as the record of what was stale and why; the numbers they quote are the OLD ones.**
 
 ---
 
@@ -122,7 +126,7 @@ three-step chain and nothing else:
 
 | depth | item | made by | from |
 |---|---|---|---|
-| 0 | `Seals` | — | authored aboard (10 units — `AuthoredShips.cs:2078` 2 + `:2246` 8) |
+| 0 | `Seals` | — | authored aboard (10 units — `AuthoredShips.cs:2200` 2 + `:2368` 8) |
 | 1 | `Scrap` | `SalvageRecycler` | 4 `Regolith` → 3 `Scrap` |
 | 2 | `Parts` | `Fabricator` | 2 `Scrap` → 1 `Parts` |
 | 3 | `ControllerModule` | `MachineShop` | 2 `Parts` → 1 `ControllerModule` |
@@ -132,8 +136,9 @@ three-step chain and nothing else:
 > **Every thaw goes through a COMMISSIONED terminal** (M3-3's contract term 2), commissioning costs
 > **one `ControllerModule`** (`CommissionDeviceCommand.Currency` + `sim.Defs.Build.CommissionCost`,
 > `Commands.cs:753,778`; `build.def` `commission_cost = 1`), and the wreck's console is authored
-> `scriptable: false` (`AuthoredShips.cs:1952`) **and pinned that way**
-> (`WreckShipTests.cs:749`). ⇒ **The player's FIRST act is the DEEPEST chain in the game (depth 3),
+> `scriptable: false` (`AuthoredShips.cs:2059`) **and pinned that way**
+> (`WreckShipTests.TheMossTerminal_BootsUnCommissioned`, `WreckShipTests.cs:1252-1264`).
+> ⇒ **The player's FIRST act is the DEEPEST chain in the game (depth 3),
 > and every rung after it is shallower.**
 >
 > ⛔ **That is not an escalating curve, and OD-L's binding sentence is "chain DEPTH is the difficulty
@@ -220,8 +225,8 @@ is meaningless until M2-17 lands.** It does not block the thaw chain; it blocks 
 | **0** | — | **THE OWNER BATCH (§10)** | ✅ **CLEARED 2026-07-31 — answered, all recommendations adopted (1A 2A 3A 4A 5A 6A 7B 8A), recorded as OD-M.** Items 1, 2, 6, 7 and 8 were the inputs to packages 2, 3, 4, 5 and 11; every one of them now has its answer inline in §10. (Round 3 corrected this cell; the final pass re-synced the §3 prose above, which had itself gone stale against item 8 — the desync class cuts both ways.) |
 | 1 | `lane/pod-identity` | **M3-1** | ✅ **MERGED 2026-07-31** (`a797e2e`). INFRASTRUCTURE (design). Item 6=A answered it outright: unfreeze only, a pod is single-use, `Device.Name` immutable after boot — MECHANICS §13.27 + `PodIdentityTests` (driven, mutation-proven; **thaw leg owed to M3-3 by name**). Review: APPROVE first pass. The week-9 playtest date is NAMED per §3: **2026-08-07**. |
 | 2 | `lane/vacuum-ladder` | **M3-14** | ✅ **MERGED 2026-07-31** (`351acf0`). Rungs 2+3+4 (OD-M item 7=B). NINE decision sites settled, not seven: the census over the wrapper predicate (`IsUnfixableWreck`) found an eighth (`PrioritiseJobCommand`, spine-touch integrator-accepted: two argument values) and the send-back found a fifth `IsUnfixableWreck` site (`OperateAdvisory` — "NO PARTS ABOARD" about a ship holding four). Rung 0 kept; she may die, pinned by name. Pin-neutral proven (check A = 0 + non-vacuity control + P1 twin unmoved). One send-back, re-verified. Survivors argued and verified: scenario parity unpinned; `JobContext` bypass unreachable until a held order can be a dig (M3-7). |
-| 3 | `lane/pod-census` | **M3-6** | ✅ **MERGED 2026-07-31** (`a6ce8d3`). OD-M item 1's band table lands as a pure zero-alloc helper — **new `sim/Sim.Core/ThawGate.cs`, `RungOf(Condition)`, lower edges uniformly INCLUSIVE (`>=`), pinned at exactly 0.90 → rung 2** — asserted by hand-written literals in `WreckShipTests` (7 pods → rungs 1–7, never derived from `WreckPods` or the table). `AuthoredShips.cs` NOT touched: the 12/1/7/4 header + literals were already correct; the stale 8/1/5/2 swept from FOUR docs (this file's outline row + wreck-start ×2 + q3.plan, integrator sweep). Prose-header self-consistency scan ships with a non-vacuity control (deliberate `codeOnly` INVERSION — the census prose IS the artefact, and the scan is positive-claims-only because the header records the dead draft on purpose). ⭐ **The band-edge BEHAVIOURAL sweep stays OWED to M3-3 mutation 6(b) by name** (test header says so). Review: APPROVE first pass; reviewer re-ran all mutations + every ci leg. MECHANICS §13.28. Pin-neutral: check A = 0, P1 twin unmoved. Handed to M3-11: widen the header scan's anchor to the second prose census on `WreckPods`' own `<summary>` (`AuthoredShips.cs:1745-1752` — reviewer-proven survivable today). |
-| 4 | `lane/deck1-vent` | **M3-11** | ⚠️ Same file as 3. **After 3.** Its shape is owner batch item 2. ⭐ **OD-N (2026-07-31) ANSWERS THIS ROW'S FILED REACHABILITY BLOCKER** — the deck-1 door the vent sits behind is opened from the MOSS console, remotely, once `term_moss` is repaired (M3-15). ⚠️ **Its acceptance step 4 (*"open its door"*) is therefore a MOSS command after position 6b, not a click** — amended in the charter. ⭐ **AND OD-O (2026-07-31, the same day) DISSOLVES THE OTHER ONE FOR THIS VENT**: `vent_d1` is re-authored mechanically fine with a dead control board, so **nobody has to cross deck 1 to fix it at all** — the 900 s service against suffocation simply does not happen here (M3-16, position 8b). ⚠️ **The blocker is DISSOLVED FOR THIS VENT, NOT CLOSED AS A CLASS**: the next unreachable machine on a dead deck has the same problem, and *that* stays open on the owner. |
+| 3 | `lane/pod-census` | **M3-6** | ✅ **MERGED 2026-07-31** (`a6ce8d3`). OD-M item 1's band table lands as a pure zero-alloc helper — **new `sim/Sim.Core/ThawGate.cs`, `RungOf(Condition)`, lower edges uniformly INCLUSIVE (`>=`), pinned at exactly 0.90 → rung 2** — asserted by hand-written literals in `WreckShipTests` (7 pods → rungs 1–7, never derived from `WreckPods` or the table). `AuthoredShips.cs` NOT touched: the 12/1/7/4 header + literals were already correct; the stale 8/1/5/2 swept from FOUR docs (this file's outline row + wreck-start ×2 + q3.plan, integrator sweep). Prose-header self-consistency scan ships with a non-vacuity control (deliberate `codeOnly` INVERSION — the census prose IS the artefact, and the scan is positive-claims-only because the header records the dead draft on purpose). ⭐ **The band-edge BEHAVIOURAL sweep stays OWED to M3-3 mutation 6(b) by name** (test header says so). Review: APPROVE first pass; reviewer re-ran all mutations + every ci leg. MECHANICS §13.28. Pin-neutral: check A = 0, P1 twin unmoved. Handed to M3-11: widen the header scan's anchor to the second prose census on `WreckPods`' own `<summary>` (`AuthoredShips.cs:1845-1864` — reviewer-proven survivable today). |
+| 4 | `lane/deck1-vent` | **M3-11** | ⚠️ Same file as 3. **After 3.** Its shape is owner batch item 2. ⭐ **OD-N (2026-07-31) ANSWERS THIS ROW'S FILED REACHABILITY BLOCKER** — the deck-1 door the vent sits behind is opened from the MOSS console, remotely, once `term_moss` is repaired (M3-15). ⚠️ **Its acceptance step 4 (*"open its door"*) is therefore a MOSS command after position 6b, not a click** — amended in the charter. ⭐ **AND OD-O (2026-07-31, the same day) DISSOLVES THE OTHER ONE FOR THIS VENT**: `vent_d1` is re-authored mechanically fine with a dead control board, so **nobody has to cross deck 1 to fix it at all** — the 900 s service against suffocation simply does not happen here (M3-16, position 8b). ⚠️ **The SURVIVABILITY blocker is DISSOLVED FOR THIS VENT, NOT CLOSED AS A CLASS**: the next machine needing a CREWED service in vacuum has it again, and *that* stays open on the owner. ⭐ **Reachability is a different shape — OD-N closes it GENERALLY** (a repaired console opens any named door remotely), so do not read the two halves as one answer. |
 | **5** | **`lane/cryo-system`** | **M3-2** | ✅ **MERGED 2026-07-31** (`ff013e4`, tag **`pin/m3-a`**). A pod cycles: 4 sim-min (`ThawSecondsPerCycle=240`, named constant — no def field, P4/P5 held), ONE at a time (lowest `Device.Id`), wrecked pods never cycle and never block (OD-9), opened pods never re-cycle (§13.27), person named from `Device.Name` on the first walkable device-free 4-neighbour, `CitizenThawedEvent`. Emergency bit STORED in SYSS (folded by `StateChecksum`, zero non-test writers) — M3-5 reads/writes it, no second re-pin. `SaveWriter`/`SaveReader` untouched (SYSS generic over `IStatefulSystem`). **P1/P2/P3 moved FOLD-ONLY, cause MEASURED** (interface dropped ⇒ all three old values return; day-3 sim line byte-identical); reviewer reproduced pins + causal mutation independently. One doc-only send-back (stale MECHANICS pin paragraph + four drifted anchors). MECHANICS §13.29. FILED: no-exit-tile pod blocks the bay forever silently (M3-3/M3-4 own the surface). |
 | 6 | `lane/thaw-cmd` | **M3-3** | SPINE (`Commands`). Needs 5 and 3. |
 | **6b** | `lane/moss-gate` | ⭐ **M3-15** | ⭐ **NEW, OD-N (2026-07-31, owner-direct).** SPINE (`Commands`). **Needs 6** — not for `ThawGate` (it uses none of it) but because both packages write the *console* predicate and `Commands.cs` is spine: one lane after the other, vocabulary agreed once. **Blocks 7 and 8** (M3-4's pod-bay header and M3-13's refusals both state whether MOSS is repaired vs commissioned). ⚠️ **THE ID IS A HALF-STEP ON PURPOSE.** Renumbering 7…14 to buy a tidy integer would stale three live citations in this same file — *"blocks position 11"* (§10 item 8), *"after position 12"* (§8), and M3-13's *"Needs 7"* — which is exactly the doc-drift class §12 exists to record. **A published position is a citation target; a new one between two of them is cheaper than eight edits.** |
@@ -316,8 +321,8 @@ records it. Writing a fake sentence here is the failure the CLASS field exists t
   `:40`), and `Simulation.StateHash` folds it **for that reason, in a comment that says so**
   (`sim/Sim.Core/Simulation.cs:553-555`: *"`MossBindings.cs` registers every MOSS adapter BY NAME, so
   a restore that changed one silently unbinds every player program, no error"*).
-- The wreck's pods **already encode a person in it**: `AuthoredShips.cs:1856` is
-  `Name = "pod_" + pod.Who.ToLowerInvariant()`, and `AuthoredShips.cs:1727-1728` names
+- The wreck's pods **already encode a person in it**: `AuthoredShips.cs:1963` is
+  `Name = "pod_" + pod.Who.ToLowerInvariant()`, and `AuthoredShips.cs:1826-1827` names
   `pod_vance`/`pod_sokolov`/`pod_iqbal`/`pod_osei` as the four `Broken` ones.
 
 ⇒ One field cannot be a **stable automation identifier** and a **mutable "who is in the box"**.
@@ -346,7 +351,7 @@ records it. Writing a fake sentence here is the failure the CLASS field exists t
 **SEAM (the files the decision binds).** `sim/Sim.Core/Entities/Device.cs:37-49` (the `CryoPod`
 comment already states the intended field mapping: `IsOpen` / `Name` / `Condition`, and *"W5 adds
 `Progress`. NO new `Device` field."*) · `sim/Sim.Core/Simulation.cs:553-555` · `MossBindings.cs:14-41`
-· `AuthoredShips.cs:1740-1780` (`PodSpec` + `WreckPods`) · `:1856`.
+· `AuthoredShips.cs:1836-1882` (`PodSpec` + `WreckPods`) · `:1963`.
 
 **PIN IMPACT: NONE — it writes no code.** ⛔ **But it CONSTRAINS `pin/m3-a`**: option (b)(i) adds a
 hashed field to M3-2's commit. Answer it first.
@@ -522,7 +527,7 @@ the shipping bug revision 1 would have caused. ⛔ **L, not M, and re-scoped aga
 > will open it** (OD-L).
 
 ⛔ **THE OUTLINE'S CENSUS IS WRONG AND THIS IS THE CORRECTION.** `…q3.packages.md` §6 says
-*"pods 8 · open at boot 1 · intact 5 · wrecked 2"*. **Read off `AuthoredShips.cs:1760-1782` this
+*"pods 8 · open at boot 1 · intact 5 · wrecked 2"*. **Read off `AuthoredShips.cs:1865-1882` this
 session, the shipped census is:**
 
 | | count | who |
@@ -573,14 +578,14 @@ escalation"*). **The last rung costs three times the opening gate.**
 
 ⚠️ **Depth 1 (`Scrap`) is deliberately unused**: `Scrap` is a crafting intermediate, not a repair
 consumable — the shipped repair ladder is `Parts` / `Seals` / `Swarf`
-(`AuthoredShips.cs:1584`). *Stated so nobody "fills the gap" and puts an intermediate in a pod.*
+(`AuthoredShips.cs:1600`). *Stated so nobody "fills the gap" and puts an intermediate in a pod.*
 
 ⭐ **Nothing in the shipped `Condition` array has to change to land this** — only the band edges are
 chosen, and they are chosen to sit between the authored values rather than on them. That is the point
 of choosing `Condition` as the carrier: **the ladder is already authored and nobody knew.**
 
-**SEAM.** `sim/Sim.Gen/AuthoredShips.cs:1740-1782` (`PodSpec` + `WreckPods`) · `:1856` (the naming) ·
-`:1310-1340` (the header block that states the counts in prose — **it must be corrected in the same
+**SEAM.** `sim/Sim.Gen/AuthoredShips.cs:1836-1882` (`PodSpec` + `WreckPods`) · `:1963` (the naming) ·
+`:1312-1340` (the header block that states the counts in prose — **it must be corrected in the same
 commit or the file contradicts itself**) · `tests/Perilune.Tests/WreckShipTests.cs:60-210` (the
 existing hand-written literals — `CryoPodFailBelow = 0.10f` at `:80`, the eight-living assertion at
 `:90`, the wrecked-pod walk at `:117-137`).
@@ -652,7 +657,7 @@ hand-written literals, and a document that has been quoting the wrong number.
 >
 > **The bad news, and it is why this is not one line: the vent needs POWER, and M2-11 just took
 > deck 1 genuinely off-network.** `AtmosphereSystem.cs:123` gates the vent on
-> `IsOpen && Powered && IsOperational`. `WreckCutDeck1Risers` (`AuthoredShips.cs:2331-2400`) deletes
+> `IsOpen && Powered && IsOperational`. `WreckCutDeck1Risers` (`AuthoredShips.cs:2452-2515`) deletes
 > the deck-0 tray tile under **every** deck-1 device — *"that tile is the tap its riser came up
 > through, and the raiders pulled the lot"* — leaving **23 of 611 devices off-network, exactly
 > deck 1** *(inherited figure, not re-driven here)*. **A deck-1 vent authored today is inert.**
@@ -674,7 +679,7 @@ authored WRECKED (`Condition` below `AirVent`'s fail floor of 0.10).** Then:
 - it costs **one device + one tray tile** of authoring, and the deck-1 vent has a name the pod bay
   can put in a refusal (*"NO BERTH — UPPER DECK AIRLESS"*).
 
-**SEAM.** `sim/Sim.Gen/AuthoredShips.cs:2019-2050` (the dead-deck block) · `:2331-2400`
+**SEAM.** `sim/Sim.Gen/AuthoredShips.cs:2126-2170` (the dead-deck block) · `:2452-2515`
 (`WreckCutDeck1Risers` — ⛔ **the riser exemption goes INSIDE this helper, whose own doc comment says
 it must run after the last deck-1 device is authored, because it reads the deck-1 device list**) ·
 `AtmosphereSystem.cs:123-145` · the grid precedent at `:150` / `:1084`.
@@ -864,8 +869,9 @@ nothing is the exact defect this milestone is built to avoid.**
 **SEAM.** **new** `sim/Sim.Core/ThawGate.cs` · `sim/Sim.Core/Commands/Commands.cs` (`ThawCommand`,
 precedent `MoveCitizenCommand`) · `hosts/web/GameSession.cs:399-446` (`HandleMoss`, the new op) ·
 `hosts/web/WireFormat*.cs` (the reply). ⚠️ **The wreck's console is
-`term_moss`, authored at `Condition 0.14`, `scriptable: false` (`AuthoredShips.cs:1952`) and pinned
-that way by `WreckShipTests.cs:741-752`** — *"MOSS is DARK until a ControllerModule is spent on it"*.
+`term_moss`, authored at `Condition 0.14`, `scriptable: false` (`AuthoredShips.cs:2059`) and pinned
+that way by `WreckShipTests.TheMossTerminal_BootsUnCommissioned` (`:1252-1264`)** —
+*"MOSS is DARK until a ControllerModule is spent on it"*.
 ⇒ **Term 2 is not hypothetical on the shipping ship: the player must repair AND commission the
 terminal before any thaw is possible.** That is the milestone's opening objective and it is already
 authored. ⛔ ⭐ **AND IT IS PRICED — one `ControllerModule`, the deepest item in the game
@@ -926,7 +932,7 @@ Scoped by three follow-up answers, all binding:
 1. **MOSS-only for doors AND vents.** The Room Zoom's direct OPERATE click verb — the ring + the
    OPEN/SHUT plate — is **removed for both kinds**. Remote actuation happens only through MOSS.
 2. **The MOSS server IS `term_moss`** — the Terminal already authored in the cryo bay
-   (`AuthoredShips.cs:2057`, `Condition 0.14`, `scriptable: false`). **No new device kind.** It sits
+   (`AuthoredShips.cs:2059`, `Condition 0.14`, `scriptable: false`). **No new device kind.** It sits
    in the ship's boot-air room, which is what *"has to be in an open room"* asks for; ⭐ **and
    MEASURED this session, that is not merely true, it is the load-bearing fact of the whole
    package** (the deadlock box below).
@@ -959,15 +965,15 @@ Scoped by three follow-up answers, all binding:
 >
 > ⇒ **MOSS-only doors + a single commissioning gate = doors need MOSS needs a `ControllerModule`
 > needs the benches needs the doors.** The chain's own authoring says so in its own words:
-> `AuthoredShips.cs:1602-1604` prices the module — quoted as the source states it, **2 Parts = 4 Scrap
+> `AuthoredShips.cs:1604-1606` prices the module — quoted as the source states it, **2 Parts = 4 Scrap
 > = 6 Regolith, *"8 Regolith → 6 Scrap covers the rounding"*** (⚠️ **§1 of this file carries the 8 as
 > the real cost, and §12.18 records the 6-vs-8 confusion as a past defect of this document — so
-> quote the source's 6 AND its rounding clause, never the bare 8**) — and `:2093-2096` says the whole
+> quote the source's 6 AND its rounding clause, never the bare 8**) — and `:2095-2098` says the whole
 > chain *"lives behind these three doors."* M3-14 (merged) lets a **direct order cross vacuum** — it does not let a pawn cross a shut
 > door, and it never claimed to.
 >
 > ⭐ **THE SPLIT BREAKS IT, AND THE BREAK IS CHEAP.** Repairing `term_moss` costs **one consumable
-> service** off boot stock that is all in air (`AuthoredShips.cs:1609-1613`, re-driven above:
+> service** off boot stock that is all in air (`AuthoredShips.cs:1611-1615`, re-driven above:
 > 12 Regolith, 3 Scrap, 1 Parts, 10 Seals), the terminal is reachable without opening anything, and
 > the console then opens the frontier. ⚠️ **`vent_ls` is on the unreachable list, and that is the M1
 > exit-gate device** (*"open `vent_ls` and the hall pressurises"*). Under OD-N its opening move runs
@@ -990,7 +996,7 @@ Scoped by three follow-up answers, all binding:
 > ⇒ **The gate would ship OPEN and OD-N would deliver nothing**: there would be no repair to do.
 > ⚠️ *This is the charter's own header rule biting the charter: the term was read off a doc, not
 > driven. The wreck's `Condition 0.14` was chosen to sit below `wear.wreck_threshold` (0.25), not
-> below a `fail` floor — `AuthoredShips.cs:2051-2056` says exactly that in its own comment
+> below a `fail` floor — `AuthoredShips.cs:2053-2058` says exactly that in its own comment
 > (`"Condition 0.14 is below wear.wreck_threshold so it cannot even be bodged back to working
 > without a consumable"`), and it is the `wreck_threshold`/`maint` band that means "wrecked" here,
 > never `fail`.*
@@ -1015,7 +1021,7 @@ Scoped by three follow-up answers, all binding:
 > ⚠️ ⭐ **A THIRD REASON WAS WITHDRAWN IN REVIEW AND THE WITHDRAWAL IS WORTH KEEPING**: the first
 > draft priced this against *"the hand-written literal at `WreckShipTests.cs:741-752`"*. **There is
 > no such literal.** That region is a `NumberWord` helper; the real test is
-> `TheMossTerminal_BootsUnCommissioned` (`:1251-1262`), which asserts `Scriptable == false` and
+> `TheMossTerminal_BootsUnCommissioned` (`:1252-1264`), which asserts `Scriptable == false` and
 > `Condition < WreckThreshold` (0.25) and **carries no `0.14` at all — so 0.014 would still PASS it.**
 > *A refused alternative priced against a guard that cannot bite is the same defect as a mutation
 > that cannot bite, pointing the other way.* **The two remaining reasons stand on their own.** (ii) **Lower `Terminal`'s `fail_below`**:
@@ -1595,8 +1601,8 @@ board alternative; **(iii)** ⛔ **it is NOT a general pattern.** The owner soft
 > ### ⛔ ⭐ "RE-AUTHOR IT MECHANICALLY FINE" IS **TWO** EDITS, NOT ONE — AND THE SECOND IS THE FAULT
 >
 > Read off the merged tree (`8d206ca`), `vent_d1` is authored **`IsOpen = true, Condition = 0.06f`**
-> (`AuthoredShips.cs:2165-2168`) and M3-11 **exempted its riser tap**, so it is the twenty-fourth
-> deck-1 device and **the only one ON the grid** (`AuthoredShips.cs:1578`). `AirVent`'s floors are
+> (`AuthoredShips.cs:2165-2170`) and M3-11 **exempted its riser tap**, so it is the twenty-fourth
+> deck-1 device and **the only one ON the grid** (`AuthoredShips.cs:1580`). `AirVent`'s floors are
 > **`maint 0.40`, `fail 0.10`** (`MachineDefs.cs:39`), and `Device.Rate` initialises to **`1f`**
 > (`Device.cs:79`).
 >
@@ -1729,7 +1735,7 @@ duty-cycle arithmetic here is a CHARTER ESTIMATE — nothing in this paragraph w
 ---
 
 **SEAM.**
-`sim/Sim.Gen/AuthoredShips.cs:2154-2168` (the authored vent; `WreckDeck1VentName` at `:1803`) ·
+`sim/Sim.Gen/AuthoredShips.cs:2157-2170` (the authored vent; `WreckDeck1VentName` at `:1805`) ·
 `sim/Sim.Gen/ShipPlan.cs:132-189` (`DeviceSpec` — **`float? Rate` and `bool? Faulted`**) ·
 `sim/Sim.Gen/ShipPlanBuilder.cs:20-45` (the guarded writes) ·
 `sim/Sim.Core/Entities/Device.cs:79` (`Rate`), `:46-49` (the no-new-field rule this package argues
@@ -1789,7 +1795,7 @@ program an inference instead of a walkthrough.**
 **CONFLICTS.**
 ⛔ **`sim/Sim.Gen/AuthoredShips.cs` — the strictly-serialized chain: M3-6 ✅ → M3-11 ✅ → M3-16 →
 M3-8.** ⚠️ **M3-11 is a landed claimant whose numbers this changes** (the deck-1 device census, the
-LifeSupport draw of an open vent — `:1524`, `:1578`); **re-derive from the merged tree** (trap 8). ·
+LifeSupport draw of an open vent — `:1526`, `:1580`); **re-derive from the merged tree** (trap 8). ·
 ⛔ ⭐ **`tests/Perilune.Tests/Deck1VentTests.cs` — M3-16 RE-CUTS A SHIPPED SUITE, and this is the
 package's largest hidden cost.** ⭐ **TWO legs go RED by construction, not one.**
 **(1)** *"repair the vent, run 3 000 ticks, the hall passes 80 kPa"* — after OD-O the vent is already
@@ -2358,7 +2364,7 @@ bay that refuses silently fails OD-L's own premise.
 
 | file / area | claimants | rule |
 |---|---|---|
-| `sim/Sim.Gen/AuthoredShips.cs` | M1-A ✅, M1-I ✅, **M2-11 ✅**, **M3-6 ✅**, **M3-11 ✅**, ⭐ **M3-16** (re-authors `vent_d1`), M3-8 | ⛔ **Strictly serialized. M3-6 ✅ → M3-11 ✅ → M3-16 → M3-8.** ⭐ **M3-16 is a new claimant on a device M3-11 authored three days earlier**, and it changes two of M3-11's own numbers (the deck-1 device census, an open vent's LifeSupport draw — `:1524`, `:1578`). **Re-derive from the merged tree.** ⚠️ ⭐ **M2-11 IS A PAST CLAIMANT WHOSE MEASURED CENSUS M3-11 CHANGES** — the off-network count (23 of 611) and the flat demand (14.30 kW) live in `WreckCutDeck1Risers`'s doc comment and in `WreckPowerNetworkTests`. **Re-derive both from the MERGED tree; quote the exemption and the cut separately** (M2-11's own send-back was a comment that stated the net as the deletion count). **A package that touches an authored ship adds its row BEFORE it starts** — M1-I's retrospective addition is the standing warning. |
+| `sim/Sim.Gen/AuthoredShips.cs` | M1-A ✅, M1-I ✅, **M2-11 ✅**, **M3-6 ✅**, **M3-11 ✅**, ⭐ **M3-16** (re-authors `vent_d1`), M3-8 | ⛔ **Strictly serialized. M3-6 ✅ → M3-11 ✅ → M3-16 → M3-8.** ⭐ **M3-16 is a new claimant on a device M3-11 authored three days earlier**, and it changes two of M3-11's own numbers (the deck-1 device census, an open vent's LifeSupport draw — `:1526`, `:1580`). **Re-derive from the merged tree.** ⚠️ ⭐ **M2-11 IS A PAST CLAIMANT WHOSE MEASURED CENSUS M3-11 CHANGES** — the off-network count (23 of 611) and the flat demand (14.30 kW) live in `WreckCutDeck1Risers`'s doc comment and in `WreckPowerNetworkTests`. **Re-derive both from the MERGED tree; quote the exemption and the cut separately** (M2-11's own send-back was a comment that stated the net as the deletion count). **A package that touches an authored ship adds its row BEFORE it starts** — M1-I's retrospective addition is the standing warning. |
 | `sim/Sim.Core/Simulation.cs` · `Save/SaveWriter.cs` · `Save/SaveReader.cs` · `SystemStack.cs` | **M3-2** (+M3-5 **only if** the bit was missed), ⭐ **M3-16** (`Faulted` = bit 12 of the device state word + a DEVC bump) | ⛔ **SPINE — integrator lane only, one at a time.** ⭐ **M3-16's fold is byte-identical while the bit is false** (`Simulation.cs:539-546`; b12–b15 are free), **which is why it is NOT on the pin chain** — see its charter's design question (a). ⚠️ **Measure it; if it moves, the bit belongs in M3-2's `pin/m3-a` instead.** |
 | ⭐ `sim/Sim.Gen/ShipPlan.cs` · `ShipPlanBuilder.cs` | ⭐ **M3-16** (`DeviceSpec.Rate` + `.Faulted`) | ⭐ **New row.** No other M3 claimant. ⛔ **Both new fields are `Nullable` on the `Condition`/`Scriptable` precedent** — the struct's own doc comment (`ShipPlan.cs:141-174`) records that a plain `float` here *"would boot the whole repo WRECKED"*. ⚠️ **`AuthoredDamageTests`' census may need widening** — it is an INCLUSION test and this package widens what "authored damage" means. |
 | ⭐ `sim/Sim.Core/Systems/AtmosphereSystem.cs` | ⭐ **M3-16** (the rate bleed, inside the existing device walk) | ⭐ **New row.** No other M3 claimant — **and it is the FIRST system in the stack** (`SystemStack.cs:26`), so a clause here runs before everything on every ship. ⛔ **Gated on a bit no pinned ship carries; MEASURE P1/P2/P3 anyway.** |
@@ -2463,8 +2469,8 @@ table that satisfied it in isolation and **never priced the gate every thaw goes
 
 **THE MEASUREMENT.** Every thaw needs a **commissioned** terminal (M3-3 term 2); commissioning costs
 **1 `ControllerModule`** (`Commands.cs:753,778`; `build.def commission_cost = 1`); the wreck's
-`term_moss` is authored `scriptable: false` (`AuthoredShips.cs:1952`) **and pinned that way**
-(`WreckShipTests.cs:749`). `ControllerModule` is the **deepest** item in the shipped chain (depth 3,
+`term_moss` is authored `scriptable: false` (`AuthoredShips.cs:2059`) **and pinned that way**
+(`WreckShipTests.cs:1252-1264`, `TheMossTerminal_BootsUnCommissioned`). `ControllerModule` is the **deepest** item in the shipped chain (depth 3,
 8 Regolith through three benches that all boot wrecked). ⇒ **Revision 1's realised curve was:**
 
 ```
@@ -2480,7 +2486,7 @@ nothing added them up.** *A curve that lives in two sections is a curve nobody h
 | option | shape | resulting curve |
 |---|---|---|
 | **A** | ⭐ **Re-key the rungs so the ladder is monotonic in depth and ENDS ABOVE the gate** — depth 0,0,2,2,3,3,3 with count escalating inside depth 3 (§5 M3-6's revised table). **Name the gate as the PROLOGUE it already is** — *"restore MOSS"* is the wreck premise's own opening objective, not a rung | `3 → 0 0 2 2 3 3 3`, last rung **3× the gate** |
-| **B** | **Cheapen or waive the first commissioning** — author `term_moss` `scriptable: true` but wrecked, so the opening gate is a **repair** (depth 0–2) rather than a `ControllerModule`. ⛔ **Costs an authored pin** (`WreckShipTests.cs:749` asserts the dark flag *and its reason*) and **retires E0-6's one `ControllerModule` sink on this ship** | `1 → 0 0 2 2 3 3 3`, cleanly monotonic |
+| **B** | **Cheapen or waive the first commissioning** — author `term_moss` `scriptable: true` but wrecked, so the opening gate is a **repair** (depth 0–2) rather than a `ControllerModule`. ⛔ **Costs an authored pin** (`WreckShipTests.cs:1261` asserts the dark flag *and its reason*) and **retires E0-6's one `ControllerModule` sink on this ship** | `1 → 0 0 2 2 3 3 3`, cleanly monotonic |
 | **C** | **Accept the shape and SAY it**: a tutorial mountain, then a ladder. Zero cost, and it is honest — but the demo's step 8 (*thaws 3–5 not in one sim-hour*) leans entirely on rungs 5–7 | `3 → 0 0 2 2 3 3 3` with no claim of monotonicity |
 | **D** | Add new deeper recipes so the ladder can climb past depth 3 | new def rows ⇒ **P4/P5**, new content, new art. **Out of scope for M3** |
 
@@ -2706,22 +2712,22 @@ against six independent skills.
 plan that is **false on this tree**.*
 
 1. ⛔ **THE POD CENSUS.** §6 M3-6 says *"pods 8 · open at boot 1 · intact 5 · wrecked 2"*. The shipped
-   ship is **12 · 1 · 7 · 4** (`AuthoredShips.cs:1760-1782`). ⭐ **And `AuthoredShips.cs:1332-1336`
+   ship is **12 · 1 · 7 · 4** (`AuthoredShips.cs:1865-1882`). ⭐ **And `AuthoredShips.cs:1332-1336`
    records that exact wrong draft and why it was wrong** — *"it read an answer about what the
    wrecked-pod ART DEPICTS as an answer about how many crew are RECOVERABLE."* **The correction was
    made in the code and never reached the document that consumed it.** The whole `thaws available`
    number, and therefore the whole ladder's length, was wrong by 2.
 2. **`Device.Name`'s citations are stale.** §6 M3-1 cites `Simulation.cs:470-471` and
    `AuthoredShips.cs:1678`. **Read this session: `Simulation.cs:553-555` and
-   `AuthoredShips.cs:1856`.** The *claims* are true; the line numbers are not.
+   `AuthoredShips.cs:1963`.** The *claims* are true; the line numbers are not.
 3. **`grep "CryoSystem"` returns five hits, not three.** §6 M3-2 says three (`Device.cs`,
    `AuthoredShips.cs`, `WreckShipTests.cs`); the client has two more
    (`client/src/ui/onboarding.js:29`, `client/test/onboarding.test.js:475`). ⚠️ **The client ones
    matter**: `onboarding.test.js:478` asserts the card **must not promise a thaw**. **M3 must flip
    that test, and it is in a file no M3 charter named.**
 4. **The wreck's consumable stock is `1 Parts + 10 Seals`, not `1 Parts + 2 Seals`.**
-   `AuthoredShips.cs:2077-2078` (the reactor stock) **plus `:2246` (M1-I's locker, 8 more)** — and
-   `:1600` records that the source comment itself said `2` until 2026-07-30. ⚠️ **M2-9's mutation-3
+   `AuthoredShips.cs:2199-2200` (the reactor stock) **plus `:2368` (M1-I's locker, 8 more)** — and
+   `:1616` records that the source comment itself said `2` until 2026-07-30. ⚠️ **M2-9's mutation-3
    fixture instruction ("strip Parts/Seals/Swarf first") is still correct but the number it names is
    not.**
 5. **`thaw_cost_base` / `thaw_cost_step` are superseded by OD-L** (§5 M3-3). The wreck plan's §3.4.1
@@ -2770,7 +2776,7 @@ plan that is **false on this tree**.*
     amendment.**
 16. ⛔ **The realised thaw curve is not escalating**, because commissioning `term_moss` costs a
     `ControllerModule` — the deepest item in the game — and every thaw goes through it
-    (`Commands.cs:753,778`; `AuthoredShips.cs:1952`; `WreckShipTests.cs:749`). **Batch item 1
+    (`Commands.cs:753,778`; `AuthoredShips.cs:2059`; `WreckShipTests.cs:1252-1264`). **Batch item 1
     rewritten; M3-6's rung table re-keyed to be monotonic and to end above the gate.**
 17. **`rimworld-reference.md:1737-1740` reserves the vacuum-ladder rung choice for the OWNER**, and
     OD-K (⭐ **`ROADMAP.md:110-112` — the prose note after the table; revision 2 wrote `:105-107`,
@@ -2850,8 +2856,8 @@ inside `docs/` files this document quotes constantly.
 > this one has now been re-measured twice.**
 
 **READ THIS SESSION, IN THE FILE, ON THIS TREE** — every `file:line` in §5 and §9, and specifically:
-`AuthoredShips.cs` (`WreckPods` 1760-1782 · the header 1310-1340 · `pod_` 1856 · `term_moss` 1952 ·
-the dead deck 2019-2050 · stock 2077-2078 + 2246 · `WreckCutDeck1Risers` 2331-2400 · ⭐ **the deck-1
+`AuthoredShips.cs` (`WreckPods` 1865-1882 · the header 1312-1340 · `pod_` 1963 · `term_moss` 2059 ·
+the dead deck 2126-2170 · stock 2199-2200 + 2368 · `WreckCutDeck1Risers` 2452-2515 · ⭐ **the deck-1
 vents at `:150` (`Perilune()`, `:32`–`:224` — a PINNED ship) and `:1084` (`PeriluneGrid()`, from
 `:975`) — function spans re-read in revision 2**) · `Device.cs` (kinds 5-49 incl. **`Bed` at `:23`**,
 fields 66-120) · `Simulation.cs:553-555` **and ⭐ `:425-426` and `:605-608`** ·
@@ -2869,7 +2875,7 @@ and `:1779-1787` (`Send`'s whole-string dedupe)**, `hosts/scenario/Program.cs:59
 `WireFormat.Work.cs:86-134` · `messages.js:529-570` · `GameSession.cs:399-446` · `moss-model.js:27` ·
 `hud.js:30` · `overview-view.js:1181` · `overview-model.js:322,335-345` ·
 ⭐ **`room-model.js:1183` · `prioritise-menu.test.js:68-80`** · `machines.def:43,62,66` ·
-`recipes.def:19-22` · `build.def` · `WreckShipTests.cs` (42-210, 741-752) ·
+`recipes.def:19-22` · `build.def` · `WreckShipTests.cs` (42-210, and ⭐ **1252-1264** — the MOSS-dark pin; *741-752 was cited here and is a `NumberWord` helper, not a pin*) ·
 `perilune-wreck-start.plan.md` §7 `:2445` / §7.1 `:2592` · `MECHANICS.md` §3 (the same-deck-only
 table), ⭐ **`:258` (W0-6's four named)**, §13.22, §13.23a ·
 ⭐ **`ROADMAP.md:100` (OD-E) and `:110-112` (OD-K's rung note) — round 3; revision 2 cited `:97`
@@ -2945,7 +2951,7 @@ arithmetic is labelled so in the charter itself.**
 
 | claim | where |
 |---|---|
-| `vent_d1` is authored **`IsOpen = true, Condition = 0.06f`**, on the grid via M3-11's exempted riser | `AuthoredShips.cs:2165-2168`, `:1578`, `:1803` (`WreckDeck1VentName`) |
+| `vent_d1` is authored **`IsOpen = true, Condition = 0.06f`**, on the grid via M3-11's exempted riser | `AuthoredShips.cs:2165-2170`, `:1580`, `:1805` (`WreckDeck1VentName`) |
 | `AirVent` floors **`maint 0.40, fail 0.10`**; `Device.Rate` initialises to **`1f`** | `MachineDefs.cs:39` · `Device.cs:79` |
 | the vent injection gate is **`IsOpen && Powered && IsOperational`**, flow is `VentMolPerSecond × EffectiveRate × Dt`, and `AtmosphereSystem.IntervalTicks == 2` | `AtmosphereSystem.cs:123-146`, `:69` · `Device.cs:120` |
 | `AtmosphereSystem` is the **FIRST** system in the stack | `SystemStack.cs:26` |
