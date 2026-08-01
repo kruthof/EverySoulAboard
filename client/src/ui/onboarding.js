@@ -19,7 +19,7 @@
 //     LLM-ready* — leading the first screen with a conversation verb was the most misleading thing
 //     in the product. TALK is demoted to one control row. It is NOT removed: it works (driven —
 //     `T` opens a dialogue panel for the selected crew).
-//   • it named ZERO order verbs. DIG / STOCKPILE / STRIP / OPERATE are the player's primary input
+//   • it named ZERO order verbs. DIG / STOCKPILE / STRIP are the player's primary input
 //     — "we define tasks" — and five console-retirement work packages exist to put them on this
 //     surface. The card mentioned none of them.
 //   • its fiction was the pre-wreck one ("a drifting ship, a skeleton crew"). `hosts/web` boots
@@ -137,11 +137,18 @@ function markSeen() {
   try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* private mode — session flag covers it */ }
 }
 
-/** The four ORDER verbs — the player's task-definition vocabulary, and the reason this card exists.
+/** The ORDER verbs — the player's task-definition vocabulary, and the reason this card exists.
  *  Named here rather than spelled into the prose so the guard can require every one of them to
- *  reach the rendered card, and so adding a fifth is one edit. Kept in the palette's own order
- *  (`ui/room-model.js` ROOM_TOOLS). */
-export const ORDER_VERBS = Object.freeze(['DIG', 'STOCKPILE', 'STRIP', 'OPERATE']);
+ *  reach the rendered card, and so adding a fourth is one edit. Kept in the palette's own order
+ *  (`ui/room-model.js` ROOM_TOOLS).
+ *
+ *  ⚠️ OPERATE WAS THE FOURTH AND IS GONE (M3-15, OD-N, 2026-07-31): doors and vents are actuated
+ *  from the MOSS console now, so a card teaching a palette verb that no longer exists would be
+ *  teaching a lie. ⛔ THIS IS THE ONLY EDIT M3-15 MAKES TO THE ONBOARDING, AND THAT IS DELIBERATE —
+ *  OD-N also re-cuts the FIRST ORDER the game teaches (from "repair something so the lights come
+ *  back" to "repair the computer"), and that rewrite belongs to M4-5. A half-rewrite here would
+ *  collide with it. FILED, not fixed. */
+export const ORDER_VERBS = Object.freeze(['DIG', 'STOCKPILE', 'STRIP']);
 
 /**
  * The two headline verbs, in the order the card teaches them.
@@ -159,7 +166,7 @@ export const VERBS = Object.freeze([
   {
     head: '◈ ORDER',
     body: 'Step into a room, take <b>DIG</b>, <b>STOCKPILE</b> or <b>STRIP</b> and drag over the ' +
-      'tiles you mean. <b>OPERATE</b> toggles a door or vent.',
+      'tiles you mean.',
   },
   {
     head: '▣ BUILD',
@@ -248,8 +255,6 @@ export const CONTROL_GROUPS = Object.freeze([
         { file: RZ, cond: "k === 'g'", call: "arm('dig')" },
         { file: RZ, cond: "k === 'z'", call: "arm('stockpile')" },
         { file: RZ, cond: "k === 'v'", call: "arm('strip')" }] },
-      { key: 'O', text: 'operate a door or vent', bind: [
-        { file: RZ, cond: "k === 'o'", call: "arm('operate')" }] },
       { key: 'B / X', text: 'build a wall · demolish', bind: [
         { file: RZ, cond: "k === 'b'", call: "arm('wall')" },
         { file: RZ, cond: "k === 'x'", call: "arm('demolish')" }] },

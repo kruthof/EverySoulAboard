@@ -939,8 +939,33 @@ namespace Perilune.Tests
             var sink = new List<string>();
             var host = SimHost.Build(SimHost.DefaultSeedFor(ShipChoice.Wreck), ship: ShipChoice.Wreck);
             var gs = new GameSession(host, sink.Add);   // NOT started ⇒ no sim thread
+            ServiceTheMossServer(host.Sim);
             return (gs, host, sink);
         }
+
+        /// <summary>
+        /// ⭐⭐ M3-15 / OD-N — <b>THE WRECK'S MOSS SERVER, BROUGHT UP, BECAUSE EVERY LEG IN THIS FILE
+        /// NOW PRESUPPOSES IT.</b>
+        ///
+        /// <para>OD-N gates <see cref="SetDoorStateCommand"/> and <see cref="SetDeviceStateCommand"/>
+        /// on <see cref="MossGate.IsServerLive"/>, and <c>term_moss</c> boots at
+        /// <c>Condition 0.14</c> — below the <c>Terminal</c> row's <c>maintain</c> (0.20) and
+        /// therefore DARK. Without this line every advisory, refusal and toggle below would be
+        /// measuring the ship gate instead of the thing it names, and thirteen of them would go green
+        /// again for the wrong reason the day someone "fixed" the gate.</para>
+        ///
+        /// <para>⛔ <b>THE GATE'S OWN LEG IS NOT HERE, DELIBERATELY.</b> It is
+        /// <c>MossConsoleGateTests.TheOperateReplyNamesTheOfflineServerInsteadOfClaimingSuccess</c>,
+        /// which boots the SAME wreck and does NOT call this. Keeping the two apart is what stops
+        /// this helper from quietly becoming the thing that makes the gate untestable — the ninth
+        /// trap shape (a correct change that narrows an instrument until it is blind).</para>
+        ///
+        /// <para>0.60 is what a BARE-HANDED service leaves behind (<c>wear.def:18-20,61</c>) — the
+        /// cheapest repair authored, chosen so the fixture never implies the player must spend a
+        /// consumable to make this file's subject reachable.</para>
+        /// </summary>
+        private static void ServiceTheMossServer(Simulation sim)
+            => DeviceNamed(sim, "term_moss").Condition = 0.60f;
 
         /// <summary>Send one operate and return the reply it emitted. Fails loudly when NOTHING was
         /// emitted — a handler that answers silently is the defect this whole file is about, so it

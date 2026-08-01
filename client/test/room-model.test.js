@@ -115,7 +115,7 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the eighteen tools to a class + verb', () => {
+test('paletteCommand maps every one of the seventeen tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
   // 15 → 16 with the OPERATE verb (2026-07-28): the door/vent OPEN⇄SHUT toggle, which existed in the
   // sim since M1 and was reachable ONLY through the deprecated console's invisible inspection cursor.
@@ -126,12 +126,19 @@ test('paletteCommand maps every one of the eighteen tools to a class + verb', ()
   // FIRST tool on this palette whose subject is a person rather than a tile. The owner's report was
   // *"in zoom mode we have no control over the pawn"* — `MoveCitizenCommand` was issuable from the
   // Overview and from the deprecated console, and from nowhere inside a room.
+  // ⛔ ⭐ 18 → 17 with OPERATE DELETED (M3-15 / OD-N, 2026-07-31), and it is THE FIRST TIME THIS
+  // NUMBER HAS GONE DOWN. The owner's ruling is that doors and vents are opened through MOSS and MOSS
+  // alone, once a MOSS server has been repaired — so the one-click toggle is not moved, re-worded or
+  // gated on this surface, it is REMOVED, and the ring + OPEN/SHUT plate that advertised it with it.
   //
   // ⚠️ THIS NUMBER IS PINNED BY EQUALITY AND MOVING IT IS A SURFACE DECISION, not a chore: the
   // palette is the whole vocabulary of what a player may do inside a room, and a tool arriving
   // without anyone deciding is exactly what the equality pin is here to stop. Move it in the same
   // commit as the tool, with the reason in the commit message.
-  assert.equal(ROOM_TOOLS.length, 18);
+  assert.equal(ROOM_TOOLS.length, 17);
+  assert.ok(!ROOM_TOOLS.includes('operate'),
+    'ROOM_TOOLS still carries `operate`. OD-N removed the palette verb entirely — see ' +
+    'client/test/surface-boundary.test.js for the anti-resurrection guard.');
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
@@ -150,19 +157,17 @@ test('paletteCommand maps every one of the eighteen tools to a class + verb', ()
   assert.deepEqual(byTool.dig, { cls: 'order', verb: 'dig' });
   assert.deepEqual(byTool.stockpile, { cls: 'order', verb: 'stockpile' });
   assert.deepEqual(byTool.strip, { cls: 'order', verb: 'strip' });
-  // OPERATE is its OWN class, emphatically not `order`: an order paints intent on a tile and waits
-  // for a crew member, whereas this throws a switch the sim applies at the next command drain with
-  // nobody walking anywhere. Classing it `order` would route it through `orderPayloads` (the
-  // designation boards) AND make it swept — a drag across a compartment toggling every door in the
-  // rectangle, some of them twice.
-  assert.deepEqual(byTool.operate, { cls: 'operate', verb: 'operate' });
+  // ⛔ OPERATE had its OWN class and is gone (M3-15 / OD-N). `paletteCommand` must now answer the
+  // no-such-tool row for it — the same answer it gives 'nope' — because a surviving row would be a
+  // tool the palette does not render but every other consumer still believes in.
+  assert.deepEqual(paletteCommand('operate'), { cls: 'none', verb: null });
   // ERASE is its OWN class too, and its `verb` is NULL — the one row in the table that names no wire
   // verb, because which verb an erase click sends is a property of the TILE (`eraseTarget`) and not
   // of the tool. A reviewer reading `verb: null` should read it as "ask the tile", not as "unwired".
   assert.deepEqual(byTool.erase, { cls: 'erase', verb: null });
   // MOVE is its OWN class too (M1-K). Not `order` — it paints no designation and reaches no job
-  // board; not `operate` — that verb targets a device standing on the tile and refuses an empty one,
-  // where MOVE wants an empty one; and NOT SWEPT, which the `isSweepTool` false-list below pins,
+  // board; not the (now deleted) `operate` — that verb targeted a device standing on the tile and
+  // refused an empty one, where MOVE wants an empty one; and NOT SWEPT, which the `isSweepTool` false-list below pins,
   // because a drag would emit one move order per tile of which only the last could survive. It is
   // the only row whose precondition lives outside the room: the SELECTION, which is host state.
   assert.deepEqual(byTool.move, { cls: 'move', verb: 'move' });

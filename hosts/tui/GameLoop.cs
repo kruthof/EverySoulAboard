@@ -262,7 +262,20 @@ namespace Perilune.Tui
             }
             if (TryDeviceAt(_cursor, out var device))
             {
-                if (device.Kind == DeviceKind.Door)
+                // ⭐ M3-15 / OD-N — ROUTE 3 OF FIVE, AND THE ONE M3-3's PRECEDENT NAMES BY HAND:
+                // a host-side gate is "not replayed on load, not folded into the hash, AND NOT
+                // PRESENT IN THE TUI". The rule itself lives in `SetDoorStateCommand` /
+                // `SetDeviceStateCommand`; this line only REPORTS it, by calling the same static the
+                // commands refuse by, so the TUI can never come to disagree with the browser about
+                // whether the ship has a computer. Without it the status line would read "open Door"
+                // while the door stayed shut — a validated no-op with confident feedback, the exact
+                // shape the locked-door branch below already exists to avoid.
+                bool actuates = device.Kind == DeviceKind.Door || device.Kind == DeviceKind.AirVent;
+                if (actuates && !MossGate.IsServerLive(_sim))
+                {
+                    _status = "moss offline — repair a terminal";
+                }
+                else if (device.Kind == DeviceKind.Door)
                 {
                     // Opening a locked door is a validated no-op (SetDoorStateCommand keeps it
                     // shut while locked) — report the block instead of a false "open".
@@ -292,8 +305,14 @@ namespace Perilune.Tui
         {
             if (TryDeviceAt(_cursor, out var device) && device.Kind == DeviceKind.Door)
             {
-                _sim.EnqueueCommand(new SetDoorStateCommand(device.Id, locked: !device.IsLocked));
-                _status = (device.IsLocked ? "unlock" : "lock") + " door";
+                // OD-N — the lock/unlock verb rides the SAME command and is refused by the SAME
+                // gate; `GameLoop.cs:275`'s reason applies here unchanged.
+                if (!MossGate.IsServerLive(_sim)) { _status = "moss offline — repair a terminal"; }
+                else
+                {
+                    _sim.EnqueueCommand(new SetDoorStateCommand(device.Id, locked: !device.IsLocked));
+                    _status = (device.IsLocked ? "unlock" : "lock") + " door";
+                }
             }
             else _status = "no door here";
             _uiDirty = true;

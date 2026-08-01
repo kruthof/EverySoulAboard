@@ -128,21 +128,39 @@ evidence, even from this file** — re-measure before quoting.
 
   | pin | value | enforced by |
   |---|---|---|
-  | P1 scenario `--days 3 --seed 42` | `25f604dd61b221fb` | `ci.sh:50` (+ twin-run equality) |
+  | P1 scenario `--days 3 --seed 42` | `13674ebc4f8a14a9` | `ci.sh:64` (+ twin-run equality) |
   | P2 tick-3000 golden | `1c036ffd53b8f106` | `Golden/perilune_tick3000_hash.txt` |
   | P3 slice tick-3000 golden | `37c85c1ed445895e` | `Golden/slice_tick3000_hash.txt` |
   | P4 defs defaults checksum | `0c5ddbc07e41f07d` | `DefsChecksumTests.cs` |
   | P5 defs rules-inclusive (`defs:` print) | `09900b9a44119272` | `DefsChecksumTests.cs` |
 
-  Last mover: M3-2 (PIN M3-a, 2026-07-31) — P1/P2/P3 for `CryoSystem`'s SYSS seed. It moved
-  them by implementing `IStatefulSystem`, NOT by being registered: `Simulation.cs:605-608`
-  folds a system's `StateChecksum` only through that interface. FOLD-ONLY, measured — with
-  the same system registered and ticking but the interface dropped, all three pins read
-  their OLD values. P4/P5 held (no def field; the cycle rate is a named constant). Before
-  that: M2-2 (PIN M2-e, 2026-07-30) P1/P3 for the work-type veto; M2-1 (PIN M2-a,
-  2026-07-29) P1/P2/P3 for the CITZ v8 fold. P4 and P5 are different values for different
-  things; never paste the occupancy header's hash into the defaults pin. Golden rewrite only
-  when intended: `UPDATE_GOLDEN=1 … --filter …`, say why.
+  Last mover: M3-15 (PIN M3-e, 2026-08-01) — **P1 ONLY**, for OD-N's actuation gate, and the
+  cause is a FIXTURE HOLE rather than new state. `SetDoorStateCommand`/`SetDeviceStateCommand`
+  now ask `MossGate.IsServerLive` (any Terminal, `Powered`, `Condition >= maintain` 0.20), and
+  P1's ship — `hosts/scenario`'s hand-built `BuildScenario` — **authored no Terminal at all**:
+  its life-support watch installs on `term_main`, a bare script id with no device
+  (`SetScriptCommand` permits that on purpose and names this host as the reason). So the gate
+  was shut there forever and the watch's `open(vent)` — which fires in DAY 2, when hydro dips
+  below its 96 kPa trigger — was refused; hydro went 96.2/98.4/97.7 → 96.2/95.1/94.3 kPa.
+  The fix authors `term_main` as a REAL Terminal at (17,3,0), beside the `c_leg1` conduit so
+  `PowerSystem` wires it, and the watch fires through the gate again (hydro back to 96.2/98.4/98.1).
+  ⛔ **THE 2×2, DRIVEN, AND THE HEADLINE IS THE FOURTH CELL:** no `term_main` + gate ON reads
+  `6d6e009299e6e86e`; no `term_main` + gate OFF returns to `25f604dd61b221fb` TO THE DIGIT;
+  `term_main` + gate ON reads `13674ebc4f8a14a9`; and `term_main` + gate OFF reads
+  **`13674ebc4f8a14a9`, identical** ⇒ **on the shipped tree the gate is INERT on this pin.** Every
+  bit of the move is the one authored device (0.1 kW draw + 0.1 kW waste heat into a compartment
+  this fixture keeps deliberately tight); none of it is the gate refusing anything, and none of it
+  is cached state — `MossGate` has no instance field, no mutable static, no def field, no save
+  chapter. There was NO zero-move option: leaving the fixture terminal-less deletes the pinned
+  window's only script→device actuation path.
+  **P2/P3/P4/P5 all HELD** — no def field, no new `DeviceKind`, and every authored fixture ship
+  carries `term_hydro` at 1.000, so the gate is open on them before the first tick.
+  Before that: M3-2 (PIN M3-a, 2026-07-31) P1/P2/P3 for `CryoSystem`'s SYSS seed, FOLD-ONLY and
+  measured as such (interface dropped ⇒ all three read their OLD values); M2-2 (PIN M2-e,
+  2026-07-30) P1/P3 for the work-type veto; M2-1 (PIN M2-a, 2026-07-29) P1/P2/P3 for the CITZ v8
+  fold. P4 and P5 are different values for different things; never paste the occupancy header's
+  hash into the defaults pin. Golden rewrite only when intended: `UPDATE_GOLDEN=1 … --filter …`,
+  say why.
 - **Play: `./play.sh`** — builds host + client server, prints one URL, Ctrl+C stops both.
   Defaults to `--ship wreck` (pinned by `WebHostDefaultShipTests`). Fixtures (never offer
   to a player): `--ship slice` headless via `hosts/scenario --dump/--metrics`; `--ship

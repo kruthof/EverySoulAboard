@@ -15,7 +15,7 @@ import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import {
   decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks, decodeItems,
-  decodeDevices, decodeBlocked, decodeOperate,
+  decodeDevices, decodeBlocked,
   // M1-K — THE SELECTION. It is not a piece of client state anywhere: the host owns it
   // (`GameSession._selected`), re-derives `frame.sel` every render, and this pure reader intersects
   // that tile with `frame.crew` to name the cid. The Room Zoom read NEITHER before this package, so
@@ -47,7 +47,7 @@ import {
   nextRoomTool, roomTileRect,
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
-  roomBlockedTiles, roomOperableTiles, operateLayerSvg,
+  roomBlockedTiles,
   demolishTarget, addDecor, removeDecor, escStackRung,
   eraseTarget, tileOrders, roomMarkNameAt, roomTileZoned,
   shipCrewRows,
@@ -74,7 +74,6 @@ const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
 const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · ' +
   'DIG [G] / STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · ' +
   'ERASE [C]: DRAG OVER PAINTED ORDERS TO TAKE THEM BACK · ' +
-  'OPERATE [O]: CLICK A DOOR OR VENT TO OPEN/SHUT IT · ' +
   'MOVE [M]: PICK A CREW MEMBER, THEN CLICK WHERE THEY SHOULD GO · DEMOLISH REMOVES A GHOST';
 
 function esc(s) {
@@ -107,7 +106,6 @@ let _markTiles = [];      // this room's debris/dig/strip marks, from the `marks
 let _itemTiles = [];      // this room's ground stacks, from the `items` channel (NOT the frame's glyph)
 let _deviceCond = new Map(); // this room's per-device wear, from the `devices` channel — SEE deviceConditionAt
 let _blockedTiles = [];   // this room's REFUSED orders + why, from the `blocked` channel
-let _operableTiles = [];  // this room's doors + vents and their OPEN/SHUT state (the OPERATE verb)
 // ⭐ M2-10 — the open right-click menu's target, or null when no menu is up: `{tile, deck, cid, name}`.
 // It is captured AT OPEN TIME and never re-derived on the item click, deliberately: the frame keeps
 // arriving while the box is on screen, and an order must go to the machine the player right-clicked,
@@ -170,13 +168,13 @@ export function initRoomZoom(opts) {
   _send = (opts && opts.send) || (() => {});
   _onExit = (opts && opts.onExit) || (() => {});
   _root = document.getElementById('roomzoom-view');
-  if (!_root) return { enter: () => {}, exit: () => {}, isOpen: () => false, onOperateReply: () => {} };
+  if (!_root) return { enter: () => {}, exit: () => {}, isOpen: () => false };
   buildSkeleton();
   Hud.onShipUpdate(() => { if (_open) scheduleRepaint(); });
   // ESC / B / X in capture phase so the Room Zoom's own stack pre-empts the console's while it is
   // open (the console/canvas are display:none behind us). Other keys pass through untouched.
   window.addEventListener('keydown', onKey, true);
-  return { enter: enterRoom, exit: exitRoom, isOpen: () => _open, onOperateReply };
+  return { enter: enterRoom, exit: exitRoom, isOpen: () => _open };
 }
 
 function buildSkeleton() {
@@ -384,16 +382,16 @@ export function exitRoom() {
  * `{tx, ty, kind, cond, oper, open}` — or `null` when no tile-resident device stands there. `cond` is
  * `Device.Condition` quantised to a byte, `0 = wrecked … 255 = pristine`; `oper` is the sim's own
  * `IsOperational`, which the client cannot derive (the failure threshold is per-kind and lives in
- * `machines.def`); `open` is `Device.IsOpen`, appended with the OPERATE verb.
+ * `machines.def`); `open` is `Device.IsOpen`, appended with the OPERATE verb — a verb M3-15 (OD-N)
+ * DELETED from this surface, so `open` now has no reader in the client at all. It stays on the
+ * channel because the channel is the sim's honest report of a device, not a list of what one UI
+ * happens to draw.
  *
  * ⚠️ THE SENTENCE THAT STOOD HERE IS RETRACTED AND QUOTED, because its BOUNDARY survives and only its
  * WORDING was too broad: *"IT HAS NO CALLER IN THIS PACKAGE, AND THAT IS THE POINT. The wrecked-art
  * join — 'select the damaged piece when `cond` is low' — belongs to the parallel lane that owns
  * `client/src/items/`, and doing it here would be a merge collision with that lane."* That is still
- * true of `cond` and `oper`, WHICH NOTHING IN THIS FILE READS. The OPERATE verb (2026-07-28) calls
- * this accessor from `doOperate` and reads `kind` — to answer "there is nothing to open here" without
- * a round trip — and `operateLayerSvg` reads `open`. Neither is the art join, and the art lane's
- * `client/src/items/` is untouched by this package.
+ * true of `cond` and `oper`, WHICH NOTHING IN THIS FILE READS.
  *
  * ⚠️ THE PARAGRAPH THAT STOOD HERE IS QUOTED AND SUPERSEDED (W0b, 2026-07-28). It read: *"IT HAS NO
  * CALLER IN THIS PACKAGE, AND THAT IS THE POINT. The wrecked-art join … belongs to the parallel lane
@@ -405,11 +403,12 @@ export function exitRoom() {
  * `client/test/surface-boundary.test.js` names it. Read from `_deviceCond`, which `repaint()`
  * refreshes once per frame from the live channel.
  *
- * ⚠️ CORRECTED AT THE MERGE: W0b's version of this paragraph continued *"and not because it is used
- * internally — it is not."* That was true on its own branch and is FALSE in the merged file — the
- * OPERATE verb's `doOperate` calls this accessor to answer a click on a bare floor without a round
- * trip (see the paragraph above, which arrived from the other lane). Two lanes each described this
- * seam accurately for the tree they could see; neither sentence was true of the tree that shipped.
+ * ⚠️ CORRECTED AT THE MERGE (W0b) AND CORRECTED BACK BY M3-15, and the round trip is worth three
+ * lines. W0b wrote *"and not because it is used internally — it is not."*; the merge with the OPERATE
+ * verb made that FALSE, because `doOperate` called this accessor to answer a click on a bare floor
+ * without a round trip. OD-N deleted `doOperate`, so the original sentence is true again — but it is
+ * true for a THIRD reason, not the first one. Three lanes described this seam accurately for the tree
+ * each could see; the file's truth was never the one any of them computed.
  */
 export function deviceConditionAt(tx, ty) {
   return _deviceCond.get((tx | 0) + ',' + (ty | 0)) || null;
@@ -498,12 +497,6 @@ function repaint() {
   // repaint, one truth for the room, so the badges on the floor and the words in the key beside them
   // can never disagree about what is stuck.
   _blockedTiles = roomBlockedTiles(decodeBlocked(Hud.getBlocked()), _focus);
-  // The room's doors + vents, derived from the SAME device map the wear seam reads — one decode per
-  // repaint, one truth for the room, and the chips on the floor can never disagree with `_deviceCond`
-  // about what is standing on a tile. Derived unconditionally rather than only while OPERATE is armed:
-  // it is a filter over a map that has already been built (`roomDeviceConditions` above), so arming
-  // the tool must not be able to produce a DIFFERENT answer from the one the repaint already had.
-  _operableTiles = roomOperableTiles(_deviceCond);
 
   // THE SELECTION, derived ONCE per repaint from the live frame and shared by the pawn layer and the
   // crew dock — for the same reason the four channel decodes above are: the glow on the floor and
@@ -620,12 +613,6 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   // dig field. `client/test/blocked-model.test.js` → "the blocked layer is ADDITIVE — over the mark,
   // under the pawns" drives a roster into the room and asserts the index order both ways.
   body += blockedLayerSvg(_blockedTiles, _focus);
-  // The OPERATE affordance — a ring + an OPEN/SHUT plate on every door and vent, shown ONLY while the
-  // tool is armed (the reveal rule `#rz-matstrip` and `#rz-accepts` already use for options belonging
-  // to the armed tool). ABOVE the blocked scrim, because it is the answer to "what can I click RIGHT
-  // NOW" and dimming it under a scrim explaining a different tile's order would defeat the point.
-  // STILL BELOW `pawnSvg`, for the same reason every layer here is: a crew member is never hidden.
-  if (_armed === 'operate') body += operateLayerSvg(_operableTiles, _focus, U);
   body += pawnSvg(roomCrew(crew, _focus), _focus, selCid);
   body += ghostSvg(roomDesigns(designs, _focus));
   body += previewSvg();
@@ -1119,21 +1106,13 @@ function paintAccepts() {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 function arm(tool) {
-  const wasOperate = _armed === 'operate';
+  // ⭐ M3-15 / OD-N — THE `wasOperate` CROSSING IS GONE WITH THE VERB. It existed because the OPERATE
+  // ring/plate chips lived in the SVG canvas layer, which this function does not otherwise touch, so
+  // arming or disarming that ONE tool had to redraw the floor. No surviving tool paints into the
+  // canvas layer on arm, so the crossing has nothing left to detect. Do not "restore" it for a new
+  // tool without also restoring a layer for it to reveal.
   _armed = nextRoomTool(_armed, { t: 'toggle', tool });
   _drag = null; // arming/disarming cancels any in-progress sweep
-  // The OPERATE chips live in the SVG canvas layer, which `arm()` does not otherwise touch — the
-  // chrome painters below all mutate chrome nodes. Crossing the operate boundary (either way) is
-  // therefore the one arm that must redraw the floor, and it is asked as a CROSSING rather than as
-  // `_armed === 'operate'` so that DISARMING takes the chips down too. Without the `wasOperate` half
-  // the chips would linger until the next wire repaint — a tool that is no longer armed still
-  // advertising its targets.
-  //
-  // ⚠️ `repaint()` AND NOT `scheduleRepaint()`, deliberately: every other painter in this function is
-  // synchronous, so the coalesced version would put the palette button's lit state and the chips it
-  // is advertising a rAF apart. Arming is a rare, deliberate gesture — this is not on the 10 Hz wire
-  // path — and `repaint()` re-resolves the focus room exactly as the coalesced route would.
-  if (wasOperate !== (_armed === 'operate')) repaint();
   paintPalette();
   paintMatStrip();
   paintAccepts();
@@ -1298,85 +1277,11 @@ function onCanvasClick(e) {
     _decor = addDecor(_decor, deck, tile.x, tile.y, pc.itemId); // IX-Z-23 view-only, local
     pulse(tile, false);
     repaint();
-  } else if (pc.cls === 'operate') {
-    doOperate(tile, deck);
   } else if (pc.cls === 'move') {
     doMove(tile, deck);
   } else if (pc.cls === 'demolish') {
     doDemolish(tile, deck);
   }
-}
-
-/**
- * THE OPERATE VERB — open or shut the door/vent on the clicked tile.
- *
- * ⚠️ THE CLIENT DECIDES EXACTLY ONE THING: whether there is ANYTHING on the tile. That is the only
- * short-circuit, and it is deliberately narrower than the first draft's.
- *
- * ⚠️ THE FIRST DRAFT ALSO SHORT-CIRCUITED ON `isOperableKind`, AND A BROWSER RUN SHOWED WHY THAT WAS
- * WRONG. Clicking one of the wreck's twelve CRYO CAPSULES answered *"NOTHING TO OPEN OR SHUT HERE"* —
- * on a tile holding a two-metre coffin with a person in it. The refusal was correct (a pod is opened
- * by the THAW, gated on life-support headroom and priced in Parts through MOSS — wreck-start plan
- * W5) and the SENTENCE WAS A LIE. The host already computes the honest one from the sim's own enum
- * (`"CRYOPOD HAS NO OPEN/SHUT CONTROL"`), and duplicating the verdict here meant the better message
- * could never reach a player. So a non-operable DEVICE goes to the host and is named; only an EMPTY
- * tile is answered locally. `isOperableKind` survives for the affordance layer, where it decides
- * which tiles get a chip and nothing else.
- *
- * ⚠️ THE SENTENCE ABOVE — "the `devices` channel and `Simulation.TryGetDeviceAt` are the same
- * one-device-per-tile population" — WAS FALSE WHEN FIRST WRITTEN, and the correction is the second
- * thing a browser run found. `GameSession.BuildDevices` also gates on `TileFlags.Explored`, and
- * `HandleOperate` did not. Measured on `--ship wreck`: `vent_ls` (35,6,0) is unexplored at tick 0,
- * tick 600 AND tick 36000, so this branch toasted "NOTHING TO OPEN OR SHUT HERE" on a tile HOLDING A
- * VENT while the host would have accepted the same click. `HandleOperate` is fog-gated now, in the
- * same words, so the two populations really are identical — tile-resident ∧ in-bounds ∧ EXPLORED —
- * and the message says KNOWN rather than claiming the tile is empty. A verb must not be able to
- * operate what the player has never seen; that would make it a fog-of-war change.
- *
- * The empty-tile case is kept local because it is free and now provably cannot disagree.
- *
- * ⚠️ NO OPTIMISTIC ECHO, and this is the one place it would be tempting. The toast that names the
- * OUTCOME is `onOperateReply`; this one names only that the order was SENT. Flipping the local chip
- * here would show a compartment opening that the host is about to refuse (a locked door, a device
- * that was stripped between the render and the click) — the "client never ghosts an outcome" rule
- * `Cmd.place`/`Cmd.build`/`Cmd.dig` all state in `wire/session.js`.
- */
-function doOperate(tile, deck) {
-  const dev = deviceConditionAt(tile.x, tile.y);
-  if (!dev) {
-    toast('NOTHING KNOWN HERE TO OPEN OR SHUT — OPERATE TARGETS A DOOR OR A VENT');
-    pulse(tile, false);
-    return;
-  }
-  _send(Cmd.operate(tile.x, tile.y, deck));
-  pulse(tile, false);
-  // ⚠️ `nudgeOnIntent()` — RESTORED, AND THE REASON IT WAS REMOVED WAS FALSE. The comment that stood
-  // here said: *"An operate order is applied by the command drain itself with nobody walking
-  // anywhere, so it does land while the ship is on HOLD."* That conflates TWO drains.
-  // `GameSession.DrainCommands` — where `HandleOperate` runs — only ENQUEUES an `ISimCommand`;
-  // `Simulation.Tick` is the ONLY thing that drains `Simulation._inbox`, and at `tps == 0` the host
-  // never calls it. Measured: on a paused ship the reply reads `⇄ SHUT DOOR` and the door does not
-  // move, the chip does not change, and nothing anywhere says why. This package's OWN
-  // `The_Order_Is_ENQUEUED_And_Not_Written_Straight_Onto_The_Device_*` tests prove it — they assert
-  // that nothing moves BEFORE `Tick()`.
-  //
-  // So OPERATE is not the exception; it is the WORST case, because it is the only verb on this
-  // palette that reports a confident success while doing nothing. Pausing to plan is a normal
-  // gesture and this surface grew a nudge for exactly this shape of "I did something and nothing
-  // happened".
-  nudgeOnIntent();
-}
-
-/** Show the host's verdict for the last OPERATE click. Called from main.js's `operate` dispatch. */
-function onOperateReply(msg) {
-  const r = decodeOperate(msg);
-  if (!r) return;
-  // The reply carries the host's own sentence and the client adds NO interpretation of its own — the
-  // four things that make a toggle look broken (LOCKED / INOPERATIVE / UNFIXABLE / UNPOWERED) are read
-  // from the device and the sim's predicates at the instant of the click, and this surface has none
-  // of them. `ok` is prefixed as a symbol rather than as a word so a refusal is legible at a glance
-  // without lengthening a line that already holds the reason.
-  toast((r.ok ? '⇄ ' : '⛔ ') + (r.reason || (r.ok ? r.state : 'REFUSED')));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1562,8 +1467,8 @@ function doPrioritise() {
  * in `_status`, which this surface does not render anywhere, so without the local check a click with
  * nothing selected is completely silent. That is the `invisible-feedback-is-FUNCTIONAL` shape: an
  * order that looks identical whether it worked or not. The client is NOT duplicating a verdict it
- * could get better from the host (the OPERATE lesson) — it is answering a question the host's answer
- * never reaches the player for.
+ * could get better from the host (the OPERATE lesson, now deleted) — it is answering a question
+ * the host's answer never reaches the player for.
  *
  * NO OPTIMISTIC ECHO: the toast names what was SENT, never that the crew member has arrived. They
  * walk; `MoveCitizenCommand` sets a path and the sim spends real seconds on it.
@@ -1879,13 +1784,6 @@ function onKey(e) {
     // obvious letter for "cancel", is DEMOLISH three lines up and the console's cancel-a-build
     // toggle; C is free on both keymaps.
     arm('erase'); e.stopPropagation(); e.preventDefault();
-  } else if (k === 'o' || k === 'O') {         // O toggles OPERATE — a NEW binding, see below
-    // ⚠️ THE ONE NEW HOTKEY ON THIS SURFACE, and it is checked against the console's map rather than
-    // picked: `client/src/input/controls.js` binds B/X/G/Z/V (tools), P (sprites), M (move), WASD +
-    // Q/E (camera/deck) and space (pause). O is free there and free here. It is handled INSIDE the
-    // Room Zoom's own capture-phase listener, so it cannot reach the console at all while this
-    // surface is open.
-    arm('operate'); e.stopPropagation(); e.preventDefault();
   } else if (k === 'm' || k === 'M') {         // M1-K: M toggles MOVE — the console's own letter
     // ⚠️ THIS KEY WAS NOT FREE — IT WAS WORSE THAN TAKEN, AND CLAIMING IT IS HALF OF A BUG FIX.
     // `input/controls.js:225` installs a BUBBLE-phase window keydown for the deprecated console at

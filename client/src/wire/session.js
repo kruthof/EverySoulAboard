@@ -93,14 +93,13 @@ export const Cmd = {
   // ghosts an outcome; the item appears only when the sim confirms it in the next frame.
   place: (kind, x, y, deck) => ({ cmd: 'place', kind, x, y, deck }),
   remove: (x, y, deck) => ({ cmd: 'remove', x, y, deck }),
-  // Room Zoom OPERATE: toggle the door/vent on a tile OPEN⇄SHUT. Same {x,y,deck} shape as
-  // place/remove, and DELIBERATELY NO `on` flag — unlike dig/stockpile/strip, which carry an explicit
-  // state so a drag-sweep stays idempotent, this is one click on one device the player is looking at.
-  // The host resolves the device, decides the target from its CURRENT state and answers on the
-  // `operate` reply channel (ok / target state / a reason in words). The client never ghosts the
-  // outcome and never guesses the reason: an unpowered, inoperative, unfixably-wrecked or locked
-  // device is exactly the case a silent toggle makes indistinguishable from a broken verb.
-  operate: (x, y, deck) => ({ cmd: 'operate', x, y, deck }),
+  // ⛔ ⭐ `operate` IS DELETED (M3-15, OD-N, 2026-07-31). The owner's ruling is that *"the doors
+  // should be open and closed via MOSS and MOSS should only be accessible once a MOSS server has been
+  // repaired"*, and remote actuation of a door or a vent now happens through the MOSS console alone.
+  // The sender, the Room Zoom's ring/plate affordance, the `O` key and the reply parser all went with
+  // it; `client/test/surface-boundary.test.js` carries the anti-resurrection guard. The HOST's
+  // `HandleOperate` and `WireFormat.Operate.cs` survive one more package and retire in M4-8's
+  // console-deletion sweep — so do not read their existence as licence to re-add a sender here.
   // ⭐ M2-10 — THE DIRECT REPAIR ORDER: send ONE named crew member to repair the machine on ONE tile.
   // RimWorld's right-click *"Prioritize repairing X"*, and the same {x,y,deck} tile addressing
   // `operate`/`place`/`remove` use, plus the `cid` `workPriority` speaks — this is the first verb that

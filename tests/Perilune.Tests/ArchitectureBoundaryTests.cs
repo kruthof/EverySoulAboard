@@ -944,6 +944,38 @@ namespace Perilune.Tests
                 {
                     ["WorksiteSafety"] = 1,
                 },
+                // ⭐⭐ M3-15 / OD-N — THE MOSS ACTUATION GATE, AND IT IS A **NOMINAL** CROSSING, NOT
+                // A DEPENDENCY ONE. Declared here because this test's job is to make a crossing
+                // DELIBERATE, and this one would otherwise be argued in a commit message nobody
+                // reads twice.
+                //
+                // WHAT THE TWO OCCURRENCES ARE: `MossGate.IsServerLive(sim)`, once at the top of
+                // `SetDoorStateCommand.Execute` and once at the top of `SetDeviceStateCommand.Execute`
+                // (the doc-comment mentions are stripped by CodeOnly).
+                //
+                // ⚠️ WHY IT IS NOT THE THING THE `Moss` ROW FORBIDS. That row's reason is *"the
+                // automation DSL — devices reach it via IScriptable adapters"*, i.e. it exists to
+                // stop economy code CALLING INTO `Sim.Dsl`. `MossGate` is not in Sim.Dsl: it is a
+                // zero-alloc static in `sim/Sim.Core/MossGate.cs`, sibling of `ThawGate`, and it
+                // reads three already-hashed `Device` fields and nothing else. Commands.cs acquires
+                // NO new `using`, no Sim.Dsl type and no runtime reach — `SimDsl_Touches…` and the
+                // DAG tests are all unmoved. What it acquires is the WORD, because the rule is named
+                // after the fiction it enforces. Renaming the type to dodge a substring match would
+                // hide a design decision from exactly the reader this test is written for.
+                //
+                // WHY THE RULE IS IN THE COMMAND AT ALL (OD-N, owner-direct 2026-07-31): there are
+                // FIVE routes to these two commands — the web operate handler, the deprecated
+                // console cursor, the TUI, the scenario host, and MOSS's own DSL adapters — and a
+                // host-side check would be "not replayed on load, not folded into the hash, and not
+                // present in the TUI" (M3-3's single-authority precedent), leaving four back doors.
+                //
+                // ⛔ A THIRD OCCURRENCE FAILS THIS TEST AND MUST BE ARGUED: it would mean a third
+                // command has grown a remote-actuation gate, which is a scope decision about what
+                // "MOSS-only" covers, not a refactor.
+                ["sim/Sim.Core/Commands/Commands.cs"] = new Dictionary<string, int>(StringComparer.Ordinal)
+                {
+                    ["Moss"] = 2,
+                },
             };
 
             var offenders = new List<string>();

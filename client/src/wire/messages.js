@@ -419,12 +419,13 @@ export function decodeItems(msg) {
  * draws them, they are wear-free in the defs, and they are 88% of the device store. FOG-GATED
  * host-side, like `marks` and `items`. Snapshot-cached, so a reconnect replays the layer.
  * `open` is `Device.IsOpen` — 1/0 — and it is the SEVENTH element, appended with the OPERATE verb
- * (2026-07-28). It is on the channel because a door/vent toggle has to say which way it will move
- * BEFORE the click, and nothing else carries it: `Glyphs.ForDevice` returns `'^'` for a vent whether
- * it is open or shut, and the DOOR glyph that does carry state is erased by `GlyphMapper` pass 5 the
- * moment a crew member stands on the tile. `Powered` is still absent, deliberately — `PowerSystem`
- * rewrites it once a second on every drawing device, so it would make this payload differ on nearly
- * every render; the OPERATE reply carries the power warning instead, computed at click time.
+ * (2026-07-28) and OUTLIVING it: M3-15 (OD-N) deleted that verb from the client, so nothing in
+ * `client/src/` reads element 7 today. It stays because the channel reports what a device IS, and
+ * nothing else carries a device's open/shut state at all: `Glyphs.ForDevice` returns `'^'` for a vent
+ * whether it is open or shut, and the DOOR glyph that does carry state is erased by `GlyphMapper`
+ * pass 5 the moment a crew member stands on the tile. `Powered` is still absent, deliberately —
+ * `PowerSystem` rewrites it once a second on every drawing device, so it would make this payload
+ * differ on nearly every render.
  * @typedef {[number,number,number,number,number,number,number]} DeviceTuple
  * @typedef {{type:'devices', cells:DeviceTuple[]}} DevicesMsg
  */
@@ -458,35 +459,6 @@ export function decodeDevices(msg) {
     });
   }
   return out;
-}
-
-/**
- * The one-shot `operate` REPLY — what the ship did with a door/vent toggle the player just asked for.
- * `{type:'operate', x, y, deck, ok, state, reason}`. NOT a channel: it is broadcast by
- * `GameSession.Emit` in direct answer to one `Cmd.operate`, never cached, never deduped, and it does
- * not exist until the player clicks.
- *
- * `ok` is whether an `ISimCommand` was ENQUEUED — never whether the compartment is about to fill.
- * `state` is the state the device is moving TO (`'OPEN'`/`'SHUT'`), or `'-'` when nothing was
- * ordered; the target rather than the current state because the reply lands before the command drain
- * has run. `reason` is the host's own sentence, in words, and the client must not synthesise its own:
- * the four things that make a toggle look broken — LOCKED, INOPERATIVE, UNFIXABLY WRECKED, UNPOWERED
- * — are read from the device and from the sim's own predicates at the instant of the click, and the
- * client has none of them (`Powered` is not on any channel and `IsUnfixableWreck` is a whole-item-
- * store scan). Tolerant like every decoder here: a malformed message → null, never a throw.
- * @param {{type:string}|null} msg
- * @returns {{x:number,y:number,deck:number,ok:boolean,state:string,reason:string}|null}
- */
-export function decodeOperate(msg) {
-  if (!msg || msg.type !== 'operate') return null;
-  return {
-    x: msg.x | 0,
-    y: msg.y | 0,
-    deck: msg.deck | 0,
-    ok: !!(msg.ok | 0),
-    state: typeof msg.state === 'string' ? msg.state : '-',
-    reason: typeof msg.reason === 'string' ? msg.reason : '',
-  };
 }
 
 /**

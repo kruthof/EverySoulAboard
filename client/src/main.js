@@ -282,15 +282,6 @@ function onMessage(m) {
     // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
     // island. Read-only — it commands nothing.
     case 'ledger': Hud.renderLedger(m); break;
-    // WHAT THE SHIP DID WITH A DOOR/VENT TOGGLE (`operate`). A ONE-SHOT REPLY, not a channel: it
-    // exists only in answer to one `Cmd.operate` and is never cached or deduped. It goes STRAIGHT to
-    // the Room Zoom rather than through `hud.js` — deliberately, and it is the first wire message to
-    // do so. The three reasons: it has no state to cache (the whole point of a reply), the only
-    // surface that can send an `operate` is the Room Zoom's palette, and routing it through hud.js
-    // would need a new `renderOperate`/`getOperate` pair on the `SHIP_STATE_REACH` allowlist — which
-    // pins the exact hud.js symbols a modern surface may reach and is the SPECIFICATION for WP-9's
-    // ship-state split. Adding wire-reply plumbing to a module being deleted is the wrong direction.
-    case 'operate': roomZoom.onOperateReply(m); break;
     default: break;
   }
 }

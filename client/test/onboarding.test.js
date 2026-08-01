@@ -99,15 +99,22 @@ test('the card names every ORDER verb — the player\'s task-definition vocabula
   // Without this line, deleting DIG from BOTH the prose and the constant leaves the loop below
   // green over a shorter list — the self-derivation shape `CLAUDE.md` records as the seventh trap's
   // cousin ("its only assertion was Is.EqualTo(the field under test)").
-  assert.deepEqual([...ORDER_VERBS], ['DIG', 'STOCKPILE', 'STRIP', 'OPERATE']);
-  for (const v of ['DIG', 'STOCKPILE', 'STRIP', 'OPERATE'])
+  // ⭐ M3-15 (OD-N): OPERATE was the fourth and is DELETED — doors and vents are actuated from the
+  // MOSS console now, so a card that still taught a palette OPERATE would be teaching a verb the
+  // player cannot find. The literal moves WITH the constant, deliberately: this line's job is to stop
+  // a SILENT shrink (delete a verb from both the prose and the constant and the loop below stays
+  // green over a shorter list), not to freeze the list against a decision.
+  assert.deepEqual([...ORDER_VERBS], ['DIG', 'STOCKPILE', 'STRIP']);
+  for (const v of ['DIG', 'STOCKPILE', 'STRIP'])
     assert.ok(HTML.includes(v), `the rendered card never says ${v}`);
+  assert.ok(!HTML.includes('OPERATE'),
+    'the onboarding card still teaches OPERATE, a verb M3-15 deleted from the palette');
 });
 
 test('the order verbs are taught in the HEADLINE block, not buried in a controls row', () => {
   const verbs = HTML.slice(HTML.indexOf('class="onb-verbs"'), HTML.indexOf('class="onb-controls"'));
   assert.ok(verbs.length > 200, 'the verbs block was not found in the rendered card');
-  for (const v of ['DIG', 'STOCKPILE', 'STRIP', 'OPERATE'])
+  for (const v of ['DIG', 'STOCKPILE', 'STRIP'])
     assert.ok(verbs.includes(v), `${v} is not in the headline verbs block`);
 });
 
@@ -321,17 +328,23 @@ test('INCLUSION — the `else if (` bound: a call from the NEXT branch of contro
     'the TRUE claim about R was rejected — the negative above is vacuous');
 });
 
-test('INCLUSION — the brace bound: a call from AFTER the O branch of roomzoom-view.js is rejected', () => {
+test('INCLUSION — the brace bound: a call from AFTER the LAST branch of roomzoom-view.js is rejected', () => {
   const raw = src('ui/roomzoom-view.js');
-  // `toast(` is real and sits in the 271 characters of file tail that the O branch would swallow
-  // if the `\n[ \t]*\}` bound were removed — it is the LAST branch, so no `else if (` follows it
-  // and the brace is the only thing terminating it. VERIFIED BY MUTATION: dropping the brace bound
-  // makes this line go true, which is precisely the measurement in `branchSlices`' header.
-  assert.equal(bindHolds(raw, { cond: "k === 'o'", call: 'toast(' }), false,
-    'the O branch accepted a call from the file TAIL — the brace bound is gone, and the last ' +
+  // ⭐ RE-POINTED FROM `O` TO `M` BY M3-15 (OD-N), WHICH DELETED THE `O` BRANCH. `M` is the LAST
+  // branch of the same chain now, so it is the one with no `else if (` after it and therefore the one
+  // the brace bound alone terminates — the property this guard exists to measure. ⚠️ Re-pointed and
+  // NOT deleted, on purpose: a correct deletion that quietly removes an instrument's only fixture is
+  // the ninth trap shape, and the blind spot it would leave here is "the last branch of every braced
+  // chain now matches whatever happens to follow it".
+  //
+  // `toast(` is real and sits in the file tail that this branch would swallow if the `\n[ \t]*\}`
+  // bound were removed. VERIFIED BY MUTATION on this tree: dropping `const b = rest.search(...)`
+  // (i.e. `const ends = [a]`) makes the first assertion go true.
+  assert.equal(bindHolds(raw, { cond: "k === 'm'", call: 'toast(' }), false,
+    'the M branch accepted a call from the file TAIL — the brace bound is gone, and the last ' +
     'branch of every braced chain now matches whatever happens to follow it');
-  assert.equal(bindHolds(raw, { cond: "k === 'o'", call: "arm('operate')" }), true,
-    'the TRUE claim about O was rejected — the negative above is vacuous');
+  assert.equal(bindHolds(raw, { cond: "k === 'm'", call: "arm('move')" }), true,
+    'the TRUE claim about M was rejected — the negative above is vacuous');
 });
 
 test('INCLUSION — a key with no branch at all is caught', () => {
@@ -404,19 +417,25 @@ test('a comment-HEAVY branch still joins, and its prose does not become matchabl
   // and its only assertion was a POSITIVE (`bindHolds(...) === true`). A test whose single
   // assertion runs the opposite direction from its name cannot detect the thing the name promises,
   // and the name is what a future reader trusts. It now does BOTH halves and is named for them.
-  const r = ROWS.find((x) => x.key === 'O');
-  const raw = src(r.bind[0].file);
-  // Half 1 (the original): the real O branch is mostly comment, and it still joins.
-  assert.ok(bindHolds(raw, r.bind[0]), 'the O branch, which is mostly comment, failed to join');
+  // ⭐ RE-POINTED FROM `O` TO `M` BY M3-15 (OD-N). The `O` branch was deleted with the OPERATE verb,
+  // and it was this guard's fixture BECAUSE it was mostly comment and that comment named
+  // `controls.js` in prose. `M` has exactly the same two properties (a 19-line comment about the
+  // console keymap leak, naming `input/controls.js`), so the measurement is unchanged. The claim is
+  // written out here rather than read from `ROWS` because the card has no `M` row — the fixture this
+  // guard needs is a property of the SOURCE, not of the card.
+  const claim = { cond: "k === 'm'", call: "arm('move')" };
+  const raw = src('ui/roomzoom-view.js');
+  // Half 1 (the original): the real M branch is mostly comment, and it still joins.
+  assert.ok(bindHolds(raw, claim), 'the M branch, which is mostly comment, failed to join');
   // Half 2 (the one the old name promised and never delivered): that branch's comment names
   // `controls.js` and half the console key map in PROSE. Pick a token that appears there and
   // NOWHERE in its live code, and require the join to refuse it — if comments were being scanned,
   // this is exactly how the guard would start matching documentation instead of behaviour.
-  const commentOnly = 'client/src/input/controls.js';
+  const commentOnly = 'input/controls.js:225';
   assert.ok(raw.includes(commentOnly),
     'the fixture token is gone from roomzoom-view.js — re-choose it, this control just went vacuous');
-  assert.equal(bindHolds(raw, { cond: "k === 'o'", call: commentOnly }), false,
-    'a token that exists ONLY in the O branch\'s comment satisfied the join — comments are being scanned');
+  assert.equal(bindHolds(raw, { cond: "k === 'm'", call: commentOnly }), false,
+    'a token that exists ONLY in the M branch\'s comment satisfied the join — comments are being scanned');
 });
 
 // ─────────────────────────────────────────────────────────────────── 4. the fiction is the wreck's

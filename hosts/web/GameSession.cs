@@ -397,6 +397,42 @@ namespace Perilune.Web
         ///           named in `tid`. Renders ThawGate's verdict and enqueues ThawCommand.
         ///   dryrun→ RESERVED (compile-only preview); not implemented.
         /// Unknown op ⇒ ignored.
+        ///
+        /// <para>⭐⭐ <b>M3-15 / OD-N — THE SPLIT GATE, op by op.</b> Until this package
+        /// <b>nothing whatsoever gated this method</b>: it took a <c>tid</c>, switched on <c>op</c>,
+        /// and asked no question about any device — so on <c>--ship wreck</c> at tick 0 a player
+        /// could open the MOSS tab and type <c>open door_d0_s1</c> and the door opened. The console
+        /// was the wider hole, not the Room Zoom's click.</para>
+        /// <list type="table">
+        ///   <item><term><c>sys</c> · <c>audit</c> · <c>exec</c></term><description><b>REPAIRED
+        ///   tier</b> — <see cref="MossGate.IsServerLive"/>. Reading the ship, or writing one device
+        ///   one line at a time, needs a working computer. This covers the DEVICE verbs
+        ///   (<c>open</c>/<c>close</c>/<c>lock</c>/<c>unlock</c>), <c>set &lt;dev&gt;.rate</c> and
+        ///   bare property reads, because all three leave <see cref="ExecConsole"/> through the same
+        ///   adapter and the same two <see cref="ISimCommand"/>s. ⚠️ Scoping <c>set rate</c> with the
+        ///   device verbs is THIS package's ruling and not the owner's: OD-N's line is <i>manual vs
+        ///   scripted</i>, and splitting one command across two tiers is the only cut it forbids by
+        ///   construction.</description></item>
+        ///   <item><term><c>open</c> · <c>set</c> (program source / install)</term><description>
+        ///   <b>COMMISSIONED tier</b> — <see cref="MossGate.CanInstallProgram"/>, which IS
+        ///   <c>SetScriptCommand</c>'s own predicate. A program is scripting, and scripting costs a
+        ///   <c>ControllerModule</c>.
+        ///   ⭐ <c>SetScriptCommand</c> has refused this since E0-6 with a bare <c>return;</c>
+        ///   (<c>Commands.cs:376</c>); the refusal becomes VISIBLE here.</description></item>
+        ///   <item><term><c>thaw</c> (M3-3) · the pod bay (M3-4)</term><description>UNCHANGED —
+        ///   commission-gated inside <see cref="ThawGate"/>'s own term 2.</description></item>
+        /// </list>
+        /// <para>⛔ <b>EVALUATION ORDER IS PART OF THE CONTRACT: THE SHIP GATE IS ASKED FIRST, THE
+        /// TARGET'S OWN FAULT SECOND.</b> The two predicates are disjoint — <i>is a MOSS server live
+        /// aboard?</i> is a property of the SHIP, <i>is this terminal commissioned?</i> (and, from
+        /// M3-16, <i>is this device's board dead?</i>) of the TARGET — so both can be true at once
+        /// and nothing else states which sentence the player gets. A player on a dead-computer ship
+        /// must be told MOSS IS OFFLINE, not sent across the pressure frontier to fit a module.
+        /// The <see cref="OperateAdvisory"/> precedent, whose own <c>else if</c> ordering is pinned
+        /// for the same reason.</para>
+        /// <para>⚠️ <b><c>default: break;</c> IS A SILENT SWALLOW AND A GATED OP MUST NOT JOIN IT.</b>
+        /// Every refusal replies — <see cref="Refuse"/> puts it on <c>MossExec</c>'s stream-2 line,
+        /// which the console transcript already renders on every screen.</para>
         /// </summary>
         private void HandleMoss(WebCommand cmd)
         {
@@ -406,18 +442,36 @@ namespace Perilune.Web
             {
                 case "sys":
                 {
+                    // ⚠️ A REFUSED `sys` ALSO CLEARS THE DETAIL SCREEN'S `loading` STATE, and both
+                    // halves are needed. The client opens DETAIL empty-and-loading and waits for a
+                    // `sys` reply (moss-model.js `openDetail`), so a refusal that only wrote a
+                    // transcript line would leave `LOADING…` on screen for ever beside it — a
+                    // contradiction, and the invisible-feedback defect wearing a different hat. The
+                    // empty reply carries the refusal as its DERIVATION note, which is the field
+                    // that already exists for "how this table was computed".
+                    if (!MossGate.IsServerLive(_sim))
+                    {
+                        Refuse(tid, MossGate.OfflineRefusal);
+                        Emit(WireFormat.MossSys(tid, Array.Empty<ShipSystemDevice>(),
+                                                MossGate.OfflineRefusal));
+                        break;
+                    }
                     Emit(WireFormat.MossSys(tid, ShipSystems.ComputeDetail(_sim, tid),
                                             ShipSystems.Derivation(tid)));
                     break;
                 }
                 case "exec":
                 {
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
                     var (ok, lines) = ExecConsole(cmd.Text);
                     Emit(WireFormat.MossExec(tid, ok, lines));
                     break;
                 }
                 case "open":
                 {
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    if (!MossGate.CanInstallProgram(_sim, tid))
+                    { Refuse(tid, MossGate.NotCommissionedRefusal(tid)); break; }
                     string src = CurrentMossSource(tid);
                     Emit(WireFormat.MossSource(tid, src));
                     Emit(WireFormat.MossDiag(tid, MossCompiler.Compile(src).Diagnostics));
@@ -425,6 +479,21 @@ namespace Perilune.Web
                 }
                 case "set":
                 {
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    // ⭐ THE SPLIT'S OWN LEG, AND THE ONE A REVIEWER SKIPS. A REPAIRED `term_moss`
+                    // opens doors one line at a time; installing a PROGRAM on it still refuses until
+                    // a ControllerModule is fitted.
+                    //
+                    // ⚠️ ASKED THROUGH `MossGate.CanInstallProgram`, WHICH IS `SetScriptCommand`'s
+                    // OWN PREDICATE — and deliberately NOT through `ThawGate.IsCommissionedConsole`,
+                    // even though both are "the commissioned tier". The thaw's term 2 also requires
+                    // the named terminal to EXIST and be powered and operational; `SetScriptCommand`
+                    // deliberately allows a tid with NO device behind it (a free-text key several
+                    // tests and `hosts/scenario` drive). Reporting the stricter one here would make
+                    // this line refuse installs the command it is about to enqueue would ACCEPT —
+                    // a surface disagreeing with the sim, which is the defect either way round.
+                    if (!MossGate.CanInstallProgram(_sim, tid))
+                    { Refuse(tid, MossGate.NotCommissionedRefusal(tid)); break; }
                     string text = cmd.Text ?? "";
                     var diags = _host.Moss.SetProgram(tid, text); // compile + install (tick-boundary safe)
                     _mossSource[tid] = text;
@@ -434,6 +503,7 @@ namespace Perilune.Web
                 }
                 case "audit":
                 {
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
                     // The player's own prompt writes live in the host-side @console ring; every
                     // other terminal's live in the ScriptRuntime's per-program ring.
                     if (tid == ConsoleTid) Emit(WireFormat.MossAudit(tid, _consoleAudit));
@@ -475,6 +545,20 @@ namespace Perilune.Web
                 default: break; // unknown op (incl. reserved "dryrun") — ignored
             }
         }
+
+        /// <summary>
+        /// ⭐ M3-15 — ONE refused MOSS op, said in words on the console transcript. Stream 2 is the
+        /// error stream <see cref="ExecConsole"/> already writes its own refusals to, and the
+        /// transcript element is part of the MOSS page on EVERY screen (<c>moss-screen.js</c> builds
+        /// it once into <c>moss-page</c>), so this sentence reaches the player whether they are at
+        /// the prompt, in a ledger detail or in the program editor.
+        ///
+        /// <para><c>ok: false</c> because a refusal is not a successful line — the client's
+        /// <c>reduceMossEvent</c> renders stream-2 text regardless, but the flag is what any future
+        /// consumer would ask.</para>
+        /// </summary>
+        private void Refuse(string tid, string sentence)
+            => Emit(WireFormat.MossExec(tid, false, new List<(int Stream, string Text)> { (2, sentence) }));
 
         // ------------------------------------------------------------------- the MOSS prompt
 
@@ -1203,6 +1287,34 @@ namespace Perilune.Web
         /// </summary>
         private void HandleOperate(WebCommand cmd)
         {
+            // ⛔ ⭐ M3-15 / OD-N — THE SHIP GATE, ASKED FIRST AND BEFORE ANYTHING ABOUT THE TILE.
+            //
+            // The two commands below refuse on a ship with no live MOSS server (`MossGate`), so
+            // without this line the handler would answer `⇄ OPEN DOOR` and NOTHING WOULD MOVE —
+            // "a confident success while doing nothing", which is precisely the failure this verb's
+            // own header says it exists to remove. It is asked BEFORE the tile resolves because the
+            // contract is ship-first, target-second: a player whose computer is dead must be told
+            // that, not "NOTHING KNOWN HERE TO OPERATE" about a tile they cannot act on either way.
+            //
+            // ⚠️ IT REPORTS BY CALLING THE SAME STATIC THE COMMAND REFUSES BY. This handler decides
+            // nothing; if `MossGate` changes its mind, this sentence changes with it.
+            //
+            // ⚠️ AND THIS SURFACE IS ALREADY GONE. M3-15 deleted the Room Zoom's OPERATE affordance,
+            // so nothing in the shipping client sends `Cmd.operate` any more; the handler survives
+            // exactly one more package (M4-8's console-deletion sweep owns its retirement, beside
+            // `hud.js` and `ContextAction`). It is kept for this one lane because M3-14 landed a
+            // rung-3 pin inside `OperateAdvisory` a day earlier, and because a host handler is the
+            // cheapest place to prove from a SURFACE that the sim-side gate bites.
+            if (!MossGate.IsServerLive(_sim))
+            {
+                EmitOperate(new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                                     Clamp(cmd.Y, 0, _sim.World.Height - 1),
+                                     Clamp(cmd.I, 0, _sim.World.Levels.Length - 1)),
+                            WireFormat.OperateRefused, "-", MossGate.OfflineRefusal);
+                _status = "moss offline";
+                return;
+            }
+
             var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
                                Clamp(cmd.Y, 0, _sim.World.Height - 1),
                                Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
@@ -1535,7 +1647,14 @@ namespace Perilune.Web
             }
             if (TryDeviceAt(_cursor, out var device))
             {
-                if (device.Kind == DeviceKind.Door)
+                // ⭐ M3-15 / OD-N — route 2 of five. The commands refuse without a live MOSS server,
+                // so reporting "open Door" here would be a status line that is simply false. The
+                // gate is NOT re-derived: it is the same static the command refuses by. (This is a
+                // DEPRECATED surface, closed to new work — the two lines are honesty about a
+                // behaviour change made elsewhere, not a feature.)
+                bool actuates = device.Kind == DeviceKind.Door || device.Kind == DeviceKind.AirVent;
+                if (actuates && !MossGate.IsServerLive(_sim)) { _status = "moss offline"; }
+                else if (device.Kind == DeviceKind.Door)
                 {
                     if (!device.IsOpen && device.IsLocked) { _status = "door locked"; }
                     else

@@ -94,6 +94,15 @@ namespace Perilune.Tests
                 for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
                     sim.EnqueueCommand(new SetWorkPriorityCommand(c.Id, t, 3));
 
+            // ⭐ M3-15 / OD-N — THE SHIP NEEDS A LIVE MOSS SERVER BEFORE IT ANSWERS A DOOR OR A VENT.
+            // `SetDoorStateCommand` / `SetDeviceStateCommand` refuse without one, and this run's
+            // NON-VACUITY 3b reads the door back off the device — so without this line the run's
+            // "device traffic was inert" assertion fires, correctly, and the rename claim below would
+            // otherwise have been measured over 3 000 ticks of a ship nobody could command.
+            // 0.60 is one bare-handed service (`wear.def:18-20,61`); it moves NOTHING this test asserts
+            // — the console still boots un-commissioned, which the precondition below re-checks.
+            sim.Devices.Items.First(d => d.Name == MossConsole).Condition = 0.60f;
+
             var door = sim.Devices.Items.FirstOrDefault(d => d.Kind == DeviceKind.Door && !d.IsLocked);
             Assert.That(door, Is.Not.Null, "the wreck has no unlocked door — the fixture cannot drive one");
             bool doorWasOpen = door.IsOpen;

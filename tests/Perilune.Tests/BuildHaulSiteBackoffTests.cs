@@ -104,6 +104,21 @@ namespace Perilune.Tests
             door = sim.AddDevice(DeviceKind.Door, DoorTile, "door_bulkhead");
             door.IsOpen = false;
 
+            // ⭐ M3-15 / OD-N — THIS FIXTURE NOW NEEDS A COMPUTER. `SetDoorStateCommand` refuses on a
+            // ship with no live MOSS server (`MossGate.IsServerLive`: any Terminal, Powered, at or
+            // above the `Terminal` row's `maintain` 0.20), and the recovery leg below opens the door
+            // through that command precisely because that is "exactly what a player, a crew member or
+            // a MOSS script does". A hand-built world has no authored terminal at all, so one is
+            // added here — pristine and powered — and the fixture keeps saying what it always said:
+            // the door opens, and the question is whether the back-off lifts.
+            //
+            // ⚠️ NOT A WORKAROUND FOR THE GATE. If this line is ever deleted the recovery leg fails
+            // LOUDLY ("the haul never restarted"), never silently, because the premise assertions
+            // above still demand a real stamp first.
+            var computer = sim.AddDevice(DeviceKind.Terminal, CrewTile, "term_fixture");
+            computer.Condition = 1f;
+            computer.Powered = true;
+
             var citizen = sim.AddCitizen("Solo", CrewTile).GiveAllWork();
             Assert.That(citizen.AutoWander, Is.False,
                 "PREMISE: the pawn must not wander, or a re-probe can find him away from the material " +

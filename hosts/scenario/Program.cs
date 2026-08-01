@@ -1439,6 +1439,27 @@ namespace Perilune.Tools
             sim.AddDevice(DeviceKind.Scrubber, new Int3(18, 1, 0), "scrubber");
             sim.AddDevice(DeviceKind.AirVent, new Int3(19, 1, 0), "vent");
             sim.AddDevice(DeviceKind.Light, new Int3(18, 3, 0), "light_a");
+            // ⭐⭐ M3-15 / OD-N (2026-08-01) — THE TERMINAL THIS FIXTURE HAS ALWAYS PRETENDED TO HAVE,
+            // AUTHORED FOR REAL. The life-support watch below installs on `term_main`, and until now
+            // that was a bare script id with NO DEVICE behind it (`SetScriptCommand` permits exactly
+            // that, deliberately, and names this host as the reason). OD-N made the pretence
+            // load-bearing: `SetDoorStateCommand`/`SetDeviceStateCommand` refuse on a ship with no
+            // live MOSS server (`MossGate.IsServerLive` — any Terminal, Powered, at or above the
+            // `Terminal` row's `maintain` 0.20), so a fixture with no terminal is a fixture whose
+            // watch can never actuate anything again.
+            //
+            // ⛔ MEASURED, NOT PREDICTED: without this line the watch's `open(vent)` — which fires in
+            // DAY 2, when hydro dips below its 96 kPa trigger — is refused, and the section's hydro
+            // curve changes from 96.2 / 98.4 / 97.7 kPa to 96.2 / 95.1 / 94.3. That is not a pin
+            // moving under a neutral change; it is the pinned window LOSING its only script→device
+            // actuation path, which is the ninth trap shape (an instrument narrowed goes blind).
+            //
+            // ⚠️ AUTHORING IT MOVES P1 TOO — a Terminal draws 0.1 kW and sheds 0.1 kW of waste heat
+            // into a compartment this fixture keeps deliberately tight. There was no zero-move option;
+            // PIN M3-e records the one taken. Placed at (17,3,0), adjacent to the `c_leg1` conduit at
+            // (16,3,0), so `PowerSystem` really wires it — a terminal off the network would be
+            // `Powered = false` and would leave the gate shut anyway.
+            sim.AddDevice(DeviceKind.Terminal, new Int3(17, 3, 0), "term_main");
             // Radiators: without them the machines cook the compartment past 45C and
             // the crew dies of heat stroke — the M4 thermal cascade, working as designed.
             sim.AddDevice(DeviceKind.Radiator, new Int3(20, 1, 0), "radiator_a");

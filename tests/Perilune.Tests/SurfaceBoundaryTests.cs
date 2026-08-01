@@ -162,12 +162,25 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// Channels the shipping client is allowed NOT to dispatch. EMPTY, deliberately — every
-        /// channel on the socket today has a consumer, and that is the fact worth keeping. Adding a
-        /// name here is a decision ("this host surface exists for something other than the standard
-        /// client"), not a chore, and it belongs in a commit message.
+        /// Channels the shipping client is allowed NOT to dispatch. It was EMPTY until M3-15, and the
+        /// one entry is a DECISION with a date on it, not a chore.
+        ///
+        /// <para>⭐ <b><c>operate</c> (M3-15 / OD-N, 2026-08-01).</b> The owner's ruling removes the
+        /// Room Zoom's door/vent click verb entirely — doors and vents are actuated at the MOSS
+        /// console and nowhere else — so `client/src/main.js` no longer carries `case 'operate'`, and
+        /// `Cmd.operate`, the ring/plate layer, the `O` key and `decodeOperate` are all deleted
+        /// (`client/test/surface-boundary.test.js` §3b guards the deletion against resurrection).</para>
+        ///
+        /// <para>⛔ <b>THE HOST HALF SURVIVES ONE MORE PACKAGE ON PURPOSE, WHICH IS WHY THIS IS AN
+        /// ALLOWLIST ENTRY AND NOT A DELETION.</b> <c>WireFormat.Operate.cs</c>, <c>CmdKind.Operate</c>,
+        /// <c>GameSession.HandleOperate</c> and <c>OperateVerbTests</c> stay because M3-14 landed a
+        /// rung-3 pin inside <c>OperateAdvisory</c> the day before, and because the host handler is the
+        /// cheapest place to prove from a SURFACE that the new sim-side gate really bites. <b>FILED:
+        /// they retire inside M4-8's console-deletion sweep, and this entry goes with them.</b>
+        /// A reviewer reading this row should read it as a debt with an owner, not as a channel that
+        /// exists for a second surface.</para>
         /// </summary>
-        private static readonly string[] ClientlessChannelAllowlist = new string[0];
+        private static readonly string[] ClientlessChannelAllowlist = { "operate" };
 
         // ---------------------------------------------------------------- the boundary
 

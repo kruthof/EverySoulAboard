@@ -28,6 +28,27 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
+# M3-15 (PIN M3-e, 2026-08-01): 25f604dd61b221fb -> 13674ebc4f8a14a9. OD-N gated the two remote-
+# actuation commands (SetDoorStateCommand / SetDeviceStateCommand) on MossGate.IsServerLive, and THIS
+# FIXTURE HAD NO TERMINAL. `BuildScenario`'s life-support watch installs on `term_main`, which was a
+# bare script id with no device behind it, so the gate was shut here forever and the watch's
+# `open(vent)` — which fires in DAY 2, when hydro dips below its 96 kPa trigger — was refused
+# (hydro 96.2/98.4/97.7 -> 96.2/95.1/94.3 kPa). The fix taken (integrator, option 2) authors
+# `term_main` as a REAL Terminal at (17,3,0), beside the c_leg1 conduit so PowerSystem wires it, so
+# the watch keeps firing through the gate — hydro is back to 96.2/98.4/98.1.
+#
+# THE 2x2, DRIVEN, BECAUSE THE HEADLINE IS THE FOURTH CELL AND NOT THE SECOND:
+#   no term_main, gate ON  -> 6d6e009299e6e86e   (the watch is refused; the window loses its only
+#                                                 script->device actuation path)
+#   no term_main, gate OFF -> 25f604dd61b221fb   (the pre-OD-N baseline, returned to THE DIGIT)
+#      term_main, gate ON  -> 13674ebc4f8a14a9   <- SHIPPED
+#      term_main, gate OFF -> 13674ebc4f8a14a9   <- IDENTICAL
+# => ON THE SHIPPED TREE THE GATE IS INERT ON THIS PIN. Every bit of the move is the one authored
+# device (a Terminal draws 0.1 kW and sheds 0.1 kW of waste heat into a compartment this fixture
+# keeps deliberately tight); NONE of it is the gate refusing anything, and none of it is cached state
+# -- MossGate holds no instance field, no mutable static, no def field and no save chapter. There was
+# no zero-move option. P2/P3/P4/P5 all HELD (no def field, no new DeviceKind; the authored ships
+# carry `term_hydro` at 1.000 so the gate is open on them before the first tick).
 # M3-2 (PIN M3-a, 2026-07-31): 81733e27709f36e4 -> 25f604dd61b221fb. CryoSystem joined the stack as
 # an IStatefulSystem, so its 'CRYO' StateChecksum seed now folds into Simulation.StateHash on EVERY
 # ship (Simulation.cs:605-608 folds a system seed ONLY through that interface). FOLD-ONLY, and
@@ -47,7 +68,7 @@ printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes 
 # so Simulation.StateHash's citizen fold changed on every ship. FOLD-ONLY: with the identical state
 # present but excluded from the fold, this hash was still 02257f5bce961570 and the full dotnet suite
 # was 1330/1330 green — measured, not asserted. Nothing reads the new state.
-printf '%s\n' "$OUT" | grep -q "25f604dd61b221fb" || { echo "FAIL: reference hash changed (expected 25f604dd61b221fb) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+printf '%s\n' "$OUT" | grep -q "13674ebc4f8a14a9" || { echo "FAIL: reference hash changed (expected 13674ebc4f8a14a9) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== screenshot-test metrics (advisory) =="
 if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then

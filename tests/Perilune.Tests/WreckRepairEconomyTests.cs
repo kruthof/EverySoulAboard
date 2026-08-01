@@ -443,13 +443,34 @@ namespace Perilune.Tests
         /// news, not as a stale test.</para>
         ///
         /// <para>The scenario is FAITHFUL, not a stand-in: <see cref="SetDoorStateCommand"/> is the
-        /// command the shipped OPERATE verb enqueues (<c>hosts/web/GameSession.cs:1074</c>, the only
-        /// route from a standard surface to a door toggle), so this is the player's own click.</para>
+        /// command the shipped door verb enqueues, so this is the player's own gesture.
+        /// ⭐ <b>AMENDED BY M3-15 (OD-N, 2026-07-31), AND THE AMENDMENT MAKES IT MORE FAITHFUL, NOT
+        /// LESS.</b> The Room Zoom's click is deleted and the gesture is now a line typed at the MOSS
+        /// console — which the player can only reach after REPAIRING <c>term_moss</c>. So the leg
+        /// services the terminal first and then opens the door: that is the shipped order of events,
+        /// and without the service <see cref="SetDoorStateCommand"/> refuses and this measurement
+        /// silently becomes "a door that never opened".</para>
         /// </summary>
         [Test]
         public void TheFixIsNotGeneral_APressurisedFrontierStarvesWingB()
         {
             var sim = Boot();
+
+            // ⭐ OD-N: THE CONSOLE MUST BE ALIVE BEFORE THE SHIP ANSWERS — AND THE CREW BRINGS IT UP,
+            // THIS TEST DOES NOT. Setting `term_moss.Condition` by hand was tried first and CHANGED
+            // THE MEASUREMENT: `term_moss` boots at 0.14, i.e. ON the maintenance board, so writing
+            // it healthy silently removes one job AND the consumable that job would have spent —
+            // and wing_b then survives for a reason that has nothing to do with the frontier. Driving
+            // the repair instead keeps the ship's own arithmetic intact and is what a player watches
+            // happen. (Measured: with the hand-write, wing_b ended at 0.883; the leg below is about a
+            // ship that ran OUT.)
+            int wait = 0;
+            while (!MossGate.IsServerLive(sim) && wait++ < 4 * TicksPerHour) sim.Tick();
+            Assert.That(MossGate.IsServerLive(sim), Is.True,
+                "PRECONDITION: four sim-hours and the crew never brought term_moss above its " +
+                "`maintain` floor, so the door command below is REFUSED and this leg would measure a " +
+                "compartment that never opened rather than one that opened too early");
+
             int opened = 0;
             foreach (var d in sim.Devices.Items)
             {
