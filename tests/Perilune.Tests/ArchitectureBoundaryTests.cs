@@ -1337,11 +1337,18 @@ namespace Perilune.Tests
         {
             // NOT economy: ship physiology, crew, narrative. A positive list, so a new file cannot
             // join it by accident.
+            // ⭐ CryoSystem.cs (M3-2) IS THE ANSWERED QUESTION THIS TEST EXISTS TO ASK, and the
+            // answer is NO — deliberately, not by default. It consumes no item, produces no item,
+            // charges nothing and moves no matter: it advances Device.Progress and adds a Citizen.
+            // The thaw's PRICE (the ThawGate rung's Seals/Parts/ControllerModule) is M3-3's, lands
+            // in Commands.cs — which IS inside the boundary already — and the day a cryo file spends
+            // an item is the day it joins EconomyFilesInSharedDirectories.
             var notEconomy = new[]
             {
-                "AtmosphereSystem.cs", "CitizenSystem.cs", "ExplorationSystem.cs", "GoalSystem.cs",
-                "HistorySystem.cs", "HydroponicsSystem.cs", "NeedsSystem.cs", "PowerSystem.cs",
-                "SafetySystem.cs", "SustenanceSystem.cs", "ThermalSystem.cs", "WaterSystem.cs",
+                "AtmosphereSystem.cs", "CitizenSystem.cs", "CryoSystem.cs", "ExplorationSystem.cs",
+                "GoalSystem.cs", "HistorySystem.cs", "HydroponicsSystem.cs", "NeedsSystem.cs",
+                "PowerSystem.cs", "SafetySystem.cs", "SustenanceSystem.cs", "ThermalSystem.cs",
+                "WaterSystem.cs",
             };
 
             var expected = new List<string>(notEconomy);
