@@ -34,18 +34,20 @@ namespace Perilune.Sim
         IceMelter = 26,  // crafting station: consumes ItemKind.Ice, buffers the meltwater in
                          // StoredLiters, and WaterSystem pushes that buffer onto its fluid network
         // The wreck start (W3). Appended at the END of the enum, never inserted.
-        CryoPod = 27,    // a cryogenic sleeper capsule. INERT IN THIS LANE — no CryoSystem, no thaw
-                         // verb, nothing reads this kind except the glyph table, the machine table
-                         // and the wear/power systems every kind goes through. It is a PROP with a
-                         // Condition, deliberately: the thaw (docs/design/perilune-wreck-start.plan.md
-                         // W5) is a separate, larger package that adds a system, a command and a
-                         // gate, and it moves all five determinism pins. Authoring the pods first
-                         // means W5 lands a mechanic onto furniture that already exists rather than
-                         // inventing both at once.
+        CryoPod = 27,    // a cryogenic sleeper capsule. NO LONGER INERT since M3-2: `CryoSystem`
+                         // (Systems/CryoSystem.cs) cycles a pod — Progress counts down, the pod
+                         // opens, and a named person is added as a live Citizen. What still does
+                         // NOT exist is a PLAYER VERB: no ThawCommand (M3-3), no MOSS thaw op
+                         // (M3-3), no countdown badge (M3-4), no emergency thaw (M3-5). Nothing on
+                         // the shipping ship starts a cycle, so a pod that will not open is still
+                         // correct in play today — but it is now a mechanic with no driver rather
+                         // than furniture.
                          //
                          // State lives on fields Device already hashes and saves — `IsOpen` (open
-                         // vs occupied), `Name` (who is inside), `Condition` (how badly the raid
-                         // treated it). W5 adds `Progress` (the cycle). NO new Device field.
+                         // vs occupied, and a pod is SINGLE-USE so an open one is done forever),
+                         // `Name` (who is inside), `Condition` (how badly the raid treated it),
+                         // `Progress` (the cycle). NO new Device field — see docs/MECHANICS.md
+                         // §13.27 (identity) and §13.29 (the cycle).
     }
 
     /// <summary>Brownout shed order: lowest tier is shed first (TDD §3.7).</summary>

@@ -227,12 +227,19 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `81733e27709f36e4`
-(pinned in `ci.sh`); tick-3000 golden `482fd40c070b54e0`; slice tick-3000 golden
-`94c29d5f6408d91c`. Most recent mover: **M2-2** (PIN M2-e, 2026-07-30) — the work-type
-veto reads the grid M2-1 stored, a behaviour change on every ship with working crew
-(scenario `c1bac287`→`81733e27`, slice `0dcbff3e`→`94c29d5f`; the perilune golden held —
-its two crew are `HoldPosition` and take no work). Defs checksum `0c5ddbc07e41f07d` (this is `SimDefs.Default.Checksum`, the
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `25f604dd61b221fb`
+(pinned in `ci.sh`); tick-3000 golden `1c036ffd53b8f106`; slice tick-3000 golden
+`37c85c1ed445895e`. Most recent mover: **M3-2** (PIN M3-a, 2026-07-31) — `CryoSystem`
+joined the stack as an `IStatefulSystem`, so its `'CRYO'` `StateChecksum` seed folds into
+`Simulation.StateHash` on every ship (`Simulation.cs:605-608` folds a system seed ONLY
+through that interface). All three moved together and the move is **FOLD-ONLY, measured**:
+with the same system registered and ticking but the interface dropped, all three read their
+old values (`81733e27709f36e4` / `482fd40c070b54e0` / `94c29d5f6408d91c`). The full record
+is §13.29. Before that: **M2-2** (PIN M2-e, 2026-07-30) — the work-type veto reads the grid
+M2-1 stored, a behaviour change on every ship with working crew (scenario
+`c1bac287`→`81733e27`, slice `0dcbff3e`→`94c29d5f`; the perilune golden held — its two crew
+are `HoldPosition` and take no work). Defs checksum `0c5ddbc07e41f07d`, **held across M3-2**
+(no def field: the cryo cycle rate is a named constant) — (this is `SimDefs.Default.Checksum`, the
 compiled-default fingerprint the docs track — NOT the scenario host's rules-inclusive `defs:`
 print, which is a different value). The scenario + slice pins + defs checksum most recently moved
 with **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 + the crew-safety
@@ -3545,3 +3552,130 @@ across an edge and assert the rung the thaw REFUSAL resolves changes*. It must b
 `ThawGate`'s six-term thaw contract, and that contract does not exist yet; a leg that cannot run in
 its own lane is not a mutation, it is a wish. The M3-1 precedent (§13.27's owed thaw leg) is the
 same shape, and both tests say so in their own headers.
+
+### 13.29 A pod cycles: the capsule opens and a person exists (M3-2, 2026-07-31)
+
+**`sim/Sim.Core/Systems/CryoSystem.cs` (new, 269 lines), registered in `SystemStack.cs:55`** between
+`HydroponicsSystem` and `NeedsSystem`. A `CryoPod` whose `Device.Progress` is above zero advances at
+1 Hz (`:79`, `:138`); at full progress the capsule opens, `Progress` returns to 0, and
+`Simulation.AddCitizen` puts a live crew member on the floor beside it (`Open`, `:175`), announced by
+the new `CitizenThawedEvent` (`Events/SimEvents.cs:156` — `Pos` + `CitizenId` + `PodId`, mirroring
+`DeconstructCompletedEvent`, transient and therefore pin-neutral by itself).
+
+⛔ **NOTHING PLAYER-FACING STARTS A CYCLE ON THIS TREE, AND THAT IS THE PACKAGE'S OWN BOUNDARY.**
+There is no `ThawCommand` and no MOSS thaw op (M3-3), no countdown badge (M3-4) and no emergency
+thaw (M3-5). The only writer of a pod's `Progress` today is a test. ⇒ **a pod that will not open is
+still correct in play** — it is now a mechanic waiting for a verb rather than furniture. This entry
+belongs beside §13.28's *"content that exists and nothing consumes"*, one rung further along: the
+mechanic exists and nothing DRIVES it.
+
+⭐ **NO NEW `Device` FIELD.** `Device.cs:46-49`'s mapping was already correct and is now consumed:
+`IsOpen` = opened vs occupied, `Name` = who is inside, `Condition` = how badly the raid treated it,
+`Progress` = the cycle. All four were already hashed (`Simulation.cs:545-555`) and saved (DEVC
+v1/v2/v3), so the *feature* adds no saved field at all — the one piece of new state is the
+emergency-thaw bit, below.
+
+**THE FOUR RULES, ENFORCED IN THE SYSTEM AND NOT IN A FUTURE COMMAND.** A gate living in
+`ThawCommand` would be bypassed by the emergency thaw, by a restored save that already holds two
+live cycles, and by any later writer of `Progress`.
+
+| rule | where | what it does |
+|---|---|---|
+| **one at a time** (the owner's *"only one after the other"*) | `:153` | at most ONE pod advances per pass, elected by lowest `Device.Id`; every other pod holds its `Progress` untouched and resumes when the bay is free |
+| **a wrecked pod never cycles** (OD-9) | `:152` | below the `CryoPod` row's `fail` (0.10) the capsule is INELIGIBLE — it neither advances nor blocks anyone else. The wreck authors four such capsules and each already carries a `Corpse` and a log line |
+| **single-use** (§13.27, OD-M item 6 = A) | `:150` | an OPEN pod is done forever, which is what lets `Device.Name` be both the MOSS registry key and the sleeper's identity |
+| **somewhere to stand** | `TryFindExitTile`, `:209` | the first walkable, DEVICE-FREE 4-neighbour in `Int3.Neighbor4`'s canonical order (+X, −X, +Y, −Y). With no such tile the capsule **holds at exactly `Progress` 1.0 and stays shut** (`:163`) rather than opening into a wall |
+
+⚠️ **The exit tile is stricter than `HydroponicsSystem`'s harvest drop, deliberately.** The harvest
+uses the same canonical order but accepts a blocked tile ("items on blocked tiles are legal, hauling
+handles reachability", `HydroponicsSystem.cs:91-93`). A PERSON may not be placed inside the
+furniture, so the cryo version adds the `TryGetDeviceAt` clause — which is exactly why copying the
+harvest loop verbatim would have shipped a crew member inside a locker.
+
+**THE CYCLE RATE IS A NAMED CONSTANT: `ThawSecondsPerCycle = 240f` (`:110`), four sim-minutes.** Not
+a def field, because a new def scalar moves P4 and P5 — which this package's pin ritual required to
+HOLD — and because *a def field pinned only by the checksum is NOT pinned*. The shipped precedent is
+`BuildSystem`'s `FloorConstructTicks` (`Systems/BuildSystem.cs:253-254`), a v1 literal for the same
+reason. `Progress` is a 0..1 FRACTION, so retuning the constant rescales a saved mid-cycle capsule
+rather than invalidating it. ⚠️ **M3-4's countdown badge will DISPLAY this number**, so retuning it
+is a player-visible change; promoting it to `cryo.def` belongs to the next package that moves P4/P5
+anyway, with a behavioural consumer test in the same commit.
+
+**The person's display name is derived, not stored**: `SleeperName` (`:234`) inverts the authoring
+convention at `sim/Sim.Gen/AuthoredShips.cs:1963` (`"pod_" + Who.ToLowerInvariant()`), so `pod_ozawa`
+wakes up as **Ozawa**. A capsule not carrying the prefix keeps its name verbatim rather than being
+mangled into an invented person. She boots `AutoWander = true` to match the ship's own pawn
+(`AuthoredShips.cs:2181-2185`, the fields at `:2184` — a thawed sibling standing dead still beside
+a wandering one reads as a bug), `HoldPosition = false`, and an **all-off work grid** (OD-H) —
+i.e. exactly OD-G's shape: awake, idle, awaiting orders.
+
+⭐ **AND IT SHIPS ONE PIECE OF STATE IT NEVER WRITES: the emergency-thaw "has fired" bit**
+(`EmergencyThawFired`, `:127`; the M3-5 seam `MarkEmergencyThawFired`, `:136`). It is saved in the
+SYSS chapter (`CaptureState`, `:245`), folded into `Simulation.StateHash` (`StateChecksum`, `:262`,
+seed `'CRYO'`), round-tripped, and **asserted never to be set by anything in this package**. M3-5 is
+the reader AND the writer. This is M2-1 → M2-19's shape (*storage first, reader later*) and it exists
+so that M3-5 is not a SECOND re-pin.
+
+---
+
+#### ⛔ THE PIN MOVE — WHY IT HAPPENED, AND THE MEASUREMENT THAT PROVES THE CAUSE
+
+**`CryoSystem` implements `IStatefulSystem`, and THAT is what moved the pins — not registration.**
+`Simulation.cs:605-608` folds a system's `StateChecksum` **only** for systems that implement the
+interface, and `Save/SaveWriter.cs:120-128` writes the SYSS chapter under the same test. W0-6's four
+"empty" systems moved three pins for precisely this reason (`StockZoneSystem.cs:65`,
+`ProductionSystem.cs:19`, `OreRegistrySystem.cs:22`, `Space/TradeSystem.cs:23`). **Registering a
+stateless system folds nothing and saves nothing** — and the charter's earlier revision claimed
+otherwise, which is why this paragraph exists.
+
+⚠️ **THE REFUSED ALTERNATIVE, REFUSED EXPLICITLY**: a stateless `CryoSystem` with the emergency bit
+on `Simulation`'s save HEADER. It works. It is rejected because **the header is written by every
+ship while a SYSS chapter is written only by ships that have the system** — the bit is cryo state, so
+it lives where cryo state lives. (The third option, a new `Device` field, is refused by
+`Device.cs:48`.)
+
+| pin | before | after |
+|---|---|---|
+| P1 scenario `--days 3 --seed 42` | `81733e27709f36e4` | **`25f604dd61b221fb`** |
+| P2 tick-3000 golden (`--ship perilune`) | `482fd40c070b54e0` | **`1c036ffd53b8f106`** |
+| P3 slice tick-3000 golden | `94c29d5f6408d91c` | **`37c85c1ed445895e`** |
+| P4 defs defaults checksum | `0c5ddbc07e41f07d` | **unchanged** — no def field |
+| P5 defs rules-inclusive | `09900b9a44119272` | **unchanged** — no def field |
+
+⭐ **FOLD-ONLY, AND MEASURED RATHER THAN ARGUED.** With `CryoSystem` still registered and still
+ticking but `IStatefulSystem` **removed from its declaration**, the scenario reported
+`81733e27709f36e4` — the OLD P1 — and both tick-3000 golden tests passed against their OLD files.
+That single measurement proves both halves at once: the move is caused by the INTERFACE, and no
+ship's behaviour changed (none of the three fixture ships has a `CryoPod`; the scenario's day-3 line
+reads `pop 2 / hydro 97.7 kPa / water 0.0 L / potatoes 371` before and after). Twin-run equality
+holds at the new value, and two separate invocations agreed.
+
+**The pins: `tests/Perilune.Tests/CryoSystemTests.cs`** — thirteen tests, every one driven.
+`APodCycles_ThenOpens_AndANamedPersonStepsOut` (`:97`) is the player sentence;
+`AFullCycle_TakesFourSimMinutes` (`:147`) pins the rate in seconds and ticks rather than as
+`Dt / ThawSecondsPerCycle` (which would be the implementation re-deriving itself);
+`OnlyOneCapsuleCyclesAtATime_AndTheQueueThenDrains` (`:175`) pins both halves of the owner's
+mechanic; `AWreckedCapsuleNeverCycles_AndDoesNotBlockAHealthyOne` (`:212`) asserts the capsule is
+below `fail` BEFORE driving and carries a healthy capsule in the SAME run as the inclusion control;
+`AMidCycleShip_RoundTripsByteIdentical_AndKeepsCycling` (`:346`) is the state the feature invents.
+
+⚠️ **The `IStatefulSystem` leg is TWO SEPARATE `[Test]` METHODS** —
+`TheCryoFold_ReachesStateHash_AndTheSystemIsRegisteredAsStateful` (`:394`) and
+`TheCryoSystem_WritesItsOwnSyssChapter` (`:424`, which parses the SAVED BYTES) — because `Assert`
+throws and a second leg inside one body is indistinguishable from a dead one (fifth trap shape).
+Dropping the interface reddens both; making `StateChecksum` a constant reddens only the first, which
+is the proof that they are independent instruments. And the fold test **sets the bit before
+hashing**: with a permanently-zero bit a constant checksum is byte-identical to a real one, and the
+leg would be vacuous — the same discipline as the wrecked-pod fixture, stated in the same words.
+
+⚠️ **`CryoSystem.cs` is classified NOT ECONOMY** in
+`ArchitectureBoundaryTests.EconomySystemCensus_ForcesADecisionOnEveryNewSystemFile`, deliberately
+rather than by default: it consumes no item, produces no item and charges nothing. The thaw's PRICE
+is the `ThawGate` rung, which M3-3 will spend in `Commands/Commands.cs` — already inside the
+boundary. **The day a cryo file spends an item is the day it joins
+`EconomyFilesInSharedDirectories`.**
+
+⚠️ **WHAT THIS PACKAGE DELIBERATELY DOES NOT GATE, so M3-3 knows what it inherits.** A cycle in
+progress ignores `Powered`, ignores life-support headroom, ignores the `ThawGate` rung and ignores
+who (if anyone) is standing at a terminal. Those are the thaw's PRECONDITIONS and they belong to the
+verb that starts a cycle, not to the system that runs one. Once started, a cycle completes.

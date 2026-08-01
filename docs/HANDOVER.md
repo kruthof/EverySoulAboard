@@ -5,12 +5,23 @@ ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Eve
 older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — test comments
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there).*
 
-## Current state (2026-07-31 session B — M3-6 + M3-11 merged, OD-N/OD-O recorded, M3-15/M3-16 chartered)
+## Current state (2026-07-31 session B — M3-6/M3-11/M3-2 merged, OD-N/OD-O recorded, PIN M3-a MOVED)
 
-**Gate on `main` (`505cf3e` + session docs): 1567 dotnet + 1120 node, twin hashes MATCH at
-P1 `81733e27709f36e4`** (re-measure before quoting; the code tree is `8d206ca`'s, fully
-gated in-lane; `505cf3e` added docs only). **All five pins unmoved all session.** Next pin
-row is **M3-a (M3-2 CryoSystem, RUNS ALONE — start it in a clean window, no other lane)**.
+**Gate on `main` (`ff013e4`): 1580 dotnet + 1120 node, twin hashes MATCH at P1
+`25f604dd61b221fb`** (re-measure before quoting). ⚠️ **PIN ROW M3-a EXECUTED, tag
+`pin/m3-a`: P1/P2/P3 moved FOLD-ONLY for `CryoSystem`'s SYSS seed** (P2 `1c036ffd53b8f106`,
+P3 `37c85c1ed445895e`; cause MEASURED — interface dropped ⇒ all three old values return;
+P4/P5 held, no def field). Reviewer reproduced the pins AND the causal mutation
+independently. Next pin row: **M3-b (M3-7)**, not soon.
+
+**M3-2 CryoSystem** (`ff013e4`, one send-back — five stale anchors, doc-only): a pod
+CYCLES — 4 sim-min (`ThawSecondsPerCycle=240`, named constant), ONE at a time (lowest
+`Device.Id` elected; the owner's "only one after the other"), wrecked pods never cycle
+and never block (OD-9), opened pods never re-cycle (§13.27), completion opens the pod +
+`AddCitizen` named from `Device.Name` (`pod_ozawa`→`Ozawa`) on the first walkable
+device-free 4-neighbour (+X,−X,+Y,−Y) + `CitizenThawedEvent`. Emergency-thaw bit STORED
+(SYSS, folded, round-tripped, zero non-test writers) — M3-5 writes it. `SaveWriter`/
+`SaveReader` needed NO change (SYSS is generic over `IStatefulSystem`). MECHANICS §13.29.
 
 Merged this session, in order (each: Opus implementer + separate independent reviewer):
 - **M3-6 pod census + rungs** (`a6ce8d3`, APPROVE first pass) — the thaw ladder is
@@ -61,15 +72,17 @@ Merged this session, in order (each: Opus implementer + separate independent rev
 
 ## Next (the M3 queue, `perilune-m3.packages.md` §3)
 
-1. **M3-2 CryoSystem (PIN M3-a, RUNS ALONE, needs M3-1 ✅)** — the one standing pin lane;
-   check `git tag pin/*` first. ⚠️ Its save chapter may be asked to carry M3-16's fault
-   bit ONLY if bit-12 fold-neutrality measures false — read M3-16's design question (a)
-   before freezing the chapter.
-2. Then M3-3 ThawGate (owes `PodIdentityTests` its thaw leg + M3-6's band-edge sweep) →
-   **M3-15 (6b, integrator/spine: the OD-N gate + OPERATE removal)** → M3-4 POD BAY →
-   M3-13 (same window) → **M3-16 (8b, the vent puzzle)** → …
+1. **Owner-reported MOSS input fix (`lane/moss-input`) — in review, merge FIRST**: the
+   PROGRAM editor blurred on every wire-driven render (the persistent mount was MOVED per
+   render — and `replaceChildren(sameNode)` blurs too, measured in real Chrome); the dead
+   CLI is the same blur (declined keys insert into the focused element = nobody). Fix:
+   PROGRAM subtree built once + rule 5 (declined unmodified single-char refocuses the
+   prompt). 1125 node (+5). **The owner runs the 60-s manual script after merge.**
+2. **M3-3 ThawGate** (owes `PodIdentityTests` its thaw leg + M3-6's band-edge sweep;
+   needs M3-2 ✅ + M3-6 ✅) → **M3-15 (6b, integrator/spine: OD-N gate + OPERATE
+   removal)** → M3-4 POD BAY → M3-13 (same window) → **M3-16 (8b, the vent puzzle)** → …
 3. Housekeeping candidate: 8 unmerged review-*/spike worktrees from the audit (verify
-   wanted, then prune). All three of this session's lane worktrees pruned.
+   wanted, then prune). All this session's lane worktrees pruned except `moss-input`.
 
 ## Open on the owner
 
@@ -105,7 +118,16 @@ Merged this session, in order (each: Opus implementer + separate independent rev
   integrator may want a row rather than silence.
 - **MECHANICS stale set** (integrator file): the four M3-14 ladder spots (`:1118-1119` ·
   `:1850` flee · §13.25 b2 · §13.21) + §13.23a's two-blocker record now needs the OD-N/
-  OD-O outcome folded in (survivability dissolved for `vent_d1`; console opens doors).
+  OD-O outcome folded in (survivability dissolved for `vent_d1`; console opens doors) +
+  two older drifted anchors M3-2's sweep deliberately left (§13.27 `:1856`→ measured
+  `:1963`; §13.28 `:1760-1777`→ measured `:1865-1882` — sibling packages' records).
+- **M3-2 filed set**: a pod finishing with NO free exit tile blocks the whole bay forever,
+  silently (deliberate refusal, unrecorded queue consequence — M3-3/M3-4 own the surface) ·
+  nothing pins `CryoSystem`'s tick allocation (`StateHashHonestyTests:805` excludes
+  stateful systems) · a pod wearing below `fail` mid-cycle freezes silently (unreachable
+  at shipped wear rates) · thawed pawns boot `AutoWander=true` (implementer's choice,
+  matches Rell — one line to flip) · `ThawSecondsPerCycle` promotes to `cryo.def` in the
+  next package that moves P4/P5 anyway · pre-existing CA1305 at `PeriluneGoldenTests:65`.
 - **FREEZE as a player verb** — named follow-on (OD-M item 6); occupancy map inside
   `pin/m3-a` or renaming every authored pod.
 - Carried: wrapper-predicate census lesson (M2-0's shape ×3) · no wire carries per-device
@@ -134,3 +156,4 @@ Merged this session, in order (each: Opus implementer + separate independent rev
 | 07-31 | m3-batch · pod-identity · vacuum-ladder | **the M3 gate cleared (OD-M, all recommendations) and a DIRECT ORDER CROSSES THE FRONTIER**: right-click a machine in vacuum → offered → she walks in, works, may die (rungs 2+3+4, nine sites agree); pods decided single-use, `Device.Name` immutability pinned; playtest date named 2026-08-07 | green, pins UNMOVED, worktrees pruned 3 |
 | 07-31 B | pod-census | **the thaw ladder is AUTHORED**: each intact pod's price now derives from its `Condition` (rungs 1–7, depth 0,0,2,2,3,3,3, `ThawGate.RungOf`) — content that exists and nothing consumes until M3-3; census 12/1/7/4 self-consistent, stale 8/1/5/2 swept from four docs | green, pins UNMOVED, APPROVE first pass |
 | 07-31 B | deck1-vent · od-n-charter | **deck 1 is ONE repair from air, and the ship learns who it answers to**: `vent_d1` authored (repair fills the hall past 80 kPa, both delivery blockers filed in order); OD-N (doors+vents MOSS-only, split gate repair→console / commission→programs) + OD-O (the vent becomes the first PROGRAMMING PUZZLE, one instance, not a pattern) recorded; M3-15 (6b) + M3-16 (8b) chartered against driven measurements (tick-0 ungated console; 0 CM aboard; 14/16 doors shut) | green, pins UNMOVED, 1 send-back each, worktrees pruned 2 |
+| 07-31 B | cryo-system | **A POD CYCLES**: set a capsule counting and a named person steps out beside it — 4 sim-min, one at a time, wrecked pods never, single-use honoured; emergency-thaw bit stored for M3-5 | green, **PIN M3-a: P1/P2/P3 MOVED fold-only (cause measured), P4/P5 held**, tag `pin/m3-a`, 1 doc-only send-back |

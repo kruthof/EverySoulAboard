@@ -128,18 +128,21 @@ evidence, even from this file** — re-measure before quoting.
 
   | pin | value | enforced by |
   |---|---|---|
-  | P1 scenario `--days 3 --seed 42` | `81733e27709f36e4` | `ci.sh:36` (+ twin-run equality) |
-  | P2 tick-3000 golden | `482fd40c070b54e0` | `Golden/perilune_tick3000_hash.txt` |
-  | P3 slice tick-3000 golden | `94c29d5f6408d91c` | `Golden/slice_tick3000_hash.txt` |
+  | P1 scenario `--days 3 --seed 42` | `25f604dd61b221fb` | `ci.sh:50` (+ twin-run equality) |
+  | P2 tick-3000 golden | `1c036ffd53b8f106` | `Golden/perilune_tick3000_hash.txt` |
+  | P3 slice tick-3000 golden | `37c85c1ed445895e` | `Golden/slice_tick3000_hash.txt` |
   | P4 defs defaults checksum | `0c5ddbc07e41f07d` | `DefsChecksumTests.cs` |
   | P5 defs rules-inclusive (`defs:` print) | `09900b9a44119272` | `DefsChecksumTests.cs` |
 
-  Last mover: M2-2 (PIN M2-e, 2026-07-30) — P1/P3 for the work-type veto (a behaviour
-  change: the state M2-1 stored is now read; P2 held because perilune's crew are
-  HoldPosition). Before that: M2-1 (PIN M2-a, 2026-07-29), P1/P2/P3 for the CITZ v8 fold.
-  P4 and P5 are different values for different things; never paste the occupancy header's
-  hash into the defaults pin. Golden rewrite only when intended: `UPDATE_GOLDEN=1 …
-  --filter …`, say why.
+  Last mover: M3-2 (PIN M3-a, 2026-07-31) — P1/P2/P3 for `CryoSystem`'s SYSS seed. It moved
+  them by implementing `IStatefulSystem`, NOT by being registered: `Simulation.cs:605-608`
+  folds a system's `StateChecksum` only through that interface. FOLD-ONLY, measured — with
+  the same system registered and ticking but the interface dropped, all three pins read
+  their OLD values. P4/P5 held (no def field; the cycle rate is a named constant). Before
+  that: M2-2 (PIN M2-e, 2026-07-30) P1/P3 for the work-type veto; M2-1 (PIN M2-a,
+  2026-07-29) P1/P2/P3 for the CITZ v8 fold. P4 and P5 are different values for different
+  things; never paste the occupancy header's hash into the defaults pin. Golden rewrite only
+  when intended: `UPDATE_GOLDEN=1 … --filter …`, say why.
 - **Play: `./play.sh`** — builds host + client server, prints one URL, Ctrl+C stops both.
   Defaults to `--ship wreck` (pinned by `WebHostDefaultShipTests`). Fixtures (never offer
   to a player): `--ship slice` headless via `hosts/scenario --dump/--metrics`; `--ship
