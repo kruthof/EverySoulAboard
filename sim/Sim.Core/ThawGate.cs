@@ -476,6 +476,50 @@ namespace Perilune.Sim
             return false;
         }
 
+        /// <summary>
+        /// ⭐ M3-4 — <b>WHICH CONSOLE IS THE BAY SPEAKING THROUGH?</b> The name of a commissioned
+        /// console aboard (lowest <c>Device.Id</c>), or <c>null</c> when there is none.
+        ///
+        /// <para><b>IT ASKS <see cref="IsCommissionedConsole"/> AND NOTHING ELSE</b> — the finder is
+        /// DEFINED as "the lowest-Id terminal that predicate accepts", so there is exactly one
+        /// commissioned-console rule and this is not a second one. A reader looking for the rule
+        /// finds it in one place; a mutation to the predicate moves this too.</para>
+        ///
+        /// <para><b>WHY IT HAS TO EXIST.</b> The MOSS prompt addresses the pseudo-terminal
+        /// <c>@console</c> (spec §1.3, IX-M41), which is a free-text key with no device behind it —
+        /// so a POD BAY asked for from the prompt has no terminal NAME to give
+        /// <see cref="Evaluate"/>'s term 2, and would refuse on every ship forever. The client may
+        /// not pick one either: <c>Device.Scriptable</c> has never reached the wire, so a client
+        /// choosing a terminal would be guessing at the one fact the gate turns on. ⇒ the SIM
+        /// resolves it, the host puts the resolved name on the wire, and the client sends that name
+        /// back with the thaw. One authority, no guess.</para>
+        ///
+        /// <para>⚠️ <b>SHIP-WIDE, NOT NAME-KEYED — the <see cref="MossGate"/> rule, deliberately.</b>
+        /// <c>MossGate.IsServerLive</c> asks <i>"is a MOSS server live aboard?"</i> and carries no
+        /// name literal for the reason its own remarks give (a name test in Sim.Core makes every
+        /// other ship ungateable). The bay is the same shape of question one tier up. The known
+        /// consequence is the same one and it is inherited, not re-decided: a ship with two
+        /// commissioned terminals answers through the lower-Id one.</para>
+        ///
+        /// <para>Zero-alloc (it returns a REFERENCE to <c>Device.Name</c>, never a composed string),
+        /// Ordinal by construction, no RNG, no mutation.</para>
+        /// </summary>
+        public static string CommissionedConsoleName(Simulation sim)
+        {
+            if (sim == null) return null;
+            Device found = null;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.Terminal) continue;
+                if (found != null && d.Id >= found.Id) continue;
+                if (!IsCommissionedConsole(sim, d.Name)) continue;
+                found = d;
+            }
+            return found?.Name;
+        }
+
         /// <summary>The capsule that name belongs to, or null. Ordinal comparison: a device name is
         /// an identifier, and the dev machine is de-DE.</summary>
         private static Device FindCryoPod(Simulation sim, string podName)
@@ -695,7 +739,15 @@ namespace Perilune.Sim
                 case ThawRefusal.PodNoSignal:
                     return "POD — NO SIGNAL";
                 case ThawRefusal.NoConsole:
-                    return "NO CONSOLE — MOSS IS OFFLINE";
+                    // ⚠️ RE-WORDED BY M3-4 (2026-08-01) — the old sentence was `NO CONSOLE — MOSS
+                    // IS OFFLINE`, and M3-15 made it FALSE for the state it fires in most. OD-N
+                    // split the console's authority in two, so a player can now stand at a console
+                    // that just opened a door and be told MOSS is offline; the honest answer names
+                    // the missing ControllerModule. The family (this sentence · MossGate's two ·
+                    // M3-16's future CONTROLLER FAULT) is pinned PAIRWISE DISTINCT by
+                    // `ThawGateTests.TheConsoleSentences_ArePairwiseDistinct` — the review that
+                    // filed this found only one of the three pairs guarded.
+                    return "NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL";
                 case ThawRefusal.PodCycling:
                     return "POD " + Sleeper(v.PodName) + " IS CYCLING — "
                          + v.MinutesRemaining.ToString(ic) + " min";
@@ -716,6 +768,29 @@ namespace Perilune.Sim
                     // "" because the one thing a refusal may never be is silent.
                     return "THAW REFUSED";
             }
+        }
+
+        /// <summary>
+        /// ⭐ M3-4 — <b>THE SENTENCE A POD BAY ROW CARRIES</b>, which is the same as
+        /// <see cref="Describe"/>'s for every refusal and DIFFERENT for the one verdict that is not
+        /// a refusal.
+        ///
+        /// <para><b>WHY IT DIFFERS, AND WHY THAT IS NOT TWO VOCABULARIES.</b> <see cref="Describe"/>
+        /// answers <i>"what happened when I asked?"</i> — <c>THAW ACCEPTED — OZAWA — 4 min</c>, a
+        /// sentence about an ACT, correct on the reply to a click and wrong in a column of standing
+        /// capsules, none of which has been asked about. A row answers <i>"what is true of this
+        /// capsule?"</i>, and for an allowed one the true thing is <b>what it will spend</b>:
+        /// <c>READY — 1 SEALS</c>, the charter's own mock. Every other arm DELEGATES, so the
+        /// refusal vocabulary has exactly one implementation and a re-wording reaches both
+        /// surfaces.</para>
+        ///
+        /// <para>ALLOCATES — host and test only, like <see cref="Describe"/>.</para>
+        /// </summary>
+        public static string DescribeRow(in ThawVerdict v)
+        {
+            if (v.Reason != ThawRefusal.None) return Describe(v);
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            return "READY — " + v.Rung.Count.ToString(ic) + " " + ItemWords(v.Rung.Item);
         }
 
         /// <summary>One decimal, InvariantCulture, and "999+" above the point where a runway stops

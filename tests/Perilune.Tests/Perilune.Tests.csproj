@@ -81,6 +81,11 @@
          the four comments above promise — leaving this line out failed with `Der Typname "WorkCell"
          ist im Typ "WireFormat" nicht vorhanden` on GameSession.cs, which does not name this file. -->
     <Compile Include="../../hosts/web/WireFormat.Work.cs" />
+    <!-- M3-4: the POD BAY (`moss ev:pods`) — a NINTH sibling partial, WireFormat.cs at a zero diff
+         again. The hand-added rule bit a SIXTH time, exactly as the comments above promise: omitting
+         this line failed with `"WireFormat" enthält keine Definition für "MossPods"` on
+         GameSession.cs, a file that does not name this one. -->
+    <Compile Include="../../hosts/web/WireFormat.Pods.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

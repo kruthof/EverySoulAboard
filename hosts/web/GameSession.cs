@@ -393,6 +393,8 @@ namespace Perilune.Web
         ///   audit → reply the terminal's audit ring (tid "@console" ⇒ the player's own prompt ring)
         ///   sys   → reply one MOSS-ledger row's per-device breakdown + its derivation note
         ///   exec  → run ONE prompt line through the DSL's own device adapters (see ExecConsole)
+        ///   pods  → ⭐ M3-4: the POD BAY census — one row per CryoPod, each carrying the gate's own
+        ///           verdict (state, refusal ordinal, sentence, and whether it may cycle). A READ.
         ///   thaw  → ⭐ M3-3: ask the ship to wake the capsule named in `text`, through the console
         ///           named in `tid`. Renders ThawGate's verdict and enqueues ThawCommand.
         ///   dryrun→ RESERVED (compile-only preview); not implemented.
@@ -419,8 +421,10 @@ namespace Perilune.Web
         ///   <c>ControllerModule</c>.
         ///   ⭐ <c>SetScriptCommand</c> has refused this since E0-6 with a bare <c>return;</c>
         ///   (<c>Commands.cs:376</c>); the refusal becomes VISIBLE here.</description></item>
-        ///   <item><term><c>thaw</c> (M3-3) · the pod bay (M3-4)</term><description>UNCHANGED —
-        ///   commission-gated inside <see cref="ThawGate"/>'s own term 2.</description></item>
+        ///   <item><term><c>thaw</c> (M3-3) · <c>pods</c> (M3-4)</term><description><b>COMMISSIONED
+        ///   tier</b>, through <see cref="ThawGate"/>'s own term 2 — but M3-4 put the SHIP gate in
+        ///   front of both, because a dark ship answering <i>NO SUCH POD</i> is a computer that is
+        ///   off giving an opinion about a capsule.</description></item>
         /// </list>
         /// <para>⛔ <b>EVALUATION ORDER IS PART OF THE CONTRACT: THE SHIP GATE IS ASKED FIRST, THE
         /// TARGET'S OWN FAULT SECOND.</b> The two predicates are disjoint — <i>is a MOSS server live
@@ -519,9 +523,45 @@ namespace Perilune.Web
                 // verb. `ExecConsole` inherits its authority from the DSL adapters (IX-M40) and no
                 // adapter exists for a CryoPod, deliberately — a ten-line installed program must
                 // never be able to empty the cryo bay unattended.
+                // ⭐⭐ M3-4 — THE POD BAY. Twelve capsules, who is in each, and why each shut one
+                // will not cycle. A READ: it enqueues nothing and changes nothing.
+                case "pods":
+                {
+                    // ⛔ WORST-FIRST — THE SHIP GATE, THEN THE TARGET (M3-15's own ordering rule).
+                    // A player on a dead-computer ship must be told MOSS IS OFFLINE, not sent
+                    // across the pressure frontier to fit a module to a terminal that works.
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    // ⭐ WHICH CONSOLE. The prompt addresses the `@console` pseudo-tid (§1.3), which
+                    // has no device behind it, so the SIM resolves a commissioned terminal through
+                    // its own predicate and the name travels on the reply — the client then sends
+                    // THAT name back with a thaw. A client picking one would be guessing at
+                    // `Device.Scriptable`, which has never reached the wire.
+                    string term = ThawGate.IsCommissionedConsole(_sim, tid)
+                        ? tid : ThawGate.CommissionedConsoleName(_sim);
+                    if (string.IsNullOrEmpty(term))
+                    {
+                        // ⭐ OD-N's THIRD STATE, SAID IN WORDS. The console runs (it just opened a
+                        // door) and the bay still refuses — so the refusal must name COMMISSIONING
+                        // and the module, or the player goes and repairs a terminal that is fine.
+                        // An EMPTY POD BAY here would be the M3-13 defect this package is warned
+                        // about by name: a screen that says nothing is a broken verb.
+                        Refuse(tid, MossGate.NotCommissionedRefusal(tid == ConsoleTid ? null : tid));
+                        break;
+                    }
+                    Emit(WireFormat.MossPods(tid, term, "COMMISSIONED",
+                                             WireFormat.PodsHeadroomNote(_sim),
+                                             WireFormat.BuildPods(_sim, term)));
+                    break;
+                }
                 case "thaw":
                 {
                     string pod = cmd.Text ?? "";
+
+                    // ⛔ THE SHIP GATE FIRST — M3-4, discharging M3-15's filed item. Until this
+                    // line the thaw op asked NO ship question, so a DARK ship answered target-side
+                    // sentences (`NO SUCH POD`) from a computer that is off. Same ordering as
+                    // `pods` above and as every other op in this switch: ship, then target.
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
 
                     // ⛔ THE HOST DECIDES NOTHING. It calls the sim's own gate to RENDER the
                     // answer and enqueues the command REGARDLESS of what that answer was. Both

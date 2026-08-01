@@ -24,8 +24,28 @@
 
 import { initTerminal, openTerminal, reduceMoss, editDraft, beginCompile } from './terminal-model.js';
 
-export const SCREEN = { LEDGER: 'ledger', DETAIL: 'detail', FAULTLOG: 'faultlog', PROGRAM: 'program' };
+export const SCREEN = {
+  LEDGER: 'ledger', DETAIL: 'detail', FAULTLOG: 'faultlog', PROGRAM: 'program',
+  // ⭐ M3-4 — the fifth screen. Reached by TYPING `pods` (OD-P: no letter hotkey), and — unlike
+  // every other screen here — it is opened by the REPLY, not by the command: the bay is
+  // commission-gated, so the ask can be refused, and a screen that opened first would sit empty
+  // beside a refusal it could not show. See `navCommand`'s `pods` case.
+  PODBAY: 'podbay',
+};
 export const STATE = { NOMINAL: 0, ATTEND: 1, DEGRADED: 2, OFFLINE: 3 };
+
+/**
+ * The capsule states the POD BAY prints, as the HOST numbers them
+ * (`hosts/web/WireFormat.Pods.cs`). Codes are append-only. ⛔ The WORDS are not held here — they
+ * travel on each row, so this client keeps no second copy of the vocabulary; these constants exist
+ * only so the screen can decide LAYOUT (which rows carry a reason, which are greyed) from the code
+ * rather than by matching prose.
+ */
+export const POD_STATE = { OPEN: 0, SEALED: 1, NO_SIGNAL: 2, CYCLING: 3 };
+
+/** What the POD BAY says when the link answered with a bay that has no capsules in it. An empty
+ *  table under a POD BAY heading would read as "everyone is out", which is the opposite claim. */
+export const NO_PODS = 'NO CAPSULES ABOARD';
 
 /** Ticks per sim-day — `SimClockUtil.TicksPerDay` (Simulation.TicksPerSecond 10 × 86400). */
 export const TICKS_PER_DAY = 864000;
@@ -85,6 +105,8 @@ const HELP_LINES = [
   'OPEN <system>         system detail (also: ENTER on a row)',
   'LOG [system]          fault log, optionally filtered',
   'PROG [terminal]       the MOSS program directory / editor',
+  'PODS                  the cryo bay — who is aboard, and what each capsule needs',
+  'THAW <n|name>         begin that capsule\'s cycle (also: ENTER on a POD BAY row)',
   'CLEAR                 empty this transcript',
   'EXIT                  leave MOSS',
   'open|close|lock|unlock <device>   ·   set <device>.rate <n|max|min>',
@@ -180,6 +202,13 @@ export function openMoss() {
     histDraft: '',             // the buffer stashed when a history walk began
     console: [{ stream: 1, text: 'MOSS REV 4.2.1 READY — TYPE HELP' }],
     program: initTerminal(),   // the PROGRAM screen's IDE state (terminal-model.js)
+    // M3-4: the POD BAY. `pods` is null until a `moss ev:pods` reply lands — there is no
+    // client-side census and no default bay, so a screen drawn from a guess has nothing to draw.
+    pods: null,
+    // Has a `pods` REQUEST gone out that has not been answered? Only a reply that answers one of
+    // these may take the screen; an unsolicited (or stale) bay must never yank the player out of
+    // whatever they were reading. The `detail.tid` guard's rule, applied to a screen.
+    podsAsked: false,
   };
 }
 
@@ -230,6 +259,20 @@ export function reduceMossEvent(model, msg) {
     // computed. An older host that sends none leaves this '' and the client falls back.
     return { ...m, detail: { tid: m.detail.tid, devices, loading: false, derivation: str(msg.derivation).trim() } };
   }
+  if (msg.ev === 'pods') return reducePods(m, msg);
+  if (msg.ev === 'thaw') {
+    // ⭐ THE COMMAND'S OWN VERDICT, RENDERED — M3-3 filed that nothing in this client folded this
+    // reply at all, so a thaw was answered into the void. `reason` is the SIM's sentence
+    // (`ThawGate.Describe`), printed verbatim: this module never re-words, re-cases or re-derives
+    // what the ship said. Stream 2 for a refusal, so it lands on the error stream the transcript
+    // already styles apart.
+    const ok = msg.ok === true;
+    let next = pushConsole(m, ok ? 1 : 2, str(msg.reason) || (ok ? 'THAW ACCEPTED' : 'THAW REFUSED'));
+    // A REFUSED thaw has nothing in flight, so the latch must not hold the player's next attempt
+    // hostage. An ACCEPTED one keeps it until the bay's own rows show the capsule moved.
+    if (!ok && next.pods && next.pods.thawing) next = { ...next, pods: { ...next.pods, thawing: null } };
+    return next;
+  }
   if (msg.ev === 'exec') {
     let next = m;
     let rendered = 0;
@@ -272,6 +315,75 @@ function deviceObj(d) {
       rate: num(d.rate, -1), deck: num(d.deck, -1), x: num(d.x, -1), y: num(d.y, -1), note: str(d.note) };
   }
   return null;
+}
+
+/**
+ * Normalize ONE POD BAY row — wire tuple `[n, pod, occupant, state, stateWord, why, reason, can]`
+ * (`hosts/web/WireFormat.Pods.cs`), or an already-object row. A row with no `pod` key is not a row:
+ * the key is what a thaw is addressed to, and a capsule nobody can address is not renderable.
+ *
+ * ⛔ NOTHING IS INVENTED HERE. A missing state code reads `-1` and its word reads `UNKNOWN`, never
+ * `OPEN` — the DA-M1 rule that made a missing ledger state `UNKNOWN` rather than `NOMINAL`, which
+ * matters more for a capsule than for a load bar. A missing `can` is FALSE: the affordance to wake
+ * somebody must be granted by the gate, never assumed from an absent field.
+ * @param {*} t
+ * @returns {{n:number,pod:string,occupant:string,st:number,state:string,why:number,reason:string,can:boolean}|null}
+ */
+export function podRow(t) {
+  let r;
+  if (Array.isArray(t)) {
+    r = { n: num(t[0], -1), pod: str(t[1]), occupant: str(t[2]), st: num(t[3], -1),
+      state: str(t[4]), why: num(t[5], -1), reason: str(t[6]), can: num(t[7], 0) === 1 };
+  } else if (t && typeof t === 'object') {
+    r = { n: num(t.n, -1), pod: str(t.pod), occupant: str(t.occupant), st: num(t.st, -1),
+      state: str(t.state), why: num(t.why, -1), reason: str(t.reason), can: !!t.can };
+  } else return null;
+  if (!r.pod) return null;
+  if (!r.state) r.state = 'UNKNOWN';
+  return r;
+}
+
+/**
+ * ⭐ Fold a `moss ev:pods` reply — the POD BAY census, straight off the sim's gate.
+ *
+ * <p>THREE things happen here and each is a rule this package owes an answer for.</p>
+ *
+ * 1. **The reply takes the screen, the command does not.** Only when `podsAsked` is set: the bay is
+ *    commission-gated, so the ask can come back as a refusal instead, and a screen that had already
+ *    opened would sit empty next to a sentence explaining why it is empty. A reply nobody asked for
+ *    updates the data and leaves the player where they are.
+ * 2. **Selection survives by capsule id** (IX-M12's rule, one screen over): a bay that re-arrives
+ *    every second must not move the cursor under the player's hand.
+ * 3. **The in-flight thaw latch clears only when the SIM's own rows show it moved** — see
+ *    `activateThaw` for why the latch exists at all.
+ * @param {object} model @param {{rows?:*[], term?:string, moss?:string, note?:string}} msg
+ * @returns {object}
+ */
+export function reducePods(model, msg) {
+  const m = model || openMoss();
+  if (!msg || !Array.isArray(msg.rows)) return m;
+  const rows = [];
+  for (const t of msg.rows) { const r = podRow(t); if (r) rows.push(r); }
+  const prev = m.pods;
+  const wanted = prev && prev.selectedPod;
+  const selectedPod = wanted && rows.some((r) => r.pod === wanted) ? wanted
+    : rows.length ? rows[0].pod : null;
+  // The latch holds until the ship's own answer has moved: the gate refuses EVERY capsule while one
+  // is mid-cycle, so an accepted thaw turns `can` false on the very row we asked about. Holding it
+  // until then is what stops the same-tick double request M3-3 filed — two asks inside one tick
+  // both read `Progress == 0` and both hear ACCEPTED, and only the first one cycles.
+  let thawing = prev ? prev.thawing : null;
+  if (thawing && !rows.some((r) => r.pod === thawing && r.can)) thawing = null;
+  return {
+    ...m,
+    pods: {
+      term: str(msg.term), moss: str(msg.moss), note: str(msg.note),
+      rows, selectedPod, thawing,
+    },
+    podsAsked: false,
+    screen: m.podsAsked && m.screen !== SCREEN.PODBAY ? SCREEN.PODBAY : m.screen,
+    stack: m.podsAsked && m.screen !== SCREEN.PODBAY ? m.stack.concat([m.screen]) : m.stack,
+  };
 }
 
 /**
@@ -448,6 +560,25 @@ function historyStep(m, dir) {
 /** The screen's own keys: selection, activation and the ESC stack. NO LETTER APPEARS HERE (OD-P):
  *  the FAULT LOG and PROGRAM screens are reached by typing `log` / `prog`, through `navCommand`. */
 function navKey(m, k) {
+  // M3-4: inside the POD BAY the same non-printable keys mean the same things one list over —
+  // move the cursor, ENTER activates. Nothing printable is added (OD-P); `thaw` is still a word.
+  if (m.screen === SCREEN.PODBAY) {
+    switch (k) {
+      case 'arrowup': return movePod(m, -1);
+      case 'arrowdown': return movePod(m, 1);
+      case 'pageup': return movePod(m, -PAGE_STEP);
+      case 'pagedown': return movePod(m, PAGE_STEP);
+      case 'home': return movePodTo(m, 0);
+      case 'end': return movePodTo(m, m.pods ? m.pods.rows.length - 1 : 0);
+      case 'enter': {
+        const row = m.pods ? m.pods.rows.find((r) => r.pod === m.pods.selectedPod) : null;
+        if (!row) return { model: m, handled: false };
+        return activateThaw(m, row);
+      }
+      case 'escape': return escapeStep(m);
+      default: return { model: m, handled: false };
+    }
+  }
   switch (k) {
     case 'arrowup': return moveSelection(m, -1);
     case 'arrowdown': return moveSelection(m, 1);
@@ -462,6 +593,43 @@ function navKey(m, k) {
     case 'escape': return escapeStep(m);
     default: return { model: m, handled: false };
   }
+}
+
+/** IX-M3's clamped, never-wrapping walk, on the bay's own list. */
+function movePod(m, delta) {
+  if (!m.pods || !m.pods.rows.length) return { model: m, handled: false };
+  const cur = m.pods.rows.findIndex((r) => r.pod === m.pods.selectedPod);
+  return movePodTo(m, (cur < 0 ? 0 : cur) + delta);
+}
+
+function movePodTo(m, index) {
+  if (!m.pods || !m.pods.rows.length) return { model: m, handled: false };
+  const pod = m.pods.rows[clamp(index, 0, m.pods.rows.length - 1)].pod;
+  if (pod === m.pods.selectedPod) return { model: m, handled: true };
+  return { model: { ...m, pods: { ...m.pods, selectedPod: pod } }, handled: true };
+}
+
+/**
+ * ⭐ THE ONE PUBLIC WAY A SURFACE ACTIVATES A CAPSULE — the click path's entry into the SAME rule
+ * ENTER and the typed `thaw` use. Exported so `moss-screen.js` never needs its own copy of "may
+ * this row be thawed?"; a `[THAW]` cell that decided for itself is mutation 4.
+ * @param {object} model @param {string} podId @returns {{model:object, effects:object[], handled:boolean}}
+ */
+export function thawPod(model, podId) {
+  const m = model || openMoss();
+  if (!m.pods) return { model: m, effects: [], handled: false };
+  const row = m.pods.rows.find((r) => r.pod === podId);
+  if (!row) return { model: m, effects: [], handled: false };
+  const out = activateThaw(m, row);
+  return { model: out.model, effects: out.effects || [], handled: true };
+}
+
+/** Move the POD BAY cursor to one capsule (the click path's selection half, IX-M7). */
+export function selectPod(model, podId) {
+  const m = model || openMoss();
+  if (!m.pods || !m.pods.rows.some((r) => r.pod === podId)) return m;
+  if (m.pods.selectedPod === podId) return m;
+  return { ...m, pods: { ...m.pods, selectedPod: podId } };
 }
 
 function indexOfId(rows, id) {
@@ -621,7 +789,11 @@ export function parseCommand(text) {
   // A bare property read: `ship.power`, `hydro.co2`, `vent_ls.rate` (IX-M41).
   if (!args.length && /^[a-z0-9_]+(\.[a-z0-9_]+)+$/.test(verb)) return { verb, args, raw, kind: 'read' };
   switch (verb) {
+    // `pods` and `thaw` are M3-4's. Both are CLIENT-resolved (`kind:'nav'`) even though `thaw`
+    // ends in a wire op: the capsule is resolved against the bay the player is looking at, and the
+    // affordance and the command must therefore share one row — see `activateThaw`.
     case 'help': case 'status': case 'log': case 'prog': case 'clear': case 'exit':
+    case 'pods': case 'thaw':
       return { verb, args, raw, kind: 'nav' };
     case 'open': {
       const navish = args.length !== 1 || SYSTEM_IDS.indexOf(normalizeSystemId(args[0])) >= 0;
@@ -720,9 +892,86 @@ function navCommand(m, cmd, argText) {
       const out = openProgram(m, tid);
       return { model: out.model, effects: out.effects };
     }
+    case 'pods': {
+      // ⛔ NO SCREEN CHANGE HERE. The ask goes out; `reducePods` opens the bay when the ship
+      // answers with one. The bay is COMMISSION-gated (M3-3 term 2), so the honest replies are
+      // "here is your crew" and "MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE", and the
+      // second one arrives on the transcript with the player still on the screen they were on.
+      return { model: { ...m, podsAsked: true }, effects: [{ k: 'moss', op: 'pods' }] };
+    }
+    case 'thaw':
+      return thawCommand(m, argText);
     default:
       return { model: pushConsole(m, 2, 'UNKNOWN COMMAND — TYPE HELP'), effects: [] };
   }
+}
+
+/**
+ * ⭐ `THAW <n|capsule|name>` — resolve the argument against the BAY THE PLAYER IS LOOKING AT, then
+ * hand it to the one rule (`activateThaw`). A bare `thaw` on the POD BAY means the selected row,
+ * which is the same gesture ENTER makes: RW §8.4 rung 3, one rule asked in two places.
+ *
+ * Resolution is by the `#` column, by the capsule key (`pod_ozawa`) or by the occupant — all three
+ * are on the screen in front of the player, and telling somebody that a row they can read does not
+ * exist is `submitCommand`'s own stated honesty failure.
+ */
+function thawCommand(m, argText) {
+  if (!m.pods || !m.pods.rows.length) {
+    return { model: pushConsole(m, 2, 'NO POD BAY ON THIS LINK — TYPE PODS'), effects: [] };
+  }
+  const rows = m.pods.rows;
+  const arg = str(argText).trim();
+  let row = null;
+  if (!arg) {
+    if (m.screen !== SCREEN.PODBAY) {
+      return { model: pushConsole(m, 2, 'THAW NEEDS A CAPSULE — TYPE THAW <N>'), effects: [] };
+    }
+    row = rows.find((r) => r.pod === m.pods.selectedPod) || null;
+  } else {
+    const want = lower(arg);
+    row = rows.find((r) => String(r.n) === want)
+      || rows.find((r) => lower(r.pod) === want)
+      || rows.find((r) => lower(r.occupant) === want)
+      || null;
+  }
+  if (!row) {
+    return { model: pushConsole(m, 2, 'NO SUCH CAPSULE \'' + upper(arg) + '\' — TYPE PODS'), effects: [] };
+  }
+  return activateThaw(m, row);
+}
+
+/**
+ * ⭐⭐ THE ONE RULE, AND IT IS THE GATE'S — asked by the `[THAW]` affordance, by ENTER on a row and
+ * by the typed `thaw` command, so no two of them can ever disagree.
+ *
+ * <p>⛔ **`row.can` IS THE SIM'S OWN BIT**, carried on the row by `ThawGate.Evaluate`. This function
+ * does not look at the state word, at the refusal ordinal, or at anything it could compute for
+ * itself — re-deriving "is this thawable?" client-side is exactly the menu/job disagreement RW §2.2
+ * forbids, and a row refused here is refused WITH THE GATE'S OWN SENTENCE, never with a bare no.</p>
+ *
+ * <p>⭐ **AND IT IS SINGLE-FLIGHT** (M3-3's filed defect, discharged). `HandleMoss`'s thaw op
+ * evaluates, replies, then enqueues — so two requests inside one tick BOTH read `Progress == 0` and
+ * BOTH hear ACCEPTED, while only the first capsule cycles. The latch holds from the moment the ask
+ * leaves until the bay's own rows show the ship moved (`reducePods`), so this surface can never be
+ * the thing that produces that pair.</p>
+ */
+function activateThaw(m, row) {
+  if (m.pods && m.pods.thawing) {
+    const held = m.pods.rows.find((r) => r.pod === m.pods.thawing);
+    return {
+      model: pushConsole(m, 2, 'THAW ALREADY REQUESTED — '
+        + upper(held ? held.occupant : m.pods.thawing) + '; AWAITING THE BAY'),
+      effects: [], handled: true,
+    };
+  }
+  if (!row.can) {
+    return { model: pushConsole(m, 2, row.reason || 'THAW REFUSED'), effects: [], handled: true };
+  }
+  return {
+    model: { ...m, pods: { ...m.pods, thawing: row.pod } },
+    effects: [{ k: 'moss', op: 'thaw', tid: m.pods.term, text: row.pod }],
+    handled: true,
+  };
 }
 
 /** One STATUS line, aligned on the monospace grid with padEnd/padStart (no locale APIs). */
@@ -824,8 +1073,11 @@ export function footerHints(model) {
       return ['TYPE: LOG <SYSTEM>, HELP', '[ESC] BACK'];
     case SCREEN.PROGRAM:
       return ['[ESC] BACK'];
+    case SCREEN.PODBAY:
+      return ['[↑↓] SELECT CAPSULE', '[ENTER] THAW', 'TYPE: THAW <N>, PODS, HELP', '[ESC] BACK'];
     default:
-      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', 'TYPE: LOG, PROG, HELP', '[ESC] BACK TO SHIP'];
+      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', 'TYPE: LOG, PROG, PODS, HELP',
+        '[ESC] BACK TO SHIP'];
   }
 }
 
@@ -941,6 +1193,54 @@ export function faultLogView(model) {
     title: id ? 'FAULT LOG — ' + (row ? row.label : upper(str(id).split('_').join(' '))) : 'FAULT LOG',
     entries,
     filterId: id == null ? null : id,
+  };
+}
+
+/**
+ * ⭐⭐ THE POD BAY VIEW-MODEL (M3-4). Twelve capsules, four columns, and the fourth one is the
+ * feature: `# · OCCUPANT · STATE · WHY / WHAT IT NEEDS`.
+ *
+ * <p>⛔ **EVERY FIELD BELOW CAME OFF THE WIRE.** The occupant is the sim's own `SleeperName`, the
+ * state word is the host's, the reason is `ThawGate.Describe`'s sentence rendered VERBATIM — not
+ * re-cased, not re-worded, not recomposed from the refusal ordinal. The only judgements this
+ * function makes are layout ones: which rows show a reason (a state word that already IS the reason
+ * does not repeat itself) and which show `[THAW]`.</p>
+ *
+ * <p>⚠️ **A SEALED ROW WITH A BLANK REASON IS THE PACKAGE FAILING** (the charter's words). The
+ * blank is impossible to produce here — a sealed row's reason is whatever the gate said and the
+ * gate's default arm is a sentence, never `''` — and it is pinned by a driven test rather than by
+ * this note.</p>
+ * @param {object} model
+ * @returns {{title:string, term:string, moss:string, note:string, rows:object[],
+ *            selectedIndex:number, notice:string, thawing:string}}
+ */
+export function podBayView(model) {
+  const m = model || openMoss();
+  const p = m.pods;
+  if (!p) return { title: 'POD BAY', term: '', moss: '', note: '', rows: [], selectedIndex: -1,
+    notice: NO_PODS, thawing: '' };
+  const sel = p.rows.findIndex((r) => r.pod === p.selectedPod);
+  const selectedIndex = p.rows.length ? clamp(sel < 0 ? 0 : sel, 0, p.rows.length - 1) : -1;
+  const rows = p.rows.map((r, i) => ({
+    n: r.n, num: r.n >= 0 ? String(r.n) : '—',
+    pod: r.pod,
+    occupant: upper(r.occupant) || upper(r.pod),
+    st: r.st, state: r.state,
+    // The two states whose word already says the whole story print an em dash rather than repeat
+    // themselves ("NO SIGNAL / POD — NO SIGNAL"). Every other row prints the gate's sentence.
+    reason: r.st === POD_STATE.OPEN || r.st === POD_STATE.NO_SIGNAL ? '—' : r.reason,
+    why: r.why,
+    can: r.can,
+    // Greyed, in the RimWorld sense (§2.2): visible, refused, and STATING WHY beside it.
+    dim: r.st === POD_STATE.NO_SIGNAL || r.st === POD_STATE.OPEN,
+    pending: p.thawing === r.pod,
+    selected: i === selectedIndex,
+  }));
+  return {
+    title: 'POD BAY', term: p.term, moss: p.moss, note: p.note,
+    rows, selectedIndex,
+    notice: rows.length ? '' : NO_PODS,
+    thawing: p.thawing || '',
   };
 }
 

@@ -53,6 +53,31 @@ export const HEAD_LINE =
 /** The DETAIL device-table geometry (same monospace rule as the ledger). */
 export const DEV_COLS = { name: 20, kind: 14, cond: 6, power: 5, rate: 7, loc: 18 };
 
+/** ⭐ M3-4 — the POD BAY geometry. `#` right-aligned so a two-digit bay stays in column; the
+ *  reason column is deliberately LAST and unpadded, because it is the only one allowed to be long
+ *  (`NEEDS 3 CONTROLLER MODULE — SHIP HAS 0`) and truncating it would delete the feature. */
+export const POD_COLS = { gutter: 2, num: 4, occupant: 14, state: 12 };
+
+/** The POD BAY's column header line. */
+export const POD_HEAD_LINE =
+  ''.padEnd(POD_COLS.gutter) +
+  '#'.padStart(2).padEnd(POD_COLS.num) +
+  'OCCUPANT'.padEnd(POD_COLS.occupant) +
+  'STATE'.padEnd(POD_COLS.state) +
+  'WHY / WHAT IT NEEDS';
+
+/**
+ * How often the POD BAY re-asks the ship for its census, in milliseconds.
+ *
+ * ⚠️ A POLL, AND IT HAS TO BE ONE. The bay is a REQUEST/REPLY op (`moss pods`), not a pushed
+ * channel, and the badge on a cycling capsule counts DOWN — a screen that drew once would freeze
+ * `4 min` on the wall while the capsule opened behind it. Re-asking on the pushed `systems`
+ * message was tried and rejected: `GameSession.Send` drops a channel whose payload is byte-identical
+ * to the last one, so a quiet ship stops delivering `systems` altogether and the bay would stall
+ * exactly when nothing else is happening — which is most of a cycle.
+ */
+export const POD_REFRESH_MS = 1000;
+
 /** IX-M13's headline. The MODEL is the authority (`ledgerView().notice`); this is the fallback for
  *  a model old enough not to carry one, and the constant this file's own tests read. */
 export const NO_TELEMETRY = 'NO TELEMETRY — LINK DOWN';
@@ -287,6 +312,7 @@ export class MossScreen {
     if (this.win && this.win.removeEventListener) {
       this.win.removeEventListener('keydown', this._onKey, true);
     }
+    this._reflectPodPoll(null);   // the bay's poll must not outlive the window it drew in
     if (this._editor && this._mountedTid && this._editor.detach) this._editor.detach();
     this._mountedTid = null;
     this._mountedEditor = null;
@@ -543,7 +569,34 @@ export class MossScreen {
   _screen() {
     const m = this.model;
     const s = m && m.screen;
-    return s === SCREEN.DETAIL || s === SCREEN.FAULTLOG || s === SCREEN.PROGRAM ? s : SCREEN.LEDGER;
+    return s === SCREEN.DETAIL || s === SCREEN.FAULTLOG || s === SCREEN.PROGRAM ||
+      s === SCREEN.PODBAY ? s : SCREEN.LEDGER;
+  }
+
+  /**
+   * Start/stop the POD BAY poll so it runs exactly while the bay is on screen. Called from
+   * `render()`, which is the one place that knows the screen changed for ANY reason — a typed
+   * command, ESC, a reply that took the screen — so there is no second list of transitions to keep
+   * in step. `close()` stops it too: MOSS can be left with the bay up.
+   */
+  _reflectPodPoll(screen) {
+    const want = screen === SCREEN.PODBAY && this.opened;
+    if (want === !!this._podTimer) return;
+    if (!want) {
+      if (this.win && this.win.clearInterval) this.win.clearInterval(this._podTimer);
+      this._podTimer = null;
+      return;
+    }
+    if (!this.win || typeof this.win.setInterval !== 'function') return;
+    this._podTimer = this.win.setInterval(() => this.refreshPods(), POD_REFRESH_MS);
+  }
+
+  /** Ask the ship for the bay again. Sends the wire op WITHOUT setting the model's `podsAsked`
+   *  handshake: a refresh must never be able to re-open a screen the player has already left. */
+  refreshPods() {
+    if (!this.opened) return;
+    if (this._screen() !== SCREEN.PODBAY) return;
+    this.send(wireForEffect({ k: 'moss', op: 'pods' }));
   }
 
   render() {
@@ -559,7 +612,9 @@ export class MossScreen {
     if (screen === SCREEN.LEDGER) this._renderLedger();
     else if (screen === SCREEN.DETAIL) this._renderDetail();
     else if (screen === SCREEN.FAULTLOG) this._renderFaultLog();
+    else if (screen === SCREEN.PODBAY) this._renderPodBay();
     else this._renderProgram();
+    this._reflectPodPoll(screen);
 
     this._renderConsole();
     this._paintPrompt();
@@ -730,6 +785,90 @@ export class MossScreen {
       'MAINTENANCE PUBLISHES NOTHING ON REPAIR, SO RECOVERIES CANNOT BE SHOWN.'));
     this.bodyEl.replaceChildren(wrap);
     this.advisoryEl.replaceChildren();
+  }
+
+  /**
+   * ⭐⭐ THE POD BAY (M3-4). Twelve capsules, four columns, and the fourth one is the feature.
+   *
+   * ⛔ EVERY STRING BELOW ARRIVED ON THE WIRE. This method reads `podBayView(model)` and lays its
+   * already-decided values onto the monospace grid; it computes no state word, composes no reason,
+   * and — decisively — decides no `[THAW]`. The affordance is drawn where `row.can` is true, and
+   * `row.can` is `ThawGate.Evaluate`'s own verdict for that capsule. Clicking it calls the model's
+   * `thawPod`, which is the SAME function ENTER and the typed `thaw` reach, so the button and the
+   * command cannot come apart (RW §8.4 rung 3).
+   *
+   * The header line states which of OD-N's three MOSS states the terminal is in. On this screen it
+   * always reads COMMISSIONED, because the other two never get here: the op refuses in words, on the
+   * transcript, with the player still on the screen they were on. That is deliberate and it is the
+   * OD-N amendment's own instruction — an empty POD BAY beside a refusal would be the M3-13 defect.
+   */
+  _renderPodBay() {
+    const doc = this.doc;
+    const v = this.M.podBayView(this.model) || {};
+    const wrap = mk(doc, 'div', 'moss-podbay');
+    // `POD BAY                                term_moss · COMMISSIONED`
+    const head = mk(doc, 'div', 'moss-subhead-row');
+    head.appendChild(mk(doc, 'span', 'moss-subhead', S(v.title) || 'POD BAY'));
+    head.appendChild(mk(doc, 'span', 'moss-podterm',
+      (S(v.term) || '—') + ' · ' + (S(v.moss) || 'UNKNOWN')));
+    wrap.appendChild(head);
+
+    const rows = Array.isArray(v.rows) ? v.rows : [];
+    if (!rows.length) {
+      // The honest empty, IX-M13's rule one screen over: an empty table under a POD BAY heading
+      // reads as "everybody is out", which is the one thing it must never read as.
+      wrap.appendChild(mk(doc, 'div', 'moss-empty', S(v.notice) || 'NO CAPSULES ABOARD'));
+    } else {
+      wrap.appendChild(mk(doc, 'div', 'moss-thead', POD_HEAD_LINE));
+      const list = mk(doc, 'div', 'moss-rows');
+      for (const r of rows) {
+        const el = mk(doc, 'div', 'moss-row moss-podrow'
+          + (r.selected ? ' sel' : '') + (r.dim ? ' dim' : '') + (r.pending ? ' pending' : ''));
+        el.dataset.pod = S(r.pod);
+        el.dataset.state = String(r.st);
+        el.dataset.can = r.can ? '1' : '0';
+        el.appendChild(mk(doc, 'span', 'c-gutter', (r.selected ? '>' : ' ').padEnd(POD_COLS.gutter)));
+        el.appendChild(mk(doc, 'span', 'c-podnum', S(r.num).padStart(2).padEnd(POD_COLS.num)));
+        el.appendChild(mk(doc, 'span', 'c-occupant',
+          S(r.occupant).slice(0, POD_COLS.occupant - 1).padEnd(POD_COLS.occupant)));
+        el.appendChild(mk(doc, 'span', 'c-podstate', S(r.state).padEnd(POD_COLS.state)));
+        // ⭐ OD-L's column. Rendered VERBATIM and never truncated — the number in it is the hint.
+        el.appendChild(mk(doc, 'span', 'c-podwhy', S(r.reason)));
+        if (r.can) {
+          const btn = mk(doc, 'span', 'moss-thaw', r.pending ? ' [WAIT]' : ' [THAW]');
+          btn.dataset.thaw = S(r.pod);
+          btn.addEventListener('click', (e) => {
+            if (e && e.stopPropagation) e.stopPropagation();
+            this.activatePod(S(r.pod));
+          });
+          el.appendChild(btn);
+        }
+        // IX-M7, unchanged in meaning: a click selects, a double-click activates.
+        el.addEventListener('click', () => {
+          if (this.M.selectPod) this.model = this.M.selectPod(this.model, S(r.pod));
+          this.render();
+          this._focusPrompt();
+        });
+        el.addEventListener('dblclick', () => this.activatePod(S(r.pod)));
+        list.appendChild(el);
+      }
+      wrap.appendChild(list);
+    }
+    if (S(v.note)) wrap.appendChild(mk(doc, 'div', 'moss-note', S(v.note)));
+    this.bodyEl.replaceChildren(wrap);
+    this.advisoryEl.replaceChildren();
+  }
+
+  /** The click path into the model's ONE thaw rule. No predicate of its own — `thawPod` refuses a
+   *  row the gate refuses, with the gate's own sentence, exactly as ENTER and `thaw <n>` do. */
+  activatePod(podId) {
+    if (!this.opened || !this.M.thawPod) return;
+    if (this.M.selectPod) this.model = this.M.selectPod(this.model, podId);
+    const res = this.M.thawPod(this.model, podId) || {};
+    if (res.model) this.model = res.model;
+    this._runEffects(res.effects);
+    this.render();
+    this._focusPrompt();
   }
 
   /**

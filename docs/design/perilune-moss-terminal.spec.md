@@ -197,6 +197,34 @@ existing `moss audit` op when `tid == "@console"`. It is deliberately *not* a `S
 per-program ring, for reason (3) under IX-M40. Entries use the interpreter's own text shape —
 `close(door_aft)`, `set(vent_ls.rate, 0.5)` — so player and program lines read as peers.
 
+### 1.4 `moss` op `pods` — the POD BAY (added 2026-08-01, M3-4)
+
+```
+→ {"type":"moss","op":"pods","tid":"@console"}
+← {"type":"moss","ev":"pods","tid":"@console","term":"term_moss","moss":"COMMISSIONED",
+   "note":"HEADROOM FOR 2 CREW …","rows":[[n,pod,occupant,state,stateWord,why,reason,can],…]}
+```
+
+`state` is the append-only code `0 OPEN · 1 SEALED · 2 NO SIGNAL · 3 CYCLING` and `stateWord` is its
+word; `why` is the `ThawRefusal` ordinal and `reason` is `ThawGate.DescribeRow`'s sentence; `can` is
+`0|1`, the gate's own verdict. **Both halves of each pair ship** for the reason §1.3's thaw reply
+gives: a code with no sentence is unrenderable and a sentence with no code is unstylable. `can` is
+carried explicitly rather than derived from `why == 0` so that no client is ever tempted to compute
+thawability from a state word.
+
+`term` is the console the SIM resolved (`ThawGate.CommissionedConsoleName`) — the prompt addresses
+the `@console` pseudo-tid, which has no device behind it, and `Device.Scriptable` has never reached
+the wire, so a client choosing a terminal would be guessing at the one fact the gate turns on. **The
+client sends `term` straight back with a `thaw`.**
+
+⛔ **The op is REFUSED, never answered with an empty bay.** Ship gate first
+(`MossGate.IsServerLive` ⇒ the OFFLINE sentence), then the commissioned tier (⇒ the CONTROLLER
+MODULE sentence) — worst-first, ship before target, the same ordering §1.2's ops use. Both refusals
+travel as an ordinary `ev:exec` stream-2 line, so they render on whatever screen the player is on.
+⚠️ **The bay is a request/reply op, not a pushed channel**, and the client polls it (1 Hz) while the
+screen is up: `GameSession.Send` drops a byte-identical channel payload, so re-asking on the pushed
+`systems` message would stall exactly on a quiet ship.
+
 **IX-M42 — the prompt is bounded.** Input is capped at 240 characters host-side (not only in the
 DOM), and a malformed line is a typed error response, never an exception and never a silent no-op.
 Player text from this path **never reaches an LLM prompt** and is never echoed into sim state
@@ -322,10 +350,11 @@ another lane's file mid-flight.
 | **IX-M7** | Rows are also **clickable**, and a click selects without activating; a double-click activates (= `ENTER`). Keyboard-first does not mean mouse-hostile. Hit targets span the full row width, as the mock's selection band does. |
 | **IX-M8** | The `>` prompt is **always focused by default** on the LEDGER screen: typing anywhere goes to it without clicking. Navigation keys (`↑`/`↓`/`ENTER`/`L`/`P`/`ESC`) are intercepted **before** the prompt only while the prompt buffer is **empty** — once the player has typed a character, `↑`/`↓` are command history and `ENTER` submits. This is the one genuinely fiddly rule in the spec; it must be a table in `moss-model.js` and node-tested in both buffer states. **Clarified 2026-07-22** (the enumerated set above is `↑ ↓ ENTER L P ESC`, but IX-M3 gives `PageUp`/`PageDown`/`Home`/`End` a ledger meaning too, so the two rules were ambiguous together): `PageUp`/`PageDown` stay **navigation in both buffer states**, because they cannot type a character and mean nothing in a one-line input; `Home`/`End` are navigation only while the buffer is empty and otherwise belong to the text cursor. A held `Ctrl`/`Alt`/`Meta` always passes the key to the browser (`Ctrl-L` is not ours); `Shift` alone does not change routing. **Amended 2026-07-31 (OD-P) — see the note below this table:** `L` and `P` are **struck from the intercepted set**, which is now `↑ ↓ ENTER ESC PageUp PageDown Home End` — no printable character is routed in either buffer state. One rule is added: `ENTER` on a **non-empty** buffer submits on **every screen that shows the prompt** (LEDGER, DETAIL, FAULTLOG), because a letter typed there now lands in that buffer and the line must be sendable; PROGRAM is unchanged (its IDE owns the keys). |
 | **IX-M9** | Prompt history: `↑`/`↓` on a non-empty buffer walk previously submitted lines (bounded, newest first). Submitting appends. Duplicate consecutive lines collapse. |
-| **IX-M10** | Commands: `HELP` · `STATUS` · `OPEN <system>` · `LOG [system]` · `PROG [terminal]` · `CLEAR` · `EXIT`, plus device verbs per IX-M40 and bare property reads (`ship.power`). Verbs and system names are **case-insensitive and space-tolerant** (`open life support` == `OPEN life_support`). An unknown verb answers with the one-line `HELP` pointer, never a stack trace. |
+| **IX-M10** | Commands: `HELP` · `STATUS` · `OPEN <system>` · `LOG [system]` · `PROG [terminal]` · `PODS` · `THAW <n\|capsule\|name>` · `CLEAR` · `EXIT`, plus device verbs per IX-M40 and bare property reads (`ship.power`). **Amended 2026-08-01 (M3-4):** `PODS` and `THAW` are the POD BAY's two words — see **IX-M14** below. Verbs and system names are **case-insensitive and space-tolerant** (`open life support` == `OPEN life_support`). An unknown verb answers with the one-line `HELP` pointer, never a stack trace. |
 | **IX-M11** | Typing in the MOSS prompt must not fire game shortcuts. The existing guard-first `isTextEntryTarget` rule (interaction-spec) covers this; MOSS's own keys are handled inside the MOSS view only. |
 | **IX-M12** | The screen re-renders on every `systems` message, but **selection is preserved by row `id`**, never by index — a row set that changes length must not move the cursor under the player's hand. |
 | **IX-M13** | Disconnected/stale: if no `systems` message has arrived, the ledger shows `NO TELEMETRY — LINK DOWN` and the prompt refuses device writes with a typed error. It never shows an empty table that reads as "all systems nominal". |
+| **IX-M14** | **⭐ Added 2026-08-01 by `pod-bay` (M3-4).** `PODS` opens the **POD BAY**, the fifth screen: one row per cryo capsule — `# · OCCUPANT · STATE · WHY / WHAT IT NEEDS` — where STATE is `OPEN`/`SEALED`/`NO SIGNAL`/`CYCLING` and **every closed row states why it will not cycle, with the number that produced it** (OD-L). ⛔ **Unlike every other screen here, the COMMAND does not open it — the REPLY does.** The bay is COMMISSION-gated (M3-3 term 2), so the ask can come back as a refusal, and a screen opened by the command would sit empty beside the sentence explaining why it is empty. The header names the console and **which of OD-N's three MOSS states it is in** (DARK · REPAIRED · COMMISSIONED); the other two states are stated by the refusal on the transcript, at the point of the ask (RW §2.2). `↑`/`↓`/`PageUp`/`PageDown`/`Home`/`End` move the capsule cursor, `ENTER` thaws the selected one, and `THAW <n\|capsule\|name>` does the same from the prompt — **one rule, three doors** (RW §8.4 rung 3): all three ask the row's own `can` bit, which is `ThawGate.Evaluate`'s verdict, and a refused capsule answers with the gate's own sentence. A thaw is **single-flight** until the bay's own rows show the ship moved. No printable key is bound (OD-P holds). |
 | **IX-M22** | DETAIL renders, under the device table, a plain-prose **DERIVATION** note stating exactly how this row's LOAD and STATE are computed and what the proxy's limits are (DA-M3). This text is part of the feature, not a comment. |
 
 > **Amended 2026-07-31 by `moss-hotkeys`, on an owner decision (OD-P).** The single-letter screen

@@ -1354,3 +1354,187 @@ test('applyTakeover is total and degenerate-safe', () => {
   assert.equal(root.hidden, true);
   assert.doesNotThrow(() => applyTakeover(null, true));
 });
+
+// ═══════════════════════════════════════════════ M3-4 — THE POD BAY, on the DOM
+//
+// ⚠️ THESE DRIVE THE SHIPPING MODEL, NOT THE DOUBLE. Every other test in this file uses
+// `moss-model-fake.js`, which is right for a lane that had to render against a stub. The bay is a
+// JOIN — what the wire says, what the model decides, what the DOM draws — and a fake that agreed
+// with the screen would prove the two halves of one lane agree with each other. The `moss-shot.mjs`
+// PROGRAM phase set this precedent for exactly the same reason.
+
+import * as REAL from '../src/ui/moss-model.js';
+import { POD_COLS, POD_HEAD_LINE, POD_REFRESH_MS } from '../src/ui/moss-screen.js';
+
+// ⚠️ `pod_ozawa`'s occupant is `Ozawa-Reyes` ON PURPOSE — see the same note over `PODS_MSG` in
+// moss-model.test.js. The click path's message assertion below is the one that has to bite when a
+// capsule key is COMPOSED from a display name, and it cannot bite on a fixture that round-trips.
+const BAY = {
+  type: 'moss', ev: 'pods', tid: '@console', term: 'term_moss', moss: 'COMMISSIONED',
+  note: 'HEADROOM FOR 2 CREW — FOOD 60 U, CARRIED AND RESERVED INCLUDED',
+  rows: [
+    [1, 'pod_rell', 'Rell', 0, 'OPEN', 2, 'POD IS EMPTY — ALREADY THAWED', 0],
+    [2, 'pod_ozawa', 'Ozawa-Reyes', 1, 'SEALED', 0, 'READY — 2 SEALS', 1],
+    [3, 'pod_vance', 'Vance', 2, 'NO SIGNAL', 3, 'POD — NO SIGNAL', 0],
+    [7, 'pod_torres', 'Torres', 1, 'SEALED', 6, 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0', 0],
+  ],
+};
+
+/** A screen wearing the REAL model, opened, with the bay asked for and answered. */
+function bayScreen(msg) {
+  const doc = new DocumentLite();
+  const root = doc.createElement('div');
+  root.hidden = true;
+  doc.register('moss-view', root);
+  doc.body.appendChild(root);
+  const win = makeWindow();
+  const sent = [];
+  const screen = new MossScreen({ root, document: doc, window: win, model: REAL,
+    send: (o) => sent.push(o) });
+  screen.open();
+  const s = { doc, root, win, sent, screen };
+  if (msg !== null) {
+    typeCmd(s, 'pods');
+    screen.onMossEvent(msg || BAY);
+  }
+  return s;
+}
+
+const podRows = (s) => s.root.byClass('moss-podrow');
+
+test('M3-4: the bay is drawn from the WIRE — and the ASK is recorded at the seam', () => {
+  const s = bayScreen(null);
+  typeCmd(s, 'pods');
+  // MUTATION 1's first half: the MESSAGE, not a text scan (trap 4). A client-side census would
+  // need no request at all, and this is the assertion that would then have nothing to see.
+  assert.deepEqual(s.sent.slice(-1), [{ type: 'moss', op: 'pods', tid: '@console' }],
+    'the bay must be ASKED for; a client-side guess sends nothing');
+  assert.equal(s.root.dataset.screen, 'ledger',
+    'and the ask alone must not open the screen — the reply does');
+  assert.equal(podRows(s).length, 0, 'nothing is drawn from a bay that has not arrived');
+
+  s.screen.onMossEvent(BAY);
+  assert.equal(s.root.dataset.screen, 'podbay', 'the reply drew the POD BAY');
+  assert.equal(podRows(s).length, BAY.rows.length,
+    'MUTATION 1: every row on screen came off the wire, one for one');
+});
+
+test('M3-4: each row lays the wire\'s own four columns on the monospace grid', () => {
+  const s = bayScreen();
+  const line = (i) => podRows(s)[i].textContent;
+  assert.match(line(0), /RELL/, 'the occupant is the sim\'s own SleeperName');
+  assert.match(line(0), /OPEN/);
+  assert.ok(line(3).includes('NEEDS 3 CONTROLLER MODULE — SHIP HAS 0'),
+    'MUTATION 3: the reason column is the feature, rendered VERBATIM and never truncated');
+  assert.ok(POD_HEAD_LINE.includes('WHY / WHAT IT NEEDS'), 'and the table says what the column is');
+
+  // The grid holds: the state column starts at the same character offset on every row.
+  const at = POD_COLS.gutter + POD_COLS.num + POD_COLS.occupant;
+  for (let i = 0; i < BAY.rows.length; i++) {
+    assert.equal(line(i).slice(at, at + BAY.rows[i][4].length), BAY.rows[i][4],
+      'row ' + i + ' is off the grid: ' + JSON.stringify(line(i)));
+  }
+});
+
+test('M3-4: [THAW] is offered on exactly the rows the GATE allows', () => {
+  const s = bayScreen();
+  const offered = podRows(s)
+    .filter((el) => el.byClass('moss-thaw').length > 0)
+    .map((el) => el.dataset.pod);
+  assert.deepEqual(offered, ['pod_ozawa'],
+    'MUTATION 4: the affordance is `row.can` — the gate\'s own verdict — and nothing else. ' +
+    'Deriving it from the STATE word offers three of these four rows.');
+  // …and the refused rows are GREYED WITH THEIR REASON, never hidden (RW §2.2).
+  const dim = podRows(s).filter((el) => /\bdim\b/.test(el.className)).map((el) => el.dataset.pod);
+  assert.deepEqual(dim, ['pod_rell', 'pod_vance']);
+});
+
+test('M3-4: clicking [THAW] emits the thaw MESSAGE, addressed to the console the sim resolved', () => {
+  const s = bayScreen();
+  s.sent.length = 0;
+  const btn = podRows(s).find((el) => el.dataset.pod === 'pod_ozawa').byClass('moss-thaw')[0];
+  fire(btn, 'click');
+  assert.deepEqual(s.sent, [{ type: 'moss', op: 'thaw', tid: 'term_moss', text: 'pod_ozawa' }],
+    'recorded at the seam: the tid is the WIRE\'s `term`, not the prompt\'s @console pseudo-tid');
+});
+
+test('M3-4: activating a REFUSED capsule sends nothing and prints the gate\'s sentence', () => {
+  const s = bayScreen();
+  s.sent.length = 0;
+  fire(podRows(s).find((el) => el.dataset.pod === 'pod_torres'), 'dblclick');
+  assert.deepEqual(s.sent, [], 'the click path may not out-vote the gate');
+  const lines = s.root.byClass('moss-cline').map((e) => e.textContent);
+  assert.ok(lines.some((t) => t === 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0'),
+    '…and the player is told why, at the point of the click: ' + JSON.stringify(lines.slice(-3)));
+});
+
+test('M3-4: the bay POLLS while it is up, and the poll dies with the screen', () => {
+  const s = bayScreen();
+  assert.equal(s.win.timers.size, 1, 'a cycling badge that never re-asks freezes on the wall');
+  assert.equal([...s.win.timers.values()][0].ms, POD_REFRESH_MS);
+
+  s.sent.length = 0;
+  s.win.tickTimers();
+  assert.deepEqual(s.sent, [{ type: 'moss', op: 'pods', tid: '@console' }], 'the poll re-asks');
+
+  // Leaving the bay stops it — and a poll in flight must never RE-OPEN a screen the player left.
+  s.screen.handleKey(keyEvent('Escape'));
+  s.screen.escape();
+  assert.equal(s.root.dataset.screen, 'ledger', 'precondition: ESC left the bay');
+  assert.equal(s.win.timers.size, 0, 'the poll outlived the screen it drew in');
+  s.sent.length = 0;
+  s.screen.refreshPods();
+  assert.deepEqual(s.sent, [], 'a stray refresh off the bay must send nothing');
+
+  s.screen.close();
+  assert.equal(s.win.timers.size, 0);
+});
+
+test('M3-4: the bay closes its poll when MOSS closes with the bay still up', () => {
+  const s = bayScreen();
+  assert.equal(s.win.timers.size, 1);
+  s.screen.close();
+  assert.equal(s.win.timers.size, 0, 'MOSS can be left with the bay open; the timer may not survive it');
+});
+
+test('M3-4: the bay\'s keys travel through the SAME capture-phase listener as every other screen', () => {
+  const s = bayScreen();
+  assert.equal(s.win.capture.length, 1, 'precondition: one capture-phase keydown listener');
+  assert.equal(s.win.bubble.length, 0, 'MUTATION 5: registering in the BUBBLE phase lets a game ' +
+    'shortcut fire first and silently kills the gesture with this suite green');
+
+  const before = s.screen.model.pods.selectedPod;
+  const e = keyEvent('ArrowDown');
+  s.win.capture[0](e);                      // exactly what the browser would do
+  assert.notEqual(s.screen.model.pods.selectedPod, before,
+    'an arrow key on the bay must reach the model through that listener');
+  assert.equal(e.defaultPrevented, true, 'and be swallowed, because the model claimed it');
+});
+
+test('M3-4: the header states WHICH MOSS state, and the headroom note says which food number', () => {
+  const s = bayScreen();
+  const term = s.root.byClass('moss-podterm').map((e) => e.textContent);
+  assert.deepEqual(term, ['term_moss · COMMISSIONED'],
+    'OD-N: the console is DARK, REPAIRED or COMMISSIONED and the header must say which');
+  const notes = s.root.byClass('moss-note').map((e) => e.textContent);
+  assert.ok(notes.some((t) => /CARRIED AND RESERVED/.test(t)), 'the headroom label reached the screen');
+});
+
+test('M3-4: an empty bay says so rather than reading as "everybody is out"', () => {
+  const s = bayScreen({ ...BAY, rows: [] });
+  assert.equal(podRows(s).length, 0);
+  assert.ok(s.root.byClass('moss-empty').map((e) => e.textContent).some((t) => /NO CAPSULES/.test(t)));
+});
+
+test('M3-4: the DOM fixture can see the forbidden derivation too (the click path is a second door)', () => {
+  // The same guard as moss-model.test.js's, on the OTHER fixture: the click path reaches
+  // `thawPod` → `activateThaw` and asserts its own wire message, so BAY has to be shaped to bite
+  // as well. Two fixtures, two files, either one tidy-able on its own.
+  const compose = (occupant) => 'pod_' + String(occupant).replace(/[A-Z]/g, (c) =>
+    String.fromCharCode(c.charCodeAt(0) + 32));
+  const offered = BAY.rows.filter((r) => r[7] === 1);
+  assert.ok(offered.length > 0, 'precondition: BAY offers at least one capsule');
+  assert.ok(offered.some((r) => compose(r[2]) !== r[1]),
+    'every offered BAY row round-trips occupant → key, so composing the key from the display ' +
+    'name is indistinguishable from reading it, and the click-path message assertion cannot bite');
+});

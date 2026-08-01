@@ -1259,3 +1259,39 @@ test('an unbalanced quote can damage at most its own line — the scans cannot b
     'an unbalanced quote on line 1 swallowed later lines — the string scan must stop at the newline');
   assert.deepEqual([...domLookups(out)].sort(), ['crewlist', 'palette']);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// M3-4 MUTATION 6 — THE POD BAY'S STATE LIVES IN THE MODEL, NOT IN THE SHELL.
+//
+// `hud.js` is the DEPRECATED `.app` console module and M4-8 deletes it, taking the MOSS door with
+// it. The charter's own words: "M3-4 must not deepen the hud.js coupling (no new state in the
+// shell; the model owns everything)". The four-number census above cannot see this — a bare
+// `let _pods = null;` plus a line in `renderMoss` moves no DOM-lookup, no createElement, no
+// innerHTML and no import — so the coupling needs its own guard, and this is it.
+//
+// MUTATION: add `let _pods = null;` (or cache the bay in `renderMoss`) to client/src/ui/hud.js ⇒ RED.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+test('the POD BAY keeps no state in the deprecated console shell (M3-4, M4-8)', () => {
+  const raw = readOrNull('src/ui/hud.js');
+  if (raw === null) return;                       // WP-9 deleted it; nothing left to couple to
+  const code = codeOnly(raw);
+
+  // Names that only a module HOLDING the bay would carry. Deliberately not the word "moss": hud.js
+  // legitimately owns the MOSS door (`_moss`, `renderMoss`, `reflectMossView`) and always has.
+  const POD_STATE_NAMES = /\b(_pods|_podbay|podRows?|podBay|_thaw|thawPod|podCensus)\b/;
+  assert.equal(POD_STATE_NAMES.test(code), false,
+    'client/src/ui/hud.js names POD BAY state.\n' +
+    '\n' +
+    'THE BOUNDARY: the bay is `model.pods` in the pure client/src/ui/moss-model.js, drawn by ' +
+    'moss-screen.js. hud.js is the deprecated `.app` shell and M4-8 deletes it — anything cached ' +
+    'here has to be re-homed by that package, and a MOSS event already reaches the terminal ' +
+    'through the `renderMoss` → `_moss.onMossEvent` line that has existed since W3. The bay needed ' +
+    'ZERO hud.js changes to ship; keep it that way.');
+
+  // NEGATIVE CONTROL (trap 1 + the 4th shape): prove the scan can see what it claims to look for,
+  // through the stripper, and that a COMMENT does not satisfy it.
+  assert.equal(POD_STATE_NAMES.test(codeOnly('let _pods = null;')), true,
+    'the scan cannot see its own subject — every green above is meaningless');
+  assert.equal(POD_STATE_NAMES.test(codeOnly('// let _pods = null;\nlet ok = 1;')), false,
+    'a commented-out line satisfied the scan; codeOnly() is not stripping');
+});
