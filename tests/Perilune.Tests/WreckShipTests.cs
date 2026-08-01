@@ -591,6 +591,103 @@ namespace Perilune.Tests
                 "scan that instead — do not silently keep scanning half of it.");
         }
 
+        /// <summary>
+        /// ⭐⭐ <b>THE SECOND PROSE CENSUS — <c>WreckPods</c>' OWN <c>&lt;summary&gt;</c>, WHICH THE
+        /// TEST ABOVE COULD NOT SEE.</b> M3-6 shipped the header scan anchored on the banner block
+        /// titled CAPSULES; independent review then proved that a stale edit to the doc comment on
+        /// the <c>WreckPods</c> table ITSELF survives it untouched. Two prose censuses, one guard.
+        /// M3-6's integrator handed the widening to this package by name.
+        ///
+        /// <para>⚠️ <b>A SIBLING LEG, NOT A REBUILT SCANNER.</b> It reuses
+        /// <see cref="MissingCensusPhrases"/> unchanged, so the two blocks owe the SAME sentences
+        /// built from the SAME hand-written literals — which is the property that matters: a
+        /// reader who corrects one census and not the other now fails the build.</para>
+        ///
+        /// <para>⚠️ <b>THE ANCHOR IS THE DECLARATION, NOT A NUMBER</b> (same reason as
+        /// <see cref="RawCapsuleHeaderBlock"/>): a summary reverted to "eight capsules" must still
+        /// be FOUND so the phrase checks can fail on it. Anchoring on a value under test would lose
+        /// the block and go vacuous instead of red — and it must match EXACTLY ONCE (trap 4, the
+        /// fourth shape: non-vacuity is an INCLUSION test).</para>
+        /// </summary>
+        [Test]
+        public void WreckPodsOwnSummary_StatesTheSameCensusAsTheseLiterals()
+        {
+            string block = RawWreckPodsSummaryBlock();
+
+            Assert.That(block.Length, Is.GreaterThan(400),
+                "the WreckPods summary extracted to " + block.Length + " characters, which is too " +
+                "short to be the census doc comment — the anchor has drifted and every assertion " +
+                "below would pass vacuously");
+
+            var missing = MissingCensusPhrases(block);
+            Assert.That(missing, Is.Empty,
+                "THE `WreckPods` TABLE'S OWN <summary> NO LONGER STATES THE CENSUS IT AUTHORS.\n" +
+                "  missing from sim/Sim.Gen/AuthoredShips.cs's WreckPods doc comment:\n    " +
+                string.Join("\n    ", missing) + "\n" +
+                "⇒ The literals in this file say " + PodCount + " capsules / " + PodsOpen +
+                " open / " + PodsIntactOccupied + " intact occupied / " + PodsWreckedDead +
+                " wrecked, i.e. " + LivingSouls + " living souls. THIS IS THE SHIP'S SECOND CENSUS " +
+                "PROSE and it must say the same thing as the banner header above it.");
+
+            // --- NON-VACUITY, BY INCLUSION: the planted stale summary must be CAUGHT. Written out
+            // by hand, in the `///` form this block really has, so the widened stripper is exercised
+            // on the shape it was widened for. THIS IS THE MUTATION M3-6's REVIEWER PROVED SURVIVES
+            // TODAY — it is here so it cannot survive again.
+            const string staleSummary =
+                "        /// <summary>The bay's eight capsules, in two rows of four across the cryo bay's interior.\n" +
+                "        ///\n" +
+                "        /// SIX LIVING — one already open (the pawn the player starts with) and five intact and\n" +
+                "        /// occupied, thawable one at a time through MOSS (W5). Six is the owner's design target\n" +
+                "        /// and is NOT tunable here.\n" +
+                "        ///\n" +
+                "        /// TWO WRECKED — dead sleepers, in addition to the six. Two is this lane's number and\n" +
+                "        /// IS tunable; see the header.</summary>\n";
+            var caught = MissingCensusPhrases(staleSummary);
+            Assert.That(caught, Is.Not.Empty,
+                "NON-VACUITY: the scanner cannot see a WreckPods summary planted with the stale " +
+                "8/1/5/2 census, so its empty result above means nothing");
+            Assert.That(string.Join(" | ", caught), Does.Contain("twelve capsules"),
+                "NON-VACUITY: the scanner noticed SOMETHING about the stale summary but not that it " +
+                "claims eight capsules where the ship authors twelve");
+
+            // --- AND THE PROOF THAT THIS BLOCK REALLY IS COMMENT TEXT: the shared code-only
+            // stripper deletes it entirely. Same inversion, same justification as the header scan.
+            string asCode = SurfaceBoundaryTests.CodeOnly(RawWreckPodsSummaryBlock());
+            Assert.That(asCode.Trim(), Is.Empty,
+                "the WreckPods summary block survived SurfaceBoundaryTests.CodeOnly, so it is not " +
+                "pure comment text any more: '" + asCode.Trim() + "'");
+        }
+
+        /// <summary>
+        /// The contiguous run of <c>///</c> lines immediately above the <c>WreckPods</c> table
+        /// declaration. The declaration is the anchor and it must appear EXACTLY ONCE.
+        /// </summary>
+        private static string RawWreckPodsSummaryBlock()
+        {
+            string[] lines = File.ReadAllLines(Path.Combine(
+                WreckRepoRoot(), "sim", "Sim.Gen", "AuthoredShips.cs"));
+
+            var anchors = new List<int>();
+            for (int i = 0; i < lines.Length; i++)
+                if (lines[i].Trim().StartsWith("private static readonly PodSpec[] WreckPods",
+                                               StringComparison.Ordinal))
+                    anchors.Add(i);
+            Assert.That(anchors.Count, Is.EqualTo(1),
+                "expected EXACTLY ONE `private static readonly PodSpec[] WreckPods` declaration in " +
+                "AuthoredShips.cs, found " + anchors.Count + ". The anchor is the declaration the " +
+                "prose describes, so ambiguity here is a failure and not a fallback.");
+
+            int first = anchors[0];
+            while (first > 0 && lines[first - 1].Trim().StartsWith("///", StringComparison.Ordinal)) first--;
+            Assert.That(first, Is.LessThan(anchors[0]),
+                "the WreckPods table carries NO doc comment at all — the ship's second census prose " +
+                "has been deleted rather than corrected");
+
+            var sb = new StringBuilder();
+            for (int i = first; i < anchors[0]; i++) sb.Append(lines[i]).Append('\n');
+            return sb.ToString();
+        }
+
         /// <summary>The census phrases the header must contain, each BUILT FROM the hand-written
         /// literal it restates, so changing a literal changes the sentence the prose owes. Matched
         /// case-insensitively against the block with its comment markers stripped and its
@@ -615,14 +712,18 @@ namespace Perilune.Tests
         }
 
         /// <summary>Comment markers off, whitespace collapsed. InvariantCulture-safe by
-        /// construction: no parsing, no formatting, an ordinal comparison at the call site.</summary>
+        /// construction: no parsing, no formatting, an ordinal comparison at the call site.
+        /// <para>⚠️ M3-11 widened the strip from <c>"//"</c> to "every leading slash", because the
+        /// SECOND census block this file now scans is a <c>///</c> doc comment. Leaving a stray
+        /// <c>/</c> at the head of each line is not cosmetic: a required phrase that wraps across
+        /// two lines would read <c>"EIGHT / LIVING"</c> and silently stop matching, which is a
+        /// false RED in the same family as the traps this file is full of.</para></summary>
         private static string ProseOf(string blockText)
         {
             var sb = new StringBuilder(blockText.Length);
             foreach (var raw in blockText.Split('\n'))
             {
-                string line = raw.Trim();
-                if (line.StartsWith("//", StringComparison.Ordinal)) line = line.Substring(2);
+                string line = raw.Trim().TrimStart('/');
                 sb.Append(' ').Append(line.Trim());
             }
             var collapsed = new StringBuilder(sb.Length);
@@ -1381,7 +1482,7 @@ namespace Perilune.Tests
             // wrecked SolarWing still supplies its full kW", so authored damage could not brown a
             // tier back in and a tier shed at boot was shed for ever. That premise is GONE:
             // generation now rides Device.EffectiveRate (PowerSystem.cs:235), the wreck's three
-            // damaged wings feed 10.65 kW against 14.30 of demand, and PowerTier.Industry is shed
+            // damaged wings feed 10.65 kW against 14.80 of demand, and PowerTier.Industry is shed
             // once the 15 kWh bank runs out at about sim-hour 4. THE BENCHES BEING DARK IS NOW A
             // STATE THE PLAYER REPAIRS THEIR WAY OUT OF, not a dead end.
             // ⇒ So the unwinnable ship is no longer "Industry shed at boot"; it is "Industry shed
@@ -1426,7 +1527,7 @@ namespace Perilune.Tests
 
             // ⭐ THE LEG THAT NOW CATCHES THE UNWINNABLE SHIP (M2-12). Bring the wings to the
             // ceiling the opening can reach — the ship's one Parts overhauls one wing to 1.00 and
-            // its Seals take the other two to 0.90, which is 17.40 kW against 14.30 of demand —
+            // its Seals take the other two to 0.90, which is 17.40 kW against 14.80 of demand —
             // and hold the ship there for twelve sim-hours. If the benches are dark HERE, no
             // amount of repairing gets the matter ladder running and the opening is unwinnable.
             //
@@ -1505,7 +1606,8 @@ namespace Perilune.Tests
                                 $"{bankAtEnd.ToString("F6", CultureInfo.InvariantCulture)} kWh across twelve sim-hours " +
                                 "at the ceiling, under a floor of " +
                                 BankRebuildFloorKWh.ToString("F2", CultureInfo.InvariantCulture) + " kWh. It must " +
-                                "REBUILD (measured: 33.907): generation there is 17.40 kW against 14.30 kW of TOTAL " +
+                                "REBUILD (measured: 27.898 on the M3-11 tree; 33.907 before it): generation there is " +
+                                "17.40 kW against 14.80 kW of TOTAL " +
                                 "demand. A ship whose benches run while its reserve sits at empty is break-even at " +
                                 "the Industry line — it can never light a lamp again and has nothing left for the " +
                                 "next failure, and the bench count alone cannot tell you that");

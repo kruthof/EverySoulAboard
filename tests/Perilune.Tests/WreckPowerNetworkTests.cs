@@ -55,12 +55,28 @@ namespace Perilune.Tests
         /// 554 tiles before, 531 with the taps removed and nothing added, 539 shipped; all 23
         /// deck-1 devices stood over a trayed tile (0 did not); the 8 bulkhead runs stand on hull,
         /// none on a floor tile.</summary>
-        private const int TotalDevices = 611;
-        /// <summary>Every device standing on deck 1 — 8 hall doors, 1 ladder and 14 pieces of
-        /// ruined machinery. All of them, and nothing else, must be off the grid.</summary>
-        private const int Deck1Devices = 23;
-        /// <summary>kW the ship actually books at boot, driven. 20.40 before this package.</summary>
-        private const float FlatDemandKW = 14.30f;
+        /// ⚠️ 611 -> 612 WITH M3-11, AND THE TRAY DID NOT MOVE AT ALL. That package added exactly
+        /// one device (<c>vent_d1</c>) and exempted its riser tap, and the exempted tile is the one
+        /// <c>vent_cryo</c> stands on — a tile no deck-1 device stood over before, so it was never
+        /// in the cut set. CUT 23 · EXEMPT 1 · ADDED 8 bulkhead runs; tray still 539.</summary>
+        private const int TotalDevices = 612;
+        /// <summary>Every device standing on deck 1 — 8 hall doors, 1 ladder, 14 pieces of ruined
+        /// machinery and (M3-11) <c>vent_d1</c>. 23 -> 24.</summary>
+        private const int Deck1Devices = 24;
+        /// <summary>⭐ AND THIS IS WHY THE TWO NUMBERS ARE SEPARATE CONSTANTS NOW. Until M3-11
+        /// "on deck 1" and "off the grid" were the same set and one literal said both. They are not
+        /// the same set any more: <b>exactly one</b> deck-1 device is ON the trunk, through the one
+        /// exempted riser tap, and it is the vent the whole package exists to power.</summary>
+        private const int Deck1OnNetwork = 1;
+        private const int Deck1OffNetwork = Deck1Devices - Deck1OnNetwork;   // 23
+        /// <summary>The one deck-1 device that must be POWERED. Written out, not read from
+        /// <c>AuthoredShips</c> — same rule as every other literal in this file.</summary>
+        private const string Deck1Vent = "vent_d1";
+        /// <summary>kW the ship actually books at boot, driven. 20.40 before M2-11, 14.30 after it,
+        /// 14.80 since M3-11 — an OPEN AirVent on the trunk is 0.5 kW of LifeSupport
+        /// (<c>PowerSystem.IsWanting</c>), and it pays it while broken because only GENERATION
+        /// rides <c>EffectiveRate</c>.</summary>
+        private const float FlatDemandKW = 14.80f;
         /// <summary>Three SolarWings at machines.def `gen` = 6 kW — the ship's NAMEPLATE generation,
         /// i.e. the wired generating hardware aboard.
         /// ⚠️ SINCE M2-12 THIS IS NO LONGER WHAT THE SHIP RUNS ON. `PowerSystem.Balance` scales
@@ -76,35 +92,43 @@ namespace Perilune.Tests
         // ------------------------------------------------------------------- 1. the census
 
         /// <summary>
-        /// THE OUTCOME TEST. Deck 1 is off the grid, deck 0 is on it, and the two sets are exactly
-        /// the two decks — asserted device by device so a partial cut (the shape the naive fix
-        /// produces) cannot pass by count alone.
+        /// THE OUTCOME TEST. Deck 1 is off the grid but for ONE named exemption, deck 0 is on it,
+        /// and it is asserted device by device so a partial cut (the shape the naive fix produces)
+        /// cannot pass by count alone.
+        ///
+        /// <para>⭐ <b>M3-11 — THE CENSUS LEG (charter mutation 4).</b> "Restore more than one tap"
+        /// must be RED here, and it is: a second exemption makes the off-network count 22 and puts
+        /// a second deck-1 device on the trunk, and BOTH show, by name. The exemption is expressed
+        /// as an ADDITION (<c>Deck1Devices = Deck1OnNetwork + Deck1OffNetwork</c>) and never as a
+        /// net, so the count that moves says which count moved.</para>
         /// </summary>
         [Test]
-        public void Deck1IsGenuinelyOffNetwork_AndNothingOnDeck0Is()
+        public void Deck1IsGenuinelyOffNetwork_ExceptTheOneExemptedRiser_AndNothingOnDeck0Is()
         {
             var sim = Boot();
             var devices = sim.Devices.Items;
             var offenders = new List<string>();
-            int off = 0, deck1 = 0;
+            int off = 0, deck1 = 0, deck1On = 0;
             for (int i = 0; i < devices.Count; i++)
             {
                 var d = devices[i];
                 if (d.NetworkId == 0) off++;
-                if (d.Pos.Z == 1) deck1++;
-                bool shouldBeOff = d.Pos.Z == 1;
+                if (d.Pos.Z == 1) { deck1++; if (d.NetworkId != 0) deck1On++; }
+                bool shouldBeOff = d.Pos.Z == 1 && d.Name != Deck1Vent;
                 bool isOff = d.NetworkId == 0;
                 if (isOff != shouldBeOff)
                     offenders.Add($"{d.Name} ({d.Kind}) at {d.Pos.X},{d.Pos.Y},{d.Pos.Z} has NetworkId " +
-                                  $"{d.NetworkId} — expected {(shouldBeOff ? "0 (deck 1 is dead)" : "non-zero (deck 0 is the live trunk)")}");
+                                  $"{d.NetworkId} — expected {(shouldBeOff ? "0 (deck 1 is dead)" : "non-zero (the deck-0 trunk, or M3-11's one exempted riser)")}");
             }
 
             // ⚠️ ONE ASSERT, EVERY LEG IN IT. `Assert` throws, so a per-leg assertion would let the
-            // device-by-device list hide the three counts (and vice versa) — the fifth trap shape.
+            // device-by-device list hide the counts (and vice versa) — the fifth trap shape.
             if (deck1 != Deck1Devices)
                 offenders.Add($"deck 1 holds {deck1} devices, not {Deck1Devices} — re-measure the census AND the demand before editing that literal");
-            if (off != Deck1Devices)
-                offenders.Add($"{off} devices are off-network, not {Deck1Devices}");
+            if (deck1On != Deck1OnNetwork)
+                offenders.Add($"{deck1On} deck-1 devices are ON the trunk, not {Deck1OnNetwork} — M3-11 exempts EXACTLY ONE riser tap ({Deck1Vent}'s)");
+            if (off != Deck1OffNetwork)
+                offenders.Add($"{off} devices are off-network, not {Deck1OffNetwork}");
             if (devices.Count != TotalDevices)
                 offenders.Add($"the device store holds {devices.Count}, not {TotalDevices} — every census in AuthoredShips' header is quoted against this number");
             Assert.That(offenders, Is.Empty,
