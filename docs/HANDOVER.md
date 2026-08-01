@@ -62,10 +62,10 @@ FULL RECORDS in the §3 queue rows of `perilune-m3.packages.md` — this is the 
 1. **M3-3 ThawGate** (owes `PodIdentityTests` its thaw leg + M3-6's band-edge sweep;
    needs M3-2 ✅ + M3-6 ✅) → **M3-15 (6b, integrator/spine: OD-N gate + OPERATE
    removal)** → M3-4 POD BAY → M3-13 (same window) → **M3-16 (8b, the vent puzzle)** → …
-2. **The owner runs the MOSS 60-s manual script** (fix MERGED `f74844a`, node 1132; the
-   script is in the 07-31 conversation + impl evidence): dismiss onboarding → MOSS →
-   type `status` without clicking → P → term_moss → type 15 s without clicking → ESC →
-   type immediately → `L` hotkey-vs-typing check → Tab traverses.
+2. **Owner manual check** (input fix `f74844a` VERIFIED WORKING by the owner 07-31; OD-P
+   `42f59ca` still owed a look): in MOSS, `l` and `p` must TYPE into the prompt (nothing
+   opens); `log` + Enter / `prog` + Enter navigate; on a system's DETAIL, bare `log`
+   opens that system's filtered log.
 3. Housekeeping candidate: 8 unmerged review-*/spike worktrees from the audit (verify
    wanted, then prune). ALL of this session's lane worktrees pruned (5 lanes).
 
@@ -106,6 +106,14 @@ FULL RECORDS in the §3 queue rows of `perilune-m3.packages.md` — this is the 
   OD-O outcome folded in (survivability dissolved for `vent_d1`; console opens doors) +
   two older drifted anchors M3-2's sweep deliberately left (§13.27 `:1856`→ measured
   `:1963`; §13.28 `:1760-1777`→ measured `:1865-1882` — sibling packages' records).
+- **MOSS console filed set** (from the input-fix + OD-P reviews, all pre-existing):
+  a command typed on the PROGRAM screen can never be submitted (the prompt renders there
+  but IX-M11 gives the IDE every key — the one screen where the terminal lies; hide the
+  prompt row or route it, M3-4's window) · off-LEDGER `↑`-history and ESC-clear-first are
+  LEDGER-only · `log` on an open FAULTLOG re-opens rather than toggles (deliberate, ESC
+  closes) · `moss-model-fake.js` carries an unguarded copy of `KEY_ROUTE` (the double can
+  drift from the shipping table; benign while the class guard sits on the real one) ·
+  vanished-tid PROGRAM selection keeps a dead editor mounted.
 - **M3-2 filed set**: a pod finishing with NO free exit tile blocks the whole bay forever,
   silently (deliberate refusal, unrecorded queue consequence — M3-3/M3-4 own the surface) ·
   nothing pins `CryoSystem`'s tick allocation (`StateHashHonestyTests:805` excludes
@@ -142,4 +150,5 @@ FULL RECORDS in the §3 queue rows of `perilune-m3.packages.md` — this is the 
 | 07-31 B | pod-census | **the thaw ladder is AUTHORED**: each intact pod's price now derives from its `Condition` (rungs 1–7, depth 0,0,2,2,3,3,3, `ThawGate.RungOf`) — content that exists and nothing consumes until M3-3; census 12/1/7/4 self-consistent, stale 8/1/5/2 swept from four docs | green, pins UNMOVED, APPROVE first pass |
 | 07-31 B | deck1-vent · od-n-charter | **deck 1 is ONE repair from air, and the ship learns who it answers to**: `vent_d1` authored (repair fills the hall past 80 kPa, both delivery blockers filed in order); OD-N (doors+vents MOSS-only, split gate repair→console / commission→programs) + OD-O (the vent becomes the first PROGRAMMING PUZZLE, one instance, not a pattern) recorded; M3-15 (6b) + M3-16 (8b) chartered against driven measurements (tick-0 ungated console; 0 CM aboard; 14/16 doors shut) | green, pins UNMOVED, 1 send-back each, worktrees pruned 2 |
 | 07-31 B | cryo-system | **A POD CYCLES**: set a capsule counting and a named person steps out beside it — 4 sim-min, one at a time, wrecked pods never, single-use honoured; emergency-thaw bit stored for M3-5 | green, **PIN M3-a: P1/P2/P3 MOVED fold-only (cause measured), P4/P5 held**, tag `pin/m3-a`, 1 doc-only send-back |
-| 07-31 B | moss-input | **the MOSS terminal takes typing again** (owner-reported live): the PROGRAM editor no longer blurs on wire renders (subtree built once — `replaceChildren(sameNode)` blurs too, measured in Chrome); a declined key lands in the prompt incl. AltGr on de-DE; dom-lite's four blur rules self-pinned (each was silently inert alone) | node 1132 (+12), APPROVE + 3 review additions, owner manual script OWED |
+| 07-31 B | moss-input | **the MOSS terminal takes typing again** (owner-reported live): the PROGRAM editor no longer blurs on wire renders (subtree built once — `replaceChildren(sameNode)` blurs too, measured in Chrome); a declined key lands in the prompt incl. AltGr on de-DE; dom-lite's four blur rules self-pinned (each was silently inert alone) | node 1132 (+12), APPROVE + 3 review additions, **owner VERIFIED working** |
+| 07-31 B | moss-hotkeys | **OD-P: the MOSS console is a TERMINAL** — `l`/`p` type into the prompt (an `ls` command is now possible later); `log`/`prog` navigate, bare `log` on DETAIL inherits the filter, ENTER submits wherever the prompt shows; the screenshot harness now proves WHICH screen it drew (its verdict used to echo the request) | node 1138 (+6), 1 send-back (harness on deleted keys), spec amended |
