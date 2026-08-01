@@ -432,7 +432,15 @@ export function decodeItems(msg) {
  * pass 5 the moment a crew member stands on the tile. `Powered` is still absent, deliberately —
  * `PowerSystem` rewrites it once a second on every drawing device, so it would make this payload
  * differ on nearly every render.
- * @typedef {[number,number,number,number,number,number,number]} DeviceTuple
+ *
+ * ⭐ `serv` IS THE EIGHTH ELEMENT (M3-13): 1 when this KIND of machine can EVER be serviced, 0 when
+ * it never can — the sim's `MaintenanceSystem.IsEverServiceable`, i.e. the def's `maint` opt-out.
+ * `CryoPod` is `maint = 0.00` deliberately, so every capsule reads `serv = 0` and the Room Zoom's
+ * right-click menu stops promising a repair the sim will never take (`prioritise-model.js`).
+ * ⚠️ IT IS A PER-KIND FACT, so it is constant for the life of a session — which is exactly why it
+ * must be READ and not guessed: a client-side list of never-serviceable kinds is a hand mirror of a
+ * DEF, and it drifts silently the day content moves.
+ * @typedef {[number,number,number,number,number,number,number,number]} DeviceTuple
  * @typedef {{type:'devices', cells:DeviceTuple[]}} DevicesMsg
  */
 
@@ -451,8 +459,15 @@ export function decodeItems(msg) {
  * would drop every device on the floor mid-upgrade and take the wear layer with it, to avoid a
  * missing bit that `t[6] | 0` already reads as 0 (= SHUT). A shut-by-default door is the same thing
  * the surface drew before this element existed.
+ *
+ * ⭐ `serv` (element 8, M3-13) DEFAULTS TO 1 — "serviceable" — WHEN THE ROW IS SHORT, and that
+ * asymmetry with `open`'s 0-default is the whole decision. An older host emits seven elements; a
+ * missing bit read as 0 would mean "never serviceable", i.e. this client would silently WITHDRAW the
+ * Prioritise menu from every machine on the ship and the player would have no verb and no message.
+ * Read as 1 the menu behaves exactly as it did before the element existed. ⇒ THE ABSENT VALUE IS THE
+ * OLD BEHAVIOUR, on both elements; that, and not a preferred constant, is the rule.
  * @param {{type:string, cells?:Array}|null} msg
- * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number}[]|null}
+ * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number}[]|null}
  */
 export function decodeDevices(msg) {
   if (!msg || msg.type !== 'devices' || !Array.isArray(msg.cells)) return null;
@@ -461,7 +476,7 @@ export function decodeDevices(msg) {
     if (!Array.isArray(t) || t.length < 6) continue;
     out.push({
       x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind: t[3] | 0, cond: t[4] | 0, oper: t[5] | 0,
-      open: t[6] | 0,
+      open: t[6] | 0, serv: t.length > 7 ? (t[7] | 0) : 1,
     });
   }
   return out;
@@ -470,7 +485,7 @@ export function decodeDevices(msg) {
 /**
  * The sparse `blocked` channel — WHY AN ORDER THE PLAYER PAINTED IS DOING NOTHING. One row per
  * queued site (dig / strip / build) that the sim's worksite staging rule refuses.
- * BlockedTuple = [x, y, deck, order, reason]. Append-only.
+ * BlockedTuple = [x, y, deck, order, reason, detail]. Append-only.
  *
  * WHY IT EXISTS. `WorksiteSafety.CanStageWorkerAt` will not park a worker on a tile whose air would
  * pull it off the job. That closed a real livelock, and its own header records what it cost: the
@@ -559,6 +574,104 @@ export const BLOCKED_REASON_TEXT = Object.freeze({
   work_type_off: 'NOBODY ABOARD IS ASSIGNED THAT WORK',
 });
 
+/** ⭐ M3-13 — the wire's "this reason has nothing to add", mirroring `WireFormat.DetailNone`.
+ *  −1 and not 0: `0` is a real `ItemKind` (Regolith), so a zero sentinel could not be told from a
+ *  payload. Same rule as `moss-model.js`'s −1/UNKNOWN row state. */
+export const BLOCKED_DETAIL_NONE = -1;
+
+/**
+ * ⭐⭐ M3-13 — THE REFUSAL-SENTENCE ITEM VOCABULARY, MIRRORING `ThawGate.ItemWords` IN
+ * `sim/Sim.Core/ThawGate.cs`. Index IS the `ItemKind` byte; a hole is a kind no refusal has yet had
+ * to name.
+ *
+ * ⚠️ IT IS NOT THIS CLIENT'S ONLY WORD FOR AN `ItemKind`, and that is deliberate rather than a
+ * duplication: `stock-filter-model.js:29` says `CTRL MOD` on the stockpile FILTER CHIPS (pinned
+ * equal to the TUI's own table, `hosts/tui/Ui/StockFilterModel.cs:89`). A chip has a column to fit
+ * in; a refusal has a line of prose. Two vocabularies for two jobs is fine — two for ONE job is the
+ * defect this table exists to prevent.
+ *
+ * ⛔ IT IS A HAND MIRROR OF A C# SWITCH AND IT IS PINNED BY DERIVATION, not by this comment:
+ * `client/test/blocked-model.test.js` PARSES `sim/Sim.Core/ThawGate.cs` and requires every case in
+ * `ItemWords` to appear here at the right index, with the same words. Re-word `CONTROLLER MODULE`
+ * on either side and that test reddens — the same technique `stock-filter-model.test.js` uses on
+ * `ItemStack.cs` and `palette.test.js` on `GlyphColor.cs`. There is no compiler across this seam.
+ *
+ * ⚠️ WHY THE CLIENT SPELLS THE ITEM AT ALL, when the MOSS POD BAY gets its sentence from the host
+ * ready-made. The `blocked` channel is a TILE-STATE channel of BARE INTS — six of them — and it has
+ * carried no string since it shipped. Putting one on it for this row would make the channel's
+ * payload depend on which reason it is, and would put the host in the business of composing a
+ * sentence for a surface that already composes four. So: the SIM owns the words, the wire carries
+ * the byte, and this table is the one place the byte becomes those words on this side. The two
+ * surfaces therefore agree BY DERIVATION FROM ONE SWITCH rather than by two authors being careful
+ * — M2-18's rule ("one player confusion, two surfaces, neither invents a second vocabulary").
+ */
+export const ITEM_WORDS = Object.freeze({
+  5: 'PARTS',
+  6: 'CONTROLLER MODULE',
+  7: 'SEALS',
+});
+
+/** The player's words for an `ItemKind` byte, or '' when this client has never heard of it. PURE. */
+export function itemWords(kind) {
+  return ITEM_WORDS[kind | 0] || '';
+}
+
+/**
+ * ⭐ M3-13 — reasons whose sentence INTERPOLATES their row's `detail`, keyed by vocabulary name.
+ * A function per reason rather than a template string with a `%s`: the sentence is prose, the
+ * placement of the item in it is a wording decision, and a format-string table would push that
+ * decision into whoever writes the next entry.
+ *
+ * ⚠️ EVERY FUNCTION HERE MUST TOLERATE AN UNNAMEABLE `detail` BY RETURNING A FALSY VALUE, because
+ * that is how `blockedReasonSentence` knows to fall back to the generic sentence. Returning a
+ * string with `undefined` spliced into it is the failure this contract exists to make impossible —
+ * a badge reading "NEEDS UNDEFINED" is worse than the generic sentence it replaced.
+ */
+const BLOCKED_REASON_DETAIL_TEXT = Object.freeze({
+  // ⭐ "NOTHING ABOARD TO REPAIR IT WITH" IS NOT PADDING AND MUST NOT BE TRIMMED TO "— NONE ABOARD".
+  // The host emits this row only when the ship holds none of the repair ladder's THREE tiers, so
+  // any of Parts/Seals/Swarf would clear it; `detail` names the TOP tier because that is what a
+  // servicer would actually pick up. Naming only that item with no second clause would read as
+  // "Parts is the only key", which is false about the ship.
+  no_consumable: (detail) => {
+    const words = itemWords(detail);
+    return words && 'NEEDS ' + words + ' — NOTHING ABOARD TO REPAIR IT WITH';
+  },
+});
+
+/**
+ * ⭐⭐ M3-13 — THE SENTENCE A `blocked` ROW SHOWS THE PLAYER: the reason's own words, or the
+ * DETAILED wording when the row carries a `detail` this client can name.
+ *
+ * THE ONE ENTRY POINT. Every surface that words a blocked row calls this rather than indexing
+ * `BLOCKED_REASON_TEXT` itself, so "the tile badge names the item" cannot be true on one surface
+ * and false on the next.
+ *
+ * DEGRADES, IN TWO STEPS, AND NEITHER STEP IS EVER `undefined`:
+ *   1. a `detail` this client cannot name (a newer host's `ItemKind`, or `BLOCKED_DETAIL_NONE`)
+ *      ⇒ the reason's own generic sentence — still true, just less specific;
+ *   2. a REASON this client cannot name ⇒ '' , and the caller says "stuck, reason unknown".
+ * Step 1 is the forward-compat path `decodeBlocked`'s header commits the whole channel to: the
+ * payload of a blocked row is THIS TILE IS STUCK, and that survives a newer host's vocabulary.
+ *
+ * PURE. @param {string} reasonName @param {number} [detail] @returns {string} '' when unnameable
+ */
+export function blockedReasonSentence(reasonName, detail) {
+  const name = reasonName || '';
+  // ⚠️ `hasOwnProperty`, NOT a bare index, and it is not pedantry on a function that CALLS what it
+  // finds. A frozen object literal still inherits `Object.prototype`, so `BLOCKED_REASON_DETAIL_TEXT
+  // ['constructor']` is `Object` — a function — and calling it with a number returns a truthy Number
+  // wrapper that would go straight to the badge. Today `blockedReasonName` can only produce the five
+  // declared names or '', so nothing reaches it; this function is EXPORTED, and the guard is what
+  // keeps that true for the next caller rather than by luck.
+  const own = Object.prototype.hasOwnProperty;
+  if (own.call(BLOCKED_REASON_DETAIL_TEXT, name)) {
+    const text = BLOCKED_REASON_DETAIL_TEXT[name](typeof detail === 'number' ? detail : BLOCKED_DETAIL_NONE);
+    if (text) return text;
+  }
+  return (own.call(BLOCKED_REASON_TEXT, name) && BLOCKED_REASON_TEXT[name]) || '';
+}
+
 /** The vocabulary name for a wire order, or '' when this client has never heard of it. PURE. */
 export function blockedOrderName(order) {
   return BLOCKED_ORDER_NAMES[order | 0] || '';
@@ -583,8 +696,20 @@ export function blockedReasonName(reason) {
  * one — silence, which is the exact failure this channel exists to remove, arriving through the
  * decoder instead of through the sim. The names come back as '' and the layer that draws decides how
  * to say "stuck, reason unknown"; that is a display decision and it is made where display lives.
+ *
+ * ⭐⭐ M3-13 — `detail` IS THE SIXTH ELEMENT, and this decoder is THE ONE PLACE IN `client/src/`
+ * THAT READS THIS TUPLE BY INDEX. That is what makes an appended element safe here, and it is a
+ * fact that was censused rather than assumed: the three screenshot rigs under `client/tools/` also
+ * index the raw tuple (`c[2]`, `c[3]`, `c[4]` for their census lines) and are unaffected by an
+ * APPEND, which is exactly the property the struct's own doc comment claims for the shape.
+ *
+ * ⚠️ THE ROW-LENGTH GATE STAYS AT `< 5`, and the missing element reads as `BLOCKED_DETAIL_NONE`
+ * rather than as `0`. Both halves matter. Raising the gate to 6 would DROP every row an older host
+ * emits — silence, on the channel that exists to remove silence. Defaulting to `0` would claim the
+ * order wants Regolith, because `0` is a real `ItemKind`; `-1` claims nothing and the sentence
+ * falls back to the reason's own generic words.
  * @param {{type:string, cells?:Array}|null} msg
- * @returns {{x:number,y:number,deck:number,order:number,reason:number,orderName:string,reasonName:string}[]|null}
+ * @returns {{x:number,y:number,deck:number,order:number,reason:number,detail:number,orderName:string,reasonName:string}[]|null}
  */
 export function decodeBlocked(msg) {
   if (!msg || msg.type !== 'blocked' || !Array.isArray(msg.cells)) return null;
@@ -594,6 +719,7 @@ export function decodeBlocked(msg) {
     const order = t[3] | 0, reason = t[4] | 0;
     out.push({
       x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, order, reason,
+      detail: t.length > 5 ? (t[5] | 0) : BLOCKED_DETAIL_NONE,
       orderName: blockedOrderName(order), reasonName: blockedReasonName(reason),
     });
   }

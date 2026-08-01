@@ -4239,3 +4239,136 @@ agree at boot (60 = 60) and part company the moment a stack is reserved.
 - **The bay is reached through `hud.js`'s MOSS door**, which M4-8 deletes. This package added **zero**
   hud.js state — pinned by `surface-boundary.test.js` with a negative control — so M4-8 re-homes one
   door, not a cache.
+
+---
+
+### 13.33 ⭐⭐ Every thaw refusal reaches a surface, and the tile badge NAMES THE ITEM (M3-13, 2026-08-01)
+
+**Two things changed for the player, and one wire tuple grew to carry the first.**
+
+#### (a) `BlockedCell` gained a SIXTH element: `Detail`
+
+`hosts/web/WireFormat.Blocked.cs` — the `blocked` tuple is now
+`[x, y, deck, order, reason, detail]`, **appended, never inserted**. `Detail` is ONE int whose
+meaning is decided by `Reason`, and the table lives in the struct's own doc comment because *an int
+whose meaning depends on a sibling field is exactly the kind of thing that rots*:
+
+| reason | `Detail` means | rendered as |
+|---|---|---|
+| `ReasonAir` (0) | — (`DetailNone`) | the reason's own sentence |
+| `ReasonNoApproach` (1) | — | ″ |
+| ⭐ `ReasonNoConsumable` (2) | **the `ItemKind` byte the order is waiting for** | `NEEDS PARTS — NOTHING ABOARD TO REPAIR IT WITH` |
+| `ReasonUnreachable` (3) | — | the reason's own sentence |
+| `ReasonWorkTypeOff` (4) | — | ″ |
+
+- **`DetailNone = -1`, not 0** — `0` is `ItemKind.Regolith`, so a zero sentinel could not be told
+  from a payload and an airless dig would badge `NEEDS REGOLITH`. (`moss-model.js`'s DA-M1 rule for a
+  screen row, applied to a wire int.)
+- **A payload int, not a sixth reason code.** `ReasonNoInput = 5` would cost a mirrored constant, a
+  vocabulary name, a sentence and a legend swatch **per item** and *still* not carry the item.
+- ⛔ **THE HAZARD HERE IS THE POSITIONAL ARRAY, NOT A DELTA GATE.** `BlockedCell` has no `SameAs`
+  and this channel has no field-list gate: `GameSession.Send` dedupes on the **whole serialized
+  string** (`GameSession.cs:1783`), so a serialized `Detail` is inside the key by construction and the
+  `DeviceCell` scar is unreachable. What IS reachable is a decoder destructuring FIVE by index — it
+  keeps working and silently drops the field. **Decoder census, all updated in the same commit:**
+  `client/src/wire/messages.js:decodeBlocked` (the only `client/src/` index-reader; reads `t[5]`,
+  defaults `-1` on a five-element row) · `BlockedChannelTests.Tuples` and
+  `PrioritiseOrderTests.Rows` (both now ASSERT width 6) · the three `.mjs` rigs
+  (`blocked-shot`/`blocked-reach-shot`/`work-blocked-shot`) read `c[2..4]` only and are
+  append-stable, re-read to confirm. The C# construction sites are compiler-enforced: the
+  constructor takes six arguments **with no default**, deliberately.
+
+⛔ **WHAT WAS WRONG WITH THE GENERIC SENTENCE — and the charter's own reason for it was FALSE.**
+`NO PARTS OR SEALS ABOARD` (a) **omits Swarf**, a third tier that clears the row on its own, and
+(b) **names no item to go and get**. ⚠️ It is **not** wrong because of `ControllerModule`: the
+charter motivated this field with *"the existing `ReasonNoConsumable` is the wrong sentence for
+`ControllerModule`"*, and a census says otherwise — `ControllerModule` has exactly two consumers,
+`CommissionDeviceCommand` and `ThawGate`'s rung table, and **neither is a repair**. The repair
+ladder is `Parts` ▸ `Seals` ▸ `Swarf`. The charter borrowed a THAW-side fact into a repair-side
+justification; the field is right, the stated reason was not, and it is corrected here (and in
+`WireFormat.ReasonNoConsumable`'s remarks) rather than quoted forward.
+
+⭐ **THE ITEM IS ASKED, NEVER RE-DERIVED.** `GameSession.AddUnfixableRow` sends
+`(int)MaintenanceSystem.WantedRepairConsumable` — the top rung of `RepairConsumableTier`, which is
+now the ladder's ONE declaration and the same one `FindNearestConsumable` walks
+(`sim/Sim.Core/Systems/MachineWearSystem.cs`, behaviourally unchanged: Parts ▸ Seals ▸ Swarf, the
+bottom rung gated). ⚠️ **The row is emitted only when NONE of the three tiers is aboard**, so any of
+them would clear it; the badge names the TOP one (what a servicer would actually pick up, and the
+one that buys a full overhaul) and `— NOTHING ABOARD TO REPAIR IT WITH` is what keeps the sentence
+true about the other two.
+
+⭐ **ONE VOCABULARY, TWO SURFACES** (M2-18's rule). `ThawGate.ItemWords` is now **public** and is the
+ONE place an `ItemKind` is spelled **inside a refusal sentence** — ⚠️ *not* the one place the game
+spells one at all: the stockpile FILTER chips say `CTRL MOD` on both shipping surfaces
+(`stock-filter-model.js:29`, `hosts/tui/Ui/StockFilterModel.cs:89`, pinned equal to each other) and
+deliberately so, because a chip has a column to fit and a refusal has a line of prose. Two
+vocabularies for two jobs is fine; two for ONE job is the defect. Within refusals: the MOSS POD BAY
+composes host-side through
+`ThawGate.Describe` (`NEEDS 1 CONTROLLER MODULE — SHIP HAS 0`), the tile badge composes client-side
+through `ITEM_WORDS` in `client/src/wire/messages.js`, and the two are pinned equal by a test that
+**parses `sim/Sim.Core/ThawGate.cs`** (`client/test/blocked-model.test.js`, the house tripwire idiom).
+Re-word a case on either side and it reddens. The client spells it because the channel carries a
+BARE INT and has carried no string since it shipped.
+
+`blockedReasonSentence(reasonName, detail)` is the ONE entry point every surface words a row
+through, and it degrades in two steps, never to `undefined`: an unnameable `detail` ⇒ the reason's
+generic sentence; an unnameable REASON ⇒ `''` and the caller says *stuck, reason unknown*.
+⚠️ `blockedKeyHtml` now dedupes on the **sentence**, not the reason code — two rows can share a code
+and say two different true things, and keyed on the code the visible key printed one and swallowed
+the other.
+
+#### (b) The Prioritise menu no longer offers a repair the sim will never take
+
+**The open defect from `HANDOVER`, closed.** `PrioritiseJobCommand` returns at
+`device.Condition >= Machines[kind].MaintainBelow`, and `Condition` is clamped at or above zero — so
+a kind whose `maint` is `0.00` can never satisfy it on any ship, forever. `CryoPod` is `0.00`
+**deliberately** (§13.22c) and the def is not the thing to change; the MENU was.
+
+- `MaintenanceSystem.IsEverServiceable(defs, kind)` is the sim's answer — *the permanent half of a
+  comparison that already exists*, not a new rule.
+- It travels on the **`devices` channel as an EIGHTH element, `serv`** (`DeviceCell`, and `SameAs`
+  gained the clause **in the same commit** — `serv` is per-KIND and therefore constant within a
+  session, so omitting it could not be caught by any live behaviour, which makes it the most
+  dangerous omission in that struct rather than the most harmless). A client-side list of
+  never-serviceable kinds would be a hand mirror of a DEF.
+- `decodeDevices` defaults an absent `serv` to **1**, where `open` defaults to 0: in both cases the
+  absent value must reproduce the behaviour that shipped before the element existed. A `serv`
+  defaulting to 0 would withdraw M2-10's verb from every machine aboard, silently.
+- `prioritiseOffer` refuses with `{ok:false, silent:false}` and **says why** —
+  `CRYO POD IS NEVER SERVICED — NO REPAIR TO ORDER HERE`. RW §2.2: *the menu greys the entry and
+  states the reason*; this menu is a single row, so a greyed row is an empty box and the reachable
+  equivalent is the model's existing says-so-in-words outcome. Silence stays reserved for bare
+  floor, which is not a target the player aimed at.
+
+#### THE REFUSAL PRECEDENCE, PINNED
+
+`ThawGate.Evaluate`'s term order already ranked the CONSOLE refusal above the RUNG refusal; M3-13
+pins it (`ThawGateTests.TheConsoleRefusalOutranksTheRungRefusal_…`) with a **two-sided premise** —
+the rung really is unaffordable, and a commissioned twin really does stop at it — so the test cannot
+pass under a reordered `Evaluate`. A player at an uncommissioned console told *NEEDS 3 CONTROLLER
+MODULE* would mine 24 Regolith for a bay that will not open when he gets back. Both surfaces inherit
+the order because both render **this function's** answer: `DescribeRow` delegates every refusal arm
+to `Describe` and ranks nothing of its own.
+
+#### WHAT THIS DOES NOT DO — filed, not fixed
+
+- **`Detail` has exactly one live meaning today.** Every real emission resolves to `Parts`, because
+  the repair ladder is not per-device and the row fires only when all three tiers are absent. The
+  field is shaped for the reason above (one int serves this reason and every future one), and the
+  per-reason table is the price of that.
+- **The APPROACH refusal for a repair order is still silent** — unchanged by this package, and
+  §13.25's note stands: a machine with no walkable neighbour is refused and nothing is said.
+- ⭐ **THE WRECK'S LARDER STOPS AT TWO — MEASURED, AND IT IS A PACING OBSERVATION, NOT A DEFECT.**
+  M3-4 filed that switching REPAIR on lets the maintenance board spend and CARRY the wreck's stock
+  down until every rung reads `SHIP HAS 0`. Driven again here (2026-08-01, `--ship wreck`, REPAIR
+  on, top speed, 18 order passes over the 22 wrecked serviceable machines on deck 0): the loose
+  count falls **10 → 2 in the first minute and then STOPS.** With two units still loose
+  `IsUnfixableWreck` is false everywhere, so no `ReasonNoConsumable` row is due and none appears —
+  correctly. ⇒ **The unpayable-repair state is not reachable in a bounded automated run on the
+  shipping ship**, so `client/tools/thaw-blocked-shot.mjs` reports step 2a as an OBSERVATION that
+  does not fail the run, and proves the two claims separately: the EMISSION by
+  `PrioritiseOrderTests.TheNoConsumableRow_NamesTheItemTheOrderIsWaitingFor` (a real session, RED
+  under the ladder mutation), the RENDER by injecting the row through the client's own dispatch
+  (`blocked-shot.mjs`'s documented technique — the host is not modified), with the FIVE-element row
+  drawn first in the same run as the before picture. Where the last two units sit, and why the board
+  stops, is not this package's question.

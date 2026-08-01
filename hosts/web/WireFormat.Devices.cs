@@ -137,7 +137,7 @@ namespace Perilune.Web
     /// See <see cref="DeviceCell.Open"/> for why it is the one omitted field that qualified and
     /// <c>Powered</c> still does not.
     ///
-    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open],..]}
+    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open,serv],..]}
     /// </summary>
     public static partial class WireFormat
     {
@@ -256,12 +256,23 @@ namespace Perilune.Web
         /// </summary>
         public readonly struct DeviceCell
         {
-            public readonly int X, Y, Deck, Kind, Cond, Oper, Open;
+            public readonly int X, Y, Deck, Kind, Cond, Oper, Open, Serv;
 
-            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open)
-            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; }
+            /// <param name="serv">⭐ <b>M3-13 — 1 when this KIND of machine can ever be serviced at
+            /// all, 0 when it never can.</b> <c>MaintenanceSystem.IsEverServiceable</c>, i.e. the
+            /// def's own <c>maint</c> opt-out (<c>CryoPod</c> is <c>0.00</c>, deliberately —
+            /// <c>MECHANICS.md</c> §13.22c). It is here so the Room Zoom's right-click menu can
+            /// stop offering <i>PRIORITISE: REPAIR</i> on a machine the sim will never take an
+            /// order for (<c>rimworld-reference.md</c> §2.2). <b>A PER-KIND FACT DELIVERED
+            /// PER-ROW</b>, and that is a deliberate trade: the alternative shapes were a new
+            /// channel (more plumbing than the fact is worth) or a client-side list of
+            /// never-serviceable kinds — which is a hand mirror of a DEF and drifts the day content
+            /// moves, the exact second-authority defect <c>ROLE_TO_ITEM</c> was deleted for. The
+            /// cost is one small int per row on a channel that is already dirty-gated.</param>
+            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open, int serv)
+            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; Serv = serv; }
 
-            /// <summary>ALL SEVEN FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
+            /// <summary>ALL EIGHT FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
             /// dirty-version gate, whose sufficiency argument is that the compared value IS the
             /// serializer's whole input — so it must compare everything the serializer reads, and a
             /// field added to this tuple must be added here IN THE SAME COMMIT or the gate silently
@@ -278,9 +289,16 @@ namespace Perilune.Web
             /// OPEN⇄SHUT chip silently stops updating — which is the most reachable cell in the
             /// matrix, because a toggle is player-driven and <c>AddDevice</c> appends, so a door the
             /// player just built IS the last row.</para></summary>
+            /// <para>⭐ <c>Serv</c> was added by M3-13 IN THIS SAME COMMIT, which is the whole
+            /// discipline the paragraph above records. It is per-KIND and therefore constant for
+            /// the life of a session, so omitting it here could not be caught by any live
+            /// behaviour — which makes it the most dangerous kind of omission, not the most
+            /// harmless: the gate's own sufficiency argument is <i>"the compared value IS the
+            /// serializer's whole input"</i>, and an argument that is true by accident stops being
+            /// true the day a def is hot-reloaded.</para>
             public bool SameAs(in DeviceCell o) =>
                 X == o.X && Y == o.Y && Deck == o.Deck && Kind == o.Kind && Cond == o.Cond && Oper == o.Oper
-                && Open == o.Open;
+                && Open == o.Open && Serv == o.Serv;
         }
 
         /// <summary>The wire byte for a raw <see cref="Perilune.Sim.Device.Condition"/>:
@@ -337,7 +355,8 @@ namespace Perilune.Web
                       .Append(',').Append(c.Kind.ToString(DeviceIc))
                       .Append(',').Append(c.Cond.ToString(DeviceIc))
                       .Append(',').Append(c.Oper.ToString(DeviceIc))
-                      .Append(',').Append(c.Open.ToString(DeviceIc)).Append(']');
+                      .Append(',').Append(c.Open.ToString(DeviceIc))
+                      .Append(',').Append(c.Serv.ToString(DeviceIc)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

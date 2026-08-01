@@ -30,7 +30,9 @@ import { STOCK_KINDS } from './stock-filter-model.js';
 // re-written here: a second copy of the wording is a second thing to update when a reason is added,
 // and a surface that says something different from the decoder about the same code is the two-source
 // defect the `blocked` channel itself exists to argue against.
-import { BLOCKED_REASON_TEXT } from '../wire/messages.js';
+// ⭐ M3-13 — `blockedReasonSentence`, NOT `BLOCKED_REASON_TEXT`: a row can carry a `detail` that
+// changes the sentence (`no_consumable` names the item), and the table alone cannot see it.
+import { blockedReasonSentence } from '../wire/messages.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -1051,10 +1053,10 @@ export function itemIdForStockKind(kind) {
  * merges; it is not silently dropped, because a channel that disagreed with the sim about one-per-tile
  * is a fact worth being able to see rather than one to paper over.
  *
- * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number}[]|null} devices
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number}[]|null} devices
  *        decodeDevices() output
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
- * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number}>}
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number}>}
  */
 export function roomDeviceConditions(devices, focusRoom) {
   const out = new Map();
@@ -1067,6 +1069,10 @@ export function roomDeviceConditions(devices, focusRoom) {
     if (tx < rx || tx >= x1 || ty < ry || ty >= y1) continue;
     out.set(tx + ',' + ty, {
       tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0, open: d.open | 0,
+      // ⭐ M3-13 — `serv` (1 = this KIND can ever be serviced) is what `prioritiseOffer` asks before
+      // it promises a repair. ⚠️ THE FALLBACK IS 1, matching `decodeDevices`: an absent value must
+      // mean the OLD behaviour (menu offered), never "withdraw the verb from the whole ship".
+      serv: d.serv === undefined ? 1 : (d.serv | 0),
     });
   }
   return out;
@@ -1085,10 +1091,10 @@ export function roomDeviceConditions(devices, focusRoom) {
  * Same key (`"x,y"`), same value shape and the same LAST-ROW-WINS rule as `roomDeviceConditions`, so
  * `client/src/items/wear.js` sees one contract from both surfaces.
  *
- * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number}[]|null} devices
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number}[]|null} devices
  *        decodeDevices() output
  * @param {number} deck
- * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number}>}
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number}>}
  */
 export function deckDeviceConditions(devices, deck) {
   const out = new Map();
@@ -1106,7 +1112,14 @@ export function deckDeviceConditions(devices, deck) {
     // machine. ⚠️ ADDED AT THE MERGE of the (since-deleted) OPERATE verb with the wear join — the
     // verb added `open` to the room-scoped model only, and `wear-join.test.js`'s shape-parity
     // assertion is what caught the divergence. The parity outlives the verb.
-    out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0, open: d.open | 0 });
+    // ⭐ M3-13 — `serv` is carried here for the SAME SHAPE-PARITY reason `open` is, and the reason
+    // is now live rather than hypothetical: `wear.js` is the one join both surfaces call, and a
+    // field present on the room model and absent on the deck model is two contracts wearing one
+    // name. The Overview has no right-click repair menu, so it has no consumer today.
+    out.set(tx + ',' + ty, {
+      tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0, open: d.open | 0,
+      serv: d.serv === undefined ? 1 : (d.serv | 0),
+    });
   }
   return out;
 }
@@ -1181,8 +1194,14 @@ export function deviceKindName(kind) {
  * This room's blocked orders, one entry per TILE, in the host's emission order.
  *
  * Each entry carries the wire codes, both vocabulary names, the player-facing `reasonText` and a
- * composed `label` for the `<title>`. The text comes from `BLOCKED_REASON_TEXT` in
- * `wire/messages.js` — the ONE table — rather than being written again here.
+ * composed `label` for the `<title>`. The text comes from `blockedReasonSentence` in
+ * `wire/messages.js` — the ONE entry point — rather than being written again here.
+ *
+ * ⭐ M3-13 — AND IT IS A CALL, NOT A TABLE LOOKUP, because a row can now carry a `detail` that
+ * changes the sentence: `no_consumable` names the item the order is waiting for. Indexing
+ * `BLOCKED_REASON_TEXT` here (as this function did until M3-13) would silently keep the generic
+ * sentence on the one surface a player actually looks at, with the wire carrying the answer and
+ * every test green — the shape of the `marks` channel's "pass 1 is not the frame" defect.
  *
  * ⚠️ A ROW THIS CLIENT CANNOT NAME IS STILL DRAWN, with a "reason unknown to this client" text.
  * `decodeBlocked` deliberately keeps such a row and the reasoning carries straight through: the
@@ -1209,7 +1228,8 @@ export function roomBlockedTiles(blocked, focusRoom) {
     if (seen.has(key)) continue;   // one badge per tile — see the header above
     seen.add(key);
     const reasonName = b.reasonName || '';
-    const reasonText = BLOCKED_REASON_TEXT[reasonName] || 'STUCK — REASON UNKNOWN TO THIS CLIENT';
+    const reasonText = blockedReasonSentence(reasonName, b.detail)
+      || 'STUCK — REASON UNKNOWN TO THIS CLIENT';
     const orderName = b.orderName || 'ORDER';
     out.push({
       tx, ty, order: b.order | 0, reason: b.reason | 0, orderName, reasonName, reasonText,

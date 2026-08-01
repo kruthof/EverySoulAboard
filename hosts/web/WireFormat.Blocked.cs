@@ -265,7 +265,7 @@ namespace Perilune.Web
     /// <see cref="Perilune.Glyph.GlyphColor"/> id (<c>GlyphColor</c> is a spine file and is untouched)
     /// or folds into any determinism hash.
     ///
-    ///   blocked {"type":"blocked","cells":[[x,y,deck,order,reason],..]}
+    ///   blocked {"type":"blocked","cells":[[x,y,deck,order,reason,detail],..]}
     /// </summary>
     public static partial class WireFormat
     {
@@ -389,6 +389,38 @@ namespace Perilune.Web
         /// <para>The value was nailed down early so two lanes could not both pick 2 for different
         /// meanings; the client has named it (<c>no_consumable</c> → *"NO PARTS OR SEALS ABOARD"*)
         /// since before anything produced it.</para>
+        ///
+        /// <para>⭐⭐ <b>M3-13 — AND IT IS THE ONE REASON THAT CARRIES A
+        /// <see cref="BlockedCell.Detail"/>: the <c>ItemKind</c> BYTE the order is waiting for.</b>
+        /// <b>WHAT WAS WRONG WITH THE GENERIC SENTENCE, precisely.</b> <i>NO PARTS OR SEALS
+        /// ABOARD</i> (a) <b>omits Swarf</b>, which is a third tier that clears this row on its own
+        /// (wreck rule W2's whole point: salvage from the dead half of the ship is what makes a
+        /// wreck fixable), and (b) <b>names no item as the one to go and get</b> — it describes the
+        /// ship's larder rather than the order's want. A badge that lists the wrong two of three
+        /// sends the player to make the wrong thing, and <i>invisible feedback is functional</i> has
+        /// a twin: <b>wrong feedback is worse than none</b>. The badge now reads
+        /// <c>NEEDS PARTS — NOTHING ABOARD TO REPAIR IT WITH</c>: one item to go and get, and a
+        /// clause that stays true about the other two.
+        /// <br/>⛔ <b>A REPAIR ORDER NEVER WANTS A <c>ControllerModule</c> — CENSUSED, AND THE
+        /// CHARTER'S PREMISE WAS WRONG ABOUT THIS.</b> M3-13's charter motivated the field with
+        /// <i>"the existing <c>ReasonNoConsumable</c> is the wrong sentence for
+        /// <c>ControllerModule</c>"</i>. It is not: <c>ControllerModule</c> has exactly two
+        /// consumers in the game — <c>CommissionDeviceCommand</c> and <c>ThawGate</c>'s rung table —
+        /// and neither is a repair. The repair ladder is <c>Parts</c> ▸ <c>Seals</c> ▸ <c>Swarf</c>
+        /// and nothing else. The charter's example was a THAW-side fact borrowed into a repair-side
+        /// justification; the field is right, the reason given for it was not, and the reason is
+        /// corrected here rather than left to be quoted forward.
+        /// <br/><b>THE ITEM IS ASKED, NOT CHOSEN HERE</b> —
+        /// <c>MaintenanceSystem.WantedRepairConsumable</c>, i.e. the top rung of the sim's own
+        /// <c>RepairConsumableTier</c> ladder, which is the same declaration
+        /// <c>FindNearestConsumable</c> walks. A host-side <c>ItemKind.Parts</c> literal would be
+        /// the second authority omission (1) of this file's header refuses by name, and it would
+        /// go quietly wrong the day the ladder's top tier moves.
+        /// <br/>⚠️ <b>THE SECOND CLAUSE OF THE SENTENCE IS NOT PADDING.</b> This row is emitted
+        /// only when the ship holds NONE of the three tiers, so <i>any</i> of them would clear it;
+        /// the badge names the top one because that is the one a servicer would actually pick up
+        /// and the one that buys a full overhaul, and <i>"NOTHING ABOARD"</i> is what keeps the
+        /// sentence true about the other two rather than implying Parts is the only key.</para>
         /// </summary>
         public const int ReasonNoConsumable = 2;
 
@@ -557,9 +589,23 @@ namespace Perilune.Web
         public const int ReasonWorkTypeOff = 4;
 
         /// <summary>
-        /// One refused order on the <c>blocked</c> channel. Tuple <c>[x, y, deck, order, reason]</c>,
-        /// append-only (a future field is a trailing element, exactly as <see cref="ZoneTile"/>,
-        /// <see cref="MarkCell"/>, <see cref="ItemCell"/> and <see cref="DeviceCell"/> document).
+        /// ⭐ <b>NO DETAIL</b> — the value <see cref="BlockedCell.Detail"/> carries for every reason
+        /// that has nothing to add, which today is four of the five.
+        ///
+        /// <para><b>−1 AND NOT 0, DELIBERATELY.</b> <c>0</c> is a perfectly real payload in the one
+        /// meaning the field currently has (<c>ItemKind.Regolith</c>), so a zero default would make
+        /// "this reason says nothing more" indistinguishable from "this order wants Regolith" —
+        /// a sentinel collision, which is <c>moss-model.js</c>'s DA-M1 lesson (<i>a missing state is
+        /// −1/UNKNOWN, never 0/NOMINAL, because a screen may not invent a reading for a row it
+        /// cannot read</i>) applied to a wire int rather than to a screen row.</para>
+        /// </summary>
+        public const int DetailNone = -1;
+
+        /// <summary>
+        /// One refused order on the <c>blocked</c> channel. Tuple
+        /// <c>[x, y, deck, order, reason, detail]</c>, append-only (a future field is a trailing
+        /// element, exactly as <see cref="ZoneTile"/>, <see cref="MarkCell"/>,
+        /// <see cref="ItemCell"/> and <see cref="DeviceCell"/> document).
         ///
         /// <para>THE TUPLE LEADS WITH <c>x, y, deck</c> because every other sparse channel does —
         /// <c>materials</c>, <c>zones</c>, <c>marks</c>, <c>items</c>, <c>devices</c>, all five checked
@@ -571,13 +617,56 @@ namespace Perilune.Web
         /// painted — and NOT the neighbour whose air was tested. That is the tile they clicked and the
         /// tile they will look at; naming the staging tile instead would point at a spot where nothing
         /// is drawn and where they ordered nothing.</para>
+        ///
+        /// ─────────────────────────────────────────────────────────────────────────────────────
+        /// <para>⭐⭐ <b>M3-13 — <see cref="Detail"/>, THE SIXTH ELEMENT: ONE INT WHOSE MEANING IS
+        /// DECIDED BY <see cref="Reason"/>.</b> Every other reason sends
+        /// <see cref="WireFormat.DetailNone"/>.</para>
+        ///
+        /// <code>
+        ///   reason                            Detail means                     rendered as
+        ///   --------------------------------  -------------------------------  --------------------------
+        ///   ReasonAir            (0)          — (DetailNone)                   the reason's own sentence
+        ///   ReasonNoApproach     (1)          — (DetailNone)                   the reason's own sentence
+        ///   ReasonNoConsumable   (2)          the ItemKind BYTE the order       "NEEDS PARTS — NOTHING
+        ///                                     is waiting for                    ABOARD TO REPAIR IT WITH"
+        ///   ReasonUnreachable    (3)          — (DetailNone)                   the reason's own sentence
+        ///   ReasonWorkTypeOff    (4)          — (DetailNone)                   the reason's own sentence
+        /// </code>
+        ///
+        /// <para><b>WHY A PAYLOAD INT AND NOT A SIXTH REASON CODE.</b> "The order wants a
+        /// <c>Seals</c>" as <c>ReasonNoInput = 5</c> would cost a mirrored constant, a
+        /// name in <c>BLOCKED_REASON_NAMES</c>, a sentence in <c>BLOCKED_REASON_TEXT</c> and a
+        /// legend swatch — <b>per item</b> — and it <i>still</i> would not carry the item. One int
+        /// serves this reason and every future one, at the price of the table above, which is
+        /// exactly the kind of thing that rots if it is not written down beside the field.</para>
+        ///
+        /// <para>⛔ <b>THE HAZARD OF THE SIXTH ELEMENT IS THE POSITIONAL ARRAY, NOT A DELTA GATE.</b>
+        /// <see cref="BlockedCell"/> has NO <c>SameAs</c> and this channel has no field-list delta
+        /// gate at all: <c>blocked</c> ships through <c>GameSession.Send</c>, which dedupes on the
+        /// WHOLE serialized string, so a serialized <c>Detail</c> is inside the dedupe key by
+        /// construction and the <see cref="DeviceCell"/> scar is unreachable here. What IS reachable
+        /// is a decoder that destructures FIVE elements by index: it keeps working, silently, and
+        /// drops the field. ⇒ <b>every index-reader of this tuple was censused and updated in the
+        /// commit that added the element</b> — <c>client/src/wire/messages.js</c>'s
+        /// <c>decodeBlocked</c> (the only one that reads past <c>[4]</c>), plus the three screenshot
+        /// rigs that read <c>c[2]</c>/<c>c[3]</c>/<c>c[4]</c> for census lines
+        /// (<c>blocked-shot.mjs</c>, <c>blocked-reach-shot.mjs</c>, <c>work-blocked-shot.mjs</c>),
+        /// which are position-stable under an APPEND and were re-read to confirm it. The C# side is
+        /// compiler-enforced: this constructor takes six arguments and has no default, so a
+        /// construction site that was not updated does not build.</para>
         /// </summary>
         public readonly struct BlockedCell
         {
-            public readonly int X, Y, Deck, Order, Reason;
+            public readonly int X, Y, Deck, Order, Reason, Detail;
 
-            public BlockedCell(int x, int y, int deck, int order, int reason)
-            { X = x; Y = y; Deck = deck; Order = order; Reason = reason; }
+            /// <param name="detail">Per-reason payload — see the table above. Pass
+            /// <see cref="WireFormat.DetailNone"/> when the reason has nothing to add. NO DEFAULT
+            /// VALUE, on purpose: a defaulted parameter would let a new construction site ship a
+            /// silent <c>DetailNone</c> for a reason that has something to say, and the compiler is
+            /// the only thing on this side of the wire that can catch that.</param>
+            public BlockedCell(int x, int y, int deck, int order, int reason, int detail)
+            { X = x; Y = y; Deck = deck; Order = order; Reason = reason; Detail = detail; }
         }
 
         /// <summary>
@@ -609,7 +698,8 @@ namespace Perilune.Web
                       .Append(',').Append(c.Y.ToString(BlockedIc))
                       .Append(',').Append(c.Deck.ToString(BlockedIc))
                       .Append(',').Append(c.Order.ToString(BlockedIc))
-                      .Append(',').Append(c.Reason.ToString(BlockedIc)).Append(']');
+                      .Append(',').Append(c.Reason.ToString(BlockedIc))
+                      .Append(',').Append(c.Detail.ToString(BlockedIc)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

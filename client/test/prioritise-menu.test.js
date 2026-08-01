@@ -217,6 +217,76 @@ test('prioritiseOffer: a REAL target with nobody to order is refused OUT LOUD', 
   assert.match(r.reason, /NO CREW SELECTED/);
 });
 
+// ⭐⭐ M3-13 / D1 — THE PRECEDENCE BETWEEN THE TWO SPEAKING REFUSALS, PINNED. `prioritiseOffer` asks
+// "is there anything to order here?" BEFORE "who would I give it to?", and until this test that
+// ordering was a stated design decision with NOTHING holding it.
+//
+// ⛔ IT WAS UNOBSERVABLE IN EVERY OTHER M3-13 LEG, WHICH IS EXACTLY WHY IT NEEDED ITS OWN.
+// The driven rig and the capsule legs all run a ONE-CREW ship (`--ship wreck` today), and with one
+// crew member `prioritiseCrew` always resolves — so the two questions never compete and either
+// order gives the same answer. The competition needs TWO crew AND no selection, which is the state
+// the POD BAY creates the moment it thaws a second sleeper. This test is that state.
+//
+// THE DIFFERENCE IT PROTECTS, in words: on a capsule, "NO CREW SELECTED — CLICK A PAWN" is a
+// sentence about a problem the player can SOLVE, offered for an order that can NEVER be given. It
+// sends them to select a pawn, right-click again, and get the same box. "Nobody to order" is the
+// wrong answer about a machine that has nothing to order.
+//
+// MUTATION (the reviewer's, re-applied and re-run): move the `if (o.dev.serv === 0)` block BELOW
+// the `prioritiseCrew` resolution in `prioritise-model.js` ⇒ RED here, and green everywhere else in
+// the suite — which is the point.
+// ⭐⭐ M3-13 / D2 — `=== 0`, NOT FALSY, ASSERTED AT THE MODEL BOUNDARY.
+// `undefined` is what a row from a host older than the eighth element yields, and it MUST mean
+// "offer the menu as before" — never "this machine is never serviced". The difference is a total,
+// silent loss of M2-10's verb on every machine aboard.
+//
+// ⛔ IT HAS TO BE ASSERTED HERE AND NOT IN THE DRIVEN RIG. `decodeDevices` and
+// `roomDeviceConditions` both normalise an absent `serv` to 1, so no row that has been through
+// either can carry `undefined` — the driven control is true by normalisation and cannot see this
+// at all. This is the model's own boundary, which is the only place the two spellings differ.
+// MUTATION: weaken the gate to `if (!o.dev.serv)` ⇒ RED on the first leg here.
+test('M3-13: an ABSENT serv is not the same as serv 0 — the append-only contract, at the model', () => {
+  const older = prioritiseOffer({ dev: { kind: 5, cond: 40 }, selCid: 7, crew: [{ cid: 7 }] });
+  assert.equal(older.ok, true,
+    'A ROW WITH NO EIGHTH ELEMENT WAS TREATED AS NEVER-SERVICEABLE. That is what an older host '
+    + 'emits, and what a dropped field looks like: the Prioritise verb would vanish from every '
+    + 'machine on the ship, silently, with no message and nothing to click.');
+  assert.equal(older.label, 'PRIORITISE: REPAIR SOLAR WING');
+
+  // …and the explicit 0 still refuses, so the leg above is not satisfied by a gate that is simply off.
+  const declared = prioritiseOffer({ dev: { kind: 27, cond: 255, serv: 0 }, selCid: 7, crew: [{ cid: 7 }] });
+  assert.equal(declared.ok, false, 'CONTROL: an explicit serv = 0 must still refuse');
+  assert.match(declared.reason, /NEVER SERVICED/);
+});
+
+test('M3-13: on a capsule the NEVER-SERVICED refusal outranks the no-crew-selected one', () => {
+  const r = prioritiseOffer({
+    dev: { kind: 27, cond: 255, serv: 0 },        // a CryoPod, never serviceable
+    selCid: null,                                  // …and nothing selected…
+    crew: [{ cid: 7 }, { cid: 13 }],               // …on a TWO-crew ship, so the crew question BINDS
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.silent, false, 'a capsule is a target the player aimed at — it must speak');
+  assert.match(r.reason, /NEVER SERVICED/,
+    'THE PLAYER WAS SENT TO SOLVE THE WRONG PROBLEM. On a machine that can never be repaired the '
+    + 'menu answered "no crew selected", which reads as "pick a pawn and try again" — for an order '
+    + 'that will never exist. The serviceability question must be asked FIRST.');
+  assert.ok(!/NO CREW SELECTED/.test(r.reason),
+    'and the crew sentence must not be appended beside it: a refusal that names two problems ranks '
+    + 'neither');
+
+  // ⛔ THE NON-VACUITY CONTROL: on the SAME two-crew, no-selection state, a SERVICEABLE machine
+  // really does produce the crew sentence. Without this the leg above is also satisfied by a model
+  // that has forgotten how to say "NO CREW SELECTED" at all.
+  const control = prioritiseOffer({
+    dev: { kind: 5, cond: 40, serv: 1 }, selCid: null, crew: [{ cid: 7 }, { cid: 13 }],
+  });
+  assert.equal(control.ok, false);
+  assert.match(control.reason, /NO CREW SELECTED/,
+    'CONTROL: the crew question must still bind on a serviceable machine, or the assertion above is '
+    + 'about a model that never asks it');
+});
+
 test('prioritiseOffer: an accepted offer carries the cid and the labelled row', () => {
   const r = prioritiseOffer({ dev: { kind: 6, cond: 40 }, selCid: null, crew: [{ cid: 9 }] });
   assert.equal(r.ok, true);
@@ -362,6 +432,13 @@ const FOG = [RECT.rx + 7, RECT.ry + 1];
 // which is the population the first draft's resource/cosmetic fixture structurally excluded. Named
 // from the picture it reads "OXYGEN TANK"; named from the channel it reads "WATER TANK".
 const TANK = [RECT.rx + 9, RECT.ry + 5];
+// ⭐⭐ M3-13 — THE NEVER-SERVICEABLE TILE. A `CryoPod` (DeviceKind 27) on the `devices` channel with
+// `serv = 0`, which is what the host emits for every kind whose `maint` is 0.00 in the defs. It is
+// the OPEN DEFECT this package closes, carried in HANDOVER since M2-10: the menu offered
+// `PRIORITISE: REPAIR` here, the click fired a toast, `PrioritiseJobCommand` returned at
+// `device.Condition >= MaintainBelow`, and NOTHING reached any surface. M3 makes the cryo bay the
+// main screen, so this stopped being a filed nuisance the day the ship's first hour ran through it.
+const POD = [RECT.rx + 9, RECT.ry + 3];
 
 const ADA = { cid: 7, name: 'Ada Vale', role: 'engineer', deck: 0, x: RECT.rx + 2, y: RECT.ry + 4 };
 const RYN = { cid: 13, name: 'Ryn Coe', role: 'hauler', deck: 0, x: RECT.rx + 6, y: RECT.ry + 5 };
@@ -376,6 +453,7 @@ function frameMsg(crew, selCid) {
   put(CELL, 'B'.charCodeAt(0));   // → 'battery-bank'
   put(FOG, 'S'.charCodeAt(0));    // → 'o2-scrubber', drawn but NOT on the devices channel
   put(TANK, 'O'.charCodeAt(0));   // → 'oxygen-tank' ART over a WaterTank ROW (the borrow)
+  put(POD, 'K'.charCodeAt(0));    // → 'cryo-capsule-occupied' (M3-13)
   const who = crew.find((c) => c.cid === selCid) || null;
   return {
     type: 'frame', deck: RECT.deck, w, h, lens: 'none', cells,
@@ -407,6 +485,11 @@ function prime(crew, selCid) {
         [WING[0], WING[1], RECT.deck, 5, 40, 0, 0],   // SolarWing (DeviceKind 5), worn, inoperative
         [CELL[0], CELL[1], RECT.deck, 6, 90, 1, 0],   // Battery   (DeviceKind 6), worn, operational
         [TANK[0], TANK[1], RECT.deck, 10, 60, 1, 0],  // WaterTank (DeviceKind 10) wearing OXYGEN TANK art
+        // ⭐ M3-13: a CryoPod, sealed and healthy, and the ONLY row here carrying the eighth element.
+        // ⚠️ THE OTHER FOUR ROWS ARE DELIBERATELY LEFT SEVEN-ELEMENT — they are the append-only
+        // control, and they are what makes every "the menu still opens" leg in this file a live
+        // assertion that an ABSENT `serv` means "offer as before" rather than "withdraw the verb".
+        [POD[0], POD[1], RECT.deck, 27, 255, 1, 0, 0],
       ],
     })));
   }
@@ -500,6 +583,14 @@ test('the rig really drives the surface (non-vacuity floor for every leg below)'
   assert.equal(RoomZoom.deviceConditionAt(FOG[0], FOG[1]), null,
     'the FOG tile has a devices row, so the fog leg is testing nothing');
   assert.ok(menuRow(), 'the menu row was never built — the click leg cannot be driven');
+  // ⭐ M3-13 — the capsule really is on the channel and really does carry `serv = 0`. Without this
+  // the never-serviceable legs below would pass against a tile the surface simply cannot see, which
+  // is the same false green the FOG leg above is guarded from.
+  const pod = RoomZoom.deviceConditionAt(POD[0], POD[1]);
+  assert.ok(pod, 'the CryoPod is not on the channel — the never-serviceable legs are vacuous');
+  assert.equal(pod.serv, 0, 'the capsule row reached the surface with serv != 0 — nothing is tested');
+  assert.equal(RoomZoom.deviceConditionAt(WING[0], WING[1]).serv, 1,
+    'the CONTROL machine must read serviceable, or "the menu opens" proves nothing about `serv`');
 });
 
 // ═════════════════════════════════════════════════════════════════ 3. THE FIVE CHARTER MUTATIONS
@@ -667,6 +758,81 @@ test('M3-14 rung 3: the menu still opens on a machine the `blocked` layer marks 
     RoomZoom.exitRoom();
     RoomZoom.enterRoom('quarters');
   }
+});
+
+// ═══════════════════════════════ 3c. M3-13 — THE MENU DOES NOT OFFER A REPAIR THE SIM NEVER TAKES
+//
+// ⭐⭐ THE OPEN DEFECT THIS PACKAGE CLOSES, carried in HANDOVER since M2-10 and quoted in the M3-13
+// charter: *"The Prioritise menu is offered on never-serviceable machines (CryoPod `maint = 0`):
+// click → toast fires → sim refuses silently, nothing on `blocked`. The cryo bay is full of these."*
+// `PrioritiseJobCommand` returns at `device.Condition >= Machines[kind].MaintainBelow`, and
+// `Condition` is clamped at or above 0, so a kind with `maint = 0.00` can never satisfy it on any
+// ship, forever. `CryoPod`'s 0.00 is DELIBERATE (MECHANICS §13.22c — at 0.30 the lone pawn spent the
+// ship's whole consumable stock nursing corpses), so the def is not the thing to change; the MENU is.
+//
+// ⭐ RimWorld §2.2 decides the shape: *"if no menu appears, that colonist can do nothing with that
+// target"*, and *"the context menu greys the entry and states the reason … it does not accept the
+// order and then fail silently."* This surface's menu is a SINGLE ROW, so a greyed row is an empty
+// box; the reachable equivalent of "greys the entry and states the reason" is the model's existing
+// says-so-in-words refusal, which is why the leg below asserts BOTH halves.
+
+// ⭐ MUTATION 5 (the charter's) — "offer Prioritise on a `maint == 0` device". APPLY: delete the
+// `if (o.dev.serv === 0)` block in `prioritiseOffer` ⇒ the menu opens over the capsule and this
+// reddens.
+//
+// ⛔ APPLY 2 — WEAKEN THE TEST TO `if (!o.dev.serv)`. ⚠️ THE FIRST VERSION OF THIS LEDGER SAID THAT
+// REDDENS "the CONTROL test below". IT DOES NOT — MEASURED, AND THE CORRECTION IS THE INTERESTING
+// PART. Both the decoder and the room model NORMALISE an absent `serv` to 1 before the model ever
+// sees a row (`decodeDevices`: `t.length > 7 ? … : 1`; `roomDeviceConditions`: `d.serv === undefined
+// ? 1 : …`), so by the time the DRIVEN control asks, `serv` is the number 1 and `!1` and `1 !== 0`
+// agree. The control's assertion is true BY NORMALISATION UPSTREAM, not by the gate's spelling —
+// which is precisely the fourth trap shape: a guard whose scope excludes the violation.
+//   THE ACTUAL KILLERS, named rather than numbered (numbering moves):
+//     · `prioritiseOffer: a REAL target with nobody to order is refused OUT LOUD`
+//     · `prioritiseOffer: an accepted offer carries the cid and the labelled row`
+//   — two PRE-EXISTING M2-10 tests, which feed `prioritiseOffer` bare literals (`{kind, cond}`)
+//   with no `serv` at all, i.e. the one population the normalisation never touches.
+//   ⇒ Because relying on two tests that predate the field is relying on an accident, the leg
+//   `M3-13: an ABSENT serv is not the same as serv 0` below asserts the distinction BY NAME, at the
+//   model boundary where it actually lives. Re-measured after adding it: the mutation reddens 3.
+test('M3-13: right-clicking a CRYO CAPSULE offers NO repair — and says why out loud', () => {
+  prime([ADA], null);
+  rightClick(POD);
+  assert.equal(menu().hidden, true,
+    'THE MENU WAS OFFERED ON A MACHINE THE SIM WILL NEVER TAKE AN ORDER FOR. `CryoPod` is '
+    + '`maint = 0.00`, so PrioritiseJobCommand returns before it does anything: the player clicks, '
+    + 'a toast promises the order went, and NOTHING happens on any surface, ever. That is the '
+    + 'invisible-feedback failure with the menu\'s own promise standing in front of it.');
+  assert.match(toastText(), /NEVER SERVICED/,
+    'the refusal was SILENT. A capsule is a target the player deliberately aimed at — the silent '
+    + 'outcome is reserved for bare floor, where a right-click is not an intent aimed at anything. '
+    + 'RimWorld §2.2: the menu states the reason at the point of the click.');
+  assert.match(toastText(), /CRYO POD/,
+    'the sentence must NAME the machine, from the `devices` row\'s own kind byte — a bare "never '
+    + 'serviced" over a bay of twelve capsules does not tell the player what they clicked');
+  assert.deepEqual(orders(), [],
+    'a right-click on a never-serviceable machine reached the wire');
+});
+
+// ⛔ THE NON-VACUOUS CONTROL THE CHARTER ASKS FOR BY NAME, and it is TWO controls, because the
+// never-serviceable gate can be wrong in two directions and only one of them is loud.
+//   (a) a SERVICEABLE machine still opens the menu and still orders — otherwise the leg above is
+//       also satisfied by a `prioritiseOffer` that refuses everything;
+//   (b) a row with NO eighth element still opens the menu — the append-only contract, and the
+//       failure it guards is total: an older host, or a channel row that lost the field, would
+//       withdraw M2-10's verb from every machine on the ship with nothing said.
+// (b) is the same fixture as (a) — WING is deliberately seven-element in this rig — so it is
+// asserted here explicitly rather than left as an accident of the fixture.
+test('M3-13 CONTROL: a serviceable machine still offers the repair, and so does a SHORT row', () => {
+  prime([ADA], null);
+  assert.equal(RoomZoom.deviceConditionAt(WING[0], WING[1]).serv, 1,
+    'fixture: WING\'s row has no eighth element, so `serv` must have defaulted to 1 (serviceable)');
+  rightClick(WING);
+  assert.equal(menu().hidden, false,
+    'the menu was withheld from a SERVICEABLE machine — the never-serviceable gate refuses '
+    + 'everything, and M2-10\'s whole verb is gone with the suite otherwise green');
+  clickRow();
+  assert.deepEqual(orders(), [{ cmd: 'prioritise', cid: ADA.cid, x: WING[0], y: WING[1], deck: RECT.deck }]);
 });
 
 // ═════════════════════════════════════════════════════════════════ 4. WHICH PAWN, DRIVEN

@@ -35,6 +35,7 @@ import {
   BLOCKED_ORDER_DIG, BLOCKED_ORDER_STRIP, BLOCKED_ORDER_BUILD,
   BLOCKED_REASON_AIR, BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE,
   BLOCKED_REASON_UNREACHABLE, BLOCKED_REASON_WORK_TYPE_OFF,
+  BLOCKED_DETAIL_NONE, ITEM_WORDS, itemWords, blockedReasonSentence,
 } from '../src/wire/messages.js';
 import { roomBlockedTiles, roomTileRect } from '../src/ui/room-model.js';
 import { blockedCellSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/blocked-overlay.js';
@@ -60,17 +61,32 @@ const msg = (cells) => ({ type: 'blocked', cells });
 
 // MUTATION: swap `.Append(c.Order…)` and `.Append(c.Reason…)` in WireFormat.Blocked.cs ⇒ this fails
 // and names the file. MUTATION 2: reorder the `BlockedCell` constructor parameters ⇒ same.
-test('the wire tuple order is [x, y, deck, order, reason] on BOTH sides of the seam', () => {
+test('the wire tuple order is [x, y, deck, order, reason, detail] on BOTH sides of the seam', () => {
   const emitted = [...WIRE_BLOCKED_CS.matchAll(/\.Append\(c\.(\w+)\.ToString\(BlockedIc\)\)/g)].map((m) => m[1]);
-  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Order', 'Reason'],
+  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Order', 'Reason', 'Detail'],
     'hosts/web/WireFormat.Blocked.cs no longer appends the tuple in the order this client reads it. '
     + 'The tuple is POSITIONAL — a swap reports a dig as a strip, or "no approach" as "no air" — and '
     + 'there is no compiler across this seam.');
 
-  const ctor = /BlockedCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/.exec(WIRE_BLOCKED_CS);
+  const ctor = /BlockedCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/
+    .exec(WIRE_BLOCKED_CS);
   assert.ok(ctor, 'the BlockedCell constructor was not found — this parse has rotted, and the append '
     + 'scan alone cannot see a CALLER that fills the fields in the wrong order');
-  assert.deepEqual(ctor.slice(1, 6), ['x', 'y', 'deck', 'order', 'reason']);
+  assert.deepEqual(ctor.slice(1, 7), ['x', 'y', 'deck', 'order', 'reason', 'detail']);
+});
+
+// ⭐ M3-13 — THE SENTINEL IS PINNED ACROSS THE SEAM TOO, and it is NOT covered by the tuple-order
+// test above: an append scan sees the POSITION of `Detail`, never its "nothing to say" value. If the
+// host sent 0 and this client kept −1, every non-detailed row would claim to want Regolith
+// (`ItemKind 0`) and the badge would read "NEEDS REGOLITH" on a vacuum refusal.
+// MUTATION: change `DetailNone` to 0 in the C# ⇒ red here.
+test('DetailNone is pinned equal on both sides — a sentinel that disagrees is a payload', () => {
+  const m = /public const int DetailNone\s*=\s*(-?\d+)\s*;/.exec(WIRE_BLOCKED_CS);
+  assert.ok(m, 'hosts/web/WireFormat.Blocked.cs no longer declares `DetailNone` — this parse rotted');
+  assert.equal(Number(m[1]), BLOCKED_DETAIL_NONE);
+  assert.equal(BLOCKED_DETAIL_NONE, -1,
+    'the sentinel must stay OUT of the ItemKind range: 0 is Regolith, and a 0 sentinel cannot be '
+    + 'told from a real payload');
 });
 
 // The house tripwire idiom: marks-model.test.js parses WireFormat.Marks.cs, zone-model.test.js parses
@@ -120,10 +136,25 @@ test('the channel is dispatched by the standard client and cached for a reconnec
 // ══════════════════════════════════════════════════════════════════════════════ the decoder
 
 test('decodeBlocked reads the tuple and names both codes', () => {
-  const out = decodeBlocked(msg([[5, 6, 1, BLOCKED_ORDER_STRIP, BLOCKED_REASON_AIR]]));
+  const out = decodeBlocked(msg([[5, 6, 1, BLOCKED_ORDER_STRIP, BLOCKED_REASON_AIR, BLOCKED_DETAIL_NONE]]));
   assert.deepEqual(out, [{
-    x: 5, y: 6, deck: 1, order: 1, reason: 0, orderName: 'strip', reasonName: 'air',
+    x: 5, y: 6, deck: 1, order: 1, reason: 0, detail: -1, orderName: 'strip', reasonName: 'air',
   }]);
+});
+
+// ⭐⭐ M3-13 — THE APPENDED ELEMENT, AND THE OLDER-HOST ROW BESIDE IT. The 5-element row is what a
+// host from before this package emits, and it must still decode: raising the length gate to 6 would
+// drop every row mid-upgrade, which is silence on the anti-silence channel.
+// MUTATION: change the `t.length > 5` guard to `t.length > 4` (i.e. read `t[5]` unconditionally) ⇒
+// the short row's `detail` becomes 0 and leg 2 reddens.
+test('decodeBlocked reads `detail`, and a FIVE-element row from an older host still decodes', () => {
+  const six = decodeBlocked(msg([[5, 6, 1, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_CONSUMABLE, 6]]));
+  assert.equal(six[0].detail, 6, 'the sixth element did not reach the decoded row');
+
+  const five = decodeBlocked(msg([[5, 6, 1, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_CONSUMABLE]]));
+  assert.equal(five.length, 1, 'a five-element row from an older host was DROPPED');
+  assert.equal(five[0].detail, BLOCKED_DETAIL_NONE,
+    'a missing sixth element must read as "nothing to say", never as ItemKind 0 (Regolith)');
 });
 
 test('decodeBlocked is tolerant: a bad message is null, a bad row is dropped, it never throws', () => {
@@ -148,6 +179,184 @@ test('a row whose codes this client cannot NAME is KEPT — dropping it would re
     + 'decoder instead of through the sim.');
   assert.equal(out[0].reasonName, '', 'an unknown code names as empty, never as a wrong name');
   assert.equal(out[0].orderName, '');
+});
+
+// ══════════════════════════════════════ M3-13 — THE ITEM VOCABULARY, AND THE BADGE THAT NAMES ONE
+//
+// ⭐⭐ ONE VOCABULARY, TWO SURFACES (M2-18's rule, the charter's mutation 6). The MOSS POD BAY row
+// says `NEEDS 1 CONTROLLER MODULE — SHIP HAS 0`, composed HOST-side by `ThawGate.Describe` out of
+// `ThawGate.ItemWords`; the Room Zoom's tile badge says `NEEDS PARTS — …`, composed CLIENT-side out
+// of `ITEM_WORDS`, because the `blocked` channel carries a bare `ItemKind` byte and no string. Two
+// composers, and the requirement is that they cannot come to spell one item two ways.
+//
+// ⇒ THE MIRROR IS PINNED BY PARSING THE SIM. The house tripwire idiom: `prioritise-menu.test.js`
+// parses `Device.cs`, `stock-filter-model.test.js` parses `ItemStack.cs`, `palette.test.js` parses
+// `GlyphColor.cs`. There is no compiler across this seam.
+// MUTATION (the charter's 6): re-word `case ItemKind.ControllerModule: return "CONTROLLER MODULE";`
+// in `sim/Sim.Core/ThawGate.cs` — to "CTRL MODULE", or to `Enum.ToString()` — ⇒ RED here, which is
+// the two surfaces being stopped from drifting rather than merely asked not to.
+const THAW_GATE_CS = codeOnly(read(join(REPO, 'sim/Sim.Core/ThawGate.cs')));
+const ITEM_STACK_CS = codeOnly(read(join(REPO, 'sim/Sim.Core/Entities/ItemStack.cs')));
+
+/** `ItemKind` member → its byte, parsed from the sim's own enum. */
+function parseItemKinds() {
+  const body = /enum ItemKind : byte\s*\{([\s\S]*?)\n\s*\}/.exec(ITEM_STACK_CS);
+  assert.ok(body, 'sim/Sim.Core/Entities/ItemStack.cs no longer declares `enum ItemKind : byte` — '
+    + 'this parse has rotted and every leg below it is measuring nothing');
+  const map = {};
+  for (const m of body[1].matchAll(/(\w+)\s*=\s*(\d+)/g)) map[m[1]] = Number(m[2]);
+  return map;
+}
+
+/** The `case ItemKind.X: return "WORDS";` arms of `ThawGate.ItemWords`, in source order. */
+function parseItemWordsSwitch() {
+  const fn = /public static string ItemWords\(ItemKind kind\)\s*\{([\s\S]*?)\n\s{8}\}/.exec(THAW_GATE_CS);
+  assert.ok(fn, 'sim/Sim.Core/ThawGate.cs no longer declares `public static string ItemWords(ItemKind '
+    + 'kind)` — either it was made private again (which breaks the one-vocabulary rule outright) or '
+    + 'this parse has rotted');
+  return [...fn[1].matchAll(/case ItemKind\.(\w+):\s*return "([^"]+)";/g)].map((m) => [m[1], m[2]]);
+}
+
+test('the ItemWords parse is NON-VACUOUS — it finds real arms, not an empty match', () => {
+  const kinds = parseItemKinds();
+  assert.ok(Object.keys(kinds).length >= 10,
+    'the ItemKind parse found ' + Object.keys(kinds).length + ' members — it is matching a fragment');
+  assert.equal(kinds.ControllerModule, 6, 'the enum parse disagrees with the shipped byte for '
+    + 'ControllerModule; every index assertion below would then be checking the wrong slot');
+  const arms = parseItemWordsSwitch();
+  assert.ok(arms.length >= 3,
+    'ThawGate.ItemWords parsed to ' + arms.length + ' arms — a regex that finds nothing makes the '
+    + 'agreement test below pass by construction, which is the fourth trap shape exactly');
+});
+
+// MUTATION 2 (the charter's 6, from the other side): change 'CONTROLLER MODULE' in `ITEM_WORDS` ⇒
+// RED. MUTATION 3: delete an entry from `ITEM_WORDS` ⇒ RED, and the message names the missing item.
+test('ITEM_WORDS is pinned EQUAL to ThawGate.ItemWords — one vocabulary, two surfaces', () => {
+  const kinds = parseItemKinds();
+  for (const [member, words] of parseItemWordsSwitch()) {
+    const byte = kinds[member];
+    assert.equal(typeof byte, 'number', `ThawGate.ItemWords names ItemKind.${member}, which the enum `
+      + 'does not declare — one of the two parses is reading a stale file');
+    assert.equal(itemWords(byte), words,
+      `THE TWO SURFACES SPELL ItemKind.${member} DIFFERENTLY. The MOSS POD BAY says "${words}" `
+      + `(ThawGate.ItemWords, host-composed) and the Room Zoom tile badge says "${itemWords(byte)}" `
+      + '(ITEM_WORDS, client-composed). M2-18: one player confusion, two surfaces, and NEITHER may '
+      + 'invent a second vocabulary — a player told to make one thing on one screen and another '
+      + 'thing on the next has been told nothing.');
+  }
+  // …and nothing is in the client table that the sim does not name, which is the other direction:
+  // a client-only entry is a word the pod bay can never say.
+  const named = new Set(parseItemWordsSwitch().map(([m]) => kinds[m]));
+  for (const key of Object.keys(ITEM_WORDS)) {
+    assert.ok(named.has(Number(key)),
+      `ITEM_WORDS carries ItemKind ${key}, which ThawGate.ItemWords does not name — this client `
+      + 'would spell an item the MOSS console cannot, which is a second vocabulary by the back door');
+  }
+  assert.equal(itemWords(99), '', 'an ItemKind this client has never heard of names as empty');
+  assert.equal(itemWords(BLOCKED_DETAIL_NONE), '', 'the sentinel is not an item');
+});
+
+// ⭐⭐ THE CHARTER'S MUTATION 1, DRIVEN AS IT INSISTS: *"emit a refusal whose `Detail` names an item
+// and assert the RENDERED BADGE TEXT changes — never that the array has six elements."*
+// APPLY: leave `decodeBlocked` destructuring FIVE elements (drop the `detail:` line) ⇒ the row's
+// detail reads −1, the sentence falls back to the generic one, and this reddens. That is the whole
+// hazard of a positional array: the decoder KEEPS WORKING and silently drops the field.
+// APPLY 2: drop `.Append(c.Detail…)` from `WireFormat.Blocked.cs` ⇒ the same red, from the host end.
+test('M3-13 mutation 1: a `detail` on the wire CHANGES THE RENDERED BADGE, driven end to end', () => {
+  const at = [ROOM.rx + 1, ROOM.ry + 1];
+  const generic = fold([[at[0], at[1], ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE]]);
+  assert.equal(generic[0].reasonText, BLOCKED_REASON_TEXT.no_consumable,
+    'premise: with no detail the badge keeps the sentence it has always had');
+
+  // ⭐ ItemKind 6 = ControllerModule, and it is chosen BECAUSE THE HOST NEVER SENDS IT ON THIS ROW —
+  // a repair order wants Parts (the ladder's top tier), never a module. That is exactly what makes
+  // it the right probe: if this client rendered a hard-coded word instead of the byte that arrived,
+  // a value the host cannot produce is the one input that would expose it.
+  const named = fold([[at[0], at[1], ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, 6]]);
+  assert.notEqual(named[0].reasonText, generic[0].reasonText,
+    'THE SIXTH ELEMENT REACHED THE WIRE AND DID NOT REACH THE PLAYER. The badge still reads the '
+    + 'generic sentence with the answer sitting in the row — a decoder that reads five elements by '
+    + 'index keeps working and drops the field, silently, with every other test green.');
+  assert.match(named[0].reasonText, /NEEDS CONTROLLER MODULE/,
+    'the badge must NAME the item, in the sim\'s own words');
+  assert.match(named[0].label, /NEEDS CONTROLLER MODULE/,
+    'the <title> label composes from the same sentence — one wording per row, not two');
+
+  // …and it reaches the VISIBLE key, which is what discharges "the player was never told".
+  assert.match(blockedKeyHtml(named), /NEEDS CONTROLLER MODULE/,
+    'the sentence stopped at the <title>: a hover nobody knows to try and that does not exist on a '
+    + 'touch device is the same silence one layer down');
+
+  // THE SECOND CLAUSE IS LOAD-BEARING AND IS ASSERTED, NOT ASSUMED. The host emits this row only
+  // when NONE of Parts/Seals/Swarf is aboard, so any of them clears it; a bare "NEEDS X" would read
+  // as "X is the only key", which is false about the ship.
+  assert.match(named[0].reasonText, /NOTHING ABOARD/,
+    'the sentence names one item but must not imply it is the only one that would clear the row');
+});
+
+// ⭐ THE CHARTER'S MUTATION 2 — "return the refusal with a `Detail` the client cannot name".
+// APPLY: emit `(int)ItemKind.Ice` (8) from `AddUnfixableRow` ⇒ this client has no word for it and
+// the badge must fall back to the generic sentence rather than render `undefined`.
+test('M3-13 mutation 2: an UNNAMEABLE detail degrades to the generic sentence, never `undefined`', () => {
+  const at = [ROOM.rx + 1, ROOM.ry + 1];
+  for (const detail of [0, 8, 99, -7, BLOCKED_DETAIL_NONE]) {
+    const [tile] = fold([[at[0], at[1], ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, detail]]);
+    assert.equal(tile.reasonText, BLOCKED_REASON_TEXT.no_consumable,
+      `detail ${detail} is not a word this client knows, so the badge must keep the reason's own `
+      + 'generic sentence — still true, only less specific. That is the forward-compat path the '
+      + 'whole channel is built on: the payload of a blocked row is THIS TILE IS STUCK.');
+    assert.ok(!/undefined|NaN|null/i.test(tile.reasonText + ' ' + tile.label),
+      'a badge reading "NEEDS UNDEFINED" is worse than the sentence it replaced: ' + tile.reasonText);
+  }
+  // …and the unnameable-REASON path still degrades one step further, unchanged by any of this.
+  const [unknown] = fold([[at[0], at[1], ROOM.deck, BLOCKED_ORDER_DIG, 98, 6]]);
+  assert.match(unknown.reasonText, /REASON UNKNOWN TO THIS CLIENT/,
+    'a reason this client cannot name must still draw a badge with words — a detail it CAN name '
+    + 'must not accidentally rescue a reason it cannot');
+});
+
+// ⭐ blockedReasonSentence IS THE ONE ENTRY POINT, and this is the leg that keeps it one.
+// MUTATION: make `roomBlockedTiles` index `BLOCKED_REASON_TEXT` again ⇒ mutation 1's test reddens.
+test('blockedReasonSentence: pure, total, and the same answer roomBlockedTiles renders', () => {
+  assert.equal(blockedReasonSentence('air'), BLOCKED_REASON_TEXT.air);
+  assert.equal(blockedReasonSentence('air', 6), BLOCKED_REASON_TEXT.air,
+    'a reason with no detail wording ignores the detail rather than inventing one');
+  assert.equal(blockedReasonSentence(''), '', 'an unnameable reason answers empty, not undefined');
+  assert.equal(blockedReasonSentence(undefined), '');
+  assert.equal(blockedReasonSentence('no_such_reason', 6), '');
+  // ⚠️ AN INHERITED KEY IS NOT A REASON. A frozen object literal still inherits `Object.prototype`,
+  // so a bare index would answer `Object` for 'constructor' — a FUNCTION, which this call would then
+  // invoke, returning a truthy Number wrapper straight onto a player's badge. Both tables are read
+  // through `hasOwnProperty` for that reason.
+  // MUTATION: drop the `hasOwnProperty` guards in `blockedReasonSentence` ⇒ red on both legs.
+  for (const evil of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+    assert.equal(blockedReasonSentence(evil, 6), '',
+      `an inherited key ('${evil}') was treated as a reason name`);
+  }
+  assert.match(blockedReasonSentence('no_consumable', 5), /NEEDS PARTS/);
+  assert.match(blockedReasonSentence('no_consumable', 7), /NEEDS SEALS/);
+});
+
+// ⭐ THE KEY BOX DEDUPES ON THE SENTENCE, NOT ON THE REASON CODE — added by M3-13 because `detail`
+// makes two rows share a code and say two different true things. Keyed on the code alone the box
+// prints the FIRST and swallows the second, so the badges on the floor and the words beside them
+// disagree about the same room — which is exactly what deriving both from one `roomBlockedTiles`
+// call is supposed to make impossible.
+// MUTATION: key `seen` on `t.reasonName` alone in `blockedKeyHtml` ⇒ red (one row, not two).
+test('two rows with ONE reason code but two different sentences get TWO key rows', () => {
+  const tiles = fold([
+    [ROOM.rx, ROOM.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, 5],   // Parts
+    [ROOM.rx + 1, ROOM.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, 6], // Ctrl module
+  ]);
+  const html = blockedKeyHtml(tiles);
+  assert.equal((html.match(/rz-key-row/g) || []).length, 2,
+    'the key box collapsed two DIFFERENT sentences into one row because they share a reason code — '
+    + 'the player is told about one stuck order and not the other');
+  assert.match(html, /NEEDS PARTS/);
+  assert.match(html, /NEEDS CONTROLLER MODULE/);
+  assert.equal((html.match(/rz-key-sw-blocked-no_consumable/g) || []).length, 2,
+    'the SWATCH is still per-reason: both rows carry the no_consumable hook, because there is one '
+    + 'colour per reason and not one per sentence');
 });
 
 // ═══════════════════════════════════════════════════════════ roomBlockedTiles — BLINDED LEGS

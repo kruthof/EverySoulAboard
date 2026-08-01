@@ -808,10 +808,37 @@ namespace Perilune.Sim
         private static string Sleeper(string podName)
             => CryoSystem.SleeperName(podName ?? "").ToUpperInvariant();
 
-        /// <summary>The three ladder items as the console spells them. A <c>switch</c> over consts,
-        /// not <c>Enum.ToString()</c>: an undeclared ordinal must not reach a player as a number,
-        /// and <c>ControllerModule</c> must not reach one as one word.</summary>
-        private static string ItemWords(ItemKind kind)
+        /// <summary>
+        /// ⭐⭐ <b>THE REFUSAL VOCABULARY — THE ONE PLACE A <see cref="ItemKind"/> IS SPELLED INSIDE
+        /// A REFUSAL SENTENCE.</b> A <c>switch</c> over consts, not <c>Enum.ToString()</c>: an
+        /// undeclared ordinal must not reach a player as a number, and <c>ControllerModule</c> must
+        /// not reach one as one word.
+        ///
+        /// <para>⚠️ <b>SCOPED TO REFUSALS, AND THE SCOPE IS MEASURED RATHER THAN ASSUMED.</b> An
+        /// earlier wording of this comment claimed it was <i>"the one place this game spells an
+        /// ItemKind for a player"</i>, and that is FALSE: the stockpile FILTER chips spell the same
+        /// enum on two shipping surfaces and spell it DIFFERENTLY on purpose — <c>CTRL MOD</c>
+        /// (<c>client/src/ui/stock-filter-model.js:29</c> and <c>hosts/tui/Ui/StockFilterModel.cs:89</c>,
+        /// which are pinned equal to EACH OTHER). A chip has a column to fit in; a refusal sentence
+        /// has a line of prose. Two vocabularies for two jobs is fine — what is NOT fine is two
+        /// vocabularies for ONE job, which is what this switch exists to prevent.</para>
+        ///
+        /// <para>⭐ <b>PUBLIC SINCE M3-13, AND THAT IS THE WHOLE POINT OF THE FIELD IT SERVES.</b>
+        /// Two surfaces now name an item in a refusal — the MOSS <b>POD BAY</b> row
+        /// (<c>NEEDS 1 CONTROLLER MODULE — SHIP HAS 0</c>, composed here by
+        /// <see cref="Describe"/>) and the Room Zoom's <c>blocked</c> TILE BADGE (composed
+        /// client-side from the <c>Detail</c> element of a <c>WireFormat.BlockedCell</c>, because
+        /// the wire carries an <see cref="ItemKind"/> BYTE and never a string). M2-18's rule
+        /// applies verbatim — <i>"one player confusion, two surfaces, and they must agree; neither
+        /// package invents a second vocabulary"</i> — so the client's mirror
+        /// (<c>ITEM_WORDS</c> in <c>client/src/wire/messages.js</c>) is pinned equal to THIS switch
+        /// by a test that PARSES THIS FILE (<c>client/test/blocked-model.test.js</c>, the house
+        /// tripwire idiom: there is no compiler across that seam). Re-word a case here and the
+        /// client test reddens.</para>
+        ///
+        /// <para><b>NO PLURALISATION</b> — see <see cref="Describe"/>'s remarks.</para>
+        /// </summary>
+        public static string ItemWords(ItemKind kind)
         {
             switch (kind)
             {

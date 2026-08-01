@@ -277,13 +277,13 @@ test('deckDeviceConditions keeps this deck only, and keys by tile like its room-
   // deck-1 row is OPEN and both wrong-deck/other rows are SHUT, so the blinded deck-filter leg below
   // now bites on two fields instead of one.
   const rows = [
-    { x: 3, y: 4, deck: 1, kind: 8, cond: 10, oper: 0, open: 1 },
-    { x: 5, y: 4, deck: 1, kind: 13, cond: 250, oper: 1, open: 0 },
-    { x: 3, y: 4, deck: 2, kind: 8, cond: 200, oper: 1, open: 0 },   // same TILE, other deck
+    { x: 3, y: 4, deck: 1, kind: 8, cond: 10, oper: 0, open: 1, serv: 1 },
+    { x: 5, y: 4, deck: 1, kind: 13, cond: 250, oper: 1, open: 0, serv: 0 },
+    { x: 3, y: 4, deck: 2, kind: 8, cond: 200, oper: 1, open: 0, serv: 0 },   // same TILE, other deck
   ];
   const d1 = deckDeviceConditions(rows, 1);
   assert.equal(d1.size, 2, 'two devices on deck 1');
-  assert.deepEqual(d1.get('3,4'), { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0, open: 1 });
+  assert.deepEqual(d1.get('3,4'), { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0, open: 1, serv: 1 });
   assert.equal(deckDeviceConditions(rows, 2).size, 1, 'the other deck carries its own one row');
   assert.equal(deckDeviceConditions(rows, 9).size, 0, 'an empty deck is empty, not everything');
   // ⚠️ THE DECK FILTER, BLINDED — CLAUDE.md's fifth trap in miniature. The wrong-deck row above sits

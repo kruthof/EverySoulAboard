@@ -1003,7 +1003,7 @@ namespace Perilune.Tests
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 var f = part.Split(']')[0].Split(',');
-                Assert.AreEqual(7, f.Length, "a devices tuple is seven elements now");
+                Assert.AreEqual(8, f.Length, "a devices tuple is EIGHT elements since M3-13 (…,open,serv)");
                 if (int.Parse(f[0], CultureInfo.InvariantCulture) == p.X &&
                     int.Parse(f[1], CultureInfo.InvariantCulture) == p.Y &&
                     int.Parse(f[2], CultureInfo.InvariantCulture) == p.Z)
