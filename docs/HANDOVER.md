@@ -123,15 +123,14 @@ FULL RECORDS in the §3 queue rows of `perilune-m3.packages.md` — this is the 
   next package that moves P4/P5 anyway · pre-existing CA1305 at `PeriluneGoldenTests:65`.
 - **FREEZE as a player verb** — named follow-on (OD-M item 6); occupancy map inside
   `pin/m3-a` or renaming every authored pod.
-- Carried: wrapper-predicate census lesson (M2-0's shape ×3) · no wire carries per-device
-  powered-ness (`oper` wear-only) · shed lamps 0.5 Hz flicker (§13.11) · `Device.Rate`
-  scales generators, unwritten · `IceChainMemoTests` zero-alloc flake · M2-17 residuals ·
-  stale-citation sweep candidates (MECHANICS `:62`/`:2008`/`:2741`, ECONOMY.md:72,74,
-  moss-terminal.spec.md:417, `Commands.cs:753,778`-as-quoted — real line `:777`) · de-CH
-  not de-DE in the trap ledger · §13.1 CO2 gap · M2-21 residuals · `WorkIncapable` not on
-  the `work` wire (M3-7 owns) · M2-5 distance tie · `designs` not fog-gated ·
-  needy-machine scans · unskinned glyphs · D-3 social gate · `Commands.cs` retracted
-  sentence still greps verbatim.
+- Carried (unchanged this session — full prose in `docs/history/HANDOVER-2026-07.md` and
+  the trap ledger): wrapper-predicate census lesson ×3 · no per-device powered-ness wire ·
+  shed-lamp flicker · `Device.Rate` scales generators, unwritten · `IceChainMemoTests`
+  flake · M2-17/M2-21/M2-5 residuals · stale-citation sweep candidates (MECHANICS
+  `:62`/`:2008`/`:2741`, ECONOMY.md:72,74, moss-terminal.spec.md:417, `Commands.cs:777`) ·
+  de-CH wording · §13.1 CO2 gap · `WorkIncapable` off the `work` wire (M3-7) · `designs`
+  not fog-gated · needy-machine scans · unskinned glyphs · D-3 social gate ·
+  `Commands.cs` retracted sentence.
 
 ## Session log (append one row per session; prune when > ~40 rows)
 
