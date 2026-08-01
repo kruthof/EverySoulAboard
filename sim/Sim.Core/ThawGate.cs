@@ -1,3 +1,5 @@
+using System;
+
 namespace Perilune.Sim
 {
     /// <summary>
@@ -20,6 +22,198 @@ namespace Perilune.Sim
             Rung = rung;
             Item = item;
             Count = count;
+        }
+    }
+
+    /// <summary>
+    /// ⭐ WHY THE THAW REFUSED, OR <see cref="None"/>. One member per SENTENCE the ship can say —
+    /// the RimWorld analogue (<c>docs/design/rimworld-reference.md</c> §2.2) is a refusal at the
+    /// point of the click that STATES THE REASON, so a single "no" would have been the defect this
+    /// milestone exists to avoid.
+    ///
+    /// <para>⛔ <b>APPEND-ONLY.</b> The ordinal reaches no save and no hash — nothing here is sim
+    /// state — but it does reach the wire (<c>WireFormat.MossThaw</c>), so a renumber would
+    /// silently re-label a client's strings.</para>
+    /// </summary>
+    public enum ThawRefusal : byte
+    {
+        /// <summary>Not a refusal: the gate said yes and <see cref="ThawCommand"/> may charge.</summary>
+        None = 0,
+
+        // ── term 1, the pod ─────────────────────────────────────────────────────────────────
+        /// <summary>No <see cref="DeviceKind.CryoPod"/> aboard carries that name.</summary>
+        NoSuchPod = 1,
+        /// <summary>The capsule is already open. A pod is SINGLE-USE (§13.27, OD-M item 6 = A), so
+        /// this is permanent and is a DIFFERENT sentence from <see cref="PodNoSignal"/>: nobody
+        /// died, they are already walking around.</summary>
+        PodAlreadyOpen = 2,
+        /// <summary>Unpowered, or below the <c>CryoPod</c> row's <c>fail</c> threshold — OD-9's
+        /// wrecked capsule, whose sleeper did not survive the raid. PERMANENT.</summary>
+        PodNoSignal = 3,
+
+        // ── term 2, the console ─────────────────────────────────────────────────────────────
+        /// <summary>The terminal the request came through is missing, unpowered, below its
+        /// <c>fail</c> threshold, or not commissioned.</summary>
+        NoConsole = 4,
+
+        // ── term 3, the cycle ───────────────────────────────────────────────────────────────
+        /// <summary>Another capsule is mid-cycle. One at a time — the owner's stated mechanic.</summary>
+        PodCycling = 5,
+
+        // ── term 4, the rung (OD-L) ─────────────────────────────────────────────────────────
+        /// <summary>The repair this capsule's band names is not aboard in the count it names.
+        /// ⭐ THE REASON IS THE HINT.</summary>
+        Rung = 6,
+
+        // ── term 5, the headroom ────────────────────────────────────────────────────────────
+        /// <summary>CO₂ removal would not cover the crew the thaw would create. A STEP FUNCTION:
+        /// a tier unlock, not a pacer (wreck plan §3.4.1).</summary>
+        Scrubbing = 7,
+        /// <summary>The larder would not carry the larger crew for <see cref="ThawGate.MinDaysOfFood"/>
+        /// days. The only CONTINUOUS headroom term.</summary>
+        Food = 8,
+        /// <summary>The tanks would not carry the larger crew for <see cref="ThawGate.MinDaysOfWater"/>
+        /// days.</summary>
+        Water = 9,
+        /// <summary>Standing breathable oxygen below <see cref="ThawGate.MinO2CrewDays"/> crew-days.
+        /// ⚠️ MEASURED AT ~99 (grid) / ~172 (wreck) CREW-DAYS: this term REPORTS and never binds on
+        /// a ship that is not already lost. It is kept because deleting a term makes the report
+        /// lie by omission, not because it paces anything.</summary>
+        Oxygen = 10,
+
+        // ── term 6, the price, HAS NO MEMBER HERE, AND THAT IS A DECISION ────────────────────
+        //
+        // The charter's own contract table leaves term 6's refusal column empty, and the code
+        // agrees: term 4 reads the ship's loose stock through `LooseMatter.Affordable` and term 6
+        // spends it through `LooseMatter.TryPay` — the SAME lens, on the SAME state, inside one
+        // synchronous command — so the charge cannot refuse. A `Price` member would be a reason
+        // nothing can produce, and a §13 "wired but nothing reaches it" entry from birth.
+        // `ThawCommand.Execute` still checks the spend (a disclosed, UNTESTED defensive guard —
+        // the `CommissionDeviceCommand` precedent), because "cannot fail" is a claim about today's
+        // callers and the alternative is a capsule that cycles for free.
+    }
+
+    /// <summary>
+    /// ⭐ THE GATE'S ANSWER — one refusal (or <see cref="ThawRefusal.None"/>) plus every NUMBER the
+    /// sentence needs. A <c>readonly struct</c> of value fields and two already-existing string
+    /// REFERENCES, so <see cref="ThawGate.Evaluate"/> allocates nothing: it is called from
+    /// <see cref="ThawCommand.Execute"/>, which runs inside <c>Simulation.Tick</c>.
+    ///
+    /// <para><b>THE STRING IS COMPOSED SOMEWHERE ELSE, ON PURPOSE.</b> <see cref="ThawGate.Describe"/>
+    /// turns this into prose and it ALLOCATES; it is a host/test call, never a tick-path one. The
+    /// split is what lets the refusal carry a number without the tick path carrying a
+    /// <c>StringBuilder</c>.</para>
+    /// </summary>
+    public readonly struct ThawVerdict
+    {
+        /// <summary>Why not, or <see cref="ThawRefusal.None"/>.</summary>
+        public readonly ThawRefusal Reason;
+
+        /// <summary>The capsule the request named, 0 when no capsule resolved.</summary>
+        public readonly uint PodId;
+
+        /// <summary>The capsule's <c>Device.Name</c> — a REFERENCE to the sim's own string (never a
+        /// composed one), or the name the request asked for when nothing resolved.</summary>
+        public readonly string PodName;
+
+        /// <summary>The rung term 4 resolved (rung 0 when the gate stopped before term 4).</summary>
+        public readonly ThawRung Rung;
+
+        /// <summary>Units of <see cref="ThawRung.Item"/> lying loose aboard — the "SHIP HAS" number.</summary>
+        public readonly int UnitsAboard;
+
+        /// <summary>Crew the working scrubbers cover (term 5) — the "COVERS" number.</summary>
+        public readonly int CrewCovered;
+
+        /// <summary>Living crew AFTER the thaw would land, i.e. <c>living + 1</c>. The denominator
+        /// every headroom term is measured against: the gate answers "may this ship carry the crew
+        /// it is about to have", never "the crew it has".</summary>
+        public readonly int CrewAfterThaw;
+
+        /// <summary>What the binding headroom term READ (days of food, days of water, crew-days of
+        /// O₂). Meaningless unless <see cref="Reason"/> is a headroom reason.</summary>
+        public readonly double Reading;
+
+        /// <summary>What that term REQUIRED. Beside <see cref="Reading"/> so the number never
+        /// travels without the floor it failed.</summary>
+        public readonly double Floor;
+
+        /// <summary>Whole sim-minutes left on the cycling capsule, rounded UP (never 0 while a
+        /// cycle is live: "0 min" reads as done).</summary>
+        public readonly int MinutesRemaining;
+
+        internal ThawVerdict(ThawRefusal reason, uint podId, string podName, ThawRung rung,
+                             int unitsAboard, int crewCovered, int crewAfterThaw,
+                             double reading, double floor, int minutesRemaining)
+        {
+            Reason = reason; PodId = podId; PodName = podName; Rung = rung;
+            UnitsAboard = unitsAboard; CrewCovered = crewCovered; CrewAfterThaw = crewAfterThaw;
+            Reading = reading; Floor = floor; MinutesRemaining = minutesRemaining;
+        }
+
+        /// <summary>May the capsule cycle?</summary>
+        public bool Allowed => Reason == ThawRefusal.None;
+    }
+
+    /// <summary>
+    /// ⭐ THE HEADROOM CENSUS — the same live state <c>ShipLedger.Sample</c> reads, read again,
+    /// zero-alloc, for the crew the ship is ABOUT TO HAVE.
+    ///
+    /// <para>⛔ <b>AND IT MAY NOT CALL THE LEDGER.</b> <c>ArchitectureBoundaryTests</c>
+    /// (<c>:519</c>) denies every file under <c>sim/Sim.Core</c> except <c>ShipLedger.cs</c> the
+    /// identifier <c>ShipLedger</c>, deliberately with no scope filter, because
+    /// <c>ShipLedger.Sample</c> ALLOCATES an <c>int[]</c> per census and this struct is filled
+    /// inside <c>Simulation.Tick</c>. ⇒ <b>one source of truth by ASSERTION, not by call</b>:
+    /// <c>ThawGateTests.TheGateAndTheLedgerAgree_OnADrivenShip</c> drives a real ship and requires
+    /// the four shared quantities below to be equal to the ledger's, to the bit.</para>
+    /// </summary>
+    public readonly struct ThawHeadroom
+    {
+        /// <summary>Crew with <c>Citizen.Dead</c> false. ⚠️ NOT <c>sim.Citizens.Items.Count</c> —
+        /// dead crew are never removed from the store. Must equal <c>ShipLedgerSample.LivingCrew</c>.</summary>
+        public readonly int LivingCrew;
+
+        /// <summary><see cref="LivingCrew"/> + 1 — every term below is measured against this.</summary>
+        public readonly int CrewAfterThaw;
+
+        /// <summary><c>DeviceKind.Scrubber</c>s that are <c>Powered</c> and above their <c>fail</c>.</summary>
+        public readonly int WorkingScrubbers;
+
+        /// <summary>The largest crew a strict CO₂ surplus covers at
+        /// <see cref="WorkingScrubbers"/>. <c>int.MaxValue</c> when the defs make CO₂ free.</summary>
+        public readonly int CrewScrubbingCovers;
+
+        /// <summary>Units of <c>Potato</c> aboard. Must equal <c>ShipLedgerSample.FoodUnits</c> —
+        /// carried and reserved stacks included, exactly as the ledger counts them.</summary>
+        public readonly int FoodUnits;
+
+        /// <summary>Sim-days <see cref="CrewAfterThaw"/> can be fed, or
+        /// <see cref="double.PositiveInfinity"/> when the defs make nobody hungry.</summary>
+        public readonly double DaysOfFood;
+
+        /// <summary>Litres standing in <c>WaterTank</c>s. Must equal <c>ShipLedgerSample.TankLiters</c>.</summary>
+        public readonly float TankLiters;
+
+        /// <summary>Sim-days <see cref="CrewAfterThaw"/> can drink, or +∞ when nobody thirsts.</summary>
+        public readonly double DaysOfWater;
+
+        /// <summary>Σ <c>Room.O2Moles</c> over PRESSURISED rooms. Must equal
+        /// <c>ShipLedgerSample.BreathableO2Moles</c>.</summary>
+        public readonly double BreathableO2Moles;
+
+        /// <summary>Crew-days of standing oxygen for <see cref="CrewAfterThaw"/>, or +∞ when the
+        /// defs make nobody breathe. ⚠️ Reads ~172 on the wreck at boot: it reports, it never binds.</summary>
+        public readonly double O2CrewDays;
+
+        internal ThawHeadroom(int livingCrew, int workingScrubbers, int crewScrubbingCovers,
+                              int foodUnits, double daysOfFood, float tankLiters, double daysOfWater,
+                              double breathableO2Moles, double o2CrewDays)
+        {
+            LivingCrew = livingCrew; CrewAfterThaw = livingCrew + 1;
+            WorkingScrubbers = workingScrubbers; CrewScrubbingCovers = crewScrubbingCovers;
+            FoodUnits = foodUnits; DaysOfFood = daysOfFood;
+            TankLiters = tankLiters; DaysOfWater = daysOfWater;
+            BreathableO2Moles = breathableO2Moles; O2CrewDays = o2CrewDays;
         }
     }
 
@@ -75,10 +269,14 @@ namespace Perilune.Sim
     /// §6.1) — the opposite convention, and the lesson it teaches is that <b>an edge nobody chose is
     /// an edge somebody will hit.</b> Pinned by <c>WreckShipTests</c>' exact-edge legs.</para>
     ///
-    /// <para>⚠️ <b>NOTHING IN THE SIM CALLS THIS YET.</b> M3-6 authors the numbers and asserts them;
-    /// M3-3 adds the thaw contract's remaining terms to this same class and makes the refusal read
-    /// the rung. Until then this is authored-and-asserted only — <c>docs/MECHANICS.md</c> §13.28.
-    /// ⭐ <b>The band-edge BEHAVIOURAL sweep is owed to M3-3 mutation 6 by name.</b></para>
+    /// <para>⭐ <b>M3-3 CONNECTED IT.</b> <see cref="Evaluate"/>'s term 4 reads
+    /// <see cref="RungOf"/> and <see cref="ThawCommand"/> spends what it names, so the paragraph
+    /// that used to stand here — <i>"nothing in the sim calls this yet"</i> — is retired. The
+    /// band-edge BEHAVIOURAL sweep M3-6 deferred by name is
+    /// <c>ThawGateTests.TheRungChanges_AtEverySixInteriorBandEdge</c>; it drives
+    /// <see cref="Evaluate"/> rather than <see cref="RungOf"/>, which is the difference between
+    /// asserting the table and asserting the ladder. Current record:
+    /// <c>docs/MECHANICS.md</c> §13.30.</para>
     /// </summary>
     public static class ThawGate
     {
@@ -101,6 +299,452 @@ namespace Perilune.Sim
             if (condition >= 0.82f) return new ThawRung(5, ItemKind.ControllerModule, 1);
             if (condition >= 0.80f) return new ThawRung(6, ItemKind.ControllerModule, 2);
             return new ThawRung(7, ItemKind.ControllerModule, 3);
+        }
+
+        // ═════════════════════════════════════════════════════════════════ M3-3: the contract
+        //
+        // ⭐ SIX TERMS, IN ORDER, EVERY ONE RESOLVED FROM SIM STATE — HOST-SIDE NEVER.
+        //
+        //   1 the pod      Kind == CryoPod && !IsOpen && Powered && Condition >= fail
+        //   2 the console  a Terminal named `tid`, Powered && IsOperational && Scriptable
+        //   3 the cycle    no pod anywhere with Progress > 0            (one at a time)
+        //   4 the rung     RungOf(pod.Condition)'s item is aboard in its count      (OD-L)
+        //   5 the headroom scrubbing · food · water · O2, each a named term WITH a number
+        //   6 the price    all-or-nothing, charged LAST — in ThawCommand, never here
+        //
+        // ⛔ WHY THE ORDER IS THE CONTRACT AND NOT A DETAIL. The player reads ONE sentence, so the
+        // gate must stop at the FIRST thing wrong and it must be the most actionable one. Pod →
+        // console → cycle → rung → headroom runs cheapest-and-most-permanent first: "this sleeper
+        // is dead" never has to compete with "the larder is thin", and a ship that has not restored
+        // MOSS is never told about scrubbers it cannot reach anyway.
+        //
+        // ⛔ AND WHY THE HOST MAY CALL Evaluate: because calling it is the OPPOSITE of re-deciding.
+        // `GameSession.HandleMoss` renders the verdict this function returns and enqueues the
+        // command unconditionally; the command calls the SAME function at execute time and IT is
+        // authoritative. There is exactly one implementation of every term above, it lives in
+        // Sim.Core, and the TUI, a replay and a load all reach the identical one. A term evaluated
+        // in `GameSession` instead would be "not replayed on load, not folded into the hash, and
+        // not present in the TUI" (wreck plan §3.3) — which is what mutation 4 exists to make red.
+
+        /// <summary>
+        /// ⚠️ THE MINIMUM FOOD RUNWAY A THAW MAY LEAVE THE SHIP ON, in sim-days, for the crew the
+        /// thaw would CREATE.
+        ///
+        /// <para><b>A NAMED CONSTANT AND NOT A DEF FIELD, DELIBERATELY.</b> A def scalar moves P4
+        /// (defs defaults checksum) and P5 (rules-inclusive), which this package's pin ritual
+        /// requires to HOLD — and a def field pinned only by a checksum is not pinned at all. The
+        /// shipped precedents are <c>CryoSystem.ThawSecondsPerCycle</c> and
+        /// <c>BuildSystem.FloorConstructTicks</c>: a v1 literal, stated as a rule rather than a
+        /// tunable. M3-6's ruling for the rung table, applied to the floors it sits beside.</para>
+        ///
+        /// <para><b>MEASURED, so the number is not a guess.</b> <c>ledger --ship wreck</c> reads
+        /// <b>60 u / 43.20 d</b> at h1 with one crew member; at eight crew that same larder is
+        /// <b>5.4 d</b>. So this floor does not bind anywhere on the shipping ship's thaw curve,
+        /// which is correct and is the point: <b>the pacing is the ladder, the headroom is the ship
+        /// talking.</b> It bites a ship that has actually run its larder down —
+        /// <c>--ship grid</c> reads 2.07 d at h1 — which is a ship that should not be waking
+        /// people.</para>
+        /// </summary>
+        public const double MinDaysOfFood = 3.0;
+
+        /// <summary>The same floor for drinking water, same shape and same reasoning. The wreck
+        /// stands at 300 L, i.e. 150 sim-days for two crew.</summary>
+        public const double MinDaysOfWater = 3.0;
+
+        /// <summary>
+        /// ⚠️ THE TERM THAT REPORTS AND MUST NEVER BIND, and the floor is chosen to guarantee it.
+        /// Standing breathable O₂ measures ~99 crew-days on <c>--ship grid</c> and ~172 on the
+        /// wreck, because a powered vent injects gas FROM NOTHING — there is no reserve to run
+        /// down. One crew-day is therefore two orders of magnitude below anything a live ship
+        /// reads, and the term can only fire on a ship whose compartments have already lost
+        /// pressure. Keeping it costs one comparison and stops the report lying by omission;
+        /// letting it pace anything would be the "obvious first draft" the wreck plan §3.4.1
+        /// measured and killed.
+        /// </summary>
+        public const double MinO2CrewDays = 1.0;
+
+        /// <summary>Seconds in a sim-day. The ledger's own <c>86400.0</c>, restated here because
+        /// this file may not name <c>ShipLedger</c> (see <see cref="ThawHeadroom"/>).</summary>
+        private const double SecondsPerDay = 86400.0;
+
+        /// <summary>
+        /// The pressurised-room gate, <c>ShipMetrics.cs:64</c> verbatim — a room below this is not
+        /// a compartment the crew live in, so its gas is not part of the air the gate counts.
+        /// ⚠️ A SECOND COPY OF THE LEDGER'S PRIVATE CONSTANT, and that is the cost of the boundary.
+        /// It is pinned by AGREEMENT, not by sharing: <c>TheGateAndTheLedgerAgree_OnADrivenShip</c>
+        /// drives a real ship and requires both O₂ sums to be equal.
+        /// </summary>
+        private const double PressurizedKPa = 50.0;
+
+        /// <summary>The only <c>ItemKind</c> that reduces <c>Citizen.Hunger</c> — the ledger's
+        /// <c>FoodKind</c>, restated for the same boundary reason and pinned by the same agreement
+        /// test.</summary>
+        private const ItemKind FoodKind = ItemKind.Potato;
+
+        /// <summary>
+        /// ⭐ THE WHOLE CONTRACT, EVALUATED. Pure: reads live sim state, mutates nothing, draws no
+        /// RNG, publishes no event, allocates nothing. Both determinism twins get the same verdict.
+        ///
+        /// <para><paramref name="terminalName"/> is the console the request arrived through (term 2)
+        /// and <paramref name="podName"/> is the capsule's <c>Device.Name</c> (term 1). Term 6, the
+        /// price, is NOT evaluated here — a pure function may not spend — but term 4 has already
+        /// read the same stock through the same <c>LooseMatter</c> lens, which is what makes
+        /// "charged last" structurally true rather than merely intended.</para>
+        /// </summary>
+        public static ThawVerdict Evaluate(Simulation sim, string terminalName, string podName)
+        {
+            if (sim == null) throw new ArgumentNullException(nameof(sim));
+
+            // ── term 1: the pod ──────────────────────────────────────────────────────────────
+            Device pod = FindCryoPod(sim, podName);
+            if (pod == null) return Refuse(ThawRefusal.NoSuchPod, 0, podName);
+            if (pod.IsOpen) return Refuse(ThawRefusal.PodAlreadyOpen, pod.Id, pod.Name);
+            if (!pod.Powered || !pod.IsOperational(sim.Defs))
+                return Refuse(ThawRefusal.PodNoSignal, pod.Id, pod.Name);
+
+            // ── term 2: the console ──────────────────────────────────────────────────────────
+            if (!IsCommissionedConsole(sim, terminalName))
+                return Refuse(ThawRefusal.NoConsole, pod.Id, pod.Name);
+
+            // ── term 3: the cycle ────────────────────────────────────────────────────────────
+            Device cycling = FindCyclingPod(sim);
+            if (cycling != null)
+                return new ThawVerdict(ThawRefusal.PodCycling, cycling.Id, cycling.Name, default,
+                                       0, 0, 0, 0, 0, MinutesLeft(cycling.Progress));
+
+            // ── term 4: the rung (OD-L) — the reason IS the hint ─────────────────────────────
+            ThawRung rung = RungOf(pod.Condition);
+            int aboard = LooseMatter.Affordable(sim, rung.Item);
+            if (aboard < rung.Count)
+                return new ThawVerdict(ThawRefusal.Rung, pod.Id, pod.Name, rung,
+                                       aboard, 0, 0, 0, 0, 0);
+
+            // ── term 5: the headroom — each term named, each carrying its number ──────────────
+            ThawHeadroom room = Headroom(sim);
+            if (room.CrewAfterThaw > room.CrewScrubbingCovers)
+                return new ThawVerdict(ThawRefusal.Scrubbing, pod.Id, pod.Name, rung,
+                                       aboard, room.CrewScrubbingCovers, room.CrewAfterThaw, 0, 0, 0);
+            if (room.DaysOfFood < MinDaysOfFood)
+                return new ThawVerdict(ThawRefusal.Food, pod.Id, pod.Name, rung,
+                                       aboard, 0, room.CrewAfterThaw, room.DaysOfFood, MinDaysOfFood, 0);
+            if (room.DaysOfWater < MinDaysOfWater)
+                return new ThawVerdict(ThawRefusal.Water, pod.Id, pod.Name, rung,
+                                       aboard, 0, room.CrewAfterThaw, room.DaysOfWater, MinDaysOfWater, 0);
+            if (room.O2CrewDays < MinO2CrewDays)
+                return new ThawVerdict(ThawRefusal.Oxygen, pod.Id, pod.Name, rung,
+                                       aboard, 0, room.CrewAfterThaw, room.O2CrewDays, MinO2CrewDays, 0);
+
+            // Term 6 is ThawCommand's, and it is the only step that spends.
+            return new ThawVerdict(ThawRefusal.None, pod.Id, pod.Name, rung,
+                                   aboard, room.CrewScrubbingCovers, room.CrewAfterThaw, 0, 0,
+                                   MinutesLeft(0f));
+        }
+
+        private static ThawVerdict Refuse(ThawRefusal reason, uint podId, string podName) =>
+            new ThawVerdict(reason, podId, podName ?? "", default, 0, 0, 0, 0, 0, 0);
+
+        /// <summary>
+        /// ⭐ TERM 2, NAMED AND REUSABLE: is <paramref name="terminalName"/> a console MOSS can be
+        /// commissioned through — powered, above its <c>fail</c> threshold, AND fitted with a
+        /// <c>ControllerModule</c>?
+        ///
+        /// <para><b>THE NAME ANTICIPATES A SPLIT THAT IS NOT THIS PACKAGE'S.</b> OD-N cuts the
+        /// console's authority in two: a REPAIRED console (<c>Powered &amp;&amp; Condition &gt;=
+        /// MaintainBelow</c>) opens doors and vents, a COMMISSIONED one runs programs and thaws.
+        /// M3-15 writes the repaired-tier predicate in a new <c>MossGate.cs</c>. THIS is the
+        /// commissioned tier and it is called that so the two can never be confused for one
+        /// another by a reader who arrives after both exist. Nothing here implements or anticipates
+        /// the door/vent half.</para>
+        ///
+        /// <para>On the shipping ship this term is not hypothetical: <c>term_moss</c> is authored
+        /// at <c>Condition 0.14</c>, <c>scriptable: false</c>
+        /// (<c>sim/Sim.Gen/AuthoredShips.cs:2059</c>) and pinned that way by
+        /// <c>WreckShipTests.TheMossTerminal_BootsUnCommissioned</c>, so the player must repair AND
+        /// commission it before any thaw is possible.</para>
+        /// </summary>
+        public static bool IsCommissionedConsole(Simulation sim, string terminalName)
+        {
+            if (sim == null || string.IsNullOrEmpty(terminalName)) return false;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.Terminal) continue;
+                if (!string.Equals(d.Name, terminalName, StringComparison.Ordinal)) continue;
+                return d.Powered && d.IsOperational(sim.Defs) && d.Scriptable;
+            }
+            return false;
+        }
+
+        /// <summary>The capsule that name belongs to, or null. Ordinal comparison: a device name is
+        /// an identifier, and the dev machine is de-DE.</summary>
+        private static Device FindCryoPod(Simulation sim, string podName)
+        {
+            if (string.IsNullOrEmpty(podName)) return null;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.CryoPod) continue;
+                if (string.Equals(d.Name, podName, StringComparison.Ordinal)) return d;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The capsule already mid-cycle, or null. ⚠️ ANY pod with <c>Progress &gt; 0</c> blocks,
+        /// including one <c>CryoSystem</c> would not itself advance: the rule is "the bay is busy",
+        /// and a capsule stuck at full progress with nowhere to open (<c>CryoSystem</c>'s hold) is
+        /// the busiest state the bay has. Lowest <c>Id</c> wins, matching the system's own election.
+        /// </summary>
+        private static Device FindCyclingPod(Simulation sim)
+        {
+            Device found = null;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.CryoPod) continue;
+                if (d.IsOpen || d.Progress <= 0f) continue;
+                if (found == null || d.Id < found.Id) found = d;
+            }
+            return found;
+        }
+
+        /// <summary>Whole sim-minutes a cycle at <paramref name="progress"/> has left, rounded UP
+        /// and never below 1 — "0 min" reads as finished. InvariantCulture is irrelevant to an int,
+        /// which is exactly why the rounding happens here and not in the formatter.</summary>
+        private static int MinutesLeft(float progress)
+        {
+            double secondsLeft = (1.0 - progress) * CryoSystem.ThawSecondsPerCycle;
+            int minutes = (int)Math.Ceiling(secondsLeft / 60.0);
+            return minutes < 1 ? 1 : minutes;
+        }
+
+        /// <summary>
+        /// ⭐ THE HEADROOM CENSUS. One device pass, one item pass, one citizen pass, one room pass —
+        /// <c>ShipMetrics.Compute</c>'s shape, and zero-alloc for the same reason it is: this runs
+        /// inside <c>Simulation.Tick</c>. Public because the agreement test and the host's report
+        /// both read it.
+        /// </summary>
+        public static ThawHeadroom Headroom(Simulation sim)
+        {
+            if (sim == null) throw new ArgumentNullException(nameof(sim));
+
+            // --- citizens --- living only; dead crew stay in the store forever (NeedsSystem.cs:198
+            // only sets the flag), which is why this is not `Items.Count`. The ledger's own rule.
+            int living = 0;
+            var citizens = sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++) if (!citizens[i].Dead) living++;
+            int crewAfter = living + 1;
+
+            // --- devices --- scrubbers and tanks in one pass.
+            int scrubbers = 0;
+            float tankLiters = 0f;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind == DeviceKind.Scrubber)
+                {
+                    if (d.Powered && d.IsOperational(sim.Defs)) scrubbers++;
+                }
+                else if (d.Kind == DeviceKind.WaterTank)
+                {
+                    tankLiters += d.StoredLiters;
+                }
+            }
+
+            // ⭐ THE STEP FUNCTION. Capacity is `scrubbers * scrubber_mol_per_second`; demand is
+            // `crew * co2_per_person_per_second`; the gate is a STRICT surplus. At the shipped defs
+            // that is 0.001 / 2.73e-4 = 3.663 crew per working scrubber, so one scrubber covers 3
+            // and two cover 7 — a tier unlock, measured, and NOT a pacer (wreck plan §3.4.1).
+            // `ceil(x) - 1` is the strict-surplus inverse and is correct on an exact boundary too:
+            // at exactly 4.000 crew-equivalents, four crew is not a SURPLUS, so it covers three.
+            double perCrewCO2 = sim.Defs.Atmosphere.CO2PerPersonPerSecond;
+            double scrubCapacity = scrubbers * sim.Defs.Atmosphere.ScrubberMolPerSecond;
+            int covers = perCrewCO2 > 0
+                ? (int)Math.Ceiling(scrubCapacity / perCrewCO2) - 1
+                : int.MaxValue;
+            if (covers < 0) covers = 0;
+
+            // --- items --- the larder. Counts CARRIED and RESERVED stacks, exactly as the ledger
+            // does, so the two agree; the PRICE reads `LooseMatter` instead, which is a different
+            // question (what may be spent) and deliberately a different number.
+            int foodUnits = 0;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                if (it.Kind == FoodKind) foodUnits += it.Count;
+            }
+
+            // --- rooms --- the standing breathable air. The ledger's walk, verbatim: skip the
+            // vacuum sink at index 0, skip empty rooms, EXCLUDE a room whose gas is non-finite
+            // (NaN loses every comparison silently and would otherwise slip past the pressure gate
+            // and poison the sum), then the 50 kPa gate.
+            double o2 = 0;
+            var rooms = sim.Rooms.Rooms;
+            for (int i = 1; i < rooms.Count; i++)
+            {
+                var room = rooms[i];
+                if (room == null || room.TileCount <= 0) continue;
+                if (!double.IsFinite(room.PressureKPa) || !double.IsFinite(room.O2Moles)) continue;
+                if (room.PressureKPa < PressurizedKPa) continue;
+                o2 += room.O2Moles;
+            }
+
+            return new ThawHeadroom(living, scrubbers, covers, foodUnits,
+                                    Days(foodUnits, crewAfter * FoodUnitsPerCrewPerDay(sim.Defs)),
+                                    tankLiters,
+                                    Days(tankLiters, crewAfter * LitersPerCrewPerDay(sim.Defs)),
+                                    o2,
+                                    Days(o2, crewAfter * O2MolesPerCrewPerDay(sim.Defs)));
+        }
+
+        /// <summary>Stock ÷ per-day draw, or <see cref="double.PositiveInfinity"/> when there is no
+        /// draw to divide by. ⚠️ +∞ AND NOT -1: this is a GATE, and the ledger's -1 sentinel ("no
+        /// meaningful value") would compare BELOW every floor and refuse every thaw on a ship whose
+        /// content pack made nobody hungry. A stock nobody consumes lasts forever, and the
+        /// comparison must say so.</summary>
+        private static double Days(double stock, double drawPerDay)
+        {
+            if (!(drawPerDay > 0)) return double.PositiveInfinity;
+            double days = stock / drawPerDay;
+            return double.IsFinite(days) ? days : double.PositiveInfinity;
+        }
+
+        /// <summary>
+        /// Food units ONE living crew member eats per sim-day: the rate Hunger fills
+        /// (<c>needs.def hunger_per_second</c> over a sim-day) ÷ the Hunger one unit removes
+        /// (<c>sustenance.def potato_hunger_value</c>). 0 when either def makes the question
+        /// meaningless.
+        /// <para>⚠️ A SECOND COPY of <c>ShipLedger.FoodUnitsPerCrewPerDay</c>, forced by the ledger
+        /// boundary and pinned by the agreement test. The shipped tuning fills the meter in TWO
+        /// sim-days, not one — a derivation written from <c>sustenance.def</c>'s COMMENT rather
+        /// than its numbers under-reports the runway by exactly 2× (E0-9 shipped that mistake once).
+        /// </para>
+        /// </summary>
+        public static double FoodUnitsPerCrewPerDay(SimDefs defs)
+        {
+            if (defs == null) return 0;
+            double perUnit = defs.Sustenance.PotatoHungerValue;
+            if (!(perUnit > 0)) return 0;
+            double hungerPerDay = defs.Needs.HungerPerSecond * SecondsPerDay;
+            if (!(hungerPerDay > 0)) return 0;
+            return hungerPerDay / perUnit;
+        }
+
+        /// <summary>
+        /// Litres ONE living crew member drinks per sim-day, DERIVED and not guessed: Thirst fills
+        /// at <c>needs.def thirst_per_second</c>, a crew member self-serves when it crosses
+        /// <c>sustenance.def need_threshold</c>, and a drink is <c>drink_liters</c> and zeroes the
+        /// meter (<c>SustenanceSystem.cs:222-223</c>). ⇒ drinks/day = 86 400 · rate ÷ threshold.
+        /// At the shipped tuning that is 2 drinks × 0.5 L = <b>1.0 L per crew per sim-day</b>.
+        /// <para>There is no ledger member to copy here — <c>DaysOfWater</c> is MEASURED from two
+        /// censuses and a gate has only one instant — so this is the modelled twin of it, with the
+        /// same limitation food's modelled runway has: it cannot see the reclaimer refilling.</para>
+        /// </summary>
+        public static double LitersPerCrewPerDay(SimDefs defs)
+        {
+            if (defs == null) return 0;
+            double threshold = defs.Sustenance.NeedThreshold;
+            if (!(threshold > 0)) return 0;
+            double drinksPerDay = defs.Needs.ThirstPerSecond * SecondsPerDay / threshold;
+            if (!(drinksPerDay > 0)) return 0;
+            return drinksPerDay * defs.Sustenance.DrinkLiters;
+        }
+
+        /// <summary>Oxygen ONE living crew member breathes in a sim-day — the ledger's
+        /// <c>CrewO2MolesPerDay</c> divided by its crew count, restated across the boundary and
+        /// pinned by the agreement test.</summary>
+        public static double O2MolesPerCrewPerDay(SimDefs defs)
+            => defs == null ? 0 : defs.Atmosphere.O2PerPersonPerSecond * SecondsPerDay;
+
+        // ─────────────────────────────────────────────────────────── the sentence the ship says
+        //
+        // ⚠️ ALLOCATES. Host and test only — never a tick path. This is the whole reason
+        // ThawVerdict carries numbers instead of prose.
+
+        /// <summary>
+        /// ⭐ THE REFUSAL, IN WORDS — one sentence, upper case, every number InvariantCulture.
+        ///
+        /// <para>The RimWorld analogue decides the shape (<c>docs/design/rimworld-reference.md</c>
+        /// §2.2, whose own boxed conclusion calls it <i>"the single most transferable fact in §2
+        /// for Perilune"</i>): the refusal states the reason at the point of the click. A verdict
+        /// that reached the player as a greyed row with no sentence would be the defect this
+        /// milestone is built to avoid.</para>
+        ///
+        /// <para><b>NO PLURALISATION, on purpose.</b> <c>NEEDS 2 CONTROLLER MODULE</c> reads like a
+        /// machine and this is a machine talking; a pluralisation table would be a second place for
+        /// the item vocabulary to drift from <c>ItemKind</c>. Two of the three ladder items
+        /// (<c>Parts</c>, <c>Seals</c>) are already plural nouns.</para>
+        /// </summary>
+        public static string Describe(in ThawVerdict v)
+        {
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            switch (v.Reason)
+            {
+                case ThawRefusal.None:
+                    return "THAW ACCEPTED — " + Sleeper(v.PodName) + " — "
+                         + v.MinutesRemaining.ToString(ic) + " min";
+                case ThawRefusal.NoSuchPod:
+                    return "NO SUCH POD";
+                case ThawRefusal.PodAlreadyOpen:
+                    return "POD IS EMPTY — ALREADY THAWED";
+                case ThawRefusal.PodNoSignal:
+                    return "POD — NO SIGNAL";
+                case ThawRefusal.NoConsole:
+                    return "NO CONSOLE — MOSS IS OFFLINE";
+                case ThawRefusal.PodCycling:
+                    return "POD " + Sleeper(v.PodName) + " IS CYCLING — "
+                         + v.MinutesRemaining.ToString(ic) + " min";
+                case ThawRefusal.Rung:
+                    return "NEEDS " + v.Rung.Count.ToString(ic) + " " + ItemWords(v.Rung.Item)
+                         + " — SHIP HAS " + v.UnitsAboard.ToString(ic);
+                case ThawRefusal.Scrubbing:
+                    return "SCRUBBING COVERS " + v.CrewCovered.ToString(ic) + " OF "
+                         + v.CrewAfterThaw.ToString(ic);
+                case ThawRefusal.Food:
+                    return "FOOD " + Fixed1(v.Reading) + " DAYS — NEEDS " + Fixed1(v.Floor);
+                case ThawRefusal.Water:
+                    return "WATER " + Fixed1(v.Reading) + " DAYS — NEEDS " + Fixed1(v.Floor);
+                case ThawRefusal.Oxygen:
+                    return "O2 " + Fixed1(v.Reading) + " CREW-DAYS — NEEDS " + Fixed1(v.Floor);
+                default:
+                    // Unreachable while the enum and this switch agree. It is a SENTENCE and not a
+                    // "" because the one thing a refusal may never be is silent.
+                    return "THAW REFUSED";
+            }
+        }
+
+        /// <summary>One decimal, InvariantCulture, and "999+" above the point where a runway stops
+        /// meaning anything (the ledger's <c>MaxMeaningfulDays</c> idea — an infinite runway must
+        /// not print as "∞" or as a locale's own float spelling).</summary>
+        private static string Fixed1(double days)
+        {
+            if (!double.IsFinite(days) || days > 999.0) return "999+";
+            return days.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>The sleeper's name, upper case, from the capsule's device name — the same
+        /// inverse of the authoring convention <c>CryoSystem</c> uses to name the person who steps
+        /// out, so the refusal and the arrival call her the same thing.</summary>
+        private static string Sleeper(string podName)
+            => CryoSystem.SleeperName(podName ?? "").ToUpperInvariant();
+
+        /// <summary>The three ladder items as the console spells them. A <c>switch</c> over consts,
+        /// not <c>Enum.ToString()</c>: an undeclared ordinal must not reach a player as a number,
+        /// and <c>ControllerModule</c> must not reach one as one word.</summary>
+        private static string ItemWords(ItemKind kind)
+        {
+            switch (kind)
+            {
+                case ItemKind.Seals: return "SEALS";
+                case ItemKind.Parts: return "PARTS";
+                case ItemKind.ControllerModule: return "CONTROLLER MODULE";
+                default: return kind.ToString().ToUpperInvariant();
+            }
         }
     }
 }

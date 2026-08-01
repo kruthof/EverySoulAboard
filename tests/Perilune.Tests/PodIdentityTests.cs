@@ -24,12 +24,16 @@ namespace Perilune.Tests
     /// STATE, not the spelling</b>: boot the wreck, snapshot every device's name, drive the ship,
     /// compare.</para>
     ///
-    /// <para>⚠️ <b>M3-3 MUST EXTEND THIS TEST WITH A REAL THAW.</b> The charter's mutation row says
-    /// "3 000 ticks <i>with a thaw executed</i>"; <c>ThawCommand</c> does not exist on this tree
-    /// (it is M3-3's), so the run below drives the richest command activity that ships today — a
-    /// full work grant, a door, a vent — and the thaw leg is owed. A thaw is precisely the code
-    /// path most likely to want to write a pod's name, so this pin is not complete until it opens
-    /// a pod for real.</para>
+    /// <para>✅ <b>M3-3 PAID THE OWED THAW LEG.</b> The paragraph that stood here said the run
+    /// drove "the richest command activity that ships today — a full work grant, a door, a vent"
+    /// and that <b>a thaw is precisely the code path most likely to want to write a pod's name</b>,
+    /// so the pin was not complete until it opened a capsule for real. It does now: the run below
+    /// commissions the wreck's console with a real <c>CommissionDeviceCommand</c>, sends a real
+    /// <c>ThawCommand</c>, and is required to have <b>OPENED a capsule and produced a live
+    /// citizen</b> before the immutability claim is read (non-vacuity 5). The name of the capsule
+    /// that opened is in the snapshot like every other, and <c>CryoSystem.Open</c> is the one
+    /// shipped code path that touches a pod's identity — it READS <c>Device.Name</c> to name the
+    /// person and must never write it back.</para>
     ///
     /// <para><b>NON-VACUITY IS EXPLICIT AND BY INCLUSION</b> (§13.26's exit-code lesson: a
     /// comparison of two empty sets passes, and a run in which nothing happened proves nothing).
@@ -43,6 +47,14 @@ namespace Perilune.Tests
     public class PodIdentityTests
     {
         private const int Ticks = 3000;
+
+        /// <summary>The wreck's MOSS console — the WHERE gate every thaw goes through.</summary>
+        private const string MossConsole = "term_moss";
+
+        /// <summary>Rung 1 of the thaw ladder (<c>Condition 0.94</c> ⇒ 1 Seals, and the wreck
+        /// carries Seals loose at boot), so the owed leg drives an ACCEPTED thaw rather than a
+        /// refusal wearing the same command's clothes.</summary>
+        private const string ThawPod = "pod_lindqvist";
 
         /// <summary>The shipping ship (<c>./play.sh</c>'s default), booted with the default system
         /// stack — the pods, the MOSS-named machines and the one crew member all present.</summary>
@@ -90,11 +102,29 @@ namespace Perilune.Tests
             var vent = sim.Devices.Items.FirstOrDefault(d => d.Kind == DeviceKind.AirVent);
             Assert.That(vent, Is.Not.Null, "the wreck has no vent — the fixture cannot drive one");
 
+            // ⭐ M3-3's OWED LEG: a REAL thaw, through the real commands, inside the same run.
+            // The console boots un-commissioned (that IS the wreck's opening objective), so the
+            // module is placed and the shipped CommissionDeviceCommand spends it — the same two
+            // gestures the player makes. Then ThawCommand opens the ladder's cheapest capsule.
+            var term = sim.Devices.Items.First(d => d.Name == MossConsole);
+            Assert.That(term.Scriptable, Is.False,
+                "precondition: " + MossConsole + " must boot un-commissioned, or the thaw leg is "
+                + "not driving the commissioning path either");
+            sim.AddItem(ItemKind.ControllerModule, 1, term.Pos);
+            sim.EnqueueCommand(new CommissionDeviceCommand(term.Pos));
+
+            var thawPod = sim.Devices.Items.First(d => d.Name == ThawPod);
+            Assert.That(thawPod.IsOpen, Is.False, "precondition: the capsule to thaw must start SHUT");
+            string thawPodName = thawPod.Name;
+            string sleeper = CryoSystem.SleeperName(thawPodName);
+
             long tick0 = sim.TickCount;
             bool sawWork = false;
             bool doorObeyed = false;
             for (int t = 0; t < Ticks; t++)
             {
+                // One tick after the commission drains, so the console is live when it arrives.
+                if (t == 2) sim.EnqueueCommand(new ThawCommand(MossConsole, ThawPod));
                 // Mid-run traffic, so the commanded surface is not all spent in the first tick.
                 if (t == 1000) sim.EnqueueCommand(new SetDeviceStateCommand(vent.Id, open: !vent.IsOpen));
                 if (t == 2000) sim.EnqueueCommand(new SetDoorStateCommand(door.Id, open: doorWasOpen));
@@ -118,6 +148,16 @@ namespace Perilune.Tests
             // 3 000 ticks of an idle ship, which no rename would ever have been triggered by.
             Assert.That(sawWork, Is.True,
                 "no crew member held a job at any point in " + Ticks + " ticks — the run is vacuous");
+            // NON-VACUITY 5 — ⭐ THE THAW ACTUALLY HAPPENED. A ThawCommand that was refused (an
+            // un-commissioned console, an unaffordable rung, a bound headroom term) leaves this
+            // run exactly as it was before M3-3 existed — and the owed leg would be owed again,
+            // silently. So the capsule must be OPEN and the sleeper must be aboard and alive.
+            Assert.That(thawPod.IsOpen, Is.True,
+                "the capsule never opened in " + Ticks + " ticks — the thaw leg is inert, and the "
+                + "code path most likely to rename a pod was never executed");
+            Assert.That(sim.Citizens.Items.Any(c => !c.Dead && c.Name == sleeper), Is.True,
+                "'" + sleeper + "' is not aboard after the thaw; names present: "
+                + string.Join(", ", sim.Citizens.Items.Select(c => c.Name)));
 
             // ── the claim, read two ways and asserted ONCE ────────────────────────────────────
             // Per-id drift names WHICH device was renamed and to what; the multiset additionally

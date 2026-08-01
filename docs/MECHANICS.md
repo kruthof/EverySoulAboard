@@ -3484,15 +3484,17 @@ crew member back in a box, the occupant must leave `Name`, and the only shapes t
 or a slot/occupant naming split (`pod_a1` as the key) — **which renames every authored pod and breaks
 every existing player program that named one.** Do not take that step inside another package.
 
-### 13.28 The thaw ladder's rung table exists, is asserted, and NOTHING reads it (M3-6, 2026-07-31)
+### 13.28 The thaw ladder's rung table exists and is asserted (M3-6, 2026-07-31) — ✅ and M3-3 now reads it (§13.30)
 
 **`sim/Sim.Core/ThawGate.cs` (new, 106 lines) holds the whole per-pod repair requirement OD-L asks
 for** — `ThawGate.RungOf(float condition)` (`:95`) resolves a `Condition` to a `ThawRung` readonly
 struct (`:9`) carrying rung number, `ItemKind` and count, through a seven-row literal band table
 (`:97-103`), with `ThawGate.RungCount = 7` (`:86`). It is pure, total, zero-alloc and engine-free.
-**No sim system, no command and no host calls it.** M3-6 authors the numbers and asserts them;
-**M3-3 adds the thaw contract's remaining terms to this same file and makes the refusal read the
-rung.** Until that lands, the ladder is *content that exists and nothing consumes*.
+**No sim system, no command and no host called it** — ✅ **and M3-3 CONNECTED IT: `ThawGate.Evaluate`'s
+term 4 reads `RungOf` and `ThawCommand` spends what it names (§13.30).** The sentence that stood
+here — *"until that lands, the ladder is content that exists and nothing consumes"* — is discharged;
+what M3-6 shipped is the TABLE, what M3-3 shipped is the LADDER, and both sets of pins are still
+load-bearing.
 
 ⭐ **The rung is DERIVED, so it costs no state.** The carrier is the pod's already-authored
 `Condition` (`sim/Sim.Gen/AuthoredShips.cs:1760-1777`, `WreckPods`), whose documented meaning is
@@ -3547,11 +3549,12 @@ the block entirely. It is a POSITIVE scan (`:598`), never a "must not contain 8"
 deliberately records the dead draft it replaced, and a negative scan would fire on the very
 paragraph that exists to stop the mistake recurring.
 
-⚠️ **The band-edge BEHAVIOURAL sweep is OWED TO M3-3, mutation 6, by name** — *move a Condition
-across an edge and assert the rung the thaw REFUSAL resolves changes*. It must be driven through
-`ThawGate`'s six-term thaw contract, and that contract does not exist yet; a leg that cannot run in
-its own lane is not a mutation, it is a wish. The M3-1 precedent (§13.27's owed thaw leg) is the
-same shape, and both tests say so in their own headers.
+✅ **The band-edge BEHAVIOURAL sweep was OWED TO M3-3, mutation 6, by name — and M3-3 RAN IT**:
+`ThawGateTests.TheRungTheGateResolves_ChangesAtEverySixInteriorBandEdge` crosses all six interior
+edges through the six-term thaw contract and asserts the SENTENCE changes at each (§13.30). It could
+not run here — that contract did not exist at position 6 — and *a leg that cannot run in its own lane
+is not a mutation, it is a wish*. The M3-1 precedent (§13.27's owed thaw leg) was the same shape and
+was discharged by the same package.
 
 ### 13.29 A pod cycles: the capsule opens and a person exists (M3-2, 2026-07-31)
 
@@ -3562,12 +3565,12 @@ same shape, and both tests say so in their own headers.
 the new `CitizenThawedEvent` (`Events/SimEvents.cs:156` — `Pos` + `CitizenId` + `PodId`, mirroring
 `DeconstructCompletedEvent`, transient and therefore pin-neutral by itself).
 
-⛔ **NOTHING PLAYER-FACING STARTS A CYCLE ON THIS TREE, AND THAT IS THE PACKAGE'S OWN BOUNDARY.**
-There is no `ThawCommand` and no MOSS thaw op (M3-3), no countdown badge (M3-4) and no emergency
-thaw (M3-5). The only writer of a pod's `Progress` today is a test. ⇒ **a pod that will not open is
-still correct in play** — it is now a mechanic waiting for a verb rather than furniture. This entry
-belongs beside §13.28's *"content that exists and nothing consumes"*, one rung further along: the
-mechanic exists and nothing DRIVES it.
+✅ **M3-3 GAVE IT A VERB.** The paragraph that stood here — *"nothing player-facing starts a cycle on
+this tree … the only writer of a pod's `Progress` today is a test"* — is discharged: `ThawCommand`
+writes it (`Commands/Commands.cs:890`) behind the six-term gate, and the MOSS `thaw` op carries the
+player's request (§13.30). What is still absent is the **countdown badge (M3-4)**, the **emergency
+thaw (M3-5)** and, for now, **any client sender at all** — so a `--ship wreck` player still cannot
+thaw anybody by clicking. The mechanic and its verb both exist; the button does not.
 
 ⭐ **NO NEW `Device` FIELD.** `Device.cs:46-49`'s mapping was already correct and is now consumed:
 `IsOpen` = opened vs occupied, `Name` = who is inside, `Condition` = how badly the raid treated it,
@@ -3672,10 +3675,163 @@ leg would be vacuous — the same discipline as the wrecked-pod fixture, stated 
 `ArchitectureBoundaryTests.EconomySystemCensus_ForcesADecisionOnEveryNewSystemFile`, deliberately
 rather than by default: it consumes no item, produces no item and charges nothing. The thaw's PRICE
 is the `ThawGate` rung, which M3-3 will spend in `Commands/Commands.cs` — already inside the
-boundary. **The day a cryo file spends an item is the day it joins
-`EconomyFilesInSharedDirectories`.**
+boundary — ✅ **and M3-3 spent it exactly there** (`Commands/Commands.cs:885`), so the classification
+still holds and `CryoSystem.cs` still consumes nothing. **The day a cryo file spends an item is the
+day it joins `EconomyFilesInSharedDirectories`.**
 
 ⚠️ **WHAT THIS PACKAGE DELIBERATELY DOES NOT GATE, so M3-3 knows what it inherits.** A cycle in
 progress ignores `Powered`, ignores life-support headroom, ignores the `ThawGate` rung and ignores
 who (if anyone) is standing at a terminal. Those are the thaw's PRECONDITIONS and they belong to the
 verb that starts a cycle, not to the system that runs one. Once started, a cycle completes.
+✅ **M3-3 took exactly that division** — all six terms are checked at the moment of the request and
+none of them is re-checked while the capsule counts down (§13.30), so a scrubber that fails mid-cycle
+does not abort a thaw the ship had already paid for.
+
+### 13.30 ⭐⭐ The thaw is EARNED — the ship answers yes, or no with a named reason and a number (M3-3, 2026-07-31)
+
+**A player can now ask for a thaw.** `{"type":"moss","op":"thaw","tid":"term_moss","text":"pod_ozawa"}`
+reaches `GameSession.HandleMoss`'s new `thaw` case (`hosts/web/GameSession.cs:452`), which renders
+`ThawGate`'s verdict and enqueues a `ThawCommand` (`sim/Sim.Core/Commands/Commands.cs:845`,
+`Execute` at `:874`). The command sets the capsule's `Device.Progress` (`:890`) and §13.29's
+`CryoSystem` takes it from there — countdown, open, a named person on the floor. §13.28's *"content
+that exists and nothing consumes"* and §13.29's *"a mechanic waiting for a verb"* are both
+**discharged by this entry**; the two paragraphs saying so are corrected in place.
+
+#### THE SIX TERMS — where each is evaluated, and the exact sentence it produces
+
+All six resolve inside `ThawGate.Evaluate` (`sim/Sim.Core/ThawGate.cs:394`) from **sim state**, in
+this order. Term 6 is `ThawCommand`'s, because a pure function may not spend.
+
+| # | term | where | the sentence |
+|---|---|---|---|
+| 1 | the pod | `:394-403` (`FindCryoPod` `:481`) | `NO SUCH POD` · `POD IS EMPTY — ALREADY THAWED` · `POD — NO SIGNAL` |
+| 2 | the console | `IsCommissionedConsole` (`:465`) | `NO CONSOLE — MOSS IS OFFLINE` |
+| 3 | the cycle | `FindCyclingPod` (`:500`) | `POD LINDQVIST IS CYCLING — 4 min` |
+| 4 | the rung (OD-L) | `:415-420`, over `RungOf` (`:293`) + `LooseMatter.Affordable` | `NEEDS 1 SEALS — SHIP HAS 0` · `NEEDS 3 CONTROLLER MODULE — SHIP HAS 0` |
+| 5 | the headroom | `Headroom` (`:530`) | `SCRUBBING COVERS 3 OF 4` · `FOOD 1.8 DAYS — NEEDS 3.0` · `WATER … — NEEDS 3.0` · `O2 … CREW-DAYS — NEEDS 1.0` |
+| 6 | the price | `Commands.cs:885` (`LooseMatter.TryPay`) | **none — and that is deliberate; see below** |
+
+Accepted reads `THAW ACCEPTED — LINDQVIST — 4 min`. The prose is composed by `ThawGate.Describe`
+(`:683`), which **allocates and is host/test-only**; `Evaluate` returns a `ThawVerdict` readonly
+struct (`:107`) of numbers and two existing string references, which is why the gate is zero-alloc
+on a path that runs inside `Simulation.Tick` (pinned by `EvaluatingTheGate_AllocatesNothing`).
+
+⚠️ **TERM 1 SPEAKS THREE SENTENCES WHERE THE CHARTER TABLE WROTE ONE, AND THAT IS A DECISION.**
+"This capsule is not on the ship", "this sleeper is already out" and "this sleeper did not survive
+the raid" are three different facts and only the third is OD-9's permanent one. The RimWorld
+analogue the whole gate is built on (`docs/design/rimworld-reference.md` §2.2) is a refusal that
+STATES THE REASON, and one reason for three facts is the shape it exists to prevent.
+
+⛔ **AND TERM 1 SHIPPED UNCOVERED IN THE FIRST CUT — caught by independent review, recorded because
+the shape recurs.** Replacing `if (!pod.Powered || !pod.IsOperational(sim.Defs))` (`:402-403`) with
+a never-true predicate left **83/83 GREEN** across every file naming `ThawGate`, and swapping the
+`PodAlreadyOpen` ↔ `PodNoSignal` labels left **56/56 GREEN**; the control (dropping the `IsOpen`
+check instead) went red, so the fixtures could bite — it was specifically the `Powered &&
+IsOperational` conjunct and the reason LABELS that nothing saw. **The fourth trap shape, twice:**
+the reason codes were compared against `Evaluate`'s own output (a code compared to itself), and the
+two `>= 6` non-vacuity floors were POPULATION COUNTS — under the mutation the dead capsule falls
+through to `Rung` and seven distinct codes still clear a floor of six. The deletion is **run-ending**,
+not cosmetic: a dead sleeper's thaw is accepted and billed 3 `ControllerModule`, `CryoSystem`'s own
+OD-9 guard never advances it, and the capsule sits at `Progress > 0` forever with term 3 refusing
+every remaining thaw. Closed by `TermOne_SpeaksItsThreeSentences_AndEachLegIsolatesOneConjunct`,
+which pins each sentence **against a literal**, isolates one conjunct per leg with the precondition
+asserted BEFORE the drive, and carries an inclusion control. ⚠️ `PowerSystem` re-derives `Powered`
+at the end of the same tick, so the depowered leg's precondition can only be asserted before the
+send — the command drain runs BEFORE the systems, which is what makes that leg drivable at all.
+
+⚠️ **TERM 6 HAS NO REFUSAL SENTENCE AND NO `ThawRefusal` MEMBER, DELIBERATELY.** Term 4 reads the
+ship's loose stock through `LooseMatter.Affordable` and term 6 spends it through
+`LooseMatter.TryPay` — the same lens, the same state, one synchronous command — so **the charge
+cannot refuse**. A `Price` member would be a reason nothing can produce: a §13 "wired but nothing
+reaches it" entry from birth, inside the package written to end silent refusals. The spend is still
+CHECKED (`Commands.cs:885`), as a disclosed, UNTESTED defensive guard — the
+`CommissionDeviceCommand` precedent — because "cannot fail" is a claim about today's callers and the
+alternative is a capsule that cycles for free.
+
+#### WHY THE HOST CALLS THE GATE, AND WHY THAT IS NOT A SECOND AUTHORITY
+
+`HandleMoss` calls `ThawGate.Evaluate` to RENDER the answer and enqueues the command
+**unconditionally**. Both halves are the design: reading the gate is what puts the refusal on screen
+in the same frame as the click, and enqueueing regardless is what stops the host becoming a gate a
+load, a replay and the TUI would all disagree with. There is exactly **one implementation of every
+term**, it is in Sim.Core, and `ThawCommand.Execute` re-runs it authoritatively. The wire reply is
+`WireFormat.MossThaw` (`hosts/web/WireFormat.cs:923`): `ok` · `pod` · `why` (the `ThawRefusal`
+ordinal, `ThawGate.cs:38`, append-only) · `reason` (the sentence). **A code with no sentence is
+unrenderable and a sentence with no code is unstylable, so both ship.**
+
+#### ⛔ THE THAW IS A MOSS *SCREEN* VERB, NOT A MOSS *LANGUAGE* VERB
+
+`MossBindings.RegisterAdapters`'s switch (`sim/Sim.Dsl/MossBindings.cs:29-42`) is **not touched** and
+no adapter exists for a `CryoPod`. `ScriptRuntime.Tick` consults no device at all — not `Powered`,
+not `Condition`, not `Scriptable` — so a ten-line installed program carrying a thaw verb could empty
+the cryo bay unattended, which is the opposite of the owner's *"only one after the other"*. It is
+**not a console-prompt verb either**: `ExecConsole` inherits its authority from the DSL adapters
+(IX-M40), so a typed `thaw` line would be the one verb granting authority the DSL withholds. Both
+are pinned — `NoMossAdapterIsRegisteredForACryoPod` (with a registered `AirVent` as the inclusion
+control, because the switch simply not listing `CryoPod` would make the naive assertion hollow) and
+`WebThawTests.TheConsolePrompt_CannotThaw`. **This is not reversible later without breaking saves.**
+
+#### ONE SOURCE OF TRUTH, BY ASSERTION AND NOT BY CALL
+
+`ThawGate` may not name `ShipLedger`: `ArchitectureBoundaryTests.TheLedgerIsNotReachableFromAnyTickPath`
+denies the identifier to every file in Sim.Core but the ledger's own, deliberately with no scope
+filter, and `ShipLedger.Sample` allocates an `int[]` per census. So the gate re-reads the same live
+state (`Headroom`, `:530`) and **`TheGateAndTheLedgerAgree_OnADrivenShip` requires the two to be
+equal after a driven sim-hour** on `LivingCrew`, `FoodUnits`, `TankLiters`, `BreathableO2Moles` and
+both derived per-crew rates. Measured on `--ship wreck` at boot: **1 living crew · 60 u food ·
+300.0 L · 4 497.367 mol O₂ · 1 working scrubber covering 3**.
+
+⚠️ **AND THE FLOORS ARE ABSOLUTE, BECAUSE A RATIO SUITE CANNOT SEE A 2× ERROR** (seventh trap shape;
+E0-9's whole gate went green with `DaysOfFood` 2× wrong). `TheHeadroomReadsInABSOLUTEUnits_NotRatios`
+pins measured literals: `FoodUnitsPerCrewPerDay = 1.3889 u` (2.7778 is the E0-9 mistake — reading
+`sustenance.def`'s COMMENT, which says one meter per day, instead of `needs.def`'s tuning, which
+fills it in two), `LitersPerCrewPerDay = 1.0 L` (thirst fills in one sim-day, self-serve at 0.5, a
+drink is 0.5 L), `O2MolesPerCrewPerDay = 26.2656`, and the wreck's own **21.6 d food / 150.0 d water
+/ 85.6 crew-days O₂** for the crew a thaw would create. Physically applying a 2× to the food rate
+reddens this test, the agreement test and the food sentence.
+
+#### THE HEADROOM TERMS, AND WHICH ONE ACTUALLY BITES
+
+- **Scrubbing is a STEP FUNCTION** — `0.001 / 2.73e-4 = 3.663` crew per working scrubber, strict
+  surplus, so **one scrubber covers 3 and two cover 7**. On the wreck exactly one scrubber
+  (`scrubber_cryo`, 0.55) is powered and above `fail` at boot, so thaws 2 and 3 pass and the fourth
+  soul is a wall the player repairs their way through — after which a *tier* unlocks, not a step.
+  Driven end to end by `TheScrubbingTerm_SaysHowManyCrewItCovers_AndASecondScrubberUnlocksATier`.
+- **Food is the only continuous term** and it stops biting the moment a grow bed is repaired.
+- **Water** is food's shape; the wreck stands at 300 L, i.e. 150 sim-days for two.
+- **O₂ REPORTS AND NEVER BINDS** — ~86 crew-days for two on the wreck against a 1.0 floor, because a
+  powered vent injects gas from nothing and there is no reserve to run down. It is kept so the
+  report does not lie by omission. **The pacing is the ladder; the headroom is the ship talking.**
+
+**No def field ships.** `MinDaysOfFood = 3.0` (`:348`), `MinDaysOfWater = 3.0` (`:352`) and
+`MinO2CrewDays = 1.0` (`:364`) are named constants, and the rung table stays a literal — the
+`CryoSystem.ThawSecondsPerCycle` / `BuildSystem.FloorConstructTicks` precedent. `thaw_cost_base` and
+`thaw_cost_step` are **deliberately NOT shipped**: OD-L replaced the per-pawn price with the ladder,
+and two prices would be one price too many. ⇒ **P4 and P5 do not move.**
+
+#### PIN-NEUTRAL
+
+P1–P5 all hold. A command nobody sends changes nothing (the E0-5 shape): `ThawGate` is a static and
+is **not registered as a system** — registering it would fold a seed and move P1/P2/P3 for nothing —
+no `Device` field, no def field, no save chapter, no `GlyphColor`. Check A
+(`git diff main...HEAD -- tests/Perilune.Tests/Golden/ ci.sh content/`) is empty and the P1 twin-run
+matched at `25f604dd61b221fb`.
+
+#### ⚠️ WIRED BUT NOT CONNECTED — read this before believing a player can do it in the browser
+
+**There is no client sender for the `thaw` op.** The POD BAY that would send it is **M3-4's**, and
+this package's browser beat is deferred BY NAME to M3-4 (whose acceptance step 5 drives the cycle
+refusal) and M3-13 (whose steps 0 and 2 drive the reasons); both charters accept it. So today the
+verb is complete and reachable **over the wire and from the sim**, and unreachable **from the
+running game's UI**. A `--ship wreck` player still cannot thaw anybody by clicking, and the reason
+is a missing button, not a missing gate.
+
+**The debts this package was owed, both paid.** `PodIdentityTests`' 3 000-tick immutability run now
+commissions the console with a real `CommissionDeviceCommand`, sends a real `ThawCommand`, and is
+required to have OPENED a capsule and produced a live citizen before the claim is read (non-vacuity
+5) — a thaw is the code path most likely to want to write a pod's name, and it does not.
+M3-6's deferred band-edge sweep is `TheRungTheGateResolves_ChangesAtEverySixInteriorBandEdge`, which
+crosses **all six** interior edges (0.92 · 0.90 · 0.87 · 0.85 · 0.82 · 0.80) through the six-term
+contract with every ladder item stripped, and asserts the rung steps by exactly one AND that the
+SENTENCE differs either side. Six, not four: *the edge that is never crossed is the edge nobody
+chose.*
