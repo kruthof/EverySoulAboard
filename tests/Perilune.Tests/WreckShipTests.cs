@@ -360,13 +360,13 @@ namespace Perilune.Tests
         /// </summary>
         private static readonly (string Pod, int Rung, ItemKind Item, int Count)[] LadderRungs =
         {
-            ("pod_lindqvist", 1, ItemKind.Seals,            1),   // 0.94  chain depth 0
-            ("pod_ozawa",     2, ItemKind.Seals,            2),   // 0.91  chain depth 0
-            ("pod_ferreira",  3, ItemKind.Parts,            1),   // 0.88  chain depth 2
-            ("pod_mbeki",     4, ItemKind.Parts,            2),   // 0.86  chain depth 2
-            ("pod_bahri",     5, ItemKind.ControllerModule, 1),   // 0.83  chain depth 3
-            ("pod_nakamura",  6, ItemKind.ControllerModule, 2),   // 0.81  chain depth 3
-            ("pod_torres",    7, ItemKind.ControllerModule, 3),   // 0.78  chain depth 3
+            ("pod_lindqvist", 1, ItemKind.Seals,            1),   // 0.99  floor 0.92  chain depth 0
+            ("pod_ozawa",     2, ItemKind.Seals,            2),   // 0.91  floor 0.84  chain depth 0
+            ("pod_ferreira",  3, ItemKind.Parts,            1),   // 0.83  floor 0.76  chain depth 2
+            ("pod_mbeki",     4, ItemKind.Parts,            2),   // 0.75  floor 0.68  chain depth 2
+            ("pod_bahri",     5, ItemKind.ControllerModule, 1),   // 0.67  floor 0.60  chain depth 3
+            ("pod_nakamura",  6, ItemKind.ControllerModule, 2),   // 0.59  floor 0.52  chain depth 3
+            ("pod_torres",    7, ItemKind.ControllerModule, 3),   // 0.51  catch-all   chain depth 3
         };
 
         /// <summary>
@@ -456,9 +456,10 @@ namespace Perilune.Tests
         /// <summary>
         /// ⭐ THE BAND EDGES ARE INCLUSIVE ON THEIR LOWER SIDE, AND THAT WAS A DECISION.
         ///
-        /// <para>A capsule at exactly 0.92 is rung 1; at exactly 0.90 it is rung 2; at exactly
-        /// 0.80 it is rung 6. One spelling (<c>&gt;=</c>) reads the whole table, matching the
-        /// owner's own notation for the top band ("≥ 0.92").</para>
+        /// <para>A capsule at exactly 0.92 is rung 1; at exactly 0.84 it is rung 2; at exactly
+        /// 0.52 it is rung 6. One spelling (<c>&gt;=</c>) reads the whole table, matching the
+        /// owner's own notation for the top band ("≥ …"). ⭐ The six numbers were re-scaled by D2
+        /// (2026-08-02); the CONVENTION they are read with was not.</para>
         ///
         /// <para>⚠️ RimWorld's analogue chooses the OPPOSITE convention and that is exactly why
         /// this leg exists: <c>CapableOf</c> is <c>GetLevel(c) &gt; c.minForCapable</c>, a strict
@@ -475,14 +476,20 @@ namespace Perilune.Tests
         public void ThawLadder_BandLowerEdgesAreInclusive_AndTheEdgeBelowIsTheNextRung()
         {
             // edge value, the rung the edge ITSELF resolves to, and the rung just below it.
+            // ⭐ RE-KEYED BY D2 (2026-08-02): the bands are 0.08 wide where they were 0.02–0.03, so
+            // a capsule authored 0.07 above its own floor takes ~70 sim-hours to drop a rung
+            // instead of 10–20. (0.08 and not 0.11 is the owner's second ruling of the same day —
+            // wider bands need more range and pushed the deepest capsule too close to `fail`; see
+            // ThawGate's class remarks.) The CONVENTION under test is untouched — the lower edge is
+            // still uniformly INCLUSIVE — and so is OD-M item 1's curve; only the six numbers moved.
             var edges = new (float Edge, int OnTheEdge, int JustBelow)[]
             {
                 (0.92f, 1, 2),
-                (0.90f, 2, 3),
-                (0.87f, 3, 4),
-                (0.85f, 4, 5),
-                (0.82f, 5, 6),
-                (0.80f, 6, 7),
+                (0.84f, 2, 3),
+                (0.76f, 3, 4),
+                (0.68f, 4, 5),
+                (0.60f, 5, 6),
+                (0.52f, 6, 7),
             };
 
             var offenders = new List<string>();
@@ -842,7 +849,7 @@ namespace Perilune.Tests
         /// ⚠️ STRIP MUST REFUSE AN OCCUPIED CAPSULE. Seven of the eight souls a won game ends with
         /// are asleep in closed pods, and before this rule one drag of the STRIP palette across the
         /// cryo bay condemned every one of them — driven, with a passing Door control:
-        /// <c>CanDesignate(pod_ozawa, 0.91, closed)</c> returned True and <c>Designate</c> accepted
+        /// <c>CanDesignate(pod_ozawa, Condition, closed)</c> returned True and <c>Designate</c> accepted
         /// it, paying 1 Part. The header of this ship says "nothing here may reduce that number";
         /// nothing enforced it.
         ///

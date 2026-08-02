@@ -442,6 +442,7 @@ const OV_IDS = [
   'overview-view', 'ov-stage', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
   'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', // M1-L dropped 'ov-picker' with the modal
   'ov-ending', // M3-5's one-line banner: the emergency-thaw grace, then the lose state
+  'ov-alert',  // D2's one-line warning bar: a capsule's thaw price is about to rise
   's-deck', 's-lens', 'legendcard', 'crew-count', 'crewlist',
   // ⚠️ ADDED FOR THE PAUSED-NUDGE LEG (M1-C review, 2026-07-29) — trap 4's corollary: if the harness
   // cannot model what the guard needs to see, fix the harness. `nudgeOnIntent` asks `isPaused()`,
@@ -1607,6 +1608,67 @@ test('M3-5: the ENDING bar carries the grace, then the lose state, and is silent
   Hud.renderEnding({ type: 'ending', text: '', over: false });
   assert.equal(bar.hidden, true);
   assert.equal(bar.classList.contains('ov-endover'), false);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════
+// D2 — THE ALERT BAR: the ship names a capsule BEFORE its thaw price rises
+// ═════════════════════════════════════════════════════════════════════════════════════════
+//
+// The M3 milestone demo (finding D2) watched Mbeki's capsule go `2 PARTS` → `1 CONTROLLER MODULE`
+// inside 100 sim-minutes with nothing said anywhere. The owner's ruling was to keep the decay, slow
+// it, and SURFACE it — this bar is the surfacing, and it is deliberately NOT a Chronicle entry: the
+// same demo measured the Chronicle ring (200 entries) evicting real events under brownout spam
+// (finding D6), so an announcement there is gone before anybody opens the console to read it.
+//
+// ⚠️ THE SENTENCE IS THE HOST'S (`WireFormat.DecayAlert`) AND IS NOT ASSERTED WORD FOR WORD HERE.
+// What this file owns is whether the line is on screen and whether it carries what the wire sent.
+// Re-word the sentence host-side and this test still passes — which is the point; the C# half
+// (`ThawLadderDecayTests`) pins the words, in one place.
+//
+// MUTATIONS (applied, RED, reverted): delete `paintAlert()` from `repaint()` ⇒ RED on the first
+// assertion (the bar never leaves `hidden`) · `setHidden(_el.alert, !text)` → `setHidden(_el.alert,
+// false)` ⇒ RED on the goes-away leg.
+test('D2: the ALERT bar names the decaying capsule, and is silent when there is nothing to say', () => {
+  const bar = document.getElementById('ov-alert');
+  assert.ok(bar, 'no #ov-alert in the MOUNTED doc — every assertion below would be vacuous');
+
+  // ⚠️ THE ORDER IS DELIBERATE, exactly as for the ending bar above: every "hidden" claim is a
+  // TRANSITION out of a state this test put the bar into. Asserting `hidden` first would be
+  // satisfied by a bar nothing ever paints.
+  Hud.renderAlerts({ type: 'alerts', text: 'CAPSULE DECAYING — MBEKI — THAW PRICE RISES SOON' });
+  assert.equal(bar.hidden, false, 'the warning is INVISIBLE — the whole defect D2 filed');
+  assert.equal(bar.textContent, 'CAPSULE DECAYING — MBEKI — THAW PRICE RISES SOON');
+
+  // …a different capsule replaces it rather than stacking: one line, nearest-to-crossing.
+  Hud.renderAlerts({ type: 'alerts', text: 'CAPSULE DECAYING — BAHRI — THAW PRICE RISES SOON' });
+  assert.equal(bar.textContent, 'CAPSULE DECAYING — BAHRI — THAW PRICE RISES SOON');
+
+  // …and it goes away again when the wire says all quiet, rather than sticking for the rest of the
+  // run. The empty string is a STATE the channel expresses; a client that hid the bar when the
+  // channel stopped arriving could not tell all-quiet from a dropped socket.
+  Hud.renderAlerts({ type: 'alerts', text: '' });
+  assert.equal(bar.hidden, true);
+});
+
+// MUTATION: delete `case 'alerts':` from main.js ⇒ RED here AND in the C# half
+// (SurfaceBoundaryTests.EveryWireChannelIsConsumedByTheStandardClient).
+test('D2: the alerts channel is dispatched and drawn on the standard surface, not the console', () => {
+  const src = (rel) => codeOnly(readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8'));
+  const main = src('../src/main.js');
+  assert.match(main, /case 'alerts':/, 'client/src/main.js must dispatch the `alerts` channel');
+  assert.match(main, /Hud\.renderAlerts/);
+
+  const overview = src('../src/ui/overview-view.js');
+  assert.match(overview, /ov-alert/, 'the ALERT bar belongs on the Level-1 Overview');
+  assert.match(overview, /paintAlert/, '…and it must be painted every repaint, like the ending bar');
+
+  // ⛔ AND NOT ON THE DEPRECATED SHELL. hud.js may CACHE the channel (the shared wire-state layer
+  // both modern surfaces read); it may not DRAW it.
+  const hud = src('../src/ui/hud.js');
+  assert.match(hud, /export function renderAlerts/, 'the cache seam lives in hud.js like every other channel');
+  assert.ok(!/ov-alert|paintAlert/.test(hud),
+    'hud.js is the deprecated console module and is CLOSED TO NEW WORK — it may cache the alert, ' +
+    'it may not build the bar');
 });
 
 // ⚠️ THE SLOT COUNT, DRIVEN — and it needed a DIFFERENT read of the stub than the test above.

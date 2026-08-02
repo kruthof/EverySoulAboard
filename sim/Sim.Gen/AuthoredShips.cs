@@ -1624,9 +1624,8 @@ namespace Perilune.Gen
         //   * SWARF: every strip of a device below Condition 0.5 pays 1 Swarf. ⚠️ THESE NUMBERS ARE
         //     RE-COUNTED OFF `WreckShipTests.PrintTheBootCensus` DRIVING THE REAL SHIP, NEVER
         //     recomputed from a previous draft's arithmetic — the first version of this paragraph
-        //     was wrong in every figure. This ship authors 45 such devices (the census's
-        //     "worth SWARF if stripped" line; 44 before M3-11's `vent_d1`, which is on deck 1 and
-        //     therefore NOT reachable stock), of which NINETEEN stand in the boot core:
+        //     was wrong in every figure. This ship authors 44 such devices (the census's
+        //     "worth SWARF if stripped" line), of which NINETEEN stand in the boot core:
         //       cryobay        8 — the four wrecked pods, light_cryo 0.18, radiator_cryo 0.36,
         //                          battery_cryo 0.11, term_moss 0.14
         //       wreck_spine_0  2 — scrubber_spine 0.09, light_spine_0 0.16
@@ -1637,6 +1636,16 @@ namespace Perilune.Gen
         //     radiator_reactor are the survivable core's thermostats — and four of them are the
         //     dead sleepers' capsules, which `DeconstructSystem` now REFUSES outright. Call the
         //     freely-strippable core stock thirteen.)
+        //     ⚠️ 45 IS WHAT THIS LINE SAID UNTIL 2026-08-02 AND IT WAS ALREADY WRONG — 44 is the
+        //     DRIVEN number, on the pre-D2 tree AND on this one (and it takes the "44 before
+        //     M3-11's `vent_d1`" clause with it, which cannot also be true). It was caught only
+        //     because D2's first draft dropped two capsules under the Condition-0.5 cliff, moved
+        //     the census to 46, and the arithmetic did not reconcile — so BOTH ends were measured.
+        //     The owner's second D2 ruling then walked every capsule back above 0.50, and the
+        //     census returned to 44 exactly. ⚠️ A LIVING CAPSULE MUST NEVER SIT UNDER THAT CLIFF
+        //     WITHOUT SOMEONE SAYING SO: it inflates this line without adding one unit of Swarf,
+        //     because a closed occupied pod can never be stripped at all. The census counts what
+        //     the CLIFF says, not what the verb allows.
         //   * 80 debris tiles pay Regolith on top of that, once the player can breathe next to them.
         //
         // ⇒ The floor is 4 consumables and 8 Regolith; the ship authors 3 free services, 12
@@ -1882,27 +1891,53 @@ namespace Perilune.Gen
         /// are now compared against the hand-written literals in
         /// <c>tests/Perilune.Tests/WreckShipTests.cs</c>; if you re-word one, re-word both.
         ///
-        /// Every living pod is authored comfortably above <c>wear.wreck_threshold</c>: they are the
-        /// seven people the whole game is about, and a capsule that decayed below the floor while
-        /// the player was busy elsewhere would quietly cost them a crew member with no message
-        /// anywhere. At the CryoPod wear rate (0.001/h) the lowest of them takes ~480 sim-hours to
-        /// reach its `maint` threshold at all.</summary>
+        /// ⭐⭐ THE `Condition` COLUMN IS ALSO THE THAW LADDER'S PACING, AND D2 (2026-08-02)
+        /// RE-AUTHORED ALL SEVEN LIVING VALUES TOGETHER WITH THE BAND TABLE THEY INDEX
+        /// (`sim/Sim.Core/ThawGate.cs`). Every pod keeps the rung OD-M item 1 gave it — Lindqvist 1
+        /// … Torres 7, same items, same counts, same chain depths — and every pod now boots
+        /// **0.07 above its own band floor**, which at the CryoPod wear rate (0.001/h,
+        /// `machines.def:75`) is **~70 sim-hours before its price rises**. It was 0.01–0.02, i.e.
+        /// 10–20 sim-hours: the M3 milestone demo watched Mbeki go `2 PARTS` → `1 CONTROLLER MODULE`
+        /// inside 100 sim-minutes, and driven on the shipped tree the FIRST crossing landed at
+        /// sim-hour 9 with six of the seven pods crossing at once. Owner's call, 2026-08-02: keep
+        /// the decay, slow it, say so.
+        ///
+        /// ⭐ AND **0.07 RATHER THAN 0.10 IS A SECOND OWNER RULING THE SAME DAY**, taken because the
+        /// wider table bought its pacing with RANGE: 0.11-wide bands need 0.66 of Condition and
+        /// pushed this column down to 0.98 … 0.32, leaving the deepest capsule ~220 unattended
+        /// sim-hours from `fail` where the shipped ship left it ~680. The ruling: **walk it back to
+        /// ~70 sim-hours so EVERY capsule stays above 0.50.** This column now spans 0.99 … 0.51,
+        /// Torres sits ~410 sim-hours above `fail`, and the price pacing is still ~7× the shipped
+        /// tree's.
+        ///
+        /// ⚠️ AND THE PARAGRAPH THAT USED TO STAND HERE MEASURED A THRESHOLD THAT DOES NOT EXIST
+        /// FOR THIS KIND. It read *"at the CryoPod wear rate (0.001/h) the lowest of them takes
+        /// ~480 sim-hours to reach its `maint` threshold at all"* — but `machines.def:67-68` says in
+        /// its own words that CryoPod's `maint = 0` **IS THE OPT-OUT, NOT A THRESHOLD**: there is no
+        /// condition at which a pod joins the maintenance board, so there is nothing for 480 hours
+        /// to be a countdown TO. The number was reassurance about the wrong floor, and it is the
+        /// reason nobody looked at the real one. The floor that exists is `fail` (0.10): below it a
+        /// pod is `ThawRefusal.PodNoSignal` and — because `maint = 0` makes every repair path skip
+        /// it, player-forced or not (`MaintenanceSystem.cs:223,505`) — that is PERMANENT. Torres,
+        /// the deepest capsule, sits ~410 sim-hours above it where he used to sit ~680; the ruling
+        /// above is what bought back the difference. Nothing WARNS about that crossing — the alert
+        /// bar is about the price — and that row is FILED for M5-2's alert stack.</summary>
         private static readonly PodSpec[] WreckPods =
         {
-            // row 1
+            // row 1                                                                    rung  band floor
             new PodSpec { X = 2, Y = 1, Who = "Rell",      Open = true,  Condition = 1.00f },
-            new PodSpec { X = 4, Y = 1, Who = "Ozawa",     Open = false, Condition = 0.91f },
+            new PodSpec { X = 4, Y = 1, Who = "Ozawa",     Open = false, Condition = 0.91f },  //  2   0.84
             new PodSpec { X = 6, Y = 1, Who = "Vance",     Open = false, Condition = 0.04f, Dead = true },
-            new PodSpec { X = 8, Y = 1, Who = "Mbeki",     Open = false, Condition = 0.86f },
+            new PodSpec { X = 8, Y = 1, Who = "Mbeki",     Open = false, Condition = 0.75f },  //  4   0.68
             // row 2
-            new PodSpec { X = 2, Y = 3, Who = "Torres",    Open = false, Condition = 0.78f },
+            new PodSpec { X = 2, Y = 3, Who = "Torres",    Open = false, Condition = 0.51f },  //  7   catch-all
             new PodSpec { X = 4, Y = 3, Who = "Sokolov",   Open = false, Condition = 0.07f, Dead = true },
-            new PodSpec { X = 6, Y = 3, Who = "Lindqvist", Open = false, Condition = 0.94f },
-            new PodSpec { X = 8, Y = 3, Who = "Bahri",     Open = false, Condition = 0.83f },
+            new PodSpec { X = 6, Y = 3, Who = "Lindqvist", Open = false, Condition = 0.99f },  //  1   0.92
+            new PodSpec { X = 8, Y = 3, Who = "Bahri",     Open = false, Condition = 0.67f },  //  5   0.60
             // row 3
             new PodSpec { X = 2, Y = 5, Who = "Iqbal",     Open = false, Condition = 0.03f, Dead = true },
-            new PodSpec { X = 4, Y = 5, Who = "Ferreira",  Open = false, Condition = 0.88f },
-            new PodSpec { X = 6, Y = 5, Who = "Nakamura",  Open = false, Condition = 0.81f },
+            new PodSpec { X = 4, Y = 5, Who = "Ferreira",  Open = false, Condition = 0.83f },  //  3   0.76
+            new PodSpec { X = 6, Y = 5, Who = "Nakamura",  Open = false, Condition = 0.59f },  //  6   0.52
             new PodSpec { X = 8, Y = 5, Who = "Osei",      Open = false, Condition = 0.06f, Dead = true },
         };
 
@@ -2603,7 +2638,7 @@ namespace Perilune.Gen
         {
             return new[]
             {
-                // ── rung 1 · pod_lindqvist 0.94 ────────── Repair 9 · Construct 7 · cannot MINE
+                // ── rung 1 · pod_lindqvist 0.99 ────────── Repair 9 · Construct 7 · cannot MINE
                 new AuthoredPersona
                 {
                     Name = "Lindqvist", RolePreRaid = "hull-seam fitter", RoleNow = "damage control",
@@ -2653,7 +2688,7 @@ namespace Perilune.Gen
                     },
                 },
 
-                // ── rung 3 · pod_ferreira 0.88 ────────── Deconstruct 11 · Haul 9 · cannot CRAFT
+                // ── rung 3 · pod_ferreira 0.83 ────────── Deconstruct 11 · Haul 9 · cannot CRAFT
                 new AuthoredPersona
                 {
                     Name = "Ferreira", RolePreRaid = "breaker-crew hand", RoleNow = "salvage",
@@ -2678,7 +2713,7 @@ namespace Perilune.Gen
                     },
                 },
 
-                // ── rung 4 · pod_mbeki 0.86 ───────────── Mine 13 · cannot REPAIR, cannot CRAFT
+                // ── rung 4 · pod_mbeki 0.75 ───────────── Mine 13 · cannot REPAIR, cannot CRAFT
                 new AuthoredPersona
                 {
                     Name = "Mbeki", RolePreRaid = "regolith surveyor", RoleNow = "mining",
@@ -2705,7 +2740,7 @@ namespace Perilune.Gen
                     },
                 },
 
-                // ── rung 5 · pod_bahri 0.83 ───────────── Construct 12 · cannot HAUL
+                // ── rung 5 · pod_bahri 0.67 ───────────── Construct 12 · cannot HAUL
                 new AuthoredPersona
                 {
                     Name = "Bahri", RolePreRaid = "structural engineer", RoleNow = "construction",
@@ -2730,7 +2765,7 @@ namespace Perilune.Gen
                     },
                 },
 
-                // ── rung 6 · pod_nakamura 0.81 ────────── Craft 13 · Repair 10 · cannot DECONSTRUCT, cannot MINE
+                // ── rung 6 · pod_nakamura 0.59 ────────── Craft 13 · Repair 10 · cannot DECONSTRUCT, cannot MINE
                 new AuthoredPersona
                 {
                     Name = "Nakamura", RolePreRaid = "controller-board technician", RoleNow = "electronics",
@@ -2755,7 +2790,7 @@ namespace Perilune.Gen
                     },
                 },
 
-                // ── rung 7 · pod_torres 0.78 ──────────── Repair 14 · Construct 11 · cannot MINE
+                // ── rung 7 · pod_torres 0.51 ──────────── Repair 14 · Construct 11 · cannot MINE
                 new AuthoredPersona
                 {
                     Name = "Torres", RolePreRaid = "chief engineer", RoleNow = "chief engineer",

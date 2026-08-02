@@ -942,8 +942,19 @@ namespace Perilune.Tests
                     // THE WORKSITE STAGING RULE (docs/HANDOVER.md §5 item 2, MECHANICS §13.21).
                     // TryFindStagingTile (the servicer's tile) and FindNearest (the consumable's
                     // tile) — the two places this system parks a crew member. The doc-comment
-                    // mention is stripped by CodeOnly.
-                    ["WorksiteSafety"] = 2,
+                    // mentions are stripped by CodeOnly.
+                    //
+                    // ⭐ 2 → 3 AT D3 (the reserve floor), AND IT IS THIS CASE (c)'s MIRROR: A COUNT
+                    // THAT ROSE INSIDE THE CARVE-OUT, NOT A NEW CROSSING. The third occurrence is
+                    // `HasAutonomouslySpendableStock`, which counts the loose consumable units the
+                    // AUTONOMOUS path may spend — and "may an unordered crew member fetch from this
+                    // tile?" is the identical question `FindNearest` already asks two lines of
+                    // control-flow later, asked once over the whole item store instead of once per
+                    // candidate. Answering it any other way would let the reserve be satisfied by
+                    // stock stranded behind the pressure frontier that the dispatcher can never
+                    // touch. Same seam, same module, same one-way direction; no new identifier and
+                    // no new physiology reaches this file.
+                    ["WorksiteSafety"] = 3,
                 },
                 // The job board's ONE crossing: JobWork.TryPathToAdjacent, where dig, build and
                 // deconstruct all choose the tile a worker will stand on.
