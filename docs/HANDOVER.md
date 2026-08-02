@@ -6,18 +6,24 @@ older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — 
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-02 session C, continued — NINE merges, the queue stands at M3-7)
+## Current state (2026-08-02 session C, continued — TEN merges, the queue stands at M3-12)
 
-**Gate on `main` (`e76ac5d`): 1714 dotnet + 1183 node, twin hashes MATCH at P1
-`13674ebc4f8a14a9`** (re-measure before quoting). ⚠️ **PIN M3-d EXECUTED (tag `pin/m3-d`
-applied at merge) — M3-10, P4 AND P5 ONLY: P4 `0c5ddbc07e41f07d` → `77a7a8a9e967eab4`,
-P5 `09900b9a44119272` → `edf1577c32f14e55`**, cause `DeviceKind.Heater = 28` (which grows
-`Machines` AND `Recipes`) plus the two appended def scalars `heater_output_kw` /
-`thermal.heater_ceiling_k`; both measured twice through two loaders. **P1/P2/P3 MEASURED
-HELD** — the `./ci.sh` run is the proof; the guards are alarms, in two halves because P1 is
-NOT a `ShipPlan` (it is `hosts/scenario`'s hand-built `BuildScenario`, scanned at the source by
-`P1sOwnFixtureAuthorsNoHeater`; the plan census covers P2/P3/grid/wreck). `ci.sh` unchanged.
-Next pin row: M3-b (M3-7).
+**Gate on `main` (M3-7 merge): 1744 dotnet + 1193 node, twin hashes MATCH at P1
+`3d23665a724e853d`** (re-measure before quoting). ⚠️ **PIN M3-b EXECUTED (tag `pin/m3-b`
+applied at merge) — M3-7, P1/P2/P3: P1 `13674ebc4f8a14a9` → `3d23665a724e853d`,
+P2 `1c036ffd53b8f106` → `cb09b584a5f15e52`, P3 `37c85c1ed445895e` → `43a1a5c25713faec`;
+P4 `77a7a8a9e967eab4` and P5 `edf1577c32f14e55` HELD** (the skill curve is LITERALS, no def
+field). Cause: `Citizen.Skill` — M2-1's last reserved byte — widened to the per-work-type
+`SkillsRaw` array of six (CITZ v8→v9, OD-M item 8A). **FOLD-ONLY, MEASURED:** with the array
+present and all six consumers live but the fold reverted to `…SkillsRaw[0]`, P1 read
+`13674ebc4f8a14a9` again and both goldens were green on their OLD values.
+⛔ **AND THE HARD HALF: NO PIN SEES THE RATE TERM — the thing the package is FOR.** 2×2, driven:
+force every crew member to skill 20 (2.24×–3.00×) and all three pinned runs are bit-identical
+with the rate seam live and stubbed out (P1 `baf85f1209ce5ea3`, perilune `3fa8982abae9456b`,
+slice `b4a2380ffc416ec2`). OD-H boots work off and no pinned run enqueues a command, so **no
+pinned fixture does any work at all** — M2-12/M2-17 again; `SkillConsumerTests` is the curve's
+only instrument. `ci.sh:88` + CLAUDE.md + MECHANICS §13.37 moved in the same commit.
+Next pin row: none standing (M3-b discharged).
 
 **Session mode**: owner authorized an autonomous run (away ~8 h from ~22:00 07-31; back
 and said "continue"); orchestrator merges the M3 queue in order, one Opus implementer +
@@ -68,10 +74,13 @@ one independent reviewer per package. **Full package records live in the §3 que
 
 ## Next
 
-1. **M3-7 skill consumers — PIN ROW M3-b, RUNS ALONE** (`Citizen.Skill` widens to the
-   6-byte per-work-type array inside the existing M3-b chapter bump, OD-M item 8; the
-   `work` wire gains columns) → M3-12 → M3-8 → **M3-c (M3-9 REST, last by risk ruling)**
-   → the week-9 owner playtest (2026-08-07).
+1. **M3-12 skills in the WORK tab** (needs 11 ✅; ⭐ owns the milestone demo §8 — its
+   step 4 is the exit gate's own sentence) → M3-8 sleeper personas (the six-skill sheets;
+   until it lands every citizen is level 0 and the curve is the identity) → **M3-c (M3-9
+   REST, RUNS ALONE, last by risk ruling)** → the week-9 owner playtest (2026-08-07).
+   ⭐ NEW OWNER ITEM from M3-7's review: **rung 1 of the vacuum ladder has lost its named
+   home** — OD-M item 7B deferred it "to M3-7's pin lane" but the charter never chartered
+   it and M3-b is now discharged; it needs a new named home or a new pin row.
    ⭐ NEW OWNER ITEMS from M3-10: the heater's power TIER (LifeSupport shipped interim;
    Industry would run ~36% duty — the "already shed" claim was a sampling artifact) · a
    heater is reachable but NOT AFFORDABLE at boot (`device_place_cost` 3 Parts, wreck
@@ -103,6 +112,13 @@ one independent reviewer per package. **Full package records live in the §3 que
 
 ## Open — unscheduled (filed, unowned)
 
+- **⭐ M3-7 filed set — the skill mechanism ships INERT until someone is authored** (MECHANICS
+  §13.37.5): nothing writes a skill, so every crew member is level 0 where the curve is the exact
+  identity (M3-8's persona sheets are the expected first author) · nothing writes `WorkIncapable`
+  either, so `workcaps` ships correct and all-zero · `Haul`'s curve is FLAT because haul accrues no
+  work ticks anywhere (a haul-speed term needs carry-capacity or move-speed first) · `getWorkCaps` is
+  reached by no surface yet, so it is deliberately NOT on `SHIP_STATE_REACH` (M3-12's first reach
+  adds it).
 - **⭐ `PrioritiseJobCommand` accepts-then-silently-drops** (GENERAL defect, driven; the
   APPROACH refusal for a repair order is still silent — do NOT add `ReasonAir`).
 - **⭐ `BLOCKED_ORDER_NAMES` lacks `OrderRepair`** (M3-13 review): a repair badge titles
@@ -169,3 +185,4 @@ one independent reviewer per package. **Full package records live in the §3 que
 | 08-01 C | board-fault | **one machine does not answer its switch — the workaround is a two-line MOSS program**: the fault sentence, the puff-and-stall, the `every 1s:` fix, 101.3 kPa witnessed | green, pins UNMOVED (b12 fold-neutral measured), 1 send-back, tests →1674/1179 |
 | 08-01 C | emergency-thaw | **the ship wakes one more soul by itself, once, and the run ends on screen**: death → cycling without a pause → "With ⟨name⟩ dead, the ship woke ⟨name⟩." → ALL SOULS banner; a paid cycle is never stamped on | green, pins UNMOVED (packed fold), 1 send-back (a real paid-cycle regression) + 1 measured touch, tests →1690/1180 |
 | 08-02 C | heater | **a heater exists — place one, power it, and a frozen compartment becomes workable again** (`CanStageWorkerAt` flips); found+fixed: `place` was INERT for all six furniture tools | green, **PIN M3-d: P4/P5 moved (Heater=28 + def row), P1/P2/P3 measured HELD**, tag `pin/m3-d`, 1 send-back (three false claims), tests →1714/1183 |
+| 08-02 C | skill-consumers | **who does a job changes how fast it is done** — six skills per soul (CITZ v9), six consumer sites, the `workcaps` channel; every shipping citizen is level 0 until M3-8 | green, **PIN M3-b: P1/P2/P3 moved fold-only (measured), P4/P5 HELD; NO PIN SEES THE RATE TERM (2×2 driven)**, tag `pin/m3-b`, 1 send-back (two unpinned consumer sites), tests →1744/1193 |

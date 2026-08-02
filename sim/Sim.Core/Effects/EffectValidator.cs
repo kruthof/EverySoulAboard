@@ -158,7 +158,18 @@ namespace Perilune.Sim
 
             citizen.JobKind = JobKind.Dig;
             citizen.JobTarget = target;
-            citizen.JobWorkTicks = JobSystem.DigWorkTicks;
+            // M3-7 — the SIXTH assignment site, and the charter's census named only five. A dig
+            // granted through the LLM effect path must cost the same as a dig the dispatcher hands
+            // out (DigJobSource.TryClaim), or a crew member could be talked into a job that ignored
+            // how good she is at it. Same seam, same work type.
+            // ⚠️ THIS LINE WAS A SURVIVOR ON ITS FIRST COMMIT AND THE INSTRUMENT IS NAMED HERE SO IT
+            // CANNOT BECOME ONE AGAIN: reverting it to a bare `JobSystem.DigWorkTicks` left the whole
+            // suite green, because the leg covering it asserted a property of `WorkRates` (arithmetic
+            // the seam does whether or not anyone calls it) rather than of this file.
+            // `SkillConsumerTests.LlmDigGrant_PricesADigAtTheGranteesOwnSkill_Driven` now drives a
+            // real AgreeTask through `TryApply` and reads the countdown off the citizen afterwards.
+
+            citizen.JobWorkTicks = WorkRates.WorkTicksFor(citizen, WorkType.Mine, JobSystem.DigWorkTicks);
             // A citizen took a dig with nothing else changing — the dig source must re-derive its
             // assigned set from citizen state so this site is not offered to anyone else.
             sim.JobsDirty |= JobBoardDirty.Citizens;

@@ -319,7 +319,41 @@ namespace Perilune.Sim
                         if (t < c.WorkPrioritiesRaw.Length) c.WorkPrioritiesRaw[t] = priority;
                     }
                     c.WorkIncapable = reader.ReadByte();
-                    c.Skill = reader.ReadByte();
+                    // ⭐ M3-7 (CITZ v9) — THE SKILL MIGRATION, and the branch is on the VERSION rather
+                    // than on the data because a v8 payload has no count byte to tell the two shapes
+                    // apart: one bare byte where v9 writes a count plus a level per work type.
+                    if (version >= 9)
+                    {
+                        int storedSkills = reader.ReadByte();
+                        for (int t = 0; t < storedSkills; t++)
+                        {
+                            byte level = reader.ReadByte();
+                            // Forward compatibility, exactly as for the priorities above: a save from a
+                            // build with MORE work types is drained to the byte and the extras
+                            // discarded rather than mis-assigned. And NO RANGE CHECK, deliberately —
+                            // Citizen.SetSkill throws above SkillLevel.Max, this does not, the same
+                            // asymmetry the priority branch documents: a reader must not throw on a
+                            // byte some other build wrote.
+                            if (t < c.SkillsRaw.Length) c.SkillsRaw[t] = level;
+                        }
+                    }
+                    else
+                    {
+                        // ⭐ THE v8 → v9 MIGRATION, AND THE CHOICE IS **REPLICATE**, NOT ZERO.
+                        // v8's `Skill` was ONE byte per citizen, documented as "reserved, zeroed, read
+                        // by nothing" — so on every save that has ever existed this byte is 0 and both
+                        // candidate migrations are the identical, lossless no-op. Where it is NOT zero
+                        // (a v8 writer that deliberately stored a value; the test suite is the only one
+                        // in the repo), replicating carries it forward as "equally apt at everything",
+                        // which is EXACTLY the one-aptitude-number model the widening replaces — the
+                        // honest reading of the byte that was written. Zeroing would silently discard
+                        // state a v8 writer stored, and a migration that throws data away should have to
+                        // argue for it. ⚠️ THE VALUE IS NOT CLAMPED to SkillLevel.Max here: v8's byte
+                        // had no domain at all, so clamping would invent one retroactively, and the
+                        // reader is permissive by contract (see above).
+                        byte legacyAptitude = reader.ReadByte();
+                        for (int t = 0; t < c.SkillsRaw.Length; t++) c.SkillsRaw[t] = legacyAptitude;
+                    }
                     c.HeldByOrder = reader.ReadBoolean();
                 }
                 sim.Citizens.Add(c, id);

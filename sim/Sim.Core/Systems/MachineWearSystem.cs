@@ -397,7 +397,13 @@ namespace Perilune.Sim
                     Abandon(sim, device, worker);
                     return;
                 }
-                worker.JobWorkTicks = sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond; // service begins, parts in hand
+                // M3-7 — the service begins, parts in hand, and WHO is holding them decides how long
+                // it takes. `MaintenanceWorkSeconds` stays the def-frozen UNSKILLED cost; the seam
+                // scales it. One seam, and this file names no level — the SAME architecture rule
+                // that carves out Director/WearPressure for this file forbids the substring `Skill`
+                // in it, and M3-7 is chartered to cross it deliberately or not at all.
+                worker.JobWorkTicks = WorkRates.WorkTicksFor(worker, WorkType.Repair,
+                    sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond);
                 return;
             }
 
@@ -442,7 +448,19 @@ namespace Perilune.Sim
             }
             if (Int3.IsAdjacent4(worker.Pos, device.Pos))
             {
-                worker.JobWorkTicks = sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond;
+                // M3-7 — the JURY-RIG leg, scaled through the same one seam as the parts-in-hand leg
+                // above. BOTH legs, or the curve would apply only when the colony happened to have
+                // Parts in stock. ⚠️ AND THE SENTENCE THAT STOOD HERE WAS FALSE AND IS QUOTED RATHER
+                // THAN QUIETLY REPLACED: it claimed "a per-consumer hole the mutation table's leg 2 is
+                // built to catch". It was not caught — independent review reverted the PARTS-IN-HAND
+                // site alone and the full 1744-test suite stayed GREEN, because the only Repair
+                // fixture drove this leg (empty-handed, no consumable aboard) and the two legs are
+                // selected by whether a consumable exists, so one fixture cannot enter both.
+                // `SkillConsumerTests.Repair_AServicerWithSkillFinishesInFewerTicks_OnBOTHAssignmentLegs`
+                // now drives each, and ASSERTS which one it reached (`CarryingItemId` is the
+                // discriminator) so they cannot silently collapse into one again.
+                worker.JobWorkTicks = WorkRates.WorkTicksFor(worker, WorkType.Repair,
+                    sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond);
                 return;
             }
             if (sim.Paths.FindPath(sim, worker.Pos, staging, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);

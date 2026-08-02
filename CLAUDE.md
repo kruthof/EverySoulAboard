@@ -128,13 +128,34 @@ evidence, even from this file** — re-measure before quoting.
 
   | pin | value | enforced by |
   |---|---|---|
-  | P1 scenario `--days 3 --seed 42` | `13674ebc4f8a14a9` | `ci.sh:64` (+ twin-run equality) |
-  | P2 tick-3000 golden | `1c036ffd53b8f106` | `Golden/perilune_tick3000_hash.txt` |
-  | P3 slice tick-3000 golden | `37c85c1ed445895e` | `Golden/slice_tick3000_hash.txt` |
+  | P1 scenario `--days 3 --seed 42` | `3d23665a724e853d` | `ci.sh:88` (+ twin-run equality) |
+  | P2 tick-3000 golden | `cb09b584a5f15e52` | `Golden/perilune_tick3000_hash.txt` |
+  | P3 slice tick-3000 golden | `43a1a5c25713faec` | `Golden/slice_tick3000_hash.txt` |
   | P4 defs defaults checksum | `77a7a8a9e967eab4` | `DefsChecksumTests.cs` |
   | P5 defs rules-inclusive (`defs:` print) | `edf1577c32f14e55` | `DefsChecksumTests.cs` |
 
-  Last mover: M3-10 (PIN M3-d, 2026-08-01) — **P4 AND P5 ONLY**, and the cause is one enum
+  Last mover: M3-7 (PIN M3-b, 2026-08-02) — **P1/P2/P3**, and the cause is a FOLD WIDENING, not a
+  behaviour change. `Citizen.Skill` — M2-1's last reserved byte — became the per-work-type
+  `SkillsRaw` array of six (CITZ v8 → v9, OD-M item 8A), so the citizen fold folds six bytes where
+  it folded one. P1 `13674ebc4f8a14a9` → `3d23665a724e853d` (twin match), P2 `1c036ffd53b8f106` →
+  `cb09b584a5f15e52`, P3 `37c85c1ed445895e` → `43a1a5c25713faec`. **FOLD-ONLY, MEASURED:** with the
+  widened array present, all six consumers live and the fold reverted to
+  `Combine(h, (ulong)c.SkillsRaw[0])`, P1 read `13674ebc4f8a14a9` again and BOTH goldens were green
+  against their OLD values. The scenario's day-3 line is byte-identical either way (pop 2 / hydro
+  98.1 kPa / water 0.0 L / potatoes 371). **P4/P5 HELD** — the curve is LITERALS, not a def field
+  (M2-1's rule-not-tunable precedent); `DefsChecksumTests` green and the `defs:` print still
+  `edf1577c32f14e55`.
+  ⚠️ **AND SAY THE HARD HALF OUT LOUD: NO PIN SEES THE RATE TERM — the thing the package is FOR.**
+  Measured as a 2×2, not assumed: force EVERY crew member to skill 20 (a 2.24×–3.00× rate change)
+  and all three pinned runs are **bit-identical with the rate seam live and with it stubbed out**
+  (P1 `baf85f1209ce5ea3` both ways; perilune `3fa8982abae9456b` both ways; slice `b4a2380ffc416ec2`
+  both ways). Cause: OD-H boots every work type OFF and no pinned run enqueues a command, so no job
+  is ever claimed and no work tick is ever assigned. This is M2-12's *"no pin sees the generation
+  term"* in a second costume and M2-17's lesson exactly — **an unattended fixture does no work, so a
+  held pin here is VACUOUSLY held.** The rate curve's ONLY instrument is `SkillConsumerTests`
+  (driven, absolute tick counts, one leg per consumer). ⛔ Do not let a later lane read "P1 held" as
+  evidence that work rates are unchanged.
+  Before that: M3-10 (PIN M3-d, 2026-08-01) — **P4 AND P5 ONLY**, and the cause is one enum
   member with four tails. `DeviceKind.Heater = 28` grows `Machines` by a row (8 columns through
   the fold loop) AND grows `Recipes`, which `CreateDefault` sizes `new RecipeDef[Machines.Length]`
   (6 more fields for an entry no crafting uses); on top of that the package appends TWO def
@@ -144,7 +165,8 @@ evidence, even from this file** — re-measure before quoting.
   `DefsEquivalenceTests`' parse of the shipped `.def` files, agreeing to the digit; P5: the pin
   test and `hosts/scenario --days 0 --seed 42`'s own `defs:` print).
   ⛔ **P1/P2/P3 HELD, AND THE HOLD IS MEASURED RATHER THAN ARGUED:** `./ci.sh` green with the
-  twin-run match still `13674ebc4f8a14a9` and both tick-3000 goldens byte-unchanged — **that run
+  twin-run match still `13674ebc4f8a14a9` (M3-7 has since moved it) and both tick-3000 goldens
+  byte-unchanged — **that run
   IS the proof**; everything below is a cheap alarm that says which fixture moved, never a second
   authority. The reason it holds is that **no fixture behind a pin authors a heater**, so no
   pinned run reaches `ThermalSystem`'s new arm. Mechanised in two halves, because the pins do not
@@ -154,7 +176,8 @@ evidence, even from this file** — re-measure before quoting.
   it is scanned AT THE SOURCE by `P1sOwnFixtureAuthorsNoHeater` (shared `CodeOnly`, with both an
   inclusion control and a commented-out-code control). Each half has a sibling that plants a
   heater and requires the guard to name it — a search that finds nothing and a search that cannot
-  find anything look identical otherwise. `ci.sh` did NOT change: its literal is P1's.
+  find anything look identical otherwise. `ci.sh` did NOT change at M3-10: its literal is P1's,
+  and M3-7 moved it.
   Before that: M3-15 (PIN M3-e, 2026-08-01) — **P1 ONLY**, for OD-N's actuation gate, and the
   cause is a FIXTURE HOLE rather than new state. `SetDoorStateCommand`/`SetDeviceStateCommand`
   now ask `MossGate.IsServerLive` (any Terminal, `Powered`, `Condition >= maintain` 0.20), and

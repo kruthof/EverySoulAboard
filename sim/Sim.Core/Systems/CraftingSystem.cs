@@ -223,7 +223,22 @@ namespace Perilune.Sim
                 }
                 if (!station.Powered || !station.IsOperational(sim.Defs)) return; // unpowered/broken: hold at the bench
 
-                station.Progress += 1f / recipe.WorkSeconds;
+                // ⭐ M3-7 — WHO is at the bench decides how fast the batch fills. ⚠️ THIS IS THE ONE
+                // CONSUMER SCALED AT THE ACCRUAL RATHER THAN AT THE ASSIGNMENT, and the asymmetry is
+                // forced by the accumulator, not a preference: `station.Progress` lives on the DEVICE
+                // and survives a worker being pulled off mid-batch ("Progress holds on the device; a
+                // fresh recruit resumes the batch", eleven lines up), so a fresh recruit at a
+                // different competence must contribute at HER rate to the remainder. Scaling the
+                // assignment — which is what the four JobWorkTicks consumers do, because their
+                // countdown is LOST on abandon — would price the whole batch at whoever touched it
+                // first. `worker.JobWorkTicks` here is only a phase marker and is never decremented,
+                // so there is nothing to scale on that side. ⚠️ AND THIS LINE IS BIT-IDENTICAL TO THE
+                // OLD ONE ON THE WHOLE SHIPPING FLEET, exactly rather than approximately: an
+                // untrained crafter's rate is EXACTLY 1.0f (`1000 / 1000f` is an exact IEEE
+                // quotient), so the expression below is literally `1.0f / recipe.WorkSeconds` — the
+                // same division, not a multiply that happens to round back. That is what lets this
+                // package's determinism move be fold-only while the fleet is untrained.
+                station.Progress += WorkRates.RateFor(worker, WorkType.Craft) / recipe.WorkSeconds;
                 if (station.Progress < 1f - CompletionEpsilon) return;
 
                 station.Progress = 0f;

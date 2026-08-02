@@ -502,7 +502,17 @@ namespace Perilune.Sim
                 var work = c.WorkPrioritiesRaw;
                 for (int t = 0; t < work.Length; t++) h = XxHash64.Combine(h, (ulong)work[t]);
                 h = XxHash64.Combine(h, (ulong)c.WorkIncapable);
-                h = XxHash64.Combine(h, (ulong)c.Skill);
+                // ⭐ M3-7 — the SKILL ARRAY, in the slot M2-1's single reserved byte held. Folded with
+                // the same fixed-length, count-free loop as the priorities two lines up (the fold walks
+                // a compile-time-constant array; the SAVE stream carries a count because it is a
+                // version-tolerant stream — different medium, different rule, see WriteCitizens).
+                // ⚠️ THIS LINE IS THE WHOLE OF PIN M3-b's MOVE. Every crew member on every shipping
+                // ship is level 0, and WorkRates is the exact identity at level 0, so no rate anywhere
+                // changed — the six zeros folded here where one used to be are the entire delta.
+                // MEASURED, not argued: with the widened array present and ticking but this loop
+                // reverted to `Combine(h, (ulong)c.SkillsRaw[0])`, P1/P2/P3 all read their OLD values.
+                var skills = c.SkillsRaw;
+                for (int t = 0; t < skills.Length; t++) h = XxHash64.Combine(h, (ulong)skills[t]);
                 // W0-1b — saved since CITZ v1, folded only now. Name is the identity every
                 // other layer keys on; PrevPos is derived-but-hashed (same contract as
                 // Device.NetworkId/Powered: a load hashes equal immediately, and dropping it

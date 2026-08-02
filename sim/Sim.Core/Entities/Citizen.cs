@@ -57,8 +57,12 @@ namespace Perilune.Sim
         // work-type VETO: WorkPrioritiesRaw and WorkIncapable are now read at five gates through
         // CanTakeWorkType below, so this grid is BEHAVIOUR and its default (OD-H: off) is what a
         // new game boots into. ⚠️ AND M2-19 GAVE HeldByOrder A READER TOO (IsRecruitableIgnoringJob
-        // — the sticky claim), so of the three "reserved" fields only Skill is still inert. And
-        // M2-9's PrioritiseJobCommand WRITES it, so HeldByOrder is now live end to end in the sim.
+        // — the sticky claim), and M2-9's PrioritiseJobCommand WRITES it, so HeldByOrder is live end
+        // to end. ⭐ M3-7 CLOSED THE LAST ONE: the reserved `Skill` BYTE became the per-work-type
+        // `SkillsRaw` ARRAY (CITZ v9, OD-M item 8A) and is READ by WorkRates at every site where work
+        // is assigned or accrued — so NOTHING in this block is reserved any more. ⛔ Note what it is
+        // NOT read by: skill never gates WHETHER (rimworld-reference.md §5.2), so CanTakeWorkType
+        // below does not consult it and nothing may be added that does.
         // The enrolment ledger in WorkPriorityStateTests.OnlyEnrolledFilesReadTheWorkGrid names
         // every file that may look at them.
         // See the WorkType / WorkPriority declarations at the bottom of this file. ---
@@ -128,20 +132,44 @@ namespace Perilune.Sim
         public byte WorkIncapable;
 
         /// <summary>
-        /// RESERVED, zeroed, and with NO READER AND NO WRITER AS OF THIS COMMIT (a statement about
-        /// this tree, which a merge can change) — M3-7's per-citizen skill byte, landed here only
-        /// because the CITZ chapter is bumping anyway (W0-1b folded thirteen saved-but-unhashed
-        /// fields in one pin move).
+        /// ⭐⭐ <b>M3-7 — HOW GOOD THIS PERSON IS AT EACH KIND OF WORK. One level per
+        /// <see cref="WorkType"/>, indexed by the enum's own value, <c>0</c>..<see cref="SkillLevel.Max"/>
+        /// (20, RimWorld's range). READ SINCE M3-7 by <see cref="WorkRates"/> at every site where work
+        /// progress is assigned or accrued.</b>
         ///
-        /// ⚠️ WHAT THIS SAVES M3-7 IS A <b>CHAPTER BUMP AND A SAVE-FORMAT MIGRATION, NOT A RE-PIN</b>
-        /// — an earlier draft claimed the re-pin, and that is false:
-        /// <c>docs/design/perilune-roadmap-q3.packages.md:403</c> charters M3-7 as a P1/P2/P3 pin row
-        /// in its own right ("work rates change on every ship"), so it pays a re-pin whatever this
-        /// field does. The saving is real but smaller than advertised, and it IS a saved re-pin for
-        /// <see cref="HeldByOrder"/>, whose package (M2-19) is chartered pin-neutral *if* its storage
-        /// landed here.
+        /// <para>⚠️ <b>THIS WAS ONE BYTE UNTIL M3-7 AND THE WIDENING IS THE DESIGN, NOT AN
+        /// OPTIMISATION.</b> M2-1 reserved <c>public byte Skill;</c> — one scalar per citizen. Scaled
+        /// through six per-type curves, one scalar makes two pawns differ in MAGNITUDE but never in
+        /// SHAPE: their relative ordering across work types is identical, for ever. That is not the
+        /// analogue — <c>docs/design/rimworld-reference.md</c> §5.1 is explicit that <i>"skills level
+        /// independently"</i> — and it collides with M3's own exit gate, whose sentence is <i>"the new
+        /// soul's WORK row differs from Rell's."</i> <b>OWNER BATCH ITEM 8, answer A (OD-M)</b> adopted
+        /// the widening, inside M3-7's already-paid pin row: a CITZ chapter bump (v8 → v9) and a save
+        /// migration, NOT a second re-pin.</para>
+        ///
+        /// <para>SHAPE, and it is <see cref="WorkPrioritiesRaw"/>'s exactly — a fixed-length inline
+        /// array sized by <see cref="WorkPriority.WorkTypeCount"/>, one whole byte per slot, built once
+        /// at construction so no tick path allocates. Every argument in that field's header applies
+        /// here verbatim (no <c>Dictionary</c>, no bit-packing, no alias to get wrong), and the
+        /// symmetry is deliberate: the two arrays are walked by the same save loop shape and the same
+        /// fold loop shape, so a reader who has understood one has understood both.</para>
+        ///
+        /// <para>⚠️ <b>THE CURVE IS NOT HERE AND MUST NOT COME HERE.</b> This is storage. What a level
+        /// is WORTH is <see cref="WorkRates"/>'s per-type <c>(base, bonus)</c> literals — a rule, not a
+        /// tunable, on M2-1's precedent, which is what keeps the defs checksums P4/P5 out of this
+        /// row.</para>
+        ///
+        /// <para>⛔ <b>SKILL NEVER GATES WHETHER</b> (§5.2). A level-0 crew member takes the job and
+        /// does it slowly; nothing in <see cref="CanTakeWorkType"/> reads this array, and nothing may
+        /// be added that does. The two refusals are the player's (<see cref="WorkPrioritiesRaw"/>) and
+        /// the person's (<see cref="WorkIncapable"/>), and skill is neither.</para>
+        ///
+        /// <para><c>internal</c> for the same reason as <see cref="WorkPrioritiesRaw"/>: the save
+        /// writer, the save reader and <c>Simulation.StateHash</c> walk it positionally in-assembly,
+        /// while every other caller goes through <see cref="GetSkill"/>/<see cref="SetSkill"/> and
+        /// cannot store an out-of-domain value into a HASHED field.</para>
         /// </summary>
-        public byte Skill;
+        internal readonly byte[] SkillsRaw = new byte[WorkPriority.WorkTypeCount];
 
         /// <summary>
         /// ⭐⭐ <b>M2-19 — THE STICKY CLAIM. This crew member is executing a DIRECT PLAYER ORDER
@@ -240,6 +268,27 @@ namespace Perilune.Sim
         /// <summary>This PERSON cannot do this work at all — distinct from the player having
         /// switched it off. See <see cref="WorkIncapable"/>.</summary>
         public bool IsIncapableOf(WorkType type) => (WorkIncapable & (1 << (int)type)) != 0;
+
+        /// <summary>How good this crew member is at <paramref name="type"/> — <c>0</c>..
+        /// <see cref="SkillLevel.Max"/>, 0 being untrained rather than unable. See
+        /// <see cref="SkillsRaw"/>; what the level is WORTH is <see cref="WorkRates"/>'s.</summary>
+        public byte GetSkill(WorkType type) => SkillsRaw[(int)type];
+
+        /// <summary>
+        /// Set this crew member's skill level for <paramref name="type"/>. RANGE is validated (and
+        /// only range) for exactly <see cref="SetWorkPriority"/>'s reason: the byte is HASHED state, a
+        /// value outside the domain has no meaning, it would survive a save round-trip, and it would
+        /// silently break any later packing. ⚠️ The SAVE READER is deliberately permissive where this
+        /// is strict — the same asymmetry <c>SaveReader</c>'s own note records for priorities: a
+        /// reader must not throw on a byte some other build wrote.
+        /// </summary>
+        public void SetSkill(WorkType type, byte level)
+        {
+            if (level > SkillLevel.Max)
+                throw new ArgumentOutOfRangeException(nameof(level), level,
+                    "a skill level is " + SkillLevel.Min + ".." + SkillLevel.Max);
+            SkillsRaw[(int)type] = level;
+        }
 
         /// <summary>
         /// ⭐ <b>M2-2 — THE WORK-TYPE VETO. THE ONE PREDICATE, ASKED AT FIVE GATES.</b> May this
@@ -528,6 +577,34 @@ namespace Perilune.Sim
         Deconstruct = 3,
         Mine = 4,
         Haul = 5,
+    }
+
+    /// <summary>
+    /// ⭐ M3-7 — THE DOMAIN OF A SKILL LEVEL. <c>0</c>..<c>20</c>, RimWorld's own range
+    /// (<c>docs/design/rimworld-reference.md</c> §5.1: <i>"Twelve skills, levels 0–20 … There is no
+    /// character level — skills level independently"</i>), taken because the analogue's published
+    /// stat curves are all expressed against it and re-basing would make every literal in
+    /// <see cref="WorkRates"/> unreadable against its source.
+    ///
+    /// <para>⛔ <b>0 IS UNTRAINED, NOT UNABLE.</b> §5.2: <i>"Skill never gates whether, only how
+    /// well."</i> A level-0 crew member takes the job. The only two things that stop her are the
+    /// player's grid and <see cref="Citizen.WorkIncapable"/>.</para>
+    ///
+    /// <para>⚠️ NOT A DEF FIELD, and that is a decision rather than an omission — see
+    /// <see cref="WorkRates"/>. There is deliberately no XP/levelling term either: nothing in the sim
+    /// WRITES a skill yet. M3-8's persona sheets are the expected first author.</para>
+    /// </summary>
+    public static class SkillLevel
+    {
+        /// <summary>Untrained. The boot value for every crew member on every ship, and the value the
+        /// whole shipping fleet still carries as of M3-7 — see <see cref="WorkRates"/>, whose curves
+        /// are all exactly 1.0× here, so this package changes no rate anywhere until someone is
+        /// authored with a level.</summary>
+        public const byte Min = 0;
+
+        /// <summary>The cap, 20. Enforced by <see cref="Citizen.SetSkill"/> and by nothing in the
+        /// save reader (deliberately — see that setter's note).</summary>
+        public const byte Max = 20;
     }
 
     /// <summary>

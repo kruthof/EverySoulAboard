@@ -152,7 +152,11 @@ namespace Perilune.Sim
             {
                 citizen.JobKind = JobKind.Deconstruct;
                 citizen.JobTarget = target;
-                citizen.JobWorkTicks = site.WorkTicks; // def-frozen at designate
+                // M3-7 — `site.WorkTicks` stays the def-frozen UNSKILLED cost (frozen at designate,
+                // so the player's queue does not re-price itself), and the seam scales it for
+                // whoever actually claimed the site. One seam; this file names no level (see
+                // WorkRates' class doc). An untrained stripper gets site.WorkTicks EXACTLY.
+                citizen.JobWorkTicks = WorkRates.WorkTicksFor(citizen, WorkType.Deconstruct, site.WorkTicks);
                 _assigned.Add(target);
                 _retryAt.Remove(target);
                 return true;

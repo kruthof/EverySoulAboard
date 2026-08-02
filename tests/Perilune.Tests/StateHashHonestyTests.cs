@@ -193,7 +193,10 @@ namespace Perilune.Tests
             c.SetWorkPriority(WorkType.Deconstruct, 4);
             c.SetWorkPriority(WorkType.Mine, 1);
             c.SetIncapableOf(WorkType.Haul, true);
-            c.Skill = 5;
+            // ⭐ M3-7 (CITZ v9) — the skill array, one DISTINCT level per work type. Distinct because
+            // the widening's whole claim is that two crew may differ in SHAPE: a uniform seed cannot
+            // tell a six-slot fold from a fold that walks slot 0 six times.
+            foreach (WorkType wt in Enum.GetValues(typeof(WorkType))) c.SetSkill(wt, (byte)(5 + (int)wt));
             c.HeldByOrder = true;
             var it = sim.AddItem(ItemKind.Scrap, 5, new Int3(2, 1, 0));
             it.ReservedBy = 0;
@@ -291,10 +294,20 @@ namespace Perilune.Tests
             // change rather than a re-set of the bit the fixture already holds.
             yield return Case("Citizen.WorkIncapable",
                 s => Cit(s).SetIncapableOf(WorkType.Mine, true), s => Cit(s).WorkIncapable);
-            // The two RESERVED fields. They are hashed from the day they land so their eventual
-            // consumers (M3-7, M2-19) cost no pin move — and they are seeded non-default in the
-            // fixture so that "written as zero" and "never folded" are distinguishable here.
-            yield return Case("Citizen.Skill", s => Cit(s).Skill = 6, s => Cit(s).Skill);
+            // ⭐ M3-7 — THE SKILL ARRAY, ONE CASE PER WORK TYPE. It was ONE case for M2-1's single
+            // byte; the widening (OD-M item 8A) makes six independent hashed slots, and a fold that
+            // walked only the first would have passed the old single case word for word. Every slot
+            // gets its own probe for exactly the reason the priority grid above does.
+            foreach (WorkType wt in Enum.GetValues(typeof(WorkType)))
+            {
+                var t = wt;   // captured per iteration
+                yield return Case("Citizen.Skill[" + t + "]",
+                    s => Cit(s).SetSkill(t, (byte)(Cit(s).GetSkill(t) + 1)),
+                    s => Cit(s).GetSkill(t));
+            }
+            // The remaining RESERVED field. Hashed from the day it landed so its eventual consumer
+            // (M2-19) cost no pin move — and seeded non-default in the fixture so that "written as
+            // zero" and "never folded" are distinguishable here.
             yield return Case("Citizen.HeldByOrder",
                 s => Cit(s).HeldByOrder = false, s => Cit(s).HeldByOrder ? 1UL : 0UL);
 
@@ -706,7 +719,9 @@ namespace Perilune.Tests
             // collision depends on — is untouched by M2-1.)
             foreach (WorkType wt in Enum.GetValues(typeof(WorkType))) second.SetWorkPriority(wt, WorkPriority.Off);
             second.WorkIncapable = 0;
-            second.Skill = 0;
+            // M3-7: SIX zeroes now, not one — the collision needs every value of crew 1's prefix to
+            // fold to 0, and the widened array is part of that prefix.
+            foreach (WorkType wt in Enum.GetValues(typeof(WorkType))) second.SetSkill(wt, 0);
             second.HeldByOrder = false;
             if (!firstCrewCarriesBothTiles) second.Path.Add(new Int3(0, 0, 0)); // Q lands here instead
             second.PathIndex = 0;

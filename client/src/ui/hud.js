@@ -77,6 +77,7 @@ let _ledger = null;       // latest ledger message (E0-8: matter census + the ru
 let _devices = null;      // latest devices message (sparse per-device wear: kind + CONDITION + oper)
 let _blocked = null;      // latest blocked message (sparse refused orders: which order, and WHY)
 let _work = null;         // latest work message (M2-4: per-citizen manual work priorities; absent = off)
+let _workCaps = null;     // latest workcaps message (M3-7: per-citizen skills + the incapability mask)
 let _ending = null;       // latest ending message (M3-5: the emergency-thaw grace line / the lose state)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
@@ -141,6 +142,18 @@ export function getBlocked() { return _blocked; }
  *  ⚠️ ABSENT = OFF, and an EMPTY payload is the normal boot state: OD-H makes work opt-in, so nothing
  *  is enabled until the player says so. A reader must not treat `[]` as "no data yet". */
 export function getWork() { return _work; }
+/** ⭐ The cached `workcaps` message (M3-7): one row per LIVING crew member, `[cid, s0..s5,
+ *  incapableMask]` — what she is GOOD at (levels 0..20 in WorkType value order) and what she CANNOT do
+ *  at all (`Citizen.WorkIncapable`'s own byte, copied by the host rather than re-derived).
+ *  ⚠️ DENSE WHERE `work` IS SPARSE: a crew member with nothing switched on STILL HAS A ROW, which
+ *  under OD-H is the boot state and therefore the default case. An empty `cells` means "no living
+ *  crew", never "no data yet".
+ *  ⛔ `incapableMask` IS NOT "priority 0" — a fact about the PERSON versus an order from the PLAYER.
+ *  On the sparse `work` channel the two are indistinguishable by construction, which is why this
+ *  channel exists; a reader that collapses them has thrown the fact away. RimWorld draws a disabled
+ *  cell BLANK and an incapable one as NO CELL AT ALL — the rendering is ABSENCE, not decoration, and
+ *  it is M3-12's to draw (`hosts/web/WireFormat.WorkCaps.cs`). */
+export function getWorkCaps() { return _workCaps; }
 /** The cached `ledger` message (E0-8): the matter census plus PARTS/DAY, DAYS OF WATER and DAYS OF
  *  AIR, each with the host's own derivation note. Read by the Overview's LEDGER island.
  *  ⚠️ HONOUR THE SENTINELS — `window === 0` means every rate on the payload is meaningless, and a
@@ -527,6 +540,12 @@ export function renderBlocked(m) { _blocked = m; notifyShip(); }
  *  survives the console deletion with the rest of the cache (see SHIP_STATE_REACH in
  *  client/test/surface-boundary.test.js). */
 export function renderWork(m) { _work = m; notifyShip(); }
+
+/** ⭐ M3-7 `workcaps` dispatch: cache each crew member's skills and incapability mask and notify the
+ *  SVG surfaces. STATE-LAYER ONLY, exactly like `renderWork`/`renderLedger` — draws nothing, reaches
+ *  no DOM, creates no element, so it adds nothing to the four pinned console-DOM counts and moves to
+ *  ship-state.js at WP-9 with the rest of the wire cache. The WORK tab that DRAWS it is M3-12. */
+export function renderWorkCaps(m) { _workCaps = m; notifyShip(); }
 
 /** Ledger dispatch (E0-8, the `ledger` channel): cache the ship's matter census and its rate members
  *  and notify the SVG surfaces so the LEDGER island repaints. View-only; never touches the sim.

@@ -876,7 +876,26 @@ namespace Perilune.Tests
                 // still guards the thing that matters: no economy system may read a crew member's
                 // skill except through E2's one seam. Deleting it would silently permit exactly the
                 // coupling M3-7 has to make deliberate.
-                ("Skill",          "Citizen.Skill exists (M2-1, reserved) — no ECONOMY file may read it; E2/M3-7 crosses this via ONE seam"),
+                // ⭐⭐ M3-7 CROSSED IT, VIA THE ONE SEAM, AND THIS ROW NEEDED NO CARVE-OUT. The
+                // sentence above said "E2/M3-7 crosses this via ONE seam"; that is now a description
+                // of the tree rather than a prediction. `Citizen.Skill` widened to the per-work-type
+                // `SkillsRaw` array (CITZ v9, OD-M item 8A) and is READ at five accrual sites — and
+                // ALL FIVE ARE ECONOMY FILES (`Jobs/*`, `CraftingSystem`, `MachineWearSystem`).
+                // ⇒ THE SEAM TAKES A CITIZEN, NOT A LEVEL: `WorkRates.WorkTicksFor(citizen, type,
+                // baseTicks)` lives in `Entities/`, outside every economy directory, so no consumer
+                // contains the substring and this row holds unchanged.
+                // ⚠️ MEASURED, AND THE FIRST VERSION OF THIS SENTENCE NAMED THE WRONG MUTATION — it
+                // claimed "adding `SimDefs.SkillBonusMilli` reddens it", which independent review
+                // applied and DISPROVED: that reddens two `SkillConsumerTests` legs and leaves THIS
+                // ROW GREEN, because `Defs/SimDefs.cs` is not on the economy list at all. The
+                // mutation that actually bites is a CONSUMER reading a level directly — replacing
+                // `DigJobSource`'s seam call with `DigWorkTicks / (1 + citizen.GetSkill(...))`
+                // reddens exactly three tests: this row, `OnlyTheSeamAndTheStorageMayNameASkill`,
+                // and the Mine rate leg. Applied, observed, reverted.
+                // ⛔ IF A LATER LANE NEEDS A CARVE-OUT HERE, THAT IS THE SIGNAL THE SEAM HAS BEEN
+                // BYPASSED — widen the seam instead, exactly as this test's own prose says of E2
+                // ("one seam, not mood references scattered across five job sources").
+                ("Skill",          "Citizen skills exist and are READ (M3-7) — no ECONOMY file may name one; the crossing goes through WorkRates, which takes a Citizen"),
                 ("Persona",        "LLM persona sheets"),
                 ("CitizenMind",    "LLM-facing mind state"),
                 ("CitizenMemory",  "MEMS persistence"),
