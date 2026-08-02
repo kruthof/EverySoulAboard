@@ -79,6 +79,48 @@ namespace Perilune.Sim
         // reproduces the former consts: 0.5, 3.04e-4, 2.73e-4, 30, 0.001, 101.3). Tick reads
         // them each pass; nothing here caches the graph so parallel sims stay isolated.
 
+        /// <summary>
+        /// ⭐⭐ OD-O (M3-16) — <b>HOW MUCH OF ITS RATE A DEVICE WITH A DEAD CONTROLLER BOARD LOSES
+        /// PER 0.2 s PASS.</b> Subtractive and clamped at zero, so a rate written once decays to
+        /// nothing in a bounded, exactly-representable number of passes (0.25 is a power of two —
+        /// 1 → 0.75 → 0.5 → 0.25 → 0 with no float residue, on every machine).
+        ///
+        /// <para>⛔ <b>THIS NUMBER IS A DRIVEN MEASUREMENT, NOT A TASTE, AND BOTH ENDS ARE
+        /// FAILURES.</b> A bleed that zeroed the rate in ONE pass would make an <c>every 1s</c>
+        /// loop a 10 % duty cycle and the beat ten times slower; a bleed gentle enough for the
+        /// single prompt line of move 2 to fill the hall would make the puzzle unnecessary. Only a
+        /// number driven against the real ship distinguishes them, and both halves are pinned in
+        /// <c>BoardFaultTests</c>. <b>MEASURED on <c>--ship wreck</c>, <c>hall_d1_s0</c> (60 tiles,
+        /// 293 K):</b>
+        /// <list type="bullet">
+        ///   <item>ONE prompt line (<c>set vent_d1.rate max</c>) spends 1 + 0.75 + 0.5 + 0.25 = 2.5
+        ///   passes of injection and yields a <b>0.197 kPa</b> puff that then stalls DEAD and never
+        ///   moves again — visibly non-zero on the gauge, and 0.25 % of what breathing needs.</item>
+        ///   <item>the two-line <c>every 1s: set(vent_d1.rate, max)</c> program crosses 80 kPa
+        ///   (M3-11's own absolute floor) at tick <b>4 063</b> and reaches nominal by tick 6 000 —
+        ///   inside two of M3-11's 3 000-tick windows, a 50 % duty cycle against the 2 028 ticks a
+        ///   held rate would need.</item>
+        ///   <item>the <c>when hall_d1_s0.pressure &lt; 80</c> variant — the natural wrong answer,
+        ///   and a property of the shipped edge-latched interpreter rather than of this constant —
+        ///   stalls at the same <b>0.197 kPa</b> after 6 000 ticks.</item>
+        /// </list>
+        ///
+        /// <para>⭐ <b>0.25 IS ALSO THE LARGEST VALUE THAT KEEPS THE LESSON VISIBLE, and that is
+        /// why it is not merely "a number in the band".</b> Four passes is 0.8 s, so the rate hits
+        /// EXACTLY zero before each 1 s heartbeat re-sets it: the player watching
+        /// <c>vent_d1.rate</c> sees a sawtooth that touches the floor, which is what makes
+        /// <i>"the board does not hold its setting"</i> readable rather than inferred. A gentler
+        /// bleed keeps the rate permanently above zero and the loop starts to look like a top-up.
+        /// </para>
+        ///
+        /// <para>⚠️ <b>NOT def-tunable, like <see cref="Dt"/> beside it.</b> A def row is PER KIND
+        /// and would fault-tune every <c>AirVent</c> on every ship; this constant belongs to ONE
+        /// authored story instance (OD-O item (iii): <i>"not a pattern for all devices"</i>) and
+        /// moving it moves nothing that is not measured here. Retuning it means re-driving both
+        /// halves of the tuning leg, not editing a number.</para>
+        /// </summary>
+        private const float FaultedRateBleedPerPass = 0.25f;
+
         /// <summary>Gas constant, J/(mol·K) — the same 8.314 <see cref="Room.PressureKPa"/>
         /// uses. A partial pressure is <c>moles · R · T / V / 1000</c> kPa.</summary>
         private const double GasConstant = 8.314;
@@ -158,6 +200,29 @@ namespace Perilune.Sim
                         break;
                     }
                 }
+
+                // ⭐⭐ 1a. OD-O (M3-16) — THE BLEED: a device whose controller board is dead does
+                //     not HOLD a rate it is given. It runs AFTER the injection branch above, so a
+                //     rate written this tick is spent once and only then decays — which is what
+                //     makes the single prompt line a visible puff rather than nothing at all.
+                //
+                //     ⭐ THIS HOME IS CHOSEN FOR ORDERING, NOT CONVENIENCE. Commands drain at the
+                //     top of the tick and Atmosphere is the FIRST system in the stack
+                //     (SystemStack.cs:27), so `drain -> inject at this pass's rate -> bleed` needs
+                //     no argument about system order, and IntervalTicks == 2 means injection and
+                //     bleed are PHASE-LOCKED BY CONSTRUCTION — the bleed can never run a pass the
+                //     injection did not. MachineWearSystem was refused for exactly that: its
+                //     interval is a different cadence, and two cadences for one mechanic is how a
+                //     tuning constant becomes untunable.
+                //
+                //     ⚠️ It is gated on `Faulted` and NOT on Kind, so it is a fact about a dead
+                //     board rather than about vents. Today exactly one device aboard one ship
+                //     carries the bit, so on every other ship this is one bool read per device per
+                //     pass and no write at all — which is what keeps P1/P2/P3 unmoved.
+                if (device.Faulted && device.Rate > 0f)
+                    device.Rate = device.Rate > FaultedRateBleedPerPass
+                                ? device.Rate - FaultedRateBleedPerPass
+                                : 0f;
             }
 
             // 1b. Partial-pressure diffusion across open doors — the per-species analogue of

@@ -326,7 +326,8 @@ namespace Perilune.Sim
         /// full 32 bits) · Pack(Pos) · CarriedBy · Label.
         ///
         /// Per device: Id · Pack(Pos) · the audited state word (Kind b0-7, IsOpen b8, IsLocked
-        /// b9, Powered b10, Scriptable b11, NetworkId b16-31, Rate b32-63) · LockOwner · StoredKWh ·
+        /// b9, Powered b10, Scriptable b11, Faulted b12 (OD-O), NetworkId b16-31, Rate b32-63 —
+        /// b13-b15 remain free) · LockOwner · StoredKWh ·
         /// StoredLiters · Progress · FluidNetworkId · Condition · Name.
         ///
         /// Per room anchor: Pack(Probe) · Type (its OWN word since the wreck start — packing it
@@ -541,6 +542,7 @@ namespace Perilune.Sim
                               | (d.IsLocked ? 1UL << 9 : 0)
                               | (d.Powered ? 1UL << 10 : 0)
                               | (d.Scriptable ? 1UL << 11 : 0)   // E0-6 (DEVC v5)
+                              | (d.Faulted ? 1UL << 12 : 0)      // OD-O / M3-16 (DEVC v6)
                               | ((ulong)d.NetworkId << 16)
                               | ((ulong)(uint)BitConverter.SingleToInt32Bits(d.Rate) << 32);
                 h = XxHash64.Combine(h, state);

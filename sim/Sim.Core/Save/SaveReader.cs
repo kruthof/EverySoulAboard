@@ -361,6 +361,12 @@ namespace Perilune.Sim
                 // field's default (true), which `new Device()` already gave it. Reading false here
                 // would unbind every adapter on load — the player's automation deleted, silently.
                 if (version >= 5) d.Scriptable = reader.ReadBoolean();
+                // v6 (OD-O / M3-16). A pre-v6 save CANNOT contain a faulted device: nothing could
+                // author one before this chapter existed, so the field's default (false) is the
+                // behaviour-preserving read AND the historically accurate one — unlike v5's
+                // asymmetry above, which had to argue for the non-default. `new Device()` already
+                // gave it false, so the branch writes nothing on an old save by construction.
+                if (version >= 6) d.Faulted = reader.ReadBoolean();
                 sim.Devices.Add(d, id);
                 // Re-index the device grid (utility overlays never enter it); the
                 // tile's HasDevice flag is already in the saved Flags array.

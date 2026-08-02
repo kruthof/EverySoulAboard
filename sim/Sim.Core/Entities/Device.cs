@@ -111,6 +111,39 @@ namespace Perilune.Sim
         /// </summary>
         public bool Scriptable = true;
 
+        /// <summary>
+        /// ⭐⭐ <b>OD-O (M3-16) — IS THIS DEVICE'S CONTROLLER BOARD DEAD?</b> An AUTHORED story
+        /// property, not a simulated failure mode: the machine is mechanically fine, its board is
+        /// not. A faulted device refuses <c>open</c>/<c>close</c> from every caller
+        /// (<see cref="SetDeviceStateCommand"/>, and <c>UtilityDeviceAdapter</c> renders
+        /// <see cref="DeviceFault.Refusal"/> for it) and does not HOLD a rate it is given
+        /// (<c>AtmosphereSystem</c> bleeds it back toward 0 every pass). Saved DEVC v6, hashed
+        /// (bit 12 of the device state word).
+        ///
+        /// <para>⛔ <b>THERE IS NO MECHANIC THAT SETS THIS.</b> No fault probability, no wear→fault
+        /// path, no sweep over the device table, no command, no def row. The ONLY writers are
+        /// <see cref="ShipPlanBuilder"/> (from <c>DeviceSpec.Faulted</c>) and <c>SaveReader</c>.
+        /// OD-O item (iii), the owner's own scoping: <i>"not a pattern for all devices — it's an
+        /// idea we can apply sometimes as a game element."</i> M3 ships EXACTLY ONE instance,
+        /// <c>vent_d1</c> on <c>--ship wreck</c>, and that count is a censused test
+        /// (<c>BoardFaultTests.ExactlyOneFaultedDevice…</c>), not a convention.</para>
+        ///
+        /// <para><b>DEFAULTS FALSE, and the default is what makes this pin-neutral.</b> The state
+        /// word folds <c>(d.Faulted ? 1UL &lt;&lt; 12 : 0)</c>, which is byte-identical to the
+        /// pre-M3-16 word on every ship that authors no fault. <b>MEASURED both ways rather than
+        /// argued</b>: P1/P2/P3 held to the digit across the full gate, AND
+        /// <c>BoardFaultTests.TheFaultBitIsFoldNeutralWhileFalse_AndMovesTheHashWhenSet</c> is the
+        /// non-vacuity control — setting the bit MOVES <c>StateHash</c> and clearing it returns it
+        /// exactly, so "the pins did not move" is not true because the term was never folded.</para>
+        ///
+        /// <para>⚠️ <b>WHY A FIELD RATHER THAN A DERIVATION.</b> "An operational device authored at
+        /// rate 0 is faulted" was refused (design question (a) option 3): it is invisible,
+        /// un-clearable, and any future device that legitimately boots at rate 0 would silently
+        /// become a puzzle. A pre-v6 save reads FALSE, which is correct — no save written before
+        /// M3-16 can contain a faulted device, because nothing could author one.</para>
+        /// </summary>
+        public bool Faulted;
+
         public const float BatteryCapacityKWh = 40f;
 
         /// <summary>Below the fail threshold a machine is inoperative until maintained.

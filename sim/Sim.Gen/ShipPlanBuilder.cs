@@ -63,6 +63,26 @@ namespace Perilune.Gen
                     device.Condition = condition;
                 }
                 if (spec.Scriptable.HasValue) device.Scriptable = spec.Scriptable.Value;
+
+                // OD-O (M3-16): the authored dead board. Same optional-write shape as the two
+                // above — `null` means the author said nothing and Device's own initialisers stand
+                // (Rate = 1f, Faulted = false). Both are omitted by every DeviceSpec on
+                // grid/slice/perilune, so these two lines are a no-op on every other shipped ship
+                // BY CONSTRUCTION; AuthoredDamageTests' census walks both fields and its
+                // non-vacuity is an inclusion test that plants each of them in turn.
+                if (spec.Rate.HasValue)
+                {
+                    float rate = spec.Rate.Value;
+                    // The same authoring-time typo-catch as Condition above, with the same
+                    // caveats: it sees THIS writer only (SaveReader and SetDeviceStateCommand
+                    // write Rate by other routes — the latter clamps, the former does not).
+                    // `!(a && b)` so NaN is refused too.
+                    if (!(rate >= 0f && rate <= 1f))
+                        throw new ArgumentException(
+                            $"plan '{plan.Name}': device {spec.Name} authors Rate {rate.ToString(System.Globalization.CultureInfo.InvariantCulture)} outside 0..1");
+                    device.Rate = rate;
+                }
+                if (spec.Faulted.HasValue) device.Faulted = spec.Faulted.Value;
             }
 
             for (int i = 0; i < plan.Citizens.Count; i++)

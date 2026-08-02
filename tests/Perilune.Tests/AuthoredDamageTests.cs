@@ -41,8 +41,12 @@ namespace Perilune.Tests
     /// return it. "The matcher walked 1250 devices" proves it matched something; only planting the
     /// violation proves it would match the thing (CLAUDE.md, the fourth trap shape).
     ///
-    /// ⚠️ THE HONEST COUNT IS 19 GUARDS + 1 CHARACTERISATION TEST, NOT 20 GUARDS.
-    /// (17 + 1 before the two §5 MOSS legs below were added.)
+    /// ⚠️ THE HONEST COUNT IS 29 GUARDS + 1 CHARACTERISATION TEST, NOT 30 GUARDS.
+    /// (17 + 1 before the two §5 MOSS legs; 19 + 1 before M3-16 added <b>ten</b>: the §2b round-trip
+    /// and domain legs for <c>DeviceSpec.Rate</c>/<c>.Faulted</c>, and the two inclusion controls
+    /// for the census' new columns — <see cref="Census_Catches_APlantedRateZeroDevice"/> and
+    /// <see cref="Census_Catches_APlantedFaultedDevice"/>. A new COLUMN in the matcher without a
+    /// planted violation of its own would be exactly the fourth trap shape, one row lower down.)
     /// <see cref="DefaultDeviceSpec_SaysNothingAboutEitherField"/> documents the premise the
     /// encoding rests on and NO source mutation can redden it — every way of breaking that premise
     /// stops this file compiling, which is a crash and not a semantic red. It is labelled in place
@@ -91,7 +95,8 @@ namespace Perilune.Tests
         /// are passed STRAIGHT THROUGH to the one <see cref="DeviceSpec"/>, including null — which
         /// is what makes the control legs below a control: the unspecified case travels the exact
         /// same code path as the specified one and differs only in the field's value.</summary>
-        private static ShipPlan BayPlan(float? condition = null, bool? scriptable = null)
+        private static ShipPlan BayPlan(float? condition = null, bool? scriptable = null,
+                                        float? rate = null, bool? faulted = null)
         {
             var plan = new ShipPlan { Name = "w1_bay", Seed = 20260728UL, DeckRows = OneBay };
             plan.Rooms.Add(new RoomSpec { Anchor = "bay", Type = RoomType.None, Probe = new Int3(1, 1, 0) });
@@ -100,15 +105,18 @@ namespace Perilune.Tests
             {
                 Kind = DeviceKind.Scrubber, Pos = MachineTile, Name = MachineName,
                 Condition = condition, Scriptable = scriptable,
+                Rate = rate, Faulted = faulted,          // M3-16 (OD-O), same pass-through contract
             });
             plan.Citizens.Add(new CitizenSpec { Name = "Adeyemi", Pos = CrewTile });
             return plan;
         }
 
         private static Device BuiltMachine(float? condition = null, bool? scriptable = null,
-                                           ISimSystem[] systems = null)
+                                           ISimSystem[] systems = null,
+                                           float? rate = null, bool? faulted = null)
         {
-            var sim = ShipPlanBuilder.Build(BayPlan(condition, scriptable), systems ?? new ISimSystem[0]);
+            var sim = ShipPlanBuilder.Build(BayPlan(condition, scriptable, rate, faulted),
+                                            systems ?? new ISimSystem[0]);
             Assert.That(sim.Devices.Items.Count, Is.EqualTo(1),
                 "fixture: exactly one device, so the assertions below cannot read a bystander");
             return sim.Devices.Items[0];
@@ -193,9 +201,92 @@ namespace Perilune.Tests
                         authored.Condition.HasValue || authored.Scriptable.HasValue, Is.False,
                 "an unmentioned Condition/Scriptable must be 'unspecified' whichever way the struct " +
                 "is created — zeroed memory, default(T), or an object initialiser");
+            // M3-16's two fields, on the same premise. ⚠️ `Rate` is the one that would repeat W1's
+            // near-miss exactly: a plain `float Rate` reads 0f out of zeroed memory, so every vent,
+            // scrubber and reclaimer in the repo would boot at zero throughput.
+            Assert.That(zeroed.Rate.HasValue || zeroed.Faulted.HasValue ||
+                        authored.Rate.HasValue || authored.Faulted.HasValue, Is.False,
+                "an unmentioned Rate/Faulted must be 'unspecified' whichever way the struct is created");
         }
 
         // ------------------------------------------------------------ 3. the two fields are independent
+
+        // ------------------------------- 2b. M3-16 (OD-O): the same round trip for the two new fields
+        //
+        // ⚠️ THEY ARE HERE AND NOT IN `BoardFaultTests` ON PURPOSE. This file is the coverage home
+        // for `DeviceSpec`'s optional-authoring contract, and the risk it exists to close is the
+        // ENCODING one: a plain `float Rate` reads 0f out of zeroed memory and would boot every
+        // vent, scrubber and reclaimer in the repo at zero throughput — W1's own "boot the whole
+        // repo WRECKED" argument, one field over. `BoardFaultTests` owns what the FAULT does.
+
+        [Test]
+        public void AuthoredRateZero_ReachesTheBuiltDevice()
+        {
+            Assert.That(BuiltMachine(rate: 0f).Rate, Is.EqualTo(0f),
+                "a plan authoring Rate = 0 must produce a device at 0 — and 0 must be an authorable " +
+                "value, not the encoding's 'unset'. This is the fault's visible half on the wreck.");
+        }
+
+        [Test]
+        public void UnspecifiedSpec_LeavesRatePristine()
+        {
+            Assert.That(BuiltMachine().Rate, Is.EqualTo(1f),
+                "a spec that says nothing about Rate must leave Device's own 1f initialiser alone — " +
+                "otherwise every machine on every ship boots at zero throughput");
+        }
+
+        [Test]
+        public void AuthoredFaultedTrue_ReachesTheBuiltDevice()
+        {
+            Assert.That(BuiltMachine(faulted: true).Faulted, Is.True,
+                "a plan authoring Faulted = true must produce a device with a dead controller board");
+        }
+
+        [Test]
+        public void UnspecifiedSpec_LeavesTheBoardAlive()
+        {
+            Assert.That(BuiltMachine().Faulted, Is.False,
+                "a spec that says nothing about Faulted must leave Device's own `false` alone — OD-O " +
+                "item (iii): the fault is ONE authored instance, never a property of devices");
+        }
+
+        [Test]
+        public void AuthoringRate_DisturbsNothingElse()
+        {
+            var d = BuiltMachine(rate: 0f);
+            Assert.That(d.Condition, Is.EqualTo(1f), "authoring a rate must not wreck the device");
+            Assert.That(d.Scriptable, Is.True, "…nor un-commission it");
+            Assert.That(d.Faulted, Is.False, "…nor fault it: rate 0 and a dead board are SEPARATE facts, " +
+                "which is design question (a) option 3 refused in code rather than in prose");
+        }
+
+        // The Rate domain check, mirroring Condition's three legs above and carrying the same
+        // caveats: it is an AUTHORING-TIME TYPO-CATCH over this one writer, not an invariant on
+        // `Device.Rate` (SaveReader reads a raw Single unclamped; SetDeviceStateCommand clamps).
+
+        [Test]
+        public void RateAboveOne_IsAnAuthoringError()
+        {
+            Assert.Throws<System.ArgumentException>(() => BuiltMachine(rate: 1.5f),
+                "a Rate above 1 would silently give a device EffectiveRate > 1 forever");
+        }
+
+        [Test]
+        public void RateBelowZero_IsAnAuthoringError()
+        {
+            Assert.Throws<System.ArgumentException>(() => BuiltMachine(rate: -0.5f),
+                "a negative Rate would make a vent REMOVE gas from its own room");
+        }
+
+        [Test]
+        public void RateNaN_IsAnAuthoringError()
+        {
+            // The leg that pins the `!(a >= 0f && a <= 1f)` FORM: written as `< 0 || > 1` this
+            // passes, and a NaN rate poisons every mole the device ever injects.
+            Assert.Throws<System.ArgumentException>(() => BuiltMachine(rate: float.NaN),
+                "NaN is neither below 0 nor above 1 — the guard must be written as a negated " +
+                "in-range test or it lets NaN through");
+        }
 
         [Test]
         public void AuthoringCondition_DoesNotDisturbScriptable()
@@ -415,6 +506,17 @@ namespace Perilune.Tests
                                   d.Condition.ToString("R", CultureInfo.InvariantCulture));
                 if (d.Scriptable != true)
                     offenders.Add($"{ship}: {d.Name} ({d.Kind}) Scriptable=false");
+                // ⭐ M3-16 (OD-O) WIDENED WHAT "AUTHORED DAMAGE" MEANS, so the matcher grew two
+                // columns. This is not tidiness: `DeviceSpec.Rate` and `.Faulted` ride exactly the
+                // same Nullable encoding and exactly the same builder path as the two above, so a
+                // census that walked only Condition/Scriptable would have declared the three pinned
+                // ships pristine while one of them booted at rate 0 with a dead board — and both of
+                // those move P1/P2/P3.
+                if (d.Rate != 1f)
+                    offenders.Add($"{ship}: {d.Name} ({d.Kind}) Rate=" +
+                                  d.Rate.ToString("R", CultureInfo.InvariantCulture));
+                if (d.Faulted)
+                    offenders.Add($"{ship}: {d.Name} ({d.Kind}) Faulted=true");
             }
             return offenders;
         }
@@ -474,6 +576,9 @@ namespace Perilune.Tests
                     var s = plan.Devices[i];
                     if (s.Condition.HasValue) offenders.Add($"{ship}: {s.Name} authors Condition");
                     if (s.Scriptable.HasValue) offenders.Add($"{ship}: {s.Name} authors Scriptable");
+                    // M3-16's two fields — same encoding, same builder path, same census.
+                    if (s.Rate.HasValue) offenders.Add($"{ship}: {s.Name} authors Rate");
+                    if (s.Faulted.HasValue) offenders.Add($"{ship}: {s.Name} authors Faulted");
                 }
             }
             Assert.That(offenders, Is.Empty,
@@ -517,6 +622,46 @@ namespace Perilune.Tests
             Assert.That(offenders[0], Does.Contain(name).And.Contain("Scriptable=false"));
         }
 
+        /// <summary>M3-16 — the <c>Rate</c> column's own inclusion control. A new column in a census
+        /// is a matcher nobody has proved can see; this plants a rate-0 device in a real grid plan
+        /// and requires the same <see cref="NonPristineDevices"/> to return it.</summary>
+        [Test]
+        public void Census_Catches_APlantedRateZeroDevice()
+        {
+            var plan = AuthoredShips.PeriluneGrid();
+            int at = plan.Devices.Count / 4;
+            var spec = plan.Devices[at];
+            string name = spec.Name;
+            spec.Rate = 0f;
+            plan.Devices[at] = spec;
+
+            var offenders = NonPristineDevices(ShipPlanBuilder.Build(plan, Stack()), "grid");
+            Assert.That(offenders.Count, Is.EqualTo(1),
+                "the census must return the planted rate-0 device and nothing else: " +
+                string.Join(", ", offenders));
+            Assert.That(offenders[0], Does.Contain(name).And.Contain("Rate="));
+        }
+
+        /// <summary>M3-16 — the <c>Faulted</c> column's own inclusion control, on a PINNED ship. A
+        /// fault authored on grid/slice/perilune is a re-pin of P1/P2/P3, so this column is the one
+        /// that has to be able to see.</summary>
+        [Test]
+        public void Census_Catches_APlantedFaultedDevice()
+        {
+            var plan = AuthoredShips.PeriluneGrid();
+            int at = plan.Devices.Count / 5;
+            var spec = plan.Devices[at];
+            string name = spec.Name;
+            spec.Faulted = true;
+            plan.Devices[at] = spec;
+
+            var offenders = NonPristineDevices(ShipPlanBuilder.Build(plan, Stack()), "grid");
+            Assert.That(offenders.Count, Is.EqualTo(1),
+                "the census must return the planted faulted device and nothing else: " +
+                string.Join(", ", offenders));
+            Assert.That(offenders[0], Does.Contain(name).And.Contain("Faulted=true"));
+        }
+
         // ------------------------------------------------------------ 7. the helpers stayed inert
 
         /// <summary>The three authoring helpers grew optional arguments. Their DEFAULTS must emit
@@ -549,6 +694,8 @@ namespace Perilune.Tests
                 dressed++;
                 if (s.Condition.HasValue) offenders.Add($"{s.Name} authors Condition");
                 if (s.Scriptable.HasValue) offenders.Add($"{s.Name} authors Scriptable");
+                if (s.Rate.HasValue) offenders.Add($"{s.Name} authors Rate");
+                if (s.Faulted.HasValue) offenders.Add($"{s.Name} authors Faulted");
             }
             Assert.That(dressed, Is.GreaterThan(0),
                 "fixture: the grid ship must carry RoomDresser furniture, or this leg is vacuous");

@@ -50,7 +50,7 @@ namespace Perilune.Sim
         public const ushort TileVersion = 2;    // v2: + per-tile Material array (byte[n]) per level
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
         public const ushort CitizenVersion = 8; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove; v8 +the work-priority grid, WorkIncapable, Skill, HeldByOrder (M2-1)
-        public const ushort DeviceVersion = 5;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner; v5: + Scriptable (E0-6)
+        public const ushort DeviceVersion = 6;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner; v5: + Scriptable (E0-6); v6: + Faulted (OD-O/M3-16)
         public const ushort ItemVersion = 3;    // v2: + Label; v3: bool ReservedForJob → uint ReservedBy (owner id)
         public const ushort ScriptVersion = 1;
         public const ushort DefsVersion = 1;    // v1: ulong checksum of the sim's active SimDefs
@@ -317,6 +317,7 @@ namespace Perilune.Sim
                 w.Write(d.Condition);       // v3
                 w.Write(d.LockOwner);       // v4
                 w.Write(d.Scriptable);      // v5 (E0-6)
+                w.Write(d.Faulted);         // v6 (OD-O / M3-16 — the authored dead board)
             }
         }
 

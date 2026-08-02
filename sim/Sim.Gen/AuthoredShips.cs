@@ -1503,10 +1503,14 @@ namespace Perilune.Gen
         // THREE vents are authored, and since M3-11 one of them is on the dead deck:
         //   vent_cryo  0.62  WORKING  cryo bay      OPEN — refills the core after a door is opened
         //   vent_ls    0.15  wrecked  lifesupport   SHUT — the premise's first physical gesture
-        //   vent_d1    0.06  wrecked  hall_d1_s0    OPEN — THE UPPER DECK'S ONLY SOURCE OF AIR
-        // ⇒ `vent_d1` is the whole of OD-M item 2: repair it and eight sealed halls stop being a
-        // dead end. See WreckDeck1VentName for the amendment, the geometry and the ⛔ FILED gap
-        // (a 900 s service inside a 90 s vacuum survival budget).
+        //   vent_d1    0.62  FAULTED  hall_d1_s0    OPEN — THE UPPER DECK'S ONLY SOURCE OF AIR
+        // ⇒ `vent_d1` is the whole of OD-M item 2: open it and eight sealed halls stop being a
+        // dead end. ⭐ SINCE OD-O (M3-16) IT IS THE ONLY MACHINE ABOARD THAT IS NOT BROKEN AND
+        // STILL DOES NOTHING: mechanically sound at 0.62, powered, open, OPERATIONAL — and at
+        // `Rate = 0f` with `Faulted = true`, so its switch refuses for every caller and a rate it
+        // is given bleeds away. The act that opens the deck is a two-line MOSS program, not a
+        // repair, so the ⛔ FILED gap that used to sit here (a 900 s service inside a 90 s vacuum
+        // survival budget) is no longer on this beat's path at all. See WreckDeck1VentName.
         //
         // ---------------------------------------------------------------------------------------
         // POWER — THE CURVE THE PLAYER CLIMBS (WAS: "A SHIPPED RULE THAT DELETES THE DESIGN")
@@ -1737,17 +1741,38 @@ namespace Perilune.Gen
         /// <c>--ship perilune</c> (behind P2's tick-3000 golden) and <c>vent_spine_1</c> on
         /// <c>--ship grid</c>.</para>
         ///
-        /// <para><b>IT IS AUTHORED WRECKED (0.06), AND THAT IS THE WHOLE DESIGN.</b> 0.06 is below
-        /// <c>AirVent</c>'s <c>fail</c> (0.10), so at boot it is INOPERATIVE and all eight deck-1
-        /// halls still read 0.000 kPa on the player's first screen — OD-E's boot state is intact.
-        /// It is also below <c>wear.wreck_threshold</c> (0.25), so it cannot be bodged back for
-        /// free: like its five deck-1 siblings it needs Parts, Seals or Swarf. <b>The act that
+        /// <para>⛔ <b>SUPERSEDED BY OD-O (M3-16, 2026-08-01) — READ THIS BEFORE THE THREE
+        /// PARAGRAPHS BELOW, WHICH ARE KEPT AS THE RECORD OF A SHIP THAT NO LONGER EXISTS.</b>
+        /// <s>IT IS AUTHORED WRECKED (0.06), AND THAT IS THE WHOLE DESIGN.</s> The vent is now
+        /// authored <b><c>Condition = 0.62f, Rate = 0f, Faulted = true</c></b>: mechanically sound,
+        /// open, powered and OPERATIONAL, with its <b>controller board dead</b>. All eight deck-1
+        /// halls still read 0.000 kPa on the player's first screen — <b>for a different reason</b>:
+        /// the injection branch RUNS every pass and injects
+        /// <c>VentMolPerSecond × EffectiveRate × Dt</c>, and <c>EffectiveRate</c> is zero.
+        /// <b>The act that opens the upper deck is a two-line MOSS program</b>, not a repair order:
+        /// <c>open vent_d1</c> refuses for every caller with <c>CONTROLLER FAULT — BOARD
+        /// UNRESPONSIVE</c>, <c>set(rate, …)</c> is accepted and then bled back toward 0 by
+        /// <c>AtmosphereSystem</c>, and <c>every 1s: set(vent_d1.rate, max)</c> holds it open.
+        /// See <see cref="Device.Faulted"/>, <c>DeviceFault</c>, and <c>MECHANICS.md</c> §13.34.
+        /// ⭐ <b>AND BOTH BLOCKERS BELOW ARE THEREFORE OFF THIS BEAT'S PATH</b> — blocker 1
+        /// (reachability) was answered as a MECHANISM by OD-N/M3-15 (a repaired console opens any
+        /// named door remotely), and blocker 2 (survivability) is DISSOLVED here, because there is
+        /// no crewed repair to perform and nobody has to cross deck 1 at all. <b>Both measurements
+        /// below remain TRUE of the ship</b> and are kept verbatim: they are the only place either
+        /// was ever driven, and the reachability defect they name is general.</para>
+        ///
+        /// <para><s><b>IT IS AUTHORED WRECKED (0.06), AND THAT IS THE WHOLE DESIGN.</b> 0.06 is
+        /// below <c>AirVent</c>'s <c>fail</c> (0.10), so at boot it is INOPERATIVE and all eight
+        /// deck-1 halls still read 0.000 kPa on the player's first screen — OD-E's boot state is
+        /// intact. It is also below <c>wear.wreck_threshold</c> (0.25), so it cannot be bodged back
+        /// for free: like its five deck-1 siblings it needs Parts, Seals or Swarf. <b>The act that
         /// opens the upper deck is therefore a REPAIR ORDER</b> — the phase-1 exit-gate shape OD-K
         /// ratified ("order a repair, the lights come back"), here "order a repair, the deck
-        /// breathes".</para>
+        /// breathes".</s></para>
         ///
         /// <para>⛔ <b>AND THE PLAYER CANNOT ACTUALLY DO IT YET. TWO BLOCKERS, IN THIS ORDER —
-        /// DRIVEN ON THIS TREE, FILED, NOT FIXED.</b></para>
+        /// DRIVEN ON THE M3-11 TREE, FILED, NOT FIXED. ⚠️ NEITHER IS ON THIS BEAT'S PATH ANY MORE
+        /// (see the OD-O block above); the FACTS about the ship are unchanged.</b></para>
         ///
         /// <para><b>BLOCKER 1 — REACHABILITY, AND IT IS COMPLETELY SILENT.</b> Every deck-1 hall
         /// door boots SHUT (<c>SlotGridPlanner.Carve</c>'s derived rule: an empty hall's door is
@@ -2155,18 +2180,40 @@ namespace Perilune.Gen
             AddWreckedHall(plan, rects[1]["hall_d1_s7"], 1, (DeviceKind.Light, "light_d1_s7", 0.03f));
 
             // ⭐ M3-11 — THE DECK-1 VENT. The one machine on this ship that can give the upper deck
-            // air, authored BROKEN so the deck boots dead and a repair order is what opens it. Its
-            // tile stands directly above `vent_cryo`, and the single surviving riser tap is
-            // exempted inside WreckCutDeck1Risers below. Full rationale: WreckDeck1VentName.
+            // air. Its tile stands directly above `vent_cryo`, and the single surviving riser tap
+            // is exempted inside WreckCutDeck1Risers below. Full rationale: WreckDeck1VentName.
             // ⚠️ IT BOOTS OPEN, unlike `vent_ls`. A closed AirVent draws nothing (PowerSystem
-            // .IsWanting) and would need a SECOND player gesture after the repair; the package's
-            // whole sentence is "order ONE repair and the deck breathes", so the shutter is
-            // already up and the only thing wrong with this machine is that it is broken.
+            // .IsWanting) and would need a SECOND player gesture; the shutter is already up and
+            // the only thing wrong with this machine is its board.
+            //
+            // ⭐⭐ OD-O (M3-16) RE-AUTHORED IT, AND THE RE-AUTHORING IS THREE FIELDS, NOT ONE.
+            // M3-11 shipped it BROKEN (Condition 0.06, below AirVent's fail 0.10) so a repair order
+            // was what opened the deck. OD-O replaces that beat with a PROGRAMMING one: the machine
+            // is now mechanically FINE and its controller board is dead.
+            //
+            //   Condition = 0.62f — driven, not arithmetic. Above AirVent's `fail` (0.10) so it is
+            //     OPERATIONAL; above wear.wreck_threshold (0.25) so it is not a one-way trip; and
+            //     above machines.def `maint` (0.40) so it does NOT queue a Maintain job the player
+            //     never asked for. MEASURED on this tree, not computed: AirVent wear is 0.010/h, so
+            //     the vent reads 0.6191 after 3 000 ticks and 0.6091 after 30 000, and it would not
+            //     reach `maint` for ~22 sim-hours — no unasked repair job appears anywhere near the
+            //     opening beat.
+            //   Rate = 0f — ⭐ THE FAULT'S VISIBLE HALF, and the edit that keeps the deck dead.
+            //     Raising Condition ALONE would make the upper deck breathe at boot with no player
+            //     action at all: AtmosphereSystem's injection branch asks exactly
+            //     `IsOpen && Powered && IsOperational`, all three of which now hold. An open,
+            //     powered, operational vent at rate 0 has EffectiveRate 0 and injects NOTHING.
+            //     The machine is fine; the board is dead — the fiction and the arithmetic are the
+            //     same sentence, which is the sign the mechanic is the right one.
+            //   Faulted = true — the refusal and the bleed (Device.Faulted, DeviceFault). ⛔ THE
+            //     ONLY INSTANCE IN THE GAME, and that count is censused by BoardFaultTests rather
+            //     than left as a convention (OD-O item (iii): "not a pattern for all devices").
             var deck1Vent = rects[1][WreckDeck1VentHall];
             plan.Devices.Add(new DeviceSpec
             {
                 Kind = DeviceKind.AirVent, Pos = new Int3(deck1Vent.X1, deck1Vent.Y0, 1),
-                Name = WreckDeck1VentName, IsOpen = true, Condition = 0.06f,
+                Name = WreckDeck1VentName, IsOpen = true,
+                Condition = 0.62f, Rate = 0f, Faulted = true,
             });
 
             // ⭐ THE RISERS ARE CUT HERE, AND IT MUST BE HERE — the helper reads the deck-1 device
