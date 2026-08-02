@@ -434,6 +434,7 @@ class OvDoc extends DomDocument {
 const OV_IDS = [
   'overview-view', 'ov-stage', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
   'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', // M1-L dropped 'ov-picker' with the modal
+  'ov-ending', // M3-5's one-line banner: the emergency-thaw grace, then the lose state
   's-deck', 's-lens', 'legendcard', 'crew-count', 'crewlist',
   // ⚠️ ADDED FOR THE PAUSED-NUDGE LEG (M1-C review, 2026-07-29) — trap 4's corollary: if the harness
   // cannot model what the guard needs to see, fix the harness. `nudgeOnIntent` asks `isPaused()`,
@@ -1558,6 +1559,47 @@ test('the LEDGER island paints the ship\'s matter census on the Level-1 Overview
   assert.equal(ovRoot.querySelector('.ov-ledempty').hidden, false,
     'with no ledger on the wire the island says so instead of painting zeroes');
   assert.equal(ovRoot.querySelectorAll('.ov-ledger .ov-ledrow')[0].hidden, true);
+});
+
+// ⭐ M3-5 — THE ENDING BAR. The two moments this package exists to stop being silent, and the
+// silence in between. It is on the STANDARD surface deliberately: the Chronicle lines that name both
+// people live on the MOSS console, so without this bar a player watching the Overview sees their
+// last pawn die and then nothing at all for four sim-minutes — which the charter names as the
+// failure mode ("if the grace is silent the player believes the game ended and quits").
+//
+// ⚠️ THE `over` FLAG IS READ OFF THE PAYLOAD, NEVER OFF THE PROSE. The two states are styled
+// differently and the client must not match on words to tell them apart — reword either sentence
+// host-side and this test still passes, which is the point (`MossPods`' code-and-sentence rule).
+//
+// MUTATIONS (applied, RED, reverted): delete `paintEnding()` from `repaint()` ⇒ RED on the first
+// assertion (the bar never leaves `hidden`) · `setCls(_el.ending, 'ov-endover', !!(msg && msg.over))`
+// → `false` ⇒ RED on the ending-class leg alone.
+test('M3-5: the ENDING bar carries the grace, then the lose state, and is silent otherwise', () => {
+  const bar = document.getElementById('ov-ending');
+  assert.ok(bar, 'no #ov-ending in the MOUNTED doc — every assertion below would be vacuous');
+
+  // ⚠️ THE ORDER IS DELIBERATE: every "hidden" claim below is a TRANSITION, driven from a state the
+  // test itself put the bar into. Asserting `hidden` first would have been satisfied by a bar
+  // nothing ever paints — the node harness creates elements with `hidden` unset, so a deleted
+  // `paintEnding()` would have reddened on the wrong clause.
+  //
+  // 1. the grace — the ship is waking one more soul by itself.
+  Hud.renderEnding({ type: 'ending', text: 'ALL HANDS DOWN — THE SHIP IS WAKING OZAWA.', over: false });
+  assert.equal(bar.hidden, false, 'the grace is SILENT on the standard surface — the whole defect');
+  assert.equal(bar.textContent, 'ALL HANDS DOWN — THE SHIP IS WAKING OZAWA.');
+  assert.equal(bar.classList.contains('ov-endover'), false,
+    'the grace must not be styled as the ending — the player would read it as "you lost"');
+
+  // 2. the ending.
+  Hud.renderEnding({ type: 'ending', text: 'EVERY SOUL ABOARD IS DEAD — THE RUN IS OVER.', over: true });
+  assert.equal(bar.hidden, false);
+  assert.equal(bar.textContent, 'EVERY SOUL ABOARD IS DEAD — THE RUN IS OVER.');
+  assert.equal(bar.classList.contains('ov-endover'), true, 'the ending is not styled as the ending');
+
+  // 3. …and it goes away again when the wire says so, rather than sticking for the rest of the run.
+  Hud.renderEnding({ type: 'ending', text: '', over: false });
+  assert.equal(bar.hidden, true);
+  assert.equal(bar.classList.contains('ov-endover'), false);
 });
 
 // ⚠️ THE SLOT COUNT, DRIVEN — and it needed a DIFFERENT read of the stub than the test above.

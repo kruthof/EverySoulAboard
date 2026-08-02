@@ -846,6 +846,15 @@ const SHIP_STATE_REACH = Object.freeze([
   // (`hosts/web/WireFormat.Devices.cs`). NOTHING DRAWS IT YET — the wrecked-art join is a separate
   // package against `client/src/items/`, and the data had to exist before it could be written.
   'getDevices',
+  // ⭐ M3-5 — the `ending` channel's cache: the one-line banner the Overview's ENDING bar draws (the
+  // emergency-thaw grace, then the lose state). SHIP STATE in exactly `getLedger`'s sense —
+  // `renderEnding`/`getEnding` touch no DOM, create no element and write no innerHTML, so they add
+  // nothing to the four pinned console-DOM counts and move to ship-state.js at WP-9 with the rest of
+  // the wire cache. ⚠️ THIS ENTRY IS A CENSUS MOVE, added in the same commit as the reach and said
+  // out loud: the standard surface genuinely needs one more piece of ship state, because a run that
+  // has ENDED has no other way to say so — every other channel keeps describing a ship as though the
+  // game were still on.
+  'getEnding',
   'getFrame',
   // The `items` channel's cache — the Room Zoom's ground-stack layer. Sorted here beside the other
   // getters by the same rule the list already follows (`shipStateReach()` returns a sorted array).

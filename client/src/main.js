@@ -282,6 +282,13 @@ function onMessage(m) {
     // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
     // island. Read-only — it commands nothing.
     case 'ledger': Hud.renderLedger(m); break;
+    // ⭐ M3-5 — THE EMERGENCY THAW AND THE ENDING IT IMPLIES (`ending`). One line, and it is the
+    // only thing on the STANDARD surface between the last pawn's death and the capsule opening four
+    // sim-minutes later: the Chronicle line that names both people lives on the MOSS console, so
+    // without this the player watches their crew die and then stares at a still ship. When the run
+    // is over it says so — the whole point of the channel, since a silent loss is indistinguishable
+    // from a hung game. Cached in the shared state layer; drawn by the Overview's ENDING bar.
+    case 'ending': Hud.renderEnding(m); break;
     default: break;
   }
 }

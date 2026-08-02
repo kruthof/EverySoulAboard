@@ -1151,6 +1151,17 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
   padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);
   color:var(--amber-light,#f2b563);font-size:11px;letter-spacing:.06em;box-shadow:var(--hud-shadow)}
 
+/* ⭐ M3-5 — THE ENDING BAR. One line, pinned across the top of the schematic, and NOT a toast: a
+   toast expires, and neither of the two facts this says ever stops being true. Amber while the ship
+   is waking one more soul by itself (the grace), red once the run is over. `z-index` sits above the
+   toast's 12 because when both could show, the ending outranks whatever the last click said. */
+.ov-ending{position:absolute;left:50%;top:64px;transform:translateX(-50%);z-index:14;
+  max-width:min(680px,86vw);text-align:center;
+  padding:9px 20px;border-radius:8px;background:var(--hud-bg);border:1px solid #cf7a33;
+  color:var(--amber-light,#f2b563);font-size:12px;font-weight:700;letter-spacing:.08em;
+  box-shadow:var(--hud-shadow)}
+.ov-ending.ov-endover{border-color:#b3412c;color:#e8836b}
+
 /* B6 — the paused-ship nudge, ported off the console's `.nudge` at WP-8. Pinned under the top bar's
    right end, directly beneath the HOLD/RESUME chip: the complaint and its fix read as one thing. The
    `.rz-nudge` twin is the Room Zoom's, positioned for that surface's chrome — the Room Zoom is where
