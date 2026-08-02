@@ -105,6 +105,7 @@ const HELP_LINES = [
   'OPEN <system>         system detail (also: ENTER on a row)',
   'LOG [system]          fault log, optionally filtered',
   'PROG [terminal]       the MOSS program directory / editor',
+  'COMMISSION            fit a controller module to this console — opens programs and PODS',
   'PODS                  the cryo bay — who is aboard, and what each capsule needs',
   'THAW <n|name>         begin that capsule\'s cycle (also: ENTER on a POD BAY row)',
   'CLEAR                 empty this transcript',
@@ -792,8 +793,11 @@ export function parseCommand(text) {
     // `pods` and `thaw` are M3-4's. Both are CLIENT-resolved (`kind:'nav'`) even though `thaw`
     // ends in a wire op: the capsule is resolved against the bay the player is looking at, and the
     // affordance and the command must therefore share one row — see `activateThaw`.
+    // ⭐ M3-17 — `commission` is a WIRE op wearing a nav verb, exactly like `pods`: the client
+    // resolves nothing (which terminal, whether a module is aboard, what it costs are three facts
+    // that have never crossed the wire) and the ship answers on the transcript.
     case 'help': case 'status': case 'log': case 'prog': case 'clear': case 'exit':
-    case 'pods': case 'thaw':
+    case 'pods': case 'thaw': case 'commission':
       return { verb, args, raw, kind: 'nav' };
     case 'open': {
       const navish = args.length !== 1 || SYSTEM_IDS.indexOf(normalizeSystemId(args[0])) >= 0;
@@ -898,6 +902,14 @@ function navCommand(m, cmd, argText) {
       // "here is your crew" and "MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE", and the
       // second one arrives on the transcript with the player still on the screen they were on.
       return { model: { ...m, podsAsked: true }, effects: [{ k: 'moss', op: 'pods' }] };
+    }
+    case 'commission': {
+      // ⛔ NO SCREEN CHANGE AND NO LOCAL VERDICT. The ask goes out and the SHIP answers on the
+      // transcript — accepted or refused — from `MossGate`'s own sentences. A client-side "you
+      // have no controller module" would be a second gate, and the one thing this repo has proved
+      // repeatedly is that a surface which decides for itself eventually disagrees with the sim
+      // (RW §2.2, the menu/job rule). `pods`'s shape exactly, minus the screen it opens.
+      return { model: m, effects: [{ k: 'moss', op: 'commission' }] };
     }
     case 'thaw':
       return thawCommand(m, argText);
@@ -1076,7 +1088,10 @@ export function footerHints(model) {
     case SCREEN.PODBAY:
       return ['[↑↓] SELECT CAPSULE', '[ENTER] THAW', 'TYPE: THAW <N>, PODS, HELP', '[ESC] BACK'];
     default:
-      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', 'TYPE: LOG, PROG, PODS, HELP',
+      // ⭐ M3-17 — COMMISSION joins the LEDGER's signpost, and that is not decoration. The whole
+      // reason the commissioning verb was missing for a milestone is that nothing on any surface
+      // named it; a verb only `HELP` knows about is one the player has to already know to find.
+      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', 'TYPE: LOG, PROG, PODS, COMMISSION, HELP',
         '[ESC] BACK TO SHIP'];
   }
 }

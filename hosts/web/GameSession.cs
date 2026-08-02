@@ -659,6 +659,39 @@ namespace Perilune.Web
                                              (int)verdict.Reason, ThawGate.Describe(verdict)));
                     break;
                 }
+                // ⭐⭐ M3-17 — THE COMMISSIONING VERB. The one act that moves this console from
+                // OD-N's REPAIRED tier to its COMMISSIONED one, and until this package NO SHIPPING
+                // SURFACE COULD SEND IT: `CommissionDeviceCommand` has existed since E0-6 and
+                // `HandleCommission` since the build palette, but nothing on any surface ever
+                // emitted the wire command, so the opening arc dead-ended one step before the pod
+                // bay (the M3 demo commissioned through a temporary defs overlay at cost 0).
+                case "commission":
+                {
+                    // ⛔ REPAIRED TIER, and it is the only tier it can sit at — a commissioned
+                    // console would otherwise be needed to commission a console. The ship gate is
+                    // still asked FIRST (the ordering rule this switch states above), and it is
+                    // asked INSIDE `EvaluateCommission` as term 1, so the console cannot answer
+                    // about a terminal on a ship whose computer is off.
+                    var verdict = MossGate.EvaluateCommission(_sim, tid);
+
+                    // ⛔ THE HOST DECIDES NOTHING ABOUT THE TARGET TERMS. It renders the gate's
+                    // answer and enqueues the command REGARDLESS of it, exactly as the thaw op
+                    // does: `CommissionDeviceCommand.Execute` re-checks "already fitted" and
+                    // "can the ship pay" at the tick boundary and IS authoritative, and it is a
+                    // silent no-op when either fails, so a refused ask leaves the ship's matter
+                    // byte-identical (charged last, `Commands.cs:861`).
+                    //
+                    // The ONE arm that does not enqueue is `NoServer`, and not as a second gate:
+                    // there is no terminal, so there is no TILE to address. `Int3.default` is a
+                    // real tile on every ship and enqueueing it would aim the command at whatever
+                    // stands at (0,0,0).
+                    if (verdict.Reason != MossGate.CommissionRefusal.NoServer)
+                        _sim.EnqueueCommand(new CommissionDeviceCommand(verdict.Pos));
+
+                    string said = MossGate.DescribeCommission(verdict);
+                    if (verdict.Allowed) Reply(tid, said); else Refuse(tid, said);
+                    break;
+                }
                 default: break; // unknown op (incl. reserved "dryrun") — ignored
             }
         }
@@ -676,6 +709,16 @@ namespace Perilune.Web
         /// </summary>
         private void Refuse(string tid, string sentence)
             => Emit(WireFormat.MossExec(tid, false, new List<(int Stream, string Text)> { (2, sentence) }));
+
+        /// <summary>⭐ M3-17 — <see cref="Refuse"/>'s twin for an op that was ACCEPTED and still owes
+        /// the player a sentence. Stream 1 is the output stream (stream 2 is the error stream), and
+        /// <c>ok: true</c> because it is a successful line. The commissioning verb is the first op in
+        /// this switch whose success is not itself a screen: nothing repaints when a module is
+        /// fitted, so without this line "it worked" and "the key did nothing" are the same picture —
+        /// the <i>invisible feedback is functional</i> rule, which has cost this repo three owner
+        /// reports.</summary>
+        private void Reply(string tid, string sentence)
+            => Emit(WireFormat.MossExec(tid, true, new List<(int Stream, string Text)> { (1, sentence) }));
 
         // ------------------------------------------------------------------- the MOSS prompt
 
@@ -4229,7 +4272,7 @@ namespace Perilune.Web
         /// {"cmd":"deck","dz":1} / {"cmd":"lens","name":"power"} / {"cmd":"speed","delta":-1} /
         /// {"cmd":"pause"}), and the dialogue/MOSS commands keyed by "type"
         /// ({"type":"talk","cid":N} / {"type":"say","sid":N,"text":".."} / {"type":"bye","sid":N} /
-        /// {"type":"moss","op":"open|set|audit|sys|exec|thaw","tid":"..","text"?}). For `thaw`,
+        /// {"type":"moss","op":"open|set|audit|sys|exec|pods|thaw|commission","tid":"..","text"?}). For `thaw`,
         /// `text` is the capsule's Device.Name (M3-3). Unknown/garbage ⇒
         /// Kind.Unknown (ignored by the session).</summary>
         public static WebCommand Parse(string json)
