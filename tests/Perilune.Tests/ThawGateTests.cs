@@ -1080,11 +1080,18 @@ namespace Perilune.Tests
                 ("MossGate.OfflineRefusal (the SHIP has no server)", MossGate.OfflineRefusal),
                 ("MossGate.NotCommissionedRefusal (a PROGRAM)", MossGate.NotCommissionedRefusal(Console)),
                 ("ThawGate NoConsole (a THAW)", thawNoConsole),
-                // M3-16's sentence does not exist yet; its LITERAL is pinned here so that package
-                // cannot ship a fourth sentence that reads like one of these three without this
-                // test moving. If M3-16 chooses other words, it edits this line and re-runs.
-                ("M3-16 CONTROLLER FAULT (a DEVICE's board)", "CONTROLLER FAULT — BOARD UNRESPONSIVE"),
+                // ⭐ M3-16 SHIPPED, so this row now reads the CONSTANT the console actually renders
+                // rather than the literal M3-4 reserved for it. That is the difference between
+                // pinning a sentence and pinning a plan: with the literal, M3-16 could have shipped
+                // any wording it liked and this test would still have been green about a string
+                // nothing printed. The literal itself is still pinned — one assertion below, and
+                // again in BoardFaultTests beside the constant.
+                ("M3-16 CONTROLLER FAULT (a DEVICE's board)", DeviceFault.Refusal),
             };
+
+            Assert.That(DeviceFault.Refusal, Is.EqualTo("CONTROLLER FAULT — BOARD UNRESPONSIVE"),
+                "M3-4 reserved these exact words for M3-16 and M3-16 shipped them. Changing the wording " +
+                "is allowed; changing it without re-reading this family is not.");
 
             Assert.That(thawNoConsole, Is.EqualTo(ThawGate.Describe(ThawGate.Evaluate(sim, Console, Rung1Pod))),
                 "PRECONDITION: the fixture really produces the NoConsole sentence");

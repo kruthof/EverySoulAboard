@@ -3064,11 +3064,18 @@ MECHANISM (still true and still binding: gas is same-deck only, and nothing here
 no longer about the ship. **M3-11 authors `vent_d1`** in `hall_d1_s0` at `(10,1,1)`, directly above
 `vent_cryo` — `AuthoredShips.cs:2165-2170` for the device, `:1726-1805` for the rationale, and its
 single surviving riser tap is the one exemption inside `WreckCutDeck1Risers` (`:2452-2515`). The
-wreck now authors **three** `AirVent`s, one of them on deck 1. It is authored **WRECKED (0.06,
+wreck now authors **three** `AirVent`s, one of them on deck 1. ~~It is authored **WRECKED (0.06,
 below `AirVent`'s `fail` of 0.10)**, so the halls still read `0.000` kPa at boot and the act that
-opens the deck is a REPAIR — driven both ways in `tests/Perilune.Tests/Deck1VentTests.cs` (dead
-after 3 000 unattended ticks; ≥ 80 kPa and `CanStageWorkerAt` TRUE 3 000 ticks after the repair,
-with a second deck-1 hall still at `0.000` as the mechanism control).
+opens the deck is a REPAIR.~~ ⭐ **RE-AUTHORED 2026-08-01 BY M3-16 (OD-O) — THE HALLS STILL READ
+`0.000` kPa AT BOOT, FOR A COMPLETELY DIFFERENT REASON, AND THE ACT THAT OPENS THE DECK IS NO
+LONGER A REPAIR.** The vent is now **`Condition = 0.62f, Rate = 0f, Faulted = true`**: mechanically
+sound, open, powered, **operational** — and injecting nothing, because `EffectiveRate` is zero. The
+act that opens the deck is a **two-line MOSS program**; §13.34 is the mechanism, and the deck-1 air
+path is now SHIPPED rather than blocked. Driven both ways in
+`tests/Perilune.Tests/Deck1VentTests.cs` (dead after 3 000 unattended ticks *with the vent
+operational*, asserted as a stated premise so the leg cannot pass for the pre-OD-O reason; ≥ 80 kPa
+and `CanStageWorkerAt` TRUE 3 000 ticks after **something holds the rate**, with a second deck-1
+hall still at `0.000` as the mechanism control; and a repair alone changing **nothing**).
 ⛔ **AND THE PLAYER CANNOT PERFORM THAT REPAIR YET. TWO BLOCKERS, IN THIS ORDER — driven on the
 M3-11 tree, FILED, not fixed.**
 
@@ -3121,7 +3128,17 @@ the authoring options named in that paragraph were **not** the route taken.
   with an authored story reason (`CONTROLLER FAULT — BOARD UNRESPONSIVE`) and the workaround is a
   MOSS **program**. **No crewed repair is needed, so nobody has to cross deck 1 at all** and the
   900 s-against-suffocation arithmetic above simply does not arise here. Package **M3-16**, queue
-  position **8b**.
+  position **8b** — ✅ **SHIPPED 2026-08-01; the mechanism is live and recorded in §13.34.**
+  ⚠️ **The chartered half-sentence "re-authored mechanically fine" turned out to be TWO edits and
+  the second is the one that matters:** raising `Condition` alone makes the upper deck breathe at
+  boot with no player action at all, because `AtmosphereSystem`'s injection branch asks exactly
+  `IsOpen && Powered && IsOperational` and all three then hold. The vent is also authored
+  **`Rate = 0f`**. ⭐ **THE DEAD DECK IS THEREFORE NO LONGER A KNOWN LIMIT AT ALL:** with both
+  blockers answered, `hall_d1_s0` has a SHIPPED path to breathable air that a player can walk —
+  repair the console, fit a module, write two lines — and it is the first deck-1 compartment that
+  ever has. The other seven halls have no vent and are still `0.000` kPa forever; `W4b-DEAD-DECK`
+  is unchanged about the MECHANISM (gas is same-deck only) and now has exactly one authored
+  exception on the shipping ship.
 
 ⛔ **SO THE CLASS IS HALF OPEN, AND THAT IS THE PRECISE STATEMENT.** Reachability is closed
 generally: a repaired console reaches every door. **Survivability is not** — OD-O ships **exactly
@@ -4202,7 +4219,7 @@ name.
 OFFLINE` → `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL`. M3-15 made the
 old wording false for the state it now fires in most — a player at a console that just opened a door
 would go and repair a terminal that works. The family (this · `MossGate.OfflineRefusal` ·
-`MossGate.NotCommissionedRefusal` · M3-16's future `CONTROLLER FAULT — BOARD UNRESPONSIVE`) is pinned
+`MossGate.NotCommissionedRefusal` · M3-16's shipped `CONTROLLER FAULT — BOARD UNRESPONSIVE`) is pinned
 **pairwise distinct AND with different first four words** by
 `ThawGateTests.TheConsoleSentences_ArePairwiseDistinct`; the M3-15 review found only one of the three
 pairs guarded. Refusal strings are not hashed — **no pin moved.**
@@ -4372,3 +4389,136 @@ to `Describe` and ranks nothing of its own.
   (`blocked-shot.mjs`'s documented technique — the host is not modified), with the FIVE-element row
   drawn first in the same run as the before picture. Where the last two units sit, and why the board
   stops, is not this package's question.
+
+---
+
+### 13.34 ⭐⭐ One machine does not answer its switch — the malfunctioning board (M3-16 / OD-O, 2026-08-01)
+
+**The player sentence.** Before this package MOSS was a remote control: every device answered one
+verb and the language was decoration. After it, **one machine on the ship does not answer its
+switch**, and the only way to get the upper deck breathing is to **write a two-line MOSS program**.
+
+**OD-O, owner-direct 2026-07-31:** *"Let's make that a 'game' within MOSS, so the user has to do
+some simple programming to activate the vent — storyline could be that the easy turn-off switch does
+not work as the controller module is malfunctioning so we have to do a workaround."* Scoped by three
+follow-ups: the vent is re-authored mechanically FINE with its board dead (no crewed repair) · the
+path is PROGRAM-ONLY (no spend-a-module-to-replace-the-board alternative) · ⛔ **it is NOT a general
+pattern** — *"an idea we can apply sometimes as a game element."*
+
+#### (a) The fault is AUTHORED DATA. There is no fault mechanic.
+
+`Device.Faulted` (`sim/Sim.Core/Entities/Device.cs`) — a bool, hashed at **bit 12** of the packed
+device state word (`Simulation.cs:539-547`; b13–b15 remain free) and saved as **DEVC v6**. ⛔ **No
+fault probability, no wear→fault path, no sweep, no command, no def row.** Its only writers are
+`ShipPlanBuilder` (from the new `DeviceSpec.Faulted`) and `SaveReader`. **EXACTLY ONE instance ships
+in M3** — `vent_d1` on `--ship wreck` — and that count is a **censused test with an inclusion
+control** (`BoardFaultTests.ExactlyOneFaultedDeviceInTheGame…` plus
+`TheFaultCensus_Catches_APlantedSecondFault`), not a convention. Zero on grid / slice / perilune,
+where a fault would also be a re-pin.
+
+`DeviceSpec` grew **`float? Rate`** and **`bool? Faulted`** on W1's `Nullable` precedent
+(`ShipPlan.cs`). ⚠️ `Rate` is the one that would have repeated W1's near-miss exactly: a plain
+`float Rate` reads `0f` out of zeroed memory, so every vent, scrubber and reclaimer in the repo
+would boot at zero throughput. `AuthoredDamageTests`' census grew both columns, each with its own
+planted-violation inclusion control.
+
+#### (b) The re-authoring is THREE fields, and the second is the fault's visible half
+
+`AuthoredShips.cs` — `vent_d1` is now `Condition = 0.62f, Rate = 0f, Faulted = true`.
+
+| field | why, driven |
+|---|---|
+| `Condition = 0.62f` | above `AirVent.fail` 0.10 (**operational**), above `wear.wreck_threshold` 0.25 (not a one-way trip), **and above `AirVent.maint` 0.40 so no Maintain job the player never asked for appears beside the puzzle.** MEASURED: 0.6191 after 3 000 ticks, 0.6091 after 30 000; at wear 0.010/h it would not reach `maint` for ~22 sim-hours |
+| ⭐ `Rate = 0f` | ⛔ **raising `Condition` ALONE makes the upper deck breathe at boot with no player action at all** — the injection branch asks exactly `IsOpen && Powered && IsOperational`. An open, powered, operational vent at rate 0 has `EffectiveRate = 0` and injects nothing. *The machine is fine; the board is dead* — the fiction and the arithmetic are the same sentence |
+| `Faulted = true` | the refusal and the bleed |
+
+#### (c) The switch is dead for EVERYBODY; the rate is writable by everybody
+
+⛔ **THERE IS NO CALLER PRIVILEGE AND THERE MUST NOT BE.** `UtilityDeviceAdapter.TryInvoke` is
+reached identically by an installed program and by the console prompt, so a fault that let a program
+call `open()` while the console could not would be a permission invented from nothing — and the
+owner's sentence does not ask for one: *the switch is dead for everybody.*
+
+- **The refusal.** The predicate is sim-side (`DeviceFault.BlocksActuation`, `sim/Sim.Core/
+  DeviceFault.cs`), the COMMAND enforces it (`SetDeviceStateCommand.Execute` — so the TUI, the
+  scenario host and the deprecated cursor obey too), and the adapter **asks the same static** for the
+  sentence rather than re-deriving the rule. ⚠️ **The `_open` half is gated and the `_rate` half is
+  not**, in the same command. ⛔ **SHIP GATE FIRST, TARGET SECOND** — OD-N's `MossGate.IsServerLive`
+  is asked before the board, so a player on a dead-computer ship is told MOSS IS OFFLINE rather than
+  sent across the pressure frontier to look at a vent (M3-15's evaluation-order contract).
+- **`CONTROLLER FAULT — BOARD UNRESPONSIVE`** — a `const string`, reaching **two surfaces that
+  already existed and cost nothing**: the console's stream-2 error line (`GameSession.Invoke`
+  upper-cases the adapter's error verbatim) and, inside a program, a `ScriptRuntime` runtime error
+  plus an `AlarmRaisedEvent`. Pinned pairwise-distinct — including distinct FIRST FOUR WORDS —
+  against the other three console refusals by `ThawGateTests.TheConsoleSentences_ArePairwiseDistinct`,
+  which now reads the shipped constant instead of the literal M3-4 reserved for it.
+- **The bleed.** ONE clause in `AtmosphereSystem`'s existing device walk, immediately after the
+  injection branch: `if (device.Faulted && device.Rate > 0f) Rate -= FaultedRateBleedPerPass`
+  (0.25, clamped at 0). ⭐ **That home is chosen for ORDERING, not convenience** — commands drain at
+  the top of the tick and Atmosphere is the FIRST system in the stack, and `IntervalTicks == 2` means
+  injection and bleed are **phase-locked by construction**. `MachineWearSystem` was refused: a
+  different cadence for the same mechanic is how a tuning constant becomes untunable.
+
+#### (d) The puzzle, in three moves — and the bleed constant is a DRIVEN measurement
+
+```
+1. DIAGNOSE   > open vent_d1
+              CONTROLLER FAULT — BOARD UNRESPONSIVE
+2. PROBE      > set vent_d1.rate max
+              QUEUED SET(VENT_D1.RATE, 1)     ← the hall ticks up 0.197 kPa … and STALLS
+3. SOLVE      (PROGRAM screen, on the COMMISSIONED term_moss)
+              every 1s:
+                set(vent_d1.rate, max)
+```
+
+⛔ **BOTH ENDS OF THE BLEED ARE FAILURES AND ONLY A DRIVEN NUMBER DISTINGUISHES THEM.** MEASURED on
+`--ship wreck`, `hall_d1_s0` (60 tiles, 293 K):
+
+| | measured |
+|---|---|
+| one prompt line | spends 1 + 0.75 + 0.5 + 0.25 = **2.5 passes** of injection ⇒ **0.197 kPa**, then dead flat for the next 3 000 ticks |
+| `every 1s` program | crosses **80 kPa** (M3-11's own absolute floor) at tick **4 063**, nominal by 6 000 — inside two of M3-11's 3 000-tick windows; a **50 % duty cycle** against the 2 028 ticks a held rate needs |
+| `when …` variant | **0.197 kPa** after 6 000 ticks — identical to the one-shot |
+
+⚠️ **The live browser run reads `0.190` kPa rather than `0.197`, and neither number is wrong.** The
+sim tests probe at boot; the acceptance harness types its line after the crew has serviced
+`term_moss`, by which point `MachineWearSystem` has taken a few thousandths off the vent's condition
+and `EffectiveRate` with it. Quoted separately on purpose — the test's number is the pin, the
+harness's is what a player sees.
+
+⭐ **0.25 is also the LARGEST value that keeps the lesson visible:** four passes is 0.8 s, so the
+rate hits exactly zero before each 1 s heartbeat re-sets it and the player watching `vent_d1.rate`
+sees a sawtooth that touches the floor. ⛔ **MOVE 2 IS THE TEACHING MOMENT AND IT MUST NOT BE
+DELETED AS REDUNDANT** — without the puff, the refusal and the program are two unrelated facts and
+the player is following a walkthrough instead of making an inference.
+
+⚠️ ⭐ **THE NATURAL WRONG ANSWER IS PART OF THE DESIGN — DO NOT "FIX" IT.** `when` is EDGE-LATCHED
+(`Interpreter.cs:50-51`), so `when hall_d1_s0.pressure < 80: set(vent_d1.rate, max)` fires ONCE and
+the latch never re-arms while the condition stays true. ***`when` is an edge, `every` is a
+heartbeat*** is the one thing this puzzle teaches, it is teachable in two attempts, and it is a
+property of the SHIPPED interpreter rather than something this package built.
+`BoardFaultTests.TheWhenVariantFiresOnce_AndTheHallStallsAgain` exists so that behaviour cannot
+change quietly — a lane that made `when` re-fire would move every installed program in the repo.
+
+#### (e) Sequencing — OD-N's split gate decides WHEN the puzzle is solvable
+
+The workaround is a PROGRAM, so it needs the **COMMISSIONED** tier: repairing `term_moss` lights the
+console (typed lines, so moves 1 and 2 work), and a `ControllerModule` is what unlocks the install.
+Driven: on a repaired-but-uncommissioned terminal the install is refused with
+`MossGate.NotCommissionedRefusal`, no program is stored, and `hall_d1_s0` is still at `0.000` kPa
+6 000 ticks later.
+
+#### WHAT THIS DOES NOT DO — filed, not fixed
+
+- ⛔ **It is not a pattern and must not become one.** A future instance costs one line of authoring,
+  one refusal message and one findable workaround. There is still **no systemic fault mechanic**,
+  and adding a second faulted device "while we're here" reddens a census by name.
+- **A faulted device has no CLEAR path.** Nothing in the game removes the bit — not a repair, not a
+  commission, not a service. That is deliberate for the one authored instance (OD-O item (ii): the
+  path is program-only) and it is the first thing to revisit if a second instance is ever authored.
+- **The bleed is not def-tunable.** A def row is per KIND and would fault-tune every `AirVent` on
+  every ship. Retuning the constant means re-driving both halves of the tuning leg, not editing a
+  number.
+- **The other seven deck-1 halls have no vent and are still `0.000` kPa forever.** §13.23a's
+  mechanism claim (gas is same-deck only) is unchanged; the shipping ship now has exactly one
+  authored exception to the dead deck.

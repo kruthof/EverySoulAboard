@@ -186,6 +186,44 @@ namespace Perilune.Gen
         /// encoding and same argument as <see cref="Condition"/> above.
         /// </summary>
         public bool? Scriptable;
+
+        /// <summary>
+        /// ⭐ OD-O (M3-16) — the device's boot <see cref="Device.Rate"/> (its throughput
+        /// multiplier), or <c>null</c> for "leave the device's own initialiser — <c>1f</c> —
+        /// alone". <c>vent_d1</c> on the wreck authors <c>0f</c>: an open, powered, OPERATIONAL
+        /// vent that injects nothing, because <c>EffectiveRate = Rate × (0.5 + 0.5 × Condition)</c>
+        /// is zero. <b>The machine is fine; the board is dead — the fiction and the arithmetic are
+        /// the same sentence.</b>
+        ///
+        /// <para><b>SAME ENCODING AND SAME ARGUMENT AS <see cref="Condition"/> ABOVE, and the
+        /// stakes are identical.</b> A plain <c>float Rate</c> would read <c>0f</c> out of zeroed
+        /// memory on every spec of every ship, so every vent, scrubber, reclaimer and grow bed in
+        /// the repo would boot at zero throughput — the mirror of "boot the whole repo WRECKED".
+        /// A <c>-1f</c> sentinel does not fix it for the reason spelled out there.</para>
+        ///
+        /// <para>NOT hashed and NOT saved by this field: <see cref="Device.Rate"/> already folds
+        /// into <c>StateHash</c> (b32-63 of the device state word) and already persists (DEVC v1).
+        /// A plan is never serialized.</para>
+        /// </summary>
+        public float? Rate;
+
+        /// <summary>
+        /// ⭐⭐ OD-O (M3-16) — the device's boot <see cref="Device.Faulted"/> (is its controller
+        /// board dead?), or <c>null</c> for "leave the device's own initialiser — <c>false</c> —
+        /// alone". <b>The ONE authored instance in M3 is <c>vent_d1</c> on <c>--ship wreck</c></b>,
+        /// and that count is censused rather than conventional; see <see cref="Device.Faulted"/>
+        /// for what the flag forbids.
+        ///
+        /// <para>⚠️ <b><c>bool?</c> AND NOT <c>bool</c>, even though the field's default and the
+        /// struct's zero value AGREE here (both <c>false</c>).</b> That agreement is a coincidence
+        /// of today's default, not a property of the encoding, and writing a plain <c>bool</c>
+        /// would make <see cref="ShipPlanBuilder"/> assign <c>false</c> unconditionally to every
+        /// device on every ship — an unconditional write over a field whose default some future
+        /// device kind may want to own. The two fields beside it are <c>Nullable</c> for a reason
+        /// this repo has already paid for; a third encoding in the same struct would be the thing
+        /// a reader has to remember rather than infer.</para>
+        /// </summary>
+        public bool? Faulted;
     }
 
     public struct CitizenSpec

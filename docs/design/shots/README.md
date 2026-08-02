@@ -344,3 +344,36 @@ mind, and read `m1-1-1-BEFORE-overview.png` as the picture it describes.
   candidate fixes (a vacuum tint on the default Overview, a pressure badge, or an `unpressurised`
   room-chrome state) are all new visual vocabulary on the standard surface, which is an art decision
   and not a test-fix.
+
+---
+
+## `board-fault-*` — M3-16 / OD-O: one machine does not answer its switch (2026-08-01)
+
+Produced by `client/tools/board-fault-shot.mjs` (see its header for the two-step `--prep` usage and
+for the ONE thing that is driven rather than played — `commission_cost = 0` in a temporary defs
+overlay, the `pod-bay-shot.mjs` precedent). Every command below is a TRUSTED keystroke at the
+shipping MOSS terminal; every verdict is read from the DOM *and* from an independent socket onto the
+host's own channels.
+
+| shot | what it shows |
+|---|---|
+| `01-deck1-dead-and-the-vent-is-intact` | deck 1 at boot: `hall_d1_s0` absent from the `rooms` channel (= 0.000 kPa), and `vent_d1` on the `devices` channel reading **cond 158/255, oper 1, open 1** — the machine is *not* broken, which is the whole point |
+| `02-move1-controller-fault` | `open vent_d1` → **`CONTROLLER FAULT — BOARD UNRESPONSIVE`** on the console's error stream, with the typed line echoed above it |
+| `03-move2-the-puff-then-nothing` | `set vent_d1.rate max` → **`QUEUED SET(VENT_D1.RATE, MAX)`**, the hall goes 0 → **0.191 kPa** … and 20 s later still reads 0.190. ⭐ **The teaching moment; a reviewer will want to cut it, and the charter forbids that** |
+| `04-move3-the-program` | the two-line `every 1s:` program typed into the shipping PROGRAM editor with trusted keys |
+| `05-all-three-moves-in-one-transcript` | ⭐ the refusal, the puff and the INSTALLED program on ONE screen — what makes the beat an inference instead of a walkthrough |
+| `06-the-deck-breathes` | `hall_d1_s0` at **101.3 kPa** and holding, tinted on the Overview |
+
+### What these pictures do NOT show
+
+- ⚠️ **`06` NEEDS THE `2 PRES` LENS, AND THAT IS A PRE-EXISTING FILED LIMIT, NOT THIS PACKAGE'S.**
+  On the default Overview lens a breathing hall and an airless one are **pixel-identical** — the
+  same gap this file's `m1-1-2` section files above, met again from the other side. The harness
+  therefore switches lenses before the shot and says so out loud; the first draft photographed the
+  default lens and produced a picture indistinguishable from boot.
+- **The `when` variant is not photographed.** It stalls at the same 0.190 kPa puff, but only from a
+  0.000 kPa start — once the hall is at nominal, a stalled `when` and a working `every` look the
+  same, because nothing on this ship removes air. The claim is driven from zero in
+  `BoardFaultTests.TheWhenVariantFiresOnce_AndTheHallStallsAgain`.
+- **Nobody walks anywhere.** OD-O dissolves the crewed repair entirely: the deck is opened from a
+  console on deck 0, so there is no pawn to photograph crossing the frontier.

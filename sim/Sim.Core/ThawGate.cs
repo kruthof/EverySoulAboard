@@ -744,7 +744,7 @@ namespace Perilune.Sim
                     // split the console's authority in two, so a player can now stand at a console
                     // that just opened a door and be told MOSS is offline; the honest answer names
                     // the missing ControllerModule. The family (this sentence · MossGate's two ·
-                    // M3-16's future CONTROLLER FAULT) is pinned PAIRWISE DISTINCT by
+                    // M3-16's shipped CONTROLLER FAULT) is pinned PAIRWISE DISTINCT by
                     // `ThawGateTests.TheConsoleSentences_ArePairwiseDistinct` — the review that
                     // filed this found only one of the three pairs guarded.
                     return "NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL";

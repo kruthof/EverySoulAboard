@@ -60,7 +60,14 @@ namespace Perilune.Sim
     /// boots OPEN on the wreck, for exactly this leg.</para>
     ///
     /// <para>See <see cref="SetDoorStateCommand"/>'s remarks for why the gate is sim-side and why
-    /// the refusal is reported by the surfaces rather than returned from here.</para></summary>
+    /// the refusal is reported by the surfaces rather than returned from here.</para>
+    ///
+    /// <para>⭐⭐ <b>OD-O (M3-16) ADDS A SECOND, PER-DEVICE GATE — AND IT COVERS ONLY THE SHUTTER.</b>
+    /// <see cref="DeviceFault.BlocksActuation"/> refuses <c>open</c>/<c>close</c> on a device whose
+    /// controller board is authored dead, for EVERY caller (there is no caller privilege — see that
+    /// type's remarks), while <c>rate</c> writes still land. That asymmetry IS the puzzle: the
+    /// switch does nothing, the rate is accepted and then bled away, and the only thing that keeps
+    /// the vent running is a MOSS program that re-sets it in a loop.</para></summary>
     public sealed class SetDeviceStateCommand : ISimCommand
     {
         private readonly uint _deviceId;
@@ -76,7 +83,16 @@ namespace Perilune.Sim
         {
             if (!MossGate.IsServerLive(sim)) return;   // OD-N — remote actuation needs a live server
             if (!sim.Devices.TryGet(_deviceId, out var device)) return;
-            if (_open.HasValue) device.IsOpen = _open.Value;
+            // ⭐⭐ OD-O (M3-16) — THE DEAD BOARD, AND IT REFUSES ONLY THE SHUTTER. `open`/`close`
+            // are the "easy turn-off switch" the owner's sentence kills; `set(rate, …)` is
+            // deliberately ACCEPTED and then bled back toward 0 by AtmosphereSystem, which is what
+            // makes the workaround a LOOP rather than a permission. The two halves are asked
+            // separately here rather than by an early `return`, so a single command carrying both
+            // gets each half's own answer instead of the first one's.
+            //
+            // ⚠️ SHIP GATE FIRST, TARGET SECOND — the M3-15 evaluation-order contract. Swapping
+            // these two lines would answer CONTROLLER FAULT on a ship whose computer is off.
+            if (_open.HasValue && !DeviceFault.BlocksActuation(device)) device.IsOpen = _open.Value;
             if (_rate.HasValue) device.Rate = _rate.Value < 0f ? 0f : _rate.Value > 1f ? 1f : _rate.Value;
         }
     }

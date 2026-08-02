@@ -44,7 +44,19 @@ namespace Perilune.Dsl
         }
     }
 
-    /// <summary>Vents and scrubbers: open/close/set(rate, x).</summary>
+    /// <summary>Vents and scrubbers: open/close/set(rate, x).
+    ///
+    /// <para>⭐⭐ <b>OD-O (M3-16) — A FAULTED DEVICE REFUSES <c>open</c>/<c>close</c> HERE TOO, and
+    /// this is the SENTENCE half of a rule the COMMAND already enforces.</b> The predicate is
+    /// <see cref="DeviceFault.BlocksActuation"/>, asked rather than re-derived, so the adapter and
+    /// <see cref="SetDeviceStateCommand"/> cannot drift apart. Without it the command would refuse
+    /// and this method would still answer <c>true</c> — the console would print
+    /// <c>QUEUED OPEN(VENT_D1)</c> over a shutter that never moved, which is the
+    /// <i>invisible-feedback-is-functional</i> defect wearing a green hat.</para>
+    ///
+    /// <para>⛔ <b><c>set</c> IS NOT GATED, DELIBERATELY.</b> The rate write is accepted from every
+    /// caller and then bled back toward 0 by <c>AtmosphereSystem</c>; refusing it here would delete
+    /// the puzzle and make the fault a permission.</para></summary>
     public sealed class UtilityDeviceAdapter : IScriptable
     {
         private readonly Simulation _sim;
@@ -76,8 +88,17 @@ namespace Perilune.Dsl
             error = null;
             switch (verb)
             {
-                case "open": _sim.EnqueueCommand(new SetDeviceStateCommand(_deviceId, open: true)); return true;
-                case "close": _sim.EnqueueCommand(new SetDeviceStateCommand(_deviceId, open: false)); return true;
+                case "open":
+                case "close":
+                {
+                    // OD-O — the dead board, asked of the LIVE device rather than of a copy taken
+                    // at construction: a fault is authored at boot today, but the field is saved
+                    // and this adapter outlives any one tick.
+                    if (_sim.Devices.TryGet(_deviceId, out var target) && DeviceFault.BlocksActuation(target))
+                    { error = DeviceFault.Refusal; return false; }
+                    _sim.EnqueueCommand(new SetDeviceStateCommand(_deviceId, open: verb == "open"));
+                    return true;
+                }
                 case "set":
                 {
                     // set(device.rate, value) arrives as verb "set", args ["rate", value|max|min]
