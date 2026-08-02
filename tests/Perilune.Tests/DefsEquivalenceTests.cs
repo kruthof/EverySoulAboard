@@ -275,6 +275,56 @@ namespace Perilune.Tests
             AssertDivergesWithin(SimDefs.CreateDefault(), mutated, 1000, "x10 HungerPerSecond");
         }
 
+        // ⭐⭐ M3-9 — THE THREE REST SCALARS, one leg each. They cannot ride BuildScenario: its crew
+        // boot at Fatigue 0 and its LongRun is 20 000 ticks (33 sim-minutes), where fatigue reaches
+        // 0.035 — nobody can cross needs.def's 0.75 sleep trigger, so a mutation would be invisible
+        // and the leg would pass on a build where RestSystem read compiled literals. BuildRestScenario
+        // boots the crew ALREADY TIRED, which is what makes these legs able to fail.
+
+        [Test]
+        public void MutatedRestThreshold_Diverge_ProvingRestReadsDefs()
+        {
+            // The trigger raised out of reach: the tired crew member never sleeps, so her Fatigue
+            // (and JobKind, and Mood) — all in StateHash — part company on the first pass.
+            var mutated = SimDefs.CreateDefault();
+            mutated.Needs.FatigueRestThreshold = 2f; // Fatigue clamps at 1, so this can never fire
+            mutated.ComputeChecksum();
+            Assert.That(mutated.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum));
+
+            AssertDivergesWithin(BuildRestScenario, SimDefs.CreateDefault(), mutated, 200,
+                "unreachable fatigue_rest_threshold");
+        }
+
+        [Test]
+        public void MutatedRestRecovery_Diverge_ProvingRestReadsDefs()
+        {
+            // The recovery rate x10: she still sleeps, at the same moment, in the same bunk — only
+            // the amount of Fatigue removed per pass differs, which is the narrowest possible probe
+            // of this one field.
+            var mutated = SimDefs.CreateDefault();
+            mutated.Needs.FatigueRecoveryPerSecond *= 10f;
+            mutated.ComputeChecksum();
+            Assert.That(mutated.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum));
+
+            AssertDivergesWithin(BuildRestScenario, SimDefs.CreateDefault(), mutated, 500,
+                "x10 fatigue_recovery_per_second");
+        }
+
+        [Test]
+        public void MutatedGroundRestEffectiveness_Diverge_ProvingRestReadsDefs()
+        {
+            // The GROUND multiplier, and the scenario has TWO crew on purpose: one reaches the single
+            // bunk and one does not, so this field has a live consumer. A one-crew fixture would make
+            // this leg pass or fail depending on nothing but the bed count.
+            var mutated = SimDefs.CreateDefault();
+            mutated.Needs.RestEffectivenessGround = 0.25f; // shipped 0.8
+            mutated.ComputeChecksum();
+            Assert.That(mutated.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum));
+
+            AssertDivergesWithin(BuildRestScenario, SimDefs.CreateDefault(), mutated, 500,
+                "rest_effectiveness_ground 0.8 -> 0.25");
+        }
+
         [Test]
         public void MutatedBlocks_Diverge_ProvingIsWalkableReadsDefs()
         {
@@ -428,6 +478,32 @@ namespace Perilune.Tests
             sim.Rooms.SetAnchor("hall", new Int3(1, 1, 0));
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(1, 1, 0))); // keep the walker alive
+            return sim;
+        }
+
+        /// <summary>⭐ M3-9 — one sealed hall, ONE bunk and TWO crew who are already exhausted, so
+        /// <see cref="RestSystem"/> fires on the first pass: one of them claims the bunk (effectiveness
+        /// 1.0) and the other lies down on the deck (needs.def <c>rest_effectiveness_ground</c>). That
+        /// asymmetry is deliberate — it is what gives the ground multiplier a live consumer here.</summary>
+        private static Simulation BuildRestScenario(ulong seed, SimDefs defs)
+        {
+            string[] map =
+            {
+                "############",
+                "#..........#",
+                "############",
+            };
+            var moss = new ScriptRuntime(new DeviceRegistry());
+            var sim = new Simulation(AsciiWorld.Build(map), seed, SystemStack.CreateDefault(moss), defs);
+
+            sim.AddDevice(DeviceKind.Bed, new Int3(9, 1, 0), "bunk");
+
+            sim.Rooms.SetAnchor("hall", new Int3(1, 1, 0));
+            sim.Rooms.RecomputeIfDirty(sim);
+            RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(1, 1, 0))); // keep them alive
+
+            sim.AddCitizen("Sleeper", new Int3(1, 1, 0)).Fatigue = 0.9f;   // takes the bunk
+            sim.AddCitizen("Deckhand", new Int3(2, 1, 0)).Fatigue = 0.9f;  // takes the deck
             return sim;
         }
 

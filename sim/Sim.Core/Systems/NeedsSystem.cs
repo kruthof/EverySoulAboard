@@ -23,9 +23,20 @@ namespace Perilune.Sim
     /// compares both against sustenance.def `need_threshold` (0.5) in
     /// <c>TryStartNeed</c>/<c>TryServeInPlace</c> to decide when an idle citizen fetches
     /// or consumes — so those two meters gate behaviour as well as mood. Hunger and
-    /// Thirst are reset by that same system; Fatigue has NO reducer anywhere in
-    /// v0 (there are no beds yet), so it climbs to 1 over ~16 h and stays there,
-    /// permanently costing `mood_fatigue_weight` points of mood.
+    /// Thirst are reset by that same system.
+    ///
+    /// ⭐⭐ <b>AND FATIGUE HAS A REDUCER SINCE M3-9 — THE SENTENCE THAT STOOD HERE IS QUOTED AND
+    /// RETIRED.</b> It read: <i>"Fatigue has NO reducer anywhere in v0 (there are no beds yet), so
+    /// it climbs to 1 over ~16 h and stays there, permanently costing `mood_fatigue_weight` points
+    /// of mood."</i> <see cref="RestSystem"/> is that reducer: a crew member BETWEEN JOBS who is
+    /// past needs.def <c>fatigue_rest_threshold</c> takes <see cref="JobKind.Sleep"/>, walks to a
+    /// <see cref="DeviceKind.Bed"/> (or lies down on the deck at 0.8 effectiveness) and comes back
+    /// to 0. ⚠️ This system is still the only thing that RAISES it, at the unchanged
+    /// <c>fatigue_per_second</c> — but ⭐ <b>THE RAMP IS NOW GATED ON BEING AWAKE</b>
+    /// (<c>JobKind != Sleep</c>, see the comment at the ramp site for the measurement that forced
+    /// it): the two rates are adjacent in <c>[needs]</c> and must not silently compose into a net
+    /// one. ⛔ Fatigue still gates NO work rate — see <see cref="Citizen.Fatigue"/> and
+    /// <c>rimworld-reference.md</c> §4.4.
     ///
     /// **CO2 IS A DAMAGE INPUT.** The <see cref="Room.CO2Ppm"/> consumers are: the two
     /// thresholds below, the CO2 lens colour ramp (Sim.Glyph LensRamps.Co2), the HUD/sidebar
@@ -146,12 +157,38 @@ namespace Perilune.Sim
                 }
 
                 // --- Slow needs ---
-                // Only ever rise here. Hunger/Thirst are cleared by SustenanceSystem
-                // (eat/drink); Fatigue has no consumer at all in v0, so it saturates
-                // at 1 after ~16 h and never comes back down.
+                // Hunger/Thirst only ever RISE here and are cleared by SustenanceSystem
+                // (eat/drink). ⭐ FATIGUE IS THE EXCEPTION SINCE M3-9: it rises here and falls in
+                // RestSystem, and the sentence that used to stand on this line — "Fatigue has no
+                // consumer at all in v0, so it saturates at 1 after ~16 h and never comes back
+                // down" — is retired. See the class header.
                 citizen.Hunger = Math.Min(1f, citizen.Hunger + needs.HungerPerSecond * Dt);
                 citizen.Thirst = Math.Min(1f, citizen.Thirst + needs.ThirstPerSecond * Dt);
-                citizen.Fatigue = Math.Min(1f, citizen.Fatigue + needs.FatiguePerSecond * Dt);
+
+                // ⭐⭐ M3-9 — THE RAMP IS GATED ON BEING AWAKE, AND THAT IS THE ANALOGUE RATHER
+                // THAN A TUNING CHOICE. `docs/design/rimworld-reference.md` §4.4 measures the rest
+                // need as filling at a rate that gives "0 → 100 % in 10.5 in-game hours at
+                // effectiveness 1.0" and a pawn "awake ~70.6 % of the day" — both of which are
+                // statements about a meter that FALLS ONLY WHILE AWAKE. An unconditional ramp
+                // silently couples the two rates into a NET recovery of
+                // (recovery × effectiveness − ramp), which is a different mechanism wearing the
+                // same numbers.
+                //
+                // ⛔ MEASURED, WHICH IS WHY THIS GATE EXISTS AT ALL: with the ramp unconditional,
+                // a 0.9-tired crew member took **27.7 sim-hours** to sleep off a bed and
+                // **63.6 sim-hours — two and a half sim-DAYS — on the deck**, which is the
+                // SHIPPED path (`--ship wreck` has no bunks). Awake fraction ~16–30 % against the
+                // reference's 70.6 %. ⚠️ And the knock-on was worse than the number: a sleeping
+                // crew member is skipped by `SustenanceSystem` (its `JobKind.None` gate), so she
+                // woke parched. ⛔ DO NOT "FIX" THIS BY RE-DERIVING `fatigue_recovery_per_second`
+                // to absorb the ramp — that encodes the coupling the analogue says does not exist,
+                // and the def's stated §4.4 provenance would become a lie.
+                //
+                // The gate is `JobKind` and nothing else: it is the one fact about sleeping that is
+                // already saved, already hashed, and already the thing RestSystem writes, so the
+                // two systems cannot disagree about who is asleep.
+                if (citizen.JobKind != JobKind.Sleep)
+                    citizen.Fatigue = Math.Min(1f, citizen.Fatigue + needs.FatiguePerSecond * Dt);
 
                 // --- Mood (derived scalar for HUD/M3) ---
                 // Fully recomputed every pass — Mood holds no history of its own, so

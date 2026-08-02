@@ -47,7 +47,28 @@ namespace Perilune.Sim
         public float Suffocation;   // rises in unbreathable air; 1 = dead
         public float Hunger;        // 1 = starving; eat to reduce (SustenanceSystem)
         public float Thirst;        // 1 = parched; drink from the water network
-        public float Fatigue;       // 1 = exhausted (slows work)
+        /// <summary>
+        /// Tiredness, <c>0</c> = fully rested .. <c>1</c> = exhausted. Ramped up by
+        /// <see cref="NeedsSystem"/> (needs.def <c>fatigue_per_second</c>, 16 h awake to 1.0) and —
+        /// ⭐ <b>SINCE M3-9</b> — ramped back DOWN by <see cref="RestSystem"/> while this crew member
+        /// holds <see cref="JobKind.Sleep"/>.
+        ///
+        /// <para>⚠️ <b>THE COMMENT THAT STOOD HERE SAID <i>"1 = exhausted (slows work)"</i> AND IT WAS
+        /// FALSE IN BOTH HALVES.</b> Nothing reduced it — <c>NeedsSystem</c>'s own header said so —
+        /// so every crew member on every ship saturated at 1.0 after ~16 h and stayed there; and
+        /// nothing read it for a work rate, then or now. M3-9 fixed the first half and deliberately
+        /// did NOT build the second: <c>docs/design/rimworld-reference.md</c> §4.4 measures RimWorld's
+        /// rest need as affecting <b>mood and immunity only — no work or combat stat</b>. The work
+        /// rate's one input is <see cref="WorkRates"/>/<see cref="SkillsRaw"/> (M3-7); adding a
+        /// fatigue factor there would double-count that axis. ⛔ Do not "restore" the parenthesis.</para>
+        ///
+        /// <para>WHAT IT DOES REACH: <see cref="Mood"/>, through <c>NeedsSystem</c>'s
+        /// <c>mood_fatigue_weight</c> term — and mood is the ONE path by which a soul reaches the
+        /// economy (<c>ShipMetrics.Morale</c> → <c>DirectorSystem</c>'s tension → <c>WearPressure</c> →
+        /// <c>MachineWearSystem</c>). So fatigue that now FALLS changes machine wear rates on every
+        /// ship; see docs/MECHANICS.md §13.40.</para>
+        /// </summary>
+        public float Fatigue;
         public float Mood;          // derived scalar, -100..100, for HUD/M3 systems
         public bool Dead;
 
@@ -536,6 +557,18 @@ namespace Perilune.Sim
         Flee = 10,       // walking out of unbreathable air to survive (SafetySystem) — not None, so no
                          //   dispatcher recruits a fleeing crew until it has recovered in safe air
         Deconstruct = 11, // tearing down a designated wall (DeconstructSystem, E0-5) — build's inverse
+        /// <summary>
+        /// ⭐⭐ M3-9 — SLEEPING (<see cref="RestSystem"/>). Appended at the END of the enum, never
+        /// inserted: the byte is saved (CITZ) and folded into <see cref="Simulation.StateHash"/>, so a
+        /// renumber would silently re-label every saved job.
+        ///
+        /// <para>⛔ <b>IT IS A NEED, NOT WORK</b>, and <see cref="WorkTypeMap"/> classifies it beside
+        /// <c>Eat</c>/<c>Drink</c>/<c>Flee</c>: the work grid does not rank sleeping, the player cannot
+        /// switch it off, and <c>JobSystem.TryPreempt</c>'s survival guard therefore refuses to take it
+        /// away. <c>docs/design/rimworld-reference.md</c> §3.5 — rest is a job-SELECTION filter
+        /// evaluated between jobs, not a work type.</para>
+        /// </summary>
+        Sleep = 12,
     }
 
     /// <summary>

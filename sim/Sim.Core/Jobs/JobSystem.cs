@@ -286,7 +286,9 @@ namespace Perilune.Sim
         /// </summary>
         private static bool TryPreempt(Simulation sim, Citizen citizen)
         {
-            // NOT WORK ⇒ untouchable. Flee/Eat/Drink (and None, which cannot reach here) — §12.3.
+            // NOT WORK ⇒ untouchable. Flee/Eat/Drink/⭐Sleep (M3-9) — and None, which cannot reach
+            // here — §12.3. The Sleep row is why a tired crew member is not dragged out of her bunk
+            // by a band-1 job with no second guard written anywhere; see WorkTypeMap.
             if (!WorkTypeMap.TryOf(citizen.JobKind, out var mine)) return false;
             // Dead / HoldPosition / mid-ordered-walk: taking the job would strand her, because the
             // same facts stop anything from giving her another one.

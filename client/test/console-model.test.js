@@ -534,6 +534,10 @@ test('taskTag: every host verb maps to a tag; the job-less states map to none', 
   assert.equal(taskTag('Crafting at fab_main'), 'CRAFT');
   assert.equal(taskTag('Eating'), 'MEAL');
   assert.equal(taskTag('Drinking at tank_ls'), 'WATER');
+  // ⭐ M3-9 — JobKind.Sleep. BOTH host resting labels share one verb by design: the WHERE (a bunk at
+  // effectiveness 1.0 vs the deck at 0.8) is the payload of the SENTENCE, not of the tag.
+  assert.equal(taskTag('Sleeping in bunk_9_4_0'), 'REST');
+  assert.equal(taskTag('Sleeping on the deck'), 'REST');
 
   // Doing nothing must never be tagged as work — that was the whole defect.
   assert.equal(taskTag('Walking to 7,11 (no task)'), null);
@@ -551,6 +555,7 @@ test('taskTag: every host verb maps to a tag; the job-less states map to none', 
   assert.equal(taskTag('Heading to build wall 3,4'), null);
   assert.equal(taskTag('Heading to strip the wall at 3,4'), null);
   assert.equal(taskTag('Heading to strip scrubber_ls 3,4'), null); // E0-5 WP-2
+  assert.equal(taskTag('Heading to sleep at 9,4'), null);          // M3-9
 });
 
 test('watchTask: the CREW WATCH cell shows the label and flags real work', () => {

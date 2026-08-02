@@ -32,3 +32,21 @@ mood_suffocation_weight          = 60          # mood penalty per unit Suffocati
 flee_suffocation                 = 0.5         # E0-2 crew-safety: Suffocation at which a crew member in
                                                # unbreathable air drops its job and flees to breathable air
                                                # (SafetySystem; NeedsSystem does not read it)
+
+# M3-9 REST (RestSystem; NeedsSystem does not read these three). Analogue:
+# docs/design/rimworld-reference.md §3.5 (the trigger is a job-SELECTION filter, never an
+# interrupt) and §4.4 (0 -> 100% rest takes 10.5 in-game hours at effectiveness 1.0; ground
+# 0.8 vs bed 1.0). The recovery rate carries the exact float bits of 1/37800.
+#
+# ! THESE THREE COMPOSE WITH fatigue_per_second ABOVE, AND THE COMPOSITION IS GATED, NOT SUMMED.
+# NeedsSystem's ramp is skipped while a crew member holds JobKind.Sleep (RimWorld's rest meter
+# falls only while awake). Measured on the shipped stack from the 0.75 trigger: 7.89 sim-h asleep
+# in a bed, 9.80 sim-h on the deck. Do NOT "correct" the recovery rate to absorb the ramp - that
+# would encode a coupling the analogue says does not exist and make the 1/37800 provenance a lie.
+fatigue_rest_threshold           = 0.75        # 0..1 Fatigue at which an IDLE crew member goes to sleep
+                                               # (RimWorld's rest < 30%); 12 h awake at the ramp above
+fatigue_recovery_per_second      = 2.6455027e-05 # 1/s (1/37800 - 10.5 h for a FULL 1.0 -> 0 in a bed;
+                                               # 7.89 h from the 0.75 trigger, MEASURED)
+rest_effectiveness_ground        = 0.8         # x recovery when sleeping on the deck instead of a bed
+                                               # (a ship with no bunks rests WORSE, never NEVER):
+                                               # 9.80 h from the trigger, MEASURED

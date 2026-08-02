@@ -4,7 +4,7 @@ namespace Perilune.Sim
     /// M2-2 — <b>THE ONE PLACE A <see cref="JobKind"/> IS CLASSIFIED AS WORK.</b> The work-type veto
     /// asks exactly one question at five gates ("may this crew member take this work?"), and every
     /// one of those gates needs the same translation from the sim's job vocabulary
-    /// (<see cref="JobKind"/>, twelve values, what the SIM does) to the player's
+    /// (<see cref="JobKind"/>, THIRTEEN values since M3-9, what the SIM does) to the player's
     /// (<see cref="WorkType"/>, six values, what the PLAYER assigns). Two translations that can
     /// disagree is exactly the hand-mirrored-pair shape this repo has been bitten by four times
     /// (<c>CapabilityComputer</c>/<c>EffectValidator</c> is the current instance), so there is one
@@ -29,10 +29,16 @@ namespace Perilune.Sim
     ///     by <c>WorkTypeVetoTests.MidHaul_HaulSwitchedOff_DeliveryStillCompletes</c>.</item>
     /// </list></para>
     ///
-    /// <para>⛔ <b>AND FOUR KINDS ARE NOT WORK — the exclusions, named rather than defaulted.</b>
-    /// <c>None</c> (no job), <c>Eat</c>, <c>Drink</c> (needs) and <c>Flee</c> (self-preservation).
-    /// A pawn with every work type off must still eat, drink and run from vacuum; that is what
-    /// makes OD-H's default-OFF survivable at boot rather than a starvation bug. <c>Citizen.cs</c>
+    /// <para>⛔ <b>AND FIVE KINDS ARE NOT WORK — the exclusions, named rather than defaulted.</b>
+    /// <c>None</c> (no job), <c>Eat</c>, <c>Drink</c>, ⭐ <c>Sleep</c> (needs) and <c>Flee</c>
+    /// (self-preservation).
+    /// A pawn with every work type off must still eat, drink, sleep and run from vacuum; that is what
+    /// makes OD-H's default-OFF survivable at boot rather than a starvation bug. ⭐ <b>M3-9's
+    /// <c>Sleep</c> row is load-bearing rather than clerical</b>: it is what makes
+    /// <c>JobSystem.TryPreempt</c>'s survival guard refuse to take a sleeping pawn off her rest for a
+    /// band-1 job, and it is the whole reason the rest claimant needs no second guard of its own
+    /// (that method's own comment: <i>"there is deliberately no second, belt-and-braces check listing
+    /// the kinds"</i>). <c>Citizen.cs</c>
     /// states the rule ("an order the player gave must not be a way to starve someone"); this is
     /// where it becomes unaskable, because <see cref="TryOf"/> simply has no work type to return.
     /// </para>
@@ -48,8 +54,8 @@ namespace Perilune.Sim
     {
         /// <summary>
         /// The <see cref="WorkType"/> <paramref name="kind"/> belongs to, or <c>false</c> when this
-        /// job kind is NOT work at all (<c>None</c>, <c>Eat</c>, <c>Drink</c>, <c>Flee</c>) and can
-        /// therefore never be vetoed.
+        /// job kind is NOT work at all (<c>None</c>, <c>Eat</c>, <c>Drink</c>, <c>Sleep</c>,
+        /// <c>Flee</c>) and can therefore never be vetoed.
         /// </summary>
         public static bool TryOf(JobKind kind, out WorkType type)
         {
@@ -68,6 +74,7 @@ namespace Perilune.Sim
                 case JobKind.None:
                 case JobKind.Eat:
                 case JobKind.Drink:
+                case JobKind.Sleep: // M3-9 — a NEED. RW §3.5: rest is a selection filter, not a work type.
                 case JobKind.Flee:
                 default:
                     type = default;

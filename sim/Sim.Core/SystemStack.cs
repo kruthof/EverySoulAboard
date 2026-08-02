@@ -30,6 +30,24 @@ namespace Perilune.Sim
                 new ThermalSystem(),
                 new WaterSystem(),
                 new CitizenSystem(),
+                // ⭐⭐ M3-9 — REST, AND IT IS REGISTERED BEFORE THE DISPATCHER ON PURPOSE.
+                // rimworld-reference.md §3.5 measures the need-check order as
+                // Eat ▸ SLEEP ▸ Meditate ▸ Recreate ▸ WORK. For a crew member who is idle when a
+                // TICK BEGINS, this position decides which of the two is asked first: registered
+                // here she chooses SLEEP with a full job board in front of her; registered after
+                // JobSystem, WORK wins the selection and she takes one more job while exhausted.
+                // PINNED by RestSystemTests.RestIsRegisteredBeforeTheDispatcher_AndThatDecidesTheSELECTION.
+                // ⛔ NOT "she would never sleep at all" — that was M3-9's first-commit claim and it
+                // is FALSE, measured: behind the dispatcher she sleeps at t=121 instead of t=1,
+                // because a completing job writes JobKind.None mid-tick where a later system sees
+                // it. After CitizenSystem for
+                // JobSystem's own reason: movement is settled, so a walk to a bunk is judged on
+                // this tick's position. ⛔ It is NOT an interrupt — the claim's only entry point is
+                // guarded by IsIdleForWork, so it cannot reach a pawn who holds a job (see
+                // RestSystem's header for what an out-of-band claim would have cost M2-8/M2-19).
+                // ⚠️ SustenanceSystem stays AFTER JobSystem, so eating still loses to work where
+                // sleeping now beats it — a pre-existing asymmetry, filed, not fixed here.
+                new RestSystem(),
                 new JobSystem(),
                 new SustenanceSystem(),
                 new CraftingSystem(),

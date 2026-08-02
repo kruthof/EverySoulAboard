@@ -345,6 +345,7 @@ namespace Perilune.Tests
                 "Digging", "Fetching", "Hauling", "Eating", "Drinking", "Crafting",
                 "Servicing", "Building", "Stripping", "Heading", "Walking", "Holding", "Idle",
                 "Awaiting",
+                "Sleeping", // ⭐ M3-9 — JobKind.Sleep; `console-model.js` tags it REST beside MEAL/WATER
             };
             var c = Parked(host);
             foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))

@@ -88,7 +88,22 @@ namespace Perilune.Tests
             // `DefsEquivalenceTests` independently parsed the shipped .def files to the SAME value
             // ("parsed 18 shipped .def files, checksum 77a7a8a9e967eab4"), which is the two-code-path
             // agreement that says the three transcriptions really do match.
-            const ulong Pinned = 0x77A7A8A9E967EAB4UL; // M3-10 (PIN M3-d): Heater = 28 + its two def scalars
+            // ⚠ MOVED BY M3-9 (PIN M3-c, 2026-08-02), 77a7a8a9e967eab4 -> 661fcdd4b89f1e87, and by
+            // exactly THREE things — a smaller, cleaner cause than M3-10's four, because this row
+            // adds no DeviceKind and therefore grows neither Machines nor Recipes:
+            //   1. `Needs.FatigueRestThreshold`   (0.75)      — the sleep trigger;
+            //   2. `Needs.FatigueRecoveryPerSecond` (1/37800)  — the recovery rate in a bed;
+            //   3. `Needs.RestEffectivenessGround` (0.8)       — RW §4.4's ground multiplier.
+            // All three appended at the TAIL of ComputeChecksum, in that order.
+            // MEASURED TWICE, on separate runs and through TWO CODE PATHS: this pin read
+            // 661fcdd4b89f1e87 from CreateDefault, and `DefsEquivalenceTests` independently parsed
+            // the shipped .def files to the SAME value ("parsed 18 shipped .def files, checksum
+            // 661fcdd4b89f1e87") — which is the agreement that says the three transcriptions
+            // (initialiser, parser key, .def line) really do match. ⚠️ That second path is what
+            // catches a mistyped round-trip literal in needs.def: `2.6455027e-05` is `1f/37800f`'s
+            // exact "R" form, and a lazier `2.6455e-05` would parse to different bits and redden
+            // the equivalence test while THIS test stayed green.
+            const ulong Pinned = 0x661FCDD4B89F1E87UL; // M3-9 (PIN M3-c): the three [needs] rest scalars
 
             Assert.That(SimDefs.Default.Checksum, Is.EqualTo(Pinned),
                 "DETERMINISM PIN MOVED: SimDefs.Default.Checksum is " +
@@ -187,7 +202,15 @@ namespace Perilune.Tests
             // MEASURED TWICE, on fresh runs and through two different loaders: this test read
             // edf1577c32f14e55, and `hosts/scenario --days 0 --seed 42` printed
             // `defs: edf1577c32f14e55 (18 files, 0 problems, 1 rules)` — the number a human sees.
-            const ulong Pinned = 0xEDF1577C32F14E55UL; // M3-10 (PIN M3-d): Heater = 28 + its two def scalars
+            // ⚠ MOVED BY M3-9 (PIN M3-c, 2026-08-02), edf1577c32f14e55 -> 558a1c0a4985f5ea, and it
+            // TRACKS ITS TWIN: the same three [needs] rest scalars are present in BOTH
+            // SimDefs.CreateDefault and content/core/SimDefs/needs.def, so this rules-inclusive
+            // value moves with the defaults value and the equivalence test stays green — the "both,
+            // consistently" row of the diagnostic matrix below. No rules/*.moss changed.
+            // MEASURED TWICE, on separate runs: this pin read 558a1c0a4985f5ea, and
+            // `hosts/scenario --days 0 --seed 42` printed
+            // `defs: 558a1c0a4985f5ea (18 files, 0 problems, 1 rules)` — the number a human sees.
+            const ulong Pinned = 0x558A1C0A4985F5EAUL; // M3-9 (PIN M3-c): the three [needs] rest scalars
 
             string dir = FindShippedSimDefsDir();
             Assert.That(dir, Is.Not.Null,

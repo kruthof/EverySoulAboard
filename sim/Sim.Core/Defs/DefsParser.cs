@@ -277,6 +277,10 @@ namespace Perilune.Sim
                 case "mood_fatigue_weight": if (F(v, k, loc, p, out var s)) d.Needs.MoodFatigueWeight = s; return true;
                 case "mood_suffocation_weight": if (F(v, k, loc, p, out var t)) d.Needs.MoodSuffocationWeight = t; return true;
                 case "flee_suffocation": if (F(v, k, loc, p, out var fs)) d.Needs.FleeSuffocation = fs; return true;
+                // M3-9 (RestSystem) — the three rest scalars.
+                case "fatigue_rest_threshold": if (F(v, k, loc, p, out var rt)) d.Needs.FatigueRestThreshold = rt; return true;
+                case "fatigue_recovery_per_second": if (F(v, k, loc, p, out var rr)) d.Needs.FatigueRecoveryPerSecond = rr; return true;
+                case "rest_effectiveness_ground": if (F(v, k, loc, p, out var rg)) d.Needs.RestEffectivenessGround = rg; return true;
                 default: return false;
             }
         }

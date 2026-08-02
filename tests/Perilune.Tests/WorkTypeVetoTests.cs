@@ -170,6 +170,12 @@ namespace Perilune.Tests
                 { JobKind.Build, WorkType.Construct },
                 { JobKind.Flee, null },
                 { JobKind.Deconstruct, WorkType.Deconstruct },
+                // ⭐ M3-9 — SLEEP IS NOT WORK. rimworld-reference.md §3.5: rest is a job-SELECTION
+                // filter evaluated between jobs, not a work type the player can rank or switch off.
+                // The null here is load-bearing: it is what makes JobSystem.TryPreempt's survival
+                // guard (`if (!WorkTypeMap.TryOf(...)) return false;`) refuse to take a sleeping crew
+                // member off her rest for a band-1 job.
+                { JobKind.Sleep, null },
             };
 
             var offenders = new List<string>();

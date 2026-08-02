@@ -386,6 +386,11 @@ const TASK_TAGS = {
   crafting: 'CRAFT',
   eating: 'MEAL',
   drinking: 'WATER',
+  // ⭐ M3-9 — sleeping is a NEED, and needs are tagged here (eating/drinking already are): a crew
+  // member asleep is doing something AT A PLACE, so the map may say so. The host's two resting
+  // labels ("Sleeping in bed_9_4_0" / "Sleeping on the deck") share this one verb by design —
+  // the WHERE is the payload of the sentence, not of the tag.
+  sleeping: 'REST',
 };
 
 /** The host's en-route verb ("Heading to service scrubber_ls"): a crew member who HAS a job but is
