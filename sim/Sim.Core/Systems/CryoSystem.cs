@@ -288,6 +288,15 @@ namespace Perilune.Sim
 
             var person = sim.AddCitizen(SleeperName(pod.Name), exit);
 
+            // ⭐ M3-8 — SHE ARRIVES AS SOMEBODY. Her six skill levels and the work she cannot do at
+            // all are authored literals keyed by this very name (`SleeperAptitudes`), stamped HERE
+            // rather than by the host, because competence is hashed sim state (CITZ v9) and the sim
+            // must be fully playable with no persona layer attached at all. The prose that explains
+            // the numbers is `AuthoredShips.WreckSleepers()` and rides a host observer on
+            // `CitizenThawedEvent`; nothing on this path knows or needs that it exists.
+            // A name with no authored row is a no-op: level 0, capable of everything.
+            SleeperAptitudes.Apply(person);
+
             // Matching the ship's own pawn (`AuthoredShips.cs:2181-2185`, the fields at `:2184`:
             // AutoWander/RevealsFog true, HoldPosition false) — the alternative is a thawed
             // sibling standing dead still beside a wandering one. What she does NOT get is work:

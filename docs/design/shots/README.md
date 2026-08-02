@@ -9,6 +9,34 @@ Regenerate with the tool named beside each set — never hand-edit, never crop b
 
 ---
 
+## `sleeper-persona-*` — THE SLEEPERS ARE PEOPLE: thaw two capsules, meet two people (2026-08-02, M3-8)
+
+Tool: **`client/tools/sleeper-persona-shot.mjs`** (`--out docs/design/shots`). Regenerate, never
+hand-edit.
+
+```
+node client/tools/sleeper-persona-shot.mjs --prep   # temp defs overlay, prints the host command
+<the printed host command>                          # and beside it: python3 client/serve.py 8395
+node client/tools/sleeper-persona-shot.mjs --out docs/design/shots
+```
+
+| shot | what to look at |
+|---|---|
+| `01-one-soul.png` | the ship before anyone is woken — **one** row in CREW WATCH, and it reads `GENERAL CREW` |
+| `02-crew-watch.png` | ⭐ after two played thaws: **RELL · GENERAL CREW · OZAWA · FABRICATION · LINDQVIST · DAMAGE CONTROL**. Three rows, and the two woken ones read as two different people |
+
+⚠️ **RELL'S `GENERAL CREW` ROW IS THE DECISION, PHOTOGRAPHED RATHER THAN HIDDEN.** She boots awake,
+so she is never thawed, so nothing authored reaches her — she keeps the procedural persona every
+citizen gets at boot (MECHANICS §13.39.3). If that reads wrong in this picture, it is one table row
+and one sheet to change; the test that pins it will say so.
+
+⚠️ **ONE THING IS DRIVEN AND NOT PLAYED**, disclosed in the tool's own header: commissioning
+`term_moss` runs against a temporary defs overlay with `commission_cost = 0`, because the
+`ControllerModule` it normally costs is the whole opening of the game. The repair and both thaws are
+played.
+
+---
+
 ## `heater-*` — THE SHIP CAN BE WARMED: place a heater, the compartment climbs (2026-08-02, M3-10)
 
 Tool: **`client/tools/heater-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.

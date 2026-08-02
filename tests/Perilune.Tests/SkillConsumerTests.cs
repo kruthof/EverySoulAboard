@@ -630,6 +630,13 @@ namespace Perilune.Tests
                 "sim/Sim.Core/Save/SaveWriter.cs",      // the CITZ v9 chapter writes the array
                 "sim/Sim.Core/Save/SaveReader.cs",      // …and reads it, with the v8 migration
                 "sim/Sim.Core/Simulation.cs",           // the state-hash fold walks it
+                // ⭐⭐ M3-8 — THE AUTHOR. The first file in the game that WRITES a skill: seven
+                // literal rows, one per wreck sleeper, stamped on by `CryoSystem.Open` when a
+                // capsule opens. It names `SetSkill` (the storage's own writer) and nothing else —
+                // it never reads a level, never computes a rate and never touches `WorkRates`, so
+                // the one-seam claim above is untouched: competence still reaches WORK through
+                // WorkRates alone. This file is where competence reaches the PERSON.
+                "sim/Sim.Core/SleeperAptitudes.cs",
             };
 
             var offenders = new List<string>();

@@ -5032,6 +5032,10 @@ channel is empty at boot, i.e. at the exact moment the player first looks at a c
   Every crew member on every ship is level 0, where every curve is exactly 1.000× — **so the shipped
   game behaves identically to the pre-M3-7 game and will until M3-8 authors persona sheets.** The
   mechanism is real and driven; the *content* is the next package's.
+  ⭐ **AMENDED BY M3-8 (§13.39, 2026-08-02): the wreck's seven SLEEPERS now get an authored spread at
+  the moment their capsule opens.** The bullet still stands verbatim for everybody else — every crew
+  member on every other ship, and Rell, who boots awake and is deliberately unauthored (§13.39.3).
+  There is still no XP and no levelling anywhere.
 - ⛔ **NO PIN SEES THE RATE TERM.** Measured as a 2×2: force every crew member to skill 20 and all
   three pinned runs are bit-identical with the rate seam live and with it stubbed out. OD-H boots
   every work type off and no pinned run enqueues a command, so **no pinned fixture does any work at
@@ -5045,7 +5049,200 @@ channel is empty at boot, i.e. at the exact moment the player first looks at a c
 - **Nothing WRITES `WorkIncapable` either** (M2-1's note still stands): the mask is storage the
   channel now carries, with no source of incapability in the game. So `workcaps` ships correct and
   all-zero on every shipping ship.
+  ⭐ **AMENDED BY M3-8 (§13.39): every one of the seven sleepers carries at least one incapability
+  bit**, and it is fully live — it gates WHETHER through `CanTakeWorkType` at all five dispatcher
+  sites. `workcaps` is still all-zero on every ship but the wreck, and on the wreck until a thaw.
 - **No surface draws skills or absent cells.** M3-12 owns the WORK tab's skill column and the
   absent-cell rendering; `getWorkCaps` is reached by nothing yet, exactly as `getDevices` shipped.
 - **Skill does not affect quality, failure, mood, or what a pawn CHOOSES to do.** Only rate, and only
   at the six sites above. RimWorld's `naturalPriority` ordering is untouched.
+
+---
+
+### 13.39 ⭐⭐ The sleepers are people — seven authored souls, and the first skill this game ever wrote (M3-8 / OD-M items 5+8, 2026-08-02)
+
+**THE PLAYER SENTENCE.** Until this package a thawed citizen arrived with **no mind attached at all**
+and level 0 at everything — the capsule opened, a name walked out, and that was the whole of her.
+Now each of the wreck's seven sleepers is **a written person before you open her pod, and she is that
+person the second she steps out**: six authored skill levels, at least one thing she cannot do at
+all, and a backstory that explains both.
+
+⭐ **THIS IS THE FIRST WRITER OF A SKILL IN THE GAME.** §13.37.5's headline — *"NOTHING WRITES A
+SKILL … the shipped game behaves identically to the pre-M3-7 game and will until M3-8 authors persona
+sheets"* — is retired for the seven sleepers and **still stands for everybody else**, Rell included.
+
+#### 13.39.1 The split is the design: what is sim state and what is not
+
+| half | lives in | written when | is it hashed? |
+|---|---|---|---|
+| **competence** — six levels + the incapability mask | `sim/Sim.Core/SleeperAptitudes.cs`, applied by `CryoSystem.Open` (`Systems/CryoSystem.cs:298`) | at the thaw, inside the sim | **YES** — `Citizen.SkillsRaw` + `WorkIncapable` ride CITZ v9 and `Simulation.cs:504` |
+| **the person** — persona sheet, secret, fact | `sim/Sim.Gen/AuthoredShips.cs:2602` `WreckSleepers()` + `:2800` `AttachSleeperPersona`, attached by `hosts/web/GameSession.cs:226` `AttachThawedPersonas` | at the thaw, in the HOST, observing `CitizenThawedEvent` | **NO** — mind/fact layer, host state |
+
+⛔ **THE SIM HALF OWES THE HOST HALF NOTHING, AND THAT IS THE OFFLINE INVARIANT.** Boot the wreck on
+the bare `SystemStack.CreateDefault` — no `MemorySystem`, no `MindState`, no `FactRegistry`, no LLM
+anywhere in the process — drive a capsule open, and the same woman steps out with the same six levels
+and the same mask. Driven by
+`SleeperPersonaTests.AThawWithNoPersonaLayerAnywhere_StillProducesTheWholePerson`, whose fixture
+*asserts* the absence rather than assuming it.
+
+⭐ **WHY THE PERSONA COULD NOT USE `PopulateSlice`'s PATTERN.** `AuthoredShips.PopulateSlice` weaves
+the slice's eight minds **at boot**, before the first tick, because all eight citizens exist at tick
+0. **A sleeper does not exist until her capsule opens at some unknown later tick.** So the roster is
+consumed by an OBSERVER instead — and that is the whole architectural difference between the two
+packages.
+
+⚠️ **THE OBSERVER IS PER-TICK, NOT PER-FRAME, AND THAT IS FORCED.** `EventBus` is double-buffered and
+swaps at the END of every tick, so a host that ticks N times and *then* reads the bus sees only the
+last tick's events. The run loop's bare `for (…) _sim.Tick();` became `GameSession.AdvanceTicks`
+(`hosts/web/GameSession.cs:196`), one method that ticks **and** observes, so tests drive the loop's
+own body and no harness can navigate a path the game does not take (the OD-P lesson, one package
+later). The harness asks for **five ticks at a time**, deliberately: a drive that only ever asked
+for one would be blind to exactly this defect.
+
+⛔ **NO `Relationships` ARE AUTHORED FOR THE SLEEPERS, DELIBERATELY.** `PopulateSlice` seeds its web
+with `SocialSystem.Nudge`, which writes **canonical sim state** (the SOCL fold) — safe at boot,
+forbidden here, because this roster is consumed at RUNTIME by a host and a host that nudges the
+social graph mid-run is a host mutating hashed sim state. The bonds are written into the prose
+instead. `PersonaGenerator.CreateAuthoredMind` is **RNG-free**, which is what makes it callable from
+a runtime observer at all. **A sim-side social seed at thaw is FILED, not smuggled in.**
+
+#### 13.39.2 The table — literals keyed by name, no def field
+
+```
+  rung  who         rep con cra dec min hau   cannot                  capsule
+  ----  ----------  --- --- --- --- --- ---   ---------------------   -------
+    1   Lindqvist     9   7   2   5   0   4   Mine                    0.94
+    2   Ozawa         5   0  11   6   2   3   Construct               0.91
+    3   Ferreira      3   4   0  11   7   9   Craft                   0.88
+    4   Mbeki         0   6   0   8  13   9   Repair, Craft           0.86
+    5   Bahri         7  12   5   4   3   0   Haul                    0.83
+    6   Nakamura     10   2  13   0   0   3   Deconstruct, Mine       0.81
+    7   Torres       14  11   9  10   0   8   Mine                    0.78
+```
+
+Ladder order is `ThawGate.RungOf`'s — the order the player meets them in, because the ladder is
+priced by capsule condition (§13.28/§13.30).
+
+⭐ **KEYED BY THE SLEEPER'S DISPLAY NAME** — what `CryoSystem.SleeperName` derives from the capsule's
+`pod_<who>` device name — so the table and `AuthoredShips.WreckPods` are joined on **exactly the
+string the player reads**, and a typo yields an untouched level-0 citizen rather than a wrong one.
+`StringComparer.Ordinal` throughout (the dev machine is de-DE).
+
+⚠️ **NOT A DEF FIELD, and that is a decision** — the `ThawGate.RungOf` precedent (M2-1's *a rule, not
+a tunable*), taken for the same reason: a def field would ship a P4/P5 re-pin and a checksum fold for
+one ship's authoring, and *"this person is this good"* is no more tunable than the rung ladder is.
+
+⚠️ **AN INCAPABLE TYPE IS AUTHORED AT LEVEL 0, ALWAYS** — a row claiming skill in something the woman
+cannot do at all would be two contradictory facts about one person. Enforced by
+`EveryAuthoredRow_IsInternallyConsistent`, not by convention.
+
+⭐ **THE SPREAD IS A DESIGN STATEMENT.** Mining is the first link of the wreck's whole production
+chain (Regolith → Scrap → Parts → ControllerModule, which the thaw ladder itself spends) — and
+**three of the seven cannot mine at all, Torres among them: the best crew member aboard and the most
+expensive capsule to open.** So waking the strongest person does not also solve the chain. Of the
+four who **can**, **Mbeki (13) is the strongest by a wide margin**: the mine curve is the steepest in
+`WorkRates` (100/level), so she cuts at **2.30×** against Ferreira **1.70×** (7), Bahri **1.30×** (3)
+and Ozawa **1.20×** (2). Nobody is ever hard-blocked — Rell is capable of everything at level 0, and
+*0 is untrained, not unable* (`rimworld-reference.md` §5.2). The question the table poses is **how
+fast, not whether** — and it is priced: the cheapest capable miner is **Ozawa at rung 2** (level 2,
+1.20×, 2 `Seals`), where Mbeki is **rung 4** (2.30×, 2 `Parts`) — a whole production tier deeper into
+the very chain her rate is what accelerates.
+
+⛔ **CORRECTED IN REVIEW — the previous sentence was FALSE and it was load-bearing** (it also stood in
+`SleeperAptitudes`' class doc, in Mbeki's `RaidBackstory`, and in a test's assertion message). It
+read: *"Mbeki (rung 4) is the only sleeper who can feed the chain her own rescue is priced in."*
+**Four** of the seven have a non-zero Mine level and none of the other three is incapable, so the
+claim was refuted by the table printed directly above it — and by its own next sentence, which
+conceded that Rell can mine at 0. The true claim is an **absence** in three sleepers and a **margin**
+in one.
+
+⚠️ **`Haul` LEVELS BUY NOTHING TODAY and the table does not pretend otherwise**: `WorkRates`' haul
+bonus is 0 because hauling accrues no work ticks anywhere in this sim (§13.37.5, FILED). A haul level
+is a fact about the person for M3-12's column to draw. **Haul INCAPABILITY, by contrast, is fully
+live** — it gates WHETHER through `Citizen.CanTakeWorkType` at all five dispatcher sites, which is
+exactly why Bahri carries it.
+
+#### 13.39.3 ⚠️ RELL IS DELIBERATELY UNAUTHORED — the decision, and what it costs
+
+Rell **boots awake**, so she is never thawed, so nothing on this path can ever reach her: she keeps
+the fleet-wide level-0 default and the *procedural* persona `GameSession.GeneratePersonas` gives
+every citizen at boot. **Both options were pin-neutral** (see §13.39.4), so this was decided on
+design, not on cost:
+
+- every route to authoring her touches a **shared boot seam** — `ShipPlanBuilder`'s crew loop or a
+  new `ShipPlan`/`CrewSpec` field, i.e. surface on every ship — for a package whose seam is the thaw;
+- the exit-gate sentence (*"the new soul's row differs from RELL's"*) is satisfied without it: an
+  authored sleeper differs from Rell on six columns and the mask;
+- ⛔ **AND IT IS VISIBLE, NOT INVISIBLE.** In CREW WATCH today Rell reads **`general crew`** with
+  procedurally-drawn traits (`stoic, gentle, cowardly` at the shipping seed) beside `electronics` and
+  `salvage`. **FILED for M4-2/M4-3**, and *pinned by assertion* in
+  `TwoThawedSleepers_ReadAsTwoPeopleOnTheRosterChannel` so that authoring her later is a red test
+  telling you which claim you changed, not a silent improvement.
+
+The four dead sleepers (Vance, Sokolov, Iqbal, Osei) get neither a row nor a sheet — OD-9: their
+capsules are below the CryoPod `fail` floor, so they can never cycle, and a sheet for one of them
+would be prose the game cannot show attached to a number the game cannot use.
+
+#### 13.39.4 PIN-NEUTRAL, and the premise is mechanised rather than asserted
+
+Everything the sim half writes is reachable **only through a thaw**; a thaw needs a `CryoPod`; and
+**the wreck is the only ship in the repo that has one**. So no pinned fixture can reach the table
+however long it runs — P1 is `hosts/scenario`'s own ship (no `CryoPod` anywhere under
+`hosts/scenario`), P2 is `Perilune()`, P3 is `PeriluneSlice()`, and P4/P5 are the defs, which gain no
+field. `NoShipButTheWreck_HasACapsuleToThawFrom` asserts the census **as an inclusion test** — the
+wreck's own twelve are asserted too, so a build where NO ship has capsules (which would make the
+claim true and meaningless) fails it.
+
+The host half cannot move a pin either, for a second and independent reason: no pinned fixture runs
+`GameSession` at all.
+
+⚠️ **THE HONEST CAVEAT ON "OUT OF DETERMINISM".** `MemorySystem.StateChecksum` **does** fold mind
+STRUCTURE (counts, fact ids, secret ids) when the system is registered — the LLM hosts register it —
+so an attached persona is not literally invisible to every `StateHash` in the repo. What is asserted,
+and driven, is the claim that matters: `AuthoredShips.AttachSleeperPersona` **writes nothing the sim
+itself hashes** (`ThePersonaAttach_TouchesNoSimState_ButTheSkillsAre`, which also asserts the
+converse in the same run so the leg cannot pass on an inert build). `GameSession.GeneratePersonas`
+has been creating minds at boot since L6; this package adds the same class of write at a later tick.
+
+#### 13.39.5 ⚠️ WHAT IS WIRED BUT NOT CONNECTED
+
+- ⛔ **NO SURFACE DRAWS THE SPREAD YET.** The levels and the mask reach the `workcaps` wire
+  (§13.37.4) and stop there — **M3-12 owns the WORK tab's skill column and the absent-cell
+  rendering.** What a player can see TODAY is the roster: the woken sleeper's authored **role** and
+  **traits** in CREW WATCH. Do **not** claim the M4 dossier: `panels.js` is four-of-eight fabricated
+  (`◇ SAMPLE`) until M4-3 and this package does not touch it.
+- ⛔ **NO SOCIAL BOND IS SEEDED FOR A THAWED SLEEPER** — see §13.39.1. Their relationships exist only
+  as prose in the sheets (Bahri↔Osei, Nakamura↔the MOSS board, Torres↔the four dead capsules).
+  FILED.
+- ⚠️ **THE SECRETS ARE REACHABLE ONLY THROUGH CONVERSATION**, which is the L6 chat surface the
+  standard UI does not open onto — a thawed sleeper's fact-backed secret is registered and known and
+  nothing in the shipping browser face can ask her about it. Pre-existing, restated because this
+  package just multiplied the number of them by eight.
+- ⚠️ **NOTHING LEVELS.** There is still no XP, no training and no decay: a sleeper's authored spread
+  is the spread she has for the whole run. RimWorld's levelling is §5.1 and is nobody's package yet.
+
+#### 13.39.6 The acceptance harness
+
+`client/tools/sleeper-persona-shot.mjs` — the `pod-bay-shot.mjs` precedent, verbatim in technique and
+in disclosure: it repairs `term_moss` with a **played** direct order, commissions it against a
+**temporary defs overlay** (`commission_cost = 0`, disclosed in its own header, nothing else
+changed), thaws **two** capsules through the POD BAY's own typed `thaw N`, and photographs CREW
+WATCH. It never writes sim state and never touches a skill, a mask or a persona. ⚠️ It also
+photographs Rell's `general crew` row rather than hiding it, so the decision in §13.39.3 can be
+overruled from a picture. Not wired into `./ci.sh` — it needs a browser and a running host.
+
+#### 13.39.7 Two enrolment ledgers grew, and what each enrolment claims
+
+The package's only two red tests on the first full gate were the repo's own **enrolment ledgers**,
+which is what they exist to do — a new reader/writer is a decision recorded by name, not a diff
+nobody read. `sim/Sim.Core/SleeperAptitudes.cs` is now enrolled in both:
+
+- `SkillConsumerTests.OnlyTheSeamAndTheStorageMayNameASkill` — **the first WRITER of a skill in the
+  game.** It names `SetSkill` and nothing else: it never reads a level, never computes a rate and
+  never touches `WorkRates`, so §13.37.2's one-seam claim is untouched. Competence still reaches
+  WORK through `WorkRates` alone; this file is where competence reaches the PERSON.
+- `WorkPriorityStateTests.OnlyEnrolledFilesReadTheWorkGrid` — **the first writer of
+  `WorkIncapable`**, ending M2-1's note that the mask was storage with no source. ⚠️ It WRITES and
+  never reads an arbitration: no `GetWorkPriority`, no `IsWorkEnabled`, no `CanTakeWorkType`. The
+  `IsIncapableOf` the identifier scan sees is `SleeperAptitude`'s own accessor, not `Citizen`'s —
+  the scan cannot tell them apart, so the distinction is written down rather than assumed.

@@ -184,6 +184,68 @@ namespace Perilune.Web
             }
         }
 
+        /// <summary>
+        /// ⭐ <b>M3-8 — ADVANCE THE SIM THE WAY THE RUN LOOP DOES.</b> One method, because a tick
+        /// and the host observations that follow it are <b>not separable</b>: the event bus is
+        /// double-buffered and swaps at the END of every tick (<c>EventBus.SwapBuffers</c>), so a
+        /// caller that runs <c>_sim.Tick()</c> N times and then looks at the bus sees only the LAST
+        /// tick's events and silently loses every one before it. The old loop body was exactly that
+        /// bare <c>for</c>, which is why this is a method and not two lines at the call site.
+        ///
+        /// <para>⛔ <b>AND THE RUN LOOP'S CALL TO IT IS PINNED SEPARATELY, BECAUSE DRIVING THIS
+        /// METHOD IS NOT THE SAME CLAIM AS THE LOOP CALLING IT.</b> The first draft's comment said
+        /// tests drive this method "so no harness can navigate a path the game does not take", which
+        /// conflated the two: review reverted <see cref="Run"/>'s call site to a bare tick loop —
+        /// leaving this method and <see cref="AttachThawedPersonas"/> intact but <b>unreachable from
+        /// the shipping game</b> — and the whole suite stayed GREEN while every thawed sleeper in the
+        /// browser arrived mindless, which is the exact gap the package closes.
+        /// <c>SleeperPersonaTests.TheRunLoopItself_AttachesTheMind_DrivenThroughStart</c> now drives
+        /// <see cref="Start"/> and asserts through the real thread; it is the only test that can see
+        /// that call site.</para>
+        /// </summary>
+        internal void AdvanceTicks(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                _sim.Tick();
+                AttachThawedPersonas();
+            }
+        }
+
+        /// <summary>
+        /// ⭐ <b>M3-8 — THE HOST HALF OF A THAW: the woman who steps out of the capsule gets her
+        /// authored mind.</b> <c>AuthoredShips.PopulateSlice</c> weaves the slice's minds at BOOT,
+        /// which cannot work here — a sleeper does not exist until her capsule opens at some
+        /// unknown later tick — so the roster is attached by OBSERVING
+        /// <see cref="CitizenThawedEvent"/> and matching <c>AuthoredShips.WreckSleepers()</c> by
+        /// name. Runs on the sim thread, inside <see cref="AdvanceTicks"/>, one tick after the
+        /// publish at the latest.
+        ///
+        /// <para>⛔ <b>ENRICHMENT, NEVER A DEPENDENCY.</b> Everything this method does is host state
+        /// (the mind store, the fact registry). The sleeper's COMPETENCE — six skill levels and what
+        /// she cannot do at all — was written into the citizen by <c>CryoSystem</c> at the moment
+        /// the capsule opened, and is hashed sim state. Delete this method and the game still thaws
+        /// the same person who works at the same rates; she is simply nobody, which is the state of
+        /// the shipping game before this package. That is the offline invariant, and it is the first
+        /// row of the package's mutation table.</para>
+        ///
+        /// <para>Returns how many sleepers were given a mind — a test seam, and zero on every tick
+        /// but the seven this run can ever have. Zero allocation on the empty path:
+        /// <c>Events.Read</c> hands back a <c>ReadOnlySpan</c>.</para>
+        /// </summary>
+        internal int AttachThawedPersonas()
+        {
+            if (_host.Minds == null || _host.Facts == null) return 0;
+            var thawed = _sim.Events.Read<CitizenThawedEvent>();
+            int attached = 0;
+            for (int i = 0; i < thawed.Length; i++)
+            {
+                if (!_sim.Citizens.TryGet(thawed[i].CitizenId, out var person)) continue;
+                if (AuthoredShips.AttachSleeperPersona(_sim, _host.Minds, _host.Facts, person)) attached++;
+            }
+            return attached;
+        }
+
         public void Start()
         {
             _running = true;
@@ -298,7 +360,7 @@ namespace Perilune.Web
                     int due = (int)acc;
                     if (due > 0)
                     {
-                        for (int i = 0; i < due; i++) _sim.Tick();
+                        AdvanceTicks(due);
                         acc -= due;
                         ticked = true;
                     }
