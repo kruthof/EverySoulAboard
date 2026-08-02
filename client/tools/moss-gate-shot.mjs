@@ -201,7 +201,13 @@ const wcell = await centre(cellSel);
 if (!wcell) { check(false, 'the WORK tab exposes no REPAIR cell to click (re-point `cellSel`)'); }
 else {
   await clickAt(wcell.x, wcell.y); await sleep(1200);
-  log('  REPAIR cell now reads', await evaluate(`document.querySelector('${cellSel}')?.textContent`));
+  // The PRIORITY glyph, not the cell's whole text: M3-12 draws the priority and her skill level in
+  // two child spans, so `textContent` is the concatenation ("10" for priority 1). Log-only here —
+  // nothing branches on it — but a log that reads "10" for a priority of 1 is a false witness in the
+  // record the next reader trusts. Same `?:` fallback as `work-tab-shot.mjs`.
+  log('  REPAIR cell now reads', await evaluate(
+    `(()=>{const e=document.querySelector('${cellSel}');if(!e)return null;`
+    + `const p=e.querySelector('.ov-workprio');return p?p.textContent:e.textContent;})()`));
 }
 // Run the clock up, then wait for the SHIP's own answer. ⭐ THE INSTRUMENT IS THE `devices` CHANNEL
 // ON AN INDEPENDENT SOCKET, never the page: `cond` is `Device.Condition` quantised to a byte, so

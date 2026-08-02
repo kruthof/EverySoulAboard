@@ -879,6 +879,19 @@ const SHIP_STATE_REACH = Object.freeze([
   // player enables something. ⚠️ THIS ENTRY IS A CENSUS MOVE AND WAS RATIFIED IN REVIEW, not slipped
   // in — the charter for M2-4 requires exactly that.
   'getWork',
+  // ⭐ M3-12 — the `workcaps` channel's cache: each crew member's six skill levels and the
+  // `incapableMask` byte that says which work types she can NEVER do. SHIP STATE in exactly
+  // `getWork`'s sense — a view-only wire cache with no DOM of its own, moving to ship-state.js at
+  // WP-9 — and, like `getWork`, THE FACT'S ONLY ROUTE TO THIS CLIENT: a skill and an incapability are
+  // per-PERSON state with no tile to be projected onto, so no `GlyphMapper` pass could carry them
+  // however it were ordered, and the sparse `work` channel cannot carry an incapability at all
+  // (it emits a row per switched-ON pair, and an incapable type is never on).
+  // ⚠️ THIS ENTRY IS A CENSUS MOVE, added in the same commit as the reach and said out loud, exactly
+  // as `getWork` and `getEnding` were. M3-7 shipped the cache DATA-ONLY and its own tests recorded
+  // that this line would move when a surface finally read it; M3-12's WORK tab is that surface
+  // (`overview-view.js` `workCapsFor` → `paintWork`), and the reach is COMPUTED from actual reaches,
+  // so this list is being brought level with the code rather than granting a permission.
+  'getWorkCaps',
   'getZones', 'isMossActive', 'onShipUpdate',
   'openBioForSelected', 'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
 ]);

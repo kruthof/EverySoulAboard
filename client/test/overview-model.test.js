@@ -1780,6 +1780,14 @@ const ovWorkRows = () =>
   workMount().oneClass('ov-worklist').childNodes.filter((n) => n.nodeType === 1);
 const ovWorkCells = (row) => row.byClass('ov-workcell');
 const ovWorkHeaders = () => workMount().oneClass('ov-workhead').byClass('ov-workcolhdr');
+/** ⭐ M3-12 — THE PRIORITY GLYPH, not the cell's whole text. A cell now draws TWO facts (the
+ *  player's priority and the sim's skill level) in two child spans, so `cell.textContent` is their
+ *  concatenation and an equality on it would be asserting both at once — and would go green on a
+ *  cell that had lost its priority glyph entirely as long as the skill number happened to read the
+ *  same. Every legacy assertion below was re-pointed here rather than loosened. */
+const ovWorkPrio = (cell) => cell.oneClass('ov-workprio').textContent;
+/** The skill corner's text (M3-12): her level `0..20` in this work type, or `·` for "not told yet". */
+const ovWorkSkill = (cell) => cell.oneClass('ov-workskill').textContent;
 
 /** Select a tab the way a player does — a click on a bar button carrying `data-ov-tab`, through the
  *  surface root's REAL delegated handler (`onHudClick`), which is where the inert-tab gate lives.
@@ -1797,10 +1805,17 @@ function ovSelectTab(key) {
   fire(b, 'click', { detail: 1 });
 }
 
-/** Put the surface on the WORK tab with a known `work` payload and a two-soul roster. */
-function ovWorkTab(cells, crew = WORK_CREW) {
+/** Put the surface on the WORK tab with a known `work` payload and a two-soul roster.
+ *
+ *  ⭐ M3-12 ADDED THE THIRD ARGUMENT AND IT IS ALWAYS WRITTEN, never left alone. `workcaps` is a
+ *  MODULE-LEVEL cache shared by every leg in this file, so a leg that set it would silently arm every
+ *  later leg with a capability payload it never asked for — and the legs it would arm are the ones
+ *  asserting what a row looks like with NO capability data. `null` is the honest default here: it is
+ *  "the channel has not arrived", which is what the M2-3 legs below were written against. */
+function ovWorkTab(cells, crew = WORK_CREW, caps = null) {
   ovSelectTab('work');
   Hud.renderWork(cells === null ? null : { type: 'work', cells });
+  Hud.renderWorkCaps(caps === null ? null : { type: 'workcaps', cells: caps });
   ovRoster(crew);
 }
 
@@ -1912,7 +1927,7 @@ test('M2-3: a row per soul, six columns in OD-J order, and under OD-H every cell
     assert.equal(cells.length, 6, 'a row does not carry six work-type cells');
     assert.deepEqual(cells.map((c) => c.dataset.ovWorkType), ['0', '1', '2', '3', '4', '5']);
     for (const c of cells) {
-      assert.equal(c.textContent, 'off',
+      assert.equal(ovWorkPrio(c), 'off',
         'a cell does not read `off` on an EMPTY work payload. That payload is the NORMAL boot state '
         + '(OD-H makes work opt-in), and "absent = off" is the sim\'s own semantics.');
       assert.ok(c.classList.contains('off'), 'the off cell carries no `off` class, so it cannot be '
@@ -1930,7 +1945,8 @@ test('M2-3: before the channel arrives the grid says so — it does not invent `
   // invisibly wrong exactly when it is least noticeable — a correct-looking reading nobody measured.
   ovWorkTab(null);
   const cell = ovWorkCells(ovWorkRows()[0])[0];
-  assert.notEqual(cell.textContent, 'off', 'a cell claimed `off` with no payload to read it from');
+  assert.notEqual(ovWorkPrio(cell), 'off', 'a cell claimed `off` with no payload to read it from');
+  assert.equal(ovWorkPrio(cell), '·', 'the no-payload cell does not draw the `·` wait glyph');
   assert.ok(cell.classList.contains('wait'));
   assert.equal(cell.disabled, true, 'the cell accepts a click it cannot compute the next step of');
   ovSent.length = 0;
@@ -1991,21 +2007,394 @@ test('M2-3: a cell FOLLOWS the `work` channel, with no click of the player\'s', 
   const cid = WORK_CREW[0].cid;
   ovWorkTab([[cid, 0, 1]]);
   const cell = ovWorkCells(ovWorkRows()[0])[0];
-  assert.equal(cell.textContent, '1');
+  assert.equal(ovWorkPrio(cell), '1');
   assert.ok(cell.classList.contains('set'));
   // The sim moves it host-side — a save reload, another surface, a future dispatcher. Nothing here
   // clicked anything.
   Hud.renderWork({ type: 'work', cells: [[cid, 0, 4]] });
-  assert.equal(cell.textContent, '4',
+  assert.equal(ovWorkPrio(cell), '4',
     'the cell did not follow the channel. It is showing something this surface remembers rather than '
     + 'what the sim holds — and the sim is the only authority for a work priority.');
   // …and back to off, which is a row DISAPPEARING from a sparse payload, not a zero arriving.
   Hud.renderWork({ type: 'work', cells: [] });
-  assert.equal(cell.textContent, 'off');
+  assert.equal(ovWorkPrio(cell), 'off');
   assert.ok(!cell.classList.contains('set'));
   // The row is mutated IN PLACE across all three renders — the same node the player's pointer is
   // over, which is why this leg holds one `cell` reference throughout rather than re-querying.
   assert.ok(ovWorkCells(ovWorkRows()[0])[0] === cell,
     'the row was rebuilt rather than mutated in place — the node under the pointer does not survive '
     + 'a repaint, which is BUG-A on this island');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐ M3-12 — SKILLS IN THE WORK TAB, AND THE CELL THAT IS NOT THERE.
+//
+// THE PLAYER SENTENCE: today the player cannot see why they would give a job to one soul rather than
+// another; after this the WORK tab shows each crew member's skill in each work type — and a soul
+// INCAPABLE of a type has no cell there at all.
+//
+// ⛔ THE ONE THING THAT MAKES THIS PACKAGE HARD IS THAT `BLANK` AND `ABSENT` LOOK SIMILAR AND MEAN
+// OPPOSITE THINGS. `rimworld-reference.md:335` — the `renders as` row of §1.6's table — draws a
+// DISABLED work type (priority 0, an order the player gave) as a **blank cell** and an INCAPABLE one
+// (a fact about the person, which `SetPriority` refuses to change) as **no cell at all**. So every
+// assertion about incapability below is STRUCTURAL — the button is not among the row's children, and
+// the row has one fewer child — and NONE of them is a style or a class check. A greyed, struck or
+// `opacity:0` cell would pass any colour assertion and still be the wrong sentence, still take the
+// click, and still tell the player *your setting is off*.
+//
+// ⚠️ THE FIXTURE AUTHORS ITS OWN SKILLS AND MASKS, AND IT HAS TO. `MECHANICS §13.37.5`: nothing in
+// the sim writes a skill and nothing writes `WorkIncapable`, so `--ship wreck` sends `workcaps` rows
+// that are correct and ALL ZERO (level 0 everywhere, mask 0 everywhere) and will until M3-8 authors
+// the persona sheets. A fixture taken from the running game could therefore not tell a working
+// absent-cell renderer from one that never runs. These payloads are host-SHAPED (`[cid, s0..s5,
+// mask]`, the contract `workcaps-model.test.js` parses out of `WireFormat.WorkCaps.cs`) and
+// hand-VALUED, and the values are chosen so that no client guess could reproduce them: the two souls
+// differ per column, and neither row is constant.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+import { workRowColumns, workSkillLabel } from '../src/ui/overview-model.js';
+
+/** Host-shaped `workcaps` row: `[cid, s0..s5, incapableMask]`. */
+const capsRow = (cid, skills, mask = 0) => [cid, ...skills, mask];
+
+/** The two souls' authored sheets. RELL is the shipping pawn: capable of everything, and DIFFERENT
+ *  per column so that a display reading one number for the whole row cannot pass. VOSS is the thawed
+ *  second soul: better at Repair, worse at Haul, and INCAPABLE OF MINE (bit `1 << 4`) — the one fact
+ *  that makes her row a different SHAPE and not merely different numbers. */
+const RELL = WORK_CREW[0].cid;
+const VOSS = WORK_CREW[1].cid;
+const RELL_SKILLS = [3, 8, 1, 6, 12, 5];
+const VOSS_SKILLS = [17, 2, 9, 0, 4, 11];
+const MINE = 4;                       // WorkType.Mine — the column VOSS has no cell in
+const VOSS_MASK = 1 << MINE;
+const TWO_SHEETS = [capsRow(RELL, RELL_SKILLS), capsRow(VOSS, VOSS_SKILLS, VOSS_MASK)];
+
+/** The work types a row actually has a cell for, read off the DOM. */
+const ovWorkTypesIn = (row) => ovWorkCells(row).map((c) => Number(c.dataset.ovWorkType));
+/** The cell addressing one work type in a row, or null when the row has none. */
+const ovWorkCellOf = (row, type) =>
+  ovWorkCells(row).find((c) => Number(c.dataset.ovWorkType) === type) || null;
+
+// ── the pure half ──
+
+test('M3-12: `workRowColumns` deletes ONLY the masked types, and keeps OD-J order', () => {
+  assert.deepEqual(workRowColumns(null).map((c) => c.type), [0, 1, 2, 3, 4, 5],
+    'an UNKNOWN capability row deleted a cell. `null` is "the channel has not arrived", not "she '
+    + 'cannot do it" — deleting a box on a missing message states a permanent fact about a person on '
+    + 'no evidence, and unlike a wrong number a missing box cannot be noticed as wrong.');
+  assert.deepEqual(workRowColumns({ incapableMask: 0 }).map((c) => c.type), [0, 1, 2, 3, 4, 5],
+    'a mask of 0 — which is what EVERY shipping ship sends today — deleted a cell');
+  assert.deepEqual(workRowColumns({ incapableMask: VOSS_MASK }).map((c) => c.type), [0, 1, 2, 3, 5],
+    'the masked work type still has a column');
+  // Two bits, non-adjacent, to catch an off-by-one or a `<=` in the bit test.
+  assert.deepEqual(workRowColumns({ incapableMask: (1 << 0) | (1 << 5) }).map((c) => c.type),
+    [1, 2, 3, 4], 'a two-bit mask did not delete exactly two columns');
+});
+
+test('M3-12: LEVEL 0 IS SHOWN, not hidden — the display does not flatter the ship', () => {
+  // ⛔ THE HONESTY CHOICE, and it is the one a reviewer should push on. Nothing in the sim writes a
+  // skill (MECHANICS §13.37.5), so today this reads `0` on every cell of every row. A blank corner
+  // at level 0 would make the shipped game look like one where skills are simply not displayed yet —
+  // indistinguishable from this feature being absent — when the truth it must carry is that nobody
+  // aboard is trained at anything.
+  assert.deepEqual(workSkillLabel(0), {
+    text: '0', state: 'untrained', title: workSkillLabel(0).title,
+  });
+  assert.equal(workSkillLabel(0).text, '0', 'level 0 renders as something other than "0"');
+  assert.match(workSkillLabel(0).title, /UNTRAINED/, 'level 0 does not say what a 0 means');
+  assert.equal(workSkillLabel(20).text, '20');
+  assert.equal(workSkillLabel(7).state, 'trained');
+  // …and "not told yet" is a THIRD answer, never level 0 — `decodeWorkCaps` drops a short row rather
+  // than zero-filling it for exactly this reason.
+  assert.equal(workSkillLabel(null).text, '·');
+  assert.equal(workSkillLabel(undefined).state, 'wait');
+  assert.notEqual(workSkillLabel(null).text, workSkillLabel(0).text,
+    'an unknown skill and a level-0 skill draw the same glyph — the grid would claim to know '
+    + 'something about every crew member the moment the channel was late');
+});
+
+// ── MUTATION 1: the number comes off the WIRE ──
+
+// MUTATION: render the skill from a client guess — a constant, `priority`, `cid % 20`, or anything
+// derived on this surface — ⇒ this fails, because the payload handed to `Hud.renderWorkCaps` is the
+// only place these twelve numbers exist. THE ASSERTION IS AGAINST THE MESSAGE (trap 4), not against
+// a source scan: the arrays below ARE the message's own bytes, and the DOM is read back against them.
+test('M3-12: every skill on screen is the one the `workcaps` MESSAGE carried', () => {
+  ovWorkTab([], WORK_CREW, TWO_SHEETS);
+  const [rowA, rowB] = ovWorkRows();
+  for (const t of [0, 1, 2, 3, 4, 5]) {
+    assert.equal(ovWorkSkill(ovWorkCellOf(rowA, t)), String(RELL_SKILLS[t]),
+      `Rell's column ${t} does not read the skill the wire sent`);
+  }
+  // VOSS has no MINE cell at all, so her row is read on the five she has.
+  for (const t of [0, 1, 2, 3, 5]) {
+    assert.equal(ovWorkSkill(ovWorkCellOf(rowB, t)), String(VOSS_SKILLS[t]),
+      `Voss's column ${t} does not read the skill the wire sent`);
+  }
+  // ⭐ THE ROWS DIFFER, AND IN BOTH DIRECTIONS — she is better at Repair and worse at Haul. A guess
+  // that happened to be a constant, or keyed off the column, would draw two identical rows.
+  assert.ok(Number(ovWorkSkill(ovWorkCellOf(rowB, 0))) > Number(ovWorkSkill(ovWorkCellOf(rowA, 0))));
+  assert.ok(Number(ovWorkSkill(ovWorkCellOf(rowB, 5))) > Number(ovWorkSkill(ovWorkCellOf(rowA, 5))));
+  assert.ok(Number(ovWorkSkill(ovWorkCellOf(rowB, 1))) < Number(ovWorkSkill(ovWorkCellOf(rowA, 1))));
+});
+
+test('M3-12: the skill FOLLOWS the channel — a new message repaints it, in place', () => {
+  ovWorkTab([], WORK_CREW, TWO_SHEETS);
+  const cell = ovWorkCellOf(ovWorkRows()[0], 0);
+  assert.equal(ovWorkSkill(cell), '3');
+  // The sim moves it host-side (M3-8 will attach a persona at thaw; a save reload replays it).
+  // Nothing here clicked anything.
+  Hud.renderWorkCaps({ type: 'workcaps', cells: [capsRow(RELL, [19, 8, 1, 6, 12, 5]), TWO_SHEETS[1]] });
+  assert.equal(ovWorkSkill(cell), '19',
+    'the skill corner did not follow the channel — it is showing something this surface remembers '
+    + 'rather than what the sim holds');
+  assert.ok(ovWorkCellOf(ovWorkRows()[0], 0) === cell,
+    'the row was rebuilt rather than mutated in place (BUG-A on this island)');
+});
+
+test('M3-12: with NO `workcaps` payload the grid says it does not know — it does not print 0', () => {
+  ovWorkTab([], WORK_CREW, null);
+  for (const row of ovWorkRows()) {
+    assert.deepEqual(ovWorkTypesIn(row), [0, 1, 2, 3, 4, 5],
+      'a cell was deleted with no capability payload to justify it');
+    for (const c of ovWorkCells(row)) {
+      assert.equal(ovWorkSkill(c), '·',
+        'the grid printed a skill NUMBER with no message carrying one. Under OD-H the boot grid is '
+        + 'the first thing a player reads, and a fabricated 0 there is indistinguishable from a real '
+        + 'one — the whole point of the channel is that this fact has exactly one source.');
+    }
+  }
+});
+
+// ── ⭐ MUTATION 2: BLANK vs ABSENT, asserted STRUCTURALLY ──
+
+// MUTATION: render an incapable type as a blank/greyed/struck cell — i.e. keep the button and add a
+// class, or set `disabled`, or `hidden`, instead of leaving it out of the row ⇒ EVERY leg below
+// fails, because none of them looks at a style. This is RW§1.6's own distinction: *there is no such
+// setting for this pawn* is a different sentence from *this pawn's setting is off*, and the second
+// one is what a present-but-decorated box says however it is painted.
+test('M3-12: an INCAPABLE type has NO CELL; the same type merely OFF has a BLANK one', () => {
+  // The fixture carries BOTH failure shapes at once (the fifth trap's rule): one soul incapable of
+  // MINE, one soul with MINE merely switched off — and `work` is EMPTY, so under OD-H every type is
+  // off for both of them and MINE-off is the ordinary case, not a special one.
+  ovWorkTab([], WORK_CREW, TWO_SHEETS);
+  const [rell, voss] = ovWorkRows();
+
+  // (a) RELL — capable of MINE, and it is OFF. A BLANK CELL: present, clickable, reading `off`.
+  const rellMine = ovWorkCellOf(rell, MINE);
+  assert.ok(rellMine, 'the capable soul lost her MINE cell — then the leg below proves nothing');
+  assert.equal(ovWorkPrio(rellMine), 'off');
+  assert.equal(rellMine.disabled, false,
+    'the blank cell refuses the click. Off is the state the player clicks OUT of.');
+
+  // (b) VOSS — INCAPABLE of MINE. NO CELL AT ALL, asserted three ways, none of them a style.
+  assert.deepEqual(ovWorkTypesIn(voss), [0, 1, 2, 3, 5],
+    'the incapable soul still has a MINE cell in her row. `rimworld-reference.md:335`: disabled '
+    + 'renders BLANK, incapable renders as NO CELL AT ALL — the box is absent. A cell that is '
+    + 'present but decorated says "your setting is off", which is the opposite fact: `SetPriority` '
+    + 'REFUSES an incapable type, so there is no setting there to be off.');
+  assert.equal(ovWorkCellOf(voss, MINE), null, 'a button still addresses the incapable work type');
+  // ⛔ AND NOTHING STANDS IN THE GAP. Counting the row's element children catches the evasion that
+  // the two assertions above cannot see: a placeholder `<span>` under some other class, drawn to
+  // keep the row's shape, which is a greyed cell wearing a different tag.
+  const kids = voss.childNodes.filter((n) => n.nodeType === 1);
+  assert.equal(kids.length, 6,
+    `the incapable soul's row has ${kids.length} elements; expected 6 (the name + five cells). `
+    + 'Something is occupying the missing column — a spacer is a cell the player cannot click, '
+    + 'which is the "greyed box" rendering under another name.');
+  assert.equal(kids.filter((n) => n.classList.contains('ov-workcell')).length, 5);
+  // …and the header still has all six columns: the ABSENCE is per-person, never a column the whole
+  // grid dropped.
+  assert.equal(ovWorkHeaders().length, 6,
+    'a per-person incapability removed a COLUMN from the grid. The header is the ship\'s list of '
+    + 'work types; only the ROW is hers.');
+});
+
+// MUTATION: place the cells by their turn in the row (drop the `data-ov-work-type` grid-column rules
+// from styles.css, or build the row from `workRowColumns` with auto-placement) ⇒ this fails. THE
+// FAILURE IT GUARDS IS INVISIBLE TO EVERY OTHER LEG IN THIS FILE: each button carries its own cid and
+// work type, so the ORDERS stay correct while the boxes slide one column left under the wrong
+// headers — HAUL drawn beneath MINE. The player would click the box under HAUL and get MINE, and
+// `ovSent` would say the click was right.
+test('M3-12: the surviving cells keep their COLUMN — the gap stays under its own header', () => {
+  const CSS = codeOnly(readFileSync(fileURLToPath(new URL('../styles.css', import.meta.url)), 'utf8'));
+  // ⛔ THE PREMISE FIRST, AND IT IS THE HALF A RULE CENSUS CANNOT SEE. `grid-column` is inert on a
+  // child of anything that is not a grid, so switching `.ov-workrow` to `display:flex` leaves all six
+  // rules below present and matching while making every one of them do NOTHING — the survivors pack
+  // left and HAUL draws under MINE, the exact failure this test exists to prevent, with the whole
+  // suite green. Pin the container, not only the placements.
+  assert.match(CSS, /\.ov-workrow\s*\{[^}]*display:\s*grid/,
+    '`.ov-workrow` is no longer `display:grid`. Every `grid-column` rule below is then INERT — they '
+    + 'stay in the file, they still match, and they place nothing. An incapable soul\'s row would '
+    + 'pack its five cells to the left and each would draw under the wrong column header.');
+  assert.match(CSS, /\.ov-workrow\s*\{[^}]*grid-template-columns:\s*[^;}]*repeat\(6/,
+    '`.ov-workrow` no longer declares six explicit cell columns. `grid-column: 7` cannot address a '
+    + 'track that does not exist, so the placements silently collapse.');
+  for (let t = 0; t < 6; t++) {
+    const re = new RegExp('\\.ov-workcell\\[data-ov-work-type="' + t + '"\\]\\s*\\{[^}]*grid-column:\\s*'
+      + (t + 2) + '\\b');
+    assert.match(CSS, re,
+      `styles.css does not pin work type ${t} to grid column ${t + 2}. \`.ov-workrow\` is a fixed `
+      + 'six-column grid and an incapable soul\'s row has FEWER children than columns, so without an '
+      + 'explicit placement the survivors shuffle left and every one of them draws under the wrong '
+      + 'header. The addressing stays right, which is exactly why no click test can see this.');
+  }
+  // NON-VACUITY, as an INCLUSION test (the 4th shape): the scan must be able to MISS.
+  assert.doesNotMatch(CSS, /\.ov-workcell\[data-ov-work-type="6"\]/,
+    'the CSS scan matches a work type that does not exist — it is not reading what it thinks');
+  assert.ok(CSS.length > 5000, 'the stripped stylesheet is implausibly short — the scan reads nothing');
+  // …and the DOM half: the cell that SURVIVES beside the gap still addresses its own work type, so a
+  // future author who "fixes" the layout by re-indexing the row breaks this instead of shipping.
+  ovWorkTab([], WORK_CREW, TWO_SHEETS);
+  const voss = ovWorkRows()[1];
+  const afterGap = ovWorkCells(voss)[4];        // the 5th cell in a five-cell row: HAUL, not MINE
+  assert.equal(afterGap.dataset.ovWorkType, '5');
+  ovSent.length = 0;
+  fire(afterGap, 'click', { detail: 1 });
+  assert.deepEqual(ovSent, [{ cmd: 'workPriority', cid: VOSS, work: 5, priority: 1 }],
+    'the cell beside the gap orders the wrong work type — the absent cell shifted the addressing');
+});
+
+// ── MUTATION 3: the display is READ-ONLY ──
+
+// MUTATION: make the skill editable — give the skill corner its own `data-ov-*` address and a branch
+// in `onHudClick`, or send a "set skill" order from the cell ⇒ the first two legs fail. A skill is
+// the SIM's to write (M3-8 authors it, `WorkRates` consumes it); the player's control over it is
+// choosing whom to thaw and whom to assign, which is the sentence this whole package exists to make
+// answerable.
+test('M3-12: the skill is READ-ONLY — clicking it cycles the PRIORITY and orders nothing else', () => {
+  ovWorkTab([], WORK_CREW, TWO_SHEETS);
+  const cell = ovWorkCellOf(ovWorkRows()[1], 0);
+  const skill = cell.oneClass('ov-workskill');
+  assert.deepEqual(Object.keys(skill.dataset), [],
+    'the skill corner carries its own dataset address. `onHudClick` routes on `data-ov-*`, so an '
+    + 'address here is one branch away from an editing affordance on a value the player does not own.');
+  ovSent.length = 0;
+  fire(skill, 'click', { detail: 1 });          // a click ON THE NUMBER, not on the cell around it
+  assert.deepEqual(ovSent, [{ cmd: 'workPriority', cid: VOSS, work: 0, priority: 1 }],
+    'a click on the skill number did not resolve to the ordinary priority cycle. It must send the '
+    + 'SAME order as a click anywhere else in the cell — one order, and never a skill order.');
+  assert.equal(ovWorkSkill(cell), '17',
+    'the skill changed when it was clicked. Nothing on this surface may write it: the wire is the '
+    + 'only author, and a local mirror would have nothing to correct it.');
+  // …and it still does not move when the sim echoes the priority back.
+  Hud.renderWork({ type: 'work', cells: [[VOSS, 0, 1]] });
+  assert.equal(ovWorkPrio(cell), '1');
+  assert.equal(ovWorkSkill(cell), '17', 'a priority echo rewrote the skill');
+});
+
+// ── ⭐ MUTATION 3b: the CONFLATION leg ──
+
+// MUTATION: drop `workcaps` and infer capability from the absence of a `work` row — "she has no row
+// for MINE, so she cannot mine" ⇒ this fails with EVERY cell of EVERY row gone. That is not a corner
+// case: under OD-H the `work` channel is EMPTY at boot for everyone, which is the state of the game
+// the first time a player opens this tab. The fixture below IS the boot state.
+test('M3-12: capability comes from the MASK, never from a missing `work` row (OD-H boot)', () => {
+  // The boot state, exactly: nothing switched on, and a `workcaps` payload that is all zeroes —
+  // which is what `--ship wreck` sends today (MECHANICS §13.37.5: nothing writes `WorkIncapable`).
+  ovWorkTab([], WORK_CREW, [capsRow(RELL, [0, 0, 0, 0, 0, 0]), capsRow(VOSS, [0, 0, 0, 0, 0, 0])]);
+  const rows = ovWorkRows();
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.deepEqual(ovWorkTypesIn(row), [0, 1, 2, 3, 4, 5],
+      'a cell is missing on the OD-H boot grid, where every work type is OFF for everyone and NOBODY '
+      + 'is incapable of anything. `incapableMask` is a fact about the PERSON; a missing `work` row '
+      + 'is an ORDER from the PLAYER. Inferring the first from the second marks every soul incapable '
+      + 'of everything at the exact moment the player first looks at the tab.');
+    for (const c of ovWorkCells(row)) assert.equal(ovWorkPrio(c), 'off');
+  }
+  // And the inverse, on the same fixture: switching one type ON changes NOTHING about the shape.
+  Hud.renderWork({ type: 'work', cells: [[VOSS, MINE, 2]] });
+  assert.deepEqual(ovWorkTypesIn(ovWorkRows()[1]), [0, 1, 2, 3, 4, 5]);
+  assert.equal(ovWorkPrio(ovWorkCellOf(ovWorkRows()[1], MINE)), '2');
+});
+
+// ── ⭐ MUTATION 4: the roster GROWS — the two-crew leg ──
+
+// MUTATION: keep the row set (or the cell set) from the first paint — memoise `workRowColumns`'s
+// answer per row, cache the decoded caps, or build the cells once and never revisit them ⇒ this
+// fails. THIS IS THE MILESTONE'S OWN SHAPE: the player thaws a second soul at RUNTIME, so every row
+// on this tab is created after boot and its capability payload can arrive after the row does.
+test('M3-12: a soul thawed AFTER boot gets her own row, her own numbers and her own gaps', () => {
+  // One soul aboard, no capability data yet — the frame before the pod opens.
+  ovWorkTab([], [WORK_CREW[0]], null);
+  assert.equal(ovWorkRows().length, 1, 'the one-soul fixture did not paint one row');
+  const rellRow = ovWorkRows()[0];
+  assert.deepEqual(ovWorkTypesIn(rellRow), [0, 1, 2, 3, 4, 5]);
+
+  // …the pod cycles. A second person exists, and the host replays BOTH sheets.
+  Hud.renderWorkCaps({ type: 'workcaps', cells: TWO_SHEETS });
+  ovRoster(WORK_CREW);
+  const rows = ovWorkRows();
+  assert.equal(rows.length, 2, 'the thawed soul got no row at all');
+  assert.ok(rows[0] === rellRow, 'the existing row was rebuilt rather than kept (BUG-A)');
+
+  // ⭐ THE MILESTONE'S DECISIVE STEP, in the falsifying form the charter demands: HER ROW IS NOT
+  // RELL'S, and the two differ in the SET of cells — not only in their numbers. Under one scalar
+  // through six curves the numbers alone would order the work types identically for every pawn, so
+  // the set is the part that proves the rows are different in SHAPE.
+  assert.notDeepEqual(ovWorkTypesIn(rows[1]), ovWorkTypesIn(rows[0]),
+    'the two rows have the same set of cells — the exit gate\'s sentence ("the new soul\'s row reads '
+    + 'differently from Rell\'s") is not true on screen');
+  assert.deepEqual(ovWorkTypesIn(rows[0]), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(ovWorkTypesIn(rows[1]), [0, 1, 2, 3, 5]);
+  const numbers = (r) => ovWorkCells(r).map(ovWorkSkill);
+  assert.notDeepEqual(numbers(rows[1]), numbers(rows[0]).filter((_, i) => i !== MINE),
+    'the two rows carry the same skill numbers');
+
+  // …and Rell's OWN row converged the moment her sheet arrived: it was painted before any capability
+  // payload existed and must now read the wire, not the `·` it was created with.
+  assert.equal(ovWorkSkill(ovWorkCellOf(rows[0], 0)), '3');
+});
+
+// MUTATION: apply the cell set once and never again (cache the applied set on the row record and
+// compare against THAT, which is the obvious implementation and the one this package shipped first)
+// ⇒ this fails in one direction or the other. A capability payload can arrive, change, or be replayed
+// on reconnect after the row exists, and a row that latched its first answer would keep a stale shape
+// for the rest of the session with nothing on screen to say so.
+// ⚠️ HONEST SCOPE OF THIS LEG. It pins that the set is RE-APPLIED, and the "applied once ever"
+// mutant is what it catches. It does NOT distinguish the shipped DOM comparison from a cached
+// signature — measured, that mutant is EQUIVALENT under every input the wire can produce, and it is
+// reported as a survivor rather than counted as a red. The shipped version is a robustness choice
+// (no state to go stale) and the module header says so.
+test('M3-12: a row converges BOTH ways when the mask changes under it', () => {
+  ovWorkTab([], WORK_CREW, [capsRow(RELL, RELL_SKILLS), capsRow(VOSS, VOSS_SKILLS, 0)]);
+  const voss = ovWorkRows()[1];
+  assert.deepEqual(ovWorkTypesIn(voss), [0, 1, 2, 3, 4, 5], 'a zero mask deleted a cell');
+  // …the mask arrives (a reconnect replaying the real sheet).
+  Hud.renderWorkCaps({ type: 'workcaps', cells: TWO_SHEETS });
+  assert.ok(ovWorkRows()[1] === voss, 'the row was rebuilt');
+  assert.deepEqual(ovWorkTypesIn(voss), [0, 1, 2, 3, 5], 'the row did not lose the masked cell');
+  // …and back, which is the direction a latched set fails silently in.
+  Hud.renderWorkCaps({ type: 'workcaps', cells: [capsRow(RELL, RELL_SKILLS), capsRow(VOSS, VOSS_SKILLS, 0)] });
+  assert.deepEqual(ovWorkTypesIn(voss), [0, 1, 2, 3, 4, 5],
+    'the row kept the gap after the mask cleared — the cell set was latched at first paint');
+  assert.equal(ovWorkSkill(ovWorkCellOf(voss, MINE)), '4',
+    'the restored cell is empty — it was re-attached without being repainted');
+  assert.equal(ovWorkPrio(ovWorkCellOf(voss, MINE)), 'off');
+});
+
+// ── the two CARRIED OWNER ITEMS are untouched (HANDOVER files both; this package resolves neither) ──
+
+// ⚠️ NOT A FEATURE TEST — A HOLD. `HANDOVER.md` files two open owner items against this tab: the
+// `BUILD` column label collides with the BUILD tab, and the click cycle walks only upwards where
+// RimWorld pairs two gestures. M3-12's charter says explicitly: do not fix them here, do not make
+// them worse. This pins the "no worse" half, because a package that rebuilt the cell's internals is
+// exactly where an unasked-for "while I was in here" change lands.
+test('M3-12: the carried owner items are UNCHANGED — the BUILD label and the ascending cycle', () => {
+  assert.deepEqual(ovWorkHeaders().map((h) => h.textContent),
+    ['REPAIR', 'BUILD', 'CRAFT', 'STRIP', 'MINE', 'HAUL'],
+    'the WORK column labels moved. The `BUILD`/BUILD-tab collision is a CARRIED OWNER ITEM — it is '
+    + 'the owner\'s to resolve, and renaming it here would resolve it by accident.');
+  assert.deepEqual([0, 1, 2, 3, 4].map(nextWorkPriority), [1, 2, 3, 4, 0],
+    'the click cycle changed. The ascending-only walk is a CARRIED OWNER ITEM (RimWorld pairs a '
+    + 'downward left click with an upward right click); this package neither fixes nor worsens it.');
+  // …and the cell still takes exactly one gesture: no right-click branch appeared beside the skill.
+  ovWorkTab([], WORK_CREW, TWO_SHEETS);
+  const cell = ovWorkCellOf(ovWorkRows()[0], 0);
+  ovSent.length = 0;
+  fire(cell, 'click', { detail: 1 });
+  fire(cell, 'contextmenu', { detail: 1 });
+  assert.deepEqual(ovSent, [{ cmd: 'workPriority', cid: RELL, work: 0, priority: 1 }],
+    'a second gesture on a WORK cell now sends something');
 });
