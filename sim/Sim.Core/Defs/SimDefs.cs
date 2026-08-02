@@ -221,6 +221,47 @@ namespace Perilune.Sim
             /// with ample travel margin at the vacuum/hypoxia decline rates. NeedsSystem does not
             /// read it — SafetySystem does. Current: 0.5.</summary>
             public float FleeSuffocation;
+
+            // ⭐⭐ M3-9 — THE THREE REST SCALARS. Read by RestSystem, by nothing else. They live in
+            // [needs] rather than in a rest.def of their own because they are the SAME meter as
+            // fatigue_per_second and mood_fatigue_weight above: one need, one section, so a designer
+            // retuning "how tired do people get" sees the fall rate next to the rise rate rather than
+            // in another file. Analogue: docs/design/rimworld-reference.md §4.4.
+
+            /// <summary>⭐ M3-9 — <see cref="RestSystem"/>: the <see cref="Citizen.Fatigue"/> level at
+            /// which an IDLE crew member goes to sleep. RimWorld's own trigger is <i>rest &lt; 30 %</i>
+            /// (§3.5's Anything/Sleep rows), i.e. tiredness above 0.70; 0.75 is that band, rounded to
+            /// the quarter, which at the shipped <see cref="FatiguePerSecond"/> is 12 sim-hours awake.
+            /// ⛔ It is a SELECTION threshold, never an interrupt: <see cref="RestSystem"/> asks it
+            /// only of a crew member who holds no job. Current: 0.75.</summary>
+            public float FatigueRestThreshold;
+
+            /// <summary>⭐ M3-9 — <see cref="RestSystem"/>: <see cref="Citizen.Fatigue"/> removed per
+            /// second of sleep IN A BED, i.e. at rest effectiveness 1.0. §4.4 measures RimWorld's
+            /// 0 → 100 % as <b>10.5 in-game hours at effectiveness 1.0</b>; 37 800 s is that number in
+            /// this sim's seconds, so the value is <c>1f / 37_800f</c>. Multiplied by
+            /// <see cref="RestEffectivenessGround"/> when she is not on a bed.
+            ///
+            /// <para>⚠️ <b>IT DOES NOT COMPOSE WITH <see cref="FatiguePerSecond"/> — THE RAMP IS
+            /// GATED, NOT SUBTRACTED.</b> <c>NeedsSystem</c> skips its ramp while a crew member holds
+            /// <see cref="JobKind.Sleep"/>, because §4.4's numbers describe a meter that falls only
+            /// while awake. ⛔ Do NOT re-derive this value to absorb a ramp: that encodes a coupling
+            /// the analogue does not have and makes the 1/37800 provenance a lie. MEASURED on the
+            /// SHIPPED stack from the 0.75 trigger: <b>7.89 sim-h</b> asleep in a bed, <b>9.80
+            /// sim-h</b> on the deck (9.48 h / 11.74 h from 0.90). With the ramp ungated those were
+            /// 27.7 h and 63.6 h.</para>
+            ///
+            /// Current: 1/37800.</summary>
+            public float FatigueRecoveryPerSecond;
+
+            /// <summary>⭐ M3-9 — <see cref="RestSystem"/>: the multiplier on
+            /// <see cref="FatigueRecoveryPerSecond"/> for a crew member sleeping on the DECK rather
+            /// than in a <see cref="DeviceKind.Bed"/>. §4.4's rest-effectiveness table, verbatim:
+            /// ground/sleeping spot <b>0.8</b>, bed <b>1.0</b>. ⛔ It exists so that "no bunk aboard"
+            /// means SLOWER, never NEVER — the wreck ships with no furniture at all
+            /// (<c>AuthoredShips.cs</c>, <c>RoomDresser.Dress</c> deliberately not called), so on the
+            /// default ship this multiplier IS the shipped path. Current: 0.8.</summary>
+            public float RestEffectivenessGround;
         }
 
         /// <summary>SustenanceSystem constants (public consts there today).</summary>
@@ -825,6 +866,11 @@ namespace Perilune.Sim
                     MoodFatigueWeight = 25f,
                     MoodSuffocationWeight = 60f,
                     FleeSuffocation = 0.5f, // E0-2 crew-safety guard (SafetySystem)
+                    // M3-9 (RestSystem). The rate keeps its exact 1f/N compile-time bits, exactly as
+                    // the ramp rates above do, so B4 default-equivalence holds against needs.def.
+                    FatigueRestThreshold = 0.75f,
+                    FatigueRecoveryPerSecond = 1f / 37_800f,
+                    RestEffectivenessGround = 0.8f,
                 },
 
                 Sustenance = new SustenanceDefs
@@ -1112,6 +1158,12 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Needs.MoodFatigueWeight);
             h = XxHash64.Combine(h, Needs.MoodSuffocationWeight);
             h = XxHash64.Combine(h, Needs.FleeSuffocation); // E0-2 crew-safety guard (append-only)
+            // M3-9 (RestSystem) — APPENDED, never inserted: the fold order IS the checksum, so a
+            // field slotted beside its logical neighbours above would move P4/P5 for every existing
+            // field at once and make the next diff unreadable.
+            h = XxHash64.Combine(h, Needs.FatigueRestThreshold);
+            h = XxHash64.Combine(h, Needs.FatigueRecoveryPerSecond);
+            h = XxHash64.Combine(h, Needs.RestEffectivenessGround);
 
             h = XxHash64.Combine(h, Sustenance.DrinkLiters);
             h = XxHash64.Combine(h, Sustenance.PotatoHungerValue);

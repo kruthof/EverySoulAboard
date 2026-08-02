@@ -28,6 +28,39 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
+# ⭐⭐ M3-9 (PIN M3-c, 2026-08-02): 3d23665a724e853d -> 7bdd0d6f7756dfdc. CREW SLEEP. Until this row
+# `Citizen.Fatigue` had NO reducer anywhere (NeedsSystem's own header said so), so every crew member
+# on every ship saturated at 1.0 after ~16 h and stayed there. `RestSystem` is the reducer: a crew
+# member who is BETWEEN JOBS and past needs.def `fatigue_rest_threshold` walks to a Bed, sleeps, and
+# wakes at Fatigue 0 — and NeedsSystem's ramp is GATED while she sleeps (RimWorld's rest meter falls
+# only while awake; an ungated ramp made the real recovery `recovery x effectiveness - ramp` and a
+# deck sleep took 63.6 sim-h). NOT fold-only: a BEHAVIOUR change on every ship.
+#
+# ⚠️ AND THE DAY-3 SUMMARY LINE DOES NOT MOVE — say it plainly, because it is the trap. All four
+# cells below print `pop 2 / hydro 98.1 kPa / water 0.0 L / potatoes 371`; the ONLY evidence this pin
+# moved is the hash, which folds per-citizen Fatigue/Mood/JobKind. A reader who checks the printed
+# line for a behaviour change will conclude, wrongly, that nothing happened.
+#
+# THE CAUSE, DECOMPOSED AS A DRIVEN 2x2 (needs.def edited in place, restored from an in-memory copy):
+#                            crew never sleep (threshold 2)   crew sleep (shipped 0.75)
+#   mood_fatigue_weight 25   3d23665a724e853d  <- THE OLD PIN  7bdd0d6f7756dfdc  <- SHIPPED
+#   mood_fatigue_weight 0    455d352944081b14                  97f43a5a7f90bae2
+# => (1) with the trigger out of reach this hash returns EXACTLY to its old value, so the ENTIRE move
+# is the sleep BEHAVIOUR and the new system's mere presence (registration, JobKind.Sleep = 12, three
+# def fields, the WorkTypeMap row, the gated ramp) is PIN-NEUTRAL, measured. (2) The bottom row's
+# cells differ from each other, so sleeping moves the pin INDEPENDENTLY of mood: the labour a
+# sleeping pawn does not do is itself a state change.
+#
+# ⚠️ AND THE THIRD CAUSE, WHICH IS THE EXPENSIVE ONE: Fatigue reaches Citizen.Mood, which reaches
+# ShipMetrics.Morale, which weights DirectorSystem's tension, which moves _wearPressure, which scales
+# MachineWearSystem => MACHINE WEAR RATES CHANGED ON EVERY SHIP IN THE REPO. Asserted out loud by
+# RestSystemTests.TheWearPath_ACTUALLY_Moves_WhenFatigueFalls rather than left to be discovered.
+#
+# ⚠️ P2/P3 HELD, AND THE HOLD IS THE WINDOW, NOT A DEAD SYSTEM. Tick 3000 is 300 sim-seconds, where
+# Fatigue reaches ~0.0052 against a 0.75 trigger — nobody aboard CAN sleep. Control, driven: with
+# fatigue_rest_threshold at 0.001 both goldens MOVE (perilune cb09b584a5f15e52 -> c4001c0b66e3e4e9,
+# slice 43a1a5c25713faec -> 78e2cc40adc39c45). Do not read "P2/P3 held" as "the goldens cover rest";
+# the instrument is RestSystemTests and nothing else. P4/P5 moved for the three [needs] scalars.
 # M3-7 (PIN M3-b, 2026-08-02): 13674ebc4f8a14a9 -> 3d23665a724e853d. `Citizen.Skill` — M2-1's last
 # reserved byte — WIDENED to a per-work-type array of six (CITZ v8 -> v9, OD-M item 8A), so the
 # citizen fold now folds six bytes where it folded one. FOLD-ONLY, and measured rather than argued:
@@ -85,7 +118,7 @@ printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes 
 # so Simulation.StateHash's citizen fold changed on every ship. FOLD-ONLY: with the identical state
 # present but excluded from the fold, this hash was still 02257f5bce961570 and the full dotnet suite
 # was 1330/1330 green — measured, not asserted. Nothing reads the new state.
-printf '%s\n' "$OUT" | grep -q "3d23665a724e853d" || { echo "FAIL: reference hash changed (expected 3d23665a724e853d) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+printf '%s\n' "$OUT" | grep -q "7bdd0d6f7756dfdc" || { echo "FAIL: reference hash changed (expected 7bdd0d6f7756dfdc) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== screenshot-test metrics (advisory) =="
 if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then

@@ -3795,6 +3795,24 @@ namespace Perilune.Web
                     }
                     AppendTile(sb, c.JobTarget, c.Pos.Z);
                     break;
+                case JobKind.Sleep:
+                    // ⭐ M3-9 — and the WHERE is the payload, not decoration. A bunk rests at 1.0 and
+                    // the deck at 0.8 (needs.def rest_effectiveness_ground), so "Sleeping on the deck"
+                    // is the only way a player can see WHY a crew member who slept is still tired —
+                    // the alternative is an invisible 20% penalty, which this repo files as a
+                    // functional defect rather than a cosmetic one. Read off her CURRENT tile, exactly
+                    // as RestSystem.ProgressSleep scores it, so the two can never disagree.
+                    if (enRoute)
+                    {
+                        sb.Append("Heading to sleep at ");
+                        AppendTile(sb, c.JobTarget, c.Pos.Z);
+                    }
+                    else if (_sim.TryGetDeviceAt(c.Pos, out var bunk) && bunk.Kind == DeviceKind.Bed)
+                    {
+                        sb.Append("Sleeping in ").Append(DeviceLabel(c.Pos, "a bunk"));
+                    }
+                    else sb.Append("Sleeping on the deck");
+                    break;
                 case JobKind.Flee:
                     sb.Append("Heading to safe air"); // E0-2 crew-safety: fleeing unbreathable air
                     break;

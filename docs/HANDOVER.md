@@ -8,22 +8,29 @@ citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resol
 
 ## Current state (2026-08-02 session C, continued — TWELVE merges, M3-9 REST in flight, the LAST package)
 
-**Gate on `main` (`d9cf896`): 1759 dotnet + 1205 node, twin hashes MATCH at P1
-`3d23665a724e853d`** (re-measure before quoting). ⚠️ **PIN M3-b EXECUTED (tag `pin/m3-b`
-applied at merge) — M3-7, P1/P2/P3: P1 `13674ebc4f8a14a9` → `3d23665a724e853d`,
-P2 `1c036ffd53b8f106` → `cb09b584a5f15e52`, P3 `37c85c1ed445895e` → `43a1a5c25713faec`;
-P4 `77a7a8a9e967eab4` and P5 `edf1577c32f14e55` HELD** (the skill curve is LITERALS, no def
-field). Cause: `Citizen.Skill` — M2-1's last reserved byte — widened to the per-work-type
-`SkillsRaw` array of six (CITZ v8→v9, OD-M item 8A). **FOLD-ONLY, MEASURED:** with the array
-present and all six consumers live but the fold reverted to `…SkillsRaw[0]`, P1 read
-`13674ebc4f8a14a9` again and both goldens were green on their OLD values.
-⛔ **AND THE HARD HALF: NO PIN SEES THE RATE TERM — the thing the package is FOR.** 2×2, driven:
-force every crew member to skill 20 (2.24×–3.00×) and all three pinned runs are bit-identical
-with the rate seam live and stubbed out (P1 `baf85f1209ce5ea3`, perilune `3fa8982abae9456b`,
-slice `b4a2380ffc416ec2`). OD-H boots work off and no pinned run enqueues a command, so **no
-pinned fixture does any work at all** — M2-12/M2-17 again; `SkillConsumerTests` is the curve's
-only instrument. `ci.sh:88` + CLAUDE.md + MECHANICS §13.37 moved in the same commit.
-Next pin row: none standing (M3-b discharged).
+**Gate on `lane/rest` (`384de8a`): 1775 dotnet + 1205 node, twin hashes MATCH at P1
+`7bdd0d6f7756dfdc`** (re-measure before quoting).
+⛔ **PIN M3-c IN FLIGHT ON `lane/rest` (M3-9 REST) — P1 + P4/P5 MOVE, P2/P3 measured HELD.**
+P1 `3d23665a724e853d` → **`7bdd0d6f7756dfdc`** (twin match) · P4 `77a7a8a9e967eab4` →
+**`661fcdd4b89f1e87`** ·
+P5 `edf1577c32f14e55` → **`558a1c0a4985f5ea`** (three new `[needs]` scalars, each measured twice
+through two code paths). **Cause: a BEHAVIOUR change on every ship** — `RestSystem` is the reducer
+`Citizen.Fatigue` never had, and `NeedsSystem`'s ramp is GATED while she sleeps (RimWorld's meter
+falls only while awake; ungated it made a deck sleep 63.6 sim-h). ⚠️ **The day-3 summary line does
+NOT move** — all four 2×2 cells print `hydro 98.1 kPa / potatoes 371`, so the hash is the only
+evidence.
+**DRIVEN 2×2:** with `fatigue_rest_threshold` out of reach P1 returns EXACTLY to its old value ⇒ the
+whole move is the sleep BEHAVIOUR and the system's mere presence (registration, `JobKind.Sleep = 12`,
+def fields, `WorkTypeMap` row) is **pin-neutral, measured**; at `mood_fatigue_weight = 0` the
+sleep/no-sleep cells still differ (`97f43a5a7f90bae2` vs `455d352944081b14`) ⇒ sleeping moves the pin
+independently of mood. ⚠️ **THIRD CAUSE, THE EXPENSIVE ONE: MACHINE WEAR RATES CHANGED ON EVERY
+SHIP** (Fatigue → Mood → Morale → Director tension → `_wearPressure` → `MachineWearSystem`),
+asserted by `RestSystemTests.TheWearPath_ACTUALLY_Moves_WhenFatigueFalls`.
+⚠️ **P2/P3 HELD, AND THE HOLD IS THE WINDOW, NOT A DEAD SYSTEM:** tick 3000 is 300 sim-seconds where
+Fatigue reaches ~0.0052 against a 0.75 trigger; control, driven — at threshold 0.001 BOTH goldens
+move (perilune → `c4001c0b66e3e4e9`, slice → `78e2cc40adc39c45`). ⛔ Not "the goldens cover rest".
+`ci.sh:121` + CLAUDE.md + MECHANICS §13.40 in the same commit; tag `pin/m3-c` at merge.
+Before it: **PIN M3-b EXECUTED (`pin/m3-b`) — M3-7, P1/P2/P3 fold-only, P4/P5 held.**
 
 **Session mode**: owner authorized an autonomous run (away ~8 h from ~22:00 07-31; back
 and said "continue"); orchestrator merges the M3 queue in order, one Opus implementer +

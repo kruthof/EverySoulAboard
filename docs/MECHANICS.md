@@ -1792,19 +1792,25 @@ set), so a crew member will cheerfully agree to walk with you and then not.
 > with `Material` appended after them as 7 (`WireFormat.cs:307-315`). `task` was a pre-existing
 > roster field, so no wire shape moved and a four-element `designs` reader is still unaffected.
 
-- **`Fatigue`** rises at 1/57,600 per second to a hard clamp of 1.0 after 16 h and
-  **nothing anywhere reduces it**. There is no sleep mechanic; `Bed` is inert furniture
-  (`machines.def`: `Bed 0 0 Comfort false 0 0 0 0`). Measured: all eight slice crew are at
-  `Fatigue = 1.00` after one sim-day, permanently costing 25 mood points.
+- ~~**`Fatigue`** rises at 1/57,600 per second to a hard clamp of 1.0 after 16 h and
+  **nothing anywhere reduces it**…~~ ✅ **CLOSED 2026-08-02 by M3-9 — see §13.40.** `RestSystem`
+  is the reducer: a crew member between jobs past `fatigue_rest_threshold` (0.75, i.e. 12 sim-hours)
+  sleeps in a `Bed` at effectiveness 1.0 or on the deck at 0.8 and returns to 0. `Bed` is no longer
+  inert furniture. ⚠️ **The half of the old bullet that survives**: fatigue still gates **no work
+  rate** — `Citizen.cs`'s *"slows work"* was false and is now corrected in place, and RW §4.4 says
+  rest reaches mood and immunity only.
 - **`Mood`** is computed but gates nothing — no work-speed modifier, no breaks (§5.3). It
   is not a flat line: it **sawtooths**, because the hunger/thirst terms ramp and then drop
   each time a citizen eats or drinks. Measured on the slice, crew-mean at the day marks:
   **−37.7 (day 1) → −26.4 (day 2) → −29.5 (day 3)**, with a per-citizen envelope over days
-  1–3 of roughly **[−39.8, −10.5]**. The durable fact is the ceiling, not the average:
-  `Fatigue` saturates at 1.0 after ~16 h and never falls, so `Mood ≤ mood_base −
-  mood_fatigue_weight = 20 − 25 = −5` from then on (`NeedsSystem.cs:81-85`, `needs.def:27-31`).
-  **Mood is permanently negative for every crew member from day 1 onward**, whatever they
-  eat.
+  1–3 of roughly **[−39.8, −10.5]**. ⚠️ **THE CEILING CLAIM IS RETIRED BY M3-9 (§13.40).** It read:
+  *"`Fatigue` saturates at 1.0 after ~16 h and never falls, so `Mood ≤ 20 − 25 = −5` from then on …
+  Mood is permanently negative for every crew member from day 1 onward."* Fatigue now falls while a
+  crew member sleeps, so the −25 floor is no longer permanent and the mood envelope above is a
+  PRE-M3-9 measurement that has not been re-taken. ⭐ And the OTHER half of this bullet — *"Mood is
+  computed but gates nothing"* — was already false when it was written and is worth stating plainly:
+  mood reaches `ShipMetrics.Morale` → `DirectorSystem` tension → `WearPressure` →
+  `MachineWearSystem`, which is exactly why M3-9 moved P1.
 - **`Citizen.Health`** (`Citizen.cs:31`, "Damaged by hypoxia, cold and struggle") is
   **never written by any system**. It is saved (`SaveWriter.cs:263`), hashed
   (`Simulation.cs:264`) and displayed (`hosts/tui/Ui/InspectorModel.cs:83`). Measured:
@@ -5343,3 +5349,255 @@ nobody read. `sim/Sim.Core/SleeperAptitudes.cs` is now enrolled in both:
   never reads an arbitration: no `GetWorkPriority`, no `IsWorkEnabled`, no `CanTakeWorkType`. The
   `IsIncapableOf` the identifier scan sees is `SleeperAptitude`'s own accessor, not `Citizen`'s —
   the scan cannot tell them apart, so the distinction is written down rather than assumed.
+
+---
+
+### 13.40 ⭐⭐ Crew SLEEP — the reducer `Fatigue` never had, and machine wear on every ship moved with it (M3-9 / PIN M3-c, 2026-08-02)
+
+**THE PLAYER SENTENCE.** Until this package **every crew member on every ship in the repo was
+permanently exhausted**: `NeedsSystem` ramped `Citizen.Fatigue` to 1.0 over ~16 sim-hours and
+**nothing anywhere took a single unit back off it** — that system's own header said so — while
+`Citizen.cs`'s field comment claimed *"1 = exhausted (slows work)"*, which was **false in both
+halves** (nothing reduced it, and nothing read it for a rate). Now a tired crew member finishes what
+she is doing, walks to a bunk, sleeps, wakes rested, and goes back to work — and the crew dock's
+task line says which of those she is on. The false comment is corrected in the same commit.
+
+#### 13.40.1 The seam, and the one rule it exists to obey
+
+`sim/Sim.Core/Systems/RestSystem.cs` (new) · `JobKind.Sleep = 12` (`Entities/Citizen.cs`) ·
+`WorkTypeMap` (`Entities/WorkTypeMap.cs`, the not-work row) · three `[needs]` def scalars ·
+`SystemStack.cs` (the registration, **before** `JobSystem`) · `GameSession.TaskLabel` +
+`console-model.js`'s `TASK_TAGS` (the `REST` tag).
+
+⛔ **`rimworld-reference.md` §3.5's boxed rule is the whole design**: *"Needs do NOT interrupt a job
+in progress. The need check is a job-SELECTION filter, evaluated between jobs."* The only branch that
+can start a sleep is guarded by `Citizen.IsIdleForWork` (`JobKind == None`), so **rest is
+structurally incapable of taking a job away from anybody**. That is not tidiness — see §13.40.5 for
+the measurement that says no existing suite would have caught the alternative.
+
+⭐⭐ **AND HALF THE MECHANISM LIVES IN `NeedsSystem`: THE RAMP IS GATED ON BEING AWAKE.** §4.4's
+numbers describe a rest meter that falls **only while awake**, so an unconditional ramp silently
+makes the real recovery `(recovery × effectiveness − ramp)` — the same numbers wearing a different
+mechanism. ⛔ **MEASURED with the ramp ungated (M3-9's first commit): a 0.9-tired crew member needed
+27.7 sim-hours off a bed and 63.6 sim-hours — two and a half sim-DAYS — on the deck**, which is the
+shipped path, at an awake fraction of ~16–30 % against the reference's 70.6 %. Not one test was red:
+`RestSystemTests`' fixture deliberately omits `NeedsSystem` (a correct narrowing that created a
+blind spot nothing closed — TRAPS, ninth shape, and this file's own header said so). The gate is
+`JobKind != Sleep` at the ramp site — the one fact about sleeping that is already saved, already
+hashed and already written by `RestSystem`, so the two systems cannot disagree about who is asleep.
+⛔ Do **not** re-derive `fatigue_recovery_per_second` to absorb a ramp instead: that encodes a
+coupling the analogue does not have and makes the def's §4.4 provenance a lie.
+`RestSystemTests.OnTheSHIPPEDStack_TheRampDoesNotFightTheRecovery` is the blind spot's cover.
+
+⭐ **REST IS NOT A WORK TYPE, and that is the seam ruling.** RimWorld's answer, and `WorkType`'s own
+header already said the equivalent (*"Eat, Drink and Flee are NOT work types and never will be …
+you cannot switch off eating"*). The M2-0 findings make it the only affordable answer too: the
+arbitration seam (`IWorkOfferSource`/`WorkArbiter`) speaks only `WorkType` and the player's 1..4
+band, so entering rest *there* would mean a seventh hashed grid column — a checkbox for *"this
+person may sleep"*. What the arbitration does for rest instead is **refuse to interfere**:
+`WorkTypeMap.TryOf` classifies `Sleep` as not-work, so `JobSystem.TryPreempt`'s survival guard (its
+FIRST line) declines a sleeping pawn, and no `IJobSource` owns the kind so the dispatcher never
+advances her either. **No new guard was written for any of that.**
+
+⭐ **REGISTRATION ORDER IS BEHAVIOUR — and the reason M3-9's first commit gave for it was FALSE.**
+§3.5's need-check order is **Eat ▸ SLEEP ▸ Meditate ▸ Recreate ▸ WORK**, so `RestSystem` is
+registered **before** `JobSystem` (and after `CitizenSystem`, so movement is settled). What that
+buys, measured: for a crew member who is idle when a **tick begins**, the position decides which of
+the two is asked first — registered first she chooses **SLEEP** with a full haul board in front of
+her (`first job = Sleep`, 0 hauls taken); registered second, **WORK** wins the selection and she
+takes another job while exhausted.
+⛔ The first commit claimed instead that a claimant behind the dispatcher *"would win only on the
+ticks the dispatcher found nothing, which on a busy ship is never."* **That is false**: behind the
+dispatcher she still falls asleep, at **t = 121** rather than **t = 1**, because a COMPLETING job
+writes `JobKind.None` where a later system sees it inside the same tick. The claim was asserted in
+three places and pinned by nothing; an independent reviewer moved the system with every suite green
+and P1 unchanged. It is now pinned by
+`RestSystemTests.RestIsRegisteredBeforeTheDispatcher_AndThatDecidesTheSELECTION`, the only thing in
+the repo that sees it. ⚠️ `IntervalTicks = 1` (the dispatcher's cadence, so "rest is asked first"
+holds on every tick rather than one in ten) is **disclosed rather than pinned** — a compile-time
+property with no seam to vary.
+⚠️ **`SustenanceSystem` is still registered AFTER `JobSystem`, so eating still loses to work where
+sleeping now beats it.** That asymmetry is **pre-existing**, is **not fixed here** (it is a behaviour
+change to a system this package does not own, and it would confound this row's pin story), and is
+**FILED**.
+
+#### 13.40.2 The bed, and what happens without one
+
+| | |
+|---|---|
+| **claim** | nearest `DeviceKind.Bed` no other live crew member is sleeping in or walking to (Manhattan, ties by device store order), pathed to the bunk's **own tile** — furniture is authored `blocks = false` |
+| **occupancy** | **DERIVED, never stored**: a bunk is taken iff some other citizen holds `JobKind.Sleep` with that tile as `JobTarget`. A `Device.SleeperId` field would have been a DEVC bump, a hash fold and a second source of truth that can disagree with the citizen after a load |
+| **no bunk / none free / none reachable** | she lies down **where she stands**, at `rest_effectiveness_ground` = **0.8** (§4.4: ground 0.8, bed 1.0) |
+| **effectiveness** | read off the tile she is **actually on**, every pass — so a bunk deconstructed under a sleeper silently degrades her to ground rate and there is **no orphan-handling branch anywhere in the file** |
+| **waking** | one condition: `Fatigue` reaches 0 (§3.5's *"wakes at rest 100 %"*). No timer, no schedule grid — OD-M item 3 defers the 24-slot instrument past the week-9 gate |
+
+⚠️ **THE 0.8 BRANCH IS THE SHIPPED PATH, not a courtesy.** `--ship wreck` — the default `./play.sh`
+ship — calls `RoomDresser.Dress` **deliberately not at all** (*"a raided ship has no bunks left"*),
+so **there is not one bed aboard** until the player places one. `PlaceDeviceCommand` has `Bed` on its
+furniture whitelist and the standard surface's BUNK tool is live (M3-10 fixed it), so a bunk costs
+`build.device_place_cost` Parts.
+
+**The other ways a sleep ends are all pre-existing and none of them is coded in `RestSystem`** —
+which is the point of routing rest through `JobKind` at all: `SafetySystem` cancels the job and flees
+lethal air (**a sleeper does wake for vacuum**), `MoveCitizenCommand` and `PrioritiseJobCommand` both
+call `Simulation.CancelJob` first (**a direct order wakes her**), and `NeedsSystem.Kill` ends it the
+last way.
+
+#### 13.40.3 The three def scalars (`content/core/SimDefs/needs.def`, `[needs]`)
+
+| key | value | why that number |
+|---|---|---|
+| `fatigue_rest_threshold` | **0.75** | RimWorld's trigger is *rest < 30 %* (§3.5), i.e. tiredness above 0.70, rounded to the quarter. At the unchanged `fatigue_per_second` that is **12 sim-hours awake** |
+| `fatigue_recovery_per_second` | **1/37800** (`2.6455027e-05`) | §4.4: 0 → 100 % rest is **10.5 in-game hours at effectiveness 1.0** |
+| `rest_effectiveness_ground` | **0.8** | §4.4's rest-effectiveness table, verbatim |
+
+They live in `[needs]` beside `fatigue_per_second` and `mood_fatigue_weight` because they are the
+same meter: a designer retuning *"how tired do people get"* sees the fall rate next to the rise rate.
+⚠️ The **rise ramp's RATE is unchanged**; what changed is that it is now **gated** on being awake
+(§13.40.1). The bed's own 1.0 is a RULE, not a fourth scalar — it is the unit the ground multiplier
+is expressed against.
+
+⭐ **THE DURATIONS THAT FALL OUT, MEASURED ON THE SHIPPED STACK** (`SystemStack.CreateDefault`, ramp
+present). ⚠️ §4.4's *10.5 in-game hours* is the **full 1.0 → 0** case and is not what play reaches:
+
+| from | in a bed (1.0) | on the deck (0.8) |
+|---|---|---|
+| the shipped 0.75 trigger | **7.89 sim-h** (284 002 ticks) | **9.80 sim-h** (352 854 ticks) |
+| 0.90 (the test fixtures' start) | 9.48 sim-h | 11.74 sim-h |
+| ⛔ *with the ramp ungated* | *27.7 sim-h* | *63.6 sim-h* |
+
+⚠️ **THE DUTY CYCLE, AND ITS DIVERGENCE FROM THE REFERENCE, STATED RATHER THAN LEFT TO BE FOUND.**
+12 sim-h awake (the 0.75 trigger at the unchanged `fatigue_per_second`) + 7.89 asleep is a 19.9 h
+cycle, i.e. **60 % awake** in a bed and 55 % on the deck, against §4.4's **70.6 %**. The gap is
+entirely the **pre-existing rise ramp** (16 h to saturation), not this package's rates, and it is
+left alone deliberately — retuning `fatigue_per_second` is a second, unrelated reason to move P1.
+**FILED.**
+
+⚠️ **THE ONE KNOCK-ON, AND ITS ARITHMETIC.** A sleeping crew member is skipped by
+`SustenanceSystem` (its `JobKind.None` gate), so **she cannot eat or drink while asleep**. At these
+durations that is benign and is bounded: thirst rises at 1/86 400 per second, so a bed sleep costs
+**0.329** of the meter and a deck sleep **0.409** (hunger, at half that rate: 0.164 / 0.204), against
+a self-serve threshold of 0.5 and no death term on either meter. ⛔ At the ungated 63.6 h it was not
+benign — thirst would have risen by 2.65, i.e. she woke fully parched. Bounded by an assertion in
+`OnTheSHIPPEDStack_TheRampDoesNotFightTheRecovery`.
+
+⛔ **TIREDNESS IS NOT A WORK-RATE MULTIPLIER IN v1, and it is a scope ruling.** §4.4 measures
+RimWorld's rest need as affecting **mood and immunity only — no work or combat stat**. The work
+rate's one input is `WorkRates`/`Citizen.SkillsRaw` (M3-7's axis, §13.37) and a second factor here
+would double-count it. What fatigue *does* reach is `Citizen.Mood`, and that is where the expensive
+half of this row comes from.
+
+#### 13.40.4 ⛔ PIN M3-c — P1/P4/P5 MOVED, P2/P3 HELD, and every claim below was measured
+
+| pin | old | new |
+|---|---|---|
+| **P1** scenario `--days 3 --seed 42` | `3d23665a724e853d` | **`7bdd0d6f7756dfdc`** (twin match) |
+| **P2** perilune tick-3000 | `cb09b584a5f15e52` | **HELD** |
+| **P3** slice tick-3000 | `43a1a5c25713faec` | **HELD** |
+| **P4** defs defaults | `77a7a8a9e967eab4` | **`661fcdd4b89f1e87`** |
+| **P5** defs rules-inclusive | `edf1577c32f14e55` | **`558a1c0a4985f5ea`** |
+
+⭐ **THE P1 CAUSE, DECOMPOSED AS A DRIVEN 2×2** (needs.def edited in place, restored from an
+in-memory copy — TRAPS 2):
+
+| | crew never sleep (`fatigue_rest_threshold = 2`) | crew sleep (shipped 0.75) |
+|---|---|---|
+| `mood_fatigue_weight = 25` (shipped) | **`3d23665a724e853d`** ← the OLD pin, to the digit | **`7bdd0d6f7756dfdc`** ← SHIPPED |
+| `mood_fatigue_weight = 0` | `455d352944081b14` | `97f43a5a7f90bae2` |
+
+Read the two rows:
+1. ⭐ **With the trigger out of reach P1 returns EXACTLY to its old value.** ⇒ the entire move is the
+   **sleep behaviour**. The new system's mere presence — its registration in `SystemStack`,
+   `JobKind.Sleep = 12`, the three def fields, the `WorkTypeMap` row, **and the gated ramp** — is
+   **pin-neutral, measured** (def scalars fold into the defs checksum, never into
+   `Simulation.StateHash`; and a gate that never fires changes nothing).
+2. **The bottom row's two cells differ from each other**, so sleeping moves the pin **independently
+   of mood**: the labour a sleeping crew member does not do is itself a state change.
+3. ⚠️ **AND THE DAY-3 SUMMARY LINE DOES NOT MOVE — say it plainly, because it is the trap.** All
+   four cells print `pop 2 / hydro 98.1 kPa / water 0.0 L / potatoes 371`. The ONLY evidence this pin
+   moved is the hash, which folds per-citizen `Fatigue`/`Mood`/`JobKind`. ⛔ A reader who checks the
+   printed line for a behaviour change will conclude, wrongly, that nothing happened. (M3-9's FIRST
+   commit — before the ramp was gated — did move it, to `98.5 kPa / 373`; the shorter gated sleeps
+   put the aggregate back.)
+
+⚠️ **P2/P3 HELD, AND THE HOLD IS A PROPERTY OF THE WINDOW, NOT OF A DEAD SYSTEM — proved rather than
+asserted.** Tick 3000 is **300 sim-seconds**, where `Fatigue` reaches ~0.0052 against a 0.75 trigger:
+nobody aboard *can* sleep. Control, driven: drop `fatigue_rest_threshold` to 0.001 and the SAME two
+goldens move — perilune `cb09b584a5f15e52 → c4001c0b66e3e4e9`, slice
+`43a1a5c25713faec → 78e2cc40adc39c45`. ⛔ **Do not read "P2/P3 held" as "the goldens cover rest".**
+This is M2-12's *"no pin sees the generation term"* and M3-7's *"no pin sees the rate term"* in a
+third costume: the instrument for rest is `RestSystemTests`, and nothing else.
+
+⚠️⚠️ **THE THIRD CAUSE, WHICH IS THE ONE THAT IS EASY TO MISS: MACHINE WEAR RATES CHANGED ON EVERY
+SHIP IN THE REPO.** `Citizen.Mood` → `ShipMetrics.Morale` → `DirectorSystem`'s
+`WeightMoraleDeficit × (1 − Morale)` → `_wearPressure` → `MachineWearSystem`. Driven in
+`RestSystemTests.TheWearPath_ACTUALLY_Moves_WhenFatigueFalls`, which asserts it at two points: the
+Director's own **hashed** state (`Tension` 0.20644 with sleep vs 0.20903 without, and the
+`IStatefulSystem` checksum differs — that is P1 moving, in miniature), and a machine's `Condition` at
+the far end. ⚠️ **The direction reads backwards and is correct**: rested crew are happier, tension is
+lower, and the Director's lever *"below target (quiet) BUILDS toward the max"* — so a well-rested
+ship wears its machines **faster**.
+
+⭐ **AND A FINDING THAT FELL OUT OF BUILDING THAT LEG, worth more than the leg: on a quiet ship the
+wear lever is SATURATED.** With water, food and power satisfied the shipped tension sits at ~0.207
+against `director.def`'s `lever_target_tension` of 0.35, so `_wearPressure` reaches its
+`max_wear_pressure` **stop of 1.35 within ~2 500 ticks and stays there** — while the lever is on its
+stop the morale term reaches wear **not at all**. The test raises the ceiling in **both** defs graphs
+(disclosed, equally on both sides) purely to make the accumulating difference observable. ⛔ This
+does **not** mean wear is unchanged in the shipped game: the lever is off its stop on any ship that
+is not quiet, and P1's own 2×2 moved. **FILED** as a Director question nobody has asked.
+
+**P4/P5, measured twice each through two code paths.** P4: the pin test's `CreateDefault` **and**
+`DefsEquivalenceTests`' parse of the shipped `.def` files (*"parsed 18 shipped .def files, checksum
+661fcdd4b89f1e87"*) — the agreement that says the three transcriptions match. P5: the pin test **and**
+`hosts/scenario --days 0 --seed 42` printing `defs: 558a1c0a4985f5ea (18 files, 0 problems, 1 rules)`.
+The cause is exactly three appended folds and **no new `DeviceKind`**, so unlike M3-10 neither
+`Machines` nor `Recipes` grew.
+
+#### 13.40.5 ⛔ The measurement that justifies the two M2-contract tests
+
+The charter's warning was that an out-of-band rest claim *"would silently undo M2-8's pre-emption
+contract and M2-19's sticky hold, both pinned by property rather than by call site."* **Driven, and
+it is exactly true:** with rest made an out-of-band interrupt (mutation 2) **and** with it made to
+bypass the hold specifically (mutation 3), `StickyClaimTests` + `PreemptionTests` are **GREEN 0/22
+both times**. Those suites pin `Citizen.IsRecruitableIgnoringJob`, and an out-of-band claimant never
+asks that property. `RestSystemTests.MidHaul_FatigueDoesNotTakeTheJob` and
+`.AHeldOrder_IsNotStolenByFatigue` are the only two things in the repo that see it.
+
+#### 13.40.6 ⛔ The send-back, and the two blind spots it exposed
+
+M3-9's first commit shipped with **an ungated fatigue ramp** (§13.40.1) and with **"registration
+order is behaviour" asserted in three places and pinned by nothing** (§13.40.1). Both were found by
+independent review, and both are worth carrying because of *how* they hid:
+
+1. **The ramp.** Every leg in `RestSystemTests` ran on a fixture that deliberately omits
+   `NeedsSystem` — a **correct** narrowing (it makes fatigue exactly what the fixture wrote minus
+   what `RestSystem` removed) that created a blind spot nothing else closed. **TRAPS, ninth shape**,
+   and this package's own test header had written the narrowing down as a virtue. The un-gate
+   mutation is **GREEN 0/11 against the first commit's suite** and RED 1/13 against this one.
+2. **The order.** Moving `RestSystem` behind `JobSystem` left every suite in the repo green and P1
+   unchanged. ⭐ **And the reason the comment gave was itself false** — behind the dispatcher she
+   still sleeps (t = 121 rather than t = 1), because a completing job writes `JobKind.None`
+   mid-tick. Writing a *plausible* mechanism next to a *correct* conclusion is the shape here: the
+   conclusion "put rest first" was right and the sentence explaining it was not.
+
+⚠️ The harness recorded the first defect and **explained it away**: `rest-shot.mjs` measured a 2.33×
+wall-clock spread between the bunk and deck runs and attributed it to host throughput. It was the
+ramp (the coupling is non-linear in effectiveness). With the gate the same two runs read 1.26×
+against the def ratio's 1.25×. ⇒ **A measured ratio that does not match the def ratio is worth
+looking at, not worth explaining away.**
+
+#### 13.40.7 What this package deliberately does NOT build
+
+- **No schedule grid.** OD-M item 3: RW §3.5's 24-slot instrument is revisited after the week-9 gate;
+  its *mechanism* (the need check as a selection filter) is what landed here.
+- **No mood freeze while asleep.** §4.2 says RimWorld freezes the mood bar and pauses break risk for a
+  sleeping pawn; `NeedsSystem` recomputes `Mood` every pass regardless. Not ported, stated.
+- **No immunity term.** §4.4's other half needs a disease model, which does not exist.
+- **No collapse.** RimWorld drops a pawn where she stands at rest 0; here `Fatigue` simply saturates
+  at 1 and she sleeps badly instead. Nothing kills a crew member for tiredness.
+- **A `HoldPosition` crew member sleeps IN PLACE and never travels for a bunk** — `SustenanceSystem`'s
+  rule for food, applied unchanged: under strict player control the player owns the fetching.
+- **No retune of `fatigue_per_second`.** The duty cycle it produces (60 % awake in a bed) diverges
+  from §4.4's 70.6 %, and the ramp is left alone anyway: changing it is a second, unrelated reason to
+  move P1. FILED (§13.40.3).

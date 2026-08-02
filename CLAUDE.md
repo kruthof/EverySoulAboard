@@ -128,13 +128,34 @@ evidence, even from this file** — re-measure before quoting.
 
   | pin | value | enforced by |
   |---|---|---|
-  | P1 scenario `--days 3 --seed 42` | `3d23665a724e853d` | `ci.sh:88` (+ twin-run equality) |
+  | P1 scenario `--days 3 --seed 42` | `7bdd0d6f7756dfdc` | `ci.sh:121` (+ twin-run equality) |
   | P2 tick-3000 golden | `cb09b584a5f15e52` | `Golden/perilune_tick3000_hash.txt` |
   | P3 slice tick-3000 golden | `43a1a5c25713faec` | `Golden/slice_tick3000_hash.txt` |
-  | P4 defs defaults checksum | `77a7a8a9e967eab4` | `DefsChecksumTests.cs` |
-  | P5 defs rules-inclusive (`defs:` print) | `edf1577c32f14e55` | `DefsChecksumTests.cs` |
+  | P4 defs defaults checksum | `661fcdd4b89f1e87` | `DefsChecksumTests.cs` |
+  | P5 defs rules-inclusive (`defs:` print) | `558a1c0a4985f5ea` | `DefsChecksumTests.cs` |
 
-  Last mover: M3-7 (PIN M3-b, 2026-08-02) — **P1/P2/P3**, and the cause is a FOLD WIDENING, not a
+  Last mover: M3-9 (PIN M3-c, 2026-08-02) — **P1 + P4/P5 MOVED, P2/P3 measured HELD**, and the cause
+  is a BEHAVIOUR change on every ship: `RestSystem` is the reducer `Citizen.Fatigue` never had, so
+  crew who were permanently exhausted now sleep between jobs — and `NeedsSystem`'s ramp is GATED
+  while they do (RimWorld's rest meter falls only while awake; ungated it made a deck sleep 63.6
+  sim-h). P1 `3d23665a724e853d` → `7bdd0d6f7756dfdc` (twin match), P4 `77a7a8a9e967eab4` →
+  `661fcdd4b89f1e87`, P5 `edf1577c32f14e55` → `558a1c0a4985f5ea` (three new `[needs]` scalars; each
+  measured twice through two code paths). ⚠️ **THE DAY-3 SUMMARY LINE DOES NOT MOVE** — all four 2×2
+  cells print `pop 2 / hydro 98.1 kPa / potatoes 371`, so the ONLY evidence is the hash.
+  **THE CAUSE IS A DRIVEN 2×2:** with `fatigue_rest_threshold` put out of reach P1 returns EXACTLY to
+  `3d23665a724e853d`, so the whole move is the sleep BEHAVIOUR and the system's mere presence —
+  registration, `JobKind.Sleep = 12`, the def fields, the `WorkTypeMap` row, the gated ramp — is
+  **pin-neutral, measured**; and at `mood_fatigue_weight = 0` the sleep/no-sleep cells STILL differ
+  (`97f43a5a7f90bae2` vs `455d352944081b14`), so sleeping moves the pin independently of mood.
+  ⚠️ **THE THIRD CAUSE IS THE EXPENSIVE ONE: MACHINE WEAR RATES CHANGED ON EVERY SHIP** — Fatigue →
+  `Citizen.Mood` → `ShipMetrics.Morale` → `DirectorSystem` tension → `_wearPressure` →
+  `MachineWearSystem`. Asserted out loud by `RestSystemTests.TheWearPath_ACTUALLY_Moves_WhenFatigueFalls`
+  (tension 0.20644 with sleep vs 0.20903 without; the Director's `IStatefulSystem` checksum differs).
+  ⚠️ **P2/P3 HELD, AND THE HOLD IS THE WINDOW, NOT A DEAD SYSTEM:** tick 3000 is 300 sim-seconds where
+  Fatigue reaches ~0.0052 against a 0.75 trigger. Control, driven — at `fatigue_rest_threshold = 0.001`
+  BOTH goldens move (perilune `→ c4001c0b66e3e4e9`, slice `→ 78e2cc40adc39c45`). ⛔ Do not read
+  "P2/P3 held" as "the goldens cover rest": the instrument is `RestSystemTests`, and nothing else.
+  Before that: M3-7 (PIN M3-b, 2026-08-02) — **P1/P2/P3**, and the cause is a FOLD WIDENING, not a
   behaviour change. `Citizen.Skill` — M2-1's last reserved byte — became the per-work-type
   `SkillsRaw` array of six (CITZ v8 → v9, OD-M item 8A), so the citizen fold folds six bytes where
   it folded one. P1 `13674ebc4f8a14a9` → `3d23665a724e853d` (twin match), P2 `1c036ffd53b8f106` →

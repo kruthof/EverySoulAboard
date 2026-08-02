@@ -922,7 +922,7 @@ namespace Perilune.Tests
                 ("Oxygen",         "ship physiology"),
                 ("Suffocation",    "physiology — SafetySystem owns fleeing lethal air, not the job board"),
                 ("WorksiteSafety", "the crew-survivability staging rule — ONE seam is carved out below"),
-                ("Fatigue",        "physiology — and note Citizen.cs's claim that it 'slows work' is FALSE"),
+                ("Fatigue",        "physiology — RestSystem has owned the REDUCER since M3-9, and it still gates no work rate (RW §4.4)"),
                 // ---- spatial vocabulary the sim does not actually have.
                 ("Deck",           "the sim has z-levels, not 'decks'; hauling is deck-agnostic"),
             };
@@ -1399,12 +1399,22 @@ namespace Perilune.Tests
             // The thaw's PRICE (the ThawGate rung's Seals/Parts/ControllerModule) is M3-3's, lands
             // in Commands.cs — which IS inside the boundary already — and the day a cryo file spends
             // an item is the day it joins EconomyFilesInSharedDirectories.
+            // ⭐ RestSystem.cs (M3-9) IS THE NEXT ANSWERED QUESTION, and the answer is NO — decided,
+            // not defaulted. It consumes no item, produces no item, charges nothing, claims no
+            // reservation and moves no matter: it lowers one float on a Citizen while she holds
+            // JobKind.Sleep. It sits beside NeedsSystem.cs for the exact reason NeedsSystem sits
+            // here — the two own the same physiology meters, and the ONE way either reaches the
+            // economy is through Citizen.Mood → ShipMetrics.Morale → DirectorSystem.WearPressure →
+            // MachineWearSystem, a chain whose economy end (MachineWearSystem.cs) is already INSIDE
+            // the boundary. ⚠️ That chain is real and this package moves it (machine wear rates
+            // change on every ship — MECHANICS §13.40); classifying the SOURCE of a mood term as
+            // economy would drag NeedsSystem, CryoSystem and SocialSystem in behind it.
             var notEconomy = new[]
             {
                 "AtmosphereSystem.cs", "CitizenSystem.cs", "CryoSystem.cs", "ExplorationSystem.cs",
                 "GoalSystem.cs", "HistorySystem.cs", "HydroponicsSystem.cs", "NeedsSystem.cs",
-                "PowerSystem.cs", "SafetySystem.cs", "SustenanceSystem.cs", "ThermalSystem.cs",
-                "WaterSystem.cs",
+                "PowerSystem.cs", "RestSystem.cs", "SafetySystem.cs", "SustenanceSystem.cs",
+                "ThermalSystem.cs", "WaterSystem.cs",
             };
 
             var expected = new List<string>(notEconomy);
