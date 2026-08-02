@@ -6,9 +6,9 @@ older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — 
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-01 session C COMPLETE — SIX merges, the queue stands at M3-5)
+## Current state (2026-08-01 session C, continued — SEVEN merges, the queue stands at M3-10)
 
-**Gate on `main` (`3da64fc`): 1674 dotnet + 1179 node, twin hashes MATCH at P1
+**Gate on `main` (`4a46ee7`): 1690 dotnet + 1180 node, twin hashes MATCH at P1
 `13674ebc4f8a14a9`** (re-measure before quoting). ⚠️ **PIN M3-e EXECUTED, tag `pin/m3-e`
 (M3-15, P1 only, `25f604dd61b221fb` → `13674ebc4f8a14a9`)**: NOT the gate — measured INERT
 on P1 via the full 2×2 — but the one Terminal (`term_main`) authored into `BuildScenario`
@@ -40,9 +40,15 @@ one independent reviewer per package. **Full package records live in the §3 que
   (`Faulted` b12 fold-neutral MEASURED; DEVC v6); `open`/`close` refuse for every caller;
   `set rate` doesn't hold; the two-line `every 1s:` program fills the hall past 80 kPa
   (101.3 kPa witnessed). `Deck1VentTests` re-cut kept the POWERED half verbatim. §13.34.
-- Every package had exactly ONE send-back, each a real evidence-layer hole (a mutation
-  that couldn't bite · an unguarded stated decision · an open-only gate pin — full prose
-  in the queue rows).
+- **M3-5 emergency thaw** (`4a46ee7`): the ship wakes one more soul BY ITSELF, once, and
+  the run ends on screen — `EmergencyWatch` in `CryoSystem` (OD-10: `ThawCommand` never
+  learns it exists); ⭐ the send-back caught a real regression (the election stamped on a
+  paid in-flight cycle — now a counting cycle IS the grace and the reprieve survives,
+  semantics pinned against both candidate fixes); lose state + Chronicle + Overview
+  banner (`ending` channel). §13.35.
+- Every package had exactly ONE send-back, each a real defect (a mutation that couldn't
+  bite · an unguarded stated decision · an open-only gate pin · a paid-cycle clobber —
+  full prose in the queue rows).
 
 ## Integrator decisions this session (review these)
 
@@ -59,10 +65,9 @@ one independent reviewer per package. **Full package records live in the §3 que
 
 ## Next
 
-1. **M3-5 emergency thaw** (queue position 9; needs M3-2's stored bit ✅ + M3-3's gate ✅;
-   pin-neutral only because M3-2 shipped the storage) → then pin rows **M3-d (M3-10
-   heater, RUNS ALONE)** → **M3-b (M3-7 skill consumers, RUNS ALONE)** → M3-12 → M3-8 →
-   **M3-c (M3-9 REST, last by risk ruling)** → the week-9 owner playtest (2026-08-07).
+1. **M3-10 heater — PIN ROW M3-d, RUNS ALONE** (no standing pin lane; tags checked) →
+   **M3-b (M3-7 skill consumers, RUNS ALONE)** → M3-12 → M3-8 → **M3-c (M3-9 REST, last
+   by risk ruling)** → the week-9 owner playtest (2026-08-07).
 2. Owner manual check (carried): OD-P (`42f59ca`) still owed a look — `l`/`p` TYPE,
    `log`/`prog` navigate, DETAIL bare `log` inherits. Plus the session-C browser beats
    worth an eyeball: the POD BAY (`pods`), the vent puzzle, the MOSS-offline refusals.
@@ -152,3 +157,4 @@ one independent reviewer per package. **Full package records live in the §3 que
 | 08-01 C | pod-bay | **typed `pods` shows the bay; every sealed capsule says why; a chosen thaw CYCLES** (witnessed) | green, pins UNMOVED, 1 send-back, tests →1640/1166 |
 | 08-01 C | thaw-blocked | **the tile badge names the item; the menu stops promising the impossible** | green, pins UNMOVED, 1 send-back, tests →1646/1179 |
 | 08-01 C | board-fault | **one machine does not answer its switch — the workaround is a two-line MOSS program**: the fault sentence, the puff-and-stall, the `every 1s:` fix, 101.3 kPa witnessed | green, pins UNMOVED (b12 fold-neutral measured), 1 send-back, tests →1674/1179 |
+| 08-01 C | emergency-thaw | **the ship wakes one more soul by itself, once, and the run ends on screen**: death → cycling without a pause → "With ⟨name⟩ dead, the ship woke ⟨name⟩." → ALL SOULS banner; a paid cycle is never stamped on | green, pins UNMOVED (packed fold), 1 send-back (a real paid-cycle regression) + 1 measured touch, tests →1690/1180 |
