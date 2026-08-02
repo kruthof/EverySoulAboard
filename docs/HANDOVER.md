@@ -6,11 +6,11 @@ older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — 
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-01 session C, continued — SEVEN merges, the queue stands at M3-10)
+## Current state (2026-08-02 session C, continued — NINE merges, the queue stands at M3-7)
 
-**Gate on `main` (`4a46ee7`): 1690 dotnet + 1180 node, twin hashes MATCH at P1
+**Gate on `main` (`e76ac5d`): 1714 dotnet + 1183 node, twin hashes MATCH at P1
 `13674ebc4f8a14a9`** (re-measure before quoting). ⚠️ **PIN M3-d EXECUTED (tag `pin/m3-d`
-pending at merge) — M3-10, P4 AND P5 ONLY: P4 `0c5ddbc07e41f07d` → `77a7a8a9e967eab4`,
+applied at merge) — M3-10, P4 AND P5 ONLY: P4 `0c5ddbc07e41f07d` → `77a7a8a9e967eab4`,
 P5 `09900b9a44119272` → `edf1577c32f14e55`**, cause `DeviceKind.Heater = 28` (which grows
 `Machines` AND `Recipes`) plus the two appended def scalars `heater_output_kw` /
 `thermal.heater_ceiling_k`; both measured twice through two loaders. **P1/P2/P3 MEASURED
@@ -68,9 +68,16 @@ one independent reviewer per package. **Full package records live in the §3 que
 
 ## Next
 
-1. **M3-10 heater — PIN ROW M3-d, RUNS ALONE** (no standing pin lane; tags checked) →
-   **M3-b (M3-7 skill consumers, RUNS ALONE)** → M3-12 → M3-8 → **M3-c (M3-9 REST, last
-   by risk ruling)** → the week-9 owner playtest (2026-08-07).
+1. **M3-7 skill consumers — PIN ROW M3-b, RUNS ALONE** (`Citizen.Skill` widens to the
+   6-byte per-work-type array inside the existing M3-b chapter bump, OD-M item 8; the
+   `work` wire gains columns) → M3-12 → M3-8 → **M3-c (M3-9 REST, last by risk ruling)**
+   → the week-9 owner playtest (2026-08-07).
+   ⭐ NEW OWNER ITEMS from M3-10: the heater's power TIER (LifeSupport shipped interim;
+   Industry would run ~36% duty — the "already shed" claim was a sampling artifact) · a
+   heater is reachable but NOT AFFORDABLE at boot (`device_place_cost` 3 Parts, wreck
+   authors 1, refusal silent) · the Radiator still borrows `'='` art.
+   ⭐ M3-10 also FOUND AND FIXED a shipped bug: `place` was INERT for all six furniture
+   tools on the standard surface (BUNK/DESK/CHAIR/LOCKER/PLANT/LAMP all silent no-ops).
 2. Owner manual check (carried): OD-P (`42f59ca`) still owed a look — `l`/`p` TYPE,
    `log`/`prog` navigate, DETAIL bare `log` inherits. Plus the session-C browser beats
    worth an eyeball: the POD BAY (`pods`), the vent puzzle, the MOSS-offline refusals.
@@ -161,3 +168,4 @@ one independent reviewer per package. **Full package records live in the §3 que
 | 08-01 C | thaw-blocked | **the tile badge names the item; the menu stops promising the impossible** | green, pins UNMOVED, 1 send-back, tests →1646/1179 |
 | 08-01 C | board-fault | **one machine does not answer its switch — the workaround is a two-line MOSS program**: the fault sentence, the puff-and-stall, the `every 1s:` fix, 101.3 kPa witnessed | green, pins UNMOVED (b12 fold-neutral measured), 1 send-back, tests →1674/1179 |
 | 08-01 C | emergency-thaw | **the ship wakes one more soul by itself, once, and the run ends on screen**: death → cycling without a pause → "With ⟨name⟩ dead, the ship woke ⟨name⟩." → ALL SOULS banner; a paid cycle is never stamped on | green, pins UNMOVED (packed fold), 1 send-back (a real paid-cycle regression) + 1 measured touch, tests →1690/1180 |
+| 08-02 C | heater | **a heater exists — place one, power it, and a frozen compartment becomes workable again** (`CanStageWorkerAt` flips); found+fixed: `place` was INERT for all six furniture tools | green, **PIN M3-d: P4/P5 moved (Heater=28 + def row), P1/P2/P3 measured HELD**, tag `pin/m3-d`, 1 send-back (three false claims), tests →1714/1183 |
