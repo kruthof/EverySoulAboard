@@ -238,7 +238,12 @@ namespace Perilune.Tests
         /// need LangVersion ≥ 11 and every .csproj pins `LangVersion 9.0`. Interpolation holes are
         /// a genuine residual gap; it is fail-OPEN (a missed violation, never a false failure).
         /// </summary>
-        private static string CodeOnly(string source)
+        /// <remarks>⭐ INTERNAL, not private, since M3-10: <c>HeaterTests</c>'s P1-fixture scan needs
+        /// the SAME stripper. CLAUDE.md trap 1 is "a raw-text guard satisfied by commented-out code",
+        /// and its stated fix is a SHARED <c>codeOnly</c> — a second C# stripper in another file
+        /// would be a second thing to get the escape rules wrong in, and only one of the two would
+        /// carry the negative controls below.</remarks>
+        internal static string CodeOnly(string source)
         {
             var sb = new StringBuilder(source.Length);
             int i = 0;

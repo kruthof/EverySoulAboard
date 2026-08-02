@@ -417,17 +417,24 @@ const COVERED = DEVICE_KINDS.filter(
 // The wreck start (W3) added `DeviceKind.CryoPod` (byte 27, so 28 members) with a `ForDevice` arm
 // and a two-state override in `GlyphMapper.DeviceGlyph`, and gave BOTH its chars real art
 // (`cryo-capsule-occupied` → 'K', `cryo-capsule-open` → 'k'), so nothing joined a ledger.
-const EXPECT_DEVICE_KINDS = 28;
-const EXPECT_FOR_DEVICE_ARMS = 28;
-const EXPECT_COVERED = 26;    // 28 kinds − 2 allowlisted (Conduit, Pipe)
+// M3-10 added `DeviceKind.Heater` (byte 28, so 29 members) with a `ForDevice` arm giving it `'E'`
+// and NO state override. It joins no ledger and needed no new art: `ITEMS['space-heater']` was drawn
+// for exactly this kind (`deviceKind: 'Heater'`) and sat unreachable with `glyph: null` until the
+// enum member existed, so this is the one addition so far that PAID DOWN unreached art instead of
+// spending a stand-in. `EXPECT_COVERED` moves with the kind count; the two allowlisted kinds
+// (Conduit, Pipe) are unchanged.
+const EXPECT_DEVICE_KINDS = 29;
+const EXPECT_FOR_DEVICE_ARMS = 29;
+const EXPECT_COVERED = 27;    // 29 kinds − 2 allowlisted (Conduit, Pipe)
 // `GlyphMapper.DeviceGlyph`'s state overrides: Door 'X' locked, '/' open, '+' closed; CryoPod 'k'
 // open, 'K' occupied. Equality, not a floor — a floor is satisfied by a parser that finds the block
 // and resolves nothing.
 const EXPECT_DEVICE_GLYPH_OVERRIDES = 5;
-// Projected device glyphs = 28 arms, of which Conduit and Pipe share '~' (27 distinct) and Door's
+// Projected device glyphs = 29 arms, of which Conduit and Pipe share '~' (28 distinct) and Door's
 // '+' and CryoPod's 'K' are among them, PLUS the three override chars 'X', '/' and 'k' that are in
-// no arm at all.
-const EXPECT_PROJECTED_DEVICE_GLYPHS = 30;
+// no arm at all. (M3-10's Heater contributes one arm and one distinct char, 'E', and no override —
+// its state lives in Powered/Condition, which the projection already colours rather than respells.)
+const EXPECT_PROJECTED_DEVICE_GLYPHS = 31;
 const EXPECT_DEVICE_GLYPH_LEDGER = 1;   // '/' alone — an open doorway is a gap
 const EXPECT_ITEM_KINDS = 10;
 const EXPECT_FOR_ITEM_ARMS = 10;

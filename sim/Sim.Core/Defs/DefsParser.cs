@@ -229,6 +229,7 @@ namespace Perilune.Sim
                 case "heat_capacity_j_per_k_per_tile": if (D(v, k, loc, p, out var a)) d.Thermal.HeatCapacityJPerKPerTile = a; return true;
                 case "citizen_heat_w": if (D(v, k, loc, p, out var b)) d.Thermal.CitizenHeatW = b; return true;
                 case "radiator_floor_k": if (D(v, k, loc, p, out var c)) d.Thermal.RadiatorFloorK = c; return true;
+                case "heater_ceiling_k": if (D(v, k, loc, p, out var hc)) d.Thermal.HeaterCeilingK = hc; return true; // M3-10
                 case "door_conduct_open_w_per_k": if (D(v, k, loc, p, out var e)) d.Thermal.DoorConductOpenWPerK = e; return true;
                 case "door_conduct_closed_w_per_k": if (D(v, k, loc, p, out var f)) d.Thermal.DoorConductClosedWPerK = f; return true;
                 case "hull_loss_w_per_k_per_tile": if (D(v, k, loc, p, out var g)) d.Thermal.HullLossWPerKelvinPerTile = g; return true;
@@ -455,6 +456,9 @@ namespace Perilune.Sim
             string key = line.Substring(0, eq).Trim().ToLowerInvariant();
             string val = line.Substring(eq + 1).Trim();
             if (key == "radiator_reject_kw") { if (F(val, key, loc, p, out var v)) d.RadiatorRejectKW = ClampNonNeg(v, key, loc, p); }
+            // M3-10 — the heater's output rides beside the radiator's reject for the reason the two
+            // devices are a pair: same section, same clamp, same shape.
+            else if (key == "heater_output_kw") { if (F(val, key, loc, p, out var w)) d.HeaterOutputKW = ClampNonNeg(w, key, loc, p); }
             else p.Add(loc + ": unknown key '" + key + "' in [machines] — ignored");
         }
 

@@ -14,7 +14,10 @@ namespace Perilune.Sim
     /// temperatures, so within-pass ordering can never bias flow direction — then
     /// applied once: dT = J / capacity, clamped to [3, 500] K.
     ///
-    /// Sources: device waste heat (MachineDefs.HeatKW), citizen body heat.
+    /// Sources: device waste heat (MachineDefs.HeatKW), citizen body heat, and — since
+    /// M3-10 — HEATERS (Defs.HeaterOutputKW, condition-scaled, never above the 21 °C
+    /// Thermal.HeaterCeilingK). The heater is the first DELIBERATE heat source in the
+    /// sim: everything else here is waste or metabolism, and neither is a player verb.
     /// Sinks: radiators (never below the 10 °C floor), door-edge conduction
     /// (hot → cold; closed doors conduct 5× slower), hull loss to the 3 K space
     /// sink. Room 0 (vacuum) is never heated or cooled.
@@ -95,6 +98,36 @@ namespace Perilune.Sim
                     if (excessJ <= 0) continue;
                     double rejectJ = sim.Defs.RadiatorRejectKW * device.EffectiveRate * 1000.0 * Dt;
                     _deltaJ[roomId] -= Math.Min(rejectJ, excessJ);
+                    continue;
+                }
+
+                if (device.Kind == DeviceKind.Heater)
+                {
+                    // M3-10 — THE RADIATOR'S ARM ABOVE, SIGN-FLIPPED, LINE FOR LINE. Push up to
+                    // HeaterOutputKW (condition-scaled), but never past the HeaterCeilingK cap.
+                    // The cap reads the start-of-pass temperature exactly as the radiator's floor
+                    // does, so several heaters in one room can jointly overshoot the ceiling by a
+                    // few mK for one pass and the next pass they idle. Same simplification, same
+                    // reason it is fine.
+                    //
+                    // ⚠ THE TWO GATES ARE THE `continue` TWENTY LINES ABOVE, SHARED WITH EVERY
+                    // OTHER KIND: `!device.Powered || !device.IsOperational(sim.Defs)`. A heater
+                    // that is unwired, browned out, or worn below its `fail` floor never reaches
+                    // this arm — which is the whole of why a heater is a machine the player must
+                    // POWER and MAINTAIN rather than a switch they flip once.
+                    //
+                    // ⚠ WHY THE CEILING EXISTS AT ALL, and it is not comfort: AtmosphereSafety
+                    // .IsBreathable is false ABOVE needs.def heat_stroke_c (45 °C) as well as
+                    // below hypothermia_c. Hull loss is ~0.09 W/K per hull tile, so a 60-tile hall
+                    // with 15 hull tiles sheds only ~390 W at 21 °C against 5 000 W of input:
+                    // uncapped, this device would carry a room straight through the comfort band
+                    // and out the other side, ending with the same refusal it was placed to lift.
+                    // A heater that cooks the room it warmed has delivered nothing.
+                    var warm = rooms[roomId];
+                    double deficitJ = (th.HeaterCeilingK - warm.TemperatureK) * Capacity(warm, th.HeatCapacityJPerKPerTile);
+                    if (deficitJ <= 0) continue;
+                    double pushJ = sim.Defs.HeaterOutputKW * device.EffectiveRate * 1000.0 * Dt;
+                    _deltaJ[roomId] += Math.Min(pushJ, deficitJ);
                     continue;
                 }
 

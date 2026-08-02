@@ -190,9 +190,17 @@ test('every registry entry has a valid kind + a callable builder + a size', () =
   }
 });
 
-test('the four NEW device kinds are flagged deviceStatus:new', () => {
+// ⭐ M3-10: FOUR BECAME THREE, and it is the first time this list has ever shrunk. `space-heater`
+// left it because `DeviceKind.Heater` now exists and `Glyphs.ForDevice` gives it `'E'`, so the piece
+// claims its own glyph and is reachable by projection rather than only by the Radiator's borrow.
+// This assertion is the reason that claim cannot be made in prose: a piece whose `deviceStatus` says
+// `new` while a live DeviceKind projects it is a registry lie.
+test('the three remaining NEW device kinds are flagged deviceStatus:new', () => {
   const news = ITEM_IDS.filter((id) => ITEMS[id].deviceStatus === 'new').sort();
-  assert.deepEqual(news, ['cooker', 'oxygen-tank', 'reactor', 'space-heater']);
+  assert.deepEqual(news, ['cooker', 'oxygen-tank', 'reactor']);
+  assert.equal(ITEMS['space-heater'].deviceStatus, 'exists',
+    'space-heater must read `exists` — DeviceKind.Heater (28) projects it directly since M3-10');
+  assert.equal(ITEMS['space-heater'].glyph, 'E', 'and it must carry the glyph the sim projects');
 });
 
 test('buildItem falls back to a placeholder for unknown / bad ids without throwing', () => {

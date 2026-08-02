@@ -47,6 +47,12 @@ namespace Perilune.Sim
         /// rejects (condition-scaled by ThermalSystem). Current: 5.</summary>
         public float RadiatorRejectKW;
 
+        /// <summary>MachineDefs.HeaterOutputKW — kW a powered, operational
+        /// <see cref="DeviceKind.Heater"/> pushes into its room (condition-scaled by
+        /// ThermalSystem, capped at <see cref="ThermalDefs.HeaterCeilingK"/>). Current: 5.
+        /// M3-10; the Radiator's magnitude, sign-flipped.</summary>
+        public float HeaterOutputKW;
+
         // ------------------------------------------------------------------- recipes
 
         /// <summary>One crafting recipe per DeviceKind, indexed by <c>(int)DeviceKind</c>
@@ -113,6 +119,26 @@ namespace Perilune.Sim
             public double CitizenHeatW;
             /// <summary>ThermalSystem.RadiatorFloorK — radiators never cool below this, K (10 °C). Current: 283.15.</summary>
             public double RadiatorFloorK;
+            /// <summary>ThermalSystem.HeaterCeilingK — heaters never warm a room above this, K
+            /// (21 °C). The exact mirror of <see cref="RadiatorFloorK"/>, and the reason a heater
+            /// cannot re-break the compartment from the other side: needs.def's
+            /// <c>heat_stroke_c</c> is 45 °C, and an uncapped 5 kW source in a sealed 60-tile hall
+            /// runs to the integrator clamp.
+            /// <para>⚠️ WHY 294.15 AND NOT SOME OTHER NUMBER, ON ITS OWN TERMS. It is the exact
+            /// mirror of <see cref="RadiatorFloorK"/> 283.15 (11 K of dead band, so a heater and a
+            /// radiator in one room cannot fight each other pass by pass), and it sits inside the
+            /// 10–35 °C band <c>ShipSystems</c>' THERMAL row already calls comfortable.
+            /// ⛔ IT IS NOT ATTRIBUTED TO RIMWORLD, and an earlier version of this comment WAS:
+            /// it read "21 °C is RimWorld's own default heater target
+            /// (docs/design/rimworld-reference.md §9.3)". The reference states only that the target
+            /// is PLAYER-SETTABLE and gives no number anywhere, and its own §21 verify ledger flags
+            /// §9.2–9.3 as UNVERIFIED with M3-10 named as the consumer — so that sentence was
+            /// re-derivation from memory wearing the authority's name, which is the failure
+            /// CLAUDE.md names in bold. What the reference DOES support is the shape: RimWorld's
+            /// setpoint is per device and player-settable, and this is one ship-wide scalar because
+            /// a per-device setpoint is a saved and hashed field plus a UI.</para>
+            /// Current: 294.15. M3-10.</summary>
+            public double HeaterCeilingK;
             /// <summary>ThermalSystem.DoorConductOpenWPerK — open-door bulk exchange, W/K. Current: 40.</summary>
             public double DoorConductOpenWPerK;
             /// <summary>ThermalSystem.DoorConductClosedWPerK — closed-door slab conduction, W/K. Current: 8.</summary>
@@ -700,6 +726,7 @@ namespace Perilune.Sim
             var d = new SimDefs
             {
                 RadiatorRejectKW = 5f,
+                HeaterOutputKW = 5f,   // M3-10; see MachineDefs.HeaterOutputKW for the drive
 
                 // Index = (int)DeviceKind — verbatim copy of MachineDefs.Table.
                 Machines = new[]
@@ -744,6 +771,13 @@ namespace Perilune.Sim
                     // maint 0 = the OPT-OUT: a pod is not ship plant and the standing maintenance
                     // rule never targets one. See MachineDefs.cs for the measured reason.
                     /* CryoPod         */ new MachineDef(0.2f,  0f, PowerTier.LifeSupport, false, 0.15f, 0.001f, 0f, 0.10f),
+                    // M3-10 — the heater. THE SECOND HAND-MAINTAINED LITERAL, as the CryoPod note
+                    // above says: nothing joins these two tables at build time. See
+                    // MachineDefs.Table for why every column here is what it is — heat 0 because a
+                    // heater's output is its PRODUCT (heater_output_kw, condition-scaled) and not
+                    // its waste, and LifeSupport because Industry is measurably SHED on the shipped
+                    // wreck at boot and still shed on day 10.
+                    /* Heater          */ new MachineDef(1.0f,  0f, PowerTier.LifeSupport, false, 0f,    0.006f, 0.4f, 0.10f),
                 },
 
                 Thermal = new ThermalDefs
@@ -751,6 +785,7 @@ namespace Perilune.Sim
                     HeatCapacityJPerKPerTile = 53_000.0,
                     CitizenHeatW = 100.0,
                     RadiatorFloorK = 283.15,
+                    HeaterCeilingK = 294.15,   // 21 °C — M3-10; mirrors RadiatorFloorK 283.15
                     DoorConductOpenWPerK = 40.0,
                     DoorConductClosedWPerK = 8.0,
                     HullLossWPerKelvinPerTile = 0.09,
@@ -1014,7 +1049,8 @@ namespace Perilune.Sim
         /// → Water.IceLitersPerUnit + Water.MelterBufferLiters (E0-7, 2 fields, appended)
         /// → Wear.WreckThreshold (wreck-start W2 half A, 1 field, appended)
         /// → Deconstruct.DeviceSwarf + Wear.SwarfServiceCondition (wreck-start salvage half,
-        /// 2 fields, appended).
+        /// 2 fields, appended) → HeaterOutputKW + Thermal.HeaterCeilingK (M3-10, 2 fields,
+        /// appended).
         /// E0-6's pair and E0-7's pair are in the integrator's pre-assigned slot order
         /// (ECONOMY-PLAN §2.1 rule 2); the wave merge kept it, so neither lane's locally
         /// measured fingerprint survives and the integrator re-measures on main.
@@ -1260,6 +1296,20 @@ namespace Perilune.Sim
             // either reverts alone, and an append-at-END order is what keeps a revert a tail edit.
             h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.DeviceSwarf);
             h = XxHash64.Combine(h, Wear.SwarfServiceCondition);
+
+            // THE HEATER (M3-10), appended at the END for the same reason every field since
+            // Social-S1 is: append-at-END is the invariant (README.def HANDOVER INVARIANT #3), and
+            // folding HeaterOutputKW beside RadiatorRejectKW — where it belongs by SUBJECT, which
+            // is exactly the temptation — would renumber the fold order of everything after it and
+            // invalidate every checksum recorded in this repo's history.
+            //
+            // ⚠ NOTE THIS PACKAGE MOVES P4/P5 TWICE OVER, and the second half is easy to miss: the
+            // two folds below are the DEF FIELDS, but `Heater = 28` also grows Machines by a row
+            // (8 fields fold in the loop above) AND grows Recipes by an entry (6 fields, all
+            // default) because CreateDefault sizes it `new RecipeDef[d.Machines.Length]`. Two
+            // arrays and two scalars for one enum member.
+            h = XxHash64.Combine(h, HeaterOutputKW);
+            h = XxHash64.Combine(h, Thermal.HeaterCeilingK);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

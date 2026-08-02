@@ -61,14 +61,24 @@ export const U = 32;
  *  mis-click reason ERASE is kept away from it.
  *
  *  ⛔ ⭐ OPERATE STOOD BETWEEN ERASE AND MOVE UNTIL M3-15 (OD-N, 2026-07-31) DELETED IT. Doors and
- *  vents are actuated through the MOSS console now and through nothing else, so the bar is 17 tools,
- *  not 18. The paragraph above used to describe OPERATE + MOVE as a PAIR; only MOVE is left.
+ *  vents are actuated through the MOSS console now and through nothing else, so OPERATE's slot is
+ *  gone. The paragraph above used to describe OPERATE + MOVE as a PAIR; only MOVE is left.
+ *  (That sentence read "the bar is 17 tools, not 18" until M3-10 added HEATER and made 18 the
+ *  right answer for a different reason. The COUNT lives in `room-model.test.js`, which is a pin;
+ *  a number in prose beside a pin is how a doc goes stale, so it is not restated here.)
  *
  *  ⚠️ MOVE IS THE FIRST PAWN-DIRECTED TOOL ON THIS PALETTE and that is a real widening of the bar's
  *  vocabulary — see the `move` row in PALETTE_CMD for the argument and for what RimWorld does
- *  instead. */
+ *  instead.
+ *
+ *  ⭐ HEATER (M3-10) sits at the END of the functional run, after PLANT and before the ORDER block.
+ *  It is the first tool on this bar that is neither decor nor a designation but a piece of SHIP
+ *  PLANT the player installs, and it is here for the reason the package exists: a heater the player
+ *  cannot place is a def row. Its position keeps the build/place run contiguous — inserting it
+ *  anywhere earlier would move every hotkey after it. */
 export const ROOM_TOOLS = Object.freeze([
   'wall', 'floor', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant',
+  'heater',
   'dig', 'stockpile', 'strip', 'erase', 'move', 'demolish',
 ]);
 
@@ -77,7 +87,7 @@ export const ROOM_TOOLS = Object.freeze([
  *  named; the hotkey is NOT in the label here (the palette states hotkeys in its hint line). */
 export const TOOL_LABEL = Object.freeze({
   wall: 'WALL', floor: 'FLOOR', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR',
-  locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT',
+  locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT', heater: 'HEATER',
   dig: '⛏ DIG', stockpile: '▦ STOCKPILE', strip: '⚒ STRIP', erase: '↺ ERASE',
   move: '➤ MOVE', demolish: '⌫ DEMOLISH',
 });
@@ -85,7 +95,7 @@ export const TOOL_LABEL = Object.freeze({
 /** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
 export const GHOST_ABBR = Object.freeze({
   wall: 'WA', floor: 'FL', door: 'DO', bunk: 'BU', desk: 'DE', chair: 'CH', locker: 'LO',
-  plant: 'PL', lamp: 'LA',
+  plant: 'PL', lamp: 'LA', heater: 'HE',
 });
 
 const PALETTE_CMD = Object.freeze({
@@ -98,6 +108,10 @@ const PALETTE_CMD = Object.freeze({
   locker:{ cls: 'functional', verb: 'place',  kind: 'locker', deviceKind: 'Locker' },
   plant: { cls: 'functional', verb: 'place',  kind: 'plant',  deviceKind: 'PlantPot' },
   lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light' },
+  // M3-10. `kind: 'heater'` is the wire string `GameSession.TryFurnitureKind` switches on, and
+  // `deviceKind: 'Heater'` is the sim enum member the ghost/erase paths name; the two are different
+  // vocabularies on purpose and every row here carries both.
+  heater:{ cls: 'functional', verb: 'place',  kind: 'heater', deviceKind: 'Heater' },
   rug:   { cls: 'cosmetic',   verb: 'decor',  itemId: 'rug' },
   shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'bookshelf' },
   // ORDER class (console-retirement WP-4) — a DESIGNATION, not a build. It consumes no material and
@@ -1155,6 +1169,12 @@ export const DEVICE_KIND_NAMES = Object.freeze([
   'GrowBed', 'WaterTank', 'Pipe', 'Reclaimer', 'Fabricator', 'MachineShop', 'SalvageRecycler',
   'Radiator', 'Bed', 'Table', 'Chair', 'MedBed', 'MedCabinet', 'Locker', 'Desk', 'PlantPot',
   'Telescope', 'IceMelter', 'CryoPod',
+  // M3-10. Appended in the SAME COMMIT that appends `Heater = 28` to `Device.cs`, because
+  // `prioritise-menu.test.js`'s by-name-and-index pin reads that enum and fails the instant the two
+  // tables differ in length — by construction, not by risk. `Heater` is ALSO the one entry in this
+  // table that is not a borrow: `ITEMS['space-heater']` has carried `deviceKind: 'Heater'` since the
+  // warm set was drawn, so this is the name matching the picture for once rather than in spite of it.
+  'Heater',
 ]);
 
 /**

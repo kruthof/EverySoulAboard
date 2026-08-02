@@ -10,6 +10,17 @@
 heat_capacity_j_per_k_per_tile = 53000    # J/K per room tile (air + coupled mass)
 citizen_heat_w                 = 100      # W resting metabolic heat per living citizen
 radiator_floor_k               = 283.15   # K — radiators never cool below 10 degC
+heater_ceiling_k               = 294.15   # K — heaters never warm above 21 degC (M3-10; the exact
+                                          # mirror of the line above, and what stops a 5 kW source
+                                          # in a sealed hall from running to needs.def's
+                                          # heat_stroke_c and refusing the work it was placed to
+                                          # allow. 21 degC sits inside the 10-35 degC band the
+                                          # THERMAL ship-system row already calls comfortable, and
+                                          # 294.15 - 283.15 = 11 K of dead band keeps a heater and a
+                                          # radiator in one room from fighting each other every pass.
+                                          # NOT attributed to RimWorld: its heater target is
+                                          # player-settable and the reference states NO number, and
+                                          # its own 21-verify ledger flags 9.2-9.3 UNVERIFIED)
 door_conduct_open_w_per_k      = 40       # W/K bulk exchange across an open door
 door_conduct_closed_w_per_k    = 8        # W/K slab conduction across a closed door
 hull_loss_w_per_k_per_tile     = 0.09     # W/K per hull-contact tile above the sink

@@ -78,6 +78,13 @@ namespace Perilune.Glyph
             DeviceKind.PlantPot => 'P',
             DeviceKind.Telescope => 'x',
             DeviceKind.IceMelter => 'I',   // E0-7 (upper case, like every other machine)
+            // M3-10. Upper case like every other machine. 'H' is the Ladder and 'h' the Chair, so
+            // the heater's own initial was taken in both cases; 'E' is the next free letter of the
+            // word and nothing else in ForDevice, ForItem or the mapper's state overrides claims
+            // it. The client's `space-heater` piece skins it directly — see items/index.js, where
+            // that piece has read `deviceKind: 'Heater'` since the warm set was drawn, waiting for
+            // this enum member to exist.
+            DeviceKind.Heater => 'E',
             // The wreck start: the REST glyph of a pod is the occupied capsule. The open state is
             // GlyphMapper.DeviceGlyph's override, in the same way DoorClosed is the arm here while
             // DoorOpen/DoorLocked live only in the mapper.

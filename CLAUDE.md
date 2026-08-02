@@ -131,10 +131,31 @@ evidence, even from this file** — re-measure before quoting.
   | P1 scenario `--days 3 --seed 42` | `13674ebc4f8a14a9` | `ci.sh:64` (+ twin-run equality) |
   | P2 tick-3000 golden | `1c036ffd53b8f106` | `Golden/perilune_tick3000_hash.txt` |
   | P3 slice tick-3000 golden | `37c85c1ed445895e` | `Golden/slice_tick3000_hash.txt` |
-  | P4 defs defaults checksum | `0c5ddbc07e41f07d` | `DefsChecksumTests.cs` |
-  | P5 defs rules-inclusive (`defs:` print) | `09900b9a44119272` | `DefsChecksumTests.cs` |
+  | P4 defs defaults checksum | `77a7a8a9e967eab4` | `DefsChecksumTests.cs` |
+  | P5 defs rules-inclusive (`defs:` print) | `edf1577c32f14e55` | `DefsChecksumTests.cs` |
 
-  Last mover: M3-15 (PIN M3-e, 2026-08-01) — **P1 ONLY**, for OD-N's actuation gate, and the
+  Last mover: M3-10 (PIN M3-d, 2026-08-01) — **P4 AND P5 ONLY**, and the cause is one enum
+  member with four tails. `DeviceKind.Heater = 28` grows `Machines` by a row (8 columns through
+  the fold loop) AND grows `Recipes`, which `CreateDefault` sizes `new RecipeDef[Machines.Length]`
+  (6 more fields for an entry no crafting uses); on top of that the package appends TWO def
+  scalars, `heater_output_kw` (5 kW) and `thermal.heater_ceiling_k` (294.15 K). P4
+  `0c5ddbc07e41f07d` → `77a7a8a9e967eab4`, P5 `09900b9a44119272` → `edf1577c32f14e55`, each
+  measured twice through two loaders (P4: the pin test's `CreateDefault` and
+  `DefsEquivalenceTests`' parse of the shipped `.def` files, agreeing to the digit; P5: the pin
+  test and `hosts/scenario --days 0 --seed 42`'s own `defs:` print).
+  ⛔ **P1/P2/P3 HELD, AND THE HOLD IS MEASURED RATHER THAN ARGUED:** `./ci.sh` green with the
+  twin-run match still `13674ebc4f8a14a9` and both tick-3000 goldens byte-unchanged — **that run
+  IS the proof**; everything below is a cheap alarm that says which fixture moved, never a second
+  authority. The reason it holds is that **no fixture behind a pin authors a heater**, so no
+  pinned run reaches `ThermalSystem`'s new arm. Mechanised in two halves, because the pins do not
+  share a shape: P2/P3 (and grid/wreck) are `ShipPlan`s and are censused by
+  `HeaterTests.NoPinnedShipAuthorsAHeater`; ⭐ **P1 is NOT a `ShipPlan` at all** — `ci.sh` runs
+  `hosts/scenario --days 3 --seed 42`, whose sim is `Program.cs`'s hand-built `BuildScenario`, so
+  it is scanned AT THE SOURCE by `P1sOwnFixtureAuthorsNoHeater` (shared `CodeOnly`, with both an
+  inclusion control and a commented-out-code control). Each half has a sibling that plants a
+  heater and requires the guard to name it — a search that finds nothing and a search that cannot
+  find anything look identical otherwise. `ci.sh` did NOT change: its literal is P1's.
+  Before that: M3-15 (PIN M3-e, 2026-08-01) — **P1 ONLY**, for OD-N's actuation gate, and the
   cause is a FIXTURE HOLE rather than new state. `SetDoorStateCommand`/`SetDeviceStateCommand`
   now ask `MossGate.IsServerLive` (any Terminal, `Powered`, `Condition >= maintain` 0.20), and
   P1's ship — `hosts/scenario`'s hand-built `BuildScenario` — **authored no Terminal at all**:
@@ -153,8 +174,8 @@ evidence, even from this file** — re-measure before quoting.
   is cached state — `MossGate` has no instance field, no mutable static, no def field, no save
   chapter. There was NO zero-move option: leaving the fixture terminal-less deletes the pinned
   window's only script→device actuation path.
-  **P2/P3/P4/P5 all HELD** — no def field, no new `DeviceKind`, and every authored fixture ship
-  carries `term_hydro` at 1.000, so the gate is open on them before the first tick.
+  **P2/P3/P4/P5 all held for M3-15** — no def field, no new `DeviceKind`, and every authored
+  fixture ship carries `term_hydro` at 1.000, so the gate is open on them before the first tick.
   Before that: M3-2 (PIN M3-a, 2026-07-31) P1/P2/P3 for `CryoSystem`'s SYSS seed, FOLD-ONLY and
   measured as such (interface dropped ⇒ all three read their OLD values); M2-2 (PIN M2-e,
   2026-07-30) P1/P3 for the work-type veto; M2-1 (PIN M2-a, 2026-07-29) P1/P2/P3 for the CITZ v8
