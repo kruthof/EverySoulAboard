@@ -248,7 +248,12 @@ namespace Perilune.Web
                 // exactly as long as nobody clicks: the player's own orders, invisible, which is the
                 // measured `materials` consequence (0 messages in 4 s) applied to state the player
                 // typed in themselves.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "work", "blocked" })
+                // ⚠️ `ending` (M3-5) IS ON THE LIST, and it is the strongest case on it. Its payload
+                // changes at most twice in a whole run and then never again — a reconnecting tab
+                // left to self-heal would show NO banner on a ship whose entire crew is dead, for
+                // ever, because nothing will ever change it back. "The run is over and the game does
+                // not say so" is precisely the silence this channel exists to remove.
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "work", "blocked", "ending" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1811,6 +1816,17 @@ namespace Perilune.Web
             // ten are badged for the first ~35 sim-minutes, then the field clears itself and this
             // channel goes quiet for good. See hosts/web/WireFormat.Blocked.cs.
             Send("blocked", WireFormat.Blocked(BuildBlocked()), force);
+
+            // ⭐ M3-5 — THE EMERGENCY THAW AND THE ENDING IT IMPLIES (`ending`). One line: the grace
+            // while the ship wakes one more soul by itself, and the lose state when it has nobody
+            // left to wake. Derived from `CryoSystem`'s own saved bits (`RunEnded`,
+            // `EmergencyPodId`), never from a host-side guess at what the sim is doing — see
+            // hosts/web/WireFormat.Ending.cs. `Send` dedupes by payload, so on the overwhelming
+            // majority of ticks this is one small string built and thrown away, and nothing sent.
+            //
+            // ⛔ THIS IS NOT THE ENDING SCREEN. M5-1 owns THE ENDING (OD-M item 4 = A); the claim
+            // made here is deliberately one line, and it must stay one line.
+            Send("ending", WireFormat.Ending(WireFormat.EndingBanner(_sim), WireFormat.RunIsOver(_sim)), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();

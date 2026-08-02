@@ -77,6 +77,7 @@ let _ledger = null;       // latest ledger message (E0-8: matter census + the ru
 let _devices = null;      // latest devices message (sparse per-device wear: kind + CONDITION + oper)
 let _blocked = null;      // latest blocked message (sparse refused orders: which order, and WHY)
 let _work = null;         // latest work message (M2-4: per-citizen manual work priorities; absent = off)
+let _ending = null;       // latest ending message (M3-5: the emergency-thaw grace line / the lose state)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -146,6 +147,9 @@ export function getWork() { return _work; }
  *  negative runway means NOT DEPLETING, not "missing". Rendering either as a zero would put a
  *  confident wrong number on screen, which is the exact defect this channel exists to remove. */
 export function getLedger() { return _ledger; }
+/** M3-5, the `ending` channel: `{text, over}`. `text === ''` means the run is ordinary and the bar
+ *  is hidden; `over` is the sim's own `CryoSystem.RunEnded`, NOT something to infer from the prose. */
+export function getEnding() { return _ending; }
 export function getStatus() { return _status; }
 export function getMetrics() { return _metrics; }
 export function getLog() { return _log; }
@@ -530,6 +534,11 @@ export function renderWork(m) { _work = m; notifyShip(); }
  *  four pinned console-DOM counts and survives the console deletion with the rest of the cache (see
  *  SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
 export function renderLedger(m) { _ledger = m; notifyShip(); }
+
+/** M3-5 `ending` dispatch: cache the one-line banner and notify the SVG surfaces so the Overview's
+ *  ENDING bar repaints. STATE-LAYER ONLY, exactly like `renderLedger` — draws nothing, reaches no
+ *  DOM, creates no element, so it adds nothing to the four pinned console-DOM counts. */
+export function renderEnding(m) { _ending = m; notifyShip(); }
 
 /** Relations dispatch (IX-R3): cache the directed graph and notify. The RELATIONS surface reads the
  *  cache back through `getRelations()` and repaints itself off `notifyShip` (relations-view.js);

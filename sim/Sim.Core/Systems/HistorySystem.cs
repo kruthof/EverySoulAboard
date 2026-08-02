@@ -20,6 +20,13 @@ namespace Perilune.Sim
         ConstructionCompleted = 8,
         Eulogy = 9,                // a closest-friend eulogy on a death (EulogySystem, N5)
         DeconstructCompleted = 10, // a wall torn down / a device stripped (DeconstructSystem, E0-5)
+
+        // ⭐ M3-5. Two kinds rather than one Generic line, because M5-1 has to FIND them: THE ENDING
+        // is built from `RunEnded`, and the wake line is the one entry in the whole Chronicle that
+        // names a person the ship woke without being asked. Appending members moves no pin — the
+        // fold reads `e.Kind` off the entries that exist, and no existing entry's value changed.
+        EmergencyThaw = 11,        // "With <name> dead, the ship woke <name>." (CryoSystem, M3-5)
+        RunEnded = 12,             // every soul aboard is dead and nothing can be woken (CryoSystem, M3-5)
     }
 
     /// <summary>One line of ship history, day-stamped ("Day 142.12 — Blight detected in Bay 3").</summary>

@@ -258,6 +258,11 @@ function buildSkeleton() {
     // console shell: E0-4's WP-5 built a whole feature onto that shell and nobody noticed.
     '<div class="hud ov-ledger" id="ov-ledger"></div>' +
     '<div class="ov-toast" id="ov-toast" hidden></div>' +
+    // ⭐ M3-5 — THE ENDING BAR. One line from the `ending` channel: the grace while the ship wakes
+    // one more soul by itself, and the lose state when it has nobody left to wake. It is NOT a
+    // toast — a toast expires, and neither of these two facts ever stops being true. It is NOT the
+    // ending screen either: M5-1 owns THE ENDING (OD-M item 4 = A) and this must stay one line.
+    '<div class="ov-ending" id="ov-ending" hidden></div>' +
     // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). It sits directly under
     // the top bar's HOLD/RESUME chip, because that chip is the fix for what it is complaining about.
     //
@@ -472,6 +477,9 @@ function buildIslands() {
   _el.ledgerCensus = _root.querySelector('.ov-ledcensus');
   _el.ledgerCaveat = _root.querySelector('.ov-ledcaveat');
   _el.ledgerEmpty = _root.querySelector('.ov-ledempty');
+
+  // M3-5's ENDING bar — written into the skeleton string above, so it is bound by id here.
+  _el.ending = $('ov-ending');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -696,6 +704,25 @@ function repaint() {
   paintCommand(activeDeck);
   paintSensor();
   paintLedger();
+  paintEnding();
+}
+
+/**
+ * ⭐ M3-5 — THE ENDING BAR. The host owns the sentence (`WireFormat.EndingBanner`, derived from
+ * `CryoSystem`'s saved bits); this function owns only whether it is on screen and which of the two
+ * moments it is.
+ *
+ * ⚠️ `over` COMES OFF THE PAYLOAD, NEVER OFF THE PROSE. The grace and the ending are styled
+ * differently and the client must not match on words to tell them apart — the `MossPods` rule this
+ * repo already keeps (a code with no sentence is unrenderable; a sentence with no code is
+ * unstylable). Reword either line and nothing here changes.
+ */
+function paintEnding() {
+  const msg = Hud.getEnding();
+  const text = msg && typeof msg.text === 'string' ? msg.text : '';
+  setHidden(_el.ending, !text);
+  setText(_el.ending, text);
+  setCls(_el.ending, 'ov-endover', !!(msg && msg.over));
 }
 
 // ── bottom-left LEDGER (E0-8) ──

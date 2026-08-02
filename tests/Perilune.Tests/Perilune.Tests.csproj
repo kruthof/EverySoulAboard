@@ -86,6 +86,11 @@
          this line failed with `"WireFormat" enthält keine Definition für "MossPods"` on
          GameSession.cs, a file that does not name this one. -->
     <Compile Include="../../hosts/web/WireFormat.Pods.cs" />
+    <!-- M3-5: the `ending` channel — a TENTH sibling partial, WireFormat.cs at a zero diff again.
+         The hand-added rule bit a SEVENTH time, exactly as the comments above promise: omitting this
+         line failed with `"WireFormat" enthält keine Definition für "Ending"` on GameSession.cs, a
+         file that does not name this one. -->
+    <Compile Include="../../hosts/web/WireFormat.Ending.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

@@ -460,6 +460,12 @@ namespace Perilune.Tests
         /// M3-2 STORES the latch and never writes it; M3-5 is the writer. Driven, not scanned: the
         /// wreck runs with a real thaw completing inside the window, which is the code path most
         /// likely to want to set it.
+        ///
+        /// <para>✅ <b>M3-5 HAS LANDED AND THIS IS STILL TRUE AND STILL MEANINGFUL.</b> M3-5's
+        /// branch runs only on a ship with NO living crew (<c>CryoSystem.EmergencyWatch</c>), and
+        /// this drive keeps Rell alive throughout — so the claim narrows honestly from "nothing in
+        /// the codebase writes it" to "an ordinary thaw with a crew aboard does not". The emergency
+        /// writer has its own suite (<c>EmergencyThawTests</c>).</para>
         /// </summary>
         [Test]
         public void NothingInThisPackageEverSetsTheEmergencyThawBit()

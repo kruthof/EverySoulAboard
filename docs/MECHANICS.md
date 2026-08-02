@@ -3704,6 +3704,15 @@ seed `'CRYO'`), round-tripped, and **asserted never to be set by anything in thi
 the reader AND the writer. This is M2-1 → M2-19's shape (*storage first, reader later*) and it exists
 so that M3-5 is not a SECOND re-pin.
 
+✅ **M3-5 IS NOW THE WRITER, AND THE PLAN PAID OFF: IT MOVED NO PIN** (§13.35). `CryoSystem` sets the
+bit the first tick the ship has no living crew, and it added two more structural members beside it
+(`_runEnded`, `_emergencyPodId`) **without moving P1/P2/P3** — the three are packed into ONE fold
+word, so a ship that never lost its crew hashes exactly what M3-2 hashed. `CryoSystemTests`'
+`NothingInThisPackageEverSetsTheEmergencyThawBit` still passes and is still meaningful: its drive
+keeps a crew member alive, which is the condition under which M3-5's branch does not run.
+⚠️ The absent-features list two paragraphs above is now **discharged in full** — the countdown badge
+is M3-4's (§13.32) and the emergency thaw is §13.35.
+
 ---
 
 #### ⛔ THE PIN MOVE — WHY IT HAPPENED, AND THE MEASUREMENT THAT PROVES THE CAUSE
@@ -4522,3 +4531,224 @@ Driven: on a repaired-but-uncommissioned terminal the install is refused with
 - **The other seven deck-1 halls have no vent and are still `0.000` kPa forever.** §13.23a's
   mechanism claim (gas is same-deck only) is unchanged; the shipping ship now has exactly one
   authored exception to the dead deck.
+
+### 13.35 ⭐⭐ The ship wakes one more soul BY ITSELF, once — and when it cannot, the run ends (M3-5 / OD-10, 2026-08-01)
+
+**Today the run died with the first pawn, silently, in minute three.** `CryoSystem.Tick` now carries
+a named exception: the tick the ship notices it has **no living crew**, it elects the nearest intact
+capsule and starts it counting down; four sim-minutes later a named person steps out and the
+Chronicle says *"With Rell dead, the ship woke Ozawa."* It happens **once per run**. When there is
+nothing left to wake, a **real lose state** fires — a saved, hashed bit, a Chronicle line, and a
+one-line banner on the standard surface.
+
+⛔ **IT LIVES IN `CryoSystem` AND `ThawCommand` NEVER LEARNS IT EXISTS.** OD-10, and it is the half a
+lane would be tempted to get wrong. `ThawCommand` is a player-reachable `ISimCommand`; any bypass
+inside it — a `skipGate` flag, a nullable pod argument, an early return before the term list — is a
+code path the player can reach, and the first player who finds it uses it as the normal route.
+`sim/Sim.Core/ThawGate.cs` and `Commands/Commands.cs` are at a **ZERO DIFF** in this package. The two
+share the MECHANISM (`Progress` → cycle → `AddCitizen`) and share **none** of the gate.
+
+#### THE TRIGGER, THE ELECTION, THE ENDING — all three stated
+
+| | rule | where |
+|---|---|---|
+| trigger | no citizen with `!Dead` aboard, and the reprieve unspent | `CryoSystem.cs` `EmergencyWatch` |
+| ⛔ **a cycle already running** | **nothing happens and the reprieve is NOT spent** — see the block below; this is the send-back defect | `EmergencyWatch`, first line |
+| bypasses | the console (term 2), the cycle exclusion (3), the rung (4), the headroom (5), the price (6) — **all of it, correctly**: every one presumes a living crew member | — |
+| does NOT bypass | **term 1, the pod**: `!IsOpen && Powered && IsOperational` — restated, and pinned against `ThawGate.Evaluate` by a driven 12-capsule agreement sweep, **each conjunct isolated by its own leg** | `IsIntactPod` |
+| tie-break | **fewest decks, then fewest tiles (Manhattan X/Y), then lowest `Device.Id`** — a strict lexicographic total order over integers. Origin = the tile the last crew member FELL on, from `CitizenDiedEvent.Pos`; with no event to read (a save loaded with nobody aboard) it degenerates to M3-2's lowest-Id | `NearestIntactPod` |
+| once | `_emergencyThawFired` is set **whether or not a capsule was found** — the reprieve is spent either way, EXCEPT on the in-flight row above | — |
+| ending | no crew, reprieve spent, **and nothing counting down** ⇒ `_runEnded` | `EmergencyWatch` |
+
+#### ⛔⛔ A CYCLE THE PLAYER PAID FOR IS NEVER STAMPED ON — and the reprieve is not spent on it
+
+**Found in independent review of the first commit, driven, and it was a real player-reachable
+regression in production code.** The election did not exclude a capsule already counting down and
+the assignment was unconditional, so an ordinary `ThawCommand` cycle **216 s into its 240 was reset
+to one pass** the instant the last pawn died — ~3.6 sim-minutes of *purchased* progress discarded,
+silently, at the moment the player can least afford it. `WireFormat.Ending.cs` had reasoned about
+exactly this state for the BANNER and the consequence for the ELECTION was missed.
+
+⭐ **THE SEMANTICS CHOSEN, AND WHY.** A capsule already counting down **IS** the grace ⇒
+`EmergencyWatch` returns immediately and **does not burn the latch**. Justified from the charter's
+own purpose — *"protects minute three without protecting hour three"*: the reprieve exists because
+the player has nobody left **and no way to ask**. A player who ALREADY asked, and paid a rung for
+it, has not used it, so it is still there the next time the crew hits zero. Burning it would charge
+them twice for one rescue. The alternative (spare `Progress`, still burn the latch) was applied as a
+mutation and is **RED** — the suite discriminates the two candidate fixes, not just the reset.
+
+⚠️ **AND THE TEST THAT PINS THIS WAS ITSELF A NAMED MUTATION THAT COULD NOT BITE**, caught in the
+second review pass — the very shape it exists to close. Its first draft put the paid cycle on
+`pod_lindqvist`, a capsule the election would never pick, so under the mutation the ship started a
+DIFFERENT capsule and the headline clause — *"the paid cycle was RESET"*, the defect's own sentence —
+could not fire at all. The paid capsule is now `pod_ozawa`, **the one the election would otherwise
+pick**, and the mutation reddens it with the original defect's exact numbers: `the paid cycle was
+RESET (0.90416664 → 0.004166667)`. The not-nearest arrangement is KEPT as its own `[Test]`, because
+it is the only one that produces the *"a SECOND capsule started counting down"* discriminator.
+
+⇒ **The guard sits at the top of the method rather than at the assignment, and that is deliberate**:
+past it nothing aboard is cycling, so no capsule the election can reach has progress to lose. A
+`Progress <= 0f` guard at the assignment would be unreachable and therefore untestable.
+
+⇒ **The banner had to follow.** With the reprieve unspent there is no elected id, so a
+banner reading only `EmergencyPodId` would have gone SILENT on a dead ship with a capsule counting
+down — the exact silence this package exists to close. `CryoSystem.GraceCapsuleId` now answers the
+question the host asks (elected capsule, else the counting one, else 0), **in the sim**, because
+only the sim knows what the reprieve did. The elected id WINS when both are set, so an ordinary
+cycle in flight can never make the banner name the wrong person.
+
+⚠️ **`CyclingPod` deliberately omits `Powered` while `IsIntactPod` includes it, and the asymmetry is
+CORRECT** (reviewer's observation 5, agreed and now written into the code). Term 1 asks *may this
+capsule be STARTED* — a question about signal. `CyclingPod` asks *is this capsule ADVANCING*, and
+M3-2's countdown ignores power once a cycle is under way (§13.29: *once started, a cycle completes*).
+Adding `Powered` there would let a brownout silently convert a running thaw into a lost run.
+
+⚠️ **"NEAREST" IS NOT A PATH LENGTH, DELIBERATELY.** A path cost would make the choice depend on
+doors, on air and on the pathfinder's tie-breaks — three things that have nothing to do with which
+sleeper the ship should spend its one reprieve on, and all three of which can make the answer
+unreachable on a wrecked ship.
+
+⚠️ **THE GRACE IS WHY THE ENDING CANNOT SIMPLY BE "NOBODY IS ALIVE".** For 240 sim-seconds after the
+last death nobody is alive and the run is very much still on. `AnyPodCycling` is the exception, and
+its predicate is the countdown's own election predicate conjunct for conjunct — a capsule the
+countdown would never advance must not be able to hold the ending open forever.
+
+#### THE THREE MOMENTS, AND WHERE EACH ONE LANDS
+
+| moment | what the player gets | surface |
+|---|---|---|
+| the last pawn dies | a capsule counting down **on the very next tick** (asserted as ONE tick, not "eventually"), and the banner **ALL HANDS DOWN — THE SHIP IS WAKING OZAWA.** | Overview `#ov-ending` |
+| the capsule opens | *"With Rell dead, the ship woke Ozawa."* — `HistoryKind.EmergencyThaw` | Chronicle (MOSS console) |
+| nothing left to wake | `CryoSystem.RunEnded` + *"Every soul aboard is dead, and no intact pod remains. The run is over."* (`HistoryKind.RunEnded`) + **EVERY SOUL ABOARD IS DEAD — THE RUN IS OVER.** | sim · Chronicle · Overview |
+
+⭐ **THE BANNER IS ON THE STANDARD SURFACE BECAUSE THE CHRONICLE IS NOT.** The two Chronicle lines
+reach the player only through the MOSS console; a player watching the Overview would otherwise see
+their last pawn die and then **nothing at all for four sim-minutes**, which is exactly the failure
+the charter names (*"if the grace is silent the player believes the game ended and quits"*). New wire
+channel `ending` — `{"type":"ending","text":"…","over":bool}` — built in
+`hosts/web/WireFormat.Ending.cs` (a TENTH `WireFormat` partial; `WireFormat.cs` stays at a zero
+diff), sent from `GameSession.cs` and **on the reconnect resend list**, because its payload changes
+at most twice in a whole run and a reconnecting tab would otherwise show no banner on a dead ship
+for ever. `over` rides beside the text rather than being inferred from it (`MossPods`' rule: a code
+with no sentence is unrenderable, a sentence with no code is unstylable).
+
+⛔ **THIS IS NOT AN ENDING SCREEN AND MUST NOT GROW INTO ONE.** OD-M item 4 = A: M3-5 ships the sim
+state + the Chronicle lines + a one-line banner; **M5-1 owns THE ENDING** and reads `RunEnded`.
+
+#### ⛔ PIN-NEUTRAL — P1–P5 ALL HOLD, and TWO things had to be engineered for that
+
+1. **The fold is ONE packed state word.** `XxHash64.Combine` is not idempotent on zero, so folding
+   `_runEnded` and `_emergencyPodId` as their own steps would have moved P1/P2/P3 on every ship in
+   the game **to record two zeros**. Packed — `fired | runEnded<<1 | podId<<2` — the word is `0`
+   exactly where M3-2's `fired ? 1 : 0` was `0`. **Driven both ways**: `AShipThatNeverLostItsCrew_…`
+   pins the fresh-boot CRYO checksum at `c25ab65f198b0144`, and `BothNewMembers_ReachTheStateHash`
+   proves each new member still moves the hash, one at a time. The un-packed form was applied as a
+   mutation and reddened that test **plus both tick-3000 goldens**.
+2. **`IntervalTicks` went 10 → 1 and the countdown did not speed up.** The emergency watch reads
+   `CitizenDiedEvent`, and the bus double-buffers per tick, so a 10-tick sampler misses nine deaths
+   in ten. The cadence is preserved by CONSTRUCTION rather than by retuning `Dt`: `Simulation.cs:293`
+   dispatches on `_tick % IntervalTicks == 0`, and `CycleIntervalTicks` re-applies that exact
+   predicate to that exact counter. Pinned by `TheCountdownStillAdvancesOncePerSimSecond` — nine
+   ticks advance a capsule by exactly one pass, the tenth by nothing, and a full cycle still takes
+   2 391 ticks (239.1 s; the extra pass over 239 is float, not cadence — 240 additions of `1f/240f`
+   land at `0.99999994`).
+
+`_emergencyDeadName` is **saved but hash-EXEMPT** — `HistorySystem`'s own HIST convention (*strings
+are hash-exempt; the checksum folds tick + kind + subjects, never the free text*), for the same
+reason: rewording must never perturb determinism. It cannot desynchronise a twin either, because it
+is derived from state that IS folded (the death rides HIST carrying the citizen id) and it is saved,
+so a restored ship carries the identical string. `CryoSystem.StateVersion` goes **1 → 2**; a v1 blob
+still restores through the version branch.
+
+**The pins: `tests/Perilune.Tests/EmergencyThawTests.cs`** — 17 tests, every one driven, plus one
+client test (`overview-model.test.js`, the ENDING bar). ⚠️ **Every death is driven from INSIDE a
+tick** by a test system registered at `NeedsSystem`'s relative position: a `CitizenDiedEvent`
+published from test code BETWEEN ticks lands in the write buffer and is not readable until a tick too
+late, by which time `CryoSystem` has already fired with no name to say — the whole suite would have
+been green with the wake line reading *"With a crew member dead…"*. ⚠️ **The wreck's pawn is FROZEN**
+(`AutoWander` off, `HoldPosition` on) in every test that names an expected capsule: "the nearest
+intact capsule" is measured from where she fell, so without pinning her down the expected answer is a
+function of how many ticks the test happened to run.
+
+⭐⭐ **EVERY CONJUNCT OF TERM 1 IS PINNED BY ITS OWN DRIVEN LEG, INCLUDING `Powered` — and the
+technique is a coupling THIS PACKAGE CREATED.** `PowerSystem.IntervalTicks` is 10 and it re-assigns
+`Powered` unconditionally (`PowerSystem.cs:298-301`); `CryoSystem` now ticks at **1**, so on nine
+ticks in ten a hand-set `Powered = false` survives to the election's read.
+`ADepoweredCapsuleIsNeverElected` therefore uses `ThawGateTests.TermOne_…`'s own in-tree fixture
+(`Powered = false` on the shipping ship), **phase-locked off a power pass** and asserting the
+capsule is STILL depowered afterwards — without that the leg would pass on luck.
+⚠️ Its first run reddened on `NON-VACUITY FAILED: the drive ended on a power pass`, because
+`Simulation.Tick` increments `_tick` at the END: a drive over ticks …8 and …9 leaves `TickCount`
+reading …0, a power pass that never ran. **The claim is the ticks EXECUTED, not the counter
+afterwards** — the guard caught its own author.
+
+⛔ **AND THE INCIDENTAL COVERAGE IT REPLACES IS GONE, MEASURED ON THIS TREE.** Independent review
+measured `&& d.Powered` deleted as reddening **2 of 1687** — two M3-2 crewless synthetic-map
+`CryoSystemTests` legs, red for the WRONG reason (trap 3: perturbed by the every-tick watch, not
+pins of the election). On the FIXED tree those two are green: their fixtures have a capsule
+counting down, so the new in-flight guard returns before the election ever runs. Re-measured here:
+**the deletion now reds exactly 1 of 1690, and it is `ADepoweredCapsuleIsNeverElected`, by name and
+for the right reason** (`elected device 549 (pod_ozawa), expected pod_torres (552) · a DEPOWERED
+capsule (pod_ozawa) was started`). ⚠️ **So the D2 fix removed the last incidental coverage at the
+same moment the D1 leg supplied real coverage.** The corollary is worth stating for whoever comes
+next: the emergency watch now runs inside **every crewless fixture in the repo**, and a future lane
+that crews those fixtures — or that changes what counts as "cycling" — silently removes whatever
+incidental exercise of this branch remains. The named legs are the only durable pins.
+
+⭐ **THE ELECTION FIXTURE DISCRIMINATES THREE WRONG ANSWERS AT ONCE**, on the SHIPPING SHIP (a
+synthetic bay is useless here — `PowerSystem` leaves every device on a conduit-less test map
+unpowered, so term 1 would refuse for a reason unrelated to the claim). With `pod_ozawa` wrecked and
+the pawn at (3,1,0) the right answer is `pod_torres`: wrecked-eligible ⇒ `pod_ozawa` wins,
+opened-eligible ⇒ `pod_rell` wins, distance-ignored ⇒ `pod_mbeki` wins. All three were applied as
+mutations and each named its own wrong capsule in the failure text.
+
+#### WHAT THIS DOES NOT DO — filed, not fixed
+
+- **No ending SCREEN.** By design (OD-M item 4 = A) — M5-1's.
+- **The deck term of the tie-break is behaviourally INERT on the shipping ship.** All twelve
+  capsules are authored at `z = 0`, so `deck` is always 0 and the order collapses to
+  (Manhattan, Id). Replacing the deck computation with `deck = 0` survives the whole suite. It is
+  kept because a second cryo bay on another deck is a content change, not a code change, and the
+  rule would then be wrong by omission — but nothing pins it today. **Recorded, not fixed.**
+- **A capsule with nowhere to open holds the ending open for ever.** M3-2's `TryFindExitTile` holds
+  such a capsule shut at `Progress == 1.0`, and `AnyPodCycling` reads that as "still counting down",
+  so the run never formally ends. Unreachable on the shipping ship (every capsule has a walkable
+  neighbour); it is the one state in which the banner would sit on "waking" indefinitely.
+- **A save loaded with nobody aboard names nobody.** There is no `CitizenDiedEvent` to read, so the
+  emergency still fires and still elects a capsule, but the wake line degrades to *"With a crew
+  member dead, the ship woke …"* and the election falls back to lowest-Id. Reachable only by loading
+  a save taken between the death and the next tick.
+- **The banner is the ONLY standard-surface trace.** The two Chronicle lines are still MOSS-console
+  only, which is a general property of the Chronicle and not this package's to change.
+- **Both new lines render as `[Note]` and neither can become a day headline.** `Chronicle.Label`
+  falls through to `"Note"` for any kind it does not name and `Severity` returns 0
+  (`Memory/Chronicle.cs:120-145`). Witnessed in the browser and it reads perfectly well — but the
+  ENDING is arguably the most severe line a run can produce, and it currently loses a headline to a
+  eulogy. FILED rather than fixed: a tag and a severity are a behavioural change to `Chronicle` and
+  owe their own test, and M5-1 reads `RunEnded` off the sim rather than off the prose.
+- ⚠️ **The Overview does not repaint while the MOSS console is up** (`repaint()` returns early on
+  `shouldShow()`), so the banner is frozen at whatever it last painted for as long as a player sits
+  on the console. Pre-existing and general to every Overview island; it cost the acceptance run one
+  whole take before the steps were reordered, and it is written into that harness's header.
+
+#### ACCEPTANCE — DRIVEN AND WITNESSED, and which is which
+
+`client/tools/emergency-thaw-shot.mjs` (headless Chrome + CDP + an INDEPENDENT socket that is never
+the page). ⛔ **THE GAME OFFERS NO VERB THAT KILLS A PAWN**, and the honest route — order her across
+the pressure frontier — is defeated by the shipping safety rule (`needs.flee_suffocation`). So
+`--prep` writes a temporary defs overlay moving **TWO numbers** and nothing else:
+`hypoxia_ppo2_kpa` / `severe_hypoxia_ppo2_kpa` `16`/`10` → `999`/`999`, so the whole ship reads as
+unbreathable. **The DEATH is the shipping mechanism at the shipping rate** (`NeedsSystem`'s hypoxia
+track, `suffocation_per_second_vacuum` untouched — ~90 s). **The emergency thaw, the wake, the
+Chronicle and the ending are all WITNESSED**; the tool sends no cryo command and writes no sim state.
+
+All 17 checks passed on the shipping ship (re-run after the send-back fixes, since D2 changed production code): the bar is hidden while Rell is alive → she dies and it
+reads **ALL HANDS DOWN — THE SHIP IS WAKING NAKAMURA.** (not styled as the ending, and the
+independent socket agrees on text AND `over`) → four sim-minutes later the bar clears and Nakamura
+is on the roster → she dies in her turn and it reads **EVERY SOUL ABOARD IS DEAD — THE RUN IS
+OVER.** with `over:true`, and it STAYS → the FAULT LOG carries
+`[Note] With Rell dead, the ship woke Nakamura.`, `[Death] Rell has died.` and
+`[Note] Every soul aboard is dead, and the ship's one reprieve is already spent. The run is over.`
+⭐ The elected capsule was `pod_nakamura` rather than the boot-adjacent `pod_ozawa` **because Rell
+fled before she died** — the tie-break really is measured from where she fell.
+Shots: `docs/design/shots/emergency-thaw-{1-alive,2-grace,3-woken,4-ending,5-chronicle}.png`.
