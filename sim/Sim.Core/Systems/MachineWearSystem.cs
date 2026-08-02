@@ -116,6 +116,12 @@ namespace Perilune.Sim
     ///                    inventories), so "burn a Seal AND fit a Part" is not expressible
     ///                    and the tiers are a LADDER rather than a co-consumption.
     ///
+    ///   ⭐⭐ THE RESERVE FLOOR (D3, owner decision 2026-08-02): the STANDING RULE declines the
+    ///   ship's last MaintenanceSystem.AutonomousRepairReserve loose consumable units — a DIRECT
+    ///   ORDER still spends them. Below that line an autonomous service behaves exactly as it does
+    ///   on a ship holding nothing: a free jury-rig where the band allows it, no service to offer
+    ///   below the wreck floor. Turning the work grid on no longer bankrupts the ship.
+    ///
     ///   FETCH PREFERENCE IS BY TIER, NOT BY DISTANCE (E0-6): a Parts stack on the far
     ///   side of the ship beats a Seals stack at the servicer's feet. That is deliberate
     ///   and it is what makes the rung strictly additive — whenever ANY unreserved Parts
@@ -625,6 +631,17 @@ namespace Perilune.Sim
         /// it — a sentence that is false about the ship. That is the exact menu/job disagreement
         /// §8.4 rung 3 exists to prevent, arriving through the consumable gate instead of the
         /// staging gate.</para>
+        ///
+        /// <para>⭐⭐ <b>D3 — AND SINCE THE RESERVE FLOOR, <paramref name="forced"/> CHANGES THE
+        /// ANSWER A SECOND TIME, FOR A SECOND REASON.</b> The un-forced ask now reads "…and nothing
+        /// aboard that the STANDING RULE MAY SPEND on it": with the ship down to
+        /// <see cref="AutonomousRepairReserve"/> loose units this returns TRUE while the ship
+        /// visibly holds consumables, which is correct and is the whole point — the dispatcher must
+        /// not offer a service it is not allowed to pay for, and offering one is the livelock. The
+        /// forced ask is unchanged, so <c>PrioritiseJobCommand</c> and the <c>blocked</c> channel
+        /// (both of which already pass <c>forced: true</c>) still see the reserved units: an order
+        /// is not refused over them and <c>WireFormat.ReasonNoConsumable</c> is not raised over
+        /// stock the player can still spend.</para>
         /// </summary>
         public static bool IsUnfixableWreck(Simulation sim, Device device, bool forced = false)
         {
@@ -659,6 +676,12 @@ namespace Perilune.Sim
         /// Swarf</b> (ties within a tier: item store order). THREE tiers, not two — the summary said
         /// two after the wreck start added the third.
         ///
+        /// <para>⭐⭐ <b>D3 — AND UNLESS <paramref name="forced"/>, NOTHING AT ALL WHILE THE SHIP IS
+        /// DOWN TO ITS RESERVE.</b> See <see cref="HasAutonomouslySpendableStock"/> and
+        /// <see cref="AutonomousRepairReserve"/>: this is the ONE funnel every consumable decision
+        /// in this file passes through, which is why the floor is applied here and nowhere
+        /// else.</para>
+        ///
         /// <para>⚠️ COST, unmeasured and owed: this is up to THREE full item-store scans, and the
         /// worst case is exactly the permanently-refused wreck — no Parts, no Seals, no Swarf — which
         /// <c>IsUnfixableWreck</c> re-evaluates at 1 Hz for as long as the machine stays needy.
@@ -672,6 +695,12 @@ namespace Perilune.Sim
         /// </summary>
         private static ItemStack FindNearestConsumable(Simulation sim, Int3 from, bool allowSwarf, bool forced = false)
         {
+            // ⭐⭐ D3 — THE RESERVE FLOOR, AND IT IS DELIBERATELY THE FIRST LINE OF THE ONE FUNNEL.
+            // See `AutonomousRepairReserve`. An UNORDERED service declines the ship's last few loose
+            // consumable units; an ORDERED one (`forced`) sees the whole pile. Everything else in
+            // this function is untouched, so above the floor the ladder is byte-identical.
+            if (!forced && !HasAutonomouslySpendableStock(sim)) return null;
+
             // ⭐ M3-13 — THE TIERS COME FROM `RepairConsumableTier`, WHICH IS NOW THE LADDER'S ONE
             // DECLARATION. Behaviour is unchanged (Parts ▸ Seals ▸ Swarf, Swarf gated); what moved
             // is that a reader — including `WireFormat.ReasonNoConsumable`'s badge, which has to
@@ -729,6 +758,108 @@ namespace Perilune.Sim
 
         /// <summary>How many rungs <see cref="RepairConsumableTier"/> has.</summary>
         public const int RepairConsumableTierCount = 3;
+
+        /// <summary>
+        /// ⚠️⚠️ <b>D3 — THE RESERVE FLOOR: LOOSE CONSUMABLE UNITS AUTONOMOUS MAINTENANCE MAY NOT
+        /// SPEND.</b> The standing rule stops fetching once the ship's reachable stock is down to
+        /// this many units; a DIRECT ORDER (<c>forced</c>) still spends them.
+        ///
+        /// <para><b>THE DEFECT IT CLOSES, MEASURED IN THE M3 MILESTONE DEMO (finding D3).</b> With
+        /// all six work types on, the maintenance board spent all ten of the wreck's loose Seals in
+        /// ~4 sim-hours on whatever happened to be neediest. At zero consumables no bench can be
+        /// repaired, so the crafting chain that earns the next thaw cannot start and the run
+        /// TERMINALLY STALLS at two crew. Turning the work grid on bankrupted the ship, which made
+        /// the grid — OD-G/OD-H's opt-in — a trap rather than a choice.</para>
+        ///
+        /// <para><b>WHY FOUR.</b> It is the ship's own stated critical path, not a tuning taste:
+        /// <c>AuthoredShips.cs</c> (the WINNABILITY block, <c>:1601-1620</c>) prices the opening as
+        /// <b>THREE BENCHES all booting below the wreck floor, one consumable service each, plus the
+        /// MOSS terminal at 0.14 for one more ⇒ 4 consumables total</b>. Four units is therefore
+        /// exactly what the player must still be able to spend by hand after autonomy has had its
+        /// fill. It is not a safety margin and it is not a fraction of stock — it is the count of
+        /// services the opening cannot be won without.</para>
+        ///
+        /// <para><b>A NAMED CONSTANT AND NOT A DEF FIELD, DELIBERATELY</b> — the shipped precedent
+        /// is <see cref="ThawGate.MinDaysOfFood"/> (<c>ThawGate.cs:329-348</c>), whose own comment
+        /// carries the argument: <i>"A def scalar moves P4 (defs defaults checksum) and P5
+        /// (rules-inclusive), which this package's pin ritual requires to HOLD — and a def field
+        /// pinned only by a checksum is not pinned at all."</i> Same reading here, and the same
+        /// v1-literal-stated-as-a-rule shape as <c>CryoSystem.ThawSecondsPerCycle</c> and
+        /// <c>BuildSystem.FloorConstructTicks</c>.</para>
+        /// </summary>
+        public const int AutonomousRepairReserve = 4;
+
+        /// <summary>
+        /// ⭐⭐ <b>D3 — THE RESERVE PREDICATE, DECLARED ONCE.</b> Does the ship hold MORE than
+        /// <see cref="AutonomousRepairReserve"/> loose consumable units that an unordered crew
+        /// member could actually reach? False ⇒ the autonomous path must behave as though the ship
+        /// held none at all.
+        ///
+        /// <para>⛔ <b>ONE DECLARATION, AND IT IS CALLED FROM EXACTLY ONE PLACE — the first line of
+        /// <see cref="FindNearestConsumable"/> — WHICH IS WHY THE THREE SITES CANNOT DISAGREE.</b>
+        /// The reserve has to be seen by (i) <see cref="RecruitForNeediest"/>'s wreck gate, (ii)
+        /// <see cref="DriveWorker"/>'s fetch and (iii) <see cref="HasClaimableWork"/>'s mirror, or a
+        /// servicer is recruited for a machine the fetch will then refuse and abandons on arrival —
+        /// re-offered at 1 Hz forever (M3-14's lesson; the mirror's own doc comment calls a missing
+        /// condition <i>"a silent multi-sim-hour stall for every pawn at or below the Repair
+        /// band"</i>). All three of those sites already funnel through
+        /// <c>FindNearestConsumable</c> — (i) and (iii) via <see cref="IsUnfixableWreck"/> — so
+        /// gating the funnel gates all three BY CONSTRUCTION rather than by three call sites that
+        /// have to be kept in step. Mutation, applied and observed red: pass <c>forced: true</c>
+        /// from <c>IsUnfixableWreck</c> (i.e. put the reserve at the fetch alone) and the recruit
+        /// gate re-offers a below-floor machine every backoff window while the fetch refuses it,
+        /// which is precisely the livelock.</para>
+        ///
+        /// <para><b>ALL THREE RUNGS COUNT, UNCONDITIONALLY — <c>allowSwarf</c> IS NOT CONSULTED.</b>
+        /// The reserve is a fact about the SHIP'S STOCK, not about the machine being looked at, and
+        /// the kinds come from <see cref="RepairConsumableTier"/> so this is not a second copy of
+        /// the ladder. A per-machine count would make the ship's answer depend on which device
+        /// asked, which is the shape the paragraph above exists to forbid.</para>
+        ///
+        /// <para><b>THE FILTERS ARE <see cref="FindNearest"/>'S OWN, ASKED IN THE AUTONOMOUS VIEW</b>
+        /// (<c>forced: false</c>): unreserved, not in anybody's hands, and standing on a tile an
+        /// unordered crew member may be staged on. Counting a stack stranded in vacuum would let the
+        /// reserve be satisfied by units the dispatcher can never touch — it would permit spending
+        /// the reachable ones down to zero, which is the defect.</para>
+        ///
+        /// <para><b>EARLY EXIT, so the cost is a partial scan on a healthy ship</b> and the
+        /// zero-alloc tick-path rule is kept (no list, no LINQ). <c>Count</c> is the unit count, so
+        /// one ten-unit stack answers this on its own.</para>
+        ///
+        /// <para>⚠️ <b>KNOWN AND FILED, NOT FIXED HERE: THE CARRIED-STACK BLACKOUT.</b>
+        /// <see cref="DriveWorker"/> picks up the WHOLE stack for a one-unit service, and a carried
+        /// stack has <c>CarriedBy != 0</c>, so while one servicer walks her ten units are invisible
+        /// to this count and every other autonomous fetch is blocked until she sets the remainder
+        /// down. The spend-down still lands on exactly <see cref="AutonomousRepairReserve"/> units —
+        /// it is serialised, not wrong — and the same blindness already exists in
+        /// <c>LooseMatter.Affordable</c>. Its own package.</para>
+        /// </summary>
+        public static bool HasAutonomouslySpendableStock(Simulation sim)
+        {
+            int units = 0;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (item.CarriedBy != 0 || item.ReservedBy != 0) continue;
+                if (!IsRepairConsumable(item.Kind)) continue;
+                if (!WorksiteSafety.CanStageWorkerAt(sim, item.Pos, forced: false)) continue;
+                units += item.Count;
+                if (units > AutonomousRepairReserve) return true; // beyond the floor — nothing to decide
+            }
+            return false;
+        }
+
+        /// <summary>Is this kind a rung of the repair ladder? Walks
+        /// <see cref="RepairConsumableTier"/> rather than restating <c>Parts/Seals/Swarf</c> — the
+        /// ladder has ONE declaration (M3-13) and a reserve that spelled the kinds out again would
+        /// be the second one. Three comparisons, no allocation.</summary>
+        private static bool IsRepairConsumable(ItemKind kind)
+        {
+            for (int tier = 0; tier < RepairConsumableTierCount; tier++)
+                if (RepairConsumableTier(tier) == kind) return true;
+            return false;
+        }
 
         /// <summary>
         /// ⭐ <b>WHAT A STALLED REPAIR ORDER IS WAITING FOR</b> — the consumable a service reaches

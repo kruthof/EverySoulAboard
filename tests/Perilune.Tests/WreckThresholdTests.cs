@@ -271,7 +271,13 @@ namespace Perilune.Tests
         public void WreckedMachine_WithOneSealsStack_IsServicedAndTheStackIsConsumed()
         {
             var sim = BuildBay(0.05f);
-            var seals = sim.AddItem(ItemKind.Seals, 1, new Int3(2, 2, 0));
+            // ⭐ D3 — ONE UNIT IS NO LONGER ENOUGH FOR AN UNORDERED SERVICE. The standing rule
+            // declines the ship's last `MaintenanceSystem.AutonomousRepairReserve` loose units so
+            // the player can still spend them by hand (`RepairReserveTests`); the SUBJECT of this
+            // leg is the matter path, so it is stocked one unit above the floor and stated relative
+            // to the constant. `Count` is asserted below rather than the stack's existence.
+            var seals = sim.AddItem(ItemKind.Seals, MaintenanceSystem.AutonomousRepairReserve + 1,
+                                    new Int3(2, 2, 0));
             Assert.That(seals, Is.Not.Null);
 
             var (everMaintained, peak) = Drive(sim, OneServiceTicks);
@@ -280,9 +286,9 @@ namespace Perilune.Tests
             Assert.That(peak, Is.EqualTo(SimDefs.Default.Wear.SealServiceCondition).Within(1e-4f),
                 "OUTCOME: a Seals service restores exactly wear.seal_service_condition — not the " +
                 "jury-rig floor, which would mean the rule let a free repair through.");
-            Assert.That(UnitsOf(sim, ItemKind.Seals), Is.Zero,
-                "The Seals unit must be CONSUMED. A condition rise with the stack still on the " +
-                "ground is a jury-rig wearing a Seals service's clothes.");
+            Assert.That(UnitsOf(sim, ItemKind.Seals), Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve),
+                "EXACTLY ONE Seals unit must be CONSUMED. A condition rise with the pile untouched " +
+                "is a jury-rig wearing a Seals service's clothes.");
         }
 
         /// <summary>
@@ -308,7 +314,12 @@ namespace Perilune.Tests
         public void FetchGuard_AConsumableThatVanishesMidWalk_StillLeavesTheWreckWrecked()
         {
             var sim = BuildBay(0.05f);
-            var seals = sim.AddItem(ItemKind.Seals, 1, new Int3(2, 2, 0));
+            // ⭐ D3 — the fixture needs stock ABOVE `MaintenanceSystem.AutonomousRepairReserve` or
+            // the servicer is never recruited at all and the fetch phase this leg is about is never
+            // entered. The stack is still removed WHOLE below, so the ship really does end holding
+            // nothing — the case is unchanged, only the pile size is.
+            var seals = sim.AddItem(ItemKind.Seals, MaintenanceSystem.AutonomousRepairReserve + 1,
+                                    new Int3(2, 2, 0));
 
             bool everMaintained = false, pulled = false;
             float peak = Subject(sim).Condition;
@@ -509,7 +520,16 @@ namespace Perilune.Tests
             subject.Condition = floor * 0.5f;
             bool belowFloor = MaintenanceSystem.IsUnfixableWreck(sim, subject);
 
+            // ⭐ D3 — TWO READINGS NOW, AND THE PAIR IS THE POINT. `AutonomousRepairReserve` units
+            // are stock the STANDING RULE may not spend, so the un-forced predicate still answers
+            // "unfixable" over them (correct: the dispatcher is not allowed to go) while the FORCED
+            // one — the reading `PrioritiseJobCommand` and the `blocked` channel take — answers
+            // "fixable". A single-unit seed used to flip only the first; both are asserted now.
             sim.AddItem(ItemKind.Parts, 1, new Int3(2, 2, 0));
+            bool belowFloorWithOneReservedPart = MaintenanceSystem.IsUnfixableWreck(sim, subject);
+            bool orderCanStillReachIt = MaintenanceSystem.IsUnfixableWreck(sim, subject, forced: true);
+
+            sim.AddItem(ItemKind.Parts, MaintenanceSystem.AutonomousRepairReserve, new Int3(3, 2, 0));
             bool belowFloorWithParts = MaintenanceSystem.IsUnfixableWreck(sim, subject);
 
             bool nullIsNotAWreck = MaintenanceSystem.IsUnfixableWreck(sim, null);
@@ -518,8 +538,15 @@ namespace Perilune.Tests
             {
                 Assert.That(atFloor, Is.False, "AT the floor is NOT a wreck — the comparison is <, not <=.");
                 Assert.That(belowFloor, Is.True, "BELOW the floor with nothing aboard IS a wreck.");
+                Assert.That(belowFloorWithOneReservedPart, Is.True,
+                    "D3: one Part is INSIDE the autonomous reserve, so the DISPATCHER's reading is " +
+                    "still 'unfixable' — it may not spend the player's last units.");
+                Assert.That(orderCanStillReachIt, Is.False,
+                    "D3: …and the ORDER's reading of that same ship is 'fixable'. If this is true " +
+                    "the reserve is holding units nobody can spend.");
                 Assert.That(belowFloorWithParts, Is.False,
-                    "A wreck with Parts aboard is fixable — the rule refuses free repair, not repair.");
+                    "A wreck with Parts aboard ABOVE the reserve is fixable to the dispatcher too — " +
+                    "the rule refuses free repair, not repair.");
                 Assert.That(nullIsNotAWreck, Is.False, "A null device must not be reported as a wreck.");
             });
         }

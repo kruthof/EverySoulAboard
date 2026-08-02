@@ -424,14 +424,20 @@ namespace Perilune.Tests
         public void SealsService_RestoresToTheSealRung_AndBurnsExactlyOneUnit()
         {
             var (sim, machine) = BuildNeedyMachine();
-            sim.AddItem(ItemKind.Seals, 3, new Int3(5, 2, 0));
+            // ⭐ D3 — STOCKED ABOVE `MaintenanceSystem.AutonomousRepairReserve`, DELIBERATELY.
+            // The standing rule declines the ship's last MaintenanceSystem.AutonomousRepairReserve loose consumable units so the player
+            // can still spend them by hand; a fixture at or below that floor measures the RESERVE,
+            // not the rung this test is about. The reserve's own instrument is
+            // `RepairReserveTests` — this file states its stock relative to the constant so it
+            // follows the constant rather than silently going vacuous if it moves.
+            sim.AddItem(ItemKind.Seals, MaintenanceSystem.AutonomousRepairReserve + 2, new Int3(5, 2, 0));
             Assert.That(Units(sim, ItemKind.Parts), Is.Zero,
                 "premise: NO Parts aboard — Parts outrank Seals, so a stray Part would silently " +
                 "turn this into a test of the overhaul rung");
 
             Run(sim, MaintainableKindTicks);
 
-            Assert.That(Units(sim, ItemKind.Seals), Is.EqualTo(2),
+            Assert.That(Units(sim, ItemKind.Seals), Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve + 1),
                 "exactly ONE Seal was consumed by the service");
             Assert.That(machine.Condition, Is.EqualTo(sim.Defs.Wear.SealServiceCondition).Within(1e-4f),
                 "the machine came back to the SEALS rung");
@@ -483,11 +489,18 @@ namespace Perilune.Tests
         public void PartsOverhaul_StillRestoresToOne_ExactlyAsBeforeE0_6()
         {
             var (sim, machine) = BuildNeedyMachine();
-            sim.AddItem(ItemKind.Parts, 3, new Int3(5, 2, 0));
+            // ⭐ D3 — STOCKED ABOVE `MaintenanceSystem.AutonomousRepairReserve`, DELIBERATELY.
+            // The standing rule declines the ship's last MaintenanceSystem.AutonomousRepairReserve loose consumable units so the player
+            // can still spend them by hand; a fixture at or below that floor measures the RESERVE,
+            // not the rung this test is about. The reserve's own instrument is
+            // `RepairReserveTests` — this file states its stock relative to the constant so it
+            // follows the constant rather than silently going vacuous if it moves.
+            sim.AddItem(ItemKind.Parts, MaintenanceSystem.AutonomousRepairReserve + 2, new Int3(5, 2, 0));
 
             Run(sim, MaintainableKindTicks);
 
-            Assert.That(Units(sim, ItemKind.Parts), Is.EqualTo(2), "exactly ONE Part was consumed");
+            Assert.That(Units(sim, ItemKind.Parts), Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve + 1),
+                "exactly ONE Part was consumed");
             Assert.That(machine.Condition, Is.EqualTo(1f).Within(1e-4f), "a full overhaul, as before");
         }
 
@@ -516,7 +529,13 @@ namespace Perilune.Tests
         public void PartsOutrankSeals_EvenWhenTheSealsAreNearer()
         {
             var (sim, machine) = BuildNeedyMachine();
-            sim.AddItem(ItemKind.Seals, 3, new Int3(1, 2, 0)); // UNDER the servicer's feet
+            // ⭐ D3 — STOCKED ABOVE `MaintenanceSystem.AutonomousRepairReserve`, DELIBERATELY.
+            // The standing rule declines the ship's last MaintenanceSystem.AutonomousRepairReserve loose consumable units so the player
+            // can still spend them by hand; a fixture at or below that floor measures the RESERVE,
+            // not the rung this test is about. The reserve's own instrument is
+            // `RepairReserveTests` — this file states its stock relative to the constant so it
+            // follows the constant rather than silently going vacuous if it moves.
+            sim.AddItem(ItemKind.Seals, MaintenanceSystem.AutonomousRepairReserve + 1, new Int3(1, 2, 0)); // UNDER the servicer's feet
             sim.AddItem(ItemKind.Parts, 1, new Int3(5, 2, 0)); // the far end of the bay
 
             // The premise the whole test rests on, asserted rather than assumed: the SEALS really
@@ -529,7 +548,7 @@ namespace Perilune.Tests
 
             Run(sim, MaintainableKindTicks);
 
-            Assert.That(Units(sim, ItemKind.Seals), Is.EqualTo(3),
+            Assert.That(Units(sim, ItemKind.Seals), Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve + 1),
                 "the nearer SEALS stack was not touched");
             Assert.That(Units(sim, ItemKind.Parts), Is.Zero,
                 "the distant PART was fetched and consumed instead");
@@ -1026,10 +1045,13 @@ namespace Perilune.Tests
             var sim = BuildBench(DeviceKind.Scrubber, defs);
             var machine = DeviceNamed(sim, "bench");
             machine.Condition = 0.2f;
-            sim.AddItem(ItemKind.Seals, 1, new Int3(5, 2, 0));
+            // ⭐ D3 — one unit above `MaintenanceSystem.AutonomousRepairReserve`: at or below the
+            // floor the standing rule declines to fetch at all and this run would measure the
+            // reserve instead of `seal_service_condition`.
+            sim.AddItem(ItemKind.Seals, MaintenanceSystem.AutonomousRepairReserve + 1, new Int3(5, 2, 0));
             Run(sim, MaintainableKindTicks);
 
-            Assert.That(Units(sim, ItemKind.Seals), Is.Zero,
+            Assert.That(Units(sim, ItemKind.Seals), Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve),
                 "path assertion: the Seal really was consumed, so the condition below is a SERVICE " +
                 "result and not an untouched machine");
             return machine.Condition;

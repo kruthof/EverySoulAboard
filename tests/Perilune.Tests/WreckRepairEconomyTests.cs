@@ -48,6 +48,28 @@ namespace Perilune.Tests
     /// and <see cref="KnownLimit_TheSwarfRungIsZeroSum_OneUnitPerStrippedWreck"/>. ⚠️ Review found
     /// the first draft had pinned only the first of the three, so the file read as
     /// <i>"every wrecked machine in the core is lifted"</i> with nothing to the contrary.</para>
+    ///
+    /// <para>⭐⭐ <b>D3 (2026-08-02) MOVED THIS FILE'S HEADLINE AND IT IS SAID HERE RATHER THAN
+    /// LEFT IN THE LEGS.</b> <see cref="MaintenanceSystem.AutonomousRepairReserve"/> stops the
+    /// STANDING RULE at the ship's last 4 loose units, so unattended recovery no longer clears the
+    /// whole backlog — it clears <c>11 − 4 = 7</c> of it and hands the rest to the player. M1-I's
+    /// question ("does the stock cover the backlog?") is unchanged and still answered YES; what
+    /// changed is WHO spends the last four units. FOUR legs were restated in the same commit:
+    /// <see cref="Unattended_TheCoreIsLiftedDownToTheReserve_AndTheRestStayOrderable"/>,
+    /// <see cref="Unattended_AllThreeSolarWings_LeaveTheWreckedBandAndStayFixable"/>,
+    /// <see cref="WithOnlyTheShippedThreeUnits_WingBIsStrandedUnattended"/> and — added at the
+    /// review send-back — <see cref="TheFixIsNotGeneral_APressurisedFrontierStarvesWingB"/>, each
+    /// carrying its own before/after note. ⚠️ The reserve's own instrument is
+    /// <c>RepairReserveTests</c>; this file measures the SHIP, not the rule.</para>
+    ///
+    /// <para>⛔ <b>THE THREE-COUNTERPART ACCOUNTING ABOVE STILL HOLDS, AND IT WAS ONE SEND-BACK
+    /// AWAY FROM NOT HOLDING.</b> Independent review measured that D3 had killed the FIRST of the
+    /// three: the reserve strands <c>wing_b</c> whether or not the door is opened, so
+    /// <see cref="TheFixIsNotGeneral_APressurisedFrontierStarvesWingB"/> passed with its own
+    /// subject removed (<c>open: true</c> → <c>open: false</c>, still GREEN). It is now a TWO-CELL
+    /// discriminator — identical ships, identical waits, the click the only difference — and its
+    /// closed-door cell is the control that fails loudly if a future change ever swamps the
+    /// frontier again. All three limits therefore still carry a live counterpart leg.</para>
     /// </summary>
     public class WreckRepairEconomyTests
     {
@@ -261,22 +283,54 @@ namespace Perilune.Tests
             Drive(sim, 6);
 
             var wingB = ByName(sim, WingB);
-            Assert.That(ConsumableUnits(sim), Is.Zero, "the three units were not all spent");
+            // ⭐ D3 — THIS LINE READ `Is.Zero` UNTIL THE RESERVE LANDED. Three units is BELOW
+            // `MaintenanceSystem.AutonomousRepairReserve`, so on the pre-M1-I ship the standing rule
+            // now declines to spend anything at all and the pile is untouched. The leg's SUBJECT is
+            // unchanged and if anything sharper: on that ship wing_b is stranded, and it is stranded
+            // with the stock still on the deck for the player to spend by hand.
+            Assert.That(ConsumableUnits(sim), Is.EqualTo(PreFixConsumableUnits),
+                "at or below the reserve the standing rule spends NOTHING — the three units must " +
+                "still be on the deck");
             Assert.That(wingB.Condition, Is.LessThan(WreckThreshold),
                 "wing_b was expected to be stranded below the wreck floor on the pre-fix stock, " +
                 "but it reads " + F(wingB.Condition));
             Assert.That(MaintenanceSystem.IsUnfixableWreck(sim, wingB), Is.True,
-                "wing_b was expected to be PERMANENTLY unfixable on the pre-fix stock");
+                "wing_b was expected to be unfixable TO THE STANDING RULE on the pre-fix stock. " +
+                "⚠️ D3 CHANGED WHICH FACT SATISFIES THIS: it used to be EXHAUSTION (all three units " +
+                "spent), it is now the RESERVE (3 units is at or below AutonomousRepairReserve, so " +
+                "the pile is untouched and autonomy may not spend it). 'PERMANENTLY' is no longer " +
+                "the right word either — the player can still buy this repair by hand, which is " +
+                "the whole point of the floor.");
         }
 
         /// <summary>
-        /// ⭐ THE AFTER HALF, and the reason this package exists. Six unattended sim-hours on the
-        /// SHIPPED wreck: every machine that booted on the wrecked backlog is lifted clear of the
-        /// floor. Offenders accumulate into one list and assert once, so a second offender is never
-        /// hidden behind the first.
+        /// ⭐ THE AFTER HALF, and the reason M1-I's locker exists — ⚠️ <b>RESTATED AT D3, BECAUSE
+        /// THE PACKAGE THAT PUT A RESERVE ON AUTONOMOUS SPEND CHANGED WHAT THIS LEG IS ABLE TO
+        /// CLAIM.</b> It read <i>"every machine that booted on the wrecked backlog is lifted clear
+        /// of the floor"</i> and that is no longer true, ON PURPOSE.
+        ///
+        /// <para><b>THE OLD CLAIM AND WHY IT WENT.</b> Backlog 11 machines, stock 11 units, one
+        /// unit per service — the ship recovered itself completely and unattended, and the demo
+        /// then measured what that costs: with the work grid on, autonomy spends the ENTIRE pile in
+        /// ~4 sim-hours and the run terminally stalls, because the three benches and the MOSS
+        /// terminal on the player's critical path have nothing left to be repaired with
+        /// (HANDOVER finding D3). <see cref="MaintenanceSystem.AutonomousRepairReserve"/> is the
+        /// answer: the standing rule now stops at 4 units.</para>
+        ///
+        /// <para><b>THE POST-D3 CLAIM, AND IT IS THE STRONGER ONE.</b> Three things, driven:
+        /// (1) autonomy spends exactly <c>11 − 4 = 7</c> units and stops ON the reserve;
+        /// (2) at most <see cref="MaintenanceSystem.AutonomousRepairReserve"/> backlog machines are
+        /// left below the floor — which is the WINNABILITY invariant, because each reserved unit
+        /// buys exactly one service, so more offenders than units would be a ship the player cannot
+        /// finish recovering; and (3) ⭐ every one of those offenders is still fixable BY ORDER
+        /// (<c>IsUnfixableWreck(forced: true)</c> is false), which is the whole point of holding the
+        /// units back rather than letting the pile go to zero.</para>
+        ///
+        /// <para>Offenders accumulate into one list and assert once, so a second offender is never
+        /// hidden behind the first.</para>
         /// </summary>
         [Test]
-        public void Unattended_EveryWreckedMachineInTheCoreIsLiftedClearOfTheFloor()
+        public void Unattended_TheCoreIsLiftedDownToTheReserve_AndTheRestStayOrderable()
         {
             var sim = Boot();
             var backlog = new List<string>();
@@ -287,14 +341,34 @@ namespace Perilune.Tests
             Drive(sim, 6);
 
             var offenders = new List<string>();
+            var unorderable = new List<string>();
             foreach (string name in backlog)
             {
                 var d = ByName(sim, name);
-                if (d.Condition < WreckThreshold) offenders.Add(name + " " + F(d.Condition));
+                if (d.Condition >= WreckThreshold) continue;
+                offenders.Add(name + " " + F(d.Condition));
+                // ⭐ THE HALF THAT MATTERS: a machine autonomy declined must still be reachable by
+                // the player's own order, or the reserve has bought nothing.
+                if (MaintenanceSystem.IsUnfixableWreck(sim, d, forced: true)) unorderable.Add(name);
             }
-            Assert.That(offenders, Is.Empty,
-                "these machines booted on the wrecked backlog and are STILL below the wreck floor " +
-                "after six unattended sim-hours — the authored stock no longer covers the backlog");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ConsumableUnits(sim), Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve),
+                    "autonomy must stop ON the reserve — spending past it is finding D3, leaving " +
+                    "the critical path unbuyable; not reaching it means the stock or the backlog moved");
+                Assert.That(AuthoredConsumableUnits - MaintenanceSystem.AutonomousRepairReserve,
+                    Is.EqualTo(7), "NON-VACUITY: seven units really were spendable, so the run above " +
+                    "did real work rather than declining everything");
+                Assert.That(offenders.Count, Is.LessThanOrEqualTo(MaintenanceSystem.AutonomousRepairReserve),
+                    "⛔ WINNABILITY: more machines left below the floor than there are reserved units " +
+                    "to fix them with — the player cannot finish the recovery by hand. Offenders: " +
+                    string.Join(", ", offenders));
+                Assert.That(unorderable, Is.Empty,
+                    "⛔ a machine the standing rule declined is ALSO refused to a direct order — the " +
+                    "reserve would then be holding units nobody can spend, which is worse than the " +
+                    "defect it was built to close");
+            });
         }
 
         /// <summary>
@@ -318,22 +392,51 @@ namespace Perilune.Tests
 
             Drive(sim, 6);
 
-            var offenders = new List<string>();
+            // ⭐ D3 — THE QUESTION IS ASKED WITH `forced: true`, AND THAT IS THE CHANGE. The
+            // standing rule now declines the ship's last `AutonomousRepairReserve` units, so a wing
+            // MAY finish the unattended run below the floor — measured, `wing_b` does. What must
+            // never happen is that it becomes unfixable to the PLAYER, and that is the reading this
+            // leg pins. The un-forced answer is the dispatcher's ("I am not allowed to spend the
+            // reserve"), not the ship's.
+            var unorderable = new List<string>();
+            var belowFloor = new List<string>();
             foreach (string name in new[] { WingA, WingB, WingC })
             {
                 var d = ByName(sim, name);
-                if (d.Condition < WreckThreshold) offenders.Add(name + " below floor at " + F(d.Condition));
-                if (MaintenanceSystem.IsUnfixableWreck(sim, d)) offenders.Add(name + " UNFIXABLE");
+                if (d.Condition < WreckThreshold) belowFloor.Add(name + " below floor at " + F(d.Condition));
+                if (MaintenanceSystem.IsUnfixableWreck(sim, d, forced: true)) unorderable.Add(name + " UNFIXABLE");
             }
-            Assert.That(offenders, Is.Empty, "the ship's power recovery is stranded");
+
+            // ⭐⭐ AND IT IS DRIVEN RATHER THAN ARGUED: the player orders the repair the standing
+            // rule declined, and the wing comes back. Without this the assertions above are a claim
+            // about a predicate; with it they are a claim about the ship.
+            var stranded = ByName(sim, WingB);
+            float before = stranded.Condition;
+            sim.EnqueueCommand(new PrioritiseJobCommand((int)sim.Citizens.Items[0].Id, (int)stranded.Id));
+            for (int t = 0; t < 14000 && stranded.Condition <= before; t++) sim.Tick();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(unorderable, Is.Empty,
+                    "⛔ the ship's power recovery is stranded — a wing no order can reach");
+                Assert.That(stranded.Condition, Is.GreaterThan(WreckThreshold),
+                    "⛔ THE OUTCOME: one direct order must lift the wing the standing rule left " +
+                    "behind, spending a RESERVED unit. It reads " + F(stranded.Condition) +
+                    " (it booted wrecked and ended the unattended run at " + F(before) + ").");
+                Assert.That(belowFloor.Count, Is.LessThanOrEqualTo(1),
+                    "at most ONE wing may be left for the player: the reserve is 4 units and the " +
+                    "backlog is the whole core, so two stranded wings would mean the spend order " +
+                    "changed. Saw: " + string.Join(", ", belowFloor));
+            });
         }
 
         // ------------------------------------------- 4. the PLACEMENT decision, pinned where it is cheap
 
         /// <summary>
         /// The locker must survive long enough to be SPENT. Six unattended sim-hours is the whole
-        /// window that matters — <see cref="Unattended_EveryWreckedMachineInTheCoreIsLiftedClearOfTheFloor"/>
-        /// measures the pile going from 11 units to 0 by h2.79 — and this leg pins the tile still
+        /// window that matters — <see cref="Unattended_TheCoreIsLiftedDownToTheReserve_AndTheRestStayOrderable"/>
+        /// measures the pile going from 11 units to 4 (D3: the reserve is what it stops on) — and this
+        /// leg pins the tile still
         /// being stageable at the end of it, because <c>MachineWearSystem.FindNearest</c> refuses a
         /// stack whose own tile fails <see cref="WorksiteSafety.CanStageWorkerAt"/>.
         ///
@@ -367,7 +470,9 @@ namespace Perilune.Tests
         /// ⛔ KNOWN LIMIT 1, PINNED so this file cannot read as "every wrecked machine in the core is
         /// lifted" with nothing to the contrary. <c>tank_reserve</c> boots at 0.21 — BELOW the wreck
         /// floor but ABOVE its own WaterTank <c>maint</c> of 0.20 — so it is not on the board at
-        /// tick 0 and joins it only after ~10 sim-hours of wear, by which time the pile is gone. It
+        /// tick 0 and joins it only after ~10 sim-hours of wear, by which time the pile is down to the
+        /// D3 reserve and the standing rule may spend no more of it (it USED to be gone; the
+        /// outcome for this machine is identical and the reason is not). It
         /// ends the unattended run permanently unfixable, and that is a DECISION, not an oversight:
         /// covering it costs ~4 more units and buys nothing durable, because a <c>maint</c> 0.20 kind
         /// has an EMPTY free jury-rig band <c>[0.25, 0.20)</c> and needs a consumable every cycle for
@@ -454,42 +559,92 @@ namespace Perilune.Tests
         [Test]
         public void TheFixIsNotGeneral_APressurisedFrontierStarvesWingB()
         {
-            var sim = Boot();
+            // ⛔ TWO CELLS, IDENTICAL IN EVERY RESPECT BUT THE CLICK, AND THAT IS THE FIX FOR THE
+            // DEFECT DESCRIBED ABOVE. Each is built, topped up and waited out the same way; the
+            // ONLY difference is the SetDoorStateCommand. Both results are recorded into locals and
+            // asserted together, so neither leg can hide behind the other's throw (fifth shape).
+            var closed = Boot();
+            TopUpTheReserve(closed);
+            WaitForTheConsole(closed, "CLOSED cell");
+            Drive(closed, 6);
+            float closedWingB = ByName(closed, WingB).Condition;
 
-            // ⭐ OD-N: THE CONSOLE MUST BE ALIVE BEFORE THE SHIP ANSWERS — AND THE CREW BRINGS IT UP,
-            // THIS TEST DOES NOT. Setting `term_moss.Condition` by hand was tried first and CHANGED
-            // THE MEASUREMENT: `term_moss` boots at 0.14, i.e. ON the maintenance board, so writing
-            // it healthy silently removes one job AND the consumable that job would have spent —
-            // and wing_b then survives for a reason that has nothing to do with the frontier. Driving
-            // the repair instead keeps the ship's own arithmetic intact and is what a player watches
-            // happen. (Measured: with the hand-write, wing_b ended at 0.883; the leg below is about a
-            // ship that ran OUT.)
-            int wait = 0;
-            while (!MossGate.IsServerLive(sim) && wait++ < 4 * TicksPerHour) sim.Tick();
-            Assert.That(MossGate.IsServerLive(sim), Is.True,
-                "PRECONDITION: four sim-hours and the crew never brought term_moss above its " +
-                "`maintain` floor, so the door command below is REFUSED and this leg would measure a " +
-                "compartment that never opened rather than one that opened too early");
-
+            var open = Boot();
+            TopUpTheReserve(open);
+            WaitForTheConsole(open, "OPEN cell");
             int opened = 0;
-            foreach (var d in sim.Devices.Items)
+            foreach (var d in open.Devices.Items)
             {
                 if (d.Kind != DeviceKind.Door || d.Pos != GoalCompartmentDoor) continue;
-                sim.EnqueueCommand(new SetDoorStateCommand(d.Id, open: true, locked: false));
+                open.EnqueueCommand(new SetDoorStateCommand(d.Id, open: true, locked: false));
                 opened++;
             }
             Assert.That(opened, Is.EqualTo(1),
                 "PRECONDITION: there is no deck-0 door at " + GoalCompartmentDoor + " — the goal " +
                 "compartment's apron moved and the ONE CLICK this leg models no longer exists");
+            Drive(open, 6);
+            var openWingB = ByName(open, WingB);
 
-            Drive(sim, 6);
+            Assert.Multiple(() =>
+            {
+                Assert.That(closedWingB, Is.GreaterThan(WreckThreshold),
+                    "⛔ THE DISCRIMINATOR'S OTHER HALF, AND WITHOUT IT THIS WHOLE LEG IS DEAD: with " +
+                    "the frontier SHUT and a budget of 11 spendable units the queue must reach " +
+                    "wing_b and lift it. It reads " + F(closedWingB) + ". If this fails, the " +
+                    "assertion below is satisfied by something other than the door and proves " +
+                    "nothing about the frontier.");
+                Assert.That(openWingB.Condition, Is.LessThan(WreckThreshold),
+                    "wing_b survived an early frontier opening. That is GOOD NEWS and a real change: " +
+                    "re-measure the queue and rewrite this leg, do not delete it");
+                Assert.That(MaintenanceSystem.IsUnfixableWreck(open, openWingB), Is.True,
+                    "wing_b is below the floor but the STANDING RULE could still spend on it — the " +
+                    "budget was not actually exhausted down to the reserve; re-measure");
+            });
+        }
 
-            var wingB = ByName(sim, WingB);
-            Assert.That(wingB.Condition, Is.LessThan(WreckThreshold),
-                "wing_b survived an early frontier opening. That is GOOD NEWS and a real change: " +
-                "re-measure the queue and rewrite this leg, do not delete it");
-            Assert.That(MaintenanceSystem.IsUnfixableWreck(sim, wingB), Is.True,
-                "wing_b is below the floor but still fixable — some consumable survived; re-measure");
+        /// <summary>
+        /// ⭐ D3 — ADD EXACTLY <see cref="MaintenanceSystem.AutonomousRepairReserve"/> UNITS, so the
+        /// ship's SPENDABLE budget is the 11 this leg has always been measuring.
+        ///
+        /// <para><b>WHY THE LEG NEEDS IT.</b> The reserve holds 4 units back, so on the shipped
+        /// stock wing_b ends below the floor whether the door is opened or not — the leg passed with
+        /// its own subject removed, which independent review measured (<c>open: true</c> →
+        /// <c>open: false</c>, <c>opened == 1</c> intact, still GREEN). Topping the pile up by the
+        /// reserve restores the pre-D3 SPENDABLE budget without touching the rule, so the click is
+        /// once again the only thing that can decide wing_b's fate. It is a fixture, not a claim
+        /// about the shipped ship — the shipped ship's post-reserve behaviour is
+        /// <see cref="Unattended_TheCoreIsLiftedDownToTheReserve_AndTheRestStayOrderable"/>'s
+        /// subject.</para>
+        /// </summary>
+        private static void TopUpTheReserve(Simulation sim)
+        {
+            sim.AddItem(ItemKind.Seals, MaintenanceSystem.AutonomousRepairReserve, LockerTile);
+            Assert.That(ConsumableUnits(sim),
+                Is.EqualTo(AuthoredConsumableUnits + MaintenanceSystem.AutonomousRepairReserve),
+                "the top-up did not land — the spendable budget is not the 11 this leg measures");
+        }
+
+        /// <summary>
+        /// ⭐ OD-N: THE CONSOLE MUST BE ALIVE BEFORE THE SHIP ANSWERS — AND THE CREW BRINGS IT UP,
+        /// THIS TEST DOES NOT. Setting <c>term_moss.Condition</c> by hand was tried first and CHANGED
+        /// THE MEASUREMENT: <c>term_moss</c> boots at 0.14, i.e. ON the maintenance board, so writing
+        /// it healthy silently removes one job AND the consumable that job would have spent — and
+        /// wing_b then survives for a reason that has nothing to do with the frontier. Driving the
+        /// repair instead keeps the ship's own arithmetic intact and is what a player watches happen.
+        /// (Measured: with the hand-write, wing_b ended at 0.883.)
+        ///
+        /// <para>⚠️ RUN ON BOTH CELLS, including the one that never opens a door. The wait TICKS THE
+        /// SIM for up to four sim-hours and spends consumables while it does, so a cell that skipped
+        /// it would differ from its twin in something other than the click.</para>
+        /// </summary>
+        private static void WaitForTheConsole(Simulation sim, string cell)
+        {
+            int wait = 0;
+            while (!MossGate.IsServerLive(sim) && wait++ < 4 * TicksPerHour) sim.Tick();
+            Assert.That(MossGate.IsServerLive(sim), Is.True,
+                "PRECONDITION (" + cell + "): four sim-hours and the crew never brought term_moss " +
+                "above its `maintain` floor, so the door command is REFUSED and this leg would " +
+                "measure a compartment that never opened rather than one that opened too early");
         }
     }
 }
