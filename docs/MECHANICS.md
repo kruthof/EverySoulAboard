@@ -2901,7 +2901,7 @@ off the plan.
 
 **a. A CLOSED CRYO CAPSULE NOW REFUSES STRIP, AND THE PLAYER IS NOT TOLD WHY.**
 `DeconstructSystem.CanDesignate` gained a second device exclusion beside `Door`: a
-`DeviceKind.CryoPod` with `IsOpen == false`. Before it, `CanDesignate(pod_ozawa, Condition 0.91,
+`DeviceKind.CryoPod` with `IsOpen == false`. Before it, `CanDesignate(pod_ozawa, its Condition,
 occupied)` returned **True** and `Designate` accepted it (driven, with a passing `Door` control at
 False) — **one drag of the STRIP palette across the cryo bay permanently deleted seven of the eight
 souls a won game ends with**, and paid 1 Part for it. There is no undo on any client surface and no
@@ -2930,7 +2930,7 @@ clamp was rewriting this row's `fail` to 0 on every host that reads `machines.de
 
 **d. ~~CONDITION IS INVISIBLE ON THE OVERVIEW, AND ONLY THERE.~~ ✅ CLOSED 2026-07-28 — the
 wrecked-twin art join landed.** ⛔ The struck claim below — *"the `devices` channel carries `cond`
-and no surface draws it, so the capsule **art** is identical at 0.94 and at 0.04"* — was true when
+and no surface draws it, so the capsule **art** is identical at a healthy Condition and at 0.04"* — was true when
 written and is **false now**. `client/src/items/wear.js` is the one seam between the channel's
 condition byte and the 70 post-raid twins + 2 cryo capsules in `client/src/items/wrecked.js`; both
 SVG surfaces route their tile art through its `buildTileItem(itemId, opts, cond)`
@@ -3620,13 +3620,18 @@ literally:
 | rung | band | pod | item | count | chain depth |
 |---:|---|---|---|---:|---:|
 | — | *(the prologue)* | `term_moss` commissioning | `ControllerModule` | 1 | 3 |
-| 1 | `c >= 0.92` | Lindqvist 0.94 | `Seals` | 1 | 0 |
-| 2 | `c >= 0.90` | Ozawa 0.91 | `Seals` | 2 | 0 |
-| 3 | `c >= 0.87` | Ferreira 0.88 | `Parts` | 1 | 2 |
-| 4 | `c >= 0.85` | Mbeki 0.86 | `Parts` | 2 | 2 |
-| 5 | `c >= 0.82` | Bahri 0.83 | `ControllerModule` | 1 | 3 |
-| 6 | `c >= 0.80` | Nakamura 0.81 | `ControllerModule` | 2 | 3 |
-| 7 | otherwise | Torres 0.78 | `ControllerModule` | 3 | 3 |
+| 1 | `c >= 0.92` | Lindqvist 0.99 | `Seals` | 1 | 0 |
+| 2 | `c >= 0.84` | Ozawa 0.91 | `Seals` | 2 | 0 |
+| 3 | `c >= 0.76` | Ferreira 0.83 | `Parts` | 1 | 2 |
+| 4 | `c >= 0.68` | Mbeki 0.75 | `Parts` | 2 | 2 |
+| 5 | `c >= 0.60` | Bahri 0.67 | `ControllerModule` | 1 | 3 |
+| 6 | `c >= 0.52` | Nakamura 0.59 | `ControllerModule` | 2 | 3 |
+| 7 | otherwise | Torres 0.51 | `ControllerModule` | 3 | 3 |
+
+⭐ **THE EDGES AND THE CONDITIONS WERE RE-SCALED TOGETHER BY D2 (2026-08-02); OD-M item 1's CURVE was
+not touched** — same seven rows, same items, same counts, same chain depths, same pod order. The
+bands were 0.02–0.03 wide with the pods authored 0.01–0.02 above their own floors; they are now
+**0.08 wide with every pod 0.07 above its floor**. See §13.42.
 
 ⚠️ **The commissioning gate is the PROLOGUE, not a rung** (*"restore MOSS"*) and is deliberately
 NOT in `ThawGate` — its cost lives where it already lives (`Commands/Commands.cs:753,778`;
@@ -3634,7 +3639,8 @@ NOT in `ThawGate` — its cost lives where it already lives (`Commands/Commands.
 (`Scrap`) is deliberately unused**: `Scrap` is a crafting intermediate, not a repair consumable.
 
 ⭐ **THE BAND EDGES ARE INCLUSIVE ON THEIR LOWER SIDE, AND THAT WAS A DECISION, NOT A DEFAULT.** A
-capsule at exactly 0.92 is rung 1; at exactly 0.90 rung 2; at exactly 0.80 rung 6. RimWorld's
+capsule at exactly 0.92 is rung 1; at exactly 0.84 rung 2; at exactly 0.52 rung 6 (the six edges
+were re-scaled by D2, §13.42; the convention was not). RimWorld's
 analogue chooses the OPPOSITE — `CapableOf` is `GetLevel(c) > c.minForCapable`, a strict `>`, so
 *"a capacity sitting exactly at `minForCapable` is NOT capable"* (`docs/design/rimworld-reference.md`
 §6.1) — and the lesson §6.1 draws is the one obeyed here: **an edge nobody chose is an edge somebody
@@ -5219,13 +5225,13 @@ a runtime observer at all. **A sim-side social seed at thaw is FILED, not smuggl
 ```
   rung  who         rep con cra dec min hau   cannot                  capsule
   ----  ----------  --- --- --- --- --- ---   ---------------------   -------
-    1   Lindqvist     9   7   2   5   0   4   Mine                    0.94
+    1   Lindqvist     9   7   2   5   0   4   Mine                    0.99
     2   Ozawa         5   0  11   6   2   3   Construct               0.91
-    3   Ferreira      3   4   0  11   7   9   Craft                   0.88
-    4   Mbeki         0   6   0   8  13   9   Repair, Craft           0.86
-    5   Bahri         7  12   5   4   3   0   Haul                    0.83
-    6   Nakamura     10   2  13   0   0   3   Deconstruct, Mine       0.81
-    7   Torres       14  11   9  10   0   8   Mine                    0.78
+    3   Ferreira      3   4   0  11   7   9   Craft                   0.83
+    4   Mbeki         0   6   0   8  13   9   Repair, Craft           0.75
+    5   Bahri         7  12   5   4   3   0   Haul                    0.67
+    6   Nakamura     10   2  13   0   0   3   Deconstruct, Mine       0.59
+    7   Torres       14  11   9  10   0   8   Mine                    0.51
 ```
 
 Ladder order is `ThawGate.RungOf`'s — the order the player meets them in, because the ladder is
@@ -5763,3 +5769,124 @@ and `CommissionDeviceCommand` was already in the sim before this package.
   about programs. It is the one constant three surfaces render and it was not re-worded for one new
   caller. FILED.
 - **No TUI sender.** `hosts/tui` has no MOSS op surface at all; nothing was narrowed.
+
+### 13.42 ⭐⭐ The thaw ladder decays in DAYS, and the ship says so before the price rises (D2, 2026-08-02)
+
+**The defect, measured.** The M3 milestone demo (finding D2) watched Mbeki's capsule go
+`2 PARTS` → `1 CONTROLLER MODULE` inside **100 sim-minutes**, unannounced. Driven on the pre-D2 tree
+(`ac02267`, full `SystemStack`, `--ship wreck`, no player): **six of the seven thawable capsules
+changed rung at sim-hour 9**, Lindqvist at 18, and by sim-hour 120 **every capsule aboard sat on
+rung 7** — the deepest, three-`ControllerModule` rung. The cause was arithmetic, not a bug: the bands
+were 0.02–0.03 wide, each pod was authored 0.01–0.02 above its own floor, and `CryoPod` wear is
+0.001/h (`machines.def:75`) × `DirectorSystem.WearPressure` (1.00–1.35, measured ~1.08 on a quiet
+wreck). Owner's ruling (2026-08-02): **keep the decay as a feature, slow it, surface it.**
+
+⚠️ **AND THE REASSURANCE IN THE SHIP'S OWN COMMENT MEASURED A THRESHOLD THAT DOES NOT EXIST.**
+`AuthoredShips.cs` said *"the lowest of them takes ~480 sim-hours to reach its `maint` threshold at
+all"* — but `machines.def:67-68` says in its own words that `CryoPod`'s `maint = 0` **IS THE OPT-OUT,
+NOT A THRESHOLD**, so there is nothing for 480 hours to be a countdown to. Corrected in place.
+
+#### 13.42.1 Half one — the re-scale
+
+`ThawGate.BandFloors` (`sim/Sim.Core/ThawGate.cs`) is now the ONE place the six interior edges are
+written; `RungOf` reads it and the new `BandFloorOf(rung)` reports it. Edges and the seven authored
+`PodSpec.Condition` values moved together:
+
+| rung | band floor (old → new) | pod (old → new) | headroom (old → new) | sim-h to crossing at 0.001/h |
+|---:|---|---|---|---:|
+| 1 | 0.92 → **0.92** | Lindqvist 0.94 → **0.99** | 0.02 → **0.07** | 20 → **70** |
+| 2 | 0.90 → **0.84** | Ozawa 0.91 → **0.91** | 0.01 → **0.07** | 10 → **70** |
+| 3 | 0.87 → **0.76** | Ferreira 0.88 → **0.83** | 0.01 → **0.07** | 10 → **70** |
+| 4 | 0.85 → **0.68** | Mbeki 0.86 → **0.75** | 0.01 → **0.07** | 10 → **70** |
+| 5 | 0.82 → **0.60** | Bahri 0.83 → **0.67** | 0.01 → **0.07** | 10 → **70** |
+| 6 | 0.80 → **0.52** | Nakamura 0.81 → **0.59** | 0.01 → **0.07** | 10 → **70** |
+| 7 | catch-all | Torres 0.78 → **0.51** | — | — |
+
+*(Two coincidences worth not misreading: rung 1's floor is 0.92 both before and after, and Ozawa's
+Condition is 0.91 both before and after. Every other number moved, and the two that did not are
+arithmetic accidents of a uniform re-scale — not evidence that anything was left alone.)*
+
+**Driven on the shipped tree after the change** (full `SystemStack`, `--ship wreck`, no player,
+hourly rung sampling): **all six crossable capsules cross at sim-hour 65** — Lindqvist, Ozawa,
+Ferreira, Mbeki, Bahri, Nakamura — and Torres, the catch-all, never (unmoved past sim-hour 100).
+At sim-hour 36 not one has moved. ⇒ **9 sim-hours → 65 sim-hours, a 7.2×
+slowdown**, and the arithmetic floor (`ThawLadderDecayTests.MinHoursToFirstCrossing` = 60 h) is
+asserted in ABSOLUTE hours, never as a ratio (the seventh trap: a ratio suite cannot see a scale
+change, and this IS one). The driven number is below the arithmetic 70 because
+`DirectorSystem.WearPressure` measures ~1.08 on a quiet wreck.
+
+⚠️ **OD-M item 1's CURVE IS UNTOUCHED** — seven rows, same items, same counts, chain depths still
+`0 0 2 2 3 3 3`, last rung still 3× the commissioning prologue, and every pod on the same rung it
+booted on before. What moved is where the edges sit.
+
+⭐⭐ **0.08-WIDE BANDS AND NOT 0.11 — AN OWNER RULING, AND THE FIRST DRAFT IS WHY IT WAS ASKED FOR.**
+D2's first implementation used 0.11-wide bands (0.10 of headroom, ~100 sim-hours, driven first
+crossing at sim-hour 93). Seven bands 0.11 wide need 0.66 of `Condition` to live in, so that ladder
+spanned 0.98 → **0.32** and left the deepest capsule **~220** unattended sim-hours from `CryoPod`'s
+`fail` (0.10) where the shipped ship left it ~680 — and a pod below `fail` is
+`ThawRefusal.PodNoSignal` **permanently**: `maint = 0` makes every repair path skip it
+(`MaintenanceSystem.cs:223,505` both gate on `Condition >= MaintainBelow`), player-forced or not.
+That trade was taken to the owner rather than shipped. **The ruling (2026-08-02): walk the bands
+back to ~70 sim-hours so every capsule stays above `Condition` 0.50.** The shipped ladder spans
+0.99 → 0.51, **Torres sits ~410 sim-hours above `fail`**, and the price pacing is still ~7× the
+shipped tree's. Nothing warns about the `fail` crossing; that row is FILED for M5-2's alert stack.
+
+⭐ **AND THE 0.50 FLOOR IS NOT COSMETIC — IT KEEPS A CENSUS HONEST.** `deconstruct.def
+device_parts = 2` puts a cliff at `Condition` 0.5 (`floor(2 × c)` = 0 below it), and
+`WreckShipTests.PrintTheBootCensus` counts every device under it as *"worth SWARF if stripped"*. The
+0.11 draft pushed Nakamura and Torres under that cliff and the census went 44 → **46** — two
+capsules that can never be stripped at all (`DeconstructSystem` refuses every closed pod), i.e. two
+units of salvage the census promised and the ship does not have. Under the shipped table the census
+reads **44** again, measured. ⚠️ It also caught a stale number: that paragraph in `AuthoredShips.cs`
+claimed **45**, and the pre-D2 tree measures **44** — the doc was already wrong, and only measuring
+both ends of the re-scale exposed it.
+
+⚠️ **A float-granularity artefact worth knowing** (measured, not modelled): the per-tick decrement is
+~3e-8 and `float` ulp is 6e-8 above 0.5 and 3e-8 above 0.25, so deep capsules lose Condition slightly
+more slowly than shallow ones. It leans the safe way and nothing depends on the two rates being equal.
+
+#### 13.42.2 Half two — the `alerts` channel
+
+`hosts/web/WireFormat.Alerts.cs` (new partial; **`WireFormat.cs` at a ZERO diff**, the M3-4/M3-5
+precedent) emits `{"type":"alerts","text":"…"}` every render, derived from
+`ThawGate.CapsuleNearestToRungCrossing`. `text` is `""` when nothing is close — the `ending` rule:
+"all quiet" is a state the WIRE expresses, never an absence the client infers from a channel that
+stopped arriving. The Overview draws it in `#ov-alert`, directly under the ENDING bar
+(`client/src/ui/overview-view.js` `paintAlert`); `hud.js` caches it (`getAlerts`) and draws nothing.
+
+- **The margin is `ThawGate.DecayWarningMargin = 0.025`** — a named constant, never a def field
+  (`MinDaysOfFood`'s precedent: a def scalar would move P4/P5 for a number nobody tunes, and a def
+  field pinned only by a checksum is not pinned). 0.025 / 0.001 = **25 sim-hours of notice at nominal
+  wear**, 18.5 h at the Director's ceiling pressure — the ship gets less warning exactly when the run
+  is going worse, which is the right direction for a warning to lean. Against the shipped 0.07 of
+  headroom that is the last **36 %** of a capsule's band; at boot every capsule is 0.045 clear of it,
+  so the bar starts silent (driven, `TheBarIsSilent_OnTheShippedShipAtBoot`).
+- **One line, nearest-to-crossing.** Several capsules can be inside the margin at once; the bar names
+  the one about to cross and the POD BAY (typed `pods`) is the detail view. Ties break on the lower
+  `Device.Id`, `CryoSystem`'s own election.
+- **Never named:** an OPEN capsule (no price left to pay), one below `fail` (its sleeper is dead and
+  term 1 refuses it permanently), and one on the **catch-all rung** — `BandFloorOf` answers
+  `NoBandFloor` there, so the margin test cannot pass and the ship never promises a rise that cannot
+  happen.
+- **The sentence:** `CAPSULE DECAYING — MBEKI — THAW PRICE RISES SOON`. Em-dash apposition rather
+  than `MBEKI'S`, for `ThawGate.Describe`'s stated reason — a possessive needs a rule for names
+  ending in `s`, and this repo refuses that class of table ("NO PLURALISATION, on purpose").
+
+⛔ **NOT A CHRONICLE EVENT, AND THAT IS MEASURED RATHER THAN PREFERRED.** The same demo's finding D6
+is that the Chronicle is a **200-entry ring drowned in brownout spam** — a real event posted there is
+evicted before the player opens the MOSS console. A derived, always-visible line has nothing to miss.
+
+⭐ **THIS BAR IS A PRE-PAYMENT ON M5-2 / T17, THE ALERT STACK.** The channel is named `alerts`
+(plural) and carries one `text` field; M5-2 should turn that field into a list and keep the channel,
+the `hud.js` cache and the Overview slot. D2 ships exactly one alert because that is the one the demo
+proved the game needs — a stack with one row is a stack nobody can design against.
+
+#### 13.42.3 What D2 deliberately does NOT do
+
+- **No def-value change** (P4/P5 untouched — the band table and the margin are literals in code).
+- **No new hashed sim state** (the bar is a view channel; `GameSession.cs:1862-1863`'s rule).
+- **No Chronicle change** (finding D6 is a different package).
+- **No warning about the `fail` crossing** — the permanent one. Filed above and STILL OPEN after the
+  0.50 ruling (~410 sim-hours is distance, not a message): it wants its own sentence, and it is the
+  natural second row of M5-2's alert stack. D2 was chartered on the PRICE.
+- **No fix for demo finding D1** (an ordinary thaw writes no Chronicle line). Filed, not chased.

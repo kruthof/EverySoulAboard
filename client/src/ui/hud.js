@@ -79,6 +79,7 @@ let _blocked = null;      // latest blocked message (sparse refused orders: whic
 let _work = null;         // latest work message (M2-4: per-citizen manual work priorities; absent = off)
 let _workCaps = null;     // latest workcaps message (M3-7: per-citizen skills + the incapability mask)
 let _ending = null;       // latest ending message (M3-5: the emergency-thaw grace line / the lose state)
+let _alerts = null;       // latest alerts message (D2: the standing one-line warning bar; '' = all quiet)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -163,6 +164,11 @@ export function getLedger() { return _ledger; }
 /** M3-5, the `ending` channel: `{text, over}`. `text === ''` means the run is ordinary and the bar
  *  is hidden; `over` is the sim's own `CryoSystem.RunEnded`, NOT something to infer from the prose. */
 export function getEnding() { return _ending; }
+/** D2, the `alerts` channel: `{text}`. `text === ''` means the ship has nothing to warn about and the
+ *  bar is hidden — "all quiet" is a STATE the wire expresses, never an absence the client infers from
+ *  a channel that stopped arriving. Today the only alert is the thaw ladder decaying (a capsule
+ *  within a sim-day of its next band edge); M5-2/T17 turns `text` into a list. */
+export function getAlerts() { return _alerts; }
 export function getStatus() { return _status; }
 export function getMetrics() { return _metrics; }
 export function getLog() { return _log; }
@@ -558,6 +564,10 @@ export function renderLedger(m) { _ledger = m; notifyShip(); }
  *  ENDING bar repaints. STATE-LAYER ONLY, exactly like `renderLedger` — draws nothing, reaches no
  *  DOM, creates no element, so it adds nothing to the four pinned console-DOM counts. */
 export function renderEnding(m) { _ending = m; notifyShip(); }
+
+/** D2 dispatch: cache the standing alert line and repaint the ship surfaces. Same shape as
+ *  `renderEnding` — the host owns the sentence, the client owns only whether it is on screen. */
+export function renderAlerts(m) { _alerts = m; notifyShip(); }
 
 /** Relations dispatch (IX-R3): cache the directed graph and notify. The RELATIONS surface reads the
  *  cache back through `getRelations()` and repaints itself off `notifyShip` (relations-view.js);

@@ -233,19 +233,49 @@ namespace Perilune.Sim
     /// <para><b>THE TABLE (owner batch item OD-M item 1, answered 2026-07-31, option A —
     /// BINDING).</b> Depth is the difficulty curve and is non-decreasing; the COUNT escalates inside
     /// a depth. Chain depth runs 0,0,2,2,3,3,3 and the last rung costs <b>three times the
-    /// commissioning gate</b>.</para>
+    /// commissioning gate</b>. ⭐ <b>OD-M item 1's CURVE is untouched by D2's re-scale below — the
+    /// items, the counts, the depths and the pods' ORDER are the same seven rows they were.</b>
+    /// What moved is where the EDGES sit.</para>
     ///
     /// <code>
     ///   rung  band          the wreck's pod   item              count  chain depth
     ///   ----  ------------  ---------------   ----------------  -----  -----------
-    ///     1   c &gt;= 0.92     Lindqvist 0.94    Seals                 1       0
-    ///     2   c &gt;= 0.90     Ozawa     0.91    Seals                 2       0
-    ///     3   c &gt;= 0.87     Ferreira  0.88    Parts                 1       2
-    ///     4   c &gt;= 0.85     Mbeki     0.86    Parts                 2       2
-    ///     5   c &gt;= 0.82     Bahri     0.83    ControllerModule      1       3
-    ///     6   c &gt;= 0.80     Nakamura  0.81    ControllerModule      2       3
-    ///     7   otherwise     Torres    0.78    ControllerModule      3       3
+    ///     1   c &gt;= 0.92     Lindqvist 0.99    Seals                 1       0
+    ///     2   c &gt;= 0.84     Ozawa     0.91    Seals                 2       0
+    ///     3   c &gt;= 0.76     Ferreira  0.83    Parts                 1       2
+    ///     4   c &gt;= 0.68     Mbeki     0.75    Parts                 2       2
+    ///     5   c &gt;= 0.60     Bahri     0.67    ControllerModule      1       3
+    ///     6   c &gt;= 0.52     Nakamura  0.59    ControllerModule      2       3
+    ///     7   otherwise     Torres    0.51    ControllerModule      3       3
     /// </code>
+    ///
+    /// <para>⭐⭐ <b>D2 (2026-08-02) — THE BANDS ARE 0.08 WIDE AND EVERY POD SITS 0.07 ABOVE ITS
+    /// OWN FLOOR, AND THAT NUMBER IS AN OWNER RULING, NOT AN IMPLEMENTER'S CHOICE.</b> The M3
+    /// milestone demo measured the shipped ladder DECAYING UNDER THE PLAYER: bands were 0.02–0.03
+    /// wide, the pods were authored 0.01–0.02 above their own floors, and <c>CryoPod</c> wear is
+    /// 0.001/h — so the FIRST rung crossing landed at <b>sim-hour 9</b> (measured, driven, six of
+    /// the seven pods at once) and every capsule aboard had collapsed onto rung 7 by <b>sim-hour
+    /// 120</b>. Mbeki's price went <c>2 PARTS</c> → <c>1 CONTROLLER MODULE</c> inside 100
+    /// sim-minutes with nothing said. The owner's call (2026-08-02): <i>keep the decay as a
+    /// feature, slow it, surface it.</i> ⇒ 0.07 of headroom is <b>~70 sim-hours at nominal
+    /// wear</b> — days rather than hours — and the SURFACE half is the <c>alerts</c> bar
+    /// (<c>hosts/web/WireFormat.Alerts.cs</c>), which reads <see cref="BandFloorOf"/> so the warning
+    /// and the price can never disagree about where an edge is.</para>
+    ///
+    /// <para>⚠️⚠️ <b>0.07 AND NOT 0.10, AND THE REASON IS THE SECOND OWNER RULING OF THE SAME
+    /// DAY.</b> The first draft of this table used 0.11-wide bands (0.10 of headroom, ~100
+    /// sim-hours) and paid for them with RANGE: seven bands 0.11 wide need 0.66 of Condition, which
+    /// pushed the ladder down to 0.98 → 0.32 and left the deepest capsule <b>~220</b> unattended
+    /// sim-hours from <c>CryoPod</c>'s <c>fail</c> (0.10) where the shipped ship left it ~680. A pod
+    /// below <c>fail</c> is <see cref="ThawRefusal.PodNoSignal"/> FOREVER — <c>maint = 0</c> means
+    /// no repair path exists, player-forced or otherwise (<c>MaintenanceSystem.cs:223,505</c> both
+    /// skip on <c>Condition &gt;= MaintainBelow</c>, which <c>0</c> makes universally true) — so
+    /// that trade was taken to the owner rather than shipped. <b>The ruling: walk the bands back to
+    /// ~70 sim-hours so every capsule stays above Condition 0.50.</b> The ladder now spans
+    /// 0.99 → 0.51, Torres sits <b>~410</b> sim-hours above <c>fail</c>, and the price-crossing
+    /// pacing is still <b>~7×</b> the shipped tree's. ⚠️ The alert bar deliberately does NOT warn
+    /// about the <c>fail</c> crossing — it warns about the PRICE, the thing D2 was chartered to
+    /// surface. That row is FILED for M5-2's alert stack, not deleted.</para>
     ///
     /// <para>⚠️ <b>THE COMMISSIONING GATE IS THE PROLOGUE, NOT A RUNG.</b> Every thaw needs a
     /// commissioned terminal and commissioning costs 1 <c>ControllerModule</c>
@@ -261,8 +291,8 @@ namespace Perilune.Sim
     /// nobody "fills the gap" and puts an intermediate in a pod.</para>
     ///
     /// <para>⭐ <b>THE LOWER EDGE OF EVERY BAND IS INCLUSIVE, UNIFORMLY</b> — a pod at exactly 0.92
-    /// is rung 1, at exactly 0.90 is rung 2, at exactly 0.80 is rung 6. That matches the owner's own
-    /// notation for the top band (<i>"≥ 0.92"</i>), so one comparison spelling reads the whole table.
+    /// is rung 1, at exactly 0.84 is rung 2, at exactly 0.52 is rung 6. That matches the owner's own
+    /// notation for the top band (<i>"≥ …"</i>), so one comparison spelling reads the whole table.
     /// <b>The choice is made here on purpose</b>: RimWorld's <c>CapableOf</c> is
     /// <c>GetLevel(c) &gt; c.minForCapable</c>, a strict <c>&gt;</c>, so <i>"a capacity sitting
     /// exactly at <c>minForCapable</c> is NOT capable"</i> (<c>docs/design/rimworld-reference.md</c>
@@ -284,6 +314,37 @@ namespace Perilune.Sim
         public const int RungCount = 7;
 
         /// <summary>
+        /// ⭐⭐ <b>THE SIX INTERIOR BAND EDGES, DESCENDING — AND THE ONE PLACE THEY ARE WRITTEN.</b>
+        /// Each entry is the INCLUSIVE lower edge of the band whose rung is its index + 1; rung
+        /// <see cref="RungCount"/> is the catch-all and has no floor.
+        ///
+        /// <para><b>WHY AN ARRAY AND NOT THE IF-CHAIN IT REPLACED (D2).</b> Until D2 these six
+        /// numbers existed only as the literals of an <c>if</c> ladder inside
+        /// <see cref="RungOf"/>, which was fine while nothing else needed to know where an edge
+        /// sat. The decay warning needs exactly that — <i>how far is this capsule from the edge
+        /// below it?</i> — and a second copy of the six numbers is the "one player confusion, two
+        /// surfaces" defect this repo keeps naming. <see cref="RungOf"/> reads this array and
+        /// <see cref="BandFloorOf"/> reports it, so the price and the warning cannot drift apart:
+        /// move an edge and both move.</para>
+        ///
+        /// <para><c>static readonly</c>, so it is built once at type init and every call is a
+        /// bounds-checked read — <see cref="RungOf"/> stays zero-alloc, which it must, because
+        /// <see cref="Evaluate"/> runs inside <c>Simulation.Tick</c>.</para>
+        ///
+        /// <para>⚠️ IT IS A RULE, NOT A TUNABLE — literals in code, deliberately never a def node.
+        /// See the class remarks: a def field here moves P4 and P5 for a table nobody tunes at
+        /// runtime, and a def field pinned only by a checksum is not pinned at all.</para>
+        /// </summary>
+        private static readonly float[] BandFloors = { 0.92f, 0.84f, 0.76f, 0.68f, 0.60f, 0.52f };
+
+        /// <summary>What <see cref="BandFloorOf"/> answers for the catch-all rung, which has no
+        /// lower edge: a capsule on rung <see cref="RungCount"/> can decay but its PRICE can never
+        /// rise again. Negative on purpose — no <c>Condition</c> can equal it, so a caller that
+        /// forgets to check gets a margin that is never inside any warning window rather than a
+        /// silently plausible 0.</summary>
+        public const float NoBandFloor = -1f;
+
+        /// <summary>
         /// The rung a capsule at <paramref name="condition"/> sits on. Pure, total (every float
         /// resolves — rung 7 is the catch-all) and zero-alloc.
         ///
@@ -292,13 +353,110 @@ namespace Perilune.Sim
         /// </summary>
         public static ThawRung RungOf(float condition)
         {
-            if (condition >= 0.92f) return new ThawRung(1, ItemKind.Seals, 1);
-            if (condition >= 0.90f) return new ThawRung(2, ItemKind.Seals, 2);
-            if (condition >= 0.87f) return new ThawRung(3, ItemKind.Parts, 1);
-            if (condition >= 0.85f) return new ThawRung(4, ItemKind.Parts, 2);
-            if (condition >= 0.82f) return new ThawRung(5, ItemKind.ControllerModule, 1);
-            if (condition >= 0.80f) return new ThawRung(6, ItemKind.ControllerModule, 2);
-            return new ThawRung(7, ItemKind.ControllerModule, 3);
+            for (int i = 0; i < BandFloors.Length; i++)
+                if (condition >= BandFloors[i]) return RungSpec(i + 1);
+            return RungSpec(RungCount);
+        }
+
+        /// <summary>The item and count OD-M item 1 priced each rung at. Split out of
+        /// <see cref="RungOf"/> so the WHERE (<see cref="BandFloors"/>) and the WHAT live apart: D2
+        /// moved every edge and touched none of these seven rows, and the shape of the diff is what
+        /// says so.</summary>
+        private static ThawRung RungSpec(int rung)
+        {
+            switch (rung)
+            {
+                case 1: return new ThawRung(1, ItemKind.Seals, 1);
+                case 2: return new ThawRung(2, ItemKind.Seals, 2);
+                case 3: return new ThawRung(3, ItemKind.Parts, 1);
+                case 4: return new ThawRung(4, ItemKind.Parts, 2);
+                case 5: return new ThawRung(5, ItemKind.ControllerModule, 1);
+                case 6: return new ThawRung(6, ItemKind.ControllerModule, 2);
+                default: return new ThawRung(7, ItemKind.ControllerModule, 3);
+            }
+        }
+
+        /// <summary>
+        /// ⭐ D2 — <b>THE INCLUSIVE LOWER EDGE OF <paramref name="rung"/>'S BAND</b>, i.e. the
+        /// <c>Condition</c> at which a capsule stops being on that rung and its thaw gets more
+        /// expensive. <see cref="NoBandFloor"/> for the catch-all rung (and for any out-of-range
+        /// argument), because rung <see cref="RungCount"/> has no edge below it.
+        ///
+        /// <para>Total and zero-alloc, like <see cref="RungOf"/>, and reading the SAME array — the
+        /// warning bar's whole claim is that it names the edge the price will actually cross.</para>
+        /// </summary>
+        public static float BandFloorOf(int rung)
+            => rung >= 1 && rung <= BandFloors.Length ? BandFloors[rung - 1] : NoBandFloor;
+
+        /// <summary>
+        /// ⚠️ <b>HOW CLOSE TO ITS EDGE A CAPSULE HAS TO BE BEFORE THE SHIP SAYS SO</b> — measured in
+        /// <c>Condition</c>, because that is what the sim actually has; 0.025 is <b>25 sim-hours at
+        /// the <c>CryoPod</c>'s nominal 0.001/h wear</b>, i.e. about a sim-day of notice, which is
+        /// the shape the charter asked for ("roughly a sim-day").
+        ///
+        /// <para><b>A NAMED CONSTANT AND NOT A DEF FIELD, for exactly
+        /// <see cref="MinDaysOfFood"/>'s reasons</b> — a def scalar moves P4 and P5 for a number
+        /// nobody tunes at runtime, and a def field pinned only by a checksum is not pinned. Same
+        /// precedent chain: <c>CryoSystem.ThawSecondsPerCycle</c>, <c>BuildSystem.FloorConstructTicks</c>,
+        /// the band table above.</para>
+        ///
+        /// <para>⚠️ <b>IT IS NOT A TIME, AND THE DIFFERENCE IS VISIBLE IN PLAY.</b> Real wear is
+        /// <c>WearPerHour × DirectorSystem.WearPressure</c> and the pressure runs 1.00–1.35
+        /// (<c>MachineWearSystem.cs:70</c>), so the notice this margin buys is 18.5–25 sim-hours
+        /// depending on how badly the run is going. A margin expressed in hours would have to sample
+        /// that pressure and would go stale the moment it changed; a margin in Condition is a fact
+        /// about the ladder, and the ship gets LESS warning exactly when it is under more
+        /// pressure — which is the right direction for a warning to lean.</para>
+        /// </summary>
+        public const float DecayWarningMargin = 0.025f;
+
+        /// <summary>
+        /// ⭐⭐ D2 — <b>THE CAPSULE WHOSE THAW PRICE IS ABOUT TO RISE</b>, or <c>null</c> when no
+        /// capsule aboard is within <see cref="DecayWarningMargin"/> of its band's lower edge.
+        /// <paramref name="margin"/> comes back as the distance that capsule still has (in
+        /// <c>Condition</c>), or <see cref="NoBandFloor"/> when there is nothing to report.
+        ///
+        /// <para><b>NEAREST TO CROSSING WINS, and there is exactly one line to spend.</b> The bar is
+        /// one sentence (the <c>ending</c> precedent); the POD BAY — MOSS <c>pods</c> — is the
+        /// detail view that shows all seven. Ties break on the lower <c>Device.Id</c>, the same
+        /// election <c>CryoSystem</c> and <see cref="CommissionedConsoleName"/> already use, so the
+        /// ship never flickers between two capsules that are equally close.</para>
+        ///
+        /// <para><b>WHO IS ELIGIBLE.</b> A capsule that is shut (an open one has no price), powered
+        /// and above its <c>fail</c> threshold (a wrecked pod's sleeper is already dead — term 1
+        /// refuses it permanently, so "its price will rise" would be a lie), and NOT on the
+        /// catch-all rung (rung <see cref="RungCount"/> has no edge left to cross:
+        /// <see cref="BandFloorOf"/> answers <see cref="NoBandFloor"/> and the margin test can never
+        /// pass).</para>
+        ///
+        /// <para>Pure and zero-alloc — it returns a REFERENCE to a device the sim already owns.
+        /// Host and test call it; nothing in a tick path does, but it costs nothing if one ever
+        /// does.</para>
+        /// </summary>
+        public static Device CapsuleNearestToRungCrossing(Simulation sim, out float margin)
+        {
+            margin = NoBandFloor;
+            if (sim == null) return null;
+            Device found = null;
+            float best = 0f;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.CryoPod) continue;
+                if (d.IsOpen) continue;
+                if (!d.Powered || !d.IsOperational(sim.Defs)) continue;
+
+                float floor = BandFloorOf(RungOf(d.Condition).Rung);
+                if (floor == NoBandFloor) continue;          // the catch-all rung: no edge below it
+                float left = d.Condition - floor;
+                if (left > DecayWarningMargin) continue;     // still comfortable
+                if (found != null && (left > best || (left == best && d.Id >= found.Id))) continue;
+                found = d;
+                best = left;
+            }
+            margin = found == null ? NoBandFloor : best;
+            return found;
         }
 
         // ═════════════════════════════════════════════════════════════════ M3-3: the contract

@@ -46,9 +46,9 @@ namespace Perilune.Tests
 
         private const string Console = "term_moss";
 
-        /// <summary>Rung 1 on the wreck: Lindqvist's capsule at <c>Condition 0.94</c> ⇒ 1 Seals.</summary>
+        /// <summary>Rung 1 on the wreck: Lindqvist's capsule at <c>Condition 0.99</c> ⇒ 1 Seals.</summary>
         private const string Rung1Pod = "pod_lindqvist";
-        /// <summary>Rung 7: Torres at 0.78 ⇒ 3 ControllerModule, the deepest capsule aboard.</summary>
+        /// <summary>Rung 7: Torres at 0.51 ⇒ 3 ControllerModule, the deepest capsule aboard.</summary>
         private const string Rung7Pod = "pod_torres";
         /// <summary>A capsule the raid killed (0.04, below <c>CryoPod</c>'s <c>fail</c>) — OD-9.</summary>
         private const string DeadPod = "pod_vance";
@@ -686,7 +686,7 @@ namespace Perilune.Tests
         /// M3-6 could not run it (<c>ThawGate.Evaluate</c> did not exist at position 3) and its own
         /// header says this package owns it.
         ///
-        /// <para><b>ALL SIX INTERIOR EDGES — 0.92 · 0.90 · 0.87 · 0.85 · 0.82 · 0.80.</b> Six, not
+        /// <para><b>ALL SIX INTERIOR EDGES — 0.92 · 0.84 · 0.76 · 0.68 · 0.60 · 0.52.</b> Six, not
         /// four: the count is the point. <b>The edge that is never crossed is the edge nobody
         /// chose</b>, and a sweep that skipped two would leave two boundaries decided by accident.
         /// </para>
@@ -705,7 +705,10 @@ namespace Perilune.Tests
         {
             // The six INTERIOR edges of a seven-band table. (A seven-rung ladder has six of them —
             // revision 2 of the charter said "four", counting rungs rather than edges.)
-            float[] edges = { 0.92f, 0.90f, 0.87f, 0.85f, 0.82f, 0.80f };
+            // ⭐ RE-KEYED BY D2 (2026-08-02): 0.08-wide bands in place of 0.02–0.03, so a
+            // capsule takes ~70 sim-hours to drop a rung instead of 10–20. Six edges either way —
+            // the count is still the point.
+            float[] edges = { 0.92f, 0.84f, 0.76f, 0.68f, 0.60f, 0.52f };
             const float below = 0.001f;   // one thousandth under, well inside float resolution here
 
             var sim = BootWreck();
