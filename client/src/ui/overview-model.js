@@ -57,6 +57,13 @@
 // is where the tool now lives. That is the right outcome, not a leak.
 
 import { makeTransform } from './overview-scene.js';
+// ⭐ M3-12 — `isIncapableOf` is a PURE mask reader, not a cache reach: it takes a row that has
+// already been decoded and answers a question about the sim's own `Citizen.WorkIncapable` byte. The
+// "no wire access" rule above is about `Hud.*` (the live caches), which this file still never
+// touches; `room-model.js`, `zone-model.js` and `console-model.js` all import from this module for
+// the same reason. It is imported rather than re-implemented so that the bit test has ONE home —
+// a second copy of `mask & (1 << type)` is exactly how the two halves of a wire contract drift.
+import { isIncapableOf } from '../wire/messages.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -430,6 +437,81 @@ export function workCellLabel(priority) {
   const p = priority | 0;
   if (p === WORK_OFF) return { text: 'off', state: 'off' };
   return { text: String(p), state: 'set' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐ M3-12 — WHAT SHE IS GOOD AT, AND WHAT SHE CAN NEVER DO. The `workcaps` channel's pure half.
+//
+// ⛔ BLANK IS NOT ABSENT, AND THAT IS THE WHOLE PACKAGE. `rimworld-reference.md:335` — the
+// `renders as` row of §1.6's table — draws a **disabled** work type (priority 0) as a **blank cell**
+// and an **incapable** one as **NO CELL AT ALL, the box is absent**. Those are two different
+// sentences: *this pawn's setting is off* (an order the PLAYER gave, which the player can take back)
+// versus *there is no such setting for this pawn* (a fact about the PERSON, which the player cannot
+// touch — RimWorld's own `SetPriority` refuses and logs). ⭐ The rendering is therefore STRUCTURAL,
+// never decorative: a greyed or struck cell is still a cell, still offers the click, and still says
+// the first sentence. `workRowColumns` is where that structure is decided, and it is the ONLY place —
+// the view builds the row from its answer rather than styling six fixed cells.
+//
+// ⚠️ AND IT CANNOT BE INFERRED FROM THE `work` CHANNEL. That channel is sparse and off-only, so an
+// absent row means "off"; under OD-H EVERY row is absent at boot. Inferring incapability from
+// absence would therefore mark every crew member incapable of everything on the boot screen — the
+// two facts have different provenance and only `workcaps` carries the second one.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The columns this crew member has a cell in AT ALL. PURE.
+ *
+ * `caps` is one decoded `workcaps` row (`{cid, skills, incapableMask}`) or `null`. A column is
+ * present unless the mask's `1 << workType` bit is set, and the bit is read through
+ * `isIncapableOf` — the wire module's own reader of the sim's own byte — so this file never
+ * re-derives a capability from anything else.
+ *
+ * ⚠️ `null` MEANS "WE DO NOT KNOW YET", AND IT KEEPS EVERY CELL. `workcaps` is snapshot-cached so
+ * that lasts one frame on a real connection, but the direction of the guess matters: deleting a
+ * cell because the channel has not arrived would tell the player a permanent fact about a person on
+ * the strength of a missing message, and unlike a wrong number a missing box cannot be noticed as
+ * wrong. A cell that is present but says `·` is honest about not knowing.
+ * @param {{incapableMask:number}|null|undefined} caps
+ * @returns {WorkColumn[]} a subset of WORK_COLUMNS, in WORK_COLUMNS order
+ */
+export function workRowColumns(caps) {
+  return WORK_COLUMNS.filter((c) => !isIncapableOf(caps, c.type));
+}
+
+/**
+ * What the skill corner of a cell reads. PURE.
+ *
+ * ⭐ LEVEL 0 RENDERS AS `0`, VISIBLY, AND THAT IS A DELIBERATE HONESTY CHOICE. Nothing in the sim
+ * writes a skill yet (MECHANICS §13.37.5 — every crew member on every shipping ship is level 0 until
+ * M3-8 authors the persona sheets), so today the grid reads `0` everywhere. Hiding the zero — a
+ * blank corner, a dash, a "—" — would make the shipped game look like one where skills are simply
+ * not shown, when the truth is that nobody aboard is trained at anything. The zero is the finding.
+ *
+ * ⛔ AND IT DOES NOT COLLIDE WITH `workCellLabel`'s RULE THAT OFF IS NEVER `"0"`. That rule is about
+ * the PRIORITY glyph, where a `0` would read as the worst of `1..4`. This number lives in its own
+ * element with its own class, is never in `1..4`'s domain (skills run `0..20`) and never replaces
+ * the priority text — the two are drawn side by side, exactly as RimWorld draws the skill in the
+ * corner of the priority box.
+ *
+ * ⚠️ `null`/undefined is "no `workcaps` payload for this person", NOT level 0 — `decodeWorkCaps`
+ * deliberately drops a short row rather than zero-filling it, for this same reason.
+ * @param {number|null|undefined} skill a level `0..20` out of a decoded `workcaps` row
+ * @returns {{text:string, state:'wait'|'untrained'|'trained', title:string}}
+ */
+export function workSkillLabel(skill) {
+  if (!Number.isFinite(skill)) {
+    return { text: '·', state: 'wait', title: 'Skill unknown — no crew capability data yet' };
+  }
+  const n = skill | 0;
+  if (n <= 0) {
+    return {
+      text: '0',
+      state: 'untrained',
+      title: 'Skill 0 of 20 — UNTRAINED. She will still do this work, just slowly. '
+        + '(A work type she can NEVER do has no cell here at all.)',
+    };
+  }
+  return { text: String(n), state: 'trained', title: 'Skill ' + n + ' of 20' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

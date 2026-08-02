@@ -26,6 +26,7 @@ import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import {
   selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices, decodeWork,
+  decodeWorkCaps,
 } from '../wire/messages.js';
 // `deckDeviceConditions` is the wear join; `eraseTarget`/`tileOrders` are the un-designate precedence
 // + the tile-facts derivation it runs on, SHARED VERBATIM with the Room Zoom (M1-C) rather than
@@ -62,7 +63,7 @@ import {
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, orderHintLine, orderPlacedLine,
   ERASE_TOOL, ERASE_LABEL, markNameAt, erasePlacedLine,
-  WORK_COLUMNS, nextWorkPriority, workCellLabel,
+  WORK_COLUMNS, nextWorkPriority, workCellLabel, workRowColumns, workSkillLabel,
 } from './overview-model.js';
 
 /* eslint-disable no-multi-spaces */
@@ -160,6 +161,8 @@ function setCls(node, cls, on) { if (node && node.classList.contains(cls) !== !!
 function setHidden(node, on) { if (node && node.hidden !== !!on) node.hidden = !!on; }
 /** Guarded disabled toggle. */
 function setDisabled(node, on) { if (node && node.disabled !== !!on) node.disabled = !!on; }
+/** Guarded attribute write (no attribute churn when already set). */
+function setAttr(node, k, v) { if (node && node.getAttribute(k) !== v) node.setAttribute(k, v); }
 
 /** Keyed list reconcile: update in place, create/remove only on membership change, reorder with
  *  minimal moves. `container` holds ONLY the reconciled children. Mirrors hud.js reconcileRows. */
@@ -214,6 +217,38 @@ export function workPriorityFor(cid, workType) {
   const c = cid | 0, t = workType | 0;
   for (const r of rows) if (r.cid === c && r.workType === t) return r.priority;
   return 0;
+}
+
+/**
+ * ⭐ M3-12 — ONE CREW MEMBER'S CAPABILITY ROW off the LIVE `workcaps` cache: her six skill levels
+ * (`0..20`, in `WorkType` value order) and the `incapableMask` byte that says which work types she
+ * can never do at all. `null` when the channel has not arrived or carries no row for this cid.
+ *
+ * ⛔ THIS IS THE ONLY ROUTE. Neither number exists anywhere else on this client — a skill is
+ * per-PERSON state with no tile to project onto, and the incapability mask is `Citizen.WorkIncapable`
+ * copied verbatim by the host rather than re-derived (`hosts/web/WireFormat.WorkCaps.cs`). Anything
+ * this surface computed for itself — "she has no work rows, so she must be incapable", "level 0
+ * because we have not been told otherwise" — would be a CLIENT GUESS about a person, which is the
+ * mutation this package's first leg exists to catch.
+ *
+ * ⚠️ `null` IS NOT "INCAPABLE OF NOTHING" AND IT IS NOT "LEVEL 0". It is *we have not been told*, and
+ * `workRowColumns`/`workSkillLabel` render it as such: every cell stays present (deleting a box on a
+ * missing message would state a permanent fact about a person on no evidence) and the skill corner
+ * reads `·`. `workcaps` is in the host's snapshot key list, so a connected tab has the layer from its
+ * first frame; this branch is the boot frame and the disconnected harness.
+ *
+ * Decoded per CALL, and called ONCE PER ROW rather than once per cell — `paintWork` returns before
+ * the first call on any other tab, so a repaint elsewhere costs nothing (the `devices` lane was
+ * fairly criticised for paying a per-repaint decode for zero consumers).
+ * @param {number} cid crew member's entity id
+ * @returns {{cid:number, skills:number[], incapableMask:number}|null}
+ */
+export function workCapsFor(cid) {
+  const rows = decodeWorkCaps(Hud.getWorkCaps());
+  if (!rows) return null;
+  const c = cid | 0;
+  for (const r of rows) if (r.cid === c) return r;
+  return null;
 }
 
 /** Mount the Overview surface + subscribe to the shared HUD state. Call once from main.js. */
@@ -523,6 +558,14 @@ function buildWorkIsland() {
   _el.work.appendChild(mkEl('div', 'ov-workhint',
     'CLICK A CELL TO CYCLE  off → 1 → 2 → 3 → 4 → off.  1 IS THE HIGHEST PRIORITY.'));
 
+  // ⭐ M3-12 — the second line, and it exists to make the ABSENCE legible. A missing box is a strong
+  // statement drawn with nothing at all, so without this line the player's honest reading of a gap in
+  // the grid is "the UI broke" rather than "she can never do that". RimWorld can afford to say
+  // nothing here because its Bio tab carries an "Incapable Of" list; we have no such surface yet
+  // (the Persona window is M4), so the grid must say it itself.
+  _el.work.appendChild(mkEl('div', 'ov-workhint',
+    'THE SMALL NUMBER IS HER SKILL, 0–20.  A WORK TYPE SHE CAN NEVER DO HAS NO CELL AT ALL.'));
+
   _el.workEmpty = mkEl('div', 'ov-empty', 'No souls aboard.');
   _el.workEmpty.hidden = true;
   _el.work.appendChild(_el.workEmpty);
@@ -559,6 +602,31 @@ export function workTabMount() { return _el.work || null; }
  * order and the cell changes when (and only when) the sim echoes it back on the next ~100 ms
  * snapshot. A local mirror would go quietly wrong the moment the sim refused an order — and
  * `HandleWorkPriority` is silent on refusal by design, so there would be nothing to correct it.
+ *
+ * ⭐ M3-12 ADDED TWO THINGS AND ONLY ONE OF THEM IS A NUMBER.
+ *
+ *   1. **The skill corner.** Each cell now carries her level in that work type beside the priority
+ *      glyph, read from `workcaps` — the RimWorld arrangement (§1.7), the skill in the corner of the
+ *      priority box. It is READ-ONLY: `onWorkCellClick` is unchanged, so a click anywhere in the
+ *      cell (including on the number) still cycles the PRIORITY and nothing else. A skill is the
+ *      sim's to write; the player's control over it is choosing who to thaw and who to assign.
+ *   2. ⭐ **The absent cell, which is a STRUCTURE and not a style.** A work type in her
+ *      `incapableMask` gets no `<button>` in this row at all — `workRowColumns` decides the set and
+ *      the DOM is built from it. `rimworld-reference.md:335`: disabled renders blank, incapable
+ *      renders as no cell. A struck-through or greyed box would still be a box, would still take the
+ *      click, and would still say *your setting is off* rather than *there is no such setting*.
+ *
+ * ⚠️ THE GAP MUST STAY UNDER ITS OWN HEADER, and CSS does that, not this function: `.ov-workrow` is
+ * a six-column grid and each cell is placed by `grid-column` keyed off its `data-ov-work-type`
+ * attribute (`styles.css`). Without that, removing MINE would slide HAUL leftwards under the MINE
+ * header and every remaining cell in the row would read as the wrong work type — the neighbouring
+ * cells' click geometry, silently wrong. The addressing itself is unaffected (each button carries
+ * its own cid+type), which is exactly why the failure would be invisible to a click test.
+ *
+ * ⚠️ THE ATTACH/DETACH RUNS ONLY WHEN THE DOM DISAGREES WITH THE MASK. Re-appending six nodes every
+ * repaint would move the node under the player's pointer at ~10 Hz — BUG-A on this island, which the
+ * reconcile above exists to avoid — and comparing against the DOM rather than against a remembered
+ * signature is what makes a row that has lost a cell able to get it back.
  */
 function paintWork(crew) {
   const show = Hud.getTab() === 'work';
@@ -579,17 +647,56 @@ function paintWork(crew) {
         b.dataset.ovWorkCid = String(e.cid);
         b.dataset.ovWorkType = String(col.type);
         b.setAttribute('title', col.title);
-        row.appendChild(b);
-        return { el: b, type: col.type };
+        // The priority glyph and the skill corner are SEPARATE elements, deliberately: they are two
+        // different facts on two different domains (`off`/`1..4` from the player, `0..20` from the
+        // sim) and a cell whose text was their concatenation could not style, title or test either.
+        const prioEl = mkEl('span', 'ov-workprio');
+        const skillEl = mkEl('span', 'ov-workskill');
+        b.appendChild(prioEl);
+        b.appendChild(skillEl);
+        // ⛔ NOT appended to the row here. The row's cell SET is a function of her incapability
+        // mask and is applied below, so a row created before `workcaps` arrives converges the moment
+        // it does — and a row created after a mask changes needs no special case either.
+        return { el: b, type: col.type, prioEl, skillEl };
       });
       return { el: row, nameEl, cells };
     },
     (rec, e) => {
       setText(rec.nameEl, surnameOf(e.name));
+      const caps = workCapsFor(e.cid);
+      // ⭐ THE STRUCTURE, from the single authority. `workRowColumns` reads the mask bit through the
+      // wire module's own `isIncapableOf`; nothing here infers a capability from a missing `work`
+      // row (under OD-H every `work` row is missing at boot, so that inference would delete the
+      // entire grid).
+      let sig = 0;
+      for (const col of workRowColumns(caps)) sig |= 1 << col.type;
+      // ⚠️ THE COMPARISON IS AGAINST THE DOM, NOT AGAINST A REMEMBERED SIGNATURE — and this is a
+      // ROBUSTNESS choice, stated as one, NOT a fix for a bug the game has. A `rec.sig` cache is
+      // behaviourally IDENTICAL for every input the wire can produce, and the mutation that
+      // reinstates it is a measured EQUIVALENT MUTANT: the whole suite stays green under it, and
+      // that is reported rather than dressed up as a red. What the cache asserts is "I already
+      // applied this set" — a claim about what this module DID rather than about what is on screen —
+      // and the two diverge if anything ever detaches a cell from outside. Nothing does today; the
+      // browser harness's own layout probe is the only thing that ever has. Six identity comparisons
+      // and no DOM writes in the steady state is the whole cost of not depending on that staying
+      // true, and it removes a piece of state rather than adding one.
+      // ⛔ What IS pinned, and is a real difference: applying the set ONLY ONCE per row. That mutant
+      // goes red on the converges-both-ways leg.
+      let dirty = false;
       for (const cell of rec.cells) {
+        if (((sig & (1 << cell.type)) !== 0) !== (cell.el.parentNode === rec.el)) { dirty = true; break; }
+      }
+      if (dirty) {
+        for (const cell of rec.cells) if (cell.el.parentNode) cell.el.remove();
+        // Re-attached in WORK_COLUMNS order, so the surviving cells keep OD-J's order; their column
+        // POSITION is CSS's job (see the note above).
+        for (const cell of rec.cells) if (sig & (1 << cell.type)) rec.el.appendChild(cell.el);
+      }
+      for (const cell of rec.cells) {
+        if (!(sig & (1 << cell.type))) continue;   // no cell exists — nothing to paint
         const p = workPriorityFor(e.cid, cell.type);
         const { text, state } = workCellLabel(p);
-        setText(cell.el, text);
+        setText(cell.prioEl, text);
         setCls(cell.el, 'off', state === 'off');
         setCls(cell.el, 'set', state === 'set');
         setCls(cell.el, 'wait', state === 'wait');
@@ -598,6 +705,13 @@ function paintWork(crew) {
         // cycle without guessing. `work` is in the host's snapshot key list, so this lasts one
         // frame on a real connection.
         setDisabled(cell.el, state === 'wait');
+        // The skill corner. `caps.skills` is indexed by WorkType VALUE, which is what `cell.type`
+        // holds — never by the column's position in the array.
+        const sk = workSkillLabel(caps ? caps.skills[cell.type] : null);
+        setText(cell.skillEl, sk.text);
+        setCls(cell.skillEl, 'untrained', sk.state === 'untrained');
+        setCls(cell.skillEl, 'wait', sk.state === 'wait');
+        setAttr(cell.skillEl, 'title', sk.title);
       }
     });
 }
