@@ -1401,3 +1401,73 @@ test('M3-4: the fixture can SEE the forbidden derivation — the capsule key is 
     'assertion in this file is satisfied by the defect it exists to forbid. Keep at least one ' +
     'offered capsule whose sleeper is not simply its key with a capital letter.');
 });
+
+// ═══════════════════════════════════════════════════════ M3-17 — the COMMISSIONING verb
+//
+// ⭐ THE PLAYTEST BLOCKER'S CLIENT HALF. `HandleCommission`, `CommissionDeviceCommand` and
+// `build.def commission_cost` have all existed since E0-6; what did not exist was a SENDER, so
+// the opening arc dead-ended one step before the pod bay. These tests pin the sender.
+
+test('M3-17: `commission` parses as a NAV verb — not a device write, not UNKNOWN', () => {
+  const cmd = parseCommand('commission');
+  assert.equal(cmd.kind, 'nav',
+    'it must not go out as `exec` — a device line is refused when the link is down and needs a ' +
+    'target, and `commission` has neither');
+  assert.equal(cmd.verb, 'commission');
+  assert.deepEqual(cmd.args, []);
+});
+
+test('M3-17: typing `commission` sends the wire op and NOTHING else', () => {
+  const before = openMoss();
+  const out = submitCommand(before, 'commission');
+  assert.deepEqual(out.effects, [{ k: 'moss', op: 'commission' }],
+    'the ONLY effect is the ask — the client resolves no terminal, checks no stock and ' +
+    'quotes no price, because none of those three facts has ever crossed the wire');
+  assert.equal(out.model.screen, SCREEN.LEDGER, 'it opens no screen');
+  // The command's only transcript mark is its own stream-0 echo. Anything NEW on stream 1 or 2
+  // would be the client answering for the ship.
+  const added = out.model.console.slice(before.console.length);
+  assert.deepEqual(added.map((l) => l.stream), [0],
+    'the client answered for the ship. A local "you have no controller module" is a second ' +
+    'gate, and a second gate eventually disagrees with the sim (RW §2.2). Added: ' +
+    JSON.stringify(added));
+});
+
+test('M3-17: case and spacing tolerance, like every other nav verb', () => {
+  for (const raw of ['COMMISSION', '  Commission  ']) {
+    assert.deepEqual(submitCommand(openMoss(), raw).effects, [{ k: 'moss', op: 'commission' }],
+      'failed for: ' + JSON.stringify(raw));
+  }
+});
+
+test('M3-17: the ship\'s verdict reaches the transcript, verbatim, on BOTH streams', () => {
+  const asked = submitCommand(openMoss(), 'commission');
+  const ok = reduceMossEvent(asked.model, {
+    ev: 'exec', tid: '@console', ok: true,
+    lines: [[1, 'COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN']],
+  });
+  assert.ok(ok.console.some((l) => l.stream === 1 && l.text.startsWith('COMMISSION ACCEPTED')),
+    'an accepted commission repaints nothing, so without this line "it worked" and "the key ' +
+    'did nothing" are the same picture');
+
+  const no = reduceMossEvent(asked.model, {
+    ev: 'exec', tid: '@console', ok: false,
+    lines: [[2, 'COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0']],
+  });
+  assert.ok(no.console.some((l) => l.stream === 2
+    && l.text === 'COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0'),
+    'the refusal must arrive with its reason AND its number, unedited');
+});
+
+test('M3-17: BOTH signposts name the verb — a command nobody can discover is one nobody sends', () => {
+  const helped = submitCommand(openMoss(), 'help');
+  const lines = helped.model.console.filter((l) => l.stream === 1).map((l) => l.text);
+  assert.ok(lines.some((l) => l.startsWith('COMMISSION')),
+    'HELP lists every other verb the console answers; leaving this one out is how the blocker ' +
+    'survived a whole milestone. Saw:\n' + lines.join('\n'));
+  // …and the screen the player is ON, not only the list they have to know to ask for. The LEDGER
+  // is where MOSS opens, and it already signposts PODS — the screen commissioning unlocks.
+  const hints = footerHints(openMoss()).join(' · ');
+  assert.ok(/COMMISSION/.test(hints),
+    'the LEDGER footer does not name COMMISSION beside PODS: ' + hints);
+});

@@ -99,6 +99,12 @@
          omitting this line failed with `Der Typname "WorkCapsCell" ist im Typ "WireFormat" nicht
          vorhanden` on GameSession.cs — a file that does not name this one. -->
     <Compile Include="../../hosts/web/WireFormat.WorkCaps.cs" />
+    <!-- D2: the `alerts` channel (the standing one-line warning bar — today "a capsule's thaw price
+         is about to rise", tomorrow M5-2/T17's alert stack). A TWELFTH sibling partial, WireFormat.cs
+         at a ZERO diff again. The hand-added rule bit a NINTH time, exactly as every comment above
+         promises: omitting this line failed with `"WireFormat" enthält keine Definition für "Alerts"`
+         AND `… für "DecayAlert"` on GameSession.cs — a file that does not name this one. -->
+    <Compile Include="../../hosts/web/WireFormat.Alerts.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

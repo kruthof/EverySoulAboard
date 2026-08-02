@@ -298,6 +298,13 @@ function onMessage(m) {
     // is over it says so — the whole point of the channel, since a silent loss is indistinguishable
     // from a hung game. Cached in the shared state layer; drawn by the Overview's ENDING bar.
     case 'ending': Hud.renderEnding(m); break;
+    // ⭐⭐ D2 — WHAT IS ABOUT TO GET MORE EXPENSIVE (`alerts`). One derived line, always on screen
+    // while it is true: a cryo capsule is within a sim-day of crossing a thaw-ladder band edge, and
+    // when it does, waking that person costs more. It is NOT a Chronicle event on purpose — the M3
+    // demo measured the Chronicle ring evicting real events under brownout spam (finding D6), and
+    // an announcement nobody can still read is the silence this channel exists to remove. Cached in
+    // the shared state layer; drawn by the Overview's ALERT bar. M5-2/T17 grows this into the stack.
+    case 'alerts': Hud.renderAlerts(m); break;
     default: break;
   }
 }

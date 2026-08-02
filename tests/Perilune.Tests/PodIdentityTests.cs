@@ -51,7 +51,7 @@ namespace Perilune.Tests
         /// <summary>The wreck's MOSS console — the WHERE gate every thaw goes through.</summary>
         private const string MossConsole = "term_moss";
 
-        /// <summary>Rung 1 of the thaw ladder (<c>Condition 0.94</c> ⇒ 1 Seals, and the wreck
+        /// <summary>Rung 1 of the thaw ladder (<c>Condition 0.99</c> ⇒ 1 Seals, and the wreck
         /// carries Seals loose at boot), so the owed leg drives an ACCEPTED thaw rather than a
         /// refusal wearing the same command's clothes.</summary>
         private const string ThawPod = "pod_lindqvist";

@@ -298,6 +298,12 @@ function buildSkeleton() {
     // toast — a toast expires, and neither of these two facts ever stops being true. It is NOT the
     // ending screen either: M5-1 owns THE ENDING (OD-M item 4 = A) and this must stay one line.
     '<div class="ov-ending" id="ov-ending" hidden></div>' +
+    // ⭐⭐ D2 — THE ALERT BAR. One derived line, sitting directly UNDER the ending bar: a cryo
+    // capsule is within about a sim-day of its next thaw-ladder band edge, and when it crosses,
+    // waking that person costs more. Not a toast (a toast expires and this fact does not until the
+    // player acts) and not a Chronicle entry (the M3 demo measured the Chronicle ring evicting real
+    // events under brownout spam). It is the FIRST ROW of M5-2/T17's alert stack — grow it there.
+    '<div class="ov-alert" id="ov-alert" hidden></div>' +
     // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). It sits directly under
     // the top bar's HOLD/RESUME chip, because that chip is the fix for what it is complaining about.
     //
@@ -515,6 +521,10 @@ function buildIslands() {
 
   // M3-5's ENDING bar — written into the skeleton string above, so it is bound by id here.
   _el.ending = $('ov-ending');
+  // D2's ALERT bar, its sibling. Two bars and not one: the ending is about the RUN, this is about a
+  // capsule, and a ship whose crew is dying is exactly the ship whose capsules are decaying
+  // unattended — sharing a slot would have made the two facts mutually exclusive.
+  _el.alert = $('ov-alert');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -819,6 +829,7 @@ function repaint() {
   paintSensor();
   paintLedger();
   paintEnding();
+  paintAlert();
 }
 
 /**
@@ -837,6 +848,24 @@ function paintEnding() {
   setHidden(_el.ending, !text);
   setText(_el.ending, text);
   setCls(_el.ending, 'ov-endover', !!(msg && msg.over));
+}
+
+/**
+ * ⭐⭐ D2 — THE ALERT BAR. The host owns the sentence (`WireFormat.DecayAlert`, derived per render
+ * from `ThawGate.CapsuleNearestToRungCrossing`); this function owns only whether it is on screen.
+ *
+ * ⚠️ HIDDEN ON THE EMPTY STRING, exactly like the ending bar, and for the same reason: "the ship
+ * has nothing to warn about" is a state the WIRE expresses. A client that instead hid the bar when
+ * the channel stopped arriving could never tell all-quiet from a dropped socket.
+ *
+ * ⭐ M5-2/T17: this is the alert STACK's first row. When `text` becomes a list, replace the body of
+ * this function and keep the slot, the cache (`Hud.getAlerts`) and the channel.
+ */
+function paintAlert() {
+  const msg = Hud.getAlerts();
+  const text = msg && typeof msg.text === 'string' ? msg.text : '';
+  setHidden(_el.alert, !text);
+  setText(_el.alert, text);
 }
 
 // ── bottom-left LEDGER (E0-8) ──

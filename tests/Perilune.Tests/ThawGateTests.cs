@@ -46,9 +46,9 @@ namespace Perilune.Tests
 
         private const string Console = "term_moss";
 
-        /// <summary>Rung 1 on the wreck: Lindqvist's capsule at <c>Condition 0.94</c> ⇒ 1 Seals.</summary>
+        /// <summary>Rung 1 on the wreck: Lindqvist's capsule at <c>Condition 0.99</c> ⇒ 1 Seals.</summary>
         private const string Rung1Pod = "pod_lindqvist";
-        /// <summary>Rung 7: Torres at 0.78 ⇒ 3 ControllerModule, the deepest capsule aboard.</summary>
+        /// <summary>Rung 7: Torres at 0.51 ⇒ 3 ControllerModule, the deepest capsule aboard.</summary>
         private const string Rung7Pod = "pod_torres";
         /// <summary>A capsule the raid killed (0.04, below <c>CryoPod</c>'s <c>fail</c>) — OD-9.</summary>
         private const string DeadPod = "pod_vance";
@@ -686,7 +686,7 @@ namespace Perilune.Tests
         /// M3-6 could not run it (<c>ThawGate.Evaluate</c> did not exist at position 3) and its own
         /// header says this package owns it.
         ///
-        /// <para><b>ALL SIX INTERIOR EDGES — 0.92 · 0.90 · 0.87 · 0.85 · 0.82 · 0.80.</b> Six, not
+        /// <para><b>ALL SIX INTERIOR EDGES — 0.92 · 0.84 · 0.76 · 0.68 · 0.60 · 0.52.</b> Six, not
         /// four: the count is the point. <b>The edge that is never crossed is the edge nobody
         /// chose</b>, and a sweep that skipped two would leave two boundaries decided by accident.
         /// </para>
@@ -705,7 +705,10 @@ namespace Perilune.Tests
         {
             // The six INTERIOR edges of a seven-band table. (A seven-rung ladder has six of them —
             // revision 2 of the charter said "four", counting rungs rather than edges.)
-            float[] edges = { 0.92f, 0.90f, 0.87f, 0.85f, 0.82f, 0.80f };
+            // ⭐ RE-KEYED BY D2 (2026-08-02): 0.08-wide bands in place of 0.02–0.03, so a
+            // capsule takes ~70 sim-hours to drop a rung instead of 10–20. Six edges either way —
+            // the count is still the point.
+            float[] edges = { 0.92f, 0.84f, 0.76f, 0.68f, 0.60f, 0.52f };
             const float below = 0.001f;   // one thousandth under, well inside float resolution here
 
             var sim = BootWreck();
@@ -1054,11 +1057,12 @@ namespace Perilune.Tests
         /// ⭐⭐ <b>THE CONSOLE SENTENCES ARE PAIRWISE DISTINCT</b> — the M3-15 review found only ONE
         /// of the three pairs guarded, and filed the rest here by name.
         ///
-        /// <para>Four different predicates about four different facts reach the same console line:
+        /// <para>SIX different predicates about six different facts reach the same console line:
         /// the SHIP has no server · this CONSOLE is not commissioned (a program) · this CONSOLE is
-        /// not commissioned (a thaw) · and, from M3-16, this DEVICE's board is dead. <b>A player who
-        /// cannot tell them apart repairs the wrong machine, on the wrong deck</b> — which on this
-        /// ship means crossing a pressure frontier for nothing.</para>
+        /// not commissioned (a thaw) · from M3-16, this DEVICE's board is dead · and from M3-17, the
+        /// commissioning verb's own two — this console is ALREADY done · the ship has nothing to
+        /// fit. <b>A player who cannot tell them apart repairs the wrong machine, on the wrong
+        /// deck</b> — which on this ship means crossing a pressure frontier for nothing.</para>
         ///
         /// <para>⚠️ <b>DISTINCT IS NOT ENOUGH; THEY MUST NOT SHARE A LEAD.</b> Two sentences that
         /// differ only in a trailing terminal name are two strings and one message, so the test also
@@ -1087,7 +1091,30 @@ namespace Perilune.Tests
                 // nothing printed. The literal itself is still pinned — one assertion below, and
                 // again in BoardFaultTests beside the constant.
                 ("M3-16 CONTROLLER FAULT (a DEVICE's board)", DeviceFault.Refusal),
+                // ⭐ M3-17 — the COMMISSIONING VERB's own two refusals join the family, because they
+                // reach the same transcript line as the four above and a player who cannot tell
+                // "this console is done" from "the ship has nothing to fit" is sent to the wrong
+                // deck exactly as before. Both leads deliberately avoid the terminal's NAME, so
+                // content cannot move a lead: `ALREADY COMMISSIONED — PROGRAMS…` and
+                // `COMMISSIONING NEEDS n CONTROLLER…`. The third arm (NoServer) is not a fifth
+                // string — it IS MossGate.OfflineRefusal, already row 1.
+                ("M3-17 already commissioned (a CONSOLE that is done)",
+                 MossGate.DescribeCommission(new MossGate.CommissionVerdict(
+                     MossGate.CommissionRefusal.AlreadyCommissioned, Console, default, 1, 1))),
+                ("M3-17 nothing to fit (the SHIP's stock)",
+                 MossGate.DescribeCommission(new MossGate.CommissionVerdict(
+                     MossGate.CommissionRefusal.NoModule, Console, default, 1, 0))),
             };
+
+            // ⚠️ AND IT MUST NOT READ AS ThawGate's OWN RUNG SENTENCE, which composes
+            // `NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` for a thaw whose rung is a module. Two
+            // different asks about the same item, arriving on the same line: naming the ACT is the
+            // only thing keeping them apart, so it is asserted rather than left to the reader.
+            var moduleRung = new ThawRung(6, ItemKind.ControllerModule, 1);
+            Assert.That(family[5].Text, Is.Not.EqualTo(
+                    "NEEDS " + moduleRung.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + " " + ThawGate.ItemWords(moduleRung.Item) + " — SHIP HAS 0"),
+                "the commissioning refusal and the thaw's ControllerModule rung are the same sentence");
 
             Assert.That(DeviceFault.Refusal, Is.EqualTo("CONTROLLER FAULT — BOARD UNRESPONSIVE"),
                 "M3-4 reserved these exact words for M3-16 and M3-16 shipped them. Changing the wording " +
@@ -1112,7 +1139,8 @@ namespace Perilune.Tests
                                      + " open with the same words: '" + Lead(a) + "'");
                 }
 
-            Assert.That(pairs, Is.EqualTo(6), "PRECONDITION: all six pairs were compared");
+            Assert.That(pairs, Is.EqualTo(15),
+                "PRECONDITION: all fifteen pairs of the SIX-sentence family were compared");
             Assert.That(problems, Is.Empty,
                 "two console refusals read as one message. " + string.Join(" | ", problems));
         }

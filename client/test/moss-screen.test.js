@@ -1129,6 +1129,14 @@ test('§1.2/§1.3: MOSS wire ops are keyed by "type" (a "cmd" message is silentl
   assert.equal(wireForEffect(null), null);
 });
 
+test('M3-17: `commission` addresses the prompt pseudo-terminal, so the SIM resolves the console', () => {
+  // `Device.Condition` and `Device.Scriptable` are the two facts OD-N's two tiers turn on and
+  // NEITHER has ever reached the client, so a client-picked terminal would be a guess. The host
+  // resolves the live console (`MossGate.LiveServer`) and names it back in its own sentence.
+  assert.deepEqual(wireForEffect({ k: 'moss', op: 'commission' }),
+    { type: 'moss', op: 'commission', tid: '@console' });
+});
+
 test('submitting a command echoes it, clears the buffer, and sends one exec', () => {
   const s = openWithSystems();
   s.screen.inputEl.value = 'close door_storage';

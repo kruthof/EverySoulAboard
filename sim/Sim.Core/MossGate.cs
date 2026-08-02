@@ -86,13 +86,59 @@ namespace Perilune.Sim
             float maintainBelow = defs.Machines[(int)DeviceKind.Terminal].MaintainBelow;
             var devices = sim.Devices.Items;
             for (int i = 0; i < devices.Count; i++)
+                if (IsLiveTerminal(devices[i], maintainBelow)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// ⭐ THE REPAIRED TIER'S TERM, EXTRACTED SO THERE IS EXACTLY ONE OF IT. Both
+        /// <see cref="IsServerLive"/> (which early-returns, because it runs inside
+        /// <c>SetDoorStateCommand.Execute</c>'s tick path) and <see cref="LiveServer"/> (which scans
+        /// for the lowest <c>Device.Id</c>) ask THIS. Written as a static helper rather than by
+        /// having one call the other so the tick path keeps its early return; a mutation to the
+        /// term still moves both callers, which is the property that mattered.
+        /// </summary>
+        private static bool IsLiveTerminal(Device d, float maintainBelow)
+            => d.Kind == DeviceKind.Terminal && d.Powered && d.Condition >= maintainBelow;
+
+        /// <summary>
+        /// ⭐ M3-17 — <b>WHICH TERMINAL IS THE CONSOLE SPEAKING THROUGH?</b> The lowest-<c>Device.Id</c>
+        /// terminal <see cref="IsServerLive"/>'s own term accepts, or <c>null</c> when MOSS is dark.
+        ///
+        /// <para><b>WHY IT HAS TO EXIST</b> — the exact reason
+        /// <see cref="ThawGate.CommissionedConsoleName"/> gives one tier up. The MOSS prompt addresses
+        /// the pseudo-terminal <c>@console</c> (spec §1.3), a free-text key with no device behind it,
+        /// so a typed <c>commission</c> has no terminal to fit a module TO unless the sim resolves
+        /// one. The client may not pick: <c>Device.Condition</c> and <c>Device.Scriptable</c> are the
+        /// two facts the tiers turn on and neither has ever reached the wire.</para>
+        ///
+        /// <para>⚠️ <b>THE TIE-BREAK IS INHERITED, NOT RE-DECIDED.</b> A ship with two live terminals
+        /// answers through the lower-Id one — the same known consequence
+        /// <see cref="ThawGate.CommissionedConsoleName"/> records, and the same reason (no name
+        /// literal may live in <c>Sim.Core</c>). On the shipping wreck it is not reachable: the only
+        /// other Terminal, <c>term_nav</c>, is unpowered and off the flood network.</para>
+        ///
+        /// <para>Returns the <see cref="Device"/> rather than its name because the caller needs the
+        /// TILE — <see cref="CommissionDeviceCommand"/> is addressed by <c>Int3</c>, and a host that
+        /// looked the name up a second time could address a different device than the one this gate
+        /// judged. Zero-alloc; no mutation, no RNG.</para>
+        /// </summary>
+        public static Device LiveServer(Simulation sim)
+        {
+            if (sim == null) return null;
+            var defs = sim.Defs;
+            if (defs == null) return null;
+            float maintainBelow = defs.Machines[(int)DeviceKind.Terminal].MaintainBelow;
+            Device found = null;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
             {
                 var d = devices[i];
-                if (d.Kind != DeviceKind.Terminal) continue;
-                if (!d.Powered) continue;
-                if (d.Condition >= maintainBelow) return true;
+                if (found != null && d.Id >= found.Id) continue;
+                if (!IsLiveTerminal(d, maintainBelow)) continue;
+                found = d;
             }
-            return false;
+            return found;
         }
 
         /// <summary>
@@ -163,5 +209,167 @@ namespace Perilune.Sim
         public static string NotCommissionedRefusal(string terminalName)
             => "MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO "
              + (string.IsNullOrEmpty(terminalName) ? "THE TERMINAL" : terminalName.ToUpperInvariant());
+
+        // ══════════════════════════════════════════ M3-17 — CROSSING THE SPLIT: the commission verb
+        //
+        // ⭐⭐ THE ACT THAT MOVES A CONSOLE FROM THE REPAIRED TIER TO THE COMMISSIONED ONE, AND UNTIL
+        // THIS PACKAGE NO SHIPPING SURFACE COULD ASK FOR IT. `CommissionDeviceCommand` has existed
+        // since E0-6 and `GameSession.HandleCommission` since the build palette; nothing on any
+        // surface ever sent the wire command, so the opening arc dead-ended one step before the pod
+        // bay (HANDOVER 2026-08-02, "THE PLAYTEST BLOCKER"). What was missing was a SENDER.
+        //
+        // ⛔ THE VERB SITS AT THE **REPAIRED** TIER, WHICH IS THE ONLY PLACE IT CAN SIT. Putting it
+        // at the commissioned tier would require a commissioned console to commission a console.
+        // A DARK terminal still refuses — with the SHIP's sentence, not a target-side one.
+
+        /// <summary>Why a typed <c>commission</c> was refused. Ordered WORST-FIRST, and the order IS
+        /// the contract (<c>GameSession.HandleMoss</c>'s stated ship-then-target rule): a player on a
+        /// dead-computer ship must be told to repair a terminal, not to go and craft a module.</summary>
+        public enum CommissionRefusal : byte
+        {
+            /// <summary>Accepted — a module is about to be fitted.</summary>
+            None = 0,
+            /// <summary>No terminal aboard clears the REPAIRED tier. The ship's own sentence.</summary>
+            NoServer = 1,
+            /// <summary>The console already carries a <c>ControllerModule</c>.</summary>
+            AlreadyCommissioned = 2,
+            /// <summary>Nothing to fit: fewer loose modules aboard than <c>build.commission_cost</c>.</summary>
+            NoModule = 3,
+        }
+
+        /// <summary>
+        /// What a typed <c>commission</c> resolved to — the verdict, the terminal it judged, and the
+        /// two numbers a refusal has to be able to say. <b>Numbers, never prose</b>
+        /// (<see cref="ThawVerdict"/>'s rule): the sentence is composed once, in
+        /// <see cref="DescribeCommission"/>, on a host thread.
+        /// </summary>
+        public readonly struct CommissionVerdict
+        {
+            public readonly CommissionRefusal Reason;
+            /// <summary>The terminal this verdict is about; empty only for <see cref="CommissionRefusal.NoServer"/>.</summary>
+            public readonly string TerminalName;
+            /// <summary>Its tile — what <see cref="CommissionDeviceCommand"/> is addressed by.</summary>
+            public readonly Int3 Pos;
+            /// <summary><c>build.commission_cost</c> at the moment of the ask.</summary>
+            public readonly int Cost;
+            /// <summary>Loose <see cref="CommissionDeviceCommand.Currency"/> aboard.</summary>
+            public readonly int UnitsAboard;
+
+            public CommissionVerdict(CommissionRefusal reason, string terminalName, Int3 pos,
+                                     int cost, int unitsAboard)
+            {
+                Reason = reason;
+                TerminalName = terminalName ?? "";
+                Pos = pos;
+                Cost = cost;
+                UnitsAboard = unitsAboard;
+            }
+
+            public bool Allowed => Reason == CommissionRefusal.None;
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>EVALUATE A TYPED <c>commission</c>.</b> PURE — reads live sim state, spends nothing,
+        /// mutates nothing, draws no RNG. <see cref="CommissionDeviceCommand"/> stays the authority
+        /// and re-checks its own two target terms at the tick boundary; this function exists so the
+        /// console can SAY what the ship is about to do, in the same frame as the keystroke
+        /// (<c>rimworld-reference.md</c> §2.2, the same construction the thaw uses).
+        ///
+        /// <para><b>THE TERMS, WORST-FIRST.</b> (1) the SHIP — is any terminal repaired? (2) the
+        /// TARGET — is it already commissioned? (3) the PRICE, <b>LAST</b>, so a refusal never bills:
+        /// M3-3's contract, and here it is structural rather than careful, because this function
+        /// cannot spend at all.</para>
+        ///
+        /// <para><b>WHICH TERMINAL.</b> <paramref name="requestedTid"/> is honoured only when it names
+        /// a terminal that is itself live; otherwise the subject is <see cref="LiveServer"/>'s. The
+        /// prompt sends <c>@console</c>, which names no device, so in ordinary play the subject is
+        /// always the resolved one. A dark terminal named explicitly does NOT become the subject —
+        /// term 1 has already passed at that point (some other terminal is live), and answering
+        /// about a console the ship is not speaking through would be a different bug.</para>
+        /// </summary>
+        public static CommissionVerdict EvaluateCommission(Simulation sim, string requestedTid)
+        {
+            if (sim == null || sim.Defs == null)
+                return new CommissionVerdict(CommissionRefusal.NoServer, "", default, 0, 0);
+
+            int cost = sim.Defs.Build.CommissionCost;
+            int aboard = CommissionDeviceCommand.Affordable(sim);
+
+            // ── term 1: THE SHIP ────────────────────────────────────────────────────────────────
+            var target = LiveServer(sim);
+            if (target == null)
+                return new CommissionVerdict(CommissionRefusal.NoServer, "", default, cost, aboard);
+
+            if (!string.IsNullOrEmpty(requestedTid))
+            {
+                float maintainBelow = sim.Defs.Machines[(int)DeviceKind.Terminal].MaintainBelow;
+                var devices = sim.Devices.Items;
+                for (int i = 0; i < devices.Count; i++)
+                {
+                    var d = devices[i];
+                    // Ordinal — a device name is an identifier and the dev machine is de-DE.
+                    if (!string.Equals(d.Name, requestedTid, System.StringComparison.Ordinal)) continue;
+                    if (IsLiveTerminal(d, maintainBelow)) target = d;
+                    break;
+                }
+            }
+
+            // ── term 2: THE TARGET ──────────────────────────────────────────────────────────────
+            if (target.Scriptable)
+                return new CommissionVerdict(CommissionRefusal.AlreadyCommissioned,
+                                             target.Name, target.Pos, cost, aboard);
+
+            // ── term 3: THE PRICE, LAST ─────────────────────────────────────────────────────────
+            if (aboard < cost)
+                return new CommissionVerdict(CommissionRefusal.NoModule,
+                                             target.Name, target.Pos, cost, aboard);
+
+            return new CommissionVerdict(CommissionRefusal.None,
+                                         target.Name, target.Pos, cost, aboard);
+        }
+
+        /// <summary>
+        /// ⭐ THE SENTENCE THE CONSOLE SAYS — one line, upper case, every number InvariantCulture,
+        /// and <b>a named reason with a number wherever one exists</b> (M3-3's style).
+        ///
+        /// <para>⚠️ <b>ITS REFUSALS JOIN THE PINNED CONSOLE FAMILY</b> — pairwise distinct AND
+        /// distinct in their first four words, guarded by
+        /// <c>ThawGateTests.TheConsoleSentences_ArePairwiseDistinct</c>. Two of the leads deliberately
+        /// avoid the terminal's name so the lead cannot change with content:
+        /// <c>ALREADY COMMISSIONED — PROGRAMS…</c> and <c>COMMISSIONING NEEDS n CONTROLLER MODULE…</c>.
+        /// <see cref="CommissionRefusal.NoServer"/> reuses <see cref="OfflineRefusal"/> rather than
+        /// inventing a second ship sentence — refuse by predicate, report by predicate.</para>
+        ///
+        /// <para>⚠️ <b>AND IT MUST NOT COLLIDE WITH <see cref="ThawGate"/>'s RUNG SENTENCE</b>, which
+        /// composes <c>NEEDS 1 CONTROLLER MODULE — SHIP HAS 0</c> for a thaw whose rung is a module.
+        /// Naming the ACT (<c>COMMISSIONING NEEDS …</c>) is what keeps two different asks about the
+        /// same item from arriving as one message.</para>
+        ///
+        /// <para>ALLOCATES — host and test only, never a tick path (the <see cref="ThawGate.Describe"/>
+        /// rule, which is why <see cref="OfflineRefusal"/> stays a <c>const</c>).</para>
+        /// </summary>
+        public static string DescribeCommission(in CommissionVerdict v)
+        {
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            string who = string.IsNullOrEmpty(v.TerminalName)
+                ? "THE TERMINAL" : v.TerminalName.ToUpperInvariant();
+            string item = ThawGate.ItemWords(CommissionDeviceCommand.Currency);
+            switch (v.Reason)
+            {
+                case CommissionRefusal.None:
+                    return "COMMISSION ACCEPTED — " + who + " — " + v.Cost.ToString(ic) + " " + item
+                         + " FITTED; PROGRAMS AND THE POD BAY ARE OPEN";
+                case CommissionRefusal.AlreadyCommissioned:
+                    return "ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON " + who;
+                case CommissionRefusal.NoModule:
+                    return "COMMISSIONING NEEDS " + v.Cost.ToString(ic) + " " + item
+                         + " — SHIP HAS " + v.UnitsAboard.ToString(ic);
+                case CommissionRefusal.NoServer:
+                default:
+                    // The SHIP's own sentence, not a second one. The one thing a refusal may never
+                    // be is silent, so the default arm answers rather than returning "".
+                    return OfflineRefusal;
+            }
+        }
     }
 }
