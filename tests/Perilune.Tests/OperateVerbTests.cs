@@ -460,7 +460,14 @@ namespace Perilune.Tests
             var vent = DeviceNamed(host.Sim, "vent_cryo");
             vent.Condition = 0.03f;
             StripConsumables(host.Sim);
-            host.Sim.AddItem(ItemKind.Parts, 1, vent.Pos);
+            // ⭐ D3 — ONE UNIT NO LONGER FLIPS THE UN-FORCED ANSWER. The standing rule declines the
+            // ship's last `MaintenanceSystem.AutonomousRepairReserve` loose units, so below that
+            // floor the DISPATCHER's reading of "nothing aboard" stays true. The advisory itself is
+            // unaffected — `OperateAdvisory` asks with `forced: true`, which sees reserved stock —
+            // but this control asserts the UN-forced predicate, so it is stocked above the floor to
+            // keep flipping BOTH readings. A weaker premise here would leave the control asserting
+            // nothing, which is the failure it was written to prevent.
+            host.Sim.AddItem(ItemKind.Parts, MaintenanceSystem.AutonomousRepairReserve + 1, vent.Pos);
             Assert.IsFalse(MaintenanceSystem.IsUnfixableWreck(host.Sim, vent),
                 "the control did not actually change the sim's answer — it is asserting nothing");
 

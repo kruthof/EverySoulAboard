@@ -701,7 +701,10 @@ namespace Perilune.Tests
         {
             var sim = NewSim();
             var machine = NeedyMachineAt(sim, RefugeMachine, "scrubber_bright");
-            var parts = sim.AddItem(ItemKind.Parts, 1, new Int3(5, 4, 0)); // refuge floor, breathable
+            // ⭐ D3 — above `MaintenanceSystem.AutonomousRepairReserve`, or the standing rule
+            // declines to fetch at all and the machine jury-rigs to 0.6 instead of overhauling.
+            var parts = sim.AddItem(ItemKind.Parts, MaintenanceSystem.AutonomousRepairReserve + 1,
+                                    new Int3(5, 4, 0)); // refuge floor, breathable
             Assert.That(AtmosphereSafety.IsBreathable(sim, parts.Pos), Is.True,
                 "premise: this time the stack is in air the servicer can breathe");
 
@@ -711,7 +714,10 @@ namespace Perilune.Tests
             Assert.That(machine.Condition, Is.EqualTo(1f),
                 "and a reachable Parts stack must still produce a FULL OVERHAUL — the guard refuses " +
                 "stranded stacks, not the fetch path");
-            Assert.That(sim.Items.TryGet(parts.Id, out _), Is.False, "the single unit was consumed");
+            Assert.That(sim.Items.TryGet(parts.Id, out var left) ? left.Count : 0,
+                        Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve),
+                        "exactly one unit was consumed (the stack no longer empties: D3 requires the " +
+                        "fixture to be stocked above the reserve)");
             Assert.That(c.FleeStarts, Is.Zero, "with nobody in danger at any point");
         }
 

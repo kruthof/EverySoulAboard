@@ -421,7 +421,12 @@ namespace Perilune.Tests
             // the observable both callers key on — so an unenrolled fixture would return 0 for a
             // reason that has nothing to do with the authored Condition it is measuring.
             sim.GiveAllCrewAllWork();
-            if (seedParts) sim.AddItem(ItemKind.Parts, 1, CrewTile);
+            // ⭐ D3 — ONE UNIT WOULD NOT BE ENOUGH ANY MORE, and this is the inclusion control, so a
+            // silently-vacuous seed here would be the fourth trap shape. The standing rule declines
+            // the ship's last `MaintenanceSystem.AutonomousRepairReserve` loose consumable units
+            // (`RepairReserveTests`), so an autonomous service needs stock strictly above the floor.
+            // Stated relative to the constant so it follows it rather than going stale.
+            if (seedParts) sim.AddItem(ItemKind.Parts, MaintenanceSystem.AutonomousRepairReserve + 1, CrewTile);
             sim.JobsDirty = JobBoardDirty.All;
             var crew = sim.Citizens.Items;
             int ticks = 0;

@@ -400,7 +400,12 @@ namespace Perilune.Tests
             sim.Rooms.RecomputeIfDirty(sim);
             var crew = sim.AddCitizen("Adeyemi", new Int3(1, 1, 0)).GiveAllWork();
             crew.SetSkill(WorkType.Repair, repairSkill);
-            if (withParts) sim.AddItem(ItemKind.Parts, 1, new Int3(2, 2, 0));
+            // ⭐ D3 — ONE UNIT NO LONGER REACHES THE PARTS-IN-HAND LEG. The standing rule declines
+            // the ship's last `MaintenanceSystem.AutonomousRepairReserve` loose units, so a
+            // one-unit ship jury-rigs instead — which would silently collapse this file's two
+            // assignment legs back into one, the exact hole M3-7's review found.
+            if (withParts)
+                sim.AddItem(ItemKind.Parts, MaintenanceSystem.AutonomousRepairReserve + 1, new Int3(2, 2, 0));
             sim.JobsDirty = JobBoardDirty.All;
 
             int guard = 0;

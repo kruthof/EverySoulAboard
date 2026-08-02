@@ -384,7 +384,12 @@ namespace Perilune.Tests
             var sim = NewBay();
             var machine = sim.AddDevice(DeviceKind.Scrubber, new Int3(5, 2, 0), "subject");
             machine.Condition = 0.05f;
-            sim.AddItem(ItemKind.Swarf, 2, new Int3(2, 2, 0));
+            // ⭐ D3 — STOCKED ABOVE `MaintenanceSystem.AutonomousRepairReserve`. The standing rule
+            // declines the ship's last few loose consumable units so a player can still spend them
+            // by hand (`RepairReserveTests`); a fixture at or below that floor would measure the
+            // reserve instead of the property under test. Stated relative to the constant so it
+            // follows it rather than going silently vacuous.
+            sim.AddItem(ItemKind.Swarf, MaintenanceSystem.AutonomousRepairReserve + 2, new Int3(2, 2, 0));
             Assert.That(Units(sim, ItemKind.Parts), Is.Zero, "premise: no Parts — Parts outrank Swarf");
             Assert.That(Units(sim, ItemKind.Seals), Is.Zero, "premise: no Seals — Seals outrank Swarf too");
 
@@ -400,9 +405,10 @@ namespace Perilune.Tests
                 Assert.That(peak, Is.EqualTo(sim.Defs.Wear.SwarfServiceCondition).Within(1e-4f),
                     "a Swarf service restores exactly wear.swarf_service_condition — not the jury-rig " +
                     "floor (which the wreck rule refuses here) and not a Seals-grade 0.9");
-                Assert.That(Units(sim, ItemKind.Swarf), Is.EqualTo(1),
-                    "exactly ONE unit was consumed — a condition rise with both units still on the " +
-                    "ground would be a free repair wearing a Swarf service's clothes");
+                Assert.That(Units(sim, ItemKind.Swarf),
+                    Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve + 1),
+                    "exactly ONE unit was consumed — a condition rise with the whole pile still on " +
+                    "the ground would be a free repair wearing a Swarf service's clothes");
             });
         }
 
@@ -423,7 +429,12 @@ namespace Perilune.Tests
             var sim = NewBay();
             var machine = sim.AddDevice(DeviceKind.Scrubber, new Int3(5, 2, 0), "subject");
             machine.Condition = 0.30f;                          // above wreck_threshold, below maint
-            sim.AddItem(ItemKind.Swarf, 2, new Int3(2, 2, 0));
+            // ⭐ D3 — STOCKED ABOVE `MaintenanceSystem.AutonomousRepairReserve`. The standing rule
+            // declines the ship's last few loose consumable units so a player can still spend them
+            // by hand (`RepairReserveTests`); a fixture at or below that floor would measure the
+            // reserve instead of the property under test. Stated relative to the constant so it
+            // follows it rather than going silently vacuous.
+            sim.AddItem(ItemKind.Swarf, MaintenanceSystem.AutonomousRepairReserve + 2, new Int3(2, 2, 0));
 
             float peak = machine.Condition;
             for (int t = 0; t < 20000; t++)
@@ -437,7 +448,8 @@ namespace Perilune.Tests
                 Assert.That(peak, Is.EqualTo(sim.Defs.Wear.JuryRigCondition).Within(1e-4f),
                     "a merely-rotted machine must still jury-rig to 0.6 — taking the 0.45 Swarf " +
                     "service instead is a fetch that leaves it WORSE than empty hands");
-                Assert.That(Units(sim, ItemKind.Swarf), Is.EqualTo(2),
+                Assert.That(Units(sim, ItemKind.Swarf),
+                    Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve + 2),
                     "and the salvage must be untouched — spending it here is spending it for nothing");
             });
         }
@@ -577,7 +589,12 @@ namespace Perilune.Tests
 
             var machine = sim.AddDevice(DeviceKind.Scrubber, new Int3(5, 2, 0), "subject");
             machine.Condition = 0.05f;
-            sim.AddItem(ItemKind.Swarf, 2, new Int3(2, 2, 0));
+            // ⭐ D3 — STOCKED ABOVE `MaintenanceSystem.AutonomousRepairReserve`. The standing rule
+            // declines the ship's last few loose consumable units so a player can still spend them
+            // by hand (`RepairReserveTests`); a fixture at or below that floor would measure the
+            // reserve instead of the property under test. Stated relative to the constant so it
+            // follows it rather than going silently vacuous.
+            sim.AddItem(ItemKind.Swarf, MaintenanceSystem.AutonomousRepairReserve + 2, new Int3(2, 2, 0));
 
             float peak = machine.Condition;
             for (int t = 0; t < 20000; t++)
@@ -594,7 +611,8 @@ namespace Perilune.Tests
                     "every other assertion in this file would still be green.");
                 Assert.That(peak, Is.Not.EqualTo(SimDefs.Default.Wear.SwarfServiceCondition).Within(1e-4f),
                     "and it must NOT be the shipped default — that is the whole point of retuning it");
-                Assert.That(Units(sim, ItemKind.Swarf), Is.EqualTo(1),
+                Assert.That(Units(sim, ItemKind.Swarf),
+                    Is.EqualTo(MaintenanceSystem.AutonomousRepairReserve + 1),
                     "exactly one unit consumed, as at the shipped value — retuning the rung must " +
                     "not change the price");
             });

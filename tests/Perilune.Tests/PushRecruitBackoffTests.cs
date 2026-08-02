@@ -570,7 +570,16 @@ namespace Perilune.Tests
             // a tick boundary. With no consumable aboard the abandon is intra-tick and a claim
             // counter sees nothing — measured: this leg passed with the probe deleted until the
             // stack was added.
-            sim.AddItem(ItemKind.Parts, 4, new Int3(1, 1, 0));
+            //
+            // ⛔ D3 SEND-BACK — THIS SEED WAS EXACTLY 4 UNITS, i.e. `AutonomousRepairReserve`, AND
+            // THAT MADE THIS TEST A DEAD GUARD AGAIN, FOR THE SECOND TIME AND BY THE SAME
+            // MECHANISM. The comment above records that a CONSUMABLE-LESS ship makes the abandon
+            // intra-tick and invisible; the reserve floor turns a 4-unit ship into a
+            // consumable-less one for the AUTONOMOUS path, so the fixture silently went back to the
+            // state it was written to escape. Measured 2x2: probe deleted + stock 4 = GREEN (dead);
+            // probe deleted + stock 5 = RED. Stated relative to the constant so it can never be
+            // re-swallowed by a reserve that moves.
+            sim.AddItem(ItemKind.Parts, MaintenanceSystem.AutonomousRepairReserve + 1, new Int3(1, 1, 0));
 
             Assert.That(machine.Condition, Is.LessThan(sim.Defs.Machines[(int)DeviceKind.Scrubber].MaintainBelow),
                 "control: the machine really wants service");

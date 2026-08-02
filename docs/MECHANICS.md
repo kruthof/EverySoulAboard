@@ -1327,27 +1327,69 @@ at the top of the pass, so landing below `FailBelow` after the decrement *is* th
 operating system gates on it: atmosphere vents/scrubbers, thermal, water reclaimers,
 hydroponics, crafting, nav telescopes.
 
-### Maintenance (`MaintenanceSystem`, 1 Hz, `MachineWearSystem.cs:122-417`)
+### Maintenance (`MaintenanceSystem`, 1 Hz, `MachineWearSystem.cs:146-1029`)
+
+*(Every `file:line` in this subsection was re-derived from the tree on 2026-08-02; the set
+it replaced pre-dated E0-6 and pointed into `MachineWearSystem` — the file's FIRST class —
+for lines that live in `MaintenanceSystem`, the second.)*
 
 A **standing rule with no bills and no UI**: any machine below its `MaintainBelow` wants
-service, **neediest (lowest `Condition`) first**, ties by device store order (`:171-208`).
+service, **neediest (lowest `Condition`) first**, ties by device store order (`:218-307`).
 One servicer per machine, bound by `JobTarget = the machine's tile`.
 
-Phases are encoded in existing citizen fields (`:98-116`):
-`JobWorkTicks == 0` ⇒ logistics (fetch a `Parts` stack, or carry one over — sub-phase by
+Phases are encoded in existing citizen fields (`:100-124`):
+`JobWorkTicks == 0` ⇒ logistics (fetch a consumable stack, or carry one over — sub-phase by
 `CarryingItemId`); `> 0` ⇒ servicing adjacent to the machine, counting down by
 `IntervalTicks (10)` per pass from `maintenance_work_seconds × 10 = 9000` ticks
-(E0-2 L1 rebase: `maintenance_work_seconds` 20→900, so the service is 900 s not 20 s)
-(`:284,319`).
+(E0-2 L1 rebase: `maintenance_work_seconds` 20→900, so the service is 900 s not 20 s),
+scaled by the servicer's Repair skill through `WorkRates.WorkTicksFor` (M3-7 — BOTH
+assignment legs, `:411` parts-in-hand and `:468` jury-rig).
 
-**The completion mode is decided by what is in the servicer's hands** (`:248-259`):
+**The completion mode is decided by what is in the servicer's hands** (`:352-381`), and
+since E0-6 + the wreck start there are FOUR outcomes, one per rung of
+`RepairConsumableTier` plus the free one:
 
 - **Parts in hand** → consume one unit, `Condition = 1` (full overhaul).
-- **Empty hands** → `Condition = jury_rig_condition = 0.6` (patched, not fixed). Only
-  reachable when no `Parts` existed anywhere on the ship at decision time (`:290-323`).
+- **Seals in hand** → `Condition = seal_service_condition = 0.9` (routine service).
+- **Swarf in hand** → `Condition = swarf_service_condition = 0.45` (salvage patch-up; only
+  offered to a machine already below `wreck_threshold`).
+- **Empty hands** → `Condition = jury_rig_condition = 0.6` (patched, not fixed). Reachable
+  only when the fetch found nothing, and REFUSED below `wreck_threshold` (`:450-453`).
+
+Fetch preference is **tier before distance** (`FindNearestConsumable`, `:696-729`); the
+ladder has one declaration, `RepairConsumableTier` (`:749`).
+
+#### ⭐ The reserve floor on AUTONOMOUS spend (D3, owner decision 2026-08-02)
+
+`MaintenanceSystem.AutonomousRepairReserve = 4` (`:790`) — a **named constant, not a def
+field**, on `ThawGate.MinDaysOfFood`'s precedent. The standing rule may only fetch while the
+ship holds **more than 4** loose consumable units; a direct order (`forced`) sees the whole
+pile. Below that line an autonomous service behaves exactly as it does on a ship holding
+nothing: **free jury-rig inside `[wreck_threshold, maint)`, no service to offer below the
+wreck floor.**
+
+- The predicate is `HasAutonomouslySpendableStock` (`:837`) — all three ladder kinds, units
+  summed with `FindNearest`'s own filters (unreserved, uncarried, and the stack's tile
+  stageable in the AUTONOMOUS view), early-exiting once the floor is cleared.
+- It is applied in **one place**: the first line of `FindNearestConsumable` (`:702` — the
+  signature is `:696`; the statement is two lines past it). That
+  is the single funnel through which all three deciding sites already pass — the recruit
+  gate (`:257`) and `HasClaimableWork`'s mirror (`:515`) via `IsUnfixableWreck`, and
+  `DriveWorker`'s fetch (`:421`) directly — so the three cannot come apart. A reserve at the
+  fetch alone is a livelock: recruit, walk, abandon, re-offer.
+- Consequence to read out loud: **`IsUnfixableWreck(…, forced: false)` can now be TRUE on a
+  ship that visibly holds consumables.** Every host-side caller
+  (`PrioritiseJobCommand`, `GameSession.BuildBlocked`, the operate reply) already passes
+  `forced: true`, so no order is refused and no `ReasonNoConsumable` badge is raised over
+  reserved stock.
+- Why 4: `AuthoredShips.cs`'s WINNABILITY block prices the wreck's opening at three benches
+  below the floor + the MOSS terminal = **4 consumable services** the player must be able to
+  buy by hand.
 
 Tunables (`wear.def`): `hot_threshold_c = 35`, `wear_per_degree_c = 0.05`,
-`max_heat_multiplier = 3`, `maintenance_work_seconds = 900` (E0-2 L1 rebase, was 20), `jury_rig_condition = 0.6`.
+`max_heat_multiplier = 3`, `maintenance_work_seconds = 900` (E0-2 L1 rebase, was 20),
+`jury_rig_condition = 0.6`, `seal_service_condition = 0.9`, `swarf_service_condition = 0.45`,
+`wreck_threshold = 0.25`.
 
 **Measured on the slice, 3 sim-days, no `Parts` on the ship**: 19 maintenance jobs started;
 scrubbers/reclaimers settled at `Condition ≈ 0.51`, radiators `0.55`, workstations
