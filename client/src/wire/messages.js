@@ -783,7 +783,79 @@ export function decodeWork(msg) {
   return out;
 }
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg|BlockedMsg|WorkMsg} WireMsg */
+/**
+ * ⭐ THE `workcaps` CHANNEL (M3-7) — WHAT EACH CREW MEMBER IS GOOD AT, AND WHAT SHE CANNOT DO AT ALL.
+ * One row per LIVING crew member: `[cid, s0, s1, s2, s3, s4, s5, incapableMask]`, where the six skill
+ * levels are in `WorkType` VALUE order (Repair, Construct, Craft, Deconstruct, Mine, Haul), each
+ * `0..20` with 0 meaning UNTRAINED — never "unable".
+ *
+ * ⚠️ **WHY THIS IS NOT TWO MORE COLUMNS ON `work`.** That channel is SPARSE and off-only — it emits a
+ * row per switched-ON pair and nothing else — and an incapable work type is by definition never on, so
+ * it has no row, and a row that does not exist cannot carry a column. Under OD-H `work` is EMPTY at
+ * boot, i.e. exactly when the player first looks at a crew member.
+ *
+ * ⚠️ **THIS CHANNEL IS DENSE WHERE `work` IS SPARSE, AND THAT IS THE POINT.** A crew member with
+ * nothing switched on STILL HAS A ROW here. An empty `cells` array means "no living crew", never "no
+ * data yet" — a surface that fell back to something else on `[]` would be inventing a crew.
+ *
+ * ⛔ **`incapableMask` IS NOT "priority 0".** Bit `1 << workType` set = this PERSON can never do it, a
+ * fact about her; a missing `work` row is an ORDER from the player. Different provenance, different
+ * lifetime, different rendering — RimWorld draws a disabled cell BLANK and an incapable one as **no
+ * cell at all**. On the sparse `work` channel the two are indistinguishable by construction, which is
+ * the whole reason this message exists. A reader that treats them as one has thrown away the fact.
+ *
+ * DEAD CREW ARE ABSENT host-side. NOT fog-gated: this is the player's own crew, not a place.
+ * Snapshot-cached, so a reconnect replays the layer — load-bearing here, because nothing in the sim
+ * writes a skill yet and the payload can be constant for a whole run.
+ * @typedef {[number,number,number,number,number,number,number,number]} WorkCapsTuple
+ * @typedef {{type:'workcaps', cells:WorkCapsTuple[]}} WorkCapsMsg
+ */
+
+/** Number of skill slots in a `workcaps` tuple — one per work type. Mirrors
+ *  `WireFormat.WorkCapsSkillSlots` and `WorkPriority.WorkTypeCount`. */
+export const WORKCAPS_SKILL_SLOTS = 6;
+
+/**
+ * Decode the `workcaps` channel. Mirrors WireFormat.WorkCaps:
+ * {type:'workcaps',cells:[[cid,s0..s5,incapable],..]}. Tolerant: a malformed message → null, a
+ * malformed row is dropped, never throws (the receive-path contract at the top of this file). ORDER IS
+ * PRESERVED — the host emits citizen-store order and that order is the wire contract.
+ *
+ * ⚠️ A SHORT ROW IS DROPPED rather than zero-filled, and that is the opposite of `decodeWork`'s
+ * keep-the-unknown-workType rule for a reason: there, the surviving pair `(cid, priority)` was still
+ * TRUE. Here a missing element would have to be invented, and the two values worth inventing —
+ * "untrained" and "capable of everything" — are both the reassuring answer. A row that claimed a crew
+ * member had no incapabilities because the host sent seven elements instead of eight would hide
+ * exactly the fact the channel exists to carry.
+ * @param {{type:string, cells?:Array}|null} msg
+ * @returns {{cid:number, skills:number[], incapableMask:number}[]|null}
+ */
+export function decodeWorkCaps(msg) {
+  if (!msg || msg.type !== 'workcaps' || !Array.isArray(msg.cells)) return null;
+  const width = WORKCAPS_SKILL_SLOTS + 2; // cid + six skills + the mask
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < width) continue;
+    const skills = [];
+    for (let s = 0; s < WORKCAPS_SKILL_SLOTS; s++) skills.push(t[1 + s] | 0);
+    out.push({ cid: t[0] | 0, skills, incapableMask: t[width - 1] | 0 });
+  }
+  return out;
+}
+
+/**
+ * Is this crew member permanently unable to do `workType`? Reads the mask BIT — the sim's own
+ * representation — rather than inferring anything from a `work` row's absence.
+ * @param {{incapableMask:number}|null|undefined} row a decoded `workcaps` row
+ * @param {number} workType
+ * @returns {boolean}
+ */
+export function isIncapableOf(row, workType) {
+  if (!row || typeof row.incapableMask !== 'number') return false;
+  return (row.incapableMask & (1 << (workType | 0))) !== 0;
+}
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg|BlockedMsg|WorkMsg|WorkCapsMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel

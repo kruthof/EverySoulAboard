@@ -28,6 +28,23 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
+# M3-7 (PIN M3-b, 2026-08-02): 13674ebc4f8a14a9 -> 3d23665a724e853d. `Citizen.Skill` — M2-1's last
+# reserved byte — WIDENED to a per-work-type array of six (CITZ v8 -> v9, OD-M item 8A), so the
+# citizen fold now folds six bytes where it folded one. FOLD-ONLY, and measured rather than argued:
+# with the widened array present, every consumer live and the fold reverted to
+# `Combine(h, (ulong)c.SkillsRaw[0])`, this hash was still 13674ebc4f8a14a9 and BOTH tick-3000
+# goldens were green against their OLD values. The day-3 line is byte-identical either way
+# (pop 2 / hydro 98.1 kPa / water 0.0 L / potatoes 371).
+# ⚠️ AND THE RATE TERM — the point of the package — IS INVISIBLE TO ALL THREE PINS. Say it plainly:
+# M3-7 makes work rate depend on WHO does the job, and NO PINNED FIXTURE DOES ANY WORK. Measured as a
+# 2x2, not assumed: with EVERY crew member forced to skill 20 (a 2.24x-3.00x rate change) the three
+# pinned runs are BIT-IDENTICAL with the rate seam live and with it stubbed out
+# (P1 baf85f1209ce5ea3 both ways; perilune 3fa8982abae9456b both ways; slice b4a2380ffc416ec2 both
+# ways). The cause is OD-H + M2-2: every work type boots OFF and no pinned run enqueues a command, so
+# no job is ever claimed and no work tick is ever assigned. This is M2-12's "no pin sees the
+# generation term" in a second costume, and M2-17's lesson exactly — an unattended fixture does no
+# work, so a held pin here is VACUOUSLY held. The rate curve's instrument is SkillConsumerTests
+# (driven, absolute tick counts, one leg per consumer), and nothing else.
 # M3-15 (PIN M3-e, 2026-08-01): 25f604dd61b221fb -> 13674ebc4f8a14a9. OD-N gated the two remote-
 # actuation commands (SetDoorStateCommand / SetDeviceStateCommand) on MossGate.IsServerLive, and THIS
 # FIXTURE HAD NO TERMINAL. `BuildScenario`'s life-support watch installs on `term_main`, which was a
@@ -68,7 +85,7 @@ printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes 
 # so Simulation.StateHash's citizen fold changed on every ship. FOLD-ONLY: with the identical state
 # present but excluded from the fold, this hash was still 02257f5bce961570 and the full dotnet suite
 # was 1330/1330 green — measured, not asserted. Nothing reads the new state.
-printf '%s\n' "$OUT" | grep -q "13674ebc4f8a14a9" || { echo "FAIL: reference hash changed (expected 13674ebc4f8a14a9) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+printf '%s\n' "$OUT" | grep -q "3d23665a724e853d" || { echo "FAIL: reference hash changed (expected 3d23665a724e853d) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== screenshot-test metrics (advisory) =="
 if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then

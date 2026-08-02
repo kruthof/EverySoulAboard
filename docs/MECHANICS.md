@@ -227,9 +227,19 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `25f604dd61b221fb`
-(pinned in `ci.sh`); tick-3000 golden `1c036ffd53b8f106`; slice tick-3000 golden
-`37c85c1ed445895e`. Most recent mover: **M3-2** (PIN M3-a, 2026-07-31) — `CryoSystem`
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `3d23665a724e853d`
+(pinned in `ci.sh`); tick-3000 golden `cb09b584a5f15e52`; slice tick-3000 golden
+`43a1a5c25713faec`. Most recent mover: **M3-7** (PIN M3-b, 2026-08-02) — `Citizen.Skill`, M2-1's
+last reserved byte, WIDENED to the per-work-type `SkillsRaw` array of six (CITZ v8→v9, OD-M item
+8A), so the citizen fold folds six bytes where it folded one. All three moved together and the move
+is **FOLD-ONLY, measured**: with the widened array present, all six consumers live and the fold
+reverted to `Combine(h, (ulong)c.SkillsRaw[0])`, P1 read `13674ebc4f8a14a9` again and both goldens
+were green against their OLD values; the scenario's day-3 line is byte-identical either way.
+⚠️ **AND NO PIN SEES THE RATE TERM — the thing the package is for.** Forcing every crew member to
+skill 20 (a 2.24×–3.00× change) leaves all three pinned runs bit-identical with the rate seam live
+and stubbed out, because OD-H boots every work type off and no pinned run enqueues a command, so no
+pinned fixture does any work at all. The full record is §13.37. Before that: **M3-2** (PIN M3-a,
+2026-07-31) — `CryoSystem`
 joined the stack as an `IStatefulSystem`, so its `'CRYO'` `StateChecksum` seed folds into
 `Simulation.StateHash` on every ship (`Simulation.cs:605-608` folds a system seed ONLY
 through that interface). All three moved together and the move is **FOLD-ONLY, measured**:
@@ -4908,3 +4918,134 @@ INDEPENDENT socket) → it draws as the real `space-heater` piece, not a dashed 
 - **The heater is not on the wire as anything special** — it is an ordinary `devices` row with a
   `kind` byte, `cond` and `oper`. Nothing tells the player a compartment is being heated except the
   temperature moving.
+
+---
+
+### 13.37 ⭐⭐ WHO does a job changes how fast it is done — skill reaches work (M3-7 / PIN M3-b / OD-M item 8A, 2026-08-02)
+
+**THE PLAYER SENTENCE.** Until this package everyone aboard worked at the same rate at everything,
+and a name was the only thing telling two crew apart. Now **who does a job changes how fast it is
+done** — and choosing which soul to thaw finally means something.
+
+⚠️ **BUT READ §13.37.5 BEFORE BELIEVING THE SENTENCE IS VISIBLE IN PLAY: nothing in the sim WRITES a
+skill yet.** Every crew member on every shipping ship is level 0, where the curve is the exact
+identity. The mechanism is live, driven and pinned; the *authoring* is M3-8's.
+
+#### 13.37.1 The state — `Citizen.Skill` (one byte) became `SkillsRaw` (six)
+
+`sim/Sim.Core/Entities/Citizen.cs` — `internal readonly byte[] SkillsRaw`, sized by
+`WorkPriority.WorkTypeCount`, one level `0..20` per `WorkType`, read through `GetSkill`/`SetSkill`.
+Exactly `WorkPrioritiesRaw`'s shape, walked by the same save loop and the same fold loop.
+
+⭐ **THE WIDENING IS THE DESIGN, NOT AN OPTIMISATION.** M2-1 reserved `public byte Skill` — one
+scalar. Scaled through six per-type curves, one scalar makes two pawns differ in MAGNITUDE but never
+in SHAPE: their ordering across work types is identical for ever. `rimworld-reference.md` §5.1 is
+explicit that *"skills level independently"*, and M3's own exit gate says *"the new soul's WORK row
+differs from Rell's."* **OD-M item 8, answer A** adopted the widening inside M3-7's already-paid pin
+row: CITZ **v8 → v9**, a save migration, and NOT a second re-pin.
+
+**THE MIGRATION IS REPLICATE, NOT ZERO** (`SaveReader.cs`, branching on the VERSION because a v8
+payload has no count byte to tell the shapes apart). v8's byte was *"reserved, zeroed, read by
+nothing"*, so on every save that has ever existed both candidates are the identical no-op; where it
+is NOT zero, replicating carries it forward as *"equally apt at everything"*, which is exactly what
+one byte meant. Zeroing would silently discard state a v8 writer stored.
+
+#### 13.37.2 The curve — `WorkRates`, and it is THE ONE SEAM
+
+`sim/Sim.Core/Entities/WorkRates.cs`. `rate = (base + bonus × level) / 1000`, per work type,
+**LITERALS** (M2-1's *a rule, not a tunable*) — which is what keeps **P4/P5 out of this pin row**.
+
+| work type | ×at level 20 | consumer |
+|---|---|---|
+| Repair | **2.24** | `MaintenanceSystem` (BOTH legs: parts-in-hand and jury-rig) |
+| Construct | **2.50** | `BuildJobSource.TryClaim` |
+| Craft | **2.50** | `CraftingSystem` (the accrual, not the assignment — see below) |
+| Deconstruct | **2.00** | `DeconstructJobSource.TryClaim` |
+| Mine | **3.00** | `DigJobSource.TryClaim` **+ `EffectValidator`'s LLM dig grant** |
+| Haul | **1.00** | ⚠️ **NONE — haul accrues no work anywhere** |
+
+⭐ **base is 1.000 EVERYWHERE, and that is load-bearing rather than tidy**: an untrained crew member
+works at *exactly* the pre-M3-7 rate, which is what makes this package's pin move provably fold-only
+and what lets `WorkTicksFor` be the EXACT identity at level 0 (`(b × 1000 + 500) / 1000 == b`).
+RimWorld's own constants could not be lifted — their base is near zero (Mining `0.04`), so a level-0
+pawn would be 25–60× slower and every balance number in the game would move.
+
+⚠️ **THE DEVIATION IS STATED, NOT HIDDEN: skill affects RATE ONLY.** §5.1 warns that *"a single
+'skill → work speed' multiplier is not the RimWorld model"* — for Construction skill is speed AND
+failure, for Crafting it is quality only. `TARGET.md` §2 forbids dice in outcomes, so *"no dice"* and
+*"skill affects quality"* cannot both hold. ⛔ **Do not let a later lane "complete" this with a roll.**
+
+⛔ **SKILL NEVER GATES WHETHER** (§5.2). `CanTakeWorkType` does not consult a level and a guard
+forbids it from starting to; a level-0 pawn takes the job and does it slowly. The only two refusals
+are the player's grid and `Citizen.WorkIncapable`.
+
+⭐ **THE SEAM TAKES A CITIZEN, NOT A LEVEL, AND THE ARCHITECTURE TEST IS WHY.**
+`ArchitectureBoundaryTests` forbids the substring `Skill` in every ECONOMY file — and all five
+consumers are economy files. `WorkRates` lives in `Entities/`, outside those directories, and the
+consumers call it without naming a level, so **that row needed no carve-out and still holds**.
+
+#### 13.37.3 Assignment vs accrual — the asymmetry is forced, not chosen
+
+Four consumers scale **at the assignment** (`JobWorkTicks = WorkTicksFor(...)`), because that counter
+is an integer countdown decremented one unit per pass: a per-tick multiplier could only be an
+integer, so every rate between 1× and 2× would floor to 1× and the middle of the curve would be
+silently inert. It is EXACT there because **an abandoned job loses its countdown entirely**
+(`JobSystem.cs:271`), so a re-claim always restarts from the full unskilled cost.
+
+**Crafting is the exception and must stay one**: `station.Progress` lives on the DEVICE and survives
+a worker being pulled off mid-batch, so a fresh recruit at a different competence contributes at HER
+rate to the remainder. Scaling its assignment would price the whole batch at whoever touched it
+first. (`worker.JobWorkTicks` there is only a phase marker and is never decremented.)
+
+⚠️ **REPAIR QUANTISES TO THE 1 Hz PASS GRID and the primed number is not the landed one.**
+`MaintenanceSystem` runs at `IntervalTicks = 10` and subtracts its whole `Interval` per pass, so a
+service ENDS on the first pass that drives the countdown to or below zero: an untrained 9000 lands
+exactly at 9000 (900 passes), but a level-20 **4018 lands at 4020** (402 passes, overshooting by 2).
+The four assignment consumers are pinned on the value ASSIGNED, not on the tick observed, for exactly
+this reason — the other three run at 10 Hz and subtract 1, where the two coincide.
+
+#### 13.37.4 The `workcaps` channel — and why it could not be two columns on `work`
+
+`hosts/web/WireFormat.WorkCaps.cs`, `[cid, s0..s5, incapableMask]`, one row per LIVING crew member.
+`WireFormat.cs` **and** `WireFormat.Work.cs` both take a zero diff.
+
+⛔ **THE OBVIOUS DESIGN IS UNBUILDABLE, NOT MERELY WORSE.** `work` emits one row per switched-**ON**
+pair and nothing else (`WireFormat.Work.cs:86-87`), and an incapable type is by definition never on —
+**so it has no row, and a row that does not exist cannot carry a column.** Under OD-H the whole
+channel is empty at boot, i.e. at the exact moment the player first looks at a crew member.
+
+- **DENSE where `work` is sparse**: a crew member with nothing switched on still gets a row. That is
+  the OD-H boot state, i.e. the default case.
+- **The mask is `Citizen.WorkIncapable`'s own byte, VERBATIM** — never re-derived. A host-side
+  derivation reports the opposite bit for a type that is incapable AND switched on, a state
+  `Citizen.cs` deliberately leaves reachable.
+- **`incapable` ≠ `priority 0`.** A fact about the PERSON versus an order from the PLAYER. On the
+  sparse `work` channel the two are indistinguishable **by construction** — that is the whole reason
+  this message exists. ⭐ `rimworld-reference.md:335` renders a disabled cell **blank** and an
+  incapable one as **no cell at all**: the rendering is ABSENCE, not decoration.
+- Client: `decodeWorkCaps` + `isIncapableOf` (`messages.js`), cached behind `Hud.getWorkCaps`,
+  dispatched in `main.js`. **STATE LAYER ONLY — nothing draws it. M3-12 draws it.**
+
+#### 13.37.5 ⚠️ WHAT IS WIRED BUT NOT CONNECTED
+
+- ⛔ **NOTHING WRITES A SKILL.** No spawn, no backstory, no XP, no levelling, no command, no def.
+  Every crew member on every ship is level 0, where every curve is exactly 1.000× — **so the shipped
+  game behaves identically to the pre-M3-7 game and will until M3-8 authors persona sheets.** The
+  mechanism is real and driven; the *content* is the next package's.
+- ⛔ **NO PIN SEES THE RATE TERM.** Measured as a 2×2: force every crew member to skill 20 and all
+  three pinned runs are bit-identical with the rate seam live and with it stubbed out. OD-H boots
+  every work type off and no pinned run enqueues a command, so **no pinned fixture does any work at
+  all**. M2-12's *"no pin sees the generation term"* in a second costume, and M2-17's lesson: an
+  unattended fixture does no work, so a held pin here is VACUOUSLY held. `SkillConsumerTests` is the
+  only instrument the curve has.
+- ⚠️ **`WorkType.Haul` HAS A FLAT CURVE BECAUSE HAUL ACCRUES NO WORK.** `HaulJobSource` is pure
+  travel plus an instantaneous pickup and drop — there is no `JobWorkTicks` countdown anywhere on the
+  path. A non-zero bonus would be a number that looked like a mechanic. A haul-speed term needs a
+  carry-capacity or move-speed mechanism first. **FILED, not built.**
+- **Nothing WRITES `WorkIncapable` either** (M2-1's note still stands): the mask is storage the
+  channel now carries, with no source of incapability in the game. So `workcaps` ships correct and
+  all-zero on every shipping ship.
+- **No surface draws skills or absent cells.** M3-12 owns the WORK tab's skill column and the
+  absent-cell rendering; `getWorkCaps` is reached by nothing yet, exactly as `getDevices` shipped.
+- **Skill does not affect quality, failure, mood, or what a pawn CHOOSES to do.** Only rate, and only
+  at the six sites above. RimWorld's `naturalPriority` ordering is untouched.

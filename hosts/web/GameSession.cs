@@ -253,7 +253,12 @@ namespace Perilune.Web
                 // left to self-heal would show NO banner on a ship whose entire crew is dead, for
                 // ever, because nothing will ever change it back. "The run is over and the game does
                 // not say so" is precisely the silence this channel exists to remove.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "work", "blocked", "ending" })
+                // ⭐ `workcaps` (M3-7) IS ON THE LIST, and its case is STRONGER than `work`'s. Nothing
+                // in the sim writes a skill or an incapability yet, so this payload can be constant for
+                // an ENTIRE RUN — a reconnecting tab left to self-heal would show a crew with no
+                // competences and no incapabilities for ever, because nothing will ever change it back.
+                // That is the `ending` argument, not the `ledger` one.
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "work", "workcaps", "blocked", "ending" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1812,6 +1817,14 @@ namespace Perilune.Web
             // the player gives an order. Same dirty-version gate shape as `devices`; see
             // hosts/web/WireFormat.Work.cs.
             SendWork(force);
+            // ⭐ WHAT EACH CREW MEMBER IS GOOD AT, AND WHAT SHE CANNOT DO AT ALL (`workcaps`, M3-7).
+            // `work`'s SIBLING, not an extension of it: that channel is sparse and off-only, an
+            // incapable work type is by definition never on, and a row that does not exist cannot carry
+            // a column. DENSE — every living crew member gets a row even with nothing switched on,
+            // which under OD-H is the boot state and therefore the default case. The incapability mask
+            // is `Citizen.WorkIncapable`'s own byte, copied rather than re-derived. See
+            // hosts/web/WireFormat.WorkCaps.cs.
+            SendWorkCaps(force);
             // WHY AN ORDER IS DOING NOTHING (`blocked`). `WorksiteSafety.CanStageWorkerAt` refuses to
             // park a worker in air that would pull it off the job, and its own header records that this
             // took the failure from expensive-and-visible to CHEAP-AND-INVISIBLE: a designation painted
@@ -1993,6 +2006,58 @@ namespace Perilune.Web
             if (_workSent.Count != cells.Count) return false;
             for (int i = 0; i < cells.Count; i++)
                 if (!_workSent[i].SameAs(cells[i])) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// ⭐ M3-7 — THE <c>workcaps</c> CHANNEL'S DIRTY-VERSION GATE. <see cref="SendWork"/>'s scheme
+        /// applied to its SIBLING, deliberately as a separate pair of fields rather than as a field on
+        /// <see cref="WorkCell"/> or a second list inside <see cref="SendWork"/>: the two channels have
+        /// different cadences (a priority changes when the player clicks; a skill changes when someone
+        /// learns something, and an incapability when someone is injured) and the whole reason
+        /// <c>workcaps</c> is its own message is that <c>work</c>'s shape could not carry it.
+        ///
+        /// <para>Element-wise over ALL EIGHT fields through
+        /// <see cref="WireFormat.WorkCapsCell.SameAs"/> — the <c>DeviceCell</c> scar, and here the
+        /// reachable failure is a crew member whose skills visibly never improve. The COUNT is part of
+        /// the key because a crew member dying REMOVES a row while every survivor's row is untouched,
+        /// and a loop that only walked the shared prefix would pass every field-wise test there is.</para>
+        ///
+        /// <para>FORCE IS CHECKED BEFORE THE GATE (the prime for a newly-connected tab), and the
+        /// channel is in <see cref="Snapshot"/>'s key list on the <c>materials</c>/<c>blocked</c>
+        /// reasoning rather than the <c>ledger</c> one — and MORE strongly than <c>work</c>: nothing in
+        /// the sim writes a skill yet, so this payload can be constant for an ENTIRE RUN. A
+        /// reconnecting tab left to "self-heal" would show a crew with no competences and no
+        /// incapabilities, for ever, because nothing will ever change it back.</para>
+        /// </summary>
+        private readonly List<WireFormat.WorkCapsCell> _workCapsSent = new List<WireFormat.WorkCapsCell>();
+        private bool _workCapsSentPrimed;
+
+        /// <summary>HOW MANY TIMES THE <c>workcaps</c> PAYLOAD HAS BEEN SERIALIZED — a TEST SEAM, for
+        /// <see cref="WorkSerializedForTest"/>'s reason: <see cref="Send"/> already suppresses the
+        /// broadcast of an unchanged payload, so the gate is otherwise UNOBSERVABLE from outside.</summary>
+        internal int WorkCapsSerializedForTest { get; private set; }
+
+        private void SendWorkCaps(bool force)
+        {
+            var cells = BuildWorkCaps();
+            if (!force && _workCapsSentPrimed && SameAsLastWorkCaps(cells)) return;
+            WorkCapsSerializedForTest++;
+            Send("workcaps", WireFormat.WorkCaps(cells), force);
+            _workCapsSent.Clear();
+            _workCapsSent.AddRange(cells);
+            _workCapsSentPrimed = true;
+        }
+
+        /// <summary>Element-wise equality against the last EMITTED cell list — an explicit field
+        /// compare through <see cref="WireFormat.WorkCapsCell.SameAs"/> and not
+        /// <c>ValueType.Equals</c>, which on a struct with no override falls back to reflection and
+        /// boxes.</summary>
+        private bool SameAsLastWorkCaps(List<WireFormat.WorkCapsCell> cells)
+        {
+            if (_workCapsSent.Count != cells.Count) return false;
+            for (int i = 0; i < cells.Count; i++)
+                if (!_workCapsSent[i].SameAs(cells[i])) return false;
             return true;
         }
 
@@ -2643,6 +2708,52 @@ namespace Perilune.Web
                 }
             }
             return _workScratch;
+        }
+
+        /// <summary>
+        /// ⭐ M3-7 — THE <c>workcaps</c> LAYER: what each living crew member is GOOD at and what she
+        /// CANNOT DO AT ALL. One row per citizen, and see <c>WireFormat.WorkCaps.cs</c> for why this is
+        /// a second message rather than two more columns on <c>work</c> (short version: <c>work</c> is
+        /// sparse and off-only, an incapable type is never on, and a row that does not exist cannot
+        /// carry a column).
+        ///
+        /// <para>⛔ <b>DENSE ON PURPOSE — a citizen with NO on-rows on <c>work</c> STILL GETS A
+        /// ROW.</b> Under OD-H that is every crew member on every ship at boot, which makes the
+        /// all-zero citizen the DEFAULT fixture rather than an edge case. Skipping her would leave this
+        /// channel empty at exactly the moment the player first opens the WORK tab.</para>
+        ///
+        /// <para>⛔ <b>THE MASK IS <c>Citizen.WorkIncapable</c> VERBATIM.</b> Nothing here re-derives
+        /// capability, consults <c>CanTakeWorkType</c>, or assembles bits from <c>IsIncapableOf</c> —
+        /// the sim owns what a person cannot do and the host copies the byte. A host-side second
+        /// opinion is the defect shape <see cref="WireFormat.ReasonWorkTypeOff"/>'s own header and the
+        /// note at <c>WireFormat.Blocked.cs:548</c> both record; the whole reason the channel is worth
+        /// building is that <i>incapable</i> and <i>priority 0</i> are DIFFERENT facts, and a
+        /// re-derivation is precisely how they would silently become one.</para>
+        ///
+        /// <para>The scratch list is reused, so a steady state allocates only the payload string.
+        /// VIEW-ONLY: a read of authoritative state, never a write, never hashed.</para>
+        /// </summary>
+        private readonly List<WireFormat.WorkCapsCell> _workCapsScratch = new List<WireFormat.WorkCapsCell>();
+        private List<WireFormat.WorkCapsCell> BuildWorkCaps()
+        {
+            _workCapsScratch.Clear();
+            var citizens = _sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                // DEAD CREW ARE ABSENT — the line BuildWork and SetWorkPriorityCommand both draw.
+                if (c.Dead) continue;
+                _workCapsScratch.Add(new WireFormat.WorkCapsCell(
+                    (int)c.Id,
+                    c.GetSkill(WorkType.Repair),
+                    c.GetSkill(WorkType.Construct),
+                    c.GetSkill(WorkType.Craft),
+                    c.GetSkill(WorkType.Deconstruct),
+                    c.GetSkill(WorkType.Mine),
+                    c.GetSkill(WorkType.Haul),
+                    c.WorkIncapable));   // ⛔ the sim's own byte, copied — never re-derived
+            }
+            return _workCapsScratch;
         }
 
         /// <summary>

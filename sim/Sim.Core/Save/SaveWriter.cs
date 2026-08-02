@@ -49,7 +49,7 @@ namespace Perilune.Sim
 
         public const ushort TileVersion = 2;    // v2: + per-tile Material array (byte[n]) per level
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
-        public const ushort CitizenVersion = 8; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove; v8 +the work-priority grid, WorkIncapable, Skill, HeldByOrder (M2-1)
+        public const ushort CitizenVersion = 9; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove; v8 +the work-priority grid, WorkIncapable, Skill, HeldByOrder (M2-1); v9 the one Skill byte WIDENS to a per-work-type array (M3-7, OD-M item 8A)
         public const ushort DeviceVersion = 6;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner; v5: + Scriptable (E0-6); v6: + Faulted (OD-O/M3-16)
         public const ushort ItemVersion = 3;    // v2: + Label; v3: bool ReservedForJob → uint ReservedBy (owner id)
         public const ushort ScriptVersion = 1;
@@ -281,7 +281,14 @@ namespace Perilune.Sim
                 w.Write((byte)c.WorkPrioritiesRaw.Length);
                 for (int t = 0; t < c.WorkPrioritiesRaw.Length; t++) w.Write(c.WorkPrioritiesRaw[t]);
                 w.Write(c.WorkIncapable);
-                w.Write(c.Skill);       // reserved (M3-7), zeroed, read by nothing
+                // v9 (M3-7) — the SKILL ARRAY, in the slot v8 gave to a single reserved byte. Same
+                // self-describing shape as the priority grid four lines up and for the same reason: a
+                // seventh work type changes what a v9 payload CONTAINS without changing how one is
+                // PARSED. ⚠️ The count is what makes the v8→v9 migration in SaveReader legible — an
+                // old payload has one bare byte here and no count at all, so the reader must branch on
+                // the version rather than on the data.
+                w.Write((byte)c.SkillsRaw.Length);
+                for (int t = 0; t < c.SkillsRaw.Length; t++) w.Write(c.SkillsRaw[t]);
                 w.Write(c.HeldByOrder); // M2-19's sticky claim — READ since M2-19 and WRITTEN since
                                         // M2-9 (PrioritiseJobCommand): live state, not reserved
             }

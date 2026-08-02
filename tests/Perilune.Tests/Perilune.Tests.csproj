@@ -91,6 +91,14 @@
          line failed with `"WireFormat" enthält keine Definition für "Ending"` on GameSession.cs, a
          file that does not name this one. -->
     <Compile Include="../../hosts/web/WireFormat.Ending.cs" />
+    <!-- M3-7: the `workcaps` channel (each crew member's per-work-type SKILL levels plus the
+         incapability MASK — `work`'s sibling, and it had to be one: that channel is sparse and
+         off-only, so an incapable work type has no row and a row that does not exist cannot carry a
+         column). An ELEVENTH sibling partial, WireFormat.cs AND WireFormat.Work.cs both at a ZERO
+         diff. The hand-added rule bit an EIGHTH time, exactly as every comment above promises:
+         omitting this line failed with `Der Typname "WorkCapsCell" ist im Typ "WireFormat" nicht
+         vorhanden` on GameSession.cs — a file that does not name this one. -->
+    <Compile Include="../../hosts/web/WireFormat.WorkCaps.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

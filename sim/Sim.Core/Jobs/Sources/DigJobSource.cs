@@ -123,7 +123,13 @@ namespace Perilune.Sim
             {
                 citizen.JobKind = JobKind.Dig;
                 citizen.JobTarget = target;
-                citizen.JobWorkTicks = DigWorkTicks;
+                // M3-7 — WHO is digging decides how long it takes. `WorkRates` is the ONE seam
+                // between a crew member's per-work-type competence and the work she is given; this
+                // file never names or reads a level (ArchitectureBoundaryTests forbids an economy
+                // file from doing so, and says in as many words that M3-7 crosses it via one seam).
+                // An untrained digger gets DigWorkTicks EXACTLY, so this line is the identity on the
+                // whole shipping fleet today.
+                citizen.JobWorkTicks = WorkRates.WorkTicksFor(citizen, WorkType.Mine, DigWorkTicks);
                 _assigned.Add(target);
                 _retryAt.Remove(target);
                 return true;

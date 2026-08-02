@@ -278,6 +278,15 @@ function onMessage(m) {
     // ABSENT = OFF, and an empty payload is the normal boot state under OD-H (work is opt-in). Cached in
     // the shared state layer; the WORK tab that draws and writes it is M2-3.
     case 'work': Hud.renderWork(m); break;
+    // ⭐ WHAT EACH CREW MEMBER IS GOOD AT, AND WHAT SHE CANNOT DO AT ALL (`workcaps`, M3-7). `work`'s
+    // SIBLING, and it had to be one: that channel is sparse and off-only, an incapable work type is by
+    // definition never on, so it has no row — and a row that does not exist cannot carry a column.
+    // DENSE, so a crew member with nothing switched on still has a row (the OD-H boot state, i.e. the
+    // default case). The mask is the sim's own `Citizen.WorkIncapable` byte, copied not re-derived, and
+    // it is NOT the same fact as a missing `work` row: incapable is about the PERSON, off is an ORDER
+    // from the player. Cached in the shared state layer; the WORK tab that draws it is M3-12, which
+    // renders an incapable cell as ABSENT rather than struck through.
+    case 'workcaps': Hud.renderWorkCaps(m); break;
     // The ship's ledger (E0-8): matter census + PARTS/DAY + DAYS OF WATER + DAYS OF AIR, each with
     // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
     // island. Read-only — it commands nothing.

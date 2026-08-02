@@ -244,7 +244,11 @@ namespace Perilune.Sim
                 {
                     citizen.JobKind = JobKind.Build;
                     citizen.JobTarget = target;
-                    citizen.JobWorkTicks = b.WorkTicks;
+                    // M3-7 — WHO is building decides how long it takes; `b.WorkTicks` stays the
+                    // def-frozen UNSKILLED cost and the seam scales it for this crew member. One
+                    // seam, no level named in an economy file (see WorkRates' class doc). An
+                    // untrained builder gets b.WorkTicks EXACTLY.
+                    citizen.JobWorkTicks = WorkRates.WorkTicksFor(citizen, WorkType.Construct, b.WorkTicks);
                     _assigned.Add(target);
                     _readyRetryAt.Remove(target);
                     return true;

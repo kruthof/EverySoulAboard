@@ -8,16 +8,22 @@ citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resol
 
 ## Current state (2026-08-02 session C, continued — NINE merges, the queue stands at M3-7)
 
-**Gate on `main` (`e76ac5d`): 1714 dotnet + 1183 node, twin hashes MATCH at P1
-`13674ebc4f8a14a9`** (re-measure before quoting). ⚠️ **PIN M3-d EXECUTED (tag `pin/m3-d`
-applied at merge) — M3-10, P4 AND P5 ONLY: P4 `0c5ddbc07e41f07d` → `77a7a8a9e967eab4`,
-P5 `09900b9a44119272` → `edf1577c32f14e55`**, cause `DeviceKind.Heater = 28` (which grows
-`Machines` AND `Recipes`) plus the two appended def scalars `heater_output_kw` /
-`thermal.heater_ceiling_k`; both measured twice through two loaders. **P1/P2/P3 MEASURED
-HELD** — the `./ci.sh` run is the proof; the guards are alarms, in two halves because P1 is
-NOT a `ShipPlan` (it is `hosts/scenario`'s hand-built `BuildScenario`, scanned at the source by
-`P1sOwnFixtureAuthorsNoHeater`; the plan census covers P2/P3/grid/wreck). `ci.sh` unchanged.
-Next pin row: M3-b (M3-7).
+**Gate on `lane/skill-consumers`: 1744 dotnet + 1193 node, twin hashes MATCH at P1
+`3d23665a724e853d`** (re-measure before quoting). ⚠️ **PIN M3-b EXECUTED (tag `pin/m3-b` to be
+applied at merge) — M3-7, P1/P2/P3: P1 `13674ebc4f8a14a9` → `3d23665a724e853d`,
+P2 `1c036ffd53b8f106` → `cb09b584a5f15e52`, P3 `37c85c1ed445895e` → `43a1a5c25713faec`;
+P4 `77a7a8a9e967eab4` and P5 `edf1577c32f14e55` HELD** (the skill curve is LITERALS, no def
+field). Cause: `Citizen.Skill` — M2-1's last reserved byte — widened to the per-work-type
+`SkillsRaw` array of six (CITZ v8→v9, OD-M item 8A). **FOLD-ONLY, MEASURED:** with the array
+present and all six consumers live but the fold reverted to `…SkillsRaw[0]`, P1 read
+`13674ebc4f8a14a9` again and both goldens were green on their OLD values.
+⛔ **AND THE HARD HALF: NO PIN SEES THE RATE TERM — the thing the package is FOR.** 2×2, driven:
+force every crew member to skill 20 (2.24×–3.00×) and all three pinned runs are bit-identical
+with the rate seam live and stubbed out (P1 `baf85f1209ce5ea3`, perilune `3fa8982abae9456b`,
+slice `b4a2380ffc416ec2`). OD-H boots work off and no pinned run enqueues a command, so **no
+pinned fixture does any work at all** — M2-12/M2-17 again; `SkillConsumerTests` is the curve's
+only instrument. `ci.sh:88` + CLAUDE.md + MECHANICS §13.37 moved in the same commit.
+Next pin row: none standing (M3-b discharged).
 
 **Session mode**: owner authorized an autonomous run (away ~8 h from ~22:00 07-31; back
 and said "continue"); orchestrator merges the M3 queue in order, one Opus implementer +
@@ -103,6 +109,13 @@ one independent reviewer per package. **Full package records live in the §3 que
 
 ## Open — unscheduled (filed, unowned)
 
+- **⭐ M3-7 filed set — the skill mechanism ships INERT until someone is authored** (MECHANICS
+  §13.37.5): nothing writes a skill, so every crew member is level 0 where the curve is the exact
+  identity (M3-8's persona sheets are the expected first author) · nothing writes `WorkIncapable`
+  either, so `workcaps` ships correct and all-zero · `Haul`'s curve is FLAT because haul accrues no
+  work ticks anywhere (a haul-speed term needs carry-capacity or move-speed first) · `getWorkCaps` is
+  reached by no surface yet, so it is deliberately NOT on `SHIP_STATE_REACH` (M3-12's first reach
+  adds it).
 - **⭐ `PrioritiseJobCommand` accepts-then-silently-drops** (GENERAL defect, driven; the
   APPROACH refusal for a repair order is still silent — do NOT add `ReasonAir`).
 - **⭐ `BLOCKED_ORDER_NAMES` lacks `OrderRepair`** (M3-13 review): a repair badge titles

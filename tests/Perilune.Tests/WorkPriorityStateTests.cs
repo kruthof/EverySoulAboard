@@ -76,7 +76,9 @@ namespace Perilune.Tests
             c.SetWorkPriority(WorkType.Mine, WorkPriority.Highest);
             c.SetWorkPriority(WorkType.Haul, WorkPriority.Off);   // off AND incapable — see below
             c.SetIncapableOf(WorkType.Haul, true);
-            c.Skill = 5;
+            // ⭐ M3-7 — the skill array, seeded with a DIFFERENT level per work type. A uniform seed
+            // would round-trip through a save (or a fold) that only ever wrote slot 0 six times.
+            for (int t = 0; t < All.Length; t++) c.SetSkill(All[t], (byte)(5 + t));
             c.HeldByOrder = true;
             return c;
         }
@@ -444,23 +446,34 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// Blinded leg for the RESERVED skill byte (M3-7's). ⚠️ It is asserted against a value
-        /// SEEDED HERE, never against its own default: "reserved and zeroed" and "never written at
-        /// all" are indistinguishable if the only assertion is <c>Is.EqualTo(0)</c>. That is the
-        /// seventh trap shape, and it is exactly how a reserved field fails to be pinned.
+        /// ⭐ M3-7 — the skill ARRAY survives a save, SLOT BY SLOT. ⚠️ It is asserted against values
+        /// SEEDED HERE, never against a default: "written as 0" and "never written at all" are
+        /// indistinguishable if the only assertion is <c>Is.EqualTo(0)</c>. That is the seventh trap
+        /// shape, and it is exactly how a reserved field fails to be pinned.
+        ///
+        /// <para>⚠️ AND THE SEED IS PER-SLOT DISTINCT, which is the leg the widening added: this test
+        /// existed for M2-1's single byte and a save path that wrote <c>SkillsRaw[0]</c> six times
+        /// would have passed its old form word for word. The whole point of OD-M item 8A is that two
+        /// pawns may now differ in SHAPE, so the pin has to be able to see a shape.</para>
         /// </summary>
         [Test]
-        public void SaveRoundTrip_PreservesTheReservedSkillByte()
+        public void SaveRoundTrip_PreservesEverySkillSlotIndependently()
         {
             var sim = Fixture();
             var crew = SeededCrew(sim);
-            Assert.That(crew.Skill, Is.Not.EqualTo(0),
-                "precondition: the reserved byte must be seeded NON-ZERO, or this leg cannot tell " +
-                "'written as 0' from 'not written'");
+            for (int t = 0; t < All.Length; t++)
+                Assert.That(crew.GetSkill(All[t]), Is.Not.EqualTo(0),
+                    "precondition: every slot must be seeded NON-ZERO, or this leg cannot tell " +
+                    "'written as 0' from 'not written' (" + All[t] + ")");
+            Assert.That(crew.GetSkill(All[0]), Is.Not.EqualTo(crew.GetSkill(All[1])),
+                "precondition: the seed must DIFFER between slots, or a writer that stored slot 0 " +
+                "six times would pass");
 
-            Assert.That(SaveAndLoad(sim).Citizens.Items[0].Skill, Is.EqualTo(crew.Skill),
-                "the reserved Skill byte did not survive the save — M3-7 would have to bump the " +
-                "chapter again, which is the entire cost this field was landed early to avoid");
+            var loaded = SaveAndLoad(sim).Citizens.Items[0];
+            for (int t = 0; t < All.Length; t++)
+                Assert.That(loaded.GetSkill(All[t]), Is.EqualTo(crew.GetSkill(All[t])),
+                    "the " + All[t] + " skill did not survive the save — CITZ v9 stores one level " +
+                    "per work type and every one of them is hashed");
         }
 
         /// <summary>Blinded leg for the RESERVED sticky-claim bool (M2-19's), seeded TRUE for the
@@ -526,7 +539,15 @@ namespace Perilune.Tests
             }
             Assert.That(c.WorkIncapable, Is.EqualTo(0x21),
                 "WorkIncapable was read at the wrong offset — the width mismatch was not absorbed");
-            Assert.That(c.Skill, Is.EqualTo(7), "Skill was read at the wrong offset");
+            // ⭐ M3-7 — this stream is a v8 one, so it also drives the v8→v9 SKILL MIGRATION, and the
+            // choice recorded in SaveReader is REPLICATE: v8's one aptitude byte becomes the same
+            // level in every slot ("equally apt at everything", which is exactly what one byte meant).
+            // ⚠️ Asserted on EVERY slot, not just the first: a migration that wrote only slot 0 would
+            // pass a single-slot assertion and silently drop five sixths of the state.
+            foreach (var t in All)
+                Assert.That(c.GetSkill(t), Is.EqualTo(7),
+                    "the v8 aptitude byte must be REPLICATED into " + t + " — either it was read at " +
+                    "the wrong offset, or the migration only filled part of the array");
             Assert.That(c.HeldByOrder, Is.True, "HeldByOrder was read at the wrong offset");
             Assert.That(payload.Position, Is.EqualTo(payload.Length),
                 "the reader did not consume the whole payload — the layouts disagree");
@@ -583,7 +604,9 @@ namespace Perilune.Tests
                     "behaviour-preserving read, which Device.Scriptable takes next door) would be a " +
                     "second one");
             Assert.That(c.WorkIncapable, Is.EqualTo(fresh.WorkIncapable), "…and capable of everything");
-            Assert.That(c.Skill, Is.EqualTo(fresh.Skill));
+            foreach (var t in All)
+                Assert.That(c.GetSkill(t), Is.EqualTo(fresh.GetSkill(t)),
+                    "…and untrained at " + t + ", exactly as a newly-spawned crew member is");
             Assert.That(c.HeldByOrder, Is.EqualTo(fresh.HeldByOrder));
         }
 
@@ -763,6 +786,26 @@ namespace Perilune.Tests
             // issue a held order into vacuum (VacuumOrderLadderTests).
             "sim/Sim.Core/Jobs/JobContext.cs",            // rung 2 — the job board's staging seam asks with the hold
             "sim/Sim.Core/Systems/SafetySystem.cs",       // rung 4 — a held pawn does not flee; she may die
+
+            // ⭐⭐ M3-7 — SKILL REACHES WORK. FOUR new files, and every one of them enrols for the
+            // SAME narrow reason: it names the <see cref="WorkType"/> ENUM to tell `WorkRates` WHICH
+            // CURVE to price a job at. ⛔ NOT ONE OF THEM READS THE GRID. No priority, no mask, no
+            // `GetWorkPriority`, no `CanTakeWorkType` — the enum member is an argument, not a
+            // lookup, and the seam it is handed to takes a whole `Citizen` precisely so that no
+            // consumer ever holds a skill or a priority (ArchitectureBoundaryTests' `Skill` row
+            // forbids economy files from naming one, and all four of these ARE economy files).
+            //
+            // ⚠️ THE LEDGER'S OWN QUESTION, ANSWERED RATHER THAN WAVED PAST: it warns that a new
+            // reader is "a BEHAVIOUR change on every pinned ship — measure P1/P2/P3 and say so".
+            // MEASURED. P1/P2/P3 all moved in this commit (PIN M3-b) and the move is provably
+            // FOLD-ONLY: with these four readers live and only the CITZ fold reverted to its old
+            // one-byte shape, all three read their OLD values. The rate term itself is invisible to
+            // every pin — no pinned fixture does any work at all under OD-H — which is stated in
+            // `ci.sh`, `CLAUDE.md` and MECHANICS §13.37 rather than left to be discovered.
+            "sim/Sim.Core/Entities/WorkRates.cs",              // THE SEAM — the curve, and the only file that reads a level
+            "sim/Sim.Core/Jobs/Sources/DigJobSource.cs",       // names WorkType.Mine to price a dig
+            "sim/Sim.Core/Jobs/Sources/BuildJobSource.cs",     // names WorkType.Construct to price a build
+            "sim/Sim.Core/Jobs/Sources/DeconstructJobSource.cs", // names WorkType.Deconstruct to price a strip
         };
 
         private static readonly string[] WorkGridIdentifiers =
