@@ -6,9 +6,9 @@ older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — 
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-01 session C — five merges; M3-16 IN FLIGHT)
+## Current state (2026-08-01 session C COMPLETE — SIX merges, the queue stands at M3-5)
 
-**Gate on `main` (`a4c120f`): 1646 dotnet + 1179 node, twin hashes MATCH at P1
+**Gate on `main` (`3da64fc`): 1674 dotnet + 1179 node, twin hashes MATCH at P1
 `13674ebc4f8a14a9`** (re-measure before quoting). ⚠️ **PIN M3-e EXECUTED, tag `pin/m3-e`
 (M3-15, P1 only, `25f604dd61b221fb` → `13674ebc4f8a14a9`)**: NOT the gate — measured INERT
 on P1 via the full 2×2 — but the one Terminal (`term_main`) authored into `BuildScenario`
@@ -21,28 +21,28 @@ and said "continue"); orchestrator merges the M3 queue in order, one Opus implem
 one independent reviewer per package. **Full package records live in the §3 queue rows of
 `perilune-m3.packages.md` — this block is the index.** Merged this session, in order:
 
-- **Doc-anchor sweep** (`96fc527`, 1 send-back — its own half sweep): 40 stale
-  `AuthoredShips.cs` anchors corrected, zero survivors; `term_moss` pin re-pointed to
-  `TheMossTerminal_BootsUnCommissioned` (`WreckShipTests.cs:1252-1264`); MECHANICS
-  reconciled with M3-14's five `forced: true` sites and the OD-N/OD-O outcome.
-- **M3-3 ThawGate** (`03b2153`, 1 send-back): the thaw is askable and EARNED — six terms
-  in order, refusals with a named reason AND number, price charged LAST, no MOSS adapter
-  for CryoPod. Send-back: term 1's OD-9 conjuncts were covered by NOTHING (deletion stayed
-  green 83/83; run-ending consequence). §13.30.
-- **M3-15 MOSS gate** (`f5d7bf0`, tag `pin/m3-e`, APPROVE first pass): doors and vents
-  answer only to a live MOSS server (`MossGate`, any-Terminal, `Powered && ≥ maint 0.20`);
-  split gate repaired→console / commissioned→programs; client OPERATE affordance deleted;
+- **Doc-anchor sweep** (`96fc527`): 40 stale `AuthoredShips.cs` anchors corrected, zero
+  survivors; `term_moss` pin re-pointed (`TheMossTerminal_BootsUnCommissioned`,
+  `WreckShipTests.cs:1252-1264`); MECHANICS reconciled with M3-14 + OD-N/OD-O.
+- **M3-3 ThawGate** (`03b2153`): the thaw is askable and EARNED — six terms, refusals
+  with a named reason AND number, price charged LAST, no MOSS adapter for CryoPod. §13.30.
+- **M3-15 MOSS gate** (`f5d7bf0`, tag `pin/m3-e`): doors and vents answer only to a live
+  MOSS server; split gate repaired→console / commissioned→programs; OPERATE click deleted;
   **the M1 gate sentence (`open vent_ls`) is expressible for the first time**. §13.31.
-- **M3-4 POD BAY** (`f5e8aac`, 1 send-back): typed `pods` → twelve capsules, every sealed
-  row states the gate's reason with the number; thaw witnessed CYCLING in real Chrome;
-  `ThawGate.NoConsole` re-worded (`NO COMMISSIONED CONSOLE — …`), four-sentence refusal
-  family pinned pairwise + first-four-words distinct; ship gate worst-first on both ops.
-  §13.32.
-- **M3-13 refusals** (`a4c120f`, 1 send-back): the tile badge NAMES THE ITEM
-  (`BlockedCell.Detail`, 6th element, sentinel −1) and the Prioritise menu refuses a
-  CryoPod OUT LOUD (`DeviceCell.serv`, 8th element, `SameAs` same-commit). ⚠️ The
-  charter's own premise was false and is corrected in six places: a REPAIR order never
-  wants a ControllerModule (repair ladder = Parts ▸ Seals ▸ Swarf). §13.33.
+- **M3-4 POD BAY** (`f5e8aac`): typed `pods` → twelve capsules, every sealed row states
+  the gate's reason with the number; a chosen thaw CYCLES, witnessed in real Chrome;
+  `NoConsole` re-worded; the four-sentence refusal family pinned pairwise distinct. §13.32.
+- **M3-13 refusals** (`a4c120f`): the tile badge NAMES THE ITEM (`BlockedCell.Detail`)
+  and the menu refuses never-serviceable machines out loud (`DeviceCell.serv`). ⚠️ The
+  charter's premise was false, corrected ×6: a REPAIR order never wants a ControllerModule
+  (repair ladder = Parts ▸ Seals ▸ Swarf). §13.33.
+- **M3-16 the malfunctioning board** (`3da64fc`): `vent_d1` mechanically fine, board dead
+  (`Faulted` b12 fold-neutral MEASURED; DEVC v6); `open`/`close` refuse for every caller;
+  `set rate` doesn't hold; the two-line `every 1s:` program fills the hall past 80 kPa
+  (101.3 kPa witnessed). `Deck1VentTests` re-cut kept the POWERED half verbatim. §13.34.
+- Every package had exactly ONE send-back, each a real evidence-layer hole (a mutation
+  that couldn't bite · an unguarded stated decision · an open-only gate pin — full prose
+  in the queue rows).
 
 ## Integrator decisions this session (review these)
 
@@ -59,12 +59,13 @@ one independent reviewer per package. **Full package records live in the §3 que
 
 ## Next
 
-1. **M3-16 (8b) IN FLIGHT** (`lane/board-fault` — the vent puzzle: `Faulted` b12 + DEVC
-   bump, `Rate=0` re-author, the bleed, the `Deck1VentTests` re-cut) → review → merge.
-2. Then **M3-5** (needs M3-2's stored bit + M3-3's gate) → pin rows M3-d (M3-10) /
-   M3-b (M3-7) → M3-12 → M3-8 → M3-c (M3-9) → the week-9 owner playtest (named 2026-08-07).
-3. Owner manual check (carried): OD-P (`42f59ca`) still owed a look — `l`/`p` TYPE,
-   `log`/`prog` navigate, DETAIL bare `log` inherits.
+1. **M3-5 emergency thaw** (queue position 9; needs M3-2's stored bit ✅ + M3-3's gate ✅;
+   pin-neutral only because M3-2 shipped the storage) → then pin rows **M3-d (M3-10
+   heater, RUNS ALONE)** → **M3-b (M3-7 skill consumers, RUNS ALONE)** → M3-12 → M3-8 →
+   **M3-c (M3-9 REST, last by risk ruling)** → the week-9 owner playtest (2026-08-07).
+2. Owner manual check (carried): OD-P (`42f59ca`) still owed a look — `l`/`p` TYPE,
+   `log`/`prog` navigate, DETAIL bare `log` inherits. Plus the session-C browser beats
+   worth an eyeball: the POD BAY (`pods`), the vent puzzle, the MOSS-offline refusals.
 
 ## Open on the owner
 
@@ -92,6 +93,14 @@ one independent reviewer per package. **Full package records live in the §3 que
 - **⭐ `BLOCKED_ORDER_NAMES` lacks `OrderRepair`** (M3-13 review): a repair badge titles
   "1 ORDER STUCK" generic; pinned by literal so nothing catches it. The natural next
   one-liner — this milestone made repair badges the main screen.
+- **M3-16 filed set**: the dead `operate` handler answers `OPERATE_OK` on a faulted
+  device (unreachable — M4-8's row) · `HeadlessVent.TryInvoke` (scenario host) is a
+  second vent `IScriptable` that skips `DeviceFault` — drift risk, unreachable today ·
+  TUI toggle silent on a faulted device · a faulted device has NO CLEAR path (deliberate
+  for the one instance; revisit if a second is authored) · the deck-breathes beat is
+  invisible without the `2 PRES` lens · `moss-gate-shot.mjs`/`pod-bay-shot.mjs` carry a
+  latent VK_DELETE `'.'` typing bug (fixed in `board-fault-shot.mjs` only) ·
+  `prog <terminal>` opens the directory but selects no row (undocumented, cost a cycle).
 - **M3-4/M3-13 review sets**: `podsAsked` yank window (one round trip) · malformed
   `ev:pods` leaves the handshake armed · default bay selection lands on the OPEN row ·
   two commissioned terminals speak through the lower Id · `BlockedCell.Detail` has one
@@ -142,3 +151,4 @@ one independent reviewer per package. **Full package records live in the §3 que
 | 08-01 C | moss-gate | **the ship answers to MOSS**: doors/vents MOSS-only, split gate, OPERATE click deleted, `open vent_ls` expressible | green, **PIN M3-e (P1, cause measured)**, tag `pin/m3-e`, APPROVE 1st pass |
 | 08-01 C | pod-bay | **typed `pods` shows the bay; every sealed capsule says why; a chosen thaw CYCLES** (witnessed) | green, pins UNMOVED, 1 send-back, tests →1640/1166 |
 | 08-01 C | thaw-blocked | **the tile badge names the item; the menu stops promising the impossible** | green, pins UNMOVED, 1 send-back, tests →1646/1179 |
+| 08-01 C | board-fault | **one machine does not answer its switch — the workaround is a two-line MOSS program**: the fault sentence, the puff-and-stall, the `every 1s:` fix, 101.3 kPa witnessed | green, pins UNMOVED (b12 fold-neutral measured), 1 send-back, tests →1674/1179 |
