@@ -2,202 +2,109 @@
 
 *This file is REWRITTEN every session (hard cap ~120 lines + the log): the end-of-session
 ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Everything
-older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — test comments
-citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there) and
+older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-02 session C, continued — TWELVE merges, M3-9 REST in flight, the LAST package)
+## Current state (2026-08-02, session C CLOSED — ⭐ THE M3 QUEUE IS COMPLETE, 16/16, DEMO PASSED)
 
-**Gate on `lane/rest` (`384de8a`): 1775 dotnet + 1205 node, twin hashes MATCH at P1
-`7bdd0d6f7756dfdc`** (re-measure before quoting).
-⛔ **PIN M3-c IN FLIGHT ON `lane/rest` (M3-9 REST) — P1 + P4/P5 MOVE, P2/P3 measured HELD.**
-P1 `3d23665a724e853d` → **`7bdd0d6f7756dfdc`** (twin match) · P4 `77a7a8a9e967eab4` →
-**`661fcdd4b89f1e87`** ·
-P5 `edf1577c32f14e55` → **`558a1c0a4985f5ea`** (three new `[needs]` scalars, each measured twice
-through two code paths). **Cause: a BEHAVIOUR change on every ship** — `RestSystem` is the reducer
-`Citizen.Fatigue` never had, and `NeedsSystem`'s ramp is GATED while she sleeps (RimWorld's meter
-falls only while awake; ungated it made a deck sleep 63.6 sim-h). ⚠️ **The day-3 summary line does
-NOT move** — all four 2×2 cells print `hydro 98.1 kPa / potatoes 371`, so the hash is the only
-evidence.
-**DRIVEN 2×2:** with `fatigue_rest_threshold` out of reach P1 returns EXACTLY to its old value ⇒ the
-whole move is the sleep BEHAVIOUR and the system's mere presence (registration, `JobKind.Sleep = 12`,
-def fields, `WorkTypeMap` row) is **pin-neutral, measured**; at `mood_fatigue_weight = 0` the
-sleep/no-sleep cells still differ (`97f43a5a7f90bae2` vs `455d352944081b14`) ⇒ sleeping moves the pin
-independently of mood. ⚠️ **THIRD CAUSE, THE EXPENSIVE ONE: MACHINE WEAR RATES CHANGED ON EVERY
-SHIP** (Fatigue → Mood → Morale → Director tension → `_wearPressure` → `MachineWearSystem`),
-asserted by `RestSystemTests.TheWearPath_ACTUALLY_Moves_WhenFatigueFalls`.
-⚠️ **P2/P3 HELD, AND THE HOLD IS THE WINDOW, NOT A DEAD SYSTEM:** tick 3000 is 300 sim-seconds where
-Fatigue reaches ~0.0052 against a 0.75 trigger; control, driven — at threshold 0.001 BOTH goldens
-move (perilune → `c4001c0b66e3e4e9`, slice → `78e2cc40adc39c45`). ⛔ Not "the goldens cover rest".
-`ci.sh:121` + CLAUDE.md + MECHANICS §13.40 in the same commit; tag `pin/m3-c` at merge.
-Before it: **PIN M3-b EXECUTED (`pin/m3-b`) — M3-7, P1/P2/P3 fold-only, P4/P5 held.**
+**Gate on `main` (`9d3bbd7`): 1775 dotnet + 1205 node, twin hashes MATCH at P1
+`7bdd0d6f7756dfdc`** (re-measure before quoting). **Pin table** (CLAUDE.md is authoritative):
+P1 `7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52` · P3 `43a1a5c25713faec` · P4
+`661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. **Four pin rows executed this session**, tags
+`pin/m3-e` (M3-15, P1 — the scenario Terminal, gate measured inert) · `pin/m3-d` (M3-10,
+P4/P5 — the Heater) · `pin/m3-b` (M3-7, P1/P2/P3 fold-only — six skills; ⚠️ no pin sees the
+rate term) · `pin/m3-c` (M3-9, P1/P4/P5 — REST; ⚠️ the day-3 line does not move, THE HASH IS
+THE ONLY EVIDENCE). No pin row stands open.
 
-**Session mode**: owner authorized an autonomous run (away ~8 h from ~22:00 07-31; back
-and said "continue"); orchestrator merges the M3 queue in order, one Opus implementer +
-one independent reviewer per package. **Full package records live in the §3 queue rows of
-`perilune-m3.packages.md` — this block is the index.** Merged this session, in order:
+**FOURTEEN merges** (one docs sweep + 13 packages: M3-3, M3-15, M3-4, M3-13, M3-16, M3-5,
+M3-10, M3-7, M3-12, M3-8, M3-9 + the demo shots), each with one Opus implementer + one
+independent reviewer; **every package had exactly one send-back, every one a real defect**
+(full records: the §3 queue rows of `perilune-m3.packages.md`; MECHANICS §13.30–§13.40).
 
-- **Doc-anchor sweep** (`96fc527`): 40 stale `AuthoredShips.cs` anchors corrected, zero
-  survivors; `term_moss` pin re-pointed (`TheMossTerminal_BootsUnCommissioned`,
-  `WreckShipTests.cs:1252-1264`); MECHANICS reconciled with M3-14 + OD-N/OD-O.
-- **M3-3 ThawGate** (`03b2153`): the thaw is askable and EARNED — six terms, refusals
-  with a named reason AND number, price charged LAST, no MOSS adapter for CryoPod. §13.30.
-- **M3-15 MOSS gate** (`f5d7bf0`, tag `pin/m3-e`): doors and vents answer only to a live
-  MOSS server; split gate repaired→console / commissioned→programs; OPERATE click deleted;
-  **the M1 gate sentence (`open vent_ls`) is expressible for the first time**. §13.31.
-- **M3-4 POD BAY** (`f5e8aac`): typed `pods` → twelve capsules, every sealed row states
-  the gate's reason with the number; a chosen thaw CYCLES, witnessed in real Chrome;
-  `NoConsole` re-worded; the four-sentence refusal family pinned pairwise distinct. §13.32.
-- **M3-13 refusals** (`a4c120f`): the tile badge NAMES THE ITEM (`BlockedCell.Detail`)
-  and the menu refuses never-serviceable machines out loud (`DeviceCell.serv`). ⚠️ The
-  charter's premise was false, corrected ×6: a REPAIR order never wants a ControllerModule
-  (repair ladder = Parts ▸ Seals ▸ Swarf). §13.33.
-- **M3-16 the malfunctioning board** (`3da64fc`): `vent_d1` mechanically fine, board dead
-  (`Faulted` b12 fold-neutral MEASURED; DEVC v6); `open`/`close` refuse for every caller;
-  `set rate` doesn't hold; the two-line `every 1s:` program fills the hall past 80 kPa
-  (101.3 kPa witnessed). `Deck1VentTests` re-cut kept the POWERED half verbatim. §13.34.
-- **M3-5 emergency thaw** (`4a46ee7`): the ship wakes one more soul BY ITSELF, once, and
-  the run ends on screen — `EmergencyWatch` in `CryoSystem` (OD-10: `ThawCommand` never
-  learns it exists); ⭐ the send-back caught a real regression (the election stamped on a
-  paid in-flight cycle — now a counting cycle IS the grace and the reprieve survives,
-  semantics pinned against both candidate fixes); lose state + Chronicle + Overview
-  banner (`ending` channel). §13.35.
-- Every package had exactly ONE send-back, each a real defect (a mutation that couldn't
-  bite · an unguarded stated decision · an open-only gate pin · a paid-cycle clobber —
-  full prose in the queue rows).
+**⭐ THE M3 MILESTONE DEMO PASSED — 43 checks, 0 failures** (shots `m3-demo-*.png`, merge
+`9d3bbd7`). All three exit-gate clauses HOLD, measured: a second thaw earned AND chosen
+(two offered, five refused with numbered reasons; Lindqvist over Ozawa was a priced
+choice); **thaws 3–5 span 6.93 sim-hours**, paced by real production (the full
+Regolith→Scrap→Parts→ControllerModule chain was PLAYED, plus the scrubbing step function);
+**Lindqvist's WORK row differs from Rell's in SHAPE** — five cells to Rell's six, no MINE
+cell at all, every number cross-checked at the wire. The sleep beat witnessed. ⚠️ **ONE
+CAVEAT: the arc is not reachable in unmodified play** — see the blocker below.
 
-## Integrator decisions this session (review these)
+## ⛔ THE PLAYTEST BLOCKER (2026-08-07 is FIVE DAYS OUT)
 
-1. **PIN M3-e, option 2** (`term_main` authored real) chosen over ship-as-is: option 1
-   would leave the scenario fixture's authored LS watch permanently inert — the pinned
-   window would stop exercising the script→vent path (ninth trap) and hydro would coast
-   to 94.3 as a side effect. Rollback = the tag.
-2. Housekeeping discharged: 8 stale review-*/spike worktrees verified + pruned; branches
-   `review/m1-i` + `lane/vision-synthesis` kept; `lane/spike-dispatch` deleted to match
-   ROADMAP §2's "branch destroyed" record.
-3. ROADMAP rows N/O anchors fixed (`:2059`, `:2169`); doc-sweep D4 extension accepted.
-4. T13 marked near-DONE, not DONE: commissioning in the acceptance runs was driven via a
-   disclosed temp `commission_cost=0` overlay — one witnessed unmodified-game run still owed.
+**No shipping surface can send the `commission` wire command.** `HandleCommission` exists
+(`GameSession.cs:1332`); no client/TUI sender does (grep-verified twice, incl. by the demo).
+The opening arc dead-ends at commissioning: the player can reach the benches and CRAFT the
+ControllerModule with no overlay (the demo proved the material deadlock OD-N feared is
+GONE) — what's missing is purely A BUTTON. Natural fix fits OD-P: a typed `commission`
+verb at the MOSS console (~one day, incl. its refusal sentences joining the pinned family).
+**Asked the owner in-session; awaiting the answer.** Until it lands, T13 stays near-DONE
+(the witnessed unmodified-game run is still owed).
+
+## Open on the owner (triage before the playtest)
+
+- **The commissioning button** (above) — the one blocker.
+- **⭐ NEW, demo D3 — the work grid is a SOFT-LOCK**: all-six-types-on spends all 10 Seals
+  in ~4 sim-h; at 0 consumables no bench can be repaired and the run terminally stalls at
+  2 crew (driven to day 7). The demo survived by leaving REPAIR OFF and using direct
+  orders. This is "REPAIR eats the ladder's currency" measured to its end state.
+- **⭐ NEW, demo D2 — the thaw ladder DECAYS silently**: capsule wear crosses rung band
+  edges in 10–30 sim-h (`AuthoredShips.cs:1886`'s ~480 h reassurance measures the wrong
+  threshold); Mbeki jumped `2 PARTS`→`1 CONTROLLER MODULE` in 100 sim-min, unannounced.
+- **NEW, demo D4 — a direct order into a still-depressurising hall kills silently** (she
+  walked in and died; M3-14 carries the order by design, nothing prices the crossing).
+- The heater's power TIER + its boot affordability (M3-10) · rung-1 pacing (10 loose
+  Seals) · rung 1 of the vacuum ladder needs a new named home (OD-M 7B pointed at M3-b,
+  discharged) · unsurvivable vacuum services as a CLASS · playtest date confirm.
+- Browser eyeball items (carried): OD-P typed console (`42f59ca`) · M3-14's five steps ·
+  power-lens conduit glyphs · deck-1 legibility · `docs/design/shots/` now ~40 MB.
+- Carried UI items: crew docks clip labels · Prioritise names the TYPE · off-switch never
+  pre-empts · "Awaiting orders" short form · onboarding Space row (+ it still teaches the
+  pre-OD-N first order, M4-5) · work-type▸reach inversion · BUILD label collision ·
+  ascending click cycle · door art · `'/'` glyph · Rell reads `general crew` beside
+  authored people (M4-2/M4-3) · a sleeping crew member is drawn standing.
+
+## Open — unscheduled (filed, unowned; the load-bearing subset)
+
+- **⭐ Demo findings**: D1 an ordinary thaw writes NO Chronicle line (only the emergency
+  thaw does — the demo script's "named in the Chronicle" is unsatisfiable) · D5 =
+  `PrioritiseJobCommand` accepts-then-silently-drops (GENERAL, carried) · D6 the Chronicle
+  drowns in brownout spam (a capped ring; real events pushed out) · D7 the wire accepts a
+  work priority for an incapable type (invisible, vetoed state).
+- **M3-9 filed set**: extend the M2 property net for out-of-band claimants AS A CLASS
+  (Sticky/Preemption pin `IsRecruitableIgnoringJob`, blind to the next need system) ·
+  `SustenanceSystem` after `JobSystem` (eating loses to work) · the Director's wear lever
+  saturates on a quiet ship · the 60%-awake duty cycle vs §4.4's 70.6% (a
+  `fatigue_per_second` retune = its own pin row) · a sleeper cannot eat/drink (benign now).
+- **Surface/harness classes**: NOTHING GATES `client/tools/*.mjs` (a harness reading a
+  dead DOM contract is found by grep, not tests — bit twice this session) ·
+  `moss-gate-shot`/`pod-bay-shot` carry the latent VK_DELETE `'.'` bug ·
+  `BLOCKED_ORDER_NAMES` lacks `OrderRepair` (the next one-liner) · the `podsAsked` yank
+  window · `HeadlessVent.TryInvoke` skips `DeviceFault` (drift risk) · the wait-state
+  dot-ink collision · `.ov-workskill.untrained` has no CSS rule.
+- **Older carried sets** (M3-2/M3-4/M3-13/M3-16 residuals, doc-citation residue, the
+  `CryoSystem` tick-allocation pin gap, FREEZE-as-verb, `ThawSecondsPerCycle`→`cryo.def`,
+  no-exit-tile pod, faulted-device CLEAR path, per-KIND-bit channel note, wrapper-predicate
+  census lesson, per-device powered-ness wire, shed-lamp flicker, `Device.Rate` scales
+  generators, §13.1 CO2 gap, D-3 social gate, de-CH wording): full prose in the queue rows,
+  MECHANICS §13.3x filed lists, and `docs/history/`.
 
 ## Next
 
-1. **M3-9 REST — PIN ROW M3-c, RUNS ALONE, IN FLIGHT** (`lane/rest` — the last M3
-   package: rest as a between-jobs claimant per RW§3.5, the Bed becomes real, ALL FIVE
-   pins move incl. the wear-pressure path) → then the **M3 MILESTONE DEMO** (the §8
-   8-step falsifying script — the integrator's post-merge acceptance, now unblocked:
-   M3-12's rendering + M3-8's authored sheets are both in) → the week-9 owner playtest
-   (2026-08-07).
-   ⭐ NEW OWNER ITEM from M3-7's review: **rung 1 of the vacuum ladder has lost its named
-   home** — OD-M item 7B deferred it "to M3-7's pin lane" but the charter never chartered
-   it and M3-b is now discharged; it needs a new named home or a new pin row.
-   Merged since the last log rows: **M3-12** (skills in the WORK tab; the absent cell is
-   structural; `why-line-shot` was a result-generator — fixed; queue row 12) and **M3-8**
-   (seven written souls; three of seven cannot mine incl. Torres; the run-loop observer
-   pinned through a driven `Start()`; queue row 13).
-   ⭐ NEW OWNER ITEMS from M3-10: the heater's power TIER (LifeSupport shipped interim;
-   Industry would run ~36% duty — the "already shed" claim was a sampling artifact) · a
-   heater is reachable but NOT AFFORDABLE at boot (`device_place_cost` 3 Parts, wreck
-   authors 1, refusal silent) · the Radiator still borrows `'='` art.
-   ⭐ M3-10 also FOUND AND FIXED a shipped bug: `place` was INERT for all six furniture
-   tools on the standard surface (BUNK/DESK/CHAIR/LOCKER/PLANT/LAMP all silent no-ops).
-2. Owner manual check (carried): OD-P (`42f59ca`) still owed a look — `l`/`p` TYPE,
-   `log`/`prog` navigate, DETAIL bare `log` inherits. Plus the session-C browser beats
-   worth an eyeball: the POD BAY (`pods`), the vent puzzle, the MOSS-offline refusals.
-
-## Open on the owner
-
-- **Playtest 2026-08-07** — confirm/move. The thaw arc (repair → commission → pods →
-  thaw) now works end-to-end; deck-1 air lands post-commission (M3-16, in flight).
-- **⭐ NEW — REPAIR eats the thaw ladder's currency** (M3-4, measured twice): enabling the
-  REPAIR work type lets the maintenance board spend 6 of the wreck's 10 Seals + its only
-  Parts in ~10 sim-h, and the pawn CARRIES the remaining 4 — every rung reads `SHIP HAS 0`
-  with the matter aboard, no way to make her put it down. Rung 1 unreachable in the run
-  that unlocked it except by direct order. Pacing + carried-stock dead end — owner call.
-- **NEW — rung-1 pacing** (M3-3, measured): 10 loose Seals at boot make rung 1 free at
-  commission. Related: the wreck's loose consumables fall 10→2 and stop (larder floor).
-- **Unsurvivable vacuum services as a CLASS** (OD-O dissolved `vent_d1` only; `wear.def:17`).
-- Browser eyeball items (carried): M3-14's five steps · M3-6 capsule count · M3-11 wrecked
-  vent + 0.000 kPa · power-lens conduit glyphs · deck-1 legibility · M2-12 arc · NEW:
-  `docs/design/shots/` is now 31 MB (precedent long-established; noted for the owner).
-- Carried: crew docks clip labels · Prioritise names the TYPE · off-switch never pre-empts
-  · "Awaiting orders" short form · onboarding Space row · work-type ▸ reach inversion ·
-  BUILD label collision · ascending click cycle · door art unphotographed · `'/'` glyph.
-
-## Open — unscheduled (filed, unowned)
-
-- **⭐ M3-7 filed set — the skill mechanism ships INERT until someone is authored** (MECHANICS
-  §13.37.5): nothing writes a skill, so every crew member is level 0 where the curve is the exact
-  identity (M3-8's persona sheets are the expected first author) · nothing writes `WorkIncapable`
-  either, so `workcaps` ships correct and all-zero · `Haul`'s curve is FLAT because haul accrues no
-  work ticks anywhere (a haul-speed term needs carry-capacity or move-speed first) · `getWorkCaps` is
-  reached by no surface yet, so it is deliberately NOT on `SHIP_STATE_REACH` (M3-12's first reach
-  adds it).
-- **⭐ `PrioritiseJobCommand` accepts-then-silently-drops** (GENERAL defect, driven; the
-  APPROACH refusal for a repair order is still silent — do NOT add `ReasonAir`).
-- **⭐ `BLOCKED_ORDER_NAMES` lacks `OrderRepair`** (M3-13 review): a repair badge titles
-  "1 ORDER STUCK" generic; pinned by literal so nothing catches it. The natural next
-  one-liner — this milestone made repair badges the main screen.
-- **M3-16 filed set**: the dead `operate` handler answers `OPERATE_OK` on a faulted
-  device (unreachable — M4-8's row) · `HeadlessVent.TryInvoke` (scenario host) is a
-  second vent `IScriptable` that skips `DeviceFault` — drift risk, unreachable today ·
-  TUI toggle silent on a faulted device · a faulted device has NO CLEAR path (deliberate
-  for the one instance; revisit if a second is authored) · the deck-breathes beat is
-  invisible without the `2 PRES` lens · `moss-gate-shot.mjs`/`pod-bay-shot.mjs` carry a
-  latent VK_DELETE `'.'` typing bug (fixed in `board-fault-shot.mjs` only) ·
-  `prog <terminal>` opens the directory but selects no row (undocumented, cost a cycle).
-- **M3-4/M3-13 review sets**: `podsAsked` yank window (one round trip) · malformed
-  `ev:pods` leaves the handshake armed · default bay selection lands on the OPEN row ·
-  two commissioned terminals speak through the lower Id · `BlockedCell.Detail` has one
-  live value today · a second per-KIND bit should get its own channel, not a ninth element
-  · onboarding/`AwaitingOrdersLabel`/M2-18 still teach the pre-OD-N first order (M4-5) ·
-  operate host handler is dead player-facing code (M4-8) · `moss-gate-shot.mjs:184-192`
-  prose says `exit`, code presses ESC.
-- **Doc/citation residue** (carried): `AuthoredShips.cs:1613` in-code ":2210" ·
-  `packages.md:730-731` stale claim · `packages.md:590` `:80`→`:83` · MECHANICS `:764`
-  AutoWander · `:3610` scan lands in next summary · §5.1 flee guard lacks `HeldByOrder` ·
-  §13.25 heading says "is M2-10" · `JobContext.cs:89` sixth `HeldByOrder` reader (M3-7) ·
-  pre-wreck-region anchors (RoleNow `:583` · RevealDifficulty `:598-771` · `:2796` span).
-- **M3-2 filed set** (carried): no-exit-tile pod blocks the bay silently · nothing pins
-  CryoSystem's tick allocation · sub-fail mid-cycle freeze · thawed pawns `AutoWander=true`
-  · `ThawSecondsPerCycle` → `cryo.def` at next P4/P5 mover · CA1305 `PeriluneGoldenTests:65`.
-- **MOSS console filed set** (carried): PROGRAM-screen prompt renders but can't submit ·
-  `↑`-history/ESC-clear LEDGER-only · FAULTLOG `log` re-opens · `moss-model-fake.js`
-  unguarded `KEY_ROUTE` copy · vanished-tid PROGRAM keeps a dead editor.
-- **FREEZE as a player verb** — named follow-on (OD-M item 6).
-- Carried (full prose in `docs/history/` + trap ledger): wrapper-predicate census ×3 · no
-  per-device powered-ness wire · shed-lamp flicker · `Device.Rate` scales generators ·
-  `IceChainMemoTests` flake · M2-17/M2-21/M2-5 residuals · stale-citation candidates
-  (MECHANICS `:62`/`:2008`/`:2741`, ECONOMY.md:72,74, moss-terminal.spec.md:417,
-  `Commands.cs:777`) · de-CH wording · §13.1 CO2 gap · `WorkIncapable` off the `work`
-  wire (M3-7) · `designs` not fog-gated · needy-machine scans · unskinned glyphs · D-3
-  social gate · `Commands.cs` retracted sentence.
+1. **The commissioning verb** (owner answer pending — if yes, one lane: typed `commission`
+   at the console + the refusal family + the witnessed unmodified run that discharges T13).
+2. Owner triage of D2/D3/D4 before the 2026-08-07 playtest (all three are first-hour).
+3. M4 opens after the playtest gate (M4-1 Persona design first; M4-8 owns the operate
+   handler + `hud.js` retirement; M4-5 the onboarding rewrite).
 
 ## Session log (append one row per session; prune when > ~40 rows)
 
 | date | lane | player-visible outcome / result | gate |
 |---|---|---|---|
-| 07-28 | (six lanes) | wreck ship ships: operate verb, wrecked art, devices channel; ADD ROOM stops conjuring air | green, all pins |
-| 07-29 am | audit + spike | no code: metric audit (A1 retired), dispatch spike refuted `TryAssign` seam, OD-A…OD-C | n/a |
-| 07-29 | m1 wave | machines visible, `vent_ls` operable, honest first screen, ERASE tool | green |
-| 07-29 pm | m1-f/h/d/i/k | morale bar gone, craft thrash gone, unreachable reason on tile, 11 repair consumables, pawn select+MOVE in Room Zoom | green |
-| 07-29 pm | m2-1 + m1-l | work-priority state (hashed, OFF), every compartment IS a room | green, P1–P3 re-pinned `pin/m2-a` |
-| 07-29 late | doc-restructure | docs only: TARGET/ROADMAP/PROCESS/TRAPS created; CLAUDE.md + HANDOVER cut ~10× | green, pins held |
-| 07-30 | nine lanes | **the RimWorld loop's first act is playable** | green, P1/P3 re-pinned `pin/m2-e` |
-| 07-30 pm | five lanes | **the DIRECT ORDER works**: why-line · pre-emption · hold 121 sim-s · demo 5/6 | green, pins UNMOVED |
-| 07-30 night | power ×2 · rebaseline · m3-charters | **M2 CLOSED, phase-1 exit gate MET**; M3 chartered | green, pins UNMOVED, tag `pin/m2-d` |
-| 07-31 | m3-batch · pod-identity · vacuum-ladder | **M3 gate cleared (OD-M); a DIRECT ORDER CROSSES THE FRONTIER**; playtest named 2026-08-07 | green, pins UNMOVED |
-| 07-31 B | pod-census | **the thaw ladder is AUTHORED** (rungs 1–7) | green, pins UNMOVED |
-| 07-31 B | deck1-vent · od-n-charter | **deck 1 is ONE repair from air; the ship learns who it answers to** (OD-N/OD-O; M3-15/16 chartered) | green, pins UNMOVED |
-| 07-31 B | cryo-system | **A POD CYCLES** | green, **PIN M3-a**, tag `pin/m3-a` |
-| 07-31 B | moss-input · moss-hotkeys | **the MOSS terminal takes typing; OD-P: it IS a terminal** | node +18, owner VERIFIED |
-| 08-01 C | doc-anchor-sweep | docs only: 40 stale anchors corrected, `term_moss` pin re-pointed, MECHANICS reconciled | green, pins UNMOVED, 1 send-back |
-| 08-01 C | thaw-cmd | **the thaw is EARNED**: yes, or no with a named reason and a number | green, pins UNMOVED, 1 send-back, tests →1599 |
-| 08-01 C | moss-gate | **the ship answers to MOSS**: doors/vents MOSS-only, split gate, OPERATE click deleted, `open vent_ls` expressible | green, **PIN M3-e (P1, cause measured)**, tag `pin/m3-e`, APPROVE 1st pass |
-| 08-01 C | pod-bay | **typed `pods` shows the bay; every sealed capsule says why; a chosen thaw CYCLES** (witnessed) | green, pins UNMOVED, 1 send-back, tests →1640/1166 |
-| 08-01 C | thaw-blocked | **the tile badge names the item; the menu stops promising the impossible** | green, pins UNMOVED, 1 send-back, tests →1646/1179 |
-| 08-01 C | board-fault | **one machine does not answer its switch — the workaround is a two-line MOSS program**: the fault sentence, the puff-and-stall, the `every 1s:` fix, 101.3 kPa witnessed | green, pins UNMOVED (b12 fold-neutral measured), 1 send-back, tests →1674/1179 |
-| 08-01 C | emergency-thaw | **the ship wakes one more soul by itself, once, and the run ends on screen**: death → cycling without a pause → "With ⟨name⟩ dead, the ship woke ⟨name⟩." → ALL SOULS banner; a paid cycle is never stamped on | green, pins UNMOVED (packed fold), 1 send-back (a real paid-cycle regression) + 1 measured touch, tests →1690/1180 |
-| 08-02 C | heater | **a heater exists — place one, power it, and a frozen compartment becomes workable again** (`CanStageWorkerAt` flips); found+fixed: `place` was INERT for all six furniture tools | green, **PIN M3-d: P4/P5 moved (Heater=28 + def row), P1/P2/P3 measured HELD**, tag `pin/m3-d`, 1 send-back (three false claims), tests →1714/1183 |
-| 08-02 C | skill-consumers | **who does a job changes how fast it is done** — six skills per soul (CITZ v9), six consumer sites, the `workcaps` channel; every shipping citizen is level 0 until M3-8 | green, **PIN M3-b: P1/P2/P3 moved fold-only (measured), P4/P5 HELD; NO PIN SEES THE RATE TERM (2×2 driven)**, tag `pin/m3-b`, 1 send-back (two unpinned consumer sites), tests →1744/1193 |
-| 08-02 C | skill-display | **the WORK tab shows what each soul is good at, and an incapable type has NO CELL** (structural absence, RW§1.6); found+fixed a boot-cell `off0` ink collision | green, pins ALL HELD (client-only), 1 send-back (`why-line-shot` result-generator + the display:grid premise), tests →1744/1205 |
-| 08-02 C | sleeper-personas | **seven written souls step out of their pods as themselves** — six authored levels + an incapability each at thaw; three of seven cannot mine, Torres among them | green, pins ALL HELD (thaw-only reachability, inclusion-tested), 1 send-back (a false headline vs its own table + a run-loop survivor), tests →1759/1205, conflicted MECHANICS merge regated |
+| 07-29 | m1 wave + m2-1 + doc-restructure | machines visible · vent operable · honest first screen · work-priority state · doc spine | green, `pin/m2-a` |
+| 07-30 | fourteen lanes over three waves | **the RimWorld loop's first act + the DIRECT ORDER + M2 CLOSED (phase-1 exit gate MET)**; M3 chartered | green, `pin/m2-e` · `pin/m2-d` |
+| 07-31 | m3-batch · pod-identity · vacuum-ladder | **M3 gate cleared (OD-M); a direct order crosses the frontier**; playtest named 2026-08-07 | green, pins UNMOVED |
+| 07-31 B | pod-census · deck1-vent · od-n · cryo-system · moss-input · moss-hotkeys | **the thaw ladder authored · deck 1 one repair from air · OD-N/OD-O/OD-P · A POD CYCLES · the MOSS terminal types** | green, **`pin/m3-a`** |
+| 08-01 C | doc-anchor-sweep · thaw-cmd · moss-gate · pod-bay · thaw-blocked · board-fault · emergency-thaw | **the thaw is EARNED · the ship answers to MOSS · typed `pods` shows the bay · the badge names the item · the vent puzzle · the ship wakes one more soul by itself** | green, **`pin/m3-e`**, tests →1690/1180 |
+| 08-02 C | heater · skill-consumers · skill-display · sleeper-personas · rest | **a heater exists (and `place` was INERT — found+fixed) · who works changes how fast · the WORK tab shows it with ABSENT cells · seven written souls · crew SLEEP** | green, **`pin/m3-d` · `pin/m3-b` · `pin/m3-c`**, tests →1775/1205 |
+| 08-02 C | m3-demo | **⭐ THE M3 EXIT GATE HOLDS, MEASURED**: 43/43 — a second thaw earned and chosen · thaws 3–5 span 6.93 sim-h · her row differs in SHAPE; 7 findings filed (2 first-hour: the ladder decays silently; the work grid soft-locks) | demo, 18 shots, **commissioning still needs a button** |
