@@ -268,6 +268,13 @@ test('lensGrade never fabricates a reading it does not have', () => {
   assert.equal(lensGrade('water', { o2: 0.21 }), null); // rooms carries no per-room H₂O
   assert.equal(lensGrade('power', { o2: 0.21 }), null); // power is a per-slot flag, not atmos
   assert.equal(lensGrade('oxygen', null), null);
+  // ⛔ D4 SEND-BACK — THE SAME CELLS WITH A ZERO-PRESSURE READING PRESENT. D4 added a clause that
+  // grades an airless room `bad`; it must OVERRIDE an atmos band, never CREATE one. The three cells
+  // above could not see the first cut's violation because their fixtures carry no `pressureKPa` at
+  // all, so this guard was vacuous against exactly the change that broke it (TRAPS, 4th + 9th).
+  assert.equal(lensGrade('water', { pressureKPa: 0 }), null);      // ← the shipped defect returned 'bad'
+  assert.equal(lensGrade('power', { pressureKPa: 0 }), null);
+  assert.equal(lensGrade('bogus', { pressureKPa: 0, o2: 0 }), null); // unknown lens, vacuum
 });
 
 test('lensSlotTint derives the power lens from the slot active flag', () => {

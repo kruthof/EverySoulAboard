@@ -1087,6 +1087,11 @@ export function roomDeviceConditions(devices, focusRoom) {
       // it promises a repair. ⚠️ THE FALLBACK IS 1, matching `decodeDevices`: an absent value must
       // mean the OLD behaviour (menu offered), never "withdraw the verb from the whole ship".
       serv: d.serv === undefined ? 1 : (d.serv | 0),
+      // ⭐ D4 — `air` (1 = a servicer could stand at this machine WITHOUT the player's order waiving
+      // the air rule) is what `prioritiseOffer` asks before it promises a repair with no mention of
+      // the vacuum. ⚠️ THE FALLBACK IS 1, matching `decodeDevices`: an absent value means the OLD
+      // behaviour (offer with no hazard clause), never "warn on every machine aboard".
+      air: d.air === undefined ? 1 : (d.air | 0),
     });
   }
   return out;
@@ -1133,6 +1138,10 @@ export function deckDeviceConditions(devices, deck) {
     out.set(tx + ',' + ty, {
       tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0, open: d.open | 0,
       serv: d.serv === undefined ? 1 : (d.serv | 0),
+      // ⭐ D4 — `air` is carried here for the SAME SHAPE-PARITY reason `open` and `serv` are: one
+      // join (`items/wear.js`) reads both models, and a field on one and not the other is two
+      // contracts wearing one name. Same 1-default as `decodeDevices`.
+      air: d.air === undefined ? 1 : (d.air | 0),
     });
   }
   return out;

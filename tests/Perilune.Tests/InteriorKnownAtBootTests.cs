@@ -501,7 +501,7 @@ namespace Perilune.Tests
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 var f = part.Split(']')[0].Split(',');
-                Assert.That(f.Length, Is.EqualTo(8), "a devices tuple is EIGHT elements since M3-13 (…,open,serv)");
+                Assert.That(f.Length, Is.EqualTo(9), "a devices tuple is NINE elements since D4 (…,open,serv,air)");
                 set.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                          int.Parse(f[1], CultureInfo.InvariantCulture),
                          int.Parse(f[2], CultureInfo.InvariantCulture)));

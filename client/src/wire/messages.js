@@ -465,9 +465,14 @@ export function decodeItems(msg) {
  * missing bit read as 0 would mean "never serviceable", i.e. this client would silently WITHDRAW the
  * Prioritise menu from every machine on the ship and the player would have no verb and no message.
  * Read as 1 the menu behaves exactly as it did before the element existed. ⇒ THE ABSENT VALUE IS THE
- * OLD BEHAVIOUR, on both elements; that, and not a preferred constant, is the rule.
+ * OLD BEHAVIOUR, on all three elements; that, and not a preferred constant, is the rule.
+ *
+ * ⭐ `air` (element 9, D4) IS THE THIRD ONE AND IT DEFAULTS TO 1 FOR THE SAME REASON, with the
+ * stakes reversed: a missing bit read as 0 would paint `NO AIR AT THE WORKSITE — SHE MAY DIE` over
+ * every machine on the ship the moment a host and a client fell out of step. A hazard warning that is
+ * always on is a hazard warning nobody reads.
  * @param {{type:string, cells?:Array}|null} msg
- * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number}[]|null}
+ * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number}[]|null}
  */
 export function decodeDevices(msg) {
   if (!msg || msg.type !== 'devices' || !Array.isArray(msg.cells)) return null;
@@ -477,6 +482,11 @@ export function decodeDevices(msg) {
     out.push({
       x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind: t[3] | 0, cond: t[4] | 0, oper: t[5] | 0,
       open: t[6] | 0, serv: t.length > 7 ? (t[7] | 0) : 1,
+      // ⭐ D4 — `air` (1 = a servicer could stand at this machine on her own; 0 = the only way in is
+      // the player's order waiving the air rule). ⚠️ THE FALLBACK IS 1, for the same reason `serv`'s
+      // is: an older host that sends eight elements must mean "as before", never "every machine
+      // aboard is lethal", which would put a death warning on the whole ship from a missing field.
+      air: t.length > 8 ? (t[8] | 0) : 1,
     });
   }
   return out;

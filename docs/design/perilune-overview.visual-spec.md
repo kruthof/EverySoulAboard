@@ -481,8 +481,13 @@ text `{role} · {room}` (the current room from the pawn's occupied slot).
   background:rgba(16,13,10,.6); display:flex; flex-direction:column; gap:5px;` containing: label
   `font-size:9px; letter-spacing:.16em; color:#57503f;` `CURRENT ROOM · {room}`; an ATMOS row
   (`justify-content:space-between; font-size:10px;`) — `ATMOS` in `#8c8377` / `{o2} O₂ · {co2}
-  CO₂` in `#6fc09a`; a TEMP·POWER row — `TEMP · POWER` in `#8c8377` / `{temp} · {pwr}` in
-  `#f2b563`. The `o2`/`co2`/`temp` values come from the selected crew's room on the `rooms`
+  CO₂` in `#6fc09a`; a PRES·TEMP·PWR row — `PRES · TEMP · PWR` in `#8c8377` /
+  `{kPa} · {temp} · {pwr}` in `#f2b563` (**D4**: the pressure leads the row — the box used to hide
+  itself for a crew member standing in a vacuum, and the one number saying the compartment is empty
+  was on the wire and on no surface; one decimal, `toFixed`, so a de-DE machine still prints `.`.
+  The label carries the LENS RAIL's abbreviations because the spelt-out `PRESSURE · TEMP · POWER`
+  wraps this 298px panel — measured in Chrome, row height 15px → 30px).
+  The `o2`/`co2`/`temp`/`pressureKPa` values come from the selected crew's room on the `rooms`
   channel (joined by `anchorName`, VS-O-26). The `rooms` tuple carries NO power field, so `{pwr}`
   is a coarse per-room power state DERIVED CLIENT-SIDE from the `decks` slot's `active` flag
   (`active === true` → `ON`, else `OFF`) — the same live power/lit predicate the amber glow-pool

@@ -2468,9 +2468,44 @@ namespace Perilune.Web
 
         /// <summary>Per-room atmosphere for the warm SVG LENS overlays / atmos box — a READ-ONLY walk
         /// of <see cref="RoomState.Anchors"/>, emitting the RAW derived <see cref="Room"/> properties
-        /// (fraction/ppm/kPa/K/tiles) for every anchor that resolves to a non-vacuum, non-airless room.
-        /// The vacuum sink and empty halls (no meaningful atmosphere) are omitted. Pure; moves no hash;
-        /// this is the same data ShipMetrics/MOSS read, so the numbers agree by construction.</summary>
+        /// (fraction/ppm/kPa/K/tiles) for every anchor that resolves to a real compartment. Pure;
+        /// moves no hash; this is the same data ShipMetrics/MOSS read, so the numbers agree by
+        /// construction.
+        ///
+        /// <para>⭐⭐ <b>D4 — AN AIRLESS COMPARTMENT NOW SHIPS A ROW, AND THAT IS THE WHOLE PACKAGE.</b>
+        /// The skip used to read <c>room == rs.Rooms[0] || room.TotalMoles &lt;= 0</c>, i.e. a
+        /// compartment with no gas in it was DROPPED FROM THE WIRE — and a dropped row is not a
+        /// neutral omission on either surface that consumes this channel:
+        /// <list type="number">
+        ///   <item><b>THE PRESSURE LENS PAINTED NOTHING OVER A VACUUM.</b>
+        ///     <c>overview-model.js</c>'s <c>lensSlotTint</c> calls <c>lensGrade(lens, slot.atmos)</c>
+        ///     and a slot with no <c>rooms</c> row has <c>atmos === null</c>, for which
+        ///     <c>lensGrade</c> returns <c>null</c> — the SAME answer it gives for "no lens
+        ///     selected". So the one overlay a player would reach for to ask <i>where is the air?</i>
+        ///     was blank exactly where the answer was <i>nowhere</i>.</item>
+        ///   <item><b>THE READOUT'S ATMOSPHERE BOX HID ITSELF</b> for a crew member standing in
+        ///     vacuum (<c>overview-view.js</c>'s <c>setHidden(_el.roAtmos, true)</c> on a null
+        ///     atmos) — the reading vanished at the moment it became lethal.</item>
+        /// </list>
+        /// It was never a physics problem: every derived property on <see cref="Room"/> already
+        /// guards its own divisor (<c>PressureKPa</c> on <c>VolumeM3 &lt;= 0</c>, <c>O2Fraction</c>
+        /// and <c>CO2Ppm</c> on <c>TotalMoles &lt;= 0</c>), so a zero-mole room answers 0/0/0 and a
+        /// REAL temperature. The omission was a <c>continue</c>, and the fix is deleting half of
+        /// it.</para>
+        ///
+        /// <para>⛔ <b>THE VACUUM SINK IS STILL SKIPPED, AND IT MUST BE.</b> <c>rs.Rooms[0]</c> is not
+        /// a compartment: it is the sink every region touching open void is merged into (see
+        /// <see cref="RoomState"/>'s header), so its tile count and temperature describe the space
+        /// outside the hull. Emitting it would give one row's numbers to every anchor that fell into
+        /// it, on any deck.</para>
+        ///
+        /// <para>⚠️ <b>WHAT THIS STILL DOES NOT REACH, said out loud rather than left to be
+        /// rediscovered: a compartment BREACHED TO SPACE.</b> Such a region is merged INTO
+        /// <c>Rooms[0]</c> by <c>RoomState</c>'s own rebuild, so its anchor resolves to the sink and
+        /// this walk skips it — it ships no row today and still ships none. What is fixed here is the
+        /// SEALED airless compartment (the wreck's deck 1, a hall the player has just vented, a
+        /// compartment still filling), which is the state D4 was measured in. FILED, not claimed
+        /// fixed.</para></summary>
         private List<WireFormat.RoomTuple> BuildRooms()
         {
             var rows = new List<WireFormat.RoomTuple>();
@@ -2481,7 +2516,7 @@ namespace Perilune.Web
             {
                 var a = anchors[i];
                 var room = rs.RoomAt(world, a.Probe);
-                if (room == rs.Rooms[0] || room.TotalMoles <= 0) continue; // vacuum sink / airless hall
+                if (room == rs.Rooms[0]) continue; // the vacuum SINK is not a compartment (see above)
                 rows.Add(new WireFormat.RoomTuple(a.Name, a.Probe.Z, room.O2Fraction, room.CO2Ppm,
                     room.PressureKPa, room.TemperatureK, room.TileCount));
             }
@@ -2920,9 +2955,54 @@ namespace Perilune.Web
                     // true (`Condition >= MaintainBelow`, and Condition is clamped at or above 0)
                     // lives in the sim beside the command it refuses, and a host-side copy of it is
                     // how the menu and the command come to disagree about the same machine.
-                    MaintenanceSystem.IsEverServiceable(defs, device.Kind) ? 1 : 0));
+                    MaintenanceSystem.IsEverServiceable(defs, device.Kind) ? 1 : 0,
+                    // ⭐ D4 — COULD A WORKER BE STAGED HERE WITHOUT THE ORDER WAIVING THE AIR RULE?
+                    // See WireFormat.Devices.cs's `air` param for what the bit means and why the
+                    // approach half is deliberately not folded into it.
+                    StagingAirBit(device.Pos)));
             }
             return _devicesScratch;
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>D4 — THE <c>devices</c> CHANNEL'S <c>air</c> BIT: <c>1</c> = a servicer could stand
+        /// here on her own; <c>0</c> = the only way to put her here is the player's order, and the
+        /// order is what will kill her.</b>
+        ///
+        /// <para><b>THE RULE IS ASKED, NOT RE-DERIVED — and it is asked of the exact method the sim
+        /// stages a servicer with.</b> <c>MaintenanceSystem.TryFindStagingTile</c> is *"the one place
+        /// in the sim that picks a tile to park a worker on"* (its own header) and both of this
+        /// device's real callers go through it: <c>RecruitForNeediest</c> with <c>forced:false</c> and
+        /// <c>DriveWorker</c> with the held worker's flag. Re-implementing its 4-neighbour walk here
+        /// — or worse, comparing room numbers against <c>needs.def</c> thresholds — would be a second
+        /// authority on staging, which is the defect <c>BlockedReason</c>'s own header refuses by
+        /// name. This is M3-14 rung 3 in one more place.</para>
+        ///
+        /// <para><b>THE TWO CALLS ARE A 2×2 COLLAPSED TO THE ONE CELL THAT HAS WORDS.</b>
+        /// <c>WorksiteSafety.CanStageWorkerAt(sim, tile, forced:true)</c> is <c>true</c>
+        /// unconditionally, so the <c>forced:true</c> search is exactly *"is there any walkable
+        /// neighbour at all"* — the APPROACH question. So: unforced succeeds ⇒ 1 (fine). Unforced
+        /// fails and forced succeeds ⇒ <b>0, the air is the whole difference</b>. Both fail ⇒ 1,
+        /// because the machine is WALLED IN and blaming that on the air would send the player looking
+        /// for a leak. The second call runs only when the first fails, so a healthy ship pays for one.</para>
+        ///
+        /// <para>⚠️ <b>IT READS 1 ON A STACK THAT MODELS NO ATMOSPHERE, AND THAT IS THE HONEST
+        /// ANSWER.</b> <c>WorksiteSafety.CanCycle</c> short-circuits the whole rule unless BOTH
+        /// <c>NeedsSystem</c> and <c>SafetySystem</c> are registered — and a bare test sim has every
+        /// room at 0 kPa, where an unconditional reading would mark every machine aboard lethal. Same
+        /// shape as <c>BlockedReason</c>'s air reason, which is inert on the same stacks for the same
+        /// reason: *"an honest 'the rule is not running', not a fabricated all-clear."*</para>
+        ///
+        /// <para>PURE READ — <c>TryFindStagingTile</c> is <c>static</c>, allocation-free, does no
+        /// pathfind (it is a 4-neighbour walk, not <c>FindPath</c>), touches no RNG and writes
+        /// nothing. VIEW-ONLY and hash-neutral like every other element on this channel.</para>
+        /// </summary>
+        private int StagingAirBit(Int3 devicePos)
+        {
+            if (MaintenanceSystem.TryFindStagingTile(_sim, devicePos, out _)) return 1;
+            // Nowhere survivable. Distinguish "the air" from "walled in" by re-asking with the
+            // player's waiver, which turns the same search into the pure approach question.
+            return MaintenanceSystem.TryFindStagingTile(_sim, devicePos, out _, forced: true) ? 0 : 1;
         }
 
         /// <summary>
@@ -3832,8 +3912,78 @@ namespace Perilune.Web
                     else sb.Append("Idle");
                     break;
             }
+            AppendAirWarning(sb, c);      // ⭐ D4 — …and whether the air where she stands will kill her
             AppendRankingClause(sb, c);   // ⭐ M2-6 — …and WHY this job and not another
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>D4 — <i>"Servicing fabricator_1 · NO AIR"</i>. THE LABEL STOPS LYING TO A CREW
+        /// MEMBER THE PLAYER ORDERED INTO A VACUUM.</b>
+        ///
+        /// <para><b>THE DEFECT, MEASURED IN THE M3 MILESTONE DEMO (finding D4).</b> A direct
+        /// prioritise-repair order into a hall that was still depressurising was accepted — by
+        /// design, M3-14 rung 2 — the pawn walked in, and she died. For the whole of it her task line
+        /// read <i>"Servicing fabricator_1 — Repair is priority 1"</i>. Nothing on any surface said
+        /// the word AIR. <c>grep -ri suffoc client/src hosts/web</c> returned nothing before this
+        /// clause: <see cref="Citizen.Suffocation"/> is a live vital sign that reached NO client.</para>
+        ///
+        /// <para>⛔ <b>IT IS A RENDERING FIX AND NOTHING ELSE. THE ORDER STILL GOES THROUGH AND SHE
+        /// STILL DIES.</b> <c>SafetySystem</c>'s rung-4 clause (<c>SafetySystem.cs:284</c>, the
+        /// <i>DO NOT SOFTEN</i> box) is untouched, as is rung 2's waiver in
+        /// <c>WorksiteSafety.CanStageWorkerAt</c>. RimWorld's shape is *order accepted, danger
+        /// VISIBLE* (<c>rimworld-reference.md</c> §8.4), not a refusal and not a confirm dialog; the
+        /// player is owed the fact, not a veto over their own order.</para>
+        ///
+        /// <para>⭐ <b>WHY IT IS GATED ON <see cref="Citizen.HeldByOrder"/> — the gate is the POINT,
+        /// not a cost saving.</b> A crew member who is NOT held and whose air turns lethal is pulled
+        /// off the job by <c>SafetySystem</c> and her label becomes <i>"Heading to safe air"</i>
+        /// (the <see cref="JobKind.Flee"/> arm above): the sim already speaks for her. Rung 4
+        /// suppresses exactly that rescue for a held pawn — so <b>the held pawn is the one and only
+        /// worker for whom the existing vocabulary has no word</b>, which is why the Flee arm has
+        /// stood for four packages without covering this case. As a side effect the gate also keeps
+        /// every other label on every fixture byte-identical: a bare test sim models no atmosphere
+        /// and reads 0 kPa in every room (see <c>WorksiteSafety.CanCycle</c>'s header), so an
+        /// UNGATED air clause would append these words to half the suite.</para>
+        ///
+        /// <para><b>IT ASKS THE SIM, IT DOES NOT RE-DERIVE.</b> <c>AtmosphereSafety.IsBreathable</c>
+        /// is the same predicate <c>SafetySystem</c> trips on and <c>NeedsSystem</c> negates —
+        /// four bands (vacuum, thin air, CO₂ narcosis, thermal injury) behind one bool. The words are
+        /// therefore deliberately <b>NO AIR</b> and not <i>NO OXYGEN</i>: they have to be true of a
+        /// fully pressurised room that is merely freezing, which is a state
+        /// <c>WireFormat.Blocked.cs</c> records as the one people forget.</para>
+        ///
+        /// <para>⚠️ <b>A DOORWAY IS NOT A VACUUM, and forgetting that is the single most expensive
+        /// mistake this shape can make</b> — it is called out in <c>WorksiteSafety</c>'s own header,
+        /// where it once cost the slice's entire 48-tile dig field. A door tile is a room EDGE, so
+        /// <c>RoomState.RoomAt</c> resolves it to <c>Rooms[0]</c> and it reads 0 kPa; but
+        /// <c>NeedsSystem</c> SKIPS a crew member standing on a door marker outright
+        /// (<c>NeedsSystem.cs:105</c>), so no suffocation accrues there. Without the marker test the
+        /// warning would BLINK ON for one tile every time a held worker walked through any door on
+        /// the ship — a warning that cries wolf is a warning the player learns to ignore.</para>
+        ///
+        /// <para>⚠️ <b>THE SEPARATOR IS <c>" · "</c> AND IT IS NOT <see cref="RankingSeparator"/>,
+        /// FOR A REASON THAT IS BEHAVIOUR.</b> The two crew docks render only the part of the label
+        /// BEFORE the last <c>" — "</c> (<c>console-model.js</c>'s <c>taskWhat</c>, which is
+        /// <c>lastIndexOf</c>-based). Spelt with the em dash, this clause would be dropped by both
+        /// docks in exactly the case that matters most — a first-hour crew member with fewer than two
+        /// work types enabled gets no ranking clause, so hers would be the LAST separator and the
+        /// warning would be the half that got cut. With a middot the words ride INSIDE the *what*
+        /// half and reach the docks and the readout alike, and <c>taskTag</c> still classifies on the
+        /// label's first word, which this never touches.</para>
+        ///
+        /// <para>ZERO WIRE CHANGE (<c>task</c> is a pre-existing roster string), zero allocation
+        /// beyond the shared <see cref="_task"/> builder, no RNG, no mutation, no hash.</para>
+        /// </summary>
+        internal const string AirWarningClause = " · NO AIR";
+        private void AppendAirWarning(System.Text.StringBuilder sb, Citizen c)
+        {
+            if (!c.HeldByOrder) return;                      // the sim speaks for everyone else — see above
+            var p = c.Pos;
+            if (!_sim.World.InBounds(p)) return;
+            if (_sim.Rooms.RoomIdAt(_sim.World, p) == RoomState.DoorMarker) return; // a doorway is not a vacuum
+            if (AtmosphereSafety.IsBreathable(_sim, p)) return;
+            sb.Append(AirWarningClause);
         }
 
         /// <summary>
