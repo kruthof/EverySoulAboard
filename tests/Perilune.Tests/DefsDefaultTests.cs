@@ -43,6 +43,37 @@ namespace Perilune.Tests
             Assert.That(D.RadiatorRejectKW, Is.EqualTo(5f));
         }
 
+        /// <summary>M3-10. Same shape as the radiator's pin above, for the field that is its exact
+        /// mirror: the const and the graph must agree, AND the graph must hold the documented
+        /// literal — two assertions, because "equal to the const" alone is satisfied by both of them
+        /// drifting together.</summary>
+        [Test]
+        public void HeaterOutput_MatchesConst()
+        {
+            Assert.That(D.HeaterOutputKW, Is.EqualTo(MachineDefs.HeaterOutputKW));
+            Assert.That(D.HeaterOutputKW, Is.EqualTo(5f));
+        }
+
+        /// <summary>M3-10. The heater's own machine row, written out by hand — the table comparison
+        /// elsewhere in this file proves the three transcriptions AGREE, and this proves they agree
+        /// on the values the package actually decided.</summary>
+        [Test]
+        public void HeaterRow_MatchesDocumentedDefaults()
+        {
+            var h = D.Machines[(int)DeviceKind.Heater];
+            Assert.That(h.DrawKW, Is.EqualTo(1.0f), "draw — sized against the wreck's measured LifeSupport headroom");
+            Assert.That(h.GenerationKW, Is.EqualTo(0f));
+            Assert.That(h.Tier, Is.EqualTo(PowerTier.LifeSupport), "Industry is measurably SHED on the shipped wreck");
+            Assert.That(h.Blocks, Is.False);
+            Assert.That(h.HeatKW, Is.EqualTo(0f),
+                "heat MUST be 0: this column is unconditional, un-condition-scaled WASTE heat, and a "
+                + "heater's output is its product — it rides heater_output_kw instead, and a non-zero "
+                + "value here would double-count and would ignore Device.EffectiveRate");
+            Assert.That(h.WearPerHour, Is.EqualTo(0.006f), "the Radiator's rate — same class of plant");
+            Assert.That(h.MaintainBelow, Is.EqualTo(0.4f));
+            Assert.That(h.FailBelow, Is.EqualTo(0.10f));
+        }
+
         [Test]
         public void Thermal_MatchesDocumentedDefaults()
         {
@@ -52,6 +83,10 @@ namespace Perilune.Tests
             Assert.That(D.Thermal.HeatCapacityJPerKPerTile, Is.EqualTo(53_000.0));
             Assert.That(D.Thermal.CitizenHeatW, Is.EqualTo(100.0));
             Assert.That(D.Thermal.RadiatorFloorK, Is.EqualTo(283.15));
+            Assert.That(D.Thermal.HeaterCeilingK, Is.EqualTo(294.15));   // M3-10, 21 °C
+            Assert.That(D.Thermal.HeaterCeilingK, Is.GreaterThan(D.Thermal.RadiatorFloorK),
+                "the heater's ceiling must sit ABOVE the radiator's floor, or a room with both would "
+                + "oscillate between two devices fighting each other every pass");
             Assert.That(D.Thermal.DoorConductOpenWPerK, Is.EqualTo(40.0));
             Assert.That(D.Thermal.DoorConductClosedWPerK, Is.EqualTo(8.0));
             Assert.That(D.Thermal.HullLossWPerKelvinPerTile, Is.EqualTo(0.09));

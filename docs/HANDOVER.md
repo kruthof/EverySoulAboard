@@ -9,12 +9,15 @@ citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resol
 ## Current state (2026-08-01 session C, continued — SEVEN merges, the queue stands at M3-10)
 
 **Gate on `main` (`4a46ee7`): 1690 dotnet + 1180 node, twin hashes MATCH at P1
-`13674ebc4f8a14a9`** (re-measure before quoting). ⚠️ **PIN M3-e EXECUTED, tag `pin/m3-e`
-(M3-15, P1 only, `25f604dd61b221fb` → `13674ebc4f8a14a9`)**: NOT the gate — measured INERT
-on P1 via the full 2×2 — but the one Terminal (`term_main`) authored into `BuildScenario`
-so the scenario fixture's LS watch keeps firing through OD-N's gate. Cause: the charter's
-neutrality survey covered perilune/slice/grid/wreck and never P1's OWN fixture. P2–P5
-held. Next pin row: M3-b (M3-7).
+`13674ebc4f8a14a9`** (re-measure before quoting). ⚠️ **PIN M3-d EXECUTED (tag `pin/m3-d`
+pending at merge) — M3-10, P4 AND P5 ONLY: P4 `0c5ddbc07e41f07d` → `77a7a8a9e967eab4`,
+P5 `09900b9a44119272` → `edf1577c32f14e55`**, cause `DeviceKind.Heater = 28` (which grows
+`Machines` AND `Recipes`) plus the two appended def scalars `heater_output_kw` /
+`thermal.heater_ceiling_k`; both measured twice through two loaders. **P1/P2/P3 MEASURED
+HELD** — the `./ci.sh` run is the proof; the guards are alarms, in two halves because P1 is
+NOT a `ShipPlan` (it is `hosts/scenario`'s hand-built `BuildScenario`, scanned at the source by
+`P1sOwnFixtureAuthorsNoHeater`; the plan census covers P2/P3/grid/wreck). `ci.sh` unchanged.
+Next pin row: M3-b (M3-7).
 
 **Session mode**: owner authorized an autonomous run (away ~8 h from ~22:00 07-31; back
 and said "continue"); orchestrator merges the M3 queue in order, one Opus implementer +

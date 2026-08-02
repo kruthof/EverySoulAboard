@@ -167,6 +167,36 @@ namespace Perilune.Tests
             Assert.That(d.RadiatorRejectKW, Is.EqualTo(7.5f));
         }
 
+        /// <summary>M3-10 — the heater's two new keys, one per section. Both are asserted to land AND
+        /// to leave their neighbour alone: a `case` bolted onto the wrong branch of a switch parses
+        /// happily and writes the field next door.</summary>
+        [Test]
+        public void HeaterOutputScalar_InMachinesSection_Lands()
+        {
+            var d = Parse("[machines]\nheater_output_kw = 12.5\n", out var problems);
+            Assert.That(problems, Is.Empty);
+            Assert.That(d.HeaterOutputKW, Is.EqualTo(12.5f));
+            Assert.That(d.RadiatorRejectKW, Is.EqualTo(5f), "the radiator's scalar must be untouched");
+        }
+
+        [Test]
+        public void HeaterCeilingKey_InThermalSection_Lands()
+        {
+            var d = Parse("[thermal]\nheater_ceiling_k = 300.5\n", out var problems);
+            Assert.That(problems, Is.Empty);
+            Assert.That(d.Thermal.HeaterCeilingK, Is.EqualTo(300.5));
+            Assert.That(d.Thermal.RadiatorFloorK, Is.EqualTo(283.15), "the radiator's floor must be untouched");
+        }
+
+        [Test]
+        public void HeaterRow_InMachinesTable_OverridesEntireRow()
+        {
+            var d = Parse("[machines]\nHeater 2.5 0 Industry false 0 0.006 0.4 0.1\n", out var problems);
+            Assert.That(problems, Is.Empty);
+            Assert.That(d.Machines[(int)DeviceKind.Heater].DrawKW, Is.EqualTo(2.5f));
+            Assert.That(d.Machines[(int)DeviceKind.Heater].Tier, Is.EqualTo(PowerTier.Industry));
+        }
+
         [Test]
         public void ValidRecipeRow_Lands()
         {

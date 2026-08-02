@@ -2376,7 +2376,7 @@ leads, not certainties; grep broadly.**
 
 | # | value | why soon | where to look |
 |---|---|---|---|
-| 1 | room heat model + heater/cooler outputs and wattages (§9.2–9.3) | **M3-10 builds a heater** — these become def fields | `CompHeatPusher`, `CompTempControl`, `Building_Cooler`, `RoomTempTracker`; wiki *Temperature* |
+| 1 | room heat model + heater/cooler outputs and wattages (§9.2–9.3) | ⭐ **M3-10 LANDED 2026-08-02 and did NOT port these** — its 5 kW output mirrors Perilune's own radiator and its 21 °C ceiling mirrors `radiator_floor_k`; RimWorld's wattage and its per-device player setpoint were deliberately not carried over, so **this row is still open and nothing downstream depends on it**. ⛔ M3-10's first draft cited §9.3 for a *number* the section does not state — verify before any future lane quotes one. | `CompHeatPusher`, `CompTempControl`, `Building_Cooler`, `RoomTempTracker`; wiki *Temperature* |
 | 2 | growth-rate curve: light threshold, the rest window (does a sun lamp bypass it?), fertility table (§10.1–10.2) | food-chain work touches hydroponics defs | `Plant.cs` (`GrowthRateFactor_*`); wiki *Plants* |
 | 3 | tend-quality formula + medicine potency multipliers (§13.2) | first health-model charter | `TendUtility`, `Medicine`; wiki *Doctoring* |
 | 4 | raid-points formula: wealth weights, adaptation, cap (§14.2) | Director-analogue discussions will quote it | `StorytellerUtility.DefaultThreatPointsNow`; wiki *Raid points* |

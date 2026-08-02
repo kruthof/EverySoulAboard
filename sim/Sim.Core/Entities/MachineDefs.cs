@@ -136,6 +136,70 @@ namespace Perilune.Sim
             // The cost of the opt-out, stated: a pod now has NO free-jury-rig band at all, so it
             // has left `WreckThresholdTests`'s narrow-band set. Nothing repairs a pod today.
             /* CryoPod         */ new(0.2f,  0f,  PowerTier.LifeSupport, false, 0.15f, 0.001f, 0f, 0.10f),
+            // M3-10 — THE HEATER. The Radiator's row, sign-flipped, and every column is a decision:
+            //
+            // heat 0 IS NOT AN OVERSIGHT, it is the same choice the Radiator's row makes. The
+            // `heat` column is WASTE heat, emitted unconditionally by ThermalSystem's generic arm
+            // and NOT scaled by Device.EffectiveRate. A heater's heat is its PRODUCT, not its
+            // waste, so it rides `heater_output_kw` through ThermalSystem's own arm — which is
+            // condition-scaled (the M2-12 generation precedent: a worn machine produces less).
+            // Putting the output in this column instead would have made a heater at Condition 0.11
+            // exactly as strong as one at 1.00, and would have double-counted against the ceiling.
+            //
+            // ⛔⚠ TIER IS LifeSupport AS A SHIPPED INTERIM, AND THE QUESTION IS OPEN ON THE OWNER.
+            // The first version of this row justified LifeSupport with a claim labelled MEASURED
+            // that was FALSE, and it is quoted rather than deleted because the way it was wrong is
+            // the lesson: "--ship wreck runs 9.78 kW against LifeSupport 6.20 / Defense 0.90 /
+            // Industry 6.50 / Comfort 1.20, so Industry and Comfort are ALREADY SHED and still shed
+            // on day 10 => an Industry heater would be DEAD ON ARRIVAL".
+            //
+            // THE DEMAND FIGURES ARE RIGHT AND THE CONCLUSION IS WRONG, because the tier walk does
+            // NOT decide against generation. PowerSystem.cs:246-247 sets
+            // `supply = generation + batteryKW` where `batteryKW = storedKWh * 3600` — a battery
+            // holding ANY charge bridges the whole ship for a pass — so the wreck runs a BROWNOUT
+            // SAWTOOTH and a single end-of-run sample of Powered reads whichever phase it landed in.
+            // The false claim was that one sample. RE-MEASURED PROPERLY, driven, unattended, ten
+            // sim-days, sampling every 10 sim-minutes (1 440 samples):
+            //     recycler_1 / machineshop_1 / fabricator_1  (Industry, wired)   36.1 % powered
+            //     growbed_1 / growbed_2 / telescope_1 / machineshop_2            NetworkId 0 — never
+            //         wired at all, so their 0 % is about the ship's cabling and not about tiers
+            //     the eight deck-0 doors (Defense, wired)                       100.0 % powered
+            // => AN INDUSTRY-TIER HEATER WOULD RUN AT ROUGHLY 36 % DUTY: WEAK, NOT INERT. That is a
+            // different device — a heater that stops every few minutes and lets the compartment
+            // drift back down — and whether the player should get the weak-but-safe one or the
+            // always-on-but-dangerous one is a DESIGN choice, not an arithmetic result. It is FILED
+            // for the owner (docs/MECHANICS.md §13.36) with these numbers. LifeSupport ships as the
+            // interim because it is the smallest reversible decision: one word in three rows.
+            //
+            // THE COST OF LifeSupport, MEASURED BY DRIVING IT rather than computed. The tier is
+            // served ALL-OR-NOTHING (PowerSystem.cs:253-265). Three sim-days per arm, 432 samples,
+            // N heaters added to a COPY of the wreck's plan, watching the wired deck-0 doors
+            // (Defense) and machineshop_1 (Industry):
+            //     N=0   doors 100.0 %   machineshop 35.9 %   LifeSupport 95.7 %
+            //     N=1   doors 100.0 %   machineshop 15.5 %   LifeSupport 95.8 %
+            //     N=2   doors 100.0 %   machineshop 16.4 %   LifeSupport 96.0 %
+            //     N=3   doors  84.7 %   machineshop  3.7 %   LifeSupport 96.2 %   <- Defense sheds
+            //     N=4   doors  31.0 %   machineshop 21.3 %   LifeSupport 81.1 %   <- LIFE SUPPORT sheds
+            // => TWO heaters are free of tier damage; the THIRD starts shedding DEFENSE (the eight
+            // deck-0 doors); the FOURTH starts shedding LIFE SUPPORT itself. The earlier note said
+            // three were comfortable and the fourth took the vents — it understated the cost by one
+            // tier, because it computed the ladder from the demand figures instead of driving it.
+            // What every arm DOES pay from N=1 is Industry and Comfort duty (36 % -> ~16 %), which
+            // is the honest headline: a heater is bought with the crafting benches' uptime.
+            // Repairing the solar wings is what buys the next one. Not a hidden trap: PowerSystem
+            // publishes BrownoutChangedEvent when it flips.
+            //
+            // draw 1.0 kW against 5.0 kW of output is NOT a resistive element and is not claimed
+            // to be. It is the sign-flip of the abstraction this table already ships: a Radiator
+            // moves 5 kW OUT for 0.2 kW. And per ECONOMY.md §1.2 a `draw` is a tax on the brownout
+            // sawtooth charged around the clock (PowerSystem.IsWanting is state-blind, so an idle
+            // heater sitting at the ceiling still pays), which makes this column a pacing knob
+            // rather than a load. 1.0 kW is what makes the ladder above land where it does.
+            //
+            // wear 0.006/h + maint 0.40 + fail 0.10 are the Radiator's, unchanged: same class of
+            // thermal plant, so a heater joins the standing maintenance rule on the same terms and
+            // sits in the free-jury-rig band [wear.wreck_threshold 0.25, 0.40) the same way.
+            /* Heater          */ new(1.0f,  0f,  PowerTier.LifeSupport, false, 0f,    0.006f, 0.4f, 0.10f),
         };
 
         public static MachineDef Of(DeviceKind kind) => Table[(int)kind];
@@ -143,5 +207,19 @@ namespace Perilune.Sim
 
         /// <summary>Heat rejection capacity of a powered, operational radiator.</summary>
         public const float RadiatorRejectKW = 5f;
+
+        /// <summary>Heat a powered, operational <see cref="DeviceKind.Heater"/> pushes into its
+        /// room, kW, before <see cref="Device.EffectiveRate"/> scaling (M3-10).
+        ///
+        /// <para>THE MAGNITUDE IS THE RADIATOR'S, DELIBERATELY: the two devices are a matched
+        /// pair, so one heater cancels one radiator and a player can reason about a compartment
+        /// without arithmetic. It is also DRIVEN rather than guessed. A room's heat capacity is
+        /// TileCount × 53 kJ/K, and --ship wreck's compartments measure 40 / 60 / 86 tiles
+        /// (2.12 / 3.18 / 4.56 MJ/K). At 5 kW, net of the hull term, one heater lifts the 60-tile
+        /// reactor bay out of hypothermia (-14 C → above -10 C) in ~46 sim-minutes and to the
+        /// 21 C ceiling in ~7 sim-hours — 28 s and 4 min of wall clock at the web host's 100×,
+        /// which is what "in a playable time" has to mean on a ship this size. At the Radiator's
+        /// own 0.2 kW-class output it would have been days.</para></summary>
+        public const float HeaterOutputKW = 5f;
     }
 }

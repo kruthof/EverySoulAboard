@@ -127,7 +127,7 @@ picked from STATE rather than kind: `'K'` occupied, `'k'` open).
 | 49 | WALL LAMP | COSMETIC | decor `wall_lamp` | — | Glow decor; functional `Light` (8, `*`) placed separately. |
 | 50 | VIEWPORT | COSMETIC | decor `viewport` | — | Porthole to stars (Room Zoom right wall). |
 | 51 | WALL SCREEN | COSMETIC | decor `wall_screen` | — | Decorative display; not a MOSS `Terminal`. |
-| 52 | SPACE HEATER | FUNCTIONAL **[NEW]** | (new) Heater | — | ThermalSystem has `Radiator` (16, rejects heat) but **no** heat *source* device. A heater is a new kind. |
+| 52 | SPACE HEATER | FUNCTIONAL [exists] | Heater (28) | `E` → space-heater | ⭐ **M3-10 BUILT THE KIND THIS ROW ASKED FOR.** It read FUNCTIONAL **[NEW]** — *"ThermalSystem has `Radiator` (16, rejects heat) but no heat source device"* — from the day the set was drawn until 2026-08-01. `DeviceKind.Heater = 28` now exists, `Glyphs.ForDevice` gives it `'E'`, and this piece claims that glyph directly. ⚠️ The Radiator's `GLYPH_SUBSTITUTE['=']` borrow of this same piece is UNCHANGED, so two kinds draw this silhouette until the art lane gives the radiator its own. |
 | 53 | VENT FAN | COSMETIC | decor `vent_fan` | — | Decorative; airflow has no fan device (atmosphere is lumped-node). |
 | 54 | SHELF RACK | COSMETIC | decor `shelf_rack` | — | |
 | 55 | SUPPLY BARREL | COSMETIC | decor `supply_barrel` | — | |
@@ -223,8 +223,8 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 25 |
-| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 4 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 26 |
+| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
 | **FUNCTIONAL total** | **29** |
 | COSMETIC (view-only `decor`, non-hashed) | 21 |
 | MATERIAL (wall/floor tint) | 12 |

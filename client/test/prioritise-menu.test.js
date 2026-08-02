@@ -35,6 +35,7 @@ import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { Cmd } from '../src/wire/session.js';
 import {
   roomTileRect, U, DEVICE_KIND_NAMES, deviceKindName, itemForGlyph,
+  ROOM_TOOLS, paletteCommand,
 } from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { deviceDisplayName, prioritiseCrew, prioritiseOffer } from '../src/ui/prioritise-model.js';
@@ -64,7 +65,13 @@ test('the DeviceKind parse is NON-VACUOUS — it finds the whole enum, not a fra
   assert.ok(members.length >= 20,
     `parsed only ${members.length} DeviceKind members — the regex is matching a fragment`);
   assert.deepEqual(members[0], ['Door', 0]);
-  assert.ok(members.some(([n]) => n === 'CryoPod'), 'the parse must reach the appended tail');
+  // ⚠️ THE TAIL MEMBER, AND IT MUST BE THE ACTUAL TAIL. This read `CryoPod` until M3-10 appended
+  // `Heater = 28`, at which point it would still have passed while measuring nothing about the new
+  // last member — the exact shape of a guard that stops seeing the thing it was written to see.
+  assert.ok(members.some(([n]) => n === 'Heater'), 'the parse must reach the appended tail');
+  assert.deepEqual(members[members.length - 1], ['Heater', 28],
+    'the LAST member parsed must be the last member declared — this is what makes the check above '
+    + 'a statement about the tail rather than about some member that happens to exist');
 });
 
 // ⭐ THE ONE TABLE, PINNED BY DERIVATION. `DEVICE_KIND_NAMES` is a hand mirror of a C# enum, which is
@@ -571,6 +578,84 @@ function armedNow() {
   sent.length = 0;
   return yes;
 }
+
+// ═══════════════════════════════════════════ ⛔⭐ THE PLACE PAYLOAD, PINNED AT THE SEAM (M3-10)
+//
+// WHY THIS EXISTS, and it is not hypothetical. `roomzoom-view.js` sent `Cmd.place(pc.deviceKind, …)`
+// — the SIM ENUM MEMBER (`Bed`, `Heater`) — where `GameSession.TryFurnitureKind` switches on the
+// WIRE TOOL STRING (`bunk`, `heater`). `TryFurnitureKind` fell to `default`, `HandlePlace` returned,
+// and because a refused placement is a SILENT no-op by design, EVERY furniture placement on the
+// standard surface did nothing and said nothing. MEASURED in the running game with the shipped
+// `bunk` tool: two clicks on clear floor of the wreck's reactor bay, device census byte-identical.
+//
+// ⚠️ THE OLD COVERAGE WAS `o.cmd === 'place'` AND NOTHING ELSE — the verb was present, wired, tested
+// and INERT. CLAUDE.md trap 4 says pin HOW an api was called by recording the ARGUMENT at the seam;
+// `armedNow()` above is the surviving example of the weaker form, kept because its job is only "did
+// anything go out at all".
+//
+// ⚠️ IT IS A DERIVATION, NOT A TRANSCRIPTION. The accepted vocabulary is parsed out of
+// `GameSession.TryFurnitureKind`'s own switch, so a host that renames a tool string reddens this
+// instead of silently disabling a palette button. Comment-stripped with the shared `codeOnly`
+// (trap 1) and carrying its own non-vacuity floor.
+const GAMESESSION_CS = readFileSync(join(REPO, 'hosts/web/GameSession.cs'), 'utf8');
+
+/** The `case "<tool>": kind = DeviceKind.X;` labels of `TryFurnitureKind`, as {tool: EnumMember}. */
+function parseFurnitureKinds(src) {
+  const code = codeOnly(src);
+  // ⚠️ THE DEFINITION, NOT THE CALL SITE. `indexOf('TryFurnitureKind')` finds `HandlePlace`'s call
+  // first and the switch is 300 lines further down; the first draft of this parse did exactly that
+  // and answered ZERO tools — which the non-vacuity floor below caught, doing its job.
+  const i = code.indexOf('bool TryFurnitureKind');
+  assert.ok(i > 0, 'TryFurnitureKind is gone from hosts/web/GameSession.cs — this guard has rotted');
+  const body = code.slice(i, i + 2000);
+  const out = {};
+  for (const m of body.matchAll(/case\s+"([a-z]+)"\s*:\s*kind\s*=\s*DeviceKind\.(\w+)\s*;/g)) out[m[1]] = m[2];
+  return out;
+}
+
+test('the TryFurnitureKind parse is NON-VACUOUS — it finds the whole switch', () => {
+  const k = parseFurnitureKinds(GAMESESSION_CS);
+  assert.ok(Object.keys(k).length >= 9,
+    `parsed only ${Object.keys(k).length} furniture tool strings — the regex is matching a fragment`);
+  assert.equal(k.bunk, 'Bed', 'the oldest row must still parse');
+  assert.equal(k.heater, 'Heater', 'and the newest (M3-10) must too');
+});
+
+test('every FUNCTIONAL palette row sends a `kind` the host actually switches on', () => {
+  const accepted = parseFurnitureKinds(GAMESESSION_CS);
+  const functional = ROOM_TOOLS.map((t) => [t, paletteCommand(t)]).filter(([, pc]) => pc.cls === 'functional');
+  assert.ok(functional.length >= 7, `only ${functional.length} functional palette rows — fixture shrank`);
+  for (const [tool, pc] of functional) {
+    assert.ok(Object.prototype.hasOwnProperty.call(accepted, pc.kind),
+      `the ${tool.toUpperCase()} tool sends kind="${pc.kind}", which GameSession.TryFurnitureKind does `
+      + `NOT accept (it takes ${JSON.stringify(Object.keys(accepted))}). HandlePlace would return and `
+      + 'the click would do nothing, silently — the exact defect M3-10 measured in the running game.');
+    assert.equal(accepted[pc.kind], pc.deviceKind,
+      `the ${tool.toUpperCase()} tool's wire string "${pc.kind}" maps host-side to DeviceKind.`
+      + `${accepted[pc.kind]}, but the palette row calls it "${pc.deviceKind}". The two vocabularies `
+      + 'have drifted; a click would place the WRONG device.');
+  }
+});
+
+// MUTATION: send `pc.deviceKind` instead of `pc.kind` in `roomzoom-view.js`'s functional branch ⇒
+// this fails and names the tool. That is the shipped bug, reproduced.
+test('a click with a FUNCTIONAL tool armed sends the palette tool string, not the enum name', () => {
+  prime([ADA], null);
+  const accepted = parseFurnitureKinds(GAMESESSION_CS);
+  for (const tool of ['lamp', 'bunk', 'heater']) {
+    arm(tool);
+    sent.length = 0;
+    fire(canvas(), 'click', atTile(WING));
+    const place = orders().find((o) => o.cmd === 'place');
+    assert.ok(place, `${tool.toUpperCase()} armed: no place command went out at all`);
+    assert.equal(place.kind, paletteCommand(tool).kind,
+      `${tool.toUpperCase()} sent kind="${place.kind}"`);
+    assert.ok(Object.prototype.hasOwnProperty.call(accepted, place.kind),
+      `${tool.toUpperCase()} sent kind="${place.kind}", which the host does not accept — the click `
+      + 'is a silent no-op in the shipping game');
+    arm(tool); // disarm
+  }
+});
 
 test('the rig really drives the surface (non-vacuity floor for every leg below)', () => {
   prime([ADA], null);

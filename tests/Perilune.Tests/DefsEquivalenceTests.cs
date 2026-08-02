@@ -72,6 +72,13 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.Light, new Int3(18, 3, 0), "light_a");
             sim.AddDevice(DeviceKind.Radiator, new Int3(20, 1, 0), "radiator_a");
             sim.AddDevice(DeviceKind.Radiator, new Int3(7, 1, 0), "radiator_b");
+            // M3-10 — a HEATER, wired off the conduit directly above it. It is here so this file's
+            // whole point extends to the heater's two new def fields: if `machines.def`'s Heater row
+            // or `thermal.def`'s heater_ceiling_k disagreed with CreateDefault, the twins' room
+            // temperatures (and therefore StateHash) would diverge inside the long run. Without a
+            // heater in the scenario those fields would be folded into the checksum and read by
+            // nothing here — pinned by a hash, which is not pinned at all.
+            sim.AddDevice(DeviceKind.Heater, new Int3(19, 3, 0), "heater_a");
             sim.WastewaterLiters = 150f;
 
             sim.AddItem(ItemKind.Scrap, 6, new Int3(17, 3, 0)); // feed the fabricator

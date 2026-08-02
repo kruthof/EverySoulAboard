@@ -48,6 +48,33 @@ namespace Perilune.Sim
                          // `Name` (who is inside), `Condition` (how badly the raid treated it),
                          // `Progress` (the cycle). NO new Device field — see docs/MECHANICS.md
                          // §13.27 (identity) and §13.29 (the cycle).
+        // M3-10. Appended at the END of the enum, never inserted.
+        Heater = 28,     // pushes heat INTO its room while powered, operational and below
+                         // Thermal.HeaterCeilingK. The Radiator's mirror image and the FIRST
+                         // device in the game that can raise a room's temperature on purpose —
+                         // until this row every heat source in the sim was waste (MachineDef.HeatKW)
+                         // or a body (Thermal.CitizenHeatW), and neither is a verb.
+                         //
+                         // WHY IT IS NOT COSMETIC: AtmosphereSafety.IsBreathable counts THERMAL
+                         // (SafetySystem.cs:17-18), so a compartment below needs.def
+                         // hypothermia_c (-10 C) refuses ALL work through
+                         // WorksiteSafety.CanStageWorkerAt. MEASURED on --ship wreck, unattended,
+                         // ten sim-days: the REACTOR BAY (room 6) crosses -10 C on day 9
+                         // (-10.98 C, IsBreathable False) and the spine reads -9.80 C on day 10
+                         // with the same slope. That is docs/MECHANICS.md §13.2 / §13.22e driven
+                         // and dated: the ship's own survivable core stops being workable, and
+                         // before this row NOTHING in the game could answer it.
+                         //
+                         // NO NEW Device FIELD. A heater is stateless beyond what every device
+                         // already carries — Powered (PowerSystem), Condition/EffectiveRate
+                         // (wear) and Pos. The ceiling is a def scalar, not a per-device target:
+                         // RimWorld's heater has a player-settable target temperature
+                         // (docs/design/rimworld-reference.md §9.3 — ⚠️ the SHAPE only; the
+                         // reference states no number, and its own §21 ledger flags §9.2–9.3
+                         // UNVERIFIED) and that setting is
+                         // DELIBERATELY NOT PORTED here — one fixed ceiling, stated in
+                         // thermal.def, because a per-device setpoint is a saved+hashed field and
+                         // a UI, and this package is the DEVICE. See docs/MECHANICS.md §13.36.
     }
 
     /// <summary>Brownout shed order: lowest tier is shed first (TDD §3.7).</summary>

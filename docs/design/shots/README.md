@@ -9,6 +9,58 @@ Regenerate with the tool named beside each set — never hand-edit, never crop b
 
 ---
 
+## `heater-*` — THE SHIP CAN BE WARMED: place a heater, the compartment climbs (2026-08-02, M3-10)
+
+Tool: **`client/tools/heater-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.
+
+```
+node client/tools/heater-shot.mjs --prep          # temp defs overlay, prints the host command
+<the printed host command>                        # and beside it: python3 client/serve.py 8461
+node client/tools/heater-shot.mjs --out docs/design/shots
+```
+
+⚠️ **THE VERDICTS COME FROM AN INDEPENDENT SOCKET.** The tool opens its own WebSocket and reads the
+`rooms` channel's own `tempK`, so "the temperature climbed" is the SIM's number rather than a label
+the client painted. The DOM supplies the gestures and the pictures only. It exits non-zero on any
+failed check.
+
+⚠️⚠️ **TWO THINGS ARE DRIVEN AND NOT PLAYED, both stated in the tool's own header.**
+**(A) THE PRICE** — `build.def device_place_cost = 3` Parts and the wreck authors ONE, which
+`MaintenanceSystem` spends unattended inside the first sim-day; `--prep` writes a temporary defs
+overlay with `device_place_cost = 0` and **nothing else changed**. ⇒ **FILED: on the shipped wreck a
+heater is REACHABLE but not AFFORDABLE at boot.** **(B) THE COLD** — the compartment has to *be* cold
+first, so the tool fast-forwards with the game's own «/» speed stepper and waits. No ship is edited,
+no state injected.
+
+* `heater-01-boot-overview.png` — the first screen, for the before/after pair.
+* `heater-02-cold-overview.png` — after the fast-forward. The REACTOR bay is the coldest pressurised
+  compartment on deck 0 at **5.78 °C**, reached by waiting.
+* `heater-03-palette-with-heater.png` — the Room Zoom palette, **18 tools**, HEATER between PLANT and
+  DIG. The tool asserts every button is inside the palette box: this bar has clipped before.
+* `heater-04-heater-armed.png` / `heater-05-heater-placed.png` — armed, then one click on (1,11).
+* `heater-06-heater-roomzoom-crop.png` — ⭐ **the piece.** `ITEMS['space-heater']` draws as a real
+  fixture with its glowing elements, **not** the VS-Z-25 dashed chip carrying a raw `E`. That piece
+  has read `deviceKind: 'Heater'` since the warm set was drawn and was unreachable art until
+  `DeviceKind.Heater = 28` existed. ⚠️ **The RADIATOR still borrows the same piece
+  (`GLYPH_SUBSTITUTE['=']`), so two kinds now draw this silhouette — an OWNER call on art, filed.**
+* `heater-07-heated-overview.png` — the same compartment at **14.62 °C** after 60 s at 100×, against
+  a control compartment that moved 1.74 °C in the same run (a 5.1× ratio; the tool asserts ≥ 5×,
+  because on this ship the neighbours are *not* monotonic — `wreck_spine_0` rose between sim-days 2
+  and 3 in the unattended census, so "the control fell" would have been a coin flip).
+
+⛔ **THE RUN THAT FOUND A SHIPPED BUG.** The first three passes reported `0 -> 1` heaters as
+`0 -> 0`: `roomzoom-view.js` sent `Cmd.place(pc.deviceKind, …)` — the sim enum member `Heater`/`Bed`
+— where `GameSession.TryFurnitureKind` switches on the wire tool string `heater`/`bunk`, so
+`HandlePlace` returned and the click did nothing, **silently, for every furniture tool on the
+standard surface**. Driven control with the shipped `bunk` tool: two clicks on clear floor, device
+census byte-identical. Fixed in M3-10's commit and pinned by derivation off `GameSession.cs`'s own
+switch (`client/test/prioritise-menu.test.js`). The rig was also wrong twice on its own account —
+it copied a DRAG from erase-shot's STRIP leg (HEATER is `functional`, not swept, so the placement
+rides `onCanvasClick`) and assumed `xMidYMid` letterboxing instead of importing the client's own
+`roomFit`. Both are recorded in the tool.
+
+---
+
 ## `m1i-locker-*` — THE DAMAGE-CONTROL LOCKER: the opening room changed (2026-07-29, M1-I)
 
 Tool: **`client/tools/wreck-shot.mjs`** (the wreck's existing rig — no new tool was written).

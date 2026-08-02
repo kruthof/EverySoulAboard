@@ -331,7 +331,9 @@ const palBox = await evalJson(`(()=>{const e=document.getElementById('rz-palette
 log('  palette box:', JSON.stringify(palBox));
 const clipped = await evalJson(`(()=>{const p=document.getElementById('rz-palette');const pr=p.getBoundingClientRect();const out=[];for(const b of p.querySelectorAll('.rz-tool')){const r=b.getBoundingClientRect();if(r.right>pr.right+0.5||r.left<pr.left-0.5||r.bottom>pr.bottom+0.5||r.top<pr.top-0.5||r.width===0)out.push(b.dataset.rztool);}return out;})()`);
 check(Array.isArray(clipped) && clipped.length === 0, `every palette button is inside the palette box (clipped: ${JSON.stringify(clipped)})`);
-check((await evaluate(`document.querySelectorAll('#rz-palette .rz-tool').length`)) === 17, 'the palette paints 17 tools');
+// 17 -> 18: M3-10 added HEATER. This harness is not in ./ci.sh, so a stale number here would
+// have gone unnoticed until the next person ran it — moved in the same commit as the tool.
+check((await evaluate(`document.querySelectorAll('#rz-palette .rz-tool').length`)) === 18, 'the palette paints 18 tools');
 check(!!(await centre('[data-rztool="erase"]')), 'the palette carries an ERASE button');
 const palCrop = await evalJson(`(()=>{const e=document.getElementById('rz-palette');const r=e.getBoundingClientRect();const pad=8;return {x:Math.max(0,r.x-pad),y:Math.max(0,r.y-pad),width:r.width+pad*2,height:r.height+pad*2};})()`);
 if (palCrop) await png('20-palette-17-tools.png', palCrop);

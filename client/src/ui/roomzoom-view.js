@@ -1271,7 +1271,23 @@ function onCanvasClick(e) {
   const deck = _focus.deck;
   if (pc.cls === 'functional') {
     // IX-Z-21/53 — Cmd.place lands with the sim build pass; call it DEFENSIVELY.
-    if (typeof Cmd.place === 'function') { _send(Cmd.place(pc.deviceKind, tile.x, tile.y, deck)); pulse(tile, false); nudgeOnIntent(); }
+    // ⛔⭐ `pc.kind`, NOT `pc.deviceKind` — MEASURED IN THE RUNNING GAME (M3-10, 2026-08-02), and it
+    // was a LIVE, SHIPPED, TOTAL failure of this verb on the standard surface. Every `PALETTE_CMD`
+    // functional row carries TWO vocabularies: `kind` is the WIRE string
+    // (`bunk|desk|chair|locker|plant|lamp|heater`) that `GameSession.TryFurnitureKind` switches on
+    // and that `wire/session.js`'s own `Cmd.place` doc names, and `deviceKind` is the SIM ENUM
+    // MEMBER (`Bed`, `Desk`, `Heater`) the ghost/erase paths speak. This line passed the second
+    // where the host expects the first, so `TryFurnitureKind("Bed")` fell to `default` and
+    // `HandlePlace` returned — and a refused placement is a SILENT no-op by design, so the click
+    // did nothing, said nothing, and looked exactly like a tile the sim had rejected.
+    // ⚠️ IT WAS NOT CAUGHT BECAUSE NO TEST READ THE PAYLOAD: `prioritise-menu.test.js` asserted
+    // `o.cmd === 'place'` and never its `kind`. That is CLAUDE.md trap 4 (pin HOW an API was called
+    // by recording the argument at the seam) and the "verb parity is NOT sufficient" rule — the
+    // verb was present, wired, tested, and INERT. Driven proof it was general and not a heater
+    // problem: with the shipped `bunk` tool armed, two clicks on clear floor of the wreck's reactor
+    // bay left the room's device census byte-identical. Now pinned by derivation off
+    // `GameSession.cs`'s own switch in `prioritise-menu.test.js`.
+    if (typeof Cmd.place === 'function') { _send(Cmd.place(pc.kind, tile.x, tile.y, deck)); pulse(tile, false); nudgeOnIntent(); }
     else { toast(TOOL_LABEL[_armed] + ' — PLACEMENT LANDS WITH THE SIM BUILD PASS'); pulse(tile, false); }
   } else if (pc.cls === 'cosmetic') {
     _decor = addDecor(_decor, deck, tile.x, tile.y, pc.itemId); // IX-Z-23 view-only, local

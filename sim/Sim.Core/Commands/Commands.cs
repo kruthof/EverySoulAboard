@@ -666,6 +666,16 @@ namespace Perilune.Sim
                 case DeviceKind.GrowBed:
                 case DeviceKind.MedBed:
                 case DeviceKind.Table:
+                // ⭐ M3-10 — THE HEATER, AND IT IS THE POINT OF THE PACKAGE RATHER THAN A ROW ON A
+                // LIST. A heater the player cannot place is a def entry: the ship freezes, the
+                // compartment refuses work, and the only device that answers it would exist solely
+                // for a level author. It is here on the same footing as Light and GrowBed, which
+                // are already functional machines the player builds — the whitelist's "no
+                // life-support" prose above is about the ship's AUTHORED plant (vents, scrubbers,
+                // reactors), not about tier. Being here also makes it REMOVABLE:
+                // RemoveDeviceCommand gates on this same predicate, so a heater put in the wrong
+                // compartment can be taken back for the usual Parts salvage.
+                case DeviceKind.Heater:
                     return true;
                 default:
                     return false;

@@ -144,7 +144,11 @@ namespace Perilune.Sim
         private static readonly DeviceKind[] WaterKinds =
             { DeviceKind.WaterTank, DeviceKind.Reclaimer, DeviceKind.IceMelter };
         private static readonly DeviceKind[] HydroKinds = { DeviceKind.GrowBed };
-        private static readonly DeviceKind[] ThermalKinds = { DeviceKind.Radiator };
+        // M3-10 puts the Heater in THERMAL beside the Radiator, and for the row's own stated reason:
+        // group membership is a census of real hardware, and a heater that has worn below `fail` in
+        // a compartment the crew are trying to work in is a THERMAL fault in exactly the way a dead
+        // radiator is. The two are one pair of hardware pointing in opposite directions.
+        private static readonly DeviceKind[] ThermalKinds = { DeviceKind.Radiator, DeviceKind.Heater };
         private static readonly DeviceKind[] FabricationKinds =
             { DeviceKind.Fabricator, DeviceKind.MachineShop, DeviceKind.SalvageRecycler };
         private static readonly DeviceKind[] NavKinds = { DeviceKind.Telescope };
@@ -305,9 +309,11 @@ namespace Perilune.Sim
                     return "LOAD is total waste heat (powered operational machines plus crew body heat) "
                          + "divided by radiator rejection capacity. STATE reads the MEASURED room "
                          + "temperatures: any pressurised compartment outside the crew-damage band is "
-                         + "DEGRADED, any outside the 10-35 C comfort band is ATTEND. LIMIT: this ship loses "
-                         + "heat, it does not gain it. Radiators have a 10 C floor, hull loss does not, and "
-                         + "nothing deliberately heats a room. A high LOAD here does not mean the ship is hot.";
+                         + "DEGRADED, any outside the 10-35 C comfort band is ATTEND. LIMIT: LOAD counts "
+                         + "waste heat against radiators only. Since M3-10 a HEATER can put heat into a room "
+                         + "on purpose (5 kW, condition-scaled, capped at 21 C) and this ratio does not see "
+                         + "it at all, so a warm compartment can sit under a low LOAD. Radiators have a 10 C "
+                         + "floor and hull loss does not. A high LOAD here does not mean the ship is hot.";
                 case IdFabrication:
                     return "LOAD is powered, operational industry machines divided by all of them. STATE is "
                          + "the condition ladder over the same set. LIMIT: powered is not busy. No machine "
@@ -623,7 +629,8 @@ namespace Perilune.Sim
                   .Append(Fixed1(c.WasteHeatKW)).Append(" kW of waste heat against ")
                   .Append(Fixed1(c.RadiatorRejectKW)).Append(" kW of radiator capacity.");
                 if (c.ColdestC < sim.Defs.Needs.HypothermiaC)
-                    sb.Append(" This ship is LOSING heat, not gaining it — radiators stop at 10 C, hull loss does not.");
+                    sb.Append(" This ship is LOSING heat where it is not heated — radiators stop at 10 C, hull "
+                              + "loss does not. A HEATER (5 kW, capped at 21 C) is what answers a frozen compartment.");
             }
 
             var fault = Fault(sim, history, ThermalKinds);

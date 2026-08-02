@@ -235,11 +235,16 @@ joined the stack as an `IStatefulSystem`, so its `'CRYO'` `StateChecksum` seed f
 through that interface). All three moved together and the move is **FOLD-ONLY, measured**:
 with the same system registered and ticking but the interface dropped, all three read their
 old values (`81733e27709f36e4` / `482fd40c070b54e0` / `94c29d5f6408d91c`). The full record
-is §13.29. Before that: **M2-2** (PIN M2-e, 2026-07-30) — the work-type veto reads the grid
+is §13.29. **P4/P5 most recently moved by M3-10** (PIN M3-d, 2026-08-01): `DeviceKind.Heater = 28`
+grows `Machines` AND `Recipes`, and the package appends two def scalars (`heater_output_kw`,
+`thermal.heater_ceiling_k`) — P4 `0c5ddbc07e41f07d`→`77a7a8a9e967eab4`, P5
+`09900b9a44119272`→`edf1577c32f14e55`, both measured twice through two loaders. **P1/P2/P3 held**
+on a census: no pinned ship authors a heater (§13.36). Before that: **M2-2** (PIN M2-e, 2026-07-30) — the work-type veto reads the grid
 M2-1 stored, a behaviour change on every ship with working crew (scenario
 `c1bac287`→`81733e27`, slice `0dcbff3e`→`94c29d5f`; the perilune golden held — its two crew
-are `HoldPosition` and take no work). Defs checksum `0c5ddbc07e41f07d`, **held across M3-2**
-(no def field: the cryo cycle rate is a named constant) — (this is `SimDefs.Default.Checksum`, the
+are `HoldPosition` and take no work). Defs checksum `77a7a8a9e967eab4` since M3-10 (it read
+`0c5ddbc07e41f07d` from the wreck start through M3-2, which held it — no def field, the cryo cycle
+rate being a named constant) — (this is `SimDefs.Default.Checksum`, the
 compiled-default fingerprint the docs track — NOT the scenario host's rules-inclusive `defs:`
 print, which is a different value). The scenario + slice pins + defs checksum most recently moved
 with **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 + the crew-safety
@@ -4752,3 +4757,154 @@ OVER.** with `over:true`, and it STAYS → the FAULT LOG carries
 ⭐ The elected capsule was `pod_nakamura` rather than the boot-adjacent `pod_ozawa` **because Rell
 fled before she died** — the tie-break really is measured from where she fell.
 Shots: `docs/design/shots/emergency-thaw-{1-alive,2-grace,3-woken,4-ending,5-chronicle}.png`.
+
+---
+
+### 13.36 ⭐⭐ The ship can be WARMED — the first deliberate heat source, and the frontier stops ending at the heated core (M3-10 / PIN M3-d, 2026-08-01)
+
+**THE HOLE THIS CLOSES, DRIVEN AND DATED.** §13.2 and §13.22e both say the ship freezes and no
+authored value fixes it. Measured HERE, on `--ship wreck`, unattended, ten sim-days, sampling every
+sim-day: the **reactor bay (room 6) crosses `hypothermia_c` on DAY 9** — `-10.98 °C`,
+`AtmosphereSafety.IsBreathable` **False** — and the spine (room 5) reads `-9.80 °C` on day 10 with
+the same slope. Room 1 (the cryo bay) is the only compartment that holds, and it holds because
+twelve capsules' waste heat is propping it up. Because `WorksiteSafety.CanStageWorkerAt` resolves
+through `IsBreathable`, **the ship's own survivable core stops being workable on day 9** and every
+job in it silently stops being offered. Before this package nothing in the game could answer that:
+a radiator only takes heat OUT.
+
+**WHAT LANDED.** `DeviceKind.Heater = 28`, appended. `ThermalSystem` gained ONE arm — the
+radiator's, sign-flipped line for line: push `Defs.HeaterOutputKW` × `Device.EffectiveRate`, clamped
+so the room never passes `Thermal.HeaterCeilingK`, behind the same two `continue` gates every other
+kind goes through (`Powered`, `IsOperational`). `PlaceDeviceCommand.IsPlaceableFurniture` gained the
+kind and the Room Zoom palette gained a **HEATER** tool (17 → 18) — a heater the player cannot place
+is a def row.
+
+**THE NUMBERS, AND THE DRIVE THAT CHOSE THEM.**
+
+| value | what | why THAT number |
+|---|---|---|
+| `heater_output_kw` **5 kW** | pushed into the room, condition-scaled | the Radiator's own magnitude, so one heater cancels one radiator and a compartment can be reasoned about without arithmetic. DRIVEN: room capacity is `TileCount × 53 kJ/K` and the wreck's compartments measure 40 / 60 / 86 tiles, so 5 kW lifts the 60-tile reactor bay out of hypothermia in ~46 sim-minutes and to the ceiling in ~7 sim-hours — 28 s and 4 min of wall clock at the web host's 100×. At a 0.2 kW-class output it would have been days. |
+| `heater_ceiling_k` **294.15 K (21 °C)** | the cap | the exact mirror of `radiator_floor_k` 283.15 — 11 K of dead band, so a heater and a radiator in one room cannot fight pass by pass — and inside the 10–35 °C band the THERMAL row already calls comfortable. NOT comfort in purpose, though: `IsBreathable` is false ABOVE `heat_stroke_c` 45 °C too, and a 60-tile hall with 15 hull tiles sheds only ~390 W at 21 °C against 5 000 W in, so uncapped the device ends by refusing the work it was placed to allow. ⛔ **NOT attributed to RimWorld, and an earlier version of this row WAS** (*"21 °C is RimWorld's own default heater target"*): the reference states only that the target is **player-settable**, gives no number anywhere, and its own §21 verify ledger flags §9.2–9.3 **UNVERIFIED** with M3-10 named as the consumer. What it does support is the SHAPE — per-device and settable there, one ship-wide scalar here, because a setpoint is a saved+hashed field plus a UI. |
+| `draw` **1.0 kW**, tier **LifeSupport** | the power cost | ⛔ **A SHIPPED INTERIM — the tier is OPEN ON THE OWNER, and the measurement that used to settle it was FALSE.** See the correction box below. Driven, the three **wired** Industry machines run **36.1 %** of the time, so an Industry heater would be **weak, not inert**. 1.0 kW is what makes the shed ladder land where the box below records it. |
+| `heat` column **0** | waste heat | a heater's heat is its PRODUCT. The `heat` column is emitted unconditionally and is NOT scaled by `EffectiveRate`, so a heater there would be exactly as strong at Condition 0.15 as at 1.00 (the M2-12 generation precedent, pointing the other way) and would double-count against the ceiling. `Radiator` makes the same choice for the same reason. |
+| `wear` 0.006/h, `maint` 0.40, `fail` 0.10 | the service terms | the Radiator's, unchanged — same class of plant, same standing-maintenance terms, same free-jury-rig band `[0.25, 0.40)`. |
+
+⛔⛔ **THE TIER ARGUMENT WAS FALSE, AND THE CORRECTION IS THE INTERESTING PART.** This section
+shipped saying — labelled MEASURED — *"Industry and Comfort are ALREADY SHED at boot and still shed
+on day 10, so an Industry-tier heater would never once be powered: it would ship inert."* **The
+demand figures are right; the conclusion is wrong.** The tier walk does not decide against
+generation: `PowerSystem.cs:246-247` sets `supply = generation + batteryKW` with
+`batteryKW = storedKWh × 3600`, so a battery holding *any* charge bridges the whole ship for a pass
+and the wreck runs a **brownout SAWTOOTH**. The claim was a single end-of-run sample of `Powered`,
+which reads whichever phase it landed in. ⇒ **A number sampled once from an oscillator is not a
+measurement**, and `LastGenerationKW` (9.78 kW) is *generation*, not the supply the walk used.
+
+**RE-MEASURED, driven, unattended, 10 sim-days, sampling every 10 sim-minutes (1 440 samples):**
+
+| device | tier | wired? | powered |
+|---|---|---|---|
+| `recycler_1`, `machineshop_1`, `fabricator_1` | Industry | net 1 | **36.1 %** |
+| `growbed_1`, `growbed_2`, `telescope_1`, `machineshop_2` | Industry | **net 0** | 0 % — never cabled; not a tier fact |
+| the eight deck-0 doors | Defense | net 1 | **100 %** |
+
+⇒ **An Industry-tier heater would run at ~36 % duty: WEAK, NOT INERT** — a heater that stops every
+few minutes and lets the compartment drift back down. Weak-and-safe versus always-on-and-dangerous
+is a **design** choice, not an arithmetic result, so **the tier is FILED for the owner** (below) with
+these numbers. `LifeSupport` ships as the interim because it is the smallest reversible decision:
+one word in three rows.
+
+⚠️ **THE COST OF `LifeSupport`, MEASURED BY DRIVING IT rather than computed.** The tier is served
+ALL-OR-NOTHING (`PowerSystem.cs:253-265`). N heaters added to a **copy** of the wreck's plan, 3
+sim-days per arm, 432 samples:
+
+| heaters | deck-0 doors (Defense) | `machineshop_1` (Industry) | LifeSupport |
+|---:|---|---|---|
+| 0 | 100.0 % | 35.9 % | 95.7 % |
+| 1 | 100.0 % | 15.5 % | 95.8 % |
+| 2 | 100.0 % | 16.4 % | 96.0 % |
+| **3** | **84.7 %** ← Defense sheds | 3.7 % | 96.2 % |
+| **4** | 31.0 % | 21.3 % | **81.1 %** ← life support sheds |
+
+⇒ **Two heaters cost no tier anything; the THIRD sheds DEFENSE (the eight deck-0 doors); the FOURTH
+sheds LIFE SUPPORT itself.** The first version of this paragraph said three were comfortable and the
+fourth took the vents — **it understated the cost by one tier**, because it computed the ladder from
+the demand figures instead of driving it. What every arm pays from N=1 is **Industry and Comfort
+duty (36 % → ~16 %)**: a heater is bought with the crafting benches' uptime. Repairing the solar
+wings is what buys the next one — the intended lever, and `PowerSystem` publishes
+`BrownoutChangedEvent` when it flips, so it is not a silent trap. This is the same all-or-nothing
+cost `CryoPod`'s row already documents.
+
+**PIN M3-d — P4 AND P5 MOVED, P1/P2/P3 HELD (measured).**
+`P4 0c5ddbc07e41f07d → 77a7a8a9e967eab4` and `P5 09900b9a44119272 → edf1577c32f14e55`, each measured
+twice through two loaders. FOUR things move them for one enum member: the new `Machines` row (8
+columns), the `Recipes` entry that comes with it (`new RecipeDef[Machines.Length]` — 6 fields, all
+default, for an entry no crafting will ever use), and the two appended scalars. **P1/P2/P3 held, and
+the `./ci.sh` run IS that proof** — the guards below are a cheap alarm naming which fixture moved,
+never a second authority. They come in two halves because the pins do not share a shape: P2/P3 (and
+grid/wreck) are `ShipPlan`s, censused by `HeaterTests.NoPinnedShipAuthorsAHeater`; ⭐ **P1 is not a
+`ShipPlan` at all.** `ci.sh` runs `hosts/scenario --days 3 --seed 42` and `Program.cs:56` builds its
+sim with the hand-written `BuildScenario`, so P1's fixture is SOURCE and is scanned as source by
+`P1sOwnFixtureAuthorsNoHeater` (shared `CodeOnly`, plus an inclusion control and a
+commented-out-code control). ⚠️ An earlier version of this paragraph credited the plan census with
+covering P1 and named `ProceduralShips.Generate` as its builder — **false, and structurally so**:
+that generator stands behind no pin, and `Program.cs` was outside the census's reach entirely.
+
+⛔⭐ **AND IT FOUND A SHIPPED BUG ON THE WAY IN — `place` WAS INERT ON THE STANDARD SURFACE.**
+`roomzoom-view.js`'s functional branch sent `Cmd.place(pc.deviceKind, …)` — the SIM ENUM MEMBER
+(`Bed`, `Heater`) — where `GameSession.TryFurnitureKind` switches on the WIRE TOOL STRING (`bunk`,
+`heater`), which `wire/session.js`'s own `Cmd.place` doc and `GameSession.cs`'s own protocol comment
+both spell out. `TryFurnitureKind` fell to `default`, `HandlePlace` returned, and a refused
+placement is a SILENT no-op by design — so **every furniture tool on the Room Zoom palette did
+nothing and said nothing.** Found by M3-10's acceptance harness reporting `0 -> 0` heaters; proved
+GENERAL rather than heater-specific by a driven control with the shipped **`bunk`** tool (two clicks
+on clear floor of the wreck's reactor bay, device census byte-identical). ⚠️ **NOTHING SAW IT
+BECAUSE NOTHING READ THE PAYLOAD** — `prioritise-menu.test.js` asserted `o.cmd === 'place'` and never
+its `kind`: CLAUDE.md trap 4 (*pin HOW an API was called by recording the ARGUMENT at the seam*) and
+the *"verb parity is NOT sufficient"* rule, a verb present, wired, tested and INERT. Fixed here in
+one token and pinned by DERIVATION off `GameSession.cs`'s own switch, so a renamed tool string
+reddens instead of silently disabling a palette button. **BUNK, DESK, CHAIR, LOCKER, PLANT and LAMP
+all start working again in this commit.**
+
+**ACCEPTANCE, DRIVEN IN REAL CHROME** (`client/tools/heater-shot.mjs`, shots
+`docs/design/shots/heater-*.png`). Fast-forward with the game's own speed stepper until the reactor
+bay is the coldest pressurised compartment at **5.78 °C** → palette shows **18 tools**, HEATER among
+them, none clipped → one click places it (`0 -> 1` on the `devices` channel, read from an
+INDEPENDENT socket) → it draws as the real `space-heater` piece, not a dashed `E` chip → 60 s at
+100× takes the bay to **14.62 °C** while the control compartment moves 1.74 °C (a 5.1× ratio).
+⚠️ Two things are driven and not played, both disclosed in the tool's header: the temporary
+`device_place_cost = 0` overlay, and the fast-forward itself.
+
+**WHAT THIS DOES NOT DO — filed, not fixed**
+
+- ⛔⭐ **THE HEATER'S POWER TIER IS AN OWNER CALL, and it is filed because the measurement that
+  settled it was wrong.** `LifeSupport` (always on; three heaters shed the doors, four shed the
+  vents) versus `Industry` (~36 % duty on the shipped wreck, and structurally incapable of taking
+  life support down). The false "an Industry heater would be inert" is what chose LifeSupport;
+  with the true numbers it is a design question nobody has answered. Shipped as LifeSupport,
+  reversible in one word in three rows (`MachineDefs.cs`, `SimDefs.CreateDefault`, `machines.def`).
+- ⛔ **A HEATER IS REACHABLE BUT NOT AFFORDABLE ON THE SHIPPED WRECK.** `build.def
+  device_place_cost` is **3 Parts** and the wreck authors **ONE**, which `MaintenanceSystem` spends
+  unattended inside the first sim-day. Three Parts is 6 Regolith through the
+  Regolith → Scrap → Parts ladder, three benches deep, behind two doors, across the pressure
+  frontier. That is the intended shape of the game (the heater is a REWARD for pushing the
+  frontier, not an opening move) but nobody decided it for the heater specifically, and the refusal
+  is the SILENT one `PlaceDeviceCommand` documents — the player gets no price, no balance and no
+  reason. **Owner call; measured, not fixed.**
+- ⭐ **TWO DEVICE KINDS NOW DRAW THE SAME SILHOUETTE.** `ITEMS['space-heater']` has read
+  `deviceKind: 'Heater'` since the warm set was drawn and sat unreachable (`deviceStatus: 'new'`,
+  `glyph: null`); it now claims `'E'` directly, which is the one addition to that registry that PAID
+  DOWN unreached art instead of spending a stand-in. But `GLYPH_SUBSTITUTE['=']` — the RADIATOR's
+  borrow of the same piece — is untouched, so a radiator and a heater look identical on both SVG
+  surfaces. Reassigning the radiator to the unused `cooler` piece was considered and REFUSED:
+  `cooler` is registered `cosmetic`, and a functional device wearing a cosmetic piece is the exact
+  shape of the live `demolishTarget` bug `glyph-map.js`'s header records. **The radiator's art is an
+  OWNER call, not a seam call.**
+- **No per-device target temperature and no on/off switch.** A heater runs whenever it is powered
+  and above `fail`, and stops at the one ship-wide ceiling. RimWorld's setpoint is the obvious next
+  rung and is a saved+hashed field plus a UI.
+- **The THERMAL ship-system row's LOAD still counts waste heat against radiators only** and does not
+  see heater output at all, so a warm compartment can sit under a low LOAD. The row's own LIMIT
+  paragraph now says so instead of the retired *"nothing deliberately heats a room."*
+- **The heater is not on the wire as anything special** — it is an ordinary `devices` row with a
+  `kind` byte, `cond` and `oper`. Nothing tells the player a compartment is being heated except the
+  temperature moving.

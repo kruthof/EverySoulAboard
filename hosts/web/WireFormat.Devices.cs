@@ -198,18 +198,19 @@ namespace Perilune.Web
         /// else <c>0</c>. IT IS NOT REDUNDANT WITH <see cref="Cond"/> AND THE CLIENT CANNOT DERIVE IT.
         /// The failure threshold is PER KIND and lives in <c>machines.def</c>. COUNTED off the shipped
         /// table, not estimated — and RE-COUNTED off it, never adjusted by arithmetic, after the
-        /// wreck start appended <c>CryoPod</c>: the 26 tile-resident kinds carry FOUR distinct
+        /// wreck start appended <c>CryoPod</c>, and RE-COUNTED AGAIN after M3-10 appended
+        /// <c>Heater</c>: the 27 tile-resident kinds carry FOUR distinct
         /// thresholds — <c>0</c>
         /// (9 kinds: Ladder and every furniture piece, which can therefore never be inoperative at
         /// all), <c>0.02</c> (3: Terminal, Light, WaterTank), <c>0.05</c> (2: Door, Battery) and
-        /// <c>0.10</c> (12: the machines, <c>CryoPod</c> among them). A client comparing <c>cond</c>
-        /// to ONE threshold of its own
+        /// <c>0.10</c> (13: the machines, <c>CryoPod</c> and <c>Heater</c> among them). A client
+        /// comparing <c>cond</c> to ONE threshold of its own
         /// would be a SECOND AUTHORITY on "is this machine dead?", and the best it could do is pick
-        /// 0.10 and be wrong for the other 14 of 26. (⚠️ 14 is unchanged from this paragraph's
-        /// previous "14 of 25" and that is a COINCIDENCE, not a licence to leave the sentence
-        /// alone: the population and the largest group each grew by one, so the difference
-        /// cancelled. This repo has already shipped one stale census that survived precisely
-        /// because it was written as a difference.) That is the duplicate-authority defect this repo
+        /// 0.10 and be wrong for the other 14 of 27. (⚠️ 14 was ALSO the answer at 25 and at 26
+        /// kinds, and that is a COINCIDENCE THREE TIMES OVER rather than a licence to leave the
+        /// sentence alone: each of CryoPod and Heater grew the population and the largest group by
+        /// one, so the difference cancelled twice. This repo has already shipped one stale census
+        /// that survived precisely because it was written as a difference.) That is the duplicate-authority defect this repo
         /// has already paid for in the glyph→item tables and the mark layer. One element, computed
         /// where the defs are. The census is pinned by
         /// <c>DevicesChannelTests.The_Failure_Threshold_Really_Is_Per_Kind</c>, so this paragraph

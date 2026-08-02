@@ -1551,6 +1551,10 @@ namespace Perilune.Web
                 case "growbed": kind = DeviceKind.GrowBed; return true;
                 case "medbed": kind = DeviceKind.MedBed; return true;
                 case "table": kind = DeviceKind.Table; return true;
+                // M3-10 — the palette's HEATER tool. Unlike growbed/medbed/table above (which are
+                // wire-reachable but have no palette button), this one IS on ROOM_TOOLS, because a
+                // verb only the wire can reach is a verb the player does not have.
+                case "heater": kind = DeviceKind.Heater; return true;
                 default: kind = default; return false;
             }
         }
@@ -4065,7 +4069,7 @@ namespace Perilune.Web
                     // and is dropped, which is the same answer this protocol gives every other
                     // message it cannot express, through the same single drop site.
                     case "filter": return new WebCommand(CmdKind.Filter, Int(json, "x"), Int(json, "y"), i: Int(json, "mask", -1));
-                    // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table",
+                    // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table|heater",
                     //  "x":..,"y":..,"deck":..} — place a furniture device (Room Zoom decorate palette).
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
                     // {"cmd":"remove","x":..,"y":..,"deck":..} — remove a placed furniture device at a tile.

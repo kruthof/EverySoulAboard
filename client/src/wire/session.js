@@ -88,7 +88,7 @@ export const Cmd = {
   // sure the client can never produce one in the first place.
   filter: (x, y, mask) => ({ cmd: 'filter', x, y, mask: (mask | 0) & ACCEPT_ALL }),
   // Room Zoom decorate palette: place a functional furniture device (kind is the palette tool
-  // string bunk/desk/chair/locker/plant/lamp/growbed/medbed/table) or remove a placed one at a
+  // string bunk/desk/chair/locker/plant/lamp/heater/growbed/medbed/table) or remove a placed one at a
   // tile on the given deck. Legality is decided sim-side at the tick boundary — the client never
   // ghosts an outcome; the item appears only when the sim confirms it in the next frame.
   place: (kind, x, y, deck) => ({ cmd: 'place', kind, x, y, deck }),

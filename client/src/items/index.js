@@ -156,7 +156,17 @@ export const ITEMS = Object.freeze({
   'wall-lamp':        { build: F.wallLamp,        size: { w: 52, h: 44 }, ...cos('wall_lamp') },
   'viewport':         { build: F.viewport,        size: { w: 90, h: 64 }, ...cos('viewport') },
   'wall-screen':      { build: F.wallScreen,      size: { w: 92, h: 60 }, ...cos('wall_screen') },
-  'space-heater':     { build: F.spaceHeater,     size: { w: 60, h: 64 }, ...dev('Heater', null, 'new') },
+  // ⭐ M3-10 — THIS PIECE STOPS BEING UNREACHED ART. It has read `deviceKind: 'Heater'` since the
+  // warm set was drawn, with `glyph: null` and `deviceStatus: 'new'` because no `DeviceKind.Heater`
+  // existed to project it; the only way it ever reached a screen was `GLYPH_SUBSTITUTE['=']`, where
+  // the RADIATOR borrows it. `Heater = 28` now exists and `Glyphs.ForDevice` gives it `'E'`, so the
+  // piece claims its own glyph directly through `deriveGlyphToItem` and the status is plain
+  // `exists`. ⚠️ THE RADIATOR'S BORROW IS LEFT ALONE AND IT IS A REAL, VISIBLE CONSEQUENCE: two
+  // device kinds now draw this same silhouette. Reassigning `'='` to the unused `cooler` piece was
+  // considered and REFUSED here — `cooler` is registered `cosmetic`, and `glyph-map.js`'s header
+  // records the live bug that came from a functional device wearing a cosmetic piece. Picking the
+  // radiator's art is an OWNER call on art, not a seam call; it is FILED, not decided.
+  'space-heater':     { build: F.spaceHeater,     size: { w: 60, h: 64 }, ...dev('Heater', 'E') },
   'vent-fan':         { build: F.ventFan,         size: { w: 76, h: 76 }, ...cos('vent_fan') },
   'shelf-rack':       { build: F.shelfRack,       size: { w: 88, h: 76 }, ...cos('shelf_rack') },
   'supply-barrel':    { build: F.supplyBarrel,    size: { w: 48, h: 64 }, ...cos('supply_barrel') },

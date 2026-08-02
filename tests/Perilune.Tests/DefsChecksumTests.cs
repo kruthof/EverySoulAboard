@@ -76,7 +76,19 @@ namespace Perilune.Tests
             // [machines] row for DeviceKind.CryoPod. ComputeChecksum folds all eight columns of
             // every Machines row, so appending a kind moves this pin even though no shipped ship
             // has one and nothing about the sim's behaviour changed. No def FIELD was added.
-            const ulong Pinned = 0x0C5DDBC07E41F07DUL; // wreck start W3 send-back (CryoPod maint 0.30 -> 0)
+            // ⚠ MOVED BY M3-10 (PIN M3-d, 2026-08-01), 0c5ddbc07e41f07d -> 77a7a8a9e967eab4, and by
+            // FOUR things at once — worth spelling out because "one new device kind" sounds like one
+            // change and is not:
+            //   1. `DeviceKind.Heater = 28` grows Machines by a row — 8 columns through the fold loop;
+            //   2. it ALSO grows Recipes, which CreateDefault sizes `new RecipeDef[Machines.Length]`
+            //      — 6 more fields, all default, for an entry no crafting will ever use;
+            //   3. `HeaterOutputKW`, a new [machines] scalar folded at the tail;
+            //   4. `Thermal.HeaterCeilingK`, a new [thermal] scalar folded after it.
+            // MEASURED TWICE, on fresh runs: this pin read 77a7a8a9e967eab4 from CreateDefault, and
+            // `DefsEquivalenceTests` independently parsed the shipped .def files to the SAME value
+            // ("parsed 18 shipped .def files, checksum 77a7a8a9e967eab4"), which is the two-code-path
+            // agreement that says the three transcriptions really do match.
+            const ulong Pinned = 0x77A7A8A9E967EAB4UL; // M3-10 (PIN M3-d): Heater = 28 + its two def scalars
 
             Assert.That(SimDefs.Default.Checksum, Is.EqualTo(Pinned),
                 "DETERMINISM PIN MOVED: SimDefs.Default.Checksum is " +
@@ -166,7 +178,16 @@ namespace Perilune.Tests
             // the clamp was rewriting this row's fail to 0 on every host that reads the .def, i.e.
             // the parsed and compiled values would otherwise have DISAGREED and the equivalence
             // test would have gone red instead of this pin.
-            const ulong Pinned = 0x09900B9A44119272UL; // wreck start W3 send-back (CryoPod maint 0.30 -> 0)
+            // ⚠ MOVED BY M3-10 (PIN M3-d, 2026-08-01), 09900b9a44119272 -> edf1577c32f14e55, for the
+            // same four reasons as its twin above and NOT for a fifth: no rules/*.moss file changed,
+            // so the whole delta between the two pins is still exactly the shipped rule set. The
+            // Heater row and both new scalars are present in machines.def / thermal.def AND in
+            // CreateDefault, so the parsed value tracks the compiled one and the equivalence test
+            // stays green — the "both, consistently (the ritual)" row of the matrix below.
+            // MEASURED TWICE, on fresh runs and through two different loaders: this test read
+            // edf1577c32f14e55, and `hosts/scenario --days 0 --seed 42` printed
+            // `defs: edf1577c32f14e55 (18 files, 0 problems, 1 rules)` — the number a human sees.
+            const ulong Pinned = 0xEDF1577C32F14E55UL; // M3-10 (PIN M3-d): Heater = 28 + its two def scalars
 
             string dir = FindShippedSimDefsDir();
             Assert.That(dir, Is.Not.Null,

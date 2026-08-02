@@ -20,6 +20,8 @@
 
 [machines]
 radiator_reject_kw = 5      # kW a powered, condition-scaled radiator rejects
+heater_output_kw   = 5      # kW a powered, condition-scaled heater PUSHES IN (M3-10; the mirror of
+                            # the line above, capped by thermal.def's heater_ceiling_k)
 
 #                 draw   gen  tier          blocks  heat   wear    maint  fail
 Door            0.1    0    Defense       false   0.05   0.002   0.3    0.05
@@ -71,3 +73,23 @@ IceMelter       0.4    0    LifeSupport   false   0.4    0.012   0.4    0.10
 # capsule reads as dead. NOTE the `fail <= maint` column rule above does NOT apply to a maint = 0
 # row, and DefsParser exempts it by name — see DefsParserTests.
 CryoPod         0.2    0    LifeSupport   false   0.15   0.001   0      0.10
+# M3-10: THE HEATER — the first device in the game that raises a room's temperature on purpose, and
+# the answer to a compartment that refuses all work because it is below needs.def hypothermia_c.
+# heat is 0 ON PURPOSE, exactly as the Radiator's row is: this column is WASTE heat, emitted
+# unconditionally and NOT condition-scaled, and a heater's heat is its PRODUCT. The output rides
+# heater_output_kw above, which ThermalSystem scales by Device.EffectiveRate (a worn heater is a
+# weak heater) and caps at thermal.def's heater_ceiling_k.
+# LifeSupport tier is a SHIPPED INTERIM and the question is OPEN ON THE OWNER. This comment used to
+# say Industry was "already shed at boot and still shed on day 10, so an Industry heater would never
+# once be powered". THAT WAS FALSE: the tier walk decides against generation PLUS battery charge
+# (PowerSystem.cs:246-247), so the ship runs a brownout sawtooth and a single sample reads one phase
+# of it. Re-measured over ten sim-days sampling every 10 sim-minutes, the three WIRED Industry
+# machines run 36.1% of the time (the other four are NetworkId 0 — never cabled, which is not a tier
+# fact at all). An Industry heater would be WEAK, not inert, and choosing weak-and-safe over
+# always-on-and-dangerous is a design call. See MachineDefs.cs and MECHANICS.md 13.36.
+# The cost of LifeSupport, measured by DRIVING N heaters on a copy of the wreck (3 sim-days each,
+# watching the wired deck-0 doors and machineshop_1): N=2 costs no tier anything; N=3 sheds DEFENSE
+# (doors 100% -> 84.7%); N=4 sheds LIFE SUPPORT itself (95.7% -> 81.1%). Every arm from N=1 pays in
+# Industry and Comfort uptime (36% -> ~16%) — a heater is bought with the benches' duty cycle.
+# wear/maint/fail are the Radiator's: same class of plant, same standing maintenance terms.
+Heater          1.0    0    LifeSupport   false   0      0.006   0.4    0.10

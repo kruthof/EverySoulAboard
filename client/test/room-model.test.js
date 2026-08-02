@@ -2,7 +2,7 @@
 // (client/src/ui/deck-minimap.js). Proves: the focused-room tile-rect lookup, the
 // fit transform + responsive click hit-testing (incl. letterbox-margin + out-of-room rejection),
 // the in-room channel clamps (cells → items, crew, designs, decor), the palette tool → command-class
-// map (exhaustive over all seventeen tools), the demolish classifier + its precedence over every layer,
+// map (exhaustive over all eighteen tools), the demolish classifier + its precedence over every layer,
 // the armed-tool reducer, the local decor transforms, and the ESC rung.
 //
 // ⚠️ THE LAST SECTION IS DIFFERENT, and the "no DOM" line that used to open this file is no longer
@@ -115,7 +115,7 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the seventeen tools to a class + verb', () => {
+test('paletteCommand maps every one of the eighteen tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
   // 15 → 16 with the OPERATE verb (2026-07-28): the door/vent OPEN⇄SHUT toggle, which existed in the
   // sim since M1 and was reachable ONLY through the deprecated console's invisible inspection cursor.
@@ -135,14 +135,22 @@ test('paletteCommand maps every one of the seventeen tools to a class + verb', (
   // palette is the whole vocabulary of what a player may do inside a room, and a tool arriving
   // without anyone deciding is exactly what the equality pin is here to stop. Move it in the same
   // commit as the tool, with the reason in the commit message.
-  assert.equal(ROOM_TOOLS.length, 17);
+  // ⭐ 17 → 18, M3-10: HEATER. The decision, stated here because the pin above demands it be stated
+  // somewhere a reader will find: the palette gains its first piece of SHIP PLANT (every other
+  // `place` row is crew furniture or a lamp), because a heater the player cannot place is a def row
+  // and the compartment the ship freezes stays unworkable forever. It is the ONE tool this package
+  // adds; nothing was removed and nothing moved position.
+  assert.equal(ROOM_TOOLS.length, 18);
+  assert.ok(ROOM_TOOLS.includes('heater'),
+    'ROOM_TOOLS lost HEATER. It is the only way a player can place the one device in the game that '
+    + 'raises a compartment above needs.def hypothermia_c — without it M3-10 ships authoring-only.');
   assert.ok(!ROOM_TOOLS.includes('operate'),
     'ROOM_TOOLS still carries `operate`. OD-N removed the palette verb entirely — see ' +
     'client/test/surface-boundary.test.js for the anti-resurrection guard.');
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
-  for (const [t, dk] of [['bunk', 'Bed'], ['desk', 'Desk'], ['chair', 'Chair'], ['locker', 'Locker'], ['plant', 'PlantPot'], ['lamp', 'Light']]) {
+  for (const [t, dk] of [['bunk', 'Bed'], ['desk', 'Desk'], ['chair', 'Chair'], ['locker', 'Locker'], ['plant', 'PlantPot'], ['lamp', 'Light'], ['heater', 'Heater']]) {
     assert.equal(byTool[t].cls, 'functional');
     assert.equal(byTool[t].verb, 'place');
     assert.equal(byTool[t].deviceKind, dk);
