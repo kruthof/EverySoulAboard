@@ -3004,16 +3004,20 @@ deck-confined-wander figures exactly.
 
 #### Wired but NOT connected
 
-1. **`CommissionDeviceCommand` has no affordance on the standard surface, and is INERT in every
-   unattended run.** Nothing in `sim/`, `client/`, `hosts/tui/`, MOSS or the designer-rule layer
-   constructs it; its only issuer is `GameSession.HandleCommission`, reachable only by a
-   `{"cmd":"commission"}` wire message **nothing in `client/` ever sends**. Every module in every
-   published leg above is unspent, and E0-6's third leg contributes exactly zero to every number in
-   this section. **What would connect it:** a Room Zoom `COMMISSION` tool plus the feedback that
-   says which devices are commissioned — chartered separately, deliberately not in this package.
-   The plumbing underneath it *is* covered
+1. ~~**`CommissionDeviceCommand` has no affordance on the standard surface, and is INERT in every
+   unattended run.**~~ ✅ **CLOSED 2026-08-02 by M3-17 — see §13.41.** The typed `commission` verb at
+   the MOSS console is the sender; the command is reachable, priced at the real
+   `build.def commission_cost = 1`, and answers with a rendered sentence either way. ⚠️ **Two halves
+   of the original entry SURVIVE and are not closed by it**: (a) the `{"cmd":"commission",x,y,deck}`
+   wire message routed through `GameSession.HandleCommission` is **still sender-less** — M3-17 added
+   a MOSS op instead, because that path renders a verdict where the palette bridge writes only
+   `_status`; (b) **it is still INERT in every unattended run**, since no pinned fixture types at a
+   console, which is why M3-17 is pin-neutral. The original text read: *"Nothing in `sim/`,
+   `client/`, `hosts/tui/`, MOSS or the designer-rule layer constructs it … what is missing is only
+   the button."* The plumbing underneath was always covered
    (`ConversionLossSealsTests.TheHostItselfRebindsMoss_WhenADeviceIsCommissionedMidGame` drives the
-   real `GameSession` → real `DeviceRegistry` path); what is missing is only the button.
+   real `GameSession` → real `DeviceRegistry` path) — **the button was the whole gap, and it stayed
+   open for a milestone.**
 
 2. **`Seals` are a new terminal product one rung down — structurally the same defect this package
    removed.** You cannot make `Parts` without making `Seals` (the Fabricator's single bill emits
@@ -4017,6 +4021,7 @@ Two tiers, two predicates, two files, named so the split reads in the code.
 | `exec` → `open`/`close`/`lock`/`unlock`, `set <dev>.rate`, bare `<dev>.<prop>` reads | **REPAIRED** | (inside `exec`) | same |
 | `open` (program source, `:472`) · `set` (program install, `:495`) | **COMMISSIONED** | `MossGate.CanInstallProgram` (`MossGate.cs:146`) | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO TERM_MOSS` |
 | `thaw` (M3-3, `:571`) · `pods` (M3-4, `:530`) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **and since M3-4 the SHIP gate is asked FIRST on both** | ship: the OFFLINE sentence · target: `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL` (`pods` answers `MossGate.NotCommissionedRefusal` instead, because it refuses before it names a capsule) |
+| ⭐ `commission` (M3-17, `GameSession.cs:663`) | **REPAIRED** — *the act that crosses the split, so it can only sit on this side of it* | `MossGate.EvaluateCommission` (`MossGate.cs:290`), whose term 1 IS the ship gate | ship: the OFFLINE sentence · target: `ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON TERM_MOSS` · price: `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0`. Accepted: `COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN` (**stream 1**, via `Reply` — §13.41) |
 
 ⚠️ **THE COMMISSIONED TIER IS TWO DIFFERENT PREDICATES AND THAT IS DELIBERATE.**
 `ThawGate.IsCommissionedConsole` additionally requires the named terminal to EXIST, be `Powered` and
@@ -5601,3 +5606,160 @@ looking at, not worth explaining away.**
 - **No retune of `fatigue_per_second`.** The duty cycle it produces (60 % awake in a bed) diverges
   from §4.4's 70.6 %, and the ramp is left alone anyway: changing it is a second, unrelated reason to
   move P1. FILED (§13.40.3).
+
+---
+
+### 13.41 ⭐⭐ The console can be COMMISSIONED — the verb that was missing, and the arc that dead-ended without it (M3-17, 2026-08-02)
+
+**THE PLAYER SENTENCE.** At the MOSS console the player types `commission` and — with the terminal
+repaired and a `ControllerModule` aboard — **the terminal becomes COMMISSIONED: programs and the POD
+BAY unlock**; a refusal is a rendered sentence with a named reason and a number.
+
+⛔ **WHAT WAS ACTUALLY MISSING WAS A SENDER, AND THAT IS THE WHOLE LESSON OF THIS ROW.**
+`CommissionDeviceCommand` has worked since E0-6 (`Commands.cs:697`), `build.def` has priced it at
+`commission_cost = 1` since the same package, and `GameSession.HandleCommission` (`:1364`) has
+bridged a `{"cmd":"commission",x,y,deck}` message since the build palette. **No client and no TUI
+surface ever emitted that message.** Every piece was green, every test passed, and the opening arc
+still dead-ended one step before the pod bay: the M3 milestone demo could only reach a commissioned
+console through a temporary defs overlay at `commission_cost = 0`, disclosed at the time. The
+blocker was named in HANDOVER on 2026-08-02 as *"purely A BUTTON"* and this package is that button.
+
+#### 13.41.1 The seam — one op, one pure gate, one sentence
+
+| where | what |
+|---|---|
+| `sim/Sim.Core/MossGate.cs:126` | `LiveServer(sim)` — the lowest-`Device.Id` terminal `IsServerLive`'s own term accepts, or `null`. The mirror of `ThawGate.CommissionedConsoleName` one tier down |
+| `MossGate.cs:228` / `:246` | `CommissionRefusal` (None · NoServer · AlreadyCommissioned · NoModule) and `CommissionVerdict` (reason · terminal · **tile** · cost · units aboard) |
+| `MossGate.cs:290` | `EvaluateCommission(sim, requestedTid)` — **PURE**: reads live sim state, spends nothing, mutates nothing, draws no RNG |
+| `MossGate.cs:351` | `DescribeCommission(in v)` — the four sentences, upper case, InvariantCulture |
+| `hosts/web/GameSession.cs:663` | the `case "commission":` arm of `HandleMoss` |
+| `hosts/web/GameSession.cs:715` | `Reply(tid, sentence)` — `Refuse`'s twin, stream **1**, `ok:true` |
+| `client/src/ui/moss-model.js:800`, `:906` | `commission` joins `parseCommand`'s nav vocabulary and `navCommand`; `HELP_LINES` names it |
+
+⚠️ **THE TERM ORDER IS THE CONTRACT — SHIP, TARGET, PRICE, in that order.** Term 1 is the ship gate
+(`LiveServer == null` ⇒ `MossGate.OfflineRefusal`, the SAME constant every other op refuses with —
+refuse by predicate, report by predicate). Term 2 is the target's own state. **Term 3 is the price
+and it is LAST**, so a refusal never bills; here that is structural rather than careful, because
+`EvaluateCommission` cannot spend at all and `CommissionDeviceCommand.Execute` charges after its own
+two guards (`Commands.cs:861`). Driven by `WebCommissionTests.ARefusalNeverBills`, which censuses
+the ITEM STORE before and after every refused ask; moving `TryPay` above the `Scriptable` check
+reddens it by name (mutation 4, run).
+
+#### 13.41.2 ⛔ THE VERB SITS AT THE **REPAIRED** TIER, AND IT IS THE ONLY TIER IT CAN SIT AT
+
+OD-N's split (§13.31) puts programs, the thaw and the pod bay behind COMMISSIONED. **Commissioning
+itself cannot join them**: a console that had to be commissioned before it could be commissioned
+would make the entire opening arc unreachable, which is the exact blocker this package closes. A
+DARK terminal still refuses — with the SHIP's sentence. Pinned as a CONTRAST rather than an
+assertion by `TheCommissionVerbSitsAtTheREPAIREDTier_NotBehindItself`: in **one** state (repaired,
+un-commissioned) the `set` program op refuses and the `commission` op works, both driven in the same
+fixture, so the two tiers are demonstrably distinguishable at that point.
+
+#### 13.41.3 The prompt addresses `@console`, so the SIM resolves the terminal
+
+The MOSS prompt sends `tid: "@console"` (spec §1.3) — a free-text key with no device behind it. The
+client **cannot** pick a terminal: `Device.Condition` and `Device.Scriptable` are the two facts
+OD-N's tiers turn on and **neither has ever reached the wire**. So `LiveServer` resolves it and the
+reply NAMES it, exactly as M3-4 does for the bay. `requestedTid` is honoured only when it names a
+terminal that is itself live. ⚠️ **The tie-break is inherited, not re-decided**: a ship with two live
+terminals answers through the lower-`Id` one — `ThawGate.CommissionedConsoleName`'s known
+consequence, for the same reason (no name literal may live in `sim/`). Non-vacuity of the resolver is
+asserted on the DARK boot ship, where it must name nothing.
+
+#### 13.41.4 ⛔ THE HOST DECIDES NOTHING — and the instrument for that is a window production cannot open
+
+`HandleMoss` reads the gate to RENDER the answer and enqueues `CommissionDeviceCommand`
+**regardless** of it (the thaw op's construction exactly). The one arm that does not enqueue is
+`NoServer`, and not as a second gate: there is no terminal, so there is **no tile to address**, and
+`Int3.default` is a real tile on every ship.
+
+**The property is otherwise invisible** — the command is a no-op on every refusal, so a gated
+enqueue and a blind one produce identical ships. `TheHostDoesNotDecide_ARefusedAskStillReachesTheSim`
+forces the window: the op is sent while the ship cannot pay (the console renders the refusal), a
+module is added **before the tick drains**, and the command that drains one moment later finds it and
+does the work. Changing the arm to `if (verdict.Allowed)` reddens exactly that test and nothing else
+(mutation 3, run). ⚠️ **That window is a test artefact and is labelled as one**: in the shipping host
+`Apply` runs INSIDE the command drain, between ticks, so the gate's read and the command's execute
+cannot disagree. The mirror leg (`ARefusedAskThatStaysRefused_ChangesNothing`) keeps "enqueued blind"
+from being read as "accepted blind".
+
+#### 13.41.5 The sentences, and the family they joined
+
+```
+COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN
+ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON TERM_MOSS
+COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0
+MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS   ← not a new one
+```
+
+The two new refusals join M3-4's pinned family in
+`ThawGateTests.TheConsoleSentences_ArePairwiseDistinct`, which grows from four sentences / six pairs
+to **six sentences / fifteen pairs** and still requires **pairwise distinct AND distinct in the first
+four words**. Both new leads deliberately avoid the terminal's NAME, so content cannot move a lead.
+
+⚠️ **AND THE ONE COLLISION THAT WAS NOT OBVIOUS:** `ThawGate.Describe`'s rung arm composes
+`NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` for a thaw whose rung is a module — the same words, on the
+same transcript line, about a different ask. **Naming the ACT** (`COMMISSIONING NEEDS …`) is the only
+thing keeping them apart, so it is asserted rather than left to the reader. Rewording the
+already-commissioned refusal to share `MossGate.NotCommissionedRefusal`'s lead reddens the family
+test by name (mutation 6, run).
+
+⭐ **THE ACCEPTED LINE GOES OUT ON STREAM 1, AND IT HAD TO EXIST.** `commission` is the first op in
+this switch whose success **repaints nothing** — no screen opens, no row changes. Without a sentence,
+"it worked" and "the key did nothing" are the same picture: the *invisible feedback is functional*
+rule, which has cost this repo three owner reports. Deleting the accept branch reddens the outcome
+test (mutation 7, run).
+
+#### 13.41.6 Witnessed in real Chrome — and what the witness deliberately stops short of
+
+`client/tools/commission-shot.mjs` (new; the `moss-gate-shot.mjs` harness shape — CDP, trusted
+keystrokes, the sim's truth read off an **independent** socket, never the page). Run against
+`./play.sh --host-port 8390 --client-port 8391 --no-open` on the shipping `--ship wreck`,
+**ALL CHECKS PASSED**:
+
+1. `HELP` lists `COMMISSION` — and so does the LEDGER footer, beside `PODS`.
+2. On the boot ship the console is DARK and `commission` answers
+   `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS`; the typed line
+   is echoed and the client never answers `UNKNOWN COMMAND`.
+3. **A REAL repair** — REPAIR turned on in the WORK tab, the crew servicing `term_moss` from
+   `cond 36/255` to **229/255** (the `maintain` floor is 51), watched on the `devices` channel.
+4. ⭐ The same line now reads `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` and **no longer
+   says OFFLINE** — the tier is right, at the real `commission_cost = 1`.
+5. `prog term_moss` on the same live console still refuses in M3-15's words, so the split stands.
+
+⭐ **THE HARNESS HAS ITS OWN NON-VACUITY CONTROL, RUN.** With the `case "commission":` arm renamed
+so the op rejoins `default: break;` (the silent swallow) and the host rebuilt, the tool reports
+**3 FAILED** — steps 2 and 4 go red with empty error transcripts — while step 1 stays GREEN, which
+is the right split: `HELP` is a client fact and the sentences are the host's. ⚠️ Step 4's *"does not
+say OFFLINE"* leg passes **vacuously** under that mutation; it is a negative check and the two
+positive legs beside it are the biting ones.
+
+⛔ **NOT WITNESSED IN THE BROWSER: THE ACCEPTED BRANCH**, and the header of the tool says so in the
+same words. It needs one `ControllerModule`, and the only honest way to get one is to play the whole
+Regolith → Scrap → Parts → ControllerModule chain — which the M3 demo did, over many steps and
+several sim-hours. Faking it with a `commission_cost = 0` overlay is the exact thing this package
+deletes. The accepted branch is driven at the wire instead
+(`TypingCommission_CommissionsTheConsole_AndTheseTwoUnlock`, which ends by asking the ship for the
+POD BAY and getting twelve rows) and at the reducer. **The full-arc browser beat is still owed and
+it is T13's own unmodified-game run.**
+
+#### 13.41.7 Pins, and what is NOT here
+
+**PIN-NEUTRAL, and measured rather than argued** (`./ci.sh` green in the lane, P1 twin match at
+`7bdd0d6f7756dfdc`, both tick-3000 goldens byte-unchanged, P4/P5 unmoved). No hashed state, no def
+field, no new `DeviceKind`, no system, no save chapter — `MossGate` still holds nothing. The reason
+it cannot move a pin is the one M3-15's own gate had: **no pinned fixture sends a MOSS op at all**,
+and `CommissionDeviceCommand` was already in the sim before this package.
+
+- **The BUILD-palette route is still sender-less.** `CmdKind.Commission` / `HandleCommission`
+  (`GameSession.cs:1364`) parse a `{"cmd":"commission",x,y,deck}` message that **nothing emits** —
+  this package added the MOSS op instead, because that path renders a verdict and the palette bridge
+  writes only `_status`, a console string the standard surface never shows. FILED, not deleted
+  (`HandleOperate`'s precedent: kept for M4-8).
+- **No `commission <device>` argument.** The verb commissions the console the player is speaking
+  through. Commissioning arbitrary devices is E0-6's general sink and has no surface; opening one
+  here would be a second feature.
+- **The ship-gate sentence still ends `…TO REACH THE DOORS`**, which is about actuation rather than
+  about programs. It is the one constant three surfaces render and it was not re-worded for one new
+  caller. FILED.
+- **No TUI sender.** `hosts/tui` has no MOSS op surface at all; nothing was narrowed.
