@@ -6,9 +6,9 @@ older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — 
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-02 session C, continued — TEN merges, the queue stands at M3-12)
+## Current state (2026-08-02 session C, continued — TWELVE merges, M3-9 REST in flight, the LAST package)
 
-**Gate on `main` (M3-7 merge): 1744 dotnet + 1193 node, twin hashes MATCH at P1
+**Gate on `main` (`d9cf896`): 1759 dotnet + 1205 node, twin hashes MATCH at P1
 `3d23665a724e853d`** (re-measure before quoting). ⚠️ **PIN M3-b EXECUTED (tag `pin/m3-b`
 applied at merge) — M3-7, P1/P2/P3: P1 `13674ebc4f8a14a9` → `3d23665a724e853d`,
 P2 `1c036ffd53b8f106` → `cb09b584a5f15e52`, P3 `37c85c1ed445895e` → `43a1a5c25713faec`;
@@ -74,13 +74,19 @@ one independent reviewer per package. **Full package records live in the §3 que
 
 ## Next
 
-1. **M3-12 skills in the WORK tab** (needs 11 ✅; ⭐ owns the milestone demo §8 — its
-   step 4 is the exit gate's own sentence) → M3-8 sleeper personas (the six-skill sheets;
-   until it lands every citizen is level 0 and the curve is the identity) → **M3-c (M3-9
-   REST, RUNS ALONE, last by risk ruling)** → the week-9 owner playtest (2026-08-07).
+1. **M3-9 REST — PIN ROW M3-c, RUNS ALONE, IN FLIGHT** (`lane/rest` — the last M3
+   package: rest as a between-jobs claimant per RW§3.5, the Bed becomes real, ALL FIVE
+   pins move incl. the wear-pressure path) → then the **M3 MILESTONE DEMO** (the §8
+   8-step falsifying script — the integrator's post-merge acceptance, now unblocked:
+   M3-12's rendering + M3-8's authored sheets are both in) → the week-9 owner playtest
+   (2026-08-07).
    ⭐ NEW OWNER ITEM from M3-7's review: **rung 1 of the vacuum ladder has lost its named
    home** — OD-M item 7B deferred it "to M3-7's pin lane" but the charter never chartered
    it and M3-b is now discharged; it needs a new named home or a new pin row.
+   Merged since the last log rows: **M3-12** (skills in the WORK tab; the absent cell is
+   structural; `why-line-shot` was a result-generator — fixed; queue row 12) and **M3-8**
+   (seven written souls; three of seven cannot mine incl. Torres; the run-loop observer
+   pinned through a driven `Start()`; queue row 13).
    ⭐ NEW OWNER ITEMS from M3-10: the heater's power TIER (LifeSupport shipped interim;
    Industry would run ~36% duty — the "already shed" claim was a sampling artifact) · a
    heater is reachable but NOT AFFORDABLE at boot (`device_place_cost` 3 Parts, wreck
@@ -186,3 +192,5 @@ one independent reviewer per package. **Full package records live in the §3 que
 | 08-01 C | emergency-thaw | **the ship wakes one more soul by itself, once, and the run ends on screen**: death → cycling without a pause → "With ⟨name⟩ dead, the ship woke ⟨name⟩." → ALL SOULS banner; a paid cycle is never stamped on | green, pins UNMOVED (packed fold), 1 send-back (a real paid-cycle regression) + 1 measured touch, tests →1690/1180 |
 | 08-02 C | heater | **a heater exists — place one, power it, and a frozen compartment becomes workable again** (`CanStageWorkerAt` flips); found+fixed: `place` was INERT for all six furniture tools | green, **PIN M3-d: P4/P5 moved (Heater=28 + def row), P1/P2/P3 measured HELD**, tag `pin/m3-d`, 1 send-back (three false claims), tests →1714/1183 |
 | 08-02 C | skill-consumers | **who does a job changes how fast it is done** — six skills per soul (CITZ v9), six consumer sites, the `workcaps` channel; every shipping citizen is level 0 until M3-8 | green, **PIN M3-b: P1/P2/P3 moved fold-only (measured), P4/P5 HELD; NO PIN SEES THE RATE TERM (2×2 driven)**, tag `pin/m3-b`, 1 send-back (two unpinned consumer sites), tests →1744/1193 |
+| 08-02 C | skill-display | **the WORK tab shows what each soul is good at, and an incapable type has NO CELL** (structural absence, RW§1.6); found+fixed a boot-cell `off0` ink collision | green, pins ALL HELD (client-only), 1 send-back (`why-line-shot` result-generator + the display:grid premise), tests →1744/1205 |
+| 08-02 C | sleeper-personas | **seven written souls step out of their pods as themselves** — six authored levels + an incapability each at thaw; three of seven cannot mine, Torres among them | green, pins ALL HELD (thaw-only reachability, inclusion-tested), 1 send-back (a false headline vs its own table + a run-loop survivor), tests →1759/1205, conflicted MECHANICS merge regated |
