@@ -34,7 +34,7 @@ namespace Perilune.Tests
     {
         private const string Console = "term_moss";
         private const string ConsoleTid = "@console";
-        private const string Rung1Pod = "pod_lindqvist";   // 0.94 ⇒ 1 Seals, the cheapest rung
+        private const string Rung1Pod = "pod_lindqvist";   // 0.99 ⇒ 1 Seals, the cheapest rung
         private const string DeadPod = "pod_vance";        // 0.04 — the raid killed the sleeper
         private const string OpenPod = "pod_rell";         // the one capsule that boots open
 

@@ -831,7 +831,18 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  under OD-H the payload is EMPTY until the player enables a work type, which is the milestone's
  *  safety property rather than a missing consumer (`hosts/web/WireFormat.Work.cs`). */
 const SHIP_STATE_REACH = Object.freeze([
-  'LENSES', 'armTool', 'getArmedTool',
+  'LENSES',
+  // ⭐ D2 — the `alerts` channel's cache: the one-line warning bar the Overview draws (today "a
+  // capsule's thaw price is about to rise"; M5-2/T17 turns it into the alert stack). SHIP STATE in
+  // exactly `getEnding`'s sense — `renderAlerts`/`getAlerts` touch no DOM, create no element and
+  // write no innerHTML, so they add nothing to the four pinned console-DOM counts and move to
+  // ship-state.js at WP-9 with the rest of the wire cache. ⚠️ A CENSUS MOVE, added in the same
+  // commit as the reach and said out loud: the standard surface needs one more piece of ship state
+  // because the M3 demo measured the alternative failing — a Chronicle entry in a 200-slot ring
+  // that brownout spam evicts before the player opens the console (finding D6). Sorted here by the
+  // rule the list already follows (`shipStateReach()` returns a sorted array, so `armTool` and
+  // `getAlerts` land where JS sort puts them).
+  'armTool', 'getAlerts', 'getArmedTool',
   // The `blocked` channel's cache — which of the player's dig/strip/build orders the sim refuses to
   // staff, and why. Sorted here by the same rule the list already follows (`shipStateReach()` returns
   // a sorted array, so `getBlocked` lands before `getDecks`).

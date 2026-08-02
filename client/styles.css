@@ -1202,6 +1202,17 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
   box-shadow:var(--hud-shadow)}
 .ov-ending.ov-endover{border-color:#b3412c;color:#e8836b}
 
+/* ⭐⭐ D2 — THE ALERT BAR. The ending bar's sibling, one line lower so both can be true at once (a
+   ship whose crew is dying is exactly the ship whose capsules are decaying unattended). Dimmer and
+   cooler than the ending: this is a WARNING with days on the clock, not a fact about the run being
+   over, and it must not read as the same alarm. `z-index` sits just under `.ov-ending`'s 14 — when
+   both show, the ending outranks it. M5-2/T17 grows this slot into the alert stack. */
+.ov-alert{position:absolute;left:50%;top:104px;transform:translateX(-50%);z-index:13;
+  max-width:min(680px,86vw);text-align:center;
+  padding:7px 18px;border-radius:8px;background:var(--hud-bg);border:1px solid #8c6a2f;
+  color:var(--amber,#d9a05b);font-size:11px;font-weight:600;letter-spacing:.07em;
+  box-shadow:var(--hud-shadow)}
+
 /* B6 — the paused-ship nudge, ported off the console's `.nudge` at WP-8. Pinned under the top bar's
    right end, directly beneath the HOLD/RESUME chip: the complaint and its fix read as one thing. The
    `.rz-nudge` twin is the Room Zoom's, positioned for that surface's chrome — the Room Zoom is where

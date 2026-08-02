@@ -320,7 +320,12 @@ namespace Perilune.Web
                 // an ENTIRE RUN — a reconnecting tab left to self-heal would show a crew with no
                 // competences and no incapabilities for ever, because nothing will ever change it back.
                 // That is the `ending` argument, not the `ledger` one.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "work", "workcaps", "blocked", "ending" })
+                // ⭐ `alerts` (D2) IS ON THE LIST, and its case is `ending`'s. Capsule wear is
+                // 0.001/h, so the sentence changes at most a handful of times in a whole run and
+                // then sits still for sim-DAYS at a stretch — a reconnecting tab left to self-heal
+                // would show no warning on a ship whose capsule is hours from costing a
+                // ControllerModule more, for exactly as long as nothing else moves it.
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "work", "workcaps", "blocked", "ending", "alerts" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1906,6 +1911,14 @@ namespace Perilune.Web
             // ⛔ THIS IS NOT THE ENDING SCREEN. M5-1 owns THE ENDING (OD-M item 4 = A); the claim
             // made here is deliberately one line, and it must stay one line.
             Send("ending", WireFormat.Ending(WireFormat.EndingBanner(_sim), WireFormat.RunIsOver(_sim)), force);
+
+            // ⭐⭐ D2 — WHAT IS ABOUT TO GET MORE EXPENSIVE (`alerts`). The M3 demo watched a
+            // capsule's thaw price step up unannounced; this is the announcement. DERIVED per
+            // render from `ThawGate.CapsuleNearestToRungCrossing` — no event, no queue, no expiry,
+            // because the demo also measured that the Chronicle (a 200-entry ring) evicts a real
+            // event under brownout spam before anybody reads it (finding D6). See
+            // hosts/web/WireFormat.Alerts.cs, which is also M5-2/T17's starting point.
+            Send("alerts", WireFormat.Alerts(WireFormat.DecayAlert(_sim)), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
