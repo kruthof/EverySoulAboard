@@ -2561,5 +2561,258 @@ namespace Perilune.Gen
                     $"conduit_d0_bulkhead_{bulkheads[i].X}_{bulkheads[i].Y}");
         }
 
+        // ------------------------------------------------------ the wreck's seven sleepers
+
+        /// <summary>
+        /// ⭐ <b>M3-8 — THE SEVEN PEOPLE IN THE CAPSULES.</b> One authored sheet per living,
+        /// thawable sleeper, in <see cref="ThawGate.RungOf"/> ladder order — the order the player
+        /// meets them in, because the ladder is priced by capsule condition.
+        ///
+        /// <para>⛔ <b>THIS IS THE HOST HALF AND IT IS OPTIONAL BY CONSTRUCTION.</b> Nothing in the
+        /// sim reads it. A thawed sleeper's COMPETENCE — her six skill levels and what she cannot
+        /// do at all — is <see cref="SleeperAptitudes"/>, applied inside <c>CryoSystem.Open</c>, and
+        /// it exists whether or not any of this prose is ever loaded. What lives here is the reason
+        /// those numbers are what they are: <b>every sheet's backstory has to explain both the
+        /// aptitude and the incapability</b>, or the numbers are arbitrary and the person is a
+        /// stat block.</para>
+        ///
+        /// <para><b>WHY A ROSTER RATHER THAN <see cref="PopulateSlice"/>'s BOOT WEAVE.</b> The slice
+        /// crew all exist at tick 0, so their minds are woven once, before the first tick. A sleeper
+        /// does not exist until her capsule opens at some unknown later tick — so this roster is
+        /// consumed by a host OBSERVING <c>CitizenThawedEvent</c> and calling
+        /// <see cref="AttachSleeperPersona"/>. That is the whole architectural difference between
+        /// this package and the slice's, and it is why attaching at boot is one of the mutations.</para>
+        ///
+        /// <para>⚠️ <b>NO <c>Relationships</c> ARE AUTHORED, DELIBERATELY.</b>
+        /// <see cref="PopulateSlice"/> seeds its web with <c>SocialSystem.Nudge</c>, which writes
+        /// CANONICAL SIM STATE (the SOCL fold) — safe at boot, forbidden here: this roster is
+        /// consumed at RUNTIME by a host, and a host that nudges the social graph mid-run is a host
+        /// mutating hashed sim state. The bonds are written into the prose instead, and a sim-side
+        /// seed at thaw is FILED, not smuggled in. <see cref="PersonaGenerator.CreateAuthoredMind"/>
+        /// is RNG-free and touches only the mind/fact layer, which is what makes it callable from a
+        /// runtime observer at all.</para>
+        ///
+        /// <para>⚠️ Rell is not here: she boots awake, so she is not thawed, so no observer ever
+        /// fires for her — she keeps the procedural persona <c>GameSession.GeneratePersonas</c>
+        /// gives every citizen at boot. The four wrecked capsules are not here either (OD-9: they
+        /// can never cycle). Seven sheets, seven thawable capsules — pinned by test against
+        /// <see cref="SleeperAptitudes"/> and against <c>WreckPods</c>, so the three lists cannot
+        /// drift apart silently.</para>
+        /// </summary>
+        public static AuthoredPersona[] WreckSleepers()
+        {
+            return new[]
+            {
+                // ── rung 1 · pod_lindqvist 0.94 ────────── Repair 9 · Construct 7 · cannot MINE
+                new AuthoredPersona
+                {
+                    Name = "Lindqvist", RolePreRaid = "hull-seam fitter", RoleNow = "damage control",
+                    Traits = new[] { "meticulous", "unbending", "stoic" },
+                    Values = new[] { "finish what you seal", "never waste air" },
+                    Fears = new[] { "dying in vacuum", "sleeping through an alarm" },
+                    SpeechStyle = "quiet, chooses words like spare parts",
+                    RaidBackstory =
+                        "Twenty-one years of pressure seams, and Lindqvist has never lost one she signed. When the " +
+                        "Lien blew the ring corridor she was already in the gap with a torch, closing the bay the rest " +
+                        "of them are asleep in. The brace that came down across her back is why she went into a capsule " +
+                        "at all — the spine set hard in the freeze, and she will stand at a seam all shift, but she " +
+                        "will never again swing at a face over her own head.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "I signed this bay's pressure certificate the week before the raid. The secondary seal was out of date and I let it stand.",
+                            FactText = "The cryo bay's secondary pressure seal was past certification before the raid, and Lindqvist signed the bay off anyway.",
+                            RevealDifficulty = 0.6f,
+                        },
+                    },
+                },
+
+                // ── rung 2 · pod_ozawa 0.91 ───────────── Craft 11 · cannot CONSTRUCT
+                new AuthoredPersona
+                {
+                    Name = "Ozawa", RolePreRaid = "bench machinist", RoleNow = "fabrication",
+                    Traits = new[] { "meticulous", "sardonic", "restless" },
+                    Values = new[] { "truth even when it stings", "keep the ledger balanced" },
+                    Fears = new[] { "being forgotten out here", "the reactor going quiet" },
+                    SpeechStyle = "short sentences, technical jargon, avoids eye contact",
+                    RaidBackstory =
+                        "Ozawa makes things; she does not make rooms, and the distinction is on her record in ink. A " +
+                        "gantry she put her name to at Ceres dropped a rigger two decks, and the board pulled her " +
+                        "structural ticket for good — out here nobody can give it back, so she will cut, turn and " +
+                        "assemble anything at a bench and refuse to raise a wall. She spent the raid in the machine " +
+                        "shop making a bar into a weapon nobody ever came close enough for her to use.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "The Ceres gantry was not my weld. I let the finding stand because the yard chief who signed the steel was my father.",
+                            FactText = "Ozawa accepted the Ceres gantry finding to protect the yard chief who actually signed the steel — her father.",
+                            RevealDifficulty = 0.75f,
+                        },
+                    },
+                },
+
+                // ── rung 3 · pod_ferreira 0.88 ────────── Deconstruct 11 · Haul 9 · cannot CRAFT
+                new AuthoredPersona
+                {
+                    Name = "Ferreira", RolePreRaid = "breaker-crew hand", RoleNow = "salvage",
+                    Traits = new[] { "wry", "garrulous", "superstitious" },
+                    Values = new[] { "loyalty above rules", "no one eats alone" },
+                    Fears = new[] { "the Lien returning", "the dark between airlocks" },
+                    SpeechStyle = "clipped deck-slang, softens around food",
+                    RaidBackstory =
+                        "Eight years cutting dead hulls apart in the Belt taught Ferreira the order things come out of " +
+                        "a ship in, and nobody aboard strips a compartment faster. A cargo " +
+                        "clamp took the last two fingers and the tendon of his right hand on the morning the Lien " +
+                        "arrived, so a bench is finished for him — he cannot hold fine work steady and knows it. He " +
+                        "can still lift, cut and carry, and he says that is most of a ship anyway.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "I unsealed the aft airlock from the inside during the raid. It was to get two of mine out. I know what else it let in.",
+                            FactText = "Ferreira unsealed the Perilune's aft airlock from the inside during the raid.",
+                            RevealDifficulty = 0.8f,
+                        },
+                    },
+                },
+
+                // ── rung 4 · pod_mbeki 0.86 ───────────── Mine 13 · cannot REPAIR, cannot CRAFT
+                new AuthoredPersona
+                {
+                    Name = "Mbeki", RolePreRaid = "regolith surveyor", RoleNow = "mining",
+                    Traits = new[] { "stoic", "devout", "unbending" },
+                    Values = new[] { "the ship comes first", "protect the young ones" },
+                    Fears = new[] { "sealed hatches with someone behind them", "the water running out" },
+                    SpeechStyle = "long pauses, then everything at once",
+                    RaidBackstory =
+                        "Mbeki reads rock the way the others read a manifest — three of the seven cannot work a face " +
+                        "at all, and of those who can, the next best is six full grades below her. Others can " +
+                        "get the ship its regolith; she gets it faster than any of them, and the ship's first link is " +
+                        "the one everything else waits on. " +
+                        "A decompression stroke on the second day of the raid took the fine control of her right " +
+                        "hand: she can swing a bar and read a face, and she cannot hold a fault probe steady or work a " +
+                        "bench at all. She has not once complained about it out loud.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "The survey I filed for this ship's last contract was short by half. I knew, and I let us fly on it.",
+                            FactText = "The regolith survey Mbeki filed for the Perilune's last contract understated the yield by half, knowingly.",
+                            RevealDifficulty = 0.65f,
+                        },
+                    },
+                },
+
+                // ── rung 5 · pod_bahri 0.83 ───────────── Construct 12 · cannot HAUL
+                new AuthoredPersona
+                {
+                    Name = "Bahri", RolePreRaid = "structural engineer", RoleNow = "construction",
+                    Traits = new[] { "gentle", "devout", "garrulous" },
+                    Values = new[] { "no one eats alone", "finish what you seal" },
+                    Fears = new[] { "the water running out", "being forgotten out here" },
+                    SpeechStyle = "slow and formal, old freighter courtesies",
+                    RaidBackstory =
+                        "Bahri raises structure — frames, decks, bulkheads — and he is better at it than anyone this " +
+                        "crew will ever hire again. A fall in dock nine years ago left his lower spine fused: he can " +
+                        "stand at a frame for a whole shift and he cannot carry a load the length of a deck, which the " +
+                        "ship's medic wrote into his file precisely so nobody would ever have to ask him. He talked a " +
+                        "friend out of a better berth to keep him aboard the Perilune, and that friend is Osei.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "Osei only stayed on this ship because I asked him to. His capsule is one of the four that failed.",
+                            FactText = "Osei turned down a berth on another ship because Bahri asked him to stay aboard the Perilune.",
+                            RevealDifficulty = 0.5f,
+                        },
+                    },
+                },
+
+                // ── rung 6 · pod_nakamura 0.81 ────────── Craft 13 · Repair 10 · cannot DECONSTRUCT, cannot MINE
+                new AuthoredPersona
+                {
+                    Name = "Nakamura", RolePreRaid = "controller-board technician", RoleNow = "electronics",
+                    Traits = new[] { "sardonic", "haunted", "meticulous" },
+                    Values = new[] { "truth even when it stings", "the ship comes first" },
+                    Fears = new[] { "the reactor going quiet", "the dark between airlocks" },
+                    SpeechStyle = "rapid-fire, jokes when nervous",
+                    RaidBackstory =
+                        "Nakamura is the only soul aboard who ever repaired a controller board instead of swapping it, " +
+                        "and every board on this ship has been through his hands at least once — MOSS's included. The " +
+                        "raid put a bulkhead through his pelvis and the freeze set it badly, so he works seated: no " +
+                        "dig face, no demolition, no site where he would have to move fast. Put him at a bench, though, " +
+                        "and there is nobody aboard better — Ozawa is the only one near him, and she knows it.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "MOSS's board was already failing before the Lien ever came aboard. I logged it serviced because we had no spare and no time.",
+                            FactText = "The MOSS server's controller board was failing before the raid, and Nakamura logged it as serviced without replacing it.",
+                            RevealDifficulty = 0.7f,
+                        },
+                    },
+                },
+
+                // ── rung 7 · pod_torres 0.78 ──────────── Repair 14 · Construct 11 · cannot MINE
+                new AuthoredPersona
+                {
+                    Name = "Torres", RolePreRaid = "chief engineer", RoleNow = "chief engineer",
+                    Traits = new[] { "unbending", "wry", "stoic" },
+                    Values = new[] { "the ship comes first", "keep the ledger balanced" },
+                    Fears = new[] { "the reactor going quiet", "sealed hatches with someone behind them" },
+                    SpeechStyle = "few words, and the last one is the order",
+                    RaidBackstory =
+                        "Thirty-one years in engine spaces, the last eleven of them on this hull: there is not a system " +
+                        "aboard the Perilune that Torres has not had open. Her own capsule took the worst of the raid " +
+                        "of all seven, and it will cost the most to bring her back. She held the reactor's feed line open by hand through the aft " +
+                        "fire and took a lungful of it doing so — one lung works now, and she will never breathe a dust " +
+                        "face again, which on a ship whose every chain starts in rock is the joke she likes least.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "I gave the order to freeze, and I put the four capsules with bad charge readings under the four who reached the bay last.",
+                            FactText = "Torres assigned the four capsules with failing charge readings to the last four crew to reach the cryo bay during the raid.",
+                            RevealDifficulty = 0.9f,
+                        },
+                    },
+                },
+            };
+        }
+
+        /// <summary>
+        /// ⭐ <b>THE ATTACH.</b> Give a just-thawed sleeper her authored mind — persona sheet plus
+        /// the fact-backed secret behind it — matched to <paramref name="citizen"/> BY NAME against
+        /// <see cref="WreckSleepers"/>. Returns whether a sheet was found; anybody with no sheet
+        /// (Rell, every crew member on every other ship) is left exactly as she was.
+        ///
+        /// <para>⛔ <b>TOUCHES NO SIM STATE.</b> It writes the mind store and the fact registry —
+        /// host-owned, and <see cref="PersonaGenerator.CreateAuthoredMind"/> is RNG-free, so calling
+        /// this at an arbitrary runtime tick neither advances <c>sim.Rng</c> nor changes anything
+        /// the sim's own <c>StateHash</c> folds. <paramref name="sim"/> is taken because
+        /// <c>CreateAuthoredMind</c>'s signature takes it, not because anything here mutates it.</para>
+        ///
+        /// <para>⚠️ IDEMPOTENT BY THE CALLER'S CHOICE, NOT BY THIS METHOD: calling it twice rebuilds
+        /// the sheet and registers the secret's fact a SECOND time. The host observer fires once per
+        /// <c>CitizenThawedEvent</c> and each capsule is single-use (OD-M item 6), so once is once —
+        /// stated because the cheap "just call it every frame" refactor is silently wrong.</para>
+        /// </summary>
+        public static bool AttachSleeperPersona(Simulation sim, MindState minds, FactRegistry facts, Citizen citizen)
+        {
+            if (sim == null || minds == null || facts == null || citizen == null) return false;
+            if (string.IsNullOrEmpty(citizen.Name)) return false;
+
+            var sheets = WreckSleepers();
+            for (int i = 0; i < sheets.Length; i++)
+            {
+                if (!string.Equals(sheets[i].Name, citizen.Name, System.StringComparison.Ordinal)) continue;
+                PersonaGenerator.CreateAuthoredMind(sim, minds, facts, citizen, sheets[i]);
+                return true;
+            }
+            return false;
+        }
+
     }
 }

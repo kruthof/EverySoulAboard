@@ -806,6 +806,28 @@ namespace Perilune.Tests
             "sim/Sim.Core/Jobs/Sources/DigJobSource.cs",       // names WorkType.Mine to price a dig
             "sim/Sim.Core/Jobs/Sources/BuildJobSource.cs",     // names WorkType.Construct to price a build
             "sim/Sim.Core/Jobs/Sources/DeconstructJobSource.cs", // names WorkType.Deconstruct to price a strip
+
+            // ⭐⭐ M3-8 — THE SLEEPERS' AUTHORED COMPETENCE. ONE new file, and it is the FIRST
+            // WRITER of `WorkIncapable` in the game — M2-1's note ("the mask is storage with no
+            // source of incapability") ends here. It is a pure authoring table: seven literal rows
+            // keyed by sleeper name, stamped onto the citizen by `CryoSystem.Open` at the moment a
+            // capsule opens.
+            //
+            // ⛔ IT WRITES; IT NEVER READS AN ARBITRATION. No `GetWorkPriority`, no
+            // `IsWorkEnabled`, no `CanTakeWorkType`: it does not consult the player's grid and
+            // cannot change who takes which job. `IsIncapableOf` here is the STRUCT's own accessor
+            // (`SleeperAptitude.IsIncapableOf`, this file's), not `Citizen`'s — the identifier scan
+            // cannot tell them apart, which is why the distinction is written down rather than
+            // assumed.
+            //
+            // ⚠️ THE LEDGER'S OWN QUESTION, ANSWERED RATHER THAN WAVED PAST: it warns that a new
+            // enroller is "a BEHAVIOUR change on every pinned ship — measure P1/P2/P3 and say so".
+            // MEASURED, and the answer is that NO PIN CAN REACH IT: the table is reachable only
+            // through a thaw, a thaw needs a `CryoPod`, and the wreck is the only ship in the repo
+            // that has one (asserted as an inclusion test by
+            // `SleeperPersonaTests.NoShipButTheWreck_HasACapsuleToThawFrom`). P1/P2/P3/P4/P5 all
+            // held on the full gate. MECHANICS §13.39.4.
+            "sim/Sim.Core/SleeperAptitudes.cs",                // M3-8 — the authored spread + mask, applied at thaw
         };
 
         private static readonly string[] WorkGridIdentifiers =
