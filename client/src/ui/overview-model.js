@@ -539,6 +539,56 @@ export const GRADE_TINT = Object.freeze({
  */
 export function lensGrade(lens, atmos) {
   if (!atmos || !lens || lens === 'none') return null;
+  // ⭐⭐ D4 — A ROOM WITH NO ATMOSPHERE HAS NO ATMOSPHERE READING, AND EVERY ATMOS LENS SAYS `bad`.
+  //
+  // This clause exists because of the host change it ships with, not despite it. Before D4 an
+  // airless compartment shipped no `rooms` row at all, so it arrived as `atmos === null` and fell
+  // out on the line above. Now it arrives with real numbers — and two of the four atmos lenses would
+  // grade a hard vacuum FAVOURABLY off them: `co2` reads `0 ppm` (`Room.CO2Ppm` returns 0 when
+  // `TotalMoles <= 0`) and lands in the `< 1000` GOOD band, and `temperature` grades a vented room
+  // that has not cooled yet as GOOD. Painting a vacuum green on a gas lens is a worse lie than the
+  // blank D4 exists to remove, and it would be a lie this package introduced.
+  //
+  // ⛔ IT IS NOT A CLIENT-SIDE RE-DERIVATION OF BREATHABILITY, and the difference matters: it does
+  // NOT ask `AtmosphereSafety.IsBreathable`'s four bands (vacuum / thin air / CO₂ / thermal), which
+  // are def-driven and belong to the sim — asking them here is the second authority
+  // `WireFormat.Blocked.cs` refuses by name. It asks one structural question the wire answers
+  // outright: is there any gas here to grade? At `pressureKPa` 0 the `o2`, `co2ppm` and `tempK`
+  // fields are describing an EMPTY volume, so no per-gas band is meaningful and the honest grade is
+  // the alarming one.
+  //
+  // ⛔⛔ SEND-BACK FIX — IT OVERRIDES A BAND, IT NEVER CREATES ONE. The first cut ran this clause
+  // ABOVE the switch, so it answered for EVERY lens: measured on the shipped exports,
+  // `lensGrade('water', {pressureKPa: 0})` returned `bad` and washed 15 of the wreck's 18
+  // compartments red under a WATER label — a fabricated reading, the exact sin this package exists
+  // to remove from the pressure surface. The order below is the fix and the scope is now
+  // STRUCTURAL rather than a hand-kept lens list (a list is the 4th trap's scope filter waiting to
+  // go stale): the vacuum override can only reach a lens that produced a band of its own, so
+  // `water` / `power` / an unknown lens — the three that fall out of `atmosBand` at `default` —
+  // still return null, vacuum or not, exactly as this module's header promises.
+  //
+  // ⚠️ AND IT FIRES ONLY ON A NUMBER THAT IS PRESENT. An ABSENT `pressureKPa` is not zero pressure —
+  // it is a caller that supplied only the field its lens needs (`lensGrade('oxygen', {o2:.21})` is
+  // the shape half this module's own callers and tests use), and answering `bad` for it would
+  // withdraw three lenses from every partial reading. `!(p > 0)` inside the typeof guard so NaN
+  // lands here too, which `p <= 0` would not catch.
+  const band = atmosBand(lens, atmos);
+  if (band === null) return null;          // power / water / unknown — never a fabricated reading
+  const p0 = atmos.pressureKPa;
+  if (typeof p0 === 'number' && !(p0 > 0)) return 'bad';
+  return band;
+}
+
+/**
+ * The band one ATMOS lens reads off a room's numbers, or null when this lens has no per-room
+ * reading here (`power` / `water` / an unknown lens — the caller's job). PURE, module-private:
+ * `lensGrade` is the export, and it is the only caller. Splitting it out is what makes D4's
+ * zero-pressure override an OVERRIDE — it can only replace a band this switch produced.
+ * @param {string} lens
+ * @param {{o2:number,co2ppm:number,tempK:number,pressureKPa:number}} atmos
+ * @returns {'good'|'warn'|'bad'|'cold'|null}
+ */
+function atmosBand(lens, atmos) {
   switch (lens) {
     case 'oxygen': {
       const o = atmos.o2;                    // fraction 0..1 (fresh air ≈ 0.21)
@@ -669,6 +719,24 @@ export function fmtO2(o2) {
 export function fmtCo2(ppm) {
   const v = typeof ppm === 'number' && isFinite(ppm) ? ppm : 0;
   return Math.round(v) + ' ppm';
+}
+
+/**
+ * ⭐ D4 — kPa → `"0.0 kPa"`. PURE.
+ *
+ * The readout's atmosphere box carried O₂, CO₂, temperature and power and NEVER the pressure, so the
+ * one number that says *this compartment has nothing in it* was on the wire (`rooms` tuple element
+ * 4) and on no surface. It leads its row for that reason: `0.0 kPa` is the headline of a vacuum, and
+ * `0% O₂ · 0 ppm CO₂` beside it reads like a sensor fault rather than like an empty room.
+ *
+ * ONE DECIMAL because the interesting distinction is 0.0 vs 0.4 — a hall the crew have started
+ * filling is not the hall they vented, and rounding to an integer erases the whole of that. Culture
+ * safe without a locale option: `Number.prototype.toFixed` is specified to emit `.` regardless of
+ * locale (unlike `toLocaleString`), which matters here because this repo's dev machine is de-DE.
+ */
+export function fmtPressure(kPa) {
+  const v = typeof kPa === 'number' && isFinite(kPa) ? kPa : 0;
+  return v.toFixed(1) + ' kPa';
 }
 
 /** Kelvin → "NN°C" (rounded). PURE. */

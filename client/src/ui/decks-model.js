@@ -155,7 +155,18 @@ export function atmosByAnchor(rooms) {
  * roomMaterial(roomType) (unknown types fall back to the neutral steel-tan deck). `displayName` is
  * `compartmentName` — the authored purpose, else the neutral designation, NEVER blank and never the
  * anchor id. `atmos` is the room's atmosphere from the anchor lookup, or null when the room ships no
- * `rooms` row (an airless compartment has none, and that is the normal case since W4b).
+ * `rooms` row.
+ *
+ * ⭐ D4 CORRECTS THE SENTENCE THAT USED TO END THAT LINE — *"an airless compartment has none, and
+ * that is the normal case since W4b"* — because the host no longer drops airless rooms.
+ * `GameSession.BuildRooms` used to skip `TotalMoles <= 0`, so a sealed vacuum hall shipped NO row and
+ * arrived here as `atmos: null`, which is the same value a slot gets when the channel has not
+ * arrived at all. That collision is what made the pressure lens paint nothing over the one thing it
+ * exists to show. A sealed airless compartment now ships a row reading 0 O₂ / 0 ppm / 0 kPa and its
+ * REAL temperature, so `atmos` is non-null and `lensGrade('pressure', …)` answers `'bad'`.
+ * ⚠️ `null` HAS NOT BECOME IMPOSSIBLE and callers must still handle it: an anchor whose region is
+ * BREACHED TO SPACE is merged into the vacuum sink (`Rooms[0]`), which the host still skips
+ * deliberately, and a slot is also `null` before the first `rooms` message lands.
  * @param {{slotIndex:number,x:number,y:number,w:number,h:number,anchorName:string,roomType:number,occupied:boolean,active:boolean}} slot
  * @param {Map} atmos  from atmosByAnchor
  */

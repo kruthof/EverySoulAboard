@@ -137,7 +137,21 @@ namespace Perilune.Web
     /// See <see cref="DeviceCell.Open"/> for why it is the one omitted field that qualified and
     /// <c>Powered</c> still does not.
     ///
-    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open,serv],..]}
+    /// ⭐ A NINTH ELEMENT LANDED WITH D4 (2026-08-02) — <see cref="DeviceCell.Air"/>, whether a worker
+    /// could be staged at this machine WITHOUT the player's order waiving the air rule. It passes the
+    /// same two tests <c>Open</c> had to pass and the omission list still applies to everything else:
+    /// it has a CONSUMER (the Room Zoom's PRIORITISE offer, which promised a repair with no word about
+    /// the vacuum the pawn would be ordered into) and it is NOT VOLATILE (a compartment crosses the
+    /// breathability line when it is vented, sealed or repressurised — a player-or-MOSS event, not a
+    /// per-tick one, unlike <c>Powered</c>, which <c>PowerSystem.Balance</c> re-stamps every second).
+    ///
+    /// ⚠️ AND IT ANSWERS THE OBJECTION M3-13 FILED AGAINST ITSELF — *"a second per-KIND bit should get
+    /// its own channel"*. That note is about <c>Serv</c>, which is a per-KIND CONSTANT delivered
+    /// per-row and therefore genuinely redundant N times over. <c>Air</c> is the opposite: it is LIVE
+    /// PER-DEVICE STATE that differs between two machines of the same kind three tiles apart and moves
+    /// while the player watches. Per-device state is precisely what this channel carries.
+    ///
+    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open,serv,air],..]}
     /// </summary>
     public static partial class WireFormat
     {
@@ -257,7 +271,7 @@ namespace Perilune.Web
         /// </summary>
         public readonly struct DeviceCell
         {
-            public readonly int X, Y, Deck, Kind, Cond, Oper, Open, Serv;
+            public readonly int X, Y, Deck, Kind, Cond, Oper, Open, Serv, Air;
 
             /// <param name="serv">⭐ <b>M3-13 — 1 when this KIND of machine can ever be serviced at
             /// all, 0 when it never can.</b> <c>MaintenanceSystem.IsEverServiceable</c>, i.e. the
@@ -270,10 +284,22 @@ namespace Perilune.Web
             /// never-serviceable kinds — which is a hand mirror of a DEF and drifts the day content
             /// moves, the exact second-authority defect <c>ROLE_TO_ITEM</c> was deleted for. The
             /// cost is one small int per row on a channel that is already dirty-gated.</param>
-            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open, int serv)
-            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; Serv = serv; }
+            /// <param name="air">⭐ <b>D4 — 1 when a worker could be staged at this machine WITHOUT
+            /// the player's order waiving the air rule; 0 when the ONLY way to put someone here is
+            /// that waiver.</b> Computed by asking <c>MaintenanceSystem.TryFindStagingTile</c> — the
+            /// sim's own staging search, the one <c>RecruitForNeediest</c> and <c>DriveWorker</c> both
+            /// use — with <c>forced</c> false and then true, which is M3-14 rung 3's pattern (the same
+            /// rule asked in one more place) rather than a host-side re-derivation of breathability.
+            /// <b>Approach is deliberately NOT folded in:</b> a walled-in machine answers 1, because
+            /// "nowhere to stand" is a different refusal with different words and this bit must not
+            /// blame the air for the geometry. It exists so the Room Zoom's PRIORITISE offer can say
+            /// what the order will cost before the player gives it — the M3 demo's finding D4, where a
+            /// direct repair order into a still-depressurising hall was accepted, unannotated, and
+            /// killed the pawn.</param>
+            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open, int serv, int air)
+            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; Serv = serv; Air = air; }
 
-            /// <summary>ALL EIGHT FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
+            /// <summary>ALL NINE FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
             /// dirty-version gate, whose sufficiency argument is that the compared value IS the
             /// serializer's whole input — so it must compare everything the serializer reads, and a
             /// field added to this tuple must be added here IN THE SAME COMMIT or the gate silently
@@ -297,9 +323,17 @@ namespace Perilune.Web
             /// harmless: the gate's own sufficiency argument is <i>"the compared value IS the
             /// serializer's whole input"</i>, and an argument that is true by accident stops being
             /// true the day a def is hot-reloaded.</para>
+            /// <para>⭐ <c>Air</c> was added by D4 IN THIS SAME COMMIT, and here the omission would be
+            /// LIVE rather than latent: <c>Air</c> is the only element on this tuple that can move
+            /// while nothing else about the device does. Vent the compartment a pristine, closed,
+            /// serviceable machine stands in and <c>Cond</c>, <c>Oper</c>, <c>Open</c> and <c>Serv</c>
+            /// are all byte-identical — so a <c>SameAs</c> that did not compare it would skip the
+            /// render, and the PRIORITISE menu would go on offering a repair with no hazard clause for
+            /// as long as nothing else aboard happened to wear out. That is the <c>Open</c>
+            /// paragraph's failure re-run on a state the player can trigger from the MOSS console.</para>
             public bool SameAs(in DeviceCell o) =>
                 X == o.X && Y == o.Y && Deck == o.Deck && Kind == o.Kind && Cond == o.Cond && Oper == o.Oper
-                && Open == o.Open && Serv == o.Serv;
+                && Open == o.Open && Serv == o.Serv && Air == o.Air;
         }
 
         /// <summary>The wire byte for a raw <see cref="Perilune.Sim.Device.Condition"/>:
@@ -357,7 +391,8 @@ namespace Perilune.Web
                       .Append(',').Append(c.Cond.ToString(DeviceIc))
                       .Append(',').Append(c.Oper.ToString(DeviceIc))
                       .Append(',').Append(c.Open.ToString(DeviceIc))
-                      .Append(',').Append(c.Serv.ToString(DeviceIc)).Append(']');
+                      .Append(',').Append(c.Serv.ToString(DeviceIc))
+                      .Append(',').Append(c.Air.ToString(DeviceIc)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

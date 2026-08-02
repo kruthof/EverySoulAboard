@@ -60,7 +60,7 @@ import { makeNudge } from './paused-nudge.js';
 import { ledgerRows, matterLine, caveatLine, LEDGER_ROW_IDS } from './ledger-model.js';
 import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
-  fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
+  fmtO2, fmtCo2, fmtTemp, fmtPressure, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, orderHintLine, orderPlacedLine,
   ERASE_TOOL, ERASE_LABEL, markNameAt, erasePlacedLine,
   WORK_COLUMNS, nextWorkPriority, workCellLabel, workRowColumns, workSkillLabel,
@@ -413,7 +413,15 @@ function buildIslands() {
     '<div class="ov-atmos ov-ro-atmos" hidden>' +
       '<div class="ov-atmos-lbl"></div>' +
       '<div class="ov-atmos-row"><span>ATMOS</span><span class="ov-atmos-v good ov-ro-atmosA"></span></div>' +
-      '<div class="ov-atmos-row"><span>TEMP · POWER</span><span class="ov-atmos-v amber ov-ro-atmosB"></span></div>' +
+      // ⭐ D4 — the label names what the row now SHOWS. `paintReadout` puts the pressure first
+      // (`101.3 kPa · 20°C · ON`), so a row still labelled `TEMP · POWER` mislabels its own headline
+      // number — the one that says a compartment is empty.
+      // ⚠️ ABBREVIATED, AND THE ABBREVIATIONS ARE THE LENS RAIL'S OWN (`2 PRES · 5 TEMP · 6 PWR`),
+      // because this row is 298px wide minus padding and it MUST stay one line: measured in Chrome,
+      // the spelt-out `PRESSURE · TEMP · POWER` wraps BOTH spans (row height 15px → 30px) and drops
+      // `ON` onto a second line under its own label. `PRES · TEMP · PWR` measures 15px, like the
+      // ATMOS row above it.
+      '<div class="ov-atmos-row"><span>PRES · TEMP · PWR</span><span class="ov-atmos-v amber ov-ro-atmosB"></span></div>' +
     '</div>' +
     '<div class="ov-actions">' +
       '<button class="ov-act ov-talk" data-ov-talk>[T] OPEN CHANNEL — TALK</button>' +
@@ -1166,7 +1174,10 @@ function paintReadout(frame, rosterMsg, dView, activeDeck) {
     const a = room.atmos;
     setText(_el.roAtmosLbl, 'CURRENT ROOM · ' + roomName);
     setText(_el.roAtmosA, fmtO2(a.o2) + ' O₂ · ' + fmtCo2(a.co2ppm) + ' CO₂');
-    setText(_el.roAtmosB, fmtTemp(a.tempK) + ' · ' + powerLabel(room.active));
+    // ⭐ D4 — PRESSURE LEADS THIS ROW. A crew member standing in a sealed vacuum used to hide this
+    // whole box (no `rooms` row ⇒ null atmos ⇒ the `else` branch below); now the box shows, and the
+    // number that says WHY she is dying has to be in it. `0.0 kPa · -47°C · OFF`.
+    setText(_el.roAtmosB, fmtPressure(a.pressureKPa) + ' · ' + fmtTemp(a.tempK) + ' · ' + powerLabel(room.active));
     setHidden(_el.roAtmos, false);
   } else {
     setHidden(_el.roAtmos, true);

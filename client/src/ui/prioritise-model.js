@@ -122,13 +122,13 @@ export function prioritiseCrew(selCid, crew) {
  * selecting a pawn, the second can never be answered. What they share is that the menu does not
  * open and the player is told why, which is the shape, not the words.
  *
- * @param {{dev?:{kind?:number, serv?:number}|null, selCid?:number|null, crew?:Array|null}} [opts]
- * @returns {{ok:boolean, silent:boolean, cid:number|null, name:string, label:string, reason:string}}
+ * @param {{dev?:{kind?:number, serv?:number, air?:number}|null, selCid?:number|null, crew?:Array|null}} [opts]
+ * @returns {{ok:boolean, silent:boolean, cid:number|null, name:string, label:string, hazard:string, reason:string}}
  */
 export function prioritiseOffer(opts) {
   const o = opts || {};
   const name = deviceDisplayName(o.dev ? o.dev.kind : undefined);
-  if (!o.dev) return { ok: false, silent: true, cid: null, name, label: '', reason: '' };
+  if (!o.dev) return { ok: false, silent: true, cid: null, name, label: '', hazard: '', reason: '' };
   // ⭐⭐ M3-13 — THE MACHINE IS NEVER SERVICED, SO THERE IS NO ORDER TO OFFER. `serv` is the
   // `devices` channel's own bit (`MaintenanceSystem.IsEverServiceable`, the def's `maint` opt-out);
   // this asks it and derives nothing. It ranks ABOVE the crew question deliberately: "there is
@@ -151,6 +151,7 @@ export function prioritiseOffer(opts) {
       cid: null,
       name,
       label: '',
+      hazard: '',
       reason: name + ' IS NEVER SERVICED — NO REPAIR TO ORDER HERE',
     };
   }
@@ -159,11 +160,33 @@ export function prioritiseOffer(opts) {
     o.crew,
   );
   if (who.cid == null) {
-    return { ok: false, silent: false, cid: null, name, label: '', reason: who.reason };
+    return { ok: false, silent: false, cid: null, name, label: '', hazard: '', reason: who.reason };
   }
+  // ⭐⭐ D4 — THE OFFER NAMES THE HAZARD. IT DOES NOT WITHDRAW THE ORDER.
+  //
+  // The M3 milestone demo's finding D4: a direct prioritise-repair order into a hall that was still
+  // depressurising was accepted, the pawn walked in, and she died — and this menu, the one surface
+  // that speaks BEFORE the order exists, said nothing at all. RimWorld's shape (§2.2, and §8.4 rung
+  // 3) is that the menu STATES THE REASON and the player still gets to click: the order is the whole
+  // contract, and rung 2 walks her in because the player said so. So this is a clause on the label,
+  // never a refusal and never a confirm dialog — `ok` stays true and `cid` is unchanged.
+  //
+  // `air` is the `devices` channel's own bit, asked of `MaintenanceSystem.TryFindStagingTile` host-
+  // side. It is READ here and nothing is derived from room numbers: the four bands behind
+  // `AtmosphereSafety.IsBreathable` (vacuum, thin air, CO₂, thermal) are the sim's, and re-deriving
+  // them client-side is the second authority `WireFormat.Blocked.cs` refuses by name. That is also
+  // why the words are NO AIR rather than NO OXYGEN — they have to be true of a fully pressurised
+  // room that is merely freezing.
+  //
+  // ⛔ THE CONDITION IS `=== 0`, NOT FALSY — the same rule `serv` states above with the stakes
+  // reversed. `undefined` is what an older host's eight-element row yields and it must mean "offer
+  // as before"; a falsy test would stamp a death warning on every machine on the ship the moment the
+  // field went missing, and a warning that is always on is a warning nobody reads.
+  const hazard = o.dev.air === 0 ? 'NO AIR AT THE WORKSITE — SHE MAY DIE' : '';
   return {
     ok: true, silent: false, cid: who.cid, name,
-    label: 'PRIORITISE: REPAIR ' + name,
+    label: 'PRIORITISE: REPAIR ' + name + (hazard ? ' · ' + hazard : ''),
+    hazard,
     reason: '',
   };
 }
