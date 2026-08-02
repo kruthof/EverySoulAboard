@@ -5045,7 +5045,103 @@ channel is empty at boot, i.e. at the exact moment the player first looks at a c
 - **Nothing WRITES `WorkIncapable` either** (M2-1's note still stands): the mask is storage the
   channel now carries, with no source of incapability in the game. So `workcaps` ships correct and
   all-zero on every shipping ship.
-- **No surface draws skills or absent cells.** M3-12 owns the WORK tab's skill column and the
-  absent-cell rendering; `getWorkCaps` is reached by nothing yet, exactly as `getDevices` shipped.
+- ~~**No surface draws skills or absent cells.**~~ ✅ **CLOSED 2026-08-02 by M3-12 — §13.38.** The
+  WORK tab now draws both and `getWorkCaps` is on `SHIP_STATE_REACH`. ⚠️ The *other* two bullets in
+  this list are NOT closed by it: the numbers it draws are still all zero and the masks still all
+  clear, because nothing writes either.
 - **Skill does not affect quality, failure, mood, or what a pawn CHOOSES to do.** Only rate, and only
   at the six sites above. RimWorld's `naturalPriority` ordering is untouched.
+
+---
+
+### 13.38 ⭐⭐ The WORK tab says what each soul is good at — and draws the cell that is not there (M3-12, 2026-08-02)
+
+**THE PLAYER SENTENCE.** Until this package the player could not see why they would give a job to one
+soul rather than another: the grid was six identical boxes per row and a name. Now **every cell
+carries her skill in that work type**, and **a work type she can never do has no cell there at all.**
+
+⚠️ **CLIENT-ONLY, PIN-NEUTRAL.** No sim file, no host file, no def. All five pins held (check A).
+
+#### 13.38.1 ⭐ BLANK vs ABSENT — the one thing this package is actually about
+
+`docs/design/rimworld-reference.md:335`, the `renders as` row of §1.6's table:
+
+| | **disabled** (priority 0) | **incapable** |
+|---|---|---|
+| what it means | *this pawn's setting is off* — an order the PLAYER gave | *there is no such setting for this pawn* — a fact about the PERSON |
+| who can change it | the player, by clicking | nobody. RimWorld's `SetPriority` refuses and logs |
+| renders as | a **blank cell** | ⭐ **no cell at all — the box is absent** |
+
+⛔ **THE RENDERING IS STRUCTURAL, NEVER DECORATIVE, AND THAT IS THE WHOLE DESIGN.** A greyed, struck,
+dimmed or `opacity:0` cell is still a cell: it still occupies the column, still takes the click, and
+still says the FIRST sentence. Revision 1 of the charter said RimWorld strikes the cell; revision 2
+corrected it as a misquote of the authority it cited. So `client/src/ui/overview-model.js`'s
+`workRowColumns` decides the SET of cells and the DOM is built from that answer —
+`overview-view.js:paintWork` appends only the columns it returns.
+
+| where | what |
+|---|---|
+| `client/src/ui/overview-model.js:477-507` | `workRowColumns(caps)` (the cell SET) + `workSkillLabel(skill)` (the corner glyph). PURE. |
+| `client/src/ui/overview-model.js:60-66` | imports `isIncapableOf` from `wire/messages.js` — the mask bit test has ONE home, not two |
+| `client/src/ui/overview-view.js:226-252` | `workCapsFor(cid)` — the live-cache seam, `Hud.getWorkCaps()` → `decodeWorkCaps` |
+| `client/src/ui/overview-view.js:630-701` | `paintWork` — attaches/detaches cells on `rec.sig`, paints the two spans |
+| `client/styles.css:1152-1171` | the per-work-type `grid-column` rules + `.ov-workskill` |
+| `client/test/surface-boundary.test.js` | `getWorkCaps` joins `SHIP_STATE_REACH` — a census MOVE, said out loud |
+
+#### 13.38.2 The geometry — why CSS is load-bearing here
+
+`.ov-workrow` is `grid-template-columns:132px repeat(6,58px)`. An incapable soul's row has FEWER
+children than the header has columns, so under auto-placement the survivors **shuffle left and every
+one of them draws under the wrong header** — HAUL under MINE. ⛔ **The addressing would stay correct**
+(each `<button>` carries its own `data-ov-work-cid` + `data-ov-work-type`, and the click reads those
+back), **which is exactly why no click test can see this failure.** So each cell is pinned to its
+column by `.ov-workcell[data-ov-work-type="N"]{grid-column:N+2}` — keyed off the same attribute the
+click handler reads, so the drawn position and the addressed work type cannot disagree.
+
+#### 13.38.3 The skill corner, and the level-0 honesty choice
+
+Each cell is now two spans: `.ov-workprio` (the `off`/`1..4` glyph the click changes) and
+`.ov-workskill` (her level `0..20`, small, in the corner — RimWorld's own arrangement, §1.7).
+
+⭐ **LEVEL 0 RENDERS AS A VISIBLE `0`.** Not blank, not a dash. Nothing in the sim writes a skill
+(§13.37.5), so **today the grid reads `0` on every cell of every row on every shipping ship** — and
+that is the honest picture of a wreck whose only waking soul is untrained at everything, not a
+display with nothing to show. Hiding the zero would make the shipped game indistinguishable from one
+where this feature never landed.
+
+⚠️ **`0` AND `·` ARE DIFFERENT ANSWERS.** `·` is *no `workcaps` payload for this person*, and it keeps
+every cell present: deleting a box because a message is late would state a permanent fact about a
+person on no evidence, and unlike a wrong number **a missing box cannot be noticed as wrong.**
+`decodeWorkCaps` drops a short row rather than zero-filling it for the same reason.
+
+⛔ This does **not** contradict `workCellLabel`'s rule that *off is never `"0"`*. That rule governs
+the PRIORITY glyph, where a `0` reads as the worst of `1..4`. The skill lives in its own element, on
+its own domain (`0..20`), and never replaces the priority text.
+
+#### 13.38.4 Read-only, and the two carried owner items
+
+The skill display adds **no editing affordance**: `onWorkCellClick` is unchanged, the skill span
+carries no `data-ov-*` address of its own, and a click anywhere in the cell — including on the
+number — sends the same single `workPriority` order it did before. A skill is the SIM's to write.
+
+The two owner items `HANDOVER.md` files against this tab are **untouched by design**: the `BUILD`
+column label still collides with the BUILD tab, and the click cycle still walks only upwards. Both
+are pinned as *unchanged* by `overview-model.test.js` so that a later package cannot resolve either
+by accident.
+
+#### 13.38.5 ⚠️ WHAT IS WIRED BUT NOT CONNECTED
+
+- ⛔ **THE ABSENT CELL CANNOT BE SEEN IN THE SHIPPING GAME.** Nothing writes `Citizen.WorkIncapable`
+  (§13.37.5), so every shipping ship sends `incapableMask = 0` and **every row has all six cells**.
+  The rendering is real, driven and mutation-tested against an authored two-soul fixture; the
+  *content* — a source of incapability, i.e. a backstory or trait that disables a work type — exists
+  nowhere in the game. **FILED, not built.** M3-8's persona sheets are the first place it could land.
+- ⛔ **AND THE SKILL NUMBERS ARE ALL `0`** for the same reason. The milestone's decisive step ("her
+  row is NOT Rell's") therefore needs **M3-8** before it can be demonstrated in play: today the two
+  rows differ in neither the numbers nor the set.
+- **No hover explains WHY a cell is absent.** RimWorld puts that in the pawn's Bio tab
+  ("Incapable Of", with the source on hover). We have no such surface — the Persona window is M4 — so
+  the grid's second hint line carries the whole explanation ("a work type she can never do has no
+  cell at all"). **FILED.**
+- **Skill is not shown anywhere else.** No CREW WATCH column, no tile tooltip, no Room Zoom readout.
+  One surface, one place.

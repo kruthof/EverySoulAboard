@@ -141,17 +141,43 @@ const openWorkTab = async () => {
 const cellCentre = async (i) => json(
   `(()=>{const e=document.querySelectorAll('.ov-worklist .ov-workrow .ov-workcell')[${i}];if(!e)return null;`
   + `const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
-/** Walk a cell's off→1→2→3→4→off cycle to `want` (the shipped surface ships one gesture). */
+/**
+ * Walk a cell's off→1→2→3→4→off cycle to `want` (the shipped surface ships one gesture).
+ *
+ * ⛔ READ THE PRIORITY GLYPH, NEVER THE CELL'S WHOLE TEXT — M3-12 put TWO facts in the cell (the
+ * priority and her skill level in that work type) in two child spans, so `cell.textContent` is their
+ * CONCATENATION: `"off0"`, `"10"`. This loop compared that against `String(want)`, which can never be
+ * true, so it clicked six times and returned false — and the damage is not the four FAILs it
+ * reported. It is that the grid states this whole tool depends on were NEVER ESTABLISHED: six clicks
+ * from `off` walk off→1→2→3→4→off→1 and land on `1` whatever `want` was, so every downstream why-line
+ * check ran against a grid the tool believed it had set and had not. A RESULT-GENERATOR — the tool
+ * keeps producing confident output about a state that is not there.
+ *
+ * ⚠️ AND IT NOW EXITS RATHER THAN RETURNING FALSE, naming what it actually read. A tool that cannot
+ * establish its own preconditions has nothing true left to say, and continuing is what turned a
+ * broken read into wrong findings rather than a stopped run.
+ *
+ * The `?:` fallback matches `work-tab-shot.mjs`'s `cellsNow`: if the span is ever removed this
+ * degrades to the old reading instead of silently comparing against `''`.
+ */
 async function setCell(i, want) {
   const c = await cellCentre(i);
   if (!c) { console.error('FAIL: no work cell at index ' + i); process.exit(7); }
+  let now = '';
   for (let n = 0; n < 6; n++) {
-    const now = await evaluate(
-      `document.querySelectorAll('.ov-worklist .ov-workrow .ov-workcell')[${i}]?.textContent||''`);
+    now = await evaluate(
+      `(()=>{const e=document.querySelectorAll('.ov-worklist .ov-workrow .ov-workcell')[${i}];`
+      + `if(!e)return '';const p=e.querySelector('.ov-workprio');`
+      + `return (p?p.textContent:e.textContent)||'';})()`);
     if (now === String(want)) return true;
     await clickAt(c.x, c.y); await sleep(500);
   }
-  return false;
+  console.error(
+    `FAIL: cell ${i} never reached '${want}' — it reads '${now}' after six clicks. Every check below `
+    + 'would run against a grid this tool believes it set and did not, so the run stops here. If '
+    + "the cell's internals moved again, re-point the read (it wants the PRIORITY glyph, not the "
+    + "cell's whole textContent, which also contains the skill level).");
+  process.exit(8);
 }
 
 // ── STEP 1: the grid boots off, and she is awaiting orders ──

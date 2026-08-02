@@ -14,6 +14,11 @@
 //   3. THE VALUE SURVIVES A RELOAD, i.e. it came back over the WIRE and not out of anything this
 //      page remembers. A reload is the only instrument that can distinguish those two, and a node
 //      harness has no page to reload.
+//   4. ⭐ M3-12 — THE SKILL CORNER IS VISIBLE, AND A ROW WITH A MISSING CELL STILL LINES UP. The
+//      first is the same "invisible feedback is FUNCTIONAL" rule applied to an 8 px number in the
+//      corner of a 58 px box; the second is a CSS-GRID question that no harness without a layout
+//      engine can answer, and one whose failure leaves every ORDER correct while every BOX draws
+//      under the wrong header. See STEP 3b.
 // It also re-checks the placement pin against a REAL document: the island must be a descendant of
 // `#overview-view`, not of the deprecated console `.app` shell.
 //
@@ -123,12 +128,29 @@ const centre = async (sel) => json(
   + `const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:r.width,h:r.height};})()`);
 
 /** Every WORK cell of the first row, as the PLAYER sees it: text, state class, and the two facts a
- *  node harness cannot supply — is it laid out at all, and what colour did the stylesheet resolve. */
+ *  node harness cannot supply — is it laid out at all, and what colour did the stylesheet resolve.
+ *
+ *  ⭐ M3-12 SPLIT THE CELL'S TEXT IN TWO and this reader followed. A cell now draws the PRIORITY
+ *  glyph and her SKILL in that work type in two child spans, so `c.textContent` is their
+ *  concatenation — `text` below reads `.ov-workprio` so every legacy `text === 'off'` check keeps
+ *  asserting the same thing it always did, and `skill`/`skillW`/`skillH` are the new facts. The
+ *  centre-x is carried too, because the M3-12 leg below is about WHERE a cell lands, not what it
+ *  says. */
 const cellsNow = async () => json(
   `[...document.querySelectorAll('.ov-worklist .ov-workrow')[0]?.querySelectorAll('.ov-workcell')||[]]`
   + `.map((c)=>{const r=c.getBoundingClientRect();const s=getComputedStyle(c);`
-  + `return {text:c.textContent,cls:c.className,w:Math.round(r.width),h:Math.round(r.height),`
+  + `const p=c.querySelector('.ov-workprio');const k=c.querySelector('.ov-workskill');`
+  + `const kr=k?k.getBoundingClientRect():{width:0,height:0};`
+  + `return {text:p?p.textContent:c.textContent,skill:k?k.textContent:null,`
+  + `skillW:Math.round(kr.width),skillH:Math.round(kr.height),`
+  + `skillColor:k?getComputedStyle(k).color:null,`
+  + `cx:Math.round(r.x+r.width/2),cls:c.className,w:Math.round(r.width),h:Math.round(r.height),`
   + `color:s.color,border:s.borderStyle,cid:c.dataset.ovWorkCid,type:c.dataset.ovWorkType};})`);
+
+/** The column headers' centre-x, in order — what a cell must line up with to be readable at all. */
+const headerXs = async () => json(
+  `[...document.querySelectorAll('.ov-workhead .ov-workcolhdr')]`
+  + `.map((h)=>{const r=h.getBoundingClientRect();return Math.round(r.x+r.width/2);})`);
 
 async function openWorkTab() {
   const tab = await centre('[data-ov-tab="work"]');
@@ -187,6 +209,110 @@ const task = await evaluate(`document.querySelector('.ov-crewtask')?.textContent
 log(`  CREW WATCH task line: '${task}'    (the host's own TaskLabel: '${rell.task}')`);
 log('  ⚠️ REPORTED, NOT ASSERTED: OD-G\'s "the pawn boots idle and waiting" is M2-19/M2-20\'s subject,');
 log('     not this package\'s. This line records what the shipped ship actually shows today.');
+
+// ══════════════════════════════════════════════════════════ M3-12: THE SKILL CORNER AND THE GAP
+// ⭐ WHAT ONLY A BROWSER CAN ANSWER HERE, and it is not "does the number appear in the DOM" — the
+// node harness settles that. It is:
+//   (a) IS THE NUMBER ACTUALLY VISIBLE? `.ov-workskill` is 8 px, absolutely positioned in the corner
+//       of a 58 px cell. "Invisible feedback is FUNCTIONAL" is binding in this repo (three owner
+//       reports): a zero-height box, a clipped corner or a colour equal to the background is a
+//       feature that shipped dead, and dom-lite computes no styles at all.
+//   (b) DOES A ROW WITH A MISSING CELL STILL LINE UP UNDER ITS HEADERS? That is a CSS-GRID question.
+//       `.ov-workrow` is a fixed six-column grid; an incapable soul's row has five children, and
+//       under auto-placement the survivors slide one column left and every one of them draws under
+//       the WRONG header. ⛔ The addressing stays correct, so no click test — in any harness — can
+//       see it. Only a layout engine can.
+log('\nSTEP 3b (M3-12) — her skill in each work type, and the cell that is not there');
+const capsWire = latest.get('workcaps');
+log('  `workcaps` on the wire:', JSON.stringify(capsWire));
+const wireRow = (capsWire?.cells || []).find((c) => c[0] === rell.cid);
+check(!!wireRow, 'the sim sends a `workcaps` row for this crew member');
+const boot2 = await cellsNow();
+log('  skill corners:', JSON.stringify(boot2?.map((c) => c.skill)));
+check(boot2?.every((c) => c.skill !== null), 'every cell carries a skill corner');
+// ⭐ THE NUMBER ON SCREEN IS THE SIM'S, checked against an INDEPENDENT SOCKET rather than against
+// the page — the page is the thing under test.
+check(!!wireRow && boot2?.every((c, i) => c.skill === String(wireRow[1 + i])),
+  'every skill on screen is the level the `workcaps` channel sent for that work type');
+check(boot2?.every((c) => c.skillW > 0 && c.skillH > 0),
+  'the skill corner is actually LAID OUT (a zero box is a feature that shipped dead)');
+check(boot2?.every((c) => c.skill === '0'),
+  '⚠️ REPORTED AS WELL AS ASSERTED: every skill reads 0. MECHANICS §13.37.5 — nothing in the sim '
+  + 'WRITES a skill yet, so this is the honest state of the ship, not a broken display. It is shown '
+  + 'rather than hidden on purpose: a blank corner here would be indistinguishable from this '
+  + 'feature never having landed.');
+log('  skill colour:', boot2?.[0]?.skillColor, ' cell colour:', boot2?.[0]?.color);
+// ⭐ THIS CHECK EARNED ITS KEEP ON ITS FIRST RUN. It caught the skill and the word `off` resolving to
+// the SAME faint ink — 9 px against 8 px, no contrast between them — so a boot cell read as the
+// single token "off0". Under OD-H every cell on screen is that cell.
+check(boot2?.every((c) => c.skillColor !== c.color),
+  'the skill is drawn in its own ink, distinct from the priority it sits beside — otherwise the two '
+  + 'numbers in the box read as one token');
+await png('07-skill-corners.png');
+
+// ── the GAP, as a pure CSS-LAYOUT probe ──
+// ⛔ HONESTY ABOUT WHAT THIS IS. `--ship wreck` sends `incapableMask = 0` for everyone (nothing in
+// the sim writes `WorkIncapable` — §13.37.5), so the running game CANNOT produce an absent cell and
+// no amount of playing would show one. The client logic that removes the cell is driven in
+// `overview-model.test.js` against an authored two-soul fixture. What is unsettled there, and only
+// here, is whether the STYLESHEET holds the remaining cells in their own columns — so this removes
+// one cell from the live DOM directly and re-measures. It is a CSS experiment on the real page, and
+// it is NOT a claim that the sim produced this state.
+const hx = await headerXs();
+log('  header centres:', JSON.stringify(hx));
+check(boot2?.every((c, i) => Math.abs(c.cx - hx[i]) <= 1),
+  'with all six cells present, each sits under its own column header');
+// ⚠️ THE PROBE RUNS SYNCHRONOUSLY, IN ONE EXPRESSION — remove, force layout, measure, put back.
+// The first version slept 400 ms between removing the cell and measuring, and by then `paintWork`
+// had put it back: the grid compares its cell set against the DOM on every repaint, so it self-heals
+// at ~10 Hz and a probe that pauses measures nothing. Reading `getBoundingClientRect()` inside the
+// same task forces layout with the gap in place, which is the state a genuinely incapable soul's row
+// would be in permanently.
+const gapped = await json(
+  `(()=>{const r=document.querySelectorAll('.ov-worklist .ov-workrow')[0];`
+  + `const m=r.querySelector('.ov-workcell[data-ov-work-type="4"]');`
+  + `const next=m?m.nextSibling:null;if(m)m.remove();`
+  + `const out=[...r.querySelectorAll('.ov-workcell')].map((c)=>{const b=c.getBoundingClientRect();`
+  + `return {type:c.dataset.ovWorkType,cx:Math.round(b.x+b.width/2)};});`
+  + `if(m)r.insertBefore(m,next);return out;})()`);
+log('  with MINE removed:', JSON.stringify(gapped));
+check(gapped?.length === 5, 'the probe removed exactly one cell');
+check(gapped?.every((c) => Math.abs(c.cx - hx[Number(c.type)]) <= 1),
+  '⭐ EACH SURVIVING CELL STILL SITS UNDER ITS OWN HEADER. Without the per-work-type `grid-column` '
+  + 'rules the five would shuffle left and HAUL would draw beneath MINE — every box in the row '
+  + 'reading as the wrong work type, while every click it sent stayed correct.');
+check((await cellsNow())?.length === 6, 'the grid is whole again after the probe');
+
+// ⭐ AND A PICTURE OF THE GAP, for the one reviewer no test can replace. The measurement above is
+// synchronous because the repaint heals the DOM; a screenshot cannot be. So the gap is held open
+// with a stylesheet rule instead — `display:none` removes the cell from the grid's flow exactly as
+// absence does, so the layout in the shot is the layout an incapable soul's row really has.
+// ⛔ IT IS A PREVIEW, NOT A STATE THE GAME CAN REACH TODAY: `--ship wreck` sends
+// `incapableMask = 0` for everyone (§13.37.5), so no play session can produce this until something
+// WRITES an incapability. The DOM half is driven in `overview-model.test.js`.
+await evaluate(
+  `(()=>{const s=document.createElement('style');s.id='m312-gap-preview';`
+  + `s.textContent='.ov-worklist .ov-workcell[data-ov-work-type="4"]{display:none}';`
+  + `document.head.appendChild(s);return 1;})()`);
+await sleep(500);
+const island = await centre('.ov-work');
+await png('08-absent-cell-preview.png', island
+  ? { x: Math.max(0, island.x - island.w / 2 - 8), y: Math.max(0, island.y - island.h / 2 - 8),
+    width: island.w + 16, height: island.h + 16 }
+  : null);
+// ⚠️ COUNTED BY LAYOUT, NOT BY DOM MEMBERSHIP. The preview hides the cell with `display:none`, so it
+// is still a child — it simply has no box. `cellsNow()` counts children, so the check that the rule
+// TOOK has to ask for a box, and the first draft asked for a count and reported a false FAIL.
+const preview = await cellsNow();
+const drawn = preview?.filter((c) => c.w > 0);
+log('  preview row (MINE hidden):', JSON.stringify(preview?.map((c) => ({ t: c.type, cx: c.cx, w: c.w }))));
+check(drawn?.length === 5,
+  'the preview rule did not take — the shot above would show a full row and say nothing');
+check(drawn?.every((c) => Math.abs(c.cx - hx[Number(c.type)]) <= 1),
+  'the previewed row is not the layout an absent cell produces — the shot would mislead');
+await evaluate(`(()=>{const s=document.getElementById('m312-gap-preview');if(s)s.remove();return 1;})()`);
+await sleep(400);
+check((await cellsNow())?.length === 6, 'the preview rule was removed again');
 
 // ── STEP 4 and STEP 6 ARE NOW DRIVEN, AT THE END OF THIS FILE — M2-2 (the work-type veto)
 //    landed and claimed them. They run last because they need the grid already SET, which is

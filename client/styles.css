@@ -1137,8 +1137,48 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
    It stays a real button in all three: `off` is the state the player clicks OUT of, so styling it
    with `pointer-events:none` would make the one gesture the tab exists for impossible. */
 .ov-workcell{padding:6px 0;border-radius:6px;font-size:11px;text-align:center;cursor:pointer;
+  position:relative;
   background:rgba(26,22,17,.6);color:var(--ink-mute,#8c8377);border:1px solid #3a332a}
 .ov-workcell:hover{border-color:#57503f;color:var(--ink-body,#b3aa9c)}
+/* ⭐ M3-12 — EACH CELL IS PLACED BY ITS WORK TYPE, NOT BY ITS TURN IN THE ROW, and this is the one
+   rule that makes the ABSENT CELL safe. A work type the crew member is INCAPABLE of gets no button
+   at all (`rimworld-reference.md:335` — disabled renders blank, incapable renders as no cell), so
+   the row genuinely has fewer children than the header has columns. With auto-placement the
+   survivors would shuffle left and every one of them would sit under the WRONG header — HAUL drawn
+   under MINE, clicking HAUL, reading as MINE. The addressing would still be right, which is exactly
+   why the failure would be invisible to a click test. Keyed off `data-ov-work-type`, the same
+   attribute the click handler reads, so the drawn position and the addressed work type cannot
+   disagree: there is only one number. Column 1 is the name. */
+.ov-workrow .ov-workcell[data-ov-work-type="0"]{grid-column:2}
+.ov-workrow .ov-workcell[data-ov-work-type="1"]{grid-column:3}
+.ov-workrow .ov-workcell[data-ov-work-type="2"]{grid-column:4}
+.ov-workrow .ov-workcell[data-ov-work-type="3"]{grid-column:5}
+.ov-workrow .ov-workcell[data-ov-work-type="4"]{grid-column:6}
+.ov-workrow .ov-workcell[data-ov-work-type="5"]{grid-column:7}
+/* The priority glyph — the thing the click changes, and the reason the cell has a `.set`/`.off`/
+   `.wait` state at all. It inherits the cell's colour so the three state rules above keep working
+   unchanged. */
+.ov-workprio{display:block}
+/* ⭐ M3-12 — HER SKILL IN THIS WORK TYPE, 0–20, in the corner of the priority box (RimWorld's own
+   arrangement, reference §1.7). Small, dim and never amber: it must not compete with the priority
+   number, because the priority is the control and the skill is the reason you would set it.
+   ⛔ IT IS NEVER HIDDEN AT 0. Nothing in the sim writes a skill yet (MECHANICS §13.37.5), so today
+   this reads `0` on every cell of every row — and that is the honest picture of a ship whose only
+   waking soul is untrained at everything, not a display with nothing to show. */
+.ov-workskill{position:absolute;top:1px;right:3px;font-size:8px;line-height:1;font-weight:400;
+  letter-spacing:0;color:var(--ink-faint,#57503f);pointer-events:none}
+/* ⚠️ THE SKILL IS ALWAYS A DIFFERENT INK FROM THE PRIORITY IT SITS BESIDE, in BOTH cell states, and
+   the browser harness measures exactly that — it caught them resolving to the SAME faint ink on the
+   boot grid, where `off` is 9 px faint and the skill 8 px faint, one pixel and no contrast apart, so
+   the cell read as the single token "off0".
+   The direction reverses between the states on purpose, and it is a hierarchy claim rather than a
+   decoration: on a `.set` cell the amber priority is the fact and the skill is the footnote, so the
+   skill stays mute; on an `.off` cell the priority is a deliberately dim NON-value — under OD-H that
+   is every cell on screen at boot — and the only informative thing in the box is her skill, so the
+   skill is the brighter of the two. */
+.ov-workcell.off .ov-workskill{color:var(--ink-mute,#8c8377)}
+.ov-workcell.set .ov-workskill{color:var(--ink-mute,#8c8377)}
+.ov-workskill.wait{opacity:.5}
 .ov-workcell.off{color:var(--ink-faint,#57503f);background:transparent;border-style:dashed;
   font-size:9px;letter-spacing:.06em}
 .ov-workcell.off:hover{color:var(--ink-mute,#8c8377);border-color:#57503f}
