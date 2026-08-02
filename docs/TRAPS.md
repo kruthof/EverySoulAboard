@@ -58,6 +58,14 @@ state you were in.
 - Same shape in the scenario host: `dotnet build tests/...` then
   `dotnet run --no-build --project hosts/scenario` runs a **stale scenario binary**, so a
   mutation can look inert when it is not.
+- **The restore mtime must land NEWER than the last build output** (2026-08-02, hit by THREE
+  agents independently in one session — two implementers and a reviewer). Restoring the
+  original file with its *original* mtime (`os.utime` to the saved stamp, or `ORIG_MTIME + 1`
+  when the mutant was built later) leaves the source OLDER than `bin/`/`obj/`, MSBuild skips
+  the rebuild, and the "clean" revert run tests the MUTANT assembly — a false red that reads
+  exactly like a real one (the D3 reviewer's first `ci.sh` reported a genuine-looking
+  regression this way). Restore with mtime set FORWARD of build outputs (`time.time() + 1`),
+  and assert byte-for-byte restoration separately from the mtime.
 
 ### Trap 3 — a FALSE RED: a mutation that goes red for the wrong reason
 
