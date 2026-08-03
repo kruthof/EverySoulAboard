@@ -116,6 +116,11 @@ shared event object across capture/target/bubble).
   (`while kill -0 $pid`) or a sentinel line in a log — never on a pattern your own argv
   contains.** Sibling: a stale `--filter` after a test RENAME returns exit 0 — a filter
   matching nothing looks exactly like a pass; re-check the filter after every rename.
+  **Inverse shape (2026-08-03, session F): a waiter whose pattern CANNOT match reads as
+  "done", not as "broken".** `pgrep -f "<worktree>/.*ci.sh"` reported *gate not running*
+  while the gate ran fine — the worktree path is the process's **cwd**, never its argv, so
+  the pattern was unsatisfiable. Both failure directions have the same fix: wait on the
+  recorded PID.
 - **A broad `pkill -f` is an attack on every other agent on the machine.** Twice in one
   session (`pkill` on a test-host pattern; `pkill -f "hosts/web"`) an agent killed a
   SIBLING lane's process mid-run — one hit a reviewer's gate, one hit a verification rig's
