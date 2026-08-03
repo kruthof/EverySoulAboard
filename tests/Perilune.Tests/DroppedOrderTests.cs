@@ -50,22 +50,25 @@ namespace Perilune.Tests
     /// <see cref="WireFormat.ReasonNoRoute"/> on the shipped <c>blocked</c> channel from the frame
     /// after the click, and keeps it after the sim drops the job.</para>
     ///
-    /// <para>⛔⛔ <b>THE SCOPE, AND IT IS NARROWER THAN "THE `:464` ARM IS COVERED" — READ IT BEFORE
-    /// THE GREEN LEGS.</b> What is surfaced is that arm <b>when the route is shut AT ISSUE TIME</b>.
-    /// Order the same machine with <c>door_d0_s2</c> OPEN and shut it mid-order and the job dies at
-    /// the identical arm with <b>nothing on any surface</b> — driven: taken tick 1, the first render
-    /// RETIRES the pending record (arm (1) — the held job is the order from then on), door shut tick
-    /// 41, dropped tick 171, channel <c>cells:[]</c>. Structural, not a missing predicate: once the
-    /// record is retired there is nothing left to re-ask about. Follow-on package (host keeps retired
-    /// records and re-checks on drop, or the sim emits a drop reason — the second covers all nine
-    /// arms at once). <c>MECHANICS</c> §13.25 b3 carries it; NOT built here, by ruling.</para>
+    /// <para>⛔⛔ <b>THE FIRST PACKAGE'S SCOPE WAS NARROWER THAN "THE `:464` ARM IS COVERED", AND THE
+    /// D5 FOLLOW-ON (2026-08-03) CLOSES THE REST OF IT — THE FILE IS IN TWO HALVES AND THE SECOND
+    /// STARTS AT ITS OWN BANNER.</b> What the first half surfaces is that arm <b>when the route is
+    /// shut AT ISSUE TIME</b>: order the same machine with <c>door_d0_s2</c> OPEN and shut it
+    /// mid-order and the job died at the identical arm with <b>nothing on any surface</b> — taken
+    /// tick 1, the first render RETIRES the pending record (arm (1) — the held job is the order from
+    /// then on), door shut tick 41, dropped tick 171, channel <c>cells:[]</c>. Structural, not a
+    /// missing predicate. The follow-on takes the ruled shape: <b>the SIM publishes
+    /// <c>OrderDroppedEvent</c> from <c>MaintenanceSystem.Abandon</c></b> — the one funnel all NINE
+    /// abandon arms go through — and <c>GameSession</c> re-asks the sim's own killing question, live,
+    /// every render. <c>MECHANICS</c> §13.25 b3/b3′.</para>
     ///
-    /// <para>⚠️ <b>WHAT THIS PACKAGE ALSO DOES NOT DO.</b> It does not re-issue the order when the
-    /// route opens: RimWorld's <c>Pawn_MindState.priorityWork</c> record is still not built
-    /// (<c>MECHANICS</c> §13.25d), so the badge clears with the route and the player re-orders. And
-    /// it surfaces ONE drop site; the other EIGHT <c>Abandon</c> arms in
-    /// <c>MachineWearSystem.DriveWorker</c> (nine, counted) are a named CLASS, reported to the
-    /// integrator for <c>HANDOVER</c>'s OPEN list, not swept here.</para>
+    /// <para>⚠️ <b>WHAT NEITHER PACKAGE DOES.</b> Re-issue the order when the route opens: RimWorld's
+    /// <c>Pawn_MindState.priorityWork</c> record is still not built (<c>MECHANICS</c> §13.25d), so
+    /// the badge clears with the route and the player re-orders. And <b>three of the six drop reasons
+    /// are FILED rather than badged</b> — <c>Displaced</c> and <c>CargoLost</c> are self-healing, and
+    /// <c>NoRouteToConsumable</c> has no host-side twin to re-ask. The rule is one sentence and it is
+    /// stated on <c>GameSession.BuildBlocked</c>'s fifth walk: a dropped order is badged if and only
+    /// if this host can RE-ASK THE SIM'S OWN KILLING QUESTION, live.</para>
     /// </summary>
     public class DroppedOrderTests
     {
@@ -402,6 +405,554 @@ namespace Perilune.Tests
             Assert.That(Rows(gs).All(r => r.Reason != WireFormat.ReasonNoRoute), Is.True,
                 "no order was ever issued on this fixture, and the wreck is full of unreachable " +
                 "machines — not one of them may carry this reason");
+        }
+
+        // ═════════════════════════════════════════════ D5 FOLLOW-ON: THE ORDER THAT DIES MID-WAY
+        //
+        // ⭐⭐ WHAT THE RESIDUAL ABOVE WAS, AND WHAT CLOSES IT. Everything before this line rides
+        // `GameSession._prioritised` — the record of an order the sim has NOT taken — which is
+        // retired on the first render after it IS taken. So the legs above surface the route that
+        // was shut AT ISSUE TIME and nothing else: order the same machine with the door OPEN, shut
+        // it while she walks, and the job died at the identical arm with `cells:[]`.
+        //
+        // THE SHAPE, and it is the one the previous lane's reviewer ruled for: the SIM publishes
+        // `OrderDroppedEvent` from `MaintenanceSystem.Abandon` — the ONE funnel all NINE of
+        // `DriveWorker`'s abandon arms go through — carrying a `JobDropReason`; `GameSession`
+        // catches it at the TICK boundary (never at render: the bus swaps every tick and a drop is
+        // a one-tick event) and files it; and `BuildBlocked`'s fifth walk RE-ASKS the sim's own
+        // killing question, live, every render. The record says WHICH QUESTION about WHICH machine;
+        // it is not the answer, so nothing here is latched.
+        //
+        // ⚠️ THESE LEGS DRIVE `gs.AdvanceTicks`, NEVER `sim.Tick()` — and that is not a style
+        // choice. `AdvanceTicks` is what the run loop calls, and it is where the event is read; a
+        // leg that ticked the sim directly would run the game the shipping host never runs and
+        // would see the bus swap the evidence away. (`SleeperPersonaTests` pins that the run loop
+        // really does call it, which is the other half of this claim and is not restated here.)
+
+        /// <summary>Advance the way <c>Run</c> does — the tick AND the host observations that follow
+        /// it, which are not separable (<c>AdvanceTicks</c>' own remarks).</summary>
+        private static void Advance(GameSession gs, int ticks) => gs.AdvanceTicks(ticks);
+
+        /// <summary>Order the machine with the route OPEN and let the sim take it, then hand back
+        /// the door so the caller can shut it. Also RENDERS once, which is what retires the pending
+        /// record — the structural fact the whole residual rests on, asserted here so every leg
+        /// built on this fixture inherits it as a checked premise rather than as a belief.</summary>
+        private static (Device Machine, Citizen Her, Device Door) OrderWithTheRouteOpen(GameSession gs, Simulation sim)
+        {
+            var machine = ByName(sim, TheMachine);
+            var her = sim.Citizens.Items[0];
+            Assert.That(sim.TryGetDeviceAt(TheDoor, out var door), Is.True, "premise: the door is there");
+            door.IsOpen = true;
+
+            OrderOverTheWire(gs, her, machine);
+            Advance(gs, 1);
+            Assert.That(her.JobKind, Is.EqualTo(JobKind.Maintain), "premise: the order was ACCEPTED");
+            Assert.That(her.HeldByOrder, Is.True, "premise: …and held — the hold IS the order");
+
+            Assert.That(RepairRowAt(gs, machine.Pos), Is.Null,
+                "premise: with the route open there is nothing to say, so no badge");
+            Assert.That(gs.PendingOrderCount, Is.EqualTo(0),
+                "⛔ PREMISE OF THE WHOLE RESIDUAL: the first render RETIRES the pending record. If " +
+                "this ever reads 1, the mid-order case is no longer structural and these legs are " +
+                "measuring something else.");
+            return (machine, her, door);
+        }
+
+        /// <summary>Every stack of every repair consumable, gone from the ship — the state
+        /// <c>DriveWorker</c>'s empty-handed arm (<c>:479</c>) tests for. Asserts it removed
+        /// something: a strip that stripped nothing would leave the leg vacuous and green.</summary>
+        private static void StripEveryConsumable(Simulation sim)
+        {
+            var doomed = new List<uint>();
+            foreach (var stack in sim.Items.Items)
+                for (int tier = 0; tier < MaintenanceSystem.RepairConsumableTierCount; tier++)
+                    if (stack.Kind == MaintenanceSystem.RepairConsumableTier(tier)) { doomed.Add(stack.Id); break; }
+            Assert.That(doomed.Count, Is.GreaterThan(0),
+                "the wreck boots with repair consumables aboard — a strip that found none means this " +
+                "fixture is not the one the leg describes");
+            foreach (var id in doomed) sim.Items.Remove(id);
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>THE PACKAGE'S HEADLINE, DRIVEN ON THE SHIPPED WRECK: THE ROUTE CLOSES WHILE SHE
+        /// IS WALKING, AND THE MACHINE STILL SAYS WHY.</b> This is §13.25 b3's reproduction, verbatim
+        /// — order with <c>door_d0_s2</c> OPEN, shut it mid-order, and the job dies at the identical
+        /// pickup branch (<c>MachineWearSystem.cs:464</c>) that the issue-time half surfaces. Before
+        /// this package the <c>blocked</c> channel read <c>cells:[]</c> here and the crew dock read
+        /// <i>"Awaiting orders"</i>: the order evaporated.
+        ///
+        /// <para>⛔ <b>NOTHING ABOVE THIS LINE CAN SEE IT.</b> The pending record is already retired
+        /// (asserted in the fixture), so no re-ask of <c>_prioritised</c> — however clever — reaches
+        /// this state. That is why the fix had to come out of the SIM.</para>
+        ///
+        /// <para>MUTATIONS, RUN — and ⚠️ <b>THE COUNTS BELOW ARE RE-MEASURED ON THIS TREE, NOT THE
+        /// ONES THIS COMMENT FIRST CARRIED.</b> The first draft said "the two sibling arm legs" and
+        /// "the same 3 red"; independent review re-ran them and measured <b>SIX</b>. The stale figure
+        /// was written before <see cref="RenderingTheDroppedOrderRow_RunsAnAStarAndStillTouchesNothing"/>
+        /// existed and was never re-taken — <i>a count you did not measure yourself is not evidence,
+        /// including your own earlier one</i>. The SIX are, by name:
+        /// <see cref="TheRouteClosesMidOrder_AndTheMachineStillSaysWhy"/>,
+        /// <see cref="TheDoorOpensAgain_TheBadgeAndTheRecordBothGo"/>,
+        /// <see cref="TheLastConsumableVanishesMidOrder_AndTheBadgeNamesTheITEM_NotTheRoute"/>,
+        /// <see cref="TheApproachIsWalledInMidOrder_AndTheBadgeSaysSO"/>,
+        /// <see cref="ANewOrderSupersedesTheDeadOne_TheOldBadgeGoes"/> and
+        /// <see cref="RenderingTheDroppedOrderRow_RunsAnAStarAndStillTouchesNothing"/> — i.e. every
+        /// leg below this banner except <see cref="AnAutonomousAbandonIsNotAnOrder_AndIsNeverFiled"/>,
+        /// which is the one that asserts a row must NOT appear.</para>
+        ///
+        /// <para>(1) Delete the <c>sim.Events.Publish(new OrderDroppedEvent…)</c> from
+        /// <c>MaintenanceSystem.Abandon</c> ⇒ <b>6 red</b>.
+        /// (2) Move the publish BELOW <c>AbandonOrphan(worker)</c> — the ordering the funnel's doc
+        /// calls load-bearing, because the <c>JobKind</c> setter releases the hold ⇒ <b>the same 6
+        /// red</b>, for the right reason (the channel goes permanently empty, not "the wrong reason
+        /// arrives"). (3) Drop <c>NoteDroppedOrders()</c> from <c>AdvanceTicks</c> ⇒ <b>the same 6
+        /// red</b>. (4) Move <c>NoteDroppedOrders()</c> into <c>Render</c> instead ⇒ <b>the same 6
+        /// red</b>, because 600 ticks pass between renders in this fixture and the bus swapped the
+        /// evidence away — which is the reliability claim, driven rather than argued.</para>
+        /// </summary>
+        [Test]
+        public void TheRouteClosesMidOrder_AndTheMachineStillSaysWhy()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var (machine, her, door) = OrderWithTheRouteOpen(gs, sim);
+
+            Advance(gs, 40);
+            door.IsOpen = false;   // the route closes UNDER a live order — §13.25 b3's tick 41
+            Advance(gs, 600);
+
+            Assert.That(her.JobKind, Is.EqualTo(JobKind.None), "premise: the sim dropped the job");
+            Assert.That(her.HeldByOrder, Is.False, "premise: and the hold with it — the order is gone");
+            Assert.That(machine.Condition, Is.LessThan(sim.Defs.Machines[(int)machine.Kind].MaintainBelow),
+                "premise: the machine is still unserviced — nothing here is a completed repair");
+
+            var row = RepairRowAt(gs, machine.Pos);
+            Assert.That(row, Is.Not.Null,
+                "⛔ THIS IS §13.25 b3: the order was accepted, the world changed under it, the sim " +
+                "ate it — and the ship said nothing at all.");
+            Assert.That(row.Value.Reason, Is.EqualTo(WireFormat.ReasonNoRoute),
+                "the route is what killed it, so the route is what the badge must name");
+            Assert.That(row.Value.Detail, Is.EqualTo(WireFormat.DetailNone));
+        }
+
+        /// <summary>
+        /// ⭐ <b>LIVE, NOT LATCHED — the drop record is a QUESTION, not an answer.</b> Re-open the
+        /// door and the badge is gone on the next frame, and the record is dropped with it (so it
+        /// cannot come back if the door shuts again with no order outstanding).
+        ///
+        /// <para>⚠️ <b>THIS IS THE NON-VACUITY CONTROL FOR THE LEG ABOVE, BY EXCLUSION.</b> A fifth
+        /// walk that badged every dropped order regardless of the world would pass the headline and
+        /// fail here; without this cell "the badge appears" is compatible with "the badge always
+        /// appears". It also pins the CAUSE: the diagnosis says reachability, so the one edit that
+        /// restores reachability must clear it.</para>
+        ///
+        /// <para>⚠️ AND IT PINS THE RECORD, NOT ONLY THE ROW. <c>DroppedOrderCount</c> going to zero
+        /// is what makes this a re-ask rather than a suppressed latch — a row hidden by a display
+        /// rule while the record lived on would read identically on the wire and would leak one
+        /// entry per crew member for the rest of the session.</para>
+        /// </summary>
+        [Test]
+        public void TheDoorOpensAgain_TheBadgeAndTheRecordBothGo()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var (machine, _, door) = OrderWithTheRouteOpen(gs, sim);
+
+            Advance(gs, 40);
+            door.IsOpen = false;
+            Advance(gs, 600);
+
+            Assert.That(RepairRowAt(gs, machine.Pos), Is.Not.Null, "premise: the badge is up");
+            Assert.That(gs.DroppedOrderCount, Is.EqualTo(1), "premise: one dead order is on file");
+
+            door.IsOpen = true;    // the player finds the door and opens it
+
+            Assert.That(RepairRowAt(gs, machine.Pos), Is.Null,
+                "⛔ the machine is still badged NO ROUTE with the route wide open — the fifth walk " +
+                "is replaying a stored reason instead of re-asking the sim's question");
+            Assert.That(gs.DroppedOrderCount, Is.EqualTo(0),
+                "…and the record must go with the badge, or it leaks for the rest of the session");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>A SECOND ARM, AND A SECOND SENTENCE — the event covers ARMS, not one branch.</b>
+        /// The route is fine; the ship's last repair consumable disappears while she is on her way to
+        /// it. <c>DriveWorker</c> then lands on its empty-handed arm (<c>MachineWearSystem.cs:479</c>
+        /// — a different line, a different phase, a different <c>JobDropReason</c>) and the badge
+        /// says <see cref="WireFormat.ReasonNoConsumable"/>, naming the item, instead of NO ROUTE.
+        ///
+        /// <para><b>WHY THIS CASE CAN ONLY BE REACHED MID-ORDER.</b> <c>PrioritiseJobCommand</c>
+        /// refuses an order at issue time when <c>IsUnfixableWreck(forced: true)</c>
+        /// (<c>Commands.cs:346</c>), which is exactly "below the wreck floor and nothing aboard". So
+        /// a ship with no consumables never gets this far — the state has to arrive AFTER the order
+        /// was accepted, which is the whole subject of this half of the file.</para>
+        ///
+        /// <para>⚠️ THE DISCRIMINATION IS THE POINT: two legs, same fixture family, same click,
+        /// different world change ⇒ different sentence. A fifth walk that emitted one canned reason
+        /// would pass the headline and fail here.</para>
+        /// </summary>
+        [Test]
+        public void TheLastConsumableVanishesMidOrder_AndTheBadgeNamesTheITEM_NotTheRoute()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var (machine, her, _) = OrderWithTheRouteOpen(gs, sim);
+
+            Assert.That(MaintenanceSystem.IsBelowWreckFloor(sim, machine), Is.True,
+                "premise: this machine is below wear.wreck_threshold, which is what makes the " +
+                "empty-handed arm a REFUSAL rather than a free jury-rig");
+
+            StripEveryConsumable(sim);
+            Advance(gs, 600);
+
+            Assert.That(her.JobKind, Is.EqualTo(JobKind.None), "premise: the sim dropped the job");
+
+            var row = RepairRowAt(gs, machine.Pos);
+            Assert.That(row, Is.Not.Null,
+                "⛔ the ship ran out of parts under a live order and the machine she was pointed at " +
+                "wears nothing");
+            Assert.That(row.Value.Reason, Is.EqualTo(WireFormat.ReasonNoConsumable),
+                "the CONSUMABLE is what killed it — a NO ROUTE badge here would send the player " +
+                "looking for a door that is wide open");
+            Assert.That(row.Value.Detail, Is.EqualTo((int)MaintenanceSystem.WantedRepairConsumable),
+                "and it names the item, exactly as the issue-time wreck-rule row does");
+        }
+
+        /// <summary>
+        /// ⭐ <b>A THIRD ARM: the machine loses its APPROACH mid-order</b> (<c>:321</c>,
+        /// <c>JobDropReason.NoWorksiteTile</c>) ⇒ <see cref="WireFormat.ReasonNoApproach"/>, the
+        /// sentence <i>NO WAY TO STAND NEXT TO IT</i>. Three arms, three reasons, three sentences,
+        /// one event.
+        ///
+        /// <para>⛔ <b>THIS DOES NOT CLOSE §13.25 b2</b>, and the distinction is the reason the row
+        /// is allowed: b2 is the order REFUSED AT ISSUE TIME for want of a staging tile, where no job
+        /// is ever created and there is nothing to report. Here the order was accepted, a job
+        /// existed, and the world took the approach away. Still filed, still open.</para>
+        /// </summary>
+        [Test]
+        public void TheApproachIsWalledInMidOrder_AndTheBadgeSaysSO()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var (machine, her, _) = OrderWithTheRouteOpen(gs, sim);
+
+            // Wall every walkable neighbour of the machine — the staging tile is whichever comes
+            // first in `Neighbor4` order, so taking one is not enough to make `TryFindStagingTile`
+            // fail and a leg that took one would pass for the wrong reason.
+            int walled = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                var n = Int3.Neighbor4(machine.Pos, i);
+                if (!sim.World.InBounds(n) || !sim.IsWalkable(n)) continue;
+                sim.World.SetWall(n, TileDefs.Wall);
+                walled++;
+            }
+            Assert.That(walled, Is.GreaterThan(0), "premise: the machine HAD an approach to take away");
+            Assert.That(MaintenanceSystem.TryFindStagingTile(sim, machine.Pos, out _, forced: true), Is.False,
+                "premise: and now it has none — this is the state `DriveWorker`'s first line tests");
+
+            Advance(gs, 600);
+
+            Assert.That(her.JobKind, Is.EqualTo(JobKind.None), "premise: the sim dropped the job");
+
+            var row = RepairRowAt(gs, machine.Pos);
+            Assert.That(row, Is.Not.Null, "⛔ the machine was walled in under a live order, silently");
+            Assert.That(row.Value.Reason, Is.EqualTo(WireFormat.ReasonNoApproach),
+                "NOWHERE TO STAND is a different fix from NO ROUTE — dig it out, versus open a door");
+            Assert.That(row.Value.Detail, Is.EqualTo(WireFormat.DetailNone));
+        }
+
+        /// <summary>
+        /// ⛔ <b>ONE SURFACE, NEVER TWO RECORDS — how the issue-time half and the mid-order half
+        /// compose.</b> Order the machine with the door ALREADY SHUT (the original D5 sighting): the
+        /// pending record is never retired, because <c>OrderedWorksiteIsOutOfReach</c> is asked
+        /// BEFORE the taken-retire rule and keeps it alive. So when the sim later drops the job,
+        /// <c>NoteDroppedOrders</c> must file NOTHING — the live record already owns the machine's
+        /// row — and the player sees exactly one badge throughout.
+        ///
+        /// <para><b>WHY IT MATTERS THAT IT IS THE RECORD AND NOT THE ROW.</b> Both emitters dedupe
+        /// per order+tile, so two records would still produce ONE row and the duplication would be
+        /// invisible on the wire — right up until the door opened, when one record cleared and the
+        /// other did not. This leg asserts the count, which is the only place that is visible.</para>
+        /// </summary>
+        [Test]
+        public void TheIssueTimeBadgeOWNSTheMachine_TheDropFilesNothingBehindIt()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var machine = ByName(sim, TheMachine);
+            var her = sim.Citizens.Items[0];
+
+            OrderOverTheWire(gs, her, machine);   // door SHUT — the original sighting
+            Advance(gs, 600);
+
+            Assert.That(her.JobKind, Is.EqualTo(JobKind.None), "premise: the sim dropped the job");
+
+            var rows = Rows(gs).Where(r => r.Order == WireFormat.OrderRepair
+                                        && r.X == machine.Pos.X && r.Y == machine.Pos.Y
+                                        && r.Deck == machine.Pos.Z).ToList();
+            Assert.That(rows.Count, Is.EqualTo(1), "one machine, one badge");
+            Assert.That(rows[0].Reason, Is.EqualTo(WireFormat.ReasonNoRoute));
+            Assert.That(gs.PendingOrderCount, Is.EqualTo(1),
+                "premise: the issue-time record is still alive — that is what the previous lane built");
+            Assert.That(gs.DroppedOrderCount, Is.EqualTo(0),
+                "⛔ a second record was filed behind the live one. Both would badge the same machine " +
+                "today and disagree about when to stop tomorrow.");
+        }
+
+        /// <summary>
+        /// ⛔ <b>THE SIM'S GATE, DRIVEN: an AUTONOMOUS abandon publishes nothing.</b> Turn Repair on
+        /// for the whole crew — the OD-H opt-in a player makes in the WORK tab — and let the standing
+        /// rule work the shipped wreck unattended. It reaches <c>Abandon</c> (measured: it does), and
+        /// not one of those drops may be filed: the badge is for machines THE PLAYER POINTED AT, and
+        /// a wreck full of half-dead machines behind shut doors would otherwise wear a permanent
+        /// screenful of nags about work nobody ordered.
+        ///
+        /// <para><b>THE COVERAGE PREMISE IS ASSERTED, NOT DESCRIBED, AND IT COST A REDESIGN.</b>
+        /// The first draft granted Repair, ran 2 000 ticks and counted <c>JobKind</c> leaving
+        /// <c>Maintain</c> — it measured <b>ZERO</b>, and the leg would have pinned nothing while
+        /// looking thorough. ⛔ The cause is worth writing down: <c>RecruitForNeediest</c> calls
+        /// <c>DriveWorker</c> <i>immediately</i> on the tick it claims a machine, so an abandon and
+        /// the next claim happen INSIDE one tick and a per-tick sampler never sees the gap. Measured
+        /// on this fixture: she holds a Maintain job on 20 000 consecutive ticks with one visible
+        /// "start". The abandon is therefore DRIVEN here rather than waited for — the machine she is
+        /// actually working is walled in — and the premise is that her job LEAVES THAT MACHINE, which
+        /// is observable exactly once.</para>
+        ///
+        /// <para>MUTATION, RUN: delete the <c>if (worker.HeldByOrder)</c> gate from
+        /// <c>MaintenanceSystem.Abandon</c> ⇒ red here, on the record count.</para>
+        /// </summary>
+        [Test]
+        public void AnAutonomousAbandonIsNotAnOrder_AndIsNeverFiled()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            foreach (var c in sim.Citizens.Items)
+                sim.EnqueueCommand(new SetWorkPriorityCommand(c.Id, (int)WorkType.Repair, 3));
+
+            Advance(gs, 50);
+            var her = sim.Citizens.Items[0];
+            Assert.That(her.JobKind, Is.EqualTo(JobKind.Maintain),
+                "COVERAGE PREMISE: the standing rule really did put her on a machine unasked — " +
+                "without that this leg pins nothing at all");
+            Assert.That(her.HeldByOrder, Is.False,
+                "COVERAGE PREMISE: and NOBODY ORDERED IT — that is the whole subject of this leg");
+            var hers = her.JobTarget;
+
+            // Take the approach away from the machine she is working: `DriveWorker`'s first line
+            // (`:321`) then abandons it, autonomously, on the next pass.
+            for (int i = 0; i < 4; i++)
+            {
+                var n = Int3.Neighbor4(hers, i);
+                if (sim.World.InBounds(n) && sim.IsWalkable(n)) sim.World.SetWall(n, TileDefs.Wall);
+            }
+            Assert.That(MaintenanceSystem.TryFindStagingTile(sim, hers, out _, forced: true), Is.False,
+                "premise: the machine she is on has lost its approach");
+
+            Advance(gs, 60);
+            Assert.That(her.JobTarget, Is.Not.EqualTo(hers),
+                "COVERAGE PREMISE FAILED: she is still on the walled-in machine, so `Abandon` was " +
+                "never reached and the gate below was never tested");
+
+            Assert.That(gs.DroppedOrderCount, Is.EqualTo(0),
+                "⛔ the dispatcher's own abandons are being filed as dropped ORDERS. Nobody clicked " +
+                "anything on this ship.");
+            Assert.That(Rows(gs).All(r => r.Order != WireFormat.OrderRepair), Is.True,
+                "…and not one repair badge may appear on a ship where no order was ever given");
+        }
+
+        /// <summary>
+        /// ⭐ <b>A NEW ORDER SUPERSEDES A DEAD ONE — the other half of "a live pending order always
+        /// wins".</b> Her order at the unreachable machine died and is badged; the player gives up
+        /// and points her at a different machine. The old badge must go with the old order: she is
+        /// visibly not going there any more, and a sentence about a machine nobody is heading for is
+        /// a nag about the past.
+        ///
+        /// <para>MUTATION, RUN: delete <c>_dropped.Remove(cmd.Cid)</c> from
+        /// <c>GameSession.HandlePrioritise</c> ⇒ red here, on the stale badge.</para>
+        /// </summary>
+        [Test]
+        public void ANewOrderSupersedesTheDeadOne_TheOldBadgeGoes()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var (machine, her, door) = OrderWithTheRouteOpen(gs, sim);
+
+            Advance(gs, 40);
+            door.IsOpen = false;
+            Advance(gs, 600);
+            Assert.That(RepairRowAt(gs, machine.Pos), Is.Not.Null, "premise: the dead order is badged");
+
+            // A second machine, reachable, that the order verb will actually accept.
+            Device other = null;
+            foreach (var d in sim.Devices.Items)
+            {
+                if (d == machine || d.Kind == DeviceKind.Door) continue;
+                if (d.Condition >= sim.Defs.Machines[(int)d.Kind].MaintainBelow) continue;
+                if (!MaintenanceSystem.TryFindStagingTile(sim, d.Pos, out var st, forced: true)) continue;
+                if (!sim.Paths.FindPath(sim, her.Pos, st, new List<Int3>())) continue;
+                other = d;
+                break;
+            }
+            Assert.That(other, Is.Not.Null, "premise: the wreck offers a second, reachable machine");
+
+            OrderOverTheWire(gs, her, other);
+            Advance(gs, 1);
+
+            Assert.That(RepairRowAt(gs, machine.Pos), Is.Null,
+                "⛔ the machine she was pulled OFF is still wearing the badge of an order the player " +
+                "replaced — a nag about the past, on the surface built to say what is true now");
+            Assert.That(gs.DroppedOrderCount, Is.EqualTo(0), "…and the record went with it");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>THE PURITY PIN FOR THE FIFTH WALK — it runs the SAME pathfinder from the render
+        /// half, so the claim has to be re-earned rather than inherited.</b>
+        ///
+        /// <para>⛔ <b>WHY THE SIBLING PIN CANNOT SEE IT (the 9th trap shape, an instrument that goes
+        /// blind on a state it was never given).</b>
+        /// <see cref="RenderingTheNoRouteRow_RunsAnAStarAndStillTouchesNothing"/> orders with the door
+        /// ALREADY SHUT, so the row it renders comes out of the PENDING walk and
+        /// <c>_dropped</c> is empty for its whole life — the fifth walk's A* is never reached. Same
+        /// method, different caller, and only this fixture enters through the new one.</para>
+        ///
+        /// <para><b>THE COVERAGE PREMISE IS ASSERTED</b> (the sibling's own hard lesson): without the
+        /// row check, deleting the whole fifth walk would leave the hash comparison green and this
+        /// leg would pin the purity of code it never ran. <b>AND THE BASELINE IS TAKEN BEFORE THE
+        /// FIRST RENDER</b> — the sibling's other lesson, where a baseline snapshotted after a render
+        /// already contained the first clobber and the named mutation stayed GREEN.</para>
+        /// </summary>
+        [Test]
+        public void RenderingTheDroppedOrderRow_RunsAnAStarAndStillTouchesNothing()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var (machine, her, door) = OrderWithTheRouteOpen(gs, sim);
+
+            Advance(gs, 40);
+            door.IsOpen = false;
+            Advance(gs, 600);
+
+            Assert.That(gs.DroppedOrderCount, Is.EqualTo(1),
+                "PREMISE: the drop is on file, so the fifth walk has something to ask about");
+
+            ulong before = sim.StateHash();
+            int pathLenBefore = her.Path.Count;
+            int pathIdxBefore = her.PathIndex;
+            // ⚠️ PREMISE **AND** DETECTOR, and it is written as both because that is how the named
+            // mutation actually lands here. She still carries the walk that took her to the Parts
+            // stack (measured: 10 tiles, index at the end — `Abandon` clears the JOB and deliberately
+            // not the path), so there IS something for a careless render to overwrite. If the render
+            // paths into `c.Path`, the fixture's OWN render (one, at tick 1, inside
+            // `OrderWithTheRouteOpen`) has already clobbered it and this line is what reddens —
+            // earlier than the two assertions below, for the same one cause. Read a red here as the
+            // purity violation, never as a broken fixture.
+            Assert.That(pathLenBefore, Is.GreaterThan(0),
+                "either she is carrying no route at all (fixture drifted, and the two assertions " +
+                "below are vacuous) or A RENDER ALREADY DELETED IT — `FindPath` CLEARS and rewrites " +
+                "its out-parameter, so handing it a citizen's own `Path` wipes a live route from the " +
+                "render half. The scratch list must be the session's and never the citizen's.");
+
+            var row = RepairRowAt(gs, machine.Pos);   // renders — the first render after the baseline
+            Assert.That(row, Is.Not.Null, "COVERAGE PREMISE FAILED: no row, so no A* ran and this " +
+                "leg pins the purity of code it never reached");
+            Assert.That(row.Value.Reason, Is.EqualTo(WireFormat.ReasonNoRoute),
+                "COVERAGE PREMISE: and it is the ROUTE row — the only one on this walk that costs an A*");
+            for (int i = 0; i < 4; i++) gs.RenderForTest();
+
+            Assert.AreEqual(pathLenBefore, her.Path.Count,
+                "the render overwrote a crew member's ROUTE — `FindPath` writes its out-parameter, " +
+                "which is why the scratch list must be the session's and never the citizen's");
+            Assert.AreEqual(pathIdxBefore, her.PathIndex, "…and her position along it");
+            Assert.AreEqual(before, sim.StateHash(),
+                "rendering a DROPPED-order row moved the determinism hash. The render half may READ " +
+                "the sim's pathfinder and may never write sim state.");
+        }
+
+        // ════════════════════════════════════════════════════════ the arm count is the whole claim
+
+        /// <summary>
+        /// ⛔ <b>NINE ARMS, COUNTED IN THE FILE, PINNED HERE — because "one publish covers all nine"
+        /// is this package's central claim and it is a claim about a NUMBER.</b> The compiler already
+        /// forces every call site to NAME a reason (<c>Abandon</c>'s parameter has no default, on
+        /// purpose), so what a scan adds is the count itself: the doc table on
+        /// <see cref="JobDropReason"/> maps arm → reason line by line, and a tenth arm would leave it
+        /// quietly incomplete while everything stayed green.
+        ///
+        /// <para>Reads CODE, NOT PROSE (<c>ArchitectureBoundaryTests.CodeOnly</c>, CLAUDE.md trap 1 —
+        /// the shared stripper, never a second one), and both controls are below: a commented-out
+        /// call must not count, and a real one must.</para>
+        ///
+        /// <para>⛔ <b>WHAT THIS TEST DOES NOT SAY, so its green is not read as more than it is:</b>
+        /// it counts <c>DriveWorker</c>'s <c>Abandon</c> arms, and <c>Abandon</c> is not the only way
+        /// a Maintain job ends in this file. <c>DriveWorkers</c> at <c>:207</c> calls
+        /// <c>AbandonOrphan</c> directly when the ordered machine has been deconstructed, publishing
+        /// nothing — named on <c>Abandon</c>'s own doc comment and in <c>MECHANICS</c> §13.25 b3′.
+        /// A scan for the funnel cannot see a path that skips the funnel.</para>
+        /// </summary>
+        [Test]
+        public void DriveWorkerHasNineAbandonArms_AndEveryDropReasonIsUsedByOne()
+        {
+            string code = ArchitectureBoundaryTests.CodeOnly(
+                System.IO.File.ReadAllText(SimFile("Systems/MachineWearSystem.cs")));
+
+            var calls = System.Text.RegularExpressions.Regex
+                .Matches(code, @"Abandon\(sim, device, worker, JobDropReason\.(\w+)\)")
+                .Cast<System.Text.RegularExpressions.Match>()
+                .Select(m => m.Groups[1].Value).ToList();
+
+            Assert.That(calls.Count, Is.EqualTo(9),
+                "`MaintenanceSystem.DriveWorker` has " + calls.Count + " Abandon arms and this repo's " +
+                "diagnosis (MECHANICS §13.25 b3, and JobDropReason's own table) says NINE. If an arm " +
+                "was added, give it a reason in that table and raise this number; if one was removed, " +
+                "the table has a dead row.");
+
+            foreach (JobDropReason r in System.Enum.GetValues(typeof(JobDropReason)))
+                Assert.That(calls.Contains(r.ToString()), Is.True,
+                    "JobDropReason." + r + " is declared and no abandon arm uses it — a reason with " +
+                    "no cause behind it, which the host's switch will then answer for forever");
+        }
+
+        /// <summary>NEGATIVE CONTROL for the scan above: a call that exists only in a COMMENT must
+        /// not be counted. Trap 1's shape, and its stated fix is the shared stripper — this leg is
+        /// what proves the stripper is actually in the path.</summary>
+        [Test]
+        public void TheArmScanIsNotSatisfiedByACommentedOutCall()
+        {
+            const string fixture =
+                "class X {\n" +
+                "  void A() { /* Abandon(sim, device, worker, JobDropReason.Displaced); */ }\n" +
+                "  // Abandon(sim, device, worker, JobDropReason.CargoLost);\n" +
+                "  void B() { Abandon(sim, device, worker, JobDropReason.NoConsumable); }\n" +
+                "}\n";
+            var found = System.Text.RegularExpressions.Regex
+                .Matches(ArchitectureBoundaryTests.CodeOnly(fixture),
+                         @"Abandon\(sim, device, worker, JobDropReason\.(\w+)\)")
+                .Cast<System.Text.RegularExpressions.Match>()
+                .Select(m => m.Groups[1].Value).ToList();
+
+            Assert.That(found, Is.EqualTo(new List<string> { "NoConsumable" }),
+                "the stripper let commented-out code satisfy the arm scan (or ate the real call) — " +
+                "both halves are the control, because a scan that finds nothing and a scan that " +
+                "cannot find anything look identical from the outside");
+        }
+
+        /// <summary>A path under <c>sim/Sim.Core</c>, found by walking up from the test binary to
+        /// the repo root (the house pattern — the CWD under <c>dotnet test</c> is not the root).</summary>
+        private static string SimFile(string relative)
+        {
+            var dir = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                string candidate = System.IO.Path.Combine(dir.FullName, "sim", "Sim.Core");
+                if (System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "ci.sh")) &&
+                    System.IO.Directory.Exists(candidate))
+                    return System.IO.Path.Combine(candidate, relative);
+                dir = dir.Parent;
+            }
+            Assert.Fail("the repo root (a directory holding both ci.sh and sim/Sim.Core) must be " +
+                        "discoverable by walking up from " + System.AppContext.BaseDirectory);
+            return null;
         }
     }
 }

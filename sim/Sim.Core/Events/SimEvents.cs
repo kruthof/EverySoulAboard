@@ -243,4 +243,140 @@ namespace Perilune.Sim
         /// <summary>The capsule that opened; its <see cref="Device.Name"/> is the sleeper's identity.</summary>
         public uint PodId;
     }
+
+    /// <summary>
+    /// ⭐⭐ <b>D5 FOLLOW-ON — WHY <c>MaintenanceSystem.DriveWorker</c> LET GO OF A JOB.</b> One
+    /// member per distinct CAUSE, and the mapping onto <c>DriveWorker</c>'s <b>nine</b>
+    /// <c>Abandon</c> call sites is written out here because the count is the whole claim of the
+    /// package that added it — the parameter has NO DEFAULT, so the compiler is what keeps a tenth
+    /// arm from shipping mute.
+    ///
+    /// <code>
+    ///   MachineWearSystem.cs   phase                                   reason
+    ///   ---------------------  --------------------------------------  --------------------
+    ///   :321  drive entry      the machine lost its staging tile        NoWorksiteTile
+    ///   :333  work phase       displaced / a path we never set          Displaced
+    ///   :343  work phase       the stack in hand is not ours any more   CargoLost
+    ///   :419  logistics        the stack in hand is not ours any more   CargoLost
+    ///   :428  logistics        arrived, and not beside the machine      NoRouteToWorksite
+    ///   :466  fetch, on stack  no route from the stack to the worksite  NoRouteToWorksite  ⭐ D5
+    ///   :471  fetch            no route to the stack itself             NoRouteToConsumable
+    ///   :481  fetch, empty     nothing aboard and below the wreck floor NoConsumable
+    ///   :502  fetch, empty     no route to the worksite to jury-rig it  NoRouteToWorksite
+    /// </code>
+    ///
+    /// <para>⚠️ <b>THE LINE NUMBERS ARE THIS TREE'S, RE-MEASURED AFTER THE EDIT — the last four moved.</b>
+    /// D5's diagnosis (<c>MECHANICS</c> §13.25 b3, <c>WireFormat.ReasonNoRoute</c>) names the pickup
+    /// branch as <c>:464</c>, which was its line BEFORE this package added a two-line comment above
+    /// it. Same arm, same branch; only the number moved. The COUNT — nine — is the load-bearing part
+    /// and it is pinned by <c>DroppedOrderTests.DriveWorkerHasNineAbandonArms_AndEveryDropReasonIsUsedByOne</c>,
+    /// which counts call sites rather than trusting this table.</para>
+    ///
+    /// <para><b>TWO COLLAPSES, BOTH DELIBERATE, AND NEITHER IS TIDINESS.</b> <c>:343</c>/<c>:419</c>
+    /// are the identical sentence about the identical fact (the carried stack vanished under her)
+    /// reached from two phases. <c>:428</c>/<c>:464</c>/<c>:500</c> are the identical fact about the
+    /// WORKSITE's route — the reader's live re-ask is one question, so three codes would be three
+    /// names for one predicate. What is NOT collapsed is <c>:469</c>: the route to the PARTS is a
+    /// different route from the route to the MACHINE, and a reader that could not tell them apart
+    /// would point the player at the wrong door.</para>
+    ///
+    /// <para>⛔ <b>THIS IS A REASON, NOT A SENTENCE.</b> Nothing here decides what a player is told.
+    /// Three of the six are answered by the host RE-ASKING a live predicate — never by replaying
+    /// this byte as text — and three have no surface today. See
+    /// <c>GameSession.BuildBlocked</c>'s dropped-order walk.</para>
+    ///
+    /// <para>⛔⛔ <b>AND THE REASON THE OTHER THREE HAVE NO SURFACE IS NOT "THEY HEAL" — THAT CLAIM
+    /// STOOD HERE AND IS MEASURABLY FALSE. IT IS CORRECTED RATHER THAN QUIETLY REPLACED.</b> The
+    /// first draft said <see cref="Displaced"/> and <see cref="CargoLost"/> were <i>self-healing —
+    /// the standing rule re-recruits from ground truth on the next pass</i>. It does not, in the
+    /// state the game actually boots in: <c>FindNearestReachableIdle</c> gates on
+    /// <c>CanTakeWorkType</c> (<c>MachineWearSystem.cs:598</c>, mirrored in <c>HasClaimableWork</c>
+    /// at <c>:534</c>), and under OD-H <b>every work type boots OFF</b> — so nothing re-recruits
+    /// anybody, ever, until the player opens the WORK tab. Driven on the shipped wreck: order
+    /// <c>fabricator_1</c> with the route open, the first render retires the pending record, yank
+    /// the carried stack at the pickup (tick 171) ⇒ <c>CargoLost</c>, the host FILES the drop, and
+    /// 3 000 further ticks later she has never been re-recruited and the channel has read
+    /// <c>cells:[]</c> throughout. <b>The player's order is permanently and silently gone.</b>
+    /// <c>MECHANICS</c> §13.25 b3′ carries it as a named residual.</para>
+    ///
+    /// <para><b>THE JUSTIFICATION THAT DOES HOLD</b>, and it is the only one claimed now: these two
+    /// are <b>per-worker transients</b>. What killed the job — she was displaced, the stack changed
+    /// hands — is a fact about a MOMENT and about a PAWN, not a standing property of the machine, so
+    /// there is no world question for a render to re-ask. Under the live-re-ask discipline that
+    /// governs this whole channel, no honest badge is available; a latched sentence would be the one
+    /// thing the discipline exists to refuse. <see cref="NoRouteToConsumable"/> is filed for a
+    /// different reason again — the question is real and standing, but its declaration is private
+    /// and per-worker-position, so the host cannot ask it without becoming a second authority.</para>
+    /// </summary>
+    public enum JobDropReason : byte
+    {
+        /// <summary>The machine has no walkable+survivable neighbour any more — walled in, or the
+        /// tile beside it stopped being floor, DURING the job.</summary>
+        NoWorksiteTile = 0,
+        /// <summary>She is not where the job left her, or carries a path this system never set:
+        /// external interference, restarted from ground truth on a later pass.</summary>
+        Displaced = 1,
+        /// <summary>The stack in her hands is gone from the item store, or is no longer hers.</summary>
+        CargoLost = 2,
+        /// <summary>⭐ <b>D5's arm.</b> The pathfinder says there is no route from where she is to
+        /// the machine's staging tile.</summary>
+        NoRouteToWorksite = 3,
+        /// <summary>There is a consumable to fetch and no route from where she is to it.</summary>
+        NoRouteToConsumable = 4,
+        /// <summary>Nothing aboard to repair it with, and the machine is below
+        /// <c>wear.wreck_threshold</c>, so there is no free jury-rig either.</summary>
+        NoConsumable = 5,
+    }
+
+    /// <summary>
+    /// ⭐⭐ <b>D5 FOLLOW-ON (2026-08-03) — THE ORDER THE PLAYER GAVE HAS JUST DIED, AND THIS SAYS
+    /// WHY.</b> Published by <c>MaintenanceSystem.Abandon</c> — the ONE funnel every one of
+    /// <c>DriveWorker</c>'s nine abandon arms goes through — on the tick the job is let go.
+    ///
+    /// <para><b>THE DEFECT IT CLOSES</b> (<c>MECHANICS</c> §13.25 b3). The issue-time half of D5 is
+    /// surfaced by re-asking a live predicate about a PENDING order record; but that record is
+    /// retired the moment the sim takes the order, so an order given while the route is OPEN whose
+    /// route closes mid-job died at <c>MachineWearSystem.cs:464</c> with <b>nothing on any
+    /// surface</b> — driven on the shipped wreck: taken tick 1, door shut tick 41, dropped tick 171,
+    /// <c>blocked</c> channel <c>cells:[]</c>. Structural rather than a missing predicate: once the
+    /// host's record is retired there is nothing left for a render to re-ask about. This event is
+    /// the thing that hands the question back.</para>
+    ///
+    /// <para>⛔ <b>ORDERS ONLY, AND THAT IS A SCOPE DECISION WITH A COST ARGUMENT.</b> It is
+    /// published only when the abandoned job was <see cref="Citizen.HeldByOrder"/> — the hold IS the
+    /// order (§2.2, M2-19). The dispatcher's own abandons are ORDINARY: the standing rule refuses,
+    /// backs off and re-recruits thousands of times a day (M1-H's backoff funnel exists because of
+    /// exactly that thrash), and publishing them would put an unbounded per-tick stream on a bus
+    /// whose only reader wants the rare case. The badge this feeds is player-ordered-machines-only
+    /// anyway (<c>WireFormat.ReasonNoRoute</c>'s scope paragraph), so a wider event would be
+    /// unreadable payload. ⚠️ It also means <b>the reader may assume the subject is an order</b> —
+    /// there is no "was this an order" flag on the event because there is no other kind.</para>
+    ///
+    /// <para>⚠️ <b>THE READ OF <see cref="Citizen.HeldByOrder"/> HAPPENS BEFORE THE JOB IS CLEARED,
+    /// AND THAT ORDERING IS LOAD-BEARING.</b> <c>Citizen.JobKind</c>'s setter releases the hold, so
+    /// a publish written after <c>AbandonOrphan</c> would see <c>false</c> every single time and the
+    /// channel would be permanently empty — a mute event that every test asserting "no row" would
+    /// happily agree with.</para>
+    ///
+    /// <para>TRANSIENT, like every other channel on this bus: not saved, not folded into
+    /// <c>Simulation.StateHash</c>, no def field, no <c>IStatefulSystem</c> checksum. ⛔ That is not
+    /// decoration — the chronicle-signal lane's save/restore regression (CLAUDE.md's pin block) was
+    /// a transient event folded into a hashed, never-evicted field, and the whole point of the shape
+    /// chosen here is that a re-published event on reload can change nothing.</para>
+    ///
+    /// <para>Mirrors <see cref="CitizenThawedEvent"/>'s shape — a position plus the two entity ids,
+    /// no strings. <see cref="Pos"/> is the DEVICE's tile (the tile the player clicked and the tile
+    /// a badge is drawn on), never the tile she was standing on when it died.</para>
+    /// </summary>
+    public struct OrderDroppedEvent : ISimEvent
+    {
+        /// <summary>The ordered machine's tile — the badge's site.</summary>
+        public Int3 Pos;
+        /// <summary>The machine the order named.</summary>
+        public uint DeviceId;
+        /// <summary>The crew member who was carrying it; still in the store when readers run.</summary>
+        public uint CitizenId;
+        /// <summary><see cref="JobDropReason"/> as a byte (append-only contract).</summary>
+        public byte Reason;
+    }
 }

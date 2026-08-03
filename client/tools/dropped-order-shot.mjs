@@ -237,17 +237,16 @@ check(!!key1 && key1.includes(NO_ROUTE),
   + 'try and does not exist on a touch device — the key is the surface that discharges the silence');
 check(!!key1 && /\d+ .*ORDER/.test(key1),
   'and it leads with the COUNT — "1 ORDER STUCK" is the fact that makes a player look');
-// ⛔ OBSERVED, NOT CHECKED — ANOTHER PACKAGE'S GAP, MEASURED HERE RATHER THAN ASSERTED. The key
-// reads "1 ORDER STUCK" and the badge title "ORDER BLOCKED — …", never "REPAIR". `BLOCKED_ORDER_NAMES`
-// is `['dig','strip','build']` and has no entry at index 3, so `blockedOrderName(WireFormat.OrderRepair)`
-// answers '' and both surfaces fall through `decodeBlocked`'s unknown-order path. That is M2-10's
-// unlanded half, named in MECHANICS §13.25 b, and it has been true of the shipped `no_consumable`
-// row since M2-9 — turning it into a failing D5 check would report another package's bug under this
-// package's name (vacuum-shot.mjs's own rule). Reported to the integrator for HANDOVER's OPEN list.
-log(/REPAIR/.test(key1 || '')
-  ? '  (the key names the order kind: REPAIR)'
-  : '  ⚠️ OBSERVED — the key says "ORDER", not "REPAIR": BLOCKED_ORDER_NAMES has no index 3. '
-    + 'Pre-existing (M2-10, MECHANICS §13.25 b), filed, not this package\'s.');
+// ⭐ WAS "OBSERVED, NOT CHECKED" — IT IS A CHECK NOW (D5 follow-on, 2026-08-03). This tool FILED the
+// defect and the follow-on lane fixed it in the same file family, so the observation graduates rather
+// than being deleted: `BLOCKED_ORDER_NAMES` was `['dig','strip','build']` with no entry at index 3,
+// so `blockedOrderName(WireFormat.OrderRepair)` answered '' and BOTH surfaces fell through
+// `decodeBlocked`'s unknown-order path — the key read "1 ORDER STUCK" and the badge title
+// "ORDER BLOCKED — …" for a machine the player had explicitly told somebody to REPAIR.
+check(/REPAIR/.test(key1 || ''),
+  '⭐ the key names the VERB the player used — "1 REPAIR ORDER STUCK", not the generic "1 ORDER '
+  + 'STUCK". A badge that will not say what kind of order it is about sends the player looking '
+  + 'through the wrong panel');
 check(!!during && during.some((b) => /NO WAY TO WALK/.test(b.title)),
   'the badge carries the same sentence in its <title> — one vocabulary, two surfaces');
 await png('02-badged-while-she-walks.png');

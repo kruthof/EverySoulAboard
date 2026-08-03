@@ -192,6 +192,12 @@ namespace Perilune.Web
         /// tick's events and silently loses every one before it. The old loop body was exactly that
         /// bare <c>for</c>, which is why this is a method and not two lines at the call site.
         ///
+        /// <para>⭐ <b>THERE ARE TWO SUCH OBSERVATIONS NOW</b> — <see cref="AttachThawedPersonas"/>
+        /// (a sleeper's mind) and <see cref="NoteDroppedOrders"/> (the sim saying why it let go of a
+        /// player's order, D5 follow-on). Both are here for the same one reason stated above; a
+        /// render-side read of either loses every event published between two renders, and at speed
+        /// that is most of them.</para>
+        ///
         /// <para>⛔ <b>AND THE RUN LOOP'S CALL TO IT IS PINNED SEPARATELY, BECAUSE DRIVING THIS
         /// METHOD IS NOT THE SAME CLAIM AS THE LOOP CALLING IT.</b> The first draft's comment said
         /// tests drive this method "so no harness can navigate a path the game does not take", which
@@ -209,6 +215,7 @@ namespace Perilune.Web
             {
                 _sim.Tick();
                 AttachThawedPersonas();
+                NoteDroppedOrders();
             }
         }
 
@@ -244,6 +251,57 @@ namespace Perilune.Web
                 if (AuthoredShips.AttachSleeperPersona(_sim, _host.Minds, _host.Facts, person)) attached++;
             }
             return attached;
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>D5 FOLLOW-ON — THE HOST HALF OF A DROPPED ORDER: catch the sim saying WHY it let
+        /// go of a job the player ordered, so the machine can go on answering for it.</b> Reads
+        /// <see cref="OrderDroppedEvent"/> and files the crew member's dead order in
+        /// <see cref="_dropped"/>; <see cref="BuildBlocked"/>'s fifth walk is the only reader.
+        ///
+        /// <para>⛔ <b>IT LIVES IN <see cref="AdvanceTicks"/> AND NOT IN <see cref="Render"/>, AND
+        /// THAT IS THE WHOLE RELIABILITY ARGUMENT.</b> The bus is double-buffered and swaps at the
+        /// END of every tick, so an observation made per RENDER misses every event published in the
+        /// ticks between two renders — and this loop runs up to <c>MaxTicksPerFrame</c> ticks per
+        /// frame at speed. A drop is a ONE-TICK event; at 3× speed a render-side read would lose it
+        /// outright, which is the same silence the package exists to remove wearing the host's
+        /// costume. <see cref="AttachThawedPersonas"/> is here for exactly this reason and this
+        /// method sits beside it deliberately.
+        /// <br/>⚠️ <b>AND THE CHAIN TO THE SHIPPING GAME IS TWO CLAIMS, NOT ONE</b> — the sibling's
+        /// scar: <c>Run</c> once advanced the sim with a BARE tick loop, leaving
+        /// <see cref="AdvanceTicks"/> intact and unreachable while the whole suite stayed green.
+        /// <c>SleeperPersonaTests.TheRunLoopItself_AttachesTheMind_DrivenThroughStart</c> is what
+        /// pins <c>Run</c> → <see cref="AdvanceTicks"/>; <c>DroppedOrderTests</c> pins
+        /// <see cref="AdvanceTicks"/> → this method (deleting this line reddens <b>SIX</b> legs,
+        /// re-measured — the "five" that stood here was taken before that file's purity leg existed
+        /// and was never re-taken). Neither alone is the claim.</para>
+        ///
+        /// <para>⛔ <b>A LIVE PENDING ORDER ALWAYS WINS — this is the no-double-badging rule, stated
+        /// once, here.</b> If <see cref="_prioritised"/> already holds an entry for this crew member,
+        /// nothing is filed: that record is re-asked live every render and already owns the machine's
+        /// row (the ISSUE-TIME half of D5 — <c>WireFormat.ReasonNoRoute</c>). Filing both would leave
+        /// two records answering for one order; the row itself would still be single (the emitters
+        /// dedupe per order+tile), so the duplication would be invisible until one record cleared and
+        /// the other did not. It also covers the re-order case: the player pointing her at a NEW
+        /// machine supersedes the old order, and the old drop must not badge a machine she is no
+        /// longer going to.</para>
+        ///
+        /// <para>Returns how many drops were filed — a test seam, and zero on all but a handful of
+        /// ticks in a session. Zero allocation on the empty path: <c>Events.Read</c> hands back a
+        /// <c>ReadOnlySpan</c> and the dictionary is reused for the life of the session.</para>
+        /// </summary>
+        internal int NoteDroppedOrders()
+        {
+            var drops = _sim.Events.Read<OrderDroppedEvent>();
+            int filed = 0;
+            for (int i = 0; i < drops.Length; i++)
+            {
+                var d = drops[i];
+                if (_prioritised.ContainsKey(d.CitizenId)) continue; // a live order outranks a dead one
+                _dropped[d.CitizenId] = new DroppedOrder(d.DeviceId, d.Reason);
+                filed++;
+            }
+            return filed;
         }
 
         public void Start()
@@ -1279,6 +1337,12 @@ namespace Perilune.Web
                                Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
             if (!_sim.TryGetDeviceAt(pos, out var device) || !IsExplored(pos)) return;
             _prioritised[cmd.Cid] = device.Id;
+            // ⭐⭐ D5 FOLLOW-ON — A NEW ORDER SUPERSEDES A DEAD ONE. Whatever this crew member's last
+            // order died of, she is not going to that machine any more: leaving the record would keep
+            // a badge on a machine the player has visibly moved her off, and `NoteDroppedOrders`'
+            // "a live pending order always wins" rule would then have two records to be right about.
+            // One line, and it is the other half of that rule.
+            _dropped.Remove(cmd.Cid);
             _sim.EnqueueCommand(new PrioritiseJobCommand((int)cmd.Cid, (int)device.Id));
         }
 
@@ -1287,7 +1351,9 @@ namespace Perilune.Web
         /// that crew member at.</b> By ID and not by tile, matching what crosses the wire into the
         /// sim: a tile's occupant can change under a pending order, an entity id cannot.
         /// Written by <see cref="HandlePrioritise"/>, read by
-        /// <see cref="BuildBlocked"/>'s fourth walk, and that is its entire life. Host-side, transient,
+        /// <see cref="BuildBlocked"/>'s fourth walk, and that is its entire life. ⭐ Its counterpart
+        /// for orders the sim has already EATEN is <see cref="_dropped"/> — the two are disjoint by
+        /// construction and the rule is stated on <see cref="NoteDroppedOrders"/>. Host-side, transient,
         /// never saved, never hashed, never restored on a reconnect — the <see cref="_latched"/>
         /// precedent.
         ///
@@ -1331,6 +1397,53 @@ namespace Perilune.Web
         /// Without this seam the cleanup could only be pinned by a test that cannot fail.</para>
         /// </summary>
         internal int PendingOrderCount => _prioritised.Count;
+
+        /// <summary>⭐⭐ D5 FOLLOW-ON — one dead order: the machine it named and the sim's own reason
+        /// for letting go of it (<see cref="JobDropReason"/> as a byte, the wire's append-only
+        /// convention). ⛔ <b>NO TICK STAMP, DELIBERATELY.</b> A timestamp would make this a LATCH
+        /// with an expiry, and the badge it feeds is not latched — every render re-asks a LIVE
+        /// predicate and the record clears the moment the world stops agreeing with it. A record
+        /// that aged out on a timer would keep a badge up over a route that had already opened, and
+        /// take one down over one that had not.</summary>
+        private readonly struct DroppedOrder
+        {
+            public readonly uint DeviceId;
+            public readonly byte Reason;
+            public DroppedOrder(uint deviceId, byte reason) { DeviceId = deviceId; Reason = reason; }
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>D5 FOLLOW-ON — THE DEAD DIRECT ORDERS: crew id → the machine whose order the SIM
+        /// just dropped, and why.</b> Written by <see cref="NoteDroppedOrders"/> at the tick
+        /// boundary, read by <see cref="BuildBlocked"/>'s fifth walk, and that is its entire life.
+        /// Host-side, transient, never saved, never hashed, never restored on a reconnect — the
+        /// <see cref="_prioritised"/> and <c>_latched</c> precedent, and the same thread affinity
+        /// argument (the sim thread writes it in <see cref="AdvanceTicks"/> and reads it in
+        /// <see cref="Render"/>, one after the other).
+        ///
+        /// <para><b>BOUNDED BY THE CREW</b>, exactly like <see cref="_prioritised"/>: one entry per
+        /// crew member, overwritten by her next drop and removed the moment its reason stops being
+        /// true. A ship whose every order dies a hundred times leaves one row per soul.</para>
+        ///
+        /// <para><b>DISJOINT FROM <see cref="_prioritised"/> BY CONSTRUCTION</b>, not by luck:
+        /// <see cref="NoteDroppedOrders"/> refuses to file against a live pending order, and
+        /// <see cref="HandlePrioritise"/> drops the record when the player gives a new one. The sim
+        /// can only publish a drop for a job it had TAKEN, and taking is precisely what retires the
+        /// pending record — so the two maps describe the two halves of an order's life and never the
+        /// same half twice.</para>
+        /// </summary>
+        private readonly Dictionary<uint, DroppedOrder> _dropped = new Dictionary<uint, DroppedOrder>();
+
+        /// <summary>Scratch for the dropped-order prune pass — the <see cref="_prioritiseDrop"/>
+        /// precedent, and for the same reason (a <see cref="Dictionary{TKey,TValue}"/> may not be
+        /// mutated mid-enumeration). Reused for the life of the session; bounded by the crew.</summary>
+        private readonly List<uint> _droppedPrune = new List<uint>();
+
+        /// <summary>How many dropped direct orders are still being answered for. Test seam only —
+        /// <see cref="PendingOrderCount"/>'s precedent, and it exists for the same reason: an entry
+        /// whose crew member has died is never visited by the emit walk, so a leak would be
+        /// invisible on the wire and could only be pinned by a test that cannot fail.</summary>
+        internal int DroppedOrderCount => _dropped.Count;
 
         /// <summary>
         /// The decorate bridge (Room Zoom place palette). Maps the palette tool string to a
@@ -3602,6 +3715,38 @@ namespace Perilune.Web
         }
 
         /// <summary>
+        /// ⭐⭐ <b>D5 FOLLOW-ON — the row for an ordered machine that has NOWHERE TO STAND beside
+        /// it any more</b> (<see cref="WireFormat.ReasonNoApproach"/>, the sentence <i>NO WAY TO
+        /// STAND NEXT TO IT</i>). Bounds-, fog- and duplicate-gated exactly as
+        /// <see cref="AddNoRouteRow"/> and <see cref="AddUnfixableRow"/> are.
+        ///
+        /// <para>⛔ <b>THIS DOES NOT WIDEN <c>MECHANICS</c> §13.25 b2.</b> That filed silence is the
+        /// order refused AT ISSUE TIME for want of a staging tile — <c>PrioritiseJobCommand</c>
+        /// returns without creating a job and there is nothing left to report. This row is the
+        /// MID-ORDER case: the order was accepted, a job existed, and the machine lost its approach
+        /// while she was on her way. The two look alike on the screen and are completely different
+        /// events; closing one says nothing about the other, and b2 stays open and filed.</para>
+        ///
+        /// <para>The reason already exists and already has a sentence — this is the same answer the
+        /// dig/strip/build walk gives through <c>AddIfBlocked</c>, reached from the repair order. No
+        /// new vocabulary, no new wire element.</para>
+        /// </summary>
+        private void AddNoApproachRow(Device device)
+        {
+            var p = device.Pos;
+            if (!_sim.World.InBounds(p)) return;
+            if ((_sim.World.GetFlags(p) & TileFlags.Explored) == 0) return;
+            for (int i = 0; i < _blockedScratch.Count; i++)
+            {
+                var row = _blockedScratch[i];
+                if (row.Order == WireFormat.OrderRepair && row.X == p.X && row.Y == p.Y && row.Deck == p.Z) return;
+            }
+            _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z,
+                                                           WireFormat.OrderRepair, WireFormat.ReasonNoApproach,
+                                                           WireFormat.DetailNone));
+        }
+
+        /// <summary>
         /// The sparse BLOCKED-ORDER layer — one <see cref="WireFormat.BlockedCell"/> per site the
         /// player queued that the sim's own rules refuse, read from the two order
         /// registries, the tile flag plane and (M2-9) this host's pending direct orders. See
@@ -3612,8 +3757,9 @@ namespace Perilune.Web
         /// ORDER — digs on the z,y,x world walk (the <c>IJobSource</c> rule-3 scan order, identical in
         /// shape to <see cref="BuildMaterials"/> / <see cref="BuildZones"/> / <see cref="BuildMarks"/>),
         /// then strips in <c>DeconstructSystem.Pending</c> index order, then builds in
-        /// <c>BuildSystem.Pending</c> index order, then direct repair orders in CITIZEN STORE order.
-        /// Four deterministic walks over plain
+        /// <c>BuildSystem.Pending</c> index order, then PENDING direct repair orders in CITIZEN STORE
+        /// order, then (D5 follow-on) DROPPED direct repair orders in the same order.
+        /// Five deterministic walks over plain
         /// <c>IReadOnlyList</c>s; nothing is enumerated out of a hash container, so no container layout
         /// can reach the socket. Pinned by <c>BlockedChannelTests</c>.
         ///
@@ -3874,6 +4020,137 @@ namespace Perilune.Web
                         continue;
                     }
                     AddUnfixableRow(device);
+                }
+            }
+
+            // ⭐⭐ 5) REPAIR, THE OTHER HALF — the player's direct orders THE SIM HAS ALREADY EATEN
+            // (D5 follow-on, MECHANICS §13.25 b3). Appended last, after the pending walk, so the
+            // emission order the four walks above pin is unchanged.
+            //
+            // ⛔ WHY A FIFTH WALK AND NOT A FOURTH ARM. The pending record is retired the instant the
+            // sim TAKES an order ("the held job IS the order from then on"), so from that moment the
+            // fourth walk has nothing to hang a reason on — which is exactly why an order given while
+            // the route was open, and dropped after it shut, said nothing at all. `_dropped` is the
+            // record the SIM hands back on the way out (`OrderDroppedEvent`, published from the ONE
+            // funnel all nine of `DriveWorker`'s abandon arms go through), and the two maps are
+            // disjoint by construction — see `_dropped`'s own remarks.
+            //
+            // ⭐ THE RULE FOR WHETHER A DROP GETS A ROW, AND IT IS ONE SENTENCE: a dropped order is
+            // badged if and only if THIS HOST CAN RE-ASK THE SIM'S OWN KILLING QUESTION, LIVE. Not
+            // "we have a plausible sentence" — the same predicate, from the same declaration, so the
+            // badge and the executor cannot come to different answers (the discipline the whole
+            // channel is built on). Three of `JobDropReason`'s six qualify and each is a call into
+            // `MaintenanceSystem`; the other three are FILED, out loud, in the default arm below.
+            //
+            // ⚠️ SO THE BADGE IS LIVE, NOT LATCHED, even though its TRIGGER was an instant: the
+            // record only says WHICH QUESTION to ask about WHICH machine. Open the door and the next
+            // frame answers no, the record is dropped and the badge is gone — the same behaviour the
+            // issue-time half has, reached a different way. There is no timer anywhere.
+            //
+            // ⚠️ WALKED OVER THE CITIZEN STORE, NOT OVER `_dropped`, for the reason every other walk
+            // here states: a hash container's layout may not decide the order of rows on the socket.
+            if (_dropped.Count > 0)
+            {
+                // (a) THE ORDER DOES NOT SURVIVE THE PAWN — `_prioritised`'s pass (a), verbatim, and
+                // for the identical reason: `NeedsSystem.Kill` REMOVES the citizen from the store, so
+                // a dead crew member's record is never visited by the emit walk and would sit here
+                // for the rest of the session. This pass exclusively REMOVES, which is what makes
+                // enumerating the keys safe.
+                _droppedPrune.Clear();
+                foreach (var order in _dropped)
+                    if (!_sim.Citizens.TryGet(order.Key, out var owner) || owner.Dead)
+                        _droppedPrune.Add(order.Key);
+                for (int i = 0; i < _droppedPrune.Count; i++) _dropped.Remove(_droppedPrune[i]);
+
+                // (b) EMIT, over the CITIZEN STORE.
+                var crew = _sim.Citizens.Items;
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    var c = crew[i];
+                    if (!_dropped.TryGetValue(c.Id, out var drop)) continue;
+                    if (!_sim.Devices.TryGet(drop.DeviceId, out var device)) { _dropped.Remove(c.Id); continue; }
+
+                    // SHE IS ON THAT MACHINE AGAIN. The standing rule re-recruits from ground truth,
+                    // so the very thing that was refused can start working a second later — and a
+                    // badge over a repair that is under way is the false sentence this channel's
+                    // header refuses. `JobTarget`, not `HeldByOrder`: the player's order is dead
+                    // either way, and what they are looking at is a crew member servicing the machine
+                    // they pointed at.
+                    if (c.JobKind == JobKind.Maintain && c.JobTarget == device.Pos)
+                    {
+                        _dropped.Remove(c.Id);
+                        continue;
+                    }
+
+                    // ⚠️ WHAT IS DELIBERATELY *NOT* ASKED HERE, considered and filed rather than
+                    // built: whether the machine still WANTS a service at all
+                    // (`Condition < MaintainBelow`, `PrioritiseJobCommand`'s own issue-time test).
+                    // Adding it would badge one case less — a dropped order on a machine somebody
+                    // else has since repaired — but the PENDING walk above does not ask it either
+                    // (its no-route arm is likewise asked before any condition test), and the two
+                    // halves answering differently about the same machine is a worse defect than the
+                    // one it closes. If it is added it belongs in BOTH walks, in one lane.
+                    switch ((JobDropReason)drop.Reason)
+                    {
+                        // ⭐ D5's OWN ARM. `OrderedWorksiteIsOutOfReach` IS `TryFindStagingTile` then
+                        // `FindPath` — the two calls, in that order, that `DriveWorker` made when it
+                        // let go. One A* per dropped order per render, the cost written out on
+                        // `WireFormat.ReasonNoRoute` (103 µs worst case against a ~517 µs render).
+                        case JobDropReason.NoRouteToWorksite:
+                            if (OrderedWorksiteIsOutOfReach(c, device)) { AddNoRouteRow(device); continue; }
+                            break;
+
+                        // The approach itself is gone. Same call, same flag, same declaration as the
+                        // executor's first line — and NOT §13.25 b2, which is the issue-time refusal
+                        // (see AddNoApproachRow).
+                        case JobDropReason.NoWorksiteTile:
+                            if (!MaintenanceSystem.TryFindStagingTile(_sim, device.Pos, out _, forced: true))
+                            { AddNoApproachRow(device); continue; }
+                            break;
+
+                        // `IsUnfixableWreck(forced: true)` is `IsBelowWreckFloor && no consumable
+                        // aboard` — term for term the test `DriveWorker`'s empty-handed arm made.
+                        // (Its `from` argument is the DEVICE's tile rather than hers, and that cannot
+                        // change the answer: `FindNearestConsumable` picks the TIER by existence and
+                        // uses position only to break distance ties — its own doc says so.)
+                        case JobDropReason.NoConsumable:
+                            if (MaintenanceSystem.IsUnfixableWreck(_sim, device, forced: true))
+                            { AddUnfixableRow(device); continue; }
+                            break;
+
+                        // ⛔ THE THREE THAT ARE FILED RATHER THAN BADGED, NAMED SO A READER DOES NOT
+                        // HAVE TO DIFF THE ENUM AGAINST THIS SWITCH TO FIND THEM:
+                        //   • Displaced and CargoLost are PER-WORKER TRANSIENTS — external
+                        //     interference, and a stack that changed hands. What killed the job is a
+                        //     fact about a MOMENT and a PAWN, never a standing property of the
+                        //     machine, so there is no world question for this render to re-ask; under
+                        //     the live-re-ask rule above no honest badge is available, and a latched
+                        //     sentence is the one thing that rule exists to refuse.
+                        //     ⛔⛔ WHAT THIS COMMENT USED TO SAY — "SELF-HEALING; the standing rule
+                        //     re-recruits from ground truth on the next pass" — IS FALSE IN THE STATE
+                        //     THE GAME BOOTS IN, and is corrected here rather than deleted.
+                        //     `FindNearestReachableIdle` gates on `CanTakeWorkType`
+                        //     (MachineWearSystem.cs:598, mirrored at :534) and OD-H boots EVERY work
+                        //     type OFF, so nothing re-recruits anybody until the player opens the
+                        //     WORK tab. Driven: yank the carried stack at the pickup (tick 171) ⇒ the
+                        //     drop IS filed here, this arm discards it, and 3 000 ticks later she has
+                        //     never been re-recruited and the channel has read `cells:[]` throughout.
+                        //     So the player's order is PERMANENTLY AND SILENTLY GONE. That residual
+                        //     is named in MECHANICS §13.25 b3′; §13.25d — nothing re-issues a forced
+                        //     job after an interruption — is the item that owns the fix.
+                        //   • NoRouteToConsumable has no host-side twin: the question is "can she
+                        //     walk to a stack `FindNearestConsumable` would choose", and that
+                        //     declaration is private, per-worker-position, and moves as she moves.
+                        //     Re-using the WORKSITE's route here would be a different question
+                        //     wearing this one's sentence — a second authority, which is the defect
+                        //     this channel's header refuses by name.
+                        // All three fall through and the record is dropped on the line below: silent,
+                        // once, rather than silent forever.
+                        default:
+                            break;
+                    }
+
+                    _dropped.Remove(c.Id); // the world stopped agreeing with the reason — nothing to say
                 }
             }
 
