@@ -1402,6 +1402,61 @@ wreck floor.**
   below the floor + the MOSS terminal = **4 consumable services** the player must be able to
   buy by hand.
 
+#### ⭐ The order names its price (T13 finding, 2026-08-02)
+
+**`MaintenanceSystem.WhatARepairWouldSpend(sim, device|belowWreckFloor, forced, out kind)`
+(`:759`/`:780`)** — *what would a service at this machine spend, right now?* Three outcomes
+(`RepairSpend`, `:687`), because two of them are "nothing" for different reasons:
+
+| outcome | when | the player's sentence |
+|---|---|---|
+| `Consumable` + kind | the fetch funnel finds a stack | `SPENDS 1 PARTS` / `SEALS` / `SWARF` |
+| `Nothing` | nothing aboard, machine **at or above** `wreck_threshold` | `SPENDS NOTHING` (the free jury-rig) |
+| `NoService` | nothing aboard, machine **below** it — i.e. `IsUnfixableWreck` | *silence* (there is no service to price) |
+
+- **It is the dispatcher's own funnel.** The whole body is `FindNearestConsumable` plus the same
+  wreck-floor split `DriveWorker` makes when the fetch comes back empty (`:452`). ⛔ It is **not**
+  `WantedRepairConsumable`, which is `RepairConsumableTier(0)` UNCONDITIONALLY — right for the
+  `blocked` badge (raised only when the ship holds none of the three rungs) and a confident lie as a
+  price: on a Seals-only ship it says PARTS while the service eats Seals.
+- **Position-independent**, so there is no `from` argument: the tier is chosen by EXISTENCE and
+  `FindNearest` uses the tile only to break distance ties. Under `forced` even the breathability
+  filter is waived.
+- **The one per-device input is `IsBelowWreckFloor` (`:679`)** — the Swarf rung's precondition,
+  extracted so the four sites that must agree (`IsUnfixableWreck`, the fetch's `allowSwarf`,
+  `DriveWorker`'s empty-handed split, and this query) read one declaration. A pure extraction; the
+  comparison is unchanged.
+- **Asked with `forced: true`** by the host, because the offer prices an ORDER and D3's reserve
+  lives inside the funnel.
+
+**It travels on the `devices` channel as a TENTH element, `spend`** (`DeviceCell`,
+`WireFormat.Devices.cs`; `SameAs` gained the clause **in the same commit**). A raw `ItemKind` byte,
+or `WireFormat.SpendNothing = -2`, or `WireFormat.SpendUnknown = -1`. `decodeDevices` defaults an
+absent element to the SENTINEL and never to a kind — the other three elements default to their old
+behaviour and so does this one, and before it existed the offer named no price.
+
+⚠️ **THE HOST COMPUTES BOTH ANSWERS ONCE PER RENDER**, in `GameSession.BuildDevices`' prologue, and
+selects per row with `IsBelowWreckFloor`. The answer is ship-global except for that one bit, so there
+are exactly two of them; a per-row call would be three item-store scans × ~146 rows × 10 Hz, a cost
+`FindNearestConsumable`'s own comment files as owed.
+
+⚠️ **NOT VOLATILE, which is the channel's admission bar** (`Powered` was refused by name for being
+re-stamped every second). `spend` moves only when the ship's top available rung changes — a discrete
+pickup/consume/craft event — or when a device crosses `wreck_threshold`, which at the fastest shipped
+wear rate is once per machine per run. On `--ship wreck` at boot it is a constant on every row.
+
+⚠️ **IT IS A HINT, NOT A PROMISE**, on `GameSession.HandleCommission`'s precedent (*"written from what
+is affordable RIGHT NOW rather than from the command's outcome … a hint, not a result"*). A repair is
+9 000 ticks of fetch-and-service and the funnel re-runs at the fetch. **Nothing is reserved** — the
+class header refuses reservations deliberately.
+
+The client composes the words in `prioritise-model.js`'s `spendClause`, spelling the kind through
+`ITEM_WORDS` (pinned equal to `ThawGate.ItemWords`; **`Swarf` was added to BOTH in the same commit** —
+the C# arm is behaviourally a no-op because `default:` already returned `"SWARF"`, and it exists so
+the parse-based pin can see the rung). The label is
+`PRIORITISE: REPAIR <NAME> · SPENDS 1 PARTS · NO AIR AT THE WORKSITE — SHE MAY DIE`: **price first,
+hazard last**, because the hazard is life-and-death and keeps the position it held alone under D4.
+
 Tunables (`wear.def`): `hot_threshold_c = 35`, `wear_per_degree_c = 0.05`,
 `max_heat_multiplier = 3`, `maintenance_work_seconds = 900` (E0-2 L1 rebase, was 20),
 `jury_rig_condition = 0.6`, `seal_service_condition = 0.9`, `swarf_service_condition = 0.45`,
@@ -3494,6 +3549,10 @@ the gate itself is `GameSession.SendDevices`, `:1586-1595`): the gate skips seri
 the cell list is unchanged, and a door toggle moves **only** `open`, so without that clause a
 player's own toggle would silently freeze the OPEN⇄SHUT chip. Two lanes added `Open` and `SameAs`
 independently and **git reported no conflict** — see `HANDOVER.md`'s eighth trap shape.
+⭐ The tuple has since grown three times more, each under the same same-commit rule: `serv` (8th,
+M3-13 — *"the Prioritise menu no longer offers a repair the sim will never take"*), `air` (9th, D4)
+and `spend` (10th — **§7**, *the order names its price*). ⚠️ **D4's `air` element has no section of
+its own in this file yet** — filed, and not written by the `spend` lane.
 
 ### 13.24 M2-8 pre-emption is LIVE in the sim and INVISIBLE in play until M2-19 (2026-07-30)
 

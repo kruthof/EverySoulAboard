@@ -34,7 +34,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { decode, decodeDecks, decodeDevices, decodeRooms } from '../src/wire/messages.js';
+import { decode, decodeDecks, decodeDevices, decodeRooms, SPEND_UNKNOWN, SPEND_NOTHING } from '../src/wire/messages.js';
 import { roomDeviceConditions, roomTileRect } from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { codeOnly } from './code-only.js';
@@ -58,27 +58,27 @@ const ROOMZOOM = codeOnly(read(join(CLIENT, 'src/ui/roomzoom-view.js')));
 /** A room rect covering tiles [4..8) × [2..5) on deck 1 — the shape `roomTileRect` produces. */
 const ROOM = { deck: 1, rx: 4, ry: 2, rw: 4, rh: 3 };
 
-/** Build a host-shaped `devices` message from `[x,y,deck,kind,cond,oper]` tuples. */
+/** Build a host-shaped `devices` message from `[x,y,deck,kind,cond,oper,…]` tuples. */
 const msg = (cells) => ({ type: 'devices', cells });
 
 // ════════════════════════════════════════════════════════════ the cross-language tuple contract
 
 // MUTATION: swap `.Append(c.Cond…)` and `.Append(c.Oper…)` in WireFormat.Devices.cs ⇒ this fails and
 // names the file. MUTATION 2: reorder the `DeviceCell` constructor parameters ⇒ same.
-test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air] on BOTH sides of the seam', () => {
+test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air, spend] on BOTH sides of the seam', () => {
   // (a) the emitter's own append chain, in source order.
   const emitted = [...WIRE_DEVICES_CS.matchAll(/\.Append\(c\.(\w+)\.ToString\(DeviceIc\)\)/g)].map((m) => m[1]);
-  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Kind', 'Cond', 'Oper', 'Open', 'Serv', 'Air'],
+  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Kind', 'Cond', 'Oper', 'Open', 'Serv', 'Air', 'Spend'],
     'hosts/web/WireFormat.Devices.cs no longer appends the tuple in the order this client reads it. '
     + 'The tuple is POSITIONAL — a swap puts every device on the wrong tile or reports a condition '
     + 'as a kind — and there is no compiler across this seam.');
 
   // (b) the struct constructor, which is what `GameSession.BuildDevices` fills.
-  const ctor = /DeviceCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/
+  const ctor = /DeviceCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/
     .exec(WIRE_DEVICES_CS);
   assert.ok(ctor, 'the DeviceCell constructor was not found — this parse has rotted and (a) alone '
     + 'cannot see a caller that fills the fields in the wrong order');
-  assert.deepEqual(ctor.slice(1, 10), ['x', 'y', 'deck', 'kind', 'cond', 'oper', 'open', 'serv', 'air']);
+  assert.deepEqual(ctor.slice(1, 11), ['x', 'y', 'deck', 'kind', 'cond', 'oper', 'open', 'serv', 'air', 'spend']);
 
   // (c) …and the host really does fill it from the device's own position/kind/condition, in that
   // order. The multi-line `new` is matched with whitespace-tolerant spacing, not by exact layout.
@@ -88,7 +88,7 @@ test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air] on
   // lazy span crosses only whitespace today; it is written lazily so a future note there does not
   // turn a live guard into a rotted parse that `assert.ok` cannot even report).
   assert.match(GAME_SESSION_CS,
-    /new WireFormat\.DeviceCell\(\s*p\.X,\s*p\.Y,\s*p\.Z,\s*\(int\)device\.Kind,\s*WireFormat\.ConditionByte\(device\.Condition\),\s*device\.IsOperational\(defs\) \? 1 : 0,[\s\S]*?device\.IsOpen \? 1 : 0,[\s\S]*?MaintenanceSystem\.IsEverServiceable\(defs, device\.Kind\) \? 1 : 0,[\s\S]*?StagingAirBit\(device\.Pos\)\)/,
+    /new WireFormat\.DeviceCell\(\s*p\.X,\s*p\.Y,\s*p\.Z,\s*\(int\)device\.Kind,\s*WireFormat\.ConditionByte\(device\.Condition\),\s*device\.IsOperational\(defs\) \? 1 : 0,[\s\S]*?device\.IsOpen \? 1 : 0,[\s\S]*?MaintenanceSystem\.IsEverServiceable\(defs, device\.Kind\) \? 1 : 0,[\s\S]*?StagingAirBit\(device\.Pos\),[\s\S]*?MaintenanceSystem\.IsBelowWreckFloor\(_sim, device\) \? spendWreck : spendSound\)/,
     'GameSession.BuildDevices no longer fills DeviceCell from (p.X, p.Y, p.Z, device.Kind, '
     + 'ConditionByte(device.Condition), IsOperational, IsOpen). The two halves above pin the wire '
     + 'SHAPE; this pins what is put into it — in particular that `oper` is the SIM\'s operational '
@@ -98,12 +98,17 @@ test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air] on
     + 'host-side copy of the comparison the command refuses on is how the menu and the sim drift. '
     + '\u2b50 D4: and that `air` comes from StagingAirBit, whose whole body is two calls to the '
     + 'sim\'s own MaintenanceSystem.TryFindStagingTile \u2014 a host-side re-derivation of '
-    + 'breathability from room numbers is the second authority this seam exists to prevent.');
+    + 'breathability from room numbers is the second authority this seam exists to prevent. '
+    + '\u2b50\u2b50 THE PRICE: and that `spend` is one of TWO answers precomputed in the prologue, '
+    + 'selected by MaintenanceSystem.IsBelowWreckFloor \u2014 not `device.Condition < '
+    + 'defs.Wear.WreckThreshold` spelled out again here (the Swarf rung\'s precondition has ONE '
+    + 'declaration, beside the fetch that obeys it) and not a per-row call to the funnel, which '
+    + 'would be three item-store scans per row per frame.');
 
   // (d) the decoder reads the same positions. DRIVEN, not scanned.
-  const [row] = decodeDevices(msg([[11, 22, 3, 4, 55, 1, 1, 0, 0]]));
+  const [row] = decodeDevices(msg([[11, 22, 3, 4, 55, 1, 1, 0, 0, 7]]));
   assert.deepEqual(row,
-    { x: 11, y: 22, deck: 3, kind: 4, cond: 55, oper: 1, open: 1, serv: 0, air: 0 });
+    { x: 11, y: 22, deck: 3, kind: 4, cond: 55, oper: 1, open: 1, serv: 0, air: 0, spend: 7 });
 });
 
 // ⚠️ THE APPEND-ONLY CONTRACT, DRIVEN. `decodeDevices` gates on `length < 6` and NOT `< 7`, so a
@@ -111,9 +116,32 @@ test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air] on
 // exactly what every surface drew before the element existed. Raising the gate to 7 would drop every
 // device on the floor mid-upgrade and take the wear layer down with the state bit.
 // MUTATION: change `t.length < 6` to `t.length < 7` ⇒ the first leg reddens.
+// ⭐⭐ THE `spend` SENTINELS ARE PINNED ACROSS THE SEAM, and they are NOT covered by the tuple-order
+// test above: an append scan sees the POSITION of `Spend`, never the two VALUES that are not item
+// kinds. This is the `DetailNone` pin on the `blocked` channel (`blocked-model.test.js`), for the
+// same reason and with the same failure: if the host sent −3 for the free jury-rig and this client
+// kept −2, `spendClause` would answer '' and the FREE repair would silently stop saying so; if
+// either sentinel wandered into the non-negative range it would be indistinguishable from a real
+// `ItemKind`, and 0 is `Regolith`.
+// MUTATION: change `SpendNothing` to −3 in the C# ⇒ red here, naming the file.
+test('the spend sentinels are pinned EQUAL on both sides, and stay OUT of the ItemKind range', () => {
+  const constOf = (name) => {
+    const m = new RegExp('public const int ' + name + '\\s*=\\s*(-?\\d+)\\s*;').exec(WIRE_DEVICES_CS);
+    assert.ok(m, `hosts/web/WireFormat.Devices.cs no longer declares '${name}' — this parse has rotted`);
+    return Number(m[1]);
+  };
+  assert.equal(constOf('SpendUnknown'), SPEND_UNKNOWN);
+  assert.equal(constOf('SpendNothing'), SPEND_NOTHING);
+  assert.ok(SPEND_UNKNOWN < 0 && SPEND_NOTHING < 0,
+    'a sentinel inside the ItemKind range cannot be told from a real payload — 0 is Regolith');
+  assert.notEqual(SPEND_UNKNOWN, SPEND_NOTHING,
+    'ONE sentinel for both would turn every unknown into a cheerful, false SPENDS NOTHING');
+});
+
 test('a SIX-element row from an older host still decodes, with open defaulting to SHUT', () => {
   const [old] = decodeDevices(msg([[1, 2, 0, 0, 255, 1]]));
-  assert.deepEqual(old, { x: 1, y: 2, deck: 0, kind: 0, cond: 255, oper: 1, open: 0, serv: 1, air: 1 });
+  assert.deepEqual(old,
+    { x: 1, y: 2, deck: 0, kind: 0, cond: 255, oper: 1, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN });
   // CONTROL, so the leg above is not also satisfied by a decoder that ignores element 7 entirely.
   const [now] = decodeDevices(msg([[1, 2, 0, 0, 255, 1, 1]]));
   assert.equal(now.open, 1, 'the seventh element is being ignored — `open` is hard-wired to 0');
@@ -205,9 +233,9 @@ test('roomDeviceConditions keys by tile and carries kind, cond, oper, open and s
   ])), ROOM);
   assert.equal(map.size, 2);
   assert.deepEqual(map.get('4,2'),
-    { tx: 4, ty: 2, kind: 8, cond: 26, oper: 1, open: 0, serv: 1, air: 1 });
+    { tx: 4, ty: 2, kind: 8, cond: 26, oper: 1, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN });
   assert.deepEqual(map.get('7,4'),
-    { tx: 7, ty: 4, kind: 13, cond: 255, oper: 1, open: 1, serv: 0, air: 1 });
+    { tx: 7, ty: 4, kind: 13, cond: 255, oper: 1, open: 1, serv: 0, air: 1, spend: SPEND_UNKNOWN });
   assert.equal(map.get('5,5'), undefined, 'a tile with no device must be absent, not a zero row');
 });
 
@@ -556,11 +584,11 @@ test('deviceConditionAt returns the LIVE row for a tile — driven, not scanned'
   // `return _deviceCond.get('0,0')` — the two mutations that survived the old signature scan — each
   // fail on the first of these.
   assert.deepEqual(RoomZoom.deviceConditionAt(worn[0], worn[1]),
-    { tx: worn[0], ty: worn[1], kind: 8, cond: 26, oper: 0, open: 0, serv: 1, air: 1 },
+    { tx: worn[0], ty: worn[1], kind: 8, cond: 26, oper: 0, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN },
     'deviceConditionAt did not return the worn device\'s row. This is THE seam the wrecked-art\n'
     + 'package reads; a signature scan cannot tell an implementation from `return null`.');
   assert.deepEqual(RoomZoom.deviceConditionAt(fresh[0], fresh[1]),
-    { tx: fresh[0], ty: fresh[1], kind: 13, cond: 255, oper: 1, open: 1, serv: 1, air: 1 },
+    { tx: fresh[0], ty: fresh[1], kind: 13, cond: 255, oper: 1, open: 1, serv: 1, air: 1, spend: SPEND_UNKNOWN },
     'the second row disagrees — a constant or a single-tile lookup would pass the first leg alone');
 
   assert.equal(RoomZoom.deviceConditionAt(bare[0], bare[1]), null,

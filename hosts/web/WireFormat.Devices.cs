@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using Perilune.Sim;   // ItemKind + MaintenanceSystem.RepairSpend, for the `spend` element
 
 namespace Perilune.Web
 {
@@ -151,11 +152,89 @@ namespace Perilune.Web
     /// PER-DEVICE STATE that differs between two machines of the same kind three tiles apart and moves
     /// while the player watches. Per-device state is precisely what this channel carries.
     ///
-    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open,serv,air],..]}
+    /// ⭐⭐ A TENTH ELEMENT LANDED WITH "THE ORDER NAMES ITS PRICE" (2026-08-02) —
+    /// <see cref="DeviceCell.Spend"/>, WHICH CONSUMABLE A SERVICE AT THIS MACHINE WOULD EAT. It takes
+    /// the same two tests <c>Open</c> and <c>Air</c> had to take.
+    ///
+    /// ⭐ THE CONSUMER: the Room Zoom's PRIORITISE offer again. The shipped wreck boots with exactly
+    /// ONE <c>Parts</c> unit aboard and the player's first repair order eats it with nothing said
+    /// anywhere (T13 finding, 2026-08-02) — the ship's last Part disappears into a machine and the
+    /// commissioning chain that needed it is now unreachable. <i>Invisible feedback is FUNCTIONAL.</i>
+    ///
+    /// ⭐ NOT VOLATILE, AND THE ARGUMENT IS SPECIFIC RATHER THAN A SHRUG — <c>Powered</c> was refused
+    /// BY NAME for being re-stamped by <c>PowerSystem.Balance</c> once a second on every drawing
+    /// device, so a new element has to say what re-stamps IT. Nothing does. The value is
+    /// <c>MaintenanceSystem.WhatARepairWouldSpend</c>, and it can only move when
+    /// (a) THE SHIP'S TOP AVAILABLE RUNG CHANGES — the last free <c>Parts</c> unit is picked up,
+    /// consumed or crafted, i.e. a DISCRETE item event a few times a sim-hour at most — or
+    /// (b) A DEVICE CROSSES <c>wear.wreck_threshold</c> (0.25), which at the fastest shipped wear rate
+    /// of 0.020/operating hour is one crossing per machine per RUN, and which changes the answer only
+    /// on a ship whose best rung is <c>Swarf</c>. There is no per-tick writer in either path.
+    ///
+    /// ⭐ MEASURED AT BOOT ON ALL THREE SHIPPED SHIPS WITH THE FOG FULLY REVEALED, rather than argued:
+    /// <c>--ship wreck</c> emits
+    /// <b>73 rows, every one of them <c>5</c> (<c>Parts</c>)</b> — 11 loose consumable units aboard
+    /// and 41 tile-resident devices below the wreck floor, and the two precomputed answers AGREE
+    /// because the top rung is Parts.
+    /// <c>--ship grid</c> emits 146 rows and <c>--ship slice</c> 111, every one of them
+    /// <c>-2</c> (neither holds a consumable and nothing is below the floor). All three payloads were
+    /// byte-identical across two successive renders. Contrast <c>Powered</c>, which differs on most
+    /// renders on a ship where nothing at all is happening. Cost: the element appends 2 bytes per row
+    /// for a one-digit kind and 3 for a sentinel (wreck 1 813 B, grid 3 876 B, slice 2 995 B).
+    ///
+    /// ⚠️ SAID PLAINLY BECAUSE IT IS THE MOST FREQUENT FLIP AND IT IS NOT A TICK: <c>FindNearest</c>
+    /// skips a stack with <c>CarriedBy != 0</c>, so while a servicer WALKS with the ship's only Parts
+    /// stack every row reads the next rung down, and it returns when she sets the remainder down or
+    /// consumes it. That is TWO transitions per service on a ship holding one stack of the top rung —
+    /// bounded by pickups, not by frames — and it is the same carried-stack blackout
+    /// <c>MaintenanceSystem.HasAutonomouslySpendableStock</c> already files against itself. It is also
+    /// the honest answer rather than a defect: while she is carrying them, a SECOND order really would
+    /// be paid for out of the next rung.
+    ///
+    /// ⚠️ AND IT IS A HINT, NOT A PROMISE, exactly as <c>GameSession.HandleCommission</c>'s status line
+    /// is: <i>"written from what is affordable RIGHT NOW rather than from the command's outcome …
+    /// It is a hint, not a result."</i> A repair order is 9 000 ticks of fetch-and-service and the
+    /// funnel re-runs at the fetch, so stock can move underneath the number the player read. NOTHING
+    /// IS RESERVED — <c>MaintenanceSystem</c>'s class header refuses reservations deliberately.
+    ///
+    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open,serv,air,spend],..]}
     /// </summary>
     public static partial class WireFormat
     {
         private static readonly CultureInfo DeviceIc = CultureInfo.InvariantCulture;
+
+        /// <summary>⛔ <b>THE <c>spend</c> ELEMENT'S "NOTHING TO SAY" SENTINEL.</b> An older host's
+        /// row has no tenth element and decodes to this; so does a machine the sim would refuse a
+        /// service to outright (<c>MaintenanceSystem.RepairSpend.NoService</c> — below
+        /// <c>wear.wreck_threshold</c> with nothing aboard, i.e. <c>IsUnfixableWreck</c>). Both mean
+        /// the surface says NOTHING about a price, which is the only honest answer in either case:
+        /// D4's own send-back lesson was <i>override-never-source</i> — an absent field must not
+        /// become a fabricated value. A NAMED CONSTANT and not a bare <c>-1</c>, on
+        /// <see cref="DetailNone"/>'s precedent.</summary>
+        public const int SpendUnknown = -1;
+
+        /// <summary>⛔ <b>THE <c>spend</c> ELEMENT'S "THIS SERVICE IS FREE" VALUE</b> —
+        /// <c>MaintenanceSystem.RepairSpend.Nothing</c>, the empty-handed jury-rig. DISTINCT FROM
+        /// <see cref="SpendUnknown"/> and that is the whole reason there are two sentinels rather than
+        /// one: "the ship pays nothing for this repair" is a fact worth telling the player, and
+        /// "this client does not know" is a silence. Collapsing them would turn every unknown into a
+        /// cheerful and false <i>SPENDS NOTHING</i>.
+        ///
+        /// <para>NEGATIVE, so the whole non-negative range stays the raw <see cref="Perilune.Sim.ItemKind"/>
+        /// byte — the same shape <see cref="BlockedCell.Detail"/> already uses on the <c>blocked</c>
+        /// channel, where an item kind and a sentinel share one integer column.</para></summary>
+        public const int SpendNothing = -2;
+
+        /// <summary>The wire value for one <c>MaintenanceSystem.WhatARepairWouldSpend</c> answer.
+        /// TOTAL over the enum: an unrecognised member falls to <see cref="SpendUnknown"/> (say
+        /// nothing) rather than to a kind, because the failure mode of a wrong price is a player who
+        /// spends the ship's last Part believing it was free.</summary>
+        public static int RepairSpendWire(MaintenanceSystem.RepairSpend outcome, ItemKind kind)
+        {
+            if (outcome == MaintenanceSystem.RepairSpend.Consumable) return (int)kind;
+            if (outcome == MaintenanceSystem.RepairSpend.Nothing) return SpendNothing;
+            return SpendUnknown;
+        }
 
         /// <summary>
         /// One tile-resident device on the <c>devices</c> channel. Tuple
@@ -271,7 +350,7 @@ namespace Perilune.Web
         /// </summary>
         public readonly struct DeviceCell
         {
-            public readonly int X, Y, Deck, Kind, Cond, Oper, Open, Serv, Air;
+            public readonly int X, Y, Deck, Kind, Cond, Oper, Open, Serv, Air, Spend;
 
             /// <param name="serv">⭐ <b>M3-13 — 1 when this KIND of machine can ever be serviced at
             /// all, 0 when it never can.</b> <c>MaintenanceSystem.IsEverServiceable</c>, i.e. the
@@ -296,10 +375,35 @@ namespace Perilune.Web
             /// what the order will cost before the player gives it — the M3 demo's finding D4, where a
             /// direct repair order into a still-depressurising hall was accepted, unannotated, and
             /// killed the pawn.</param>
-            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open, int serv, int air)
-            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; Serv = serv; Air = air; }
+            /// <param name="spend">⭐⭐ <b>WHICH CONSUMABLE A SERVICE AT THIS MACHINE WOULD EAT, RIGHT
+            /// NOW.</b> A raw <see cref="Perilune.Sim.ItemKind"/> byte, or <see cref="SpendNothing"/>
+            /// (the free empty-handed jury-rig), or <see cref="SpendUnknown"/> (no service to price —
+            /// the sim would refuse it). Computed by asking
+            /// <c>MaintenanceSystem.WhatARepairWouldSpend</c> with <c>forced: true</c>, because the
+            /// offer prices an ORDER and an order may spend D3's autonomous reserve.
+            ///
+            /// <para><b>IT IS THE DISPATCHER'S OWN FUNNEL AND NOT <c>WantedRepairConsumable</c>.</b>
+            /// That property is <c>RepairConsumableTier(0)</c> UNCONDITIONALLY — correct for the
+            /// <c>blocked</c> badge it serves, which is raised only when the ship holds none of the
+            /// three rungs, and a confident lie here: on a Seals-only ship it says PARTS while the
+            /// service eats Seals.</para>
+            ///
+            /// <para><b>PER-DEVICE, BUT WITH ONLY TWO POSSIBLE VALUES PER RENDER.</b> The answer is a
+            /// fact about the SHIP'S STOCK except for one device input — whether this machine is below
+            /// <c>wear.wreck_threshold</c>, which is the Swarf rung's precondition. So
+            /// <c>GameSession.BuildDevices</c> computes both answers ONCE per render and selects per
+            /// row; a per-row call would be three item-store scans × every row × 10 Hz, a cost
+            /// <c>FindNearestConsumable</c>'s own comment files as owed.</para>
+            ///
+            /// <para>⚠️ <b>IT ANSWERS A COUNTERFACTUAL, NOT "WILL THIS ORDER BE ACCEPTED".</b> The row
+            /// carries a price for a pristine machine and for a <c>serv = 0</c> capsule too, on the
+            /// same rule <c>open</c> is read for every kind under: <i>the channel carries facts about
+            /// devices, not answers to one surface's question.</i> Whether there is an order to give
+            /// is <c>serv</c>'s job and the offer asks it FIRST.</para></param>
+            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open, int serv, int air, int spend)
+            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; Serv = serv; Air = air; Spend = spend; }
 
-            /// <summary>ALL NINE FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
+            /// <summary>ALL TEN FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
             /// dirty-version gate, whose sufficiency argument is that the compared value IS the
             /// serializer's whole input — so it must compare everything the serializer reads, and a
             /// field added to this tuple must be added here IN THE SAME COMMIT or the gate silently
@@ -331,9 +435,17 @@ namespace Perilune.Web
             /// render, and the PRIORITISE menu would go on offering a repair with no hazard clause for
             /// as long as nothing else aboard happened to wear out. That is the <c>Open</c>
             /// paragraph's failure re-run on a state the player can trigger from the MOSS console.</para>
+            /// <para>⭐⭐ <c>Spend</c> was added by "the order names its price" IN THIS SAME COMMIT, and
+            /// its omission would be LIVE like <c>Air</c>'s rather than latent like <c>Serv</c>'s — with
+            /// the twist that the moving row is usually SOMEBODY ELSE'S. The value is ship-global: the
+            /// moment a servicer lifts the last free <c>Parts</c> stack, EVERY row's <c>Spend</c> drops a
+            /// rung while that device's own <c>Cond</c>, <c>Oper</c>, <c>Open</c>, <c>Serv</c> and
+            /// <c>Air</c> hold still — so a <c>SameAs</c> that skipped it would leave the offer promising
+            /// <i>SPENDS 1 PARTS</i> over a ship that has none, which is worse than the silence the
+            /// package exists to end.</para>
             public bool SameAs(in DeviceCell o) =>
                 X == o.X && Y == o.Y && Deck == o.Deck && Kind == o.Kind && Cond == o.Cond && Oper == o.Oper
-                && Open == o.Open && Serv == o.Serv && Air == o.Air;
+                && Open == o.Open && Serv == o.Serv && Air == o.Air && Spend == o.Spend;
         }
 
         /// <summary>The wire byte for a raw <see cref="Perilune.Sim.Device.Condition"/>:
@@ -392,7 +504,8 @@ namespace Perilune.Web
                       .Append(',').Append(c.Oper.ToString(DeviceIc))
                       .Append(',').Append(c.Open.ToString(DeviceIc))
                       .Append(',').Append(c.Serv.ToString(DeviceIc))
-                      .Append(',').Append(c.Air.ToString(DeviceIc)).Append(']');
+                      .Append(',').Append(c.Air.ToString(DeviceIc))
+                      .Append(',').Append(c.Spend.ToString(DeviceIc)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

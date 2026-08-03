@@ -444,7 +444,7 @@ namespace Perilune.Sim
             // The Swarf rung is offered only to a machine the wreck rule has already refused a free
             // repair to — read off the device's CURRENT condition, at the moment of the fetch.
             var best = FindNearestConsumable(sim, worker.Pos,
-                                             allowSwarf: device.Condition < sim.Defs.Wear.WreckThreshold,
+                                             allowSwarf: IsBelowWreckFloor(sim, device),
                                              forced);
             if (best != null)
             {
@@ -472,7 +472,9 @@ namespace Perilune.Sim
 
             // Neither Parts nor Seals anywhere in the colony: jury-rig with what's on hand —
             // UNLESS the machine is a wreck, which cannot be wished better (wreck start W2).
-            if (device.Condition < sim.Defs.Wear.WreckThreshold)
+            // ⭐ THIS SPLIT IS THE ONE `WhatARepairWouldSpend` MIRRORS: below the floor there is no
+            // service (RepairSpend.NoService), at or above it the service is FREE (RepairSpend.Nothing).
+            if (IsBelowWreckFloor(sim, device))
             {
                 Abandon(sim, device, worker); // no consumable, no free fix; the recruit gate will not re-offer it
                 return;
@@ -671,13 +673,137 @@ namespace Perilune.Sim
         public static bool IsUnfixableWreck(Simulation sim, Device device, bool forced = false)
         {
             if (device == null) return false;
-            if (device.Condition >= sim.Defs.Wear.WreckThreshold) return false;
+            if (!IsBelowWreckFloor(sim, device)) return false;
             // allowSwarf: TRUE unconditionally here, and it is not a shortcut — the line above has
             // already established that this machine is below the wreck floor, which IS the Swarf
             // rung's precondition. Salvage from the dead half of the ship is what makes a wreck
             // fixable at all, so a ship holding Swarf and nothing else has a service to offer.
             return FindNearestConsumable(sim, device.Pos, allowSwarf: true, forced) == null;
         }
+
+        /// <summary>
+        /// ⭐ <b>THE WRECK FLOOR TEST, DECLARED ONCE — is this machine below
+        /// <c>wear.wreck_threshold</c>?</b> It is the ONE thing about a DEVICE that changes what a
+        /// service here would cost, and it appears in FOUR places that must agree:
+        /// <see cref="IsUnfixableWreck"/>'s first term, <see cref="DriveWorker"/>'s
+        /// <c>allowSwarf</c> argument at the fetch, <c>DriveWorker</c>'s empty-handed split (no
+        /// service below the floor, a free jury-rig at or above it), and
+        /// <see cref="WhatARepairWouldSpend"/>.
+        ///
+        /// <para><b>A PURE EXTRACTION, NOT A NEW RULE.</b> Every call site below spelled
+        /// <c>device.Condition &lt; sim.Defs.Wear.WreckThreshold</c> (or its negation) inline before
+        /// this method existed and the comparison is unchanged. It is extracted because the
+        /// <c>devices</c> channel now has to ask the same question host-side to pick between two
+        /// precomputed answers, and a fourth hand-written copy of the comparison — this one across a
+        /// project boundary — is exactly how the offer and the fetch come to disagree about which
+        /// rung a machine is on.</para>
+        ///
+        /// <para>Null-tolerant like <see cref="IsUnfixableWreck"/>, whose own null arm it preserves:
+        /// no device is on no rung.</para>
+        /// </summary>
+        public static bool IsBelowWreckFloor(Simulation sim, Device device)
+            => device != null && device.Condition < sim.Defs.Wear.WreckThreshold;
+
+        /// <summary>
+        /// ⭐⭐ <b>WHAT A SERVICE AT THIS MACHINE WOULD SPEND — the three outcomes of
+        /// <see cref="WhatARepairWouldSpend"/>, kept apart because two of them are "nothing" for
+        /// completely different reasons and the player's sentence differs.</b>
+        /// </summary>
+        public enum RepairSpend
+        {
+            /// <summary>One unit of the named <see cref="ItemKind"/> is consumed
+            /// (<c>MachineWearSystem.cs:358</c> — exactly one unit, whichever rung).</summary>
+            Consumable = 0,
+
+            /// <summary>Nothing is spent: the fetch finds no consumable and the machine is at or
+            /// above <c>wear.wreck_threshold</c>, so the service is the free empty-handed jury-rig
+            /// to <c>wear.jury_rig_condition</c>.</summary>
+            Nothing = 1,
+
+            /// <summary>Nothing is spent because there is NO SERVICE — the fetch finds no consumable
+            /// and the machine is below <c>wear.wreck_threshold</c>, which is
+            /// <see cref="IsUnfixableWreck"/> exactly. A wreck cannot be wished better.</summary>
+            NoService = 2,
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>WHAT WOULD A SERVICE AT THIS MACHINE SPEND, RIGHT NOW?</b> The question the Room
+        /// Zoom's PRIORITISE offer has to answer BEFORE the player gives the order — the wreck boots
+        /// with exactly one <c>Parts</c> unit aboard (<c>AuthoredShips.cs</c>, the WINNABILITY block)
+        /// and the first repair order ate it with nothing said (T13 finding, 2026-08-02).
+        ///
+        /// <para><b>IT IS THE DISPATCHER'S OWN FUNNEL, NOT A SECOND LADDER.</b> The whole body is a
+        /// call to <see cref="FindNearestConsumable"/> — the ONE place in the sim that decides which
+        /// stack goes into a maintainer's hand — followed by the same
+        /// <c>wear.wreck_threshold</c> test <see cref="DriveWorker"/> makes when the fetch comes back
+        /// empty (<c>:452</c>). Nothing here restates <see cref="RepairConsumableTier"/>, and that is
+        /// the point: ⛔ <see cref="WantedRepairConsumable"/> — the badge's answer — is tier 0
+        /// UNCONDITIONALLY, so on a Seals-only ship it says PARTS while the service eats Seals. It is
+        /// correct for the badge it serves (raised only when the ship holds NONE of the three) and it
+        /// would be a confident lie here.</para>
+        ///
+        /// <para><b>POSITION-INDEPENDENT, WHICH IS WHY THERE IS NO <c>from</c> ARGUMENT.</b> Same
+        /// argument <see cref="IsUnfixableWreck"/>'s doc already makes for its own null-ness:
+        /// <see cref="FindNearest"/> filters on kind, carry, reservation and the stack tile's
+        /// breathability, and uses <c>from</c> ONLY to break distance ties — and the tier is chosen by
+        /// EXISTENCE (<see cref="FindNearestConsumable"/>'s tier-before-distance loop), so the device's
+        /// tile can change WHICH stack is chosen but never WHAT KIND it is. Under
+        /// <paramref name="forced"/> even the breathability filter is waived, so nothing about a
+        /// position survives into this answer at all.</para>
+        ///
+        /// <para>⭐ <b>THE ONLY PER-DEVICE INPUT IS <paramref name="belowWreckFloor"/></b>
+        /// (<see cref="IsBelowWreckFloor"/>), and it is a <c>bool</c> rather than a <see cref="Device"/>
+        /// SO THAT A CALLER CAN PRECOMPUTE BOTH ANSWERS. A renderer asking this per device would run
+        /// up to three item-store scans per row per frame — a cost <see cref="FindNearestConsumable"/>
+        /// files against itself as owed and unmeasured. There are exactly TWO possible answers on any
+        /// ship at any instant, so <c>GameSession.BuildDevices</c> computes both once and selects per
+        /// row with an O(1) condition compare. The <see cref="Device"/> overload is the convenience
+        /// form for a caller that only wants one.</para>
+        ///
+        /// <para>⚠️ <b>IT IS A HINT, NOT A PROMISE, AND THE OFFER SAYS SO IN THE SAME WORDS THE
+        /// COMMISSION STATUS LINE DOES</b> (<c>GameSession.HandleCommission</c>: <i>"written from what
+        /// is affordable RIGHT NOW rather than from the command's outcome … a module claimed between
+        /// this line and the drain still refuses"</i>). A repair order runs
+        /// <c>maintenance_work_seconds × 10 = 9000</c> ticks of fetch-and-service and re-runs this
+        /// funnel at the fetch, so stock can move underneath it. ⛔ NOTHING IS RESERVED — the class
+        /// header (<c>:134-138</c>) refuses reservations deliberately, and a price that claimed to be a
+        /// promise would be the first step toward one.</para>
+        ///
+        /// <para><b>ASK IT WITH <paramref name="forced"/> TRUE TO PRICE AN ORDER.</b> D3's reserve
+        /// floor is inside the funnel, so the unforced answer is what the STANDING RULE may spend —
+        /// which on a ship at or below <see cref="AutonomousRepairReserve"/> loose units is nothing at
+        /// all. Every host-side caller already passes <c>forced: true</c> for exactly this reason.</para>
+        ///
+        /// <para>VIEW-SAFE: reads only, allocates nothing, no RNG, no pathfind. Safe from a render
+        /// thread on the same terms as <see cref="IsUnfixableWreck"/>.</para>
+        /// </summary>
+        /// <param name="kind">The unit that would be consumed — meaningful ONLY when the return is
+        /// <see cref="RepairSpend.Consumable"/>. Set to <see cref="ItemKind.Regolith"/> (0) otherwise
+        /// rather than left undefined, so a caller that ignores the return value cannot read a stale
+        /// kind out of it.</param>
+        public static RepairSpend WhatARepairWouldSpend(Simulation sim, bool belowWreckFloor, bool forced, out ItemKind kind)
+        {
+            kind = ItemKind.Regolith;
+            // allowSwarf is `belowWreckFloor` because that is what the ONE LIVE CALL SITE passes —
+            // `DriveWorker`'s fetch (`:421-423`) asks `device.Condition < sim.Defs.Wear.WreckThreshold`
+            // and nothing else. The Swarf rung's precondition IS the wreck floor.
+            // `from` is the ORIGIN and that is not a shortcut: see the position paragraph above. It
+            // decides which of two equal-tier stacks is "nearest" and cannot decide the KIND, and the
+            // KIND is the entire answer — the stack itself is deliberately not returned.
+            var found = FindNearestConsumable(sim, default(Int3), allowSwarf: belowWreckFloor, forced);
+            if (found != null) { kind = found.Kind; return RepairSpend.Consumable; }
+            // The fetch came back empty. `DriveWorker:452-455` then splits on the SAME floor: below
+            // it there is no service at all (the wreck rule, W2), at or above it the crew member
+            // jury-rigs with empty hands and the ship pays nothing.
+            return belowWreckFloor ? RepairSpend.NoService : RepairSpend.Nothing;
+        }
+
+        /// <summary>The convenience overload of <see cref="WhatARepairWouldSpend(Simulation, bool, bool, out ItemKind)"/>
+        /// for one device — it supplies <see cref="IsBelowWreckFloor"/> and nothing else. A caller
+        /// pricing MANY devices in one pass must use the <c>bool</c> form and precompute; see that
+        /// method's cost paragraph.</summary>
+        public static RepairSpend WhatARepairWouldSpend(Simulation sim, Device device, bool forced, out ItemKind kind)
+            => WhatARepairWouldSpend(sim, IsBelowWreckFloor(sim, device), forced, out kind);
 
         /// <summary>
         /// What a service restores the machine to, given the consumable actually in the

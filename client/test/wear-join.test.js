@@ -284,7 +284,7 @@ test('deckDeviceConditions keeps this deck only, and keys by tile like its room-
   const d1 = deckDeviceConditions(rows, 1);
   assert.equal(d1.size, 2, 'two devices on deck 1');
   assert.deepEqual(d1.get('3,4'),
-    { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0, open: 1, serv: 1, air: 1 });
+    { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0, open: 1, serv: 1, air: 1, spend: -1 });
   assert.equal(deckDeviceConditions(rows, 2).size, 1, 'the other deck carries its own one row');
   assert.equal(deckDeviceConditions(rows, 9).size, 0, 'an empty deck is empty, not everything');
   // ⚠️ THE DECK FILTER, BLINDED — CLAUDE.md's fifth trap in miniature. The wrong-deck row above sits
