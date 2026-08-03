@@ -1003,6 +1003,15 @@ namespace Perilune.Sim
                 case ItemKind.Seals: return "SEALS";
                 case ItemKind.Parts: return "PARTS";
                 case ItemKind.ControllerModule: return "CONTROLLER MODULE";
+                // ⭐ SWARF — the third rung of `MaintenanceSystem.RepairConsumableTier`, added when
+                // the PRIORITISE offer's price clause became a second surface that names a repair
+                // consumable. ⚠️ BEHAVIOURALLY A NO-OP AND SAID SO OUT LOUD: the `default` arm below
+                // already returned "SWARF" for this member, so no sentence anywhere changes. It is an
+                // EXPLICIT arm because the client mirror (`ITEM_WORDS`) is pinned to this switch by a
+                // test that parses the CASE ARMS (`client/test/blocked-model.test.js`), and an entry
+                // the parse cannot see is an entry the pin refuses. Ladder-complete now: Parts, Seals,
+                // Swarf.
+                case ItemKind.Swarf: return "SWARF";
                 default: return kind.ToString().ToUpperInvariant();
             }
         }

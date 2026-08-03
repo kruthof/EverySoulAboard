@@ -22,6 +22,49 @@
 // refuses. That is `doOperate`'s measured lesson (`vent_ls` at 35,6,0) inverted.
 
 import { deviceKindName } from './room-model.js';
+import { itemWords, SPEND_NOTHING } from '../wire/messages.js';
+
+/**
+ * ⭐⭐ THE PRICE CLAUSE — *what will this order spend?*, in the player's words, or `''` for silence.
+ *
+ * THE FINDING IT CLOSES (T13, 2026-08-02): the shipped wreck boots with EXACTLY ONE `Parts` unit
+ * aboard, the player's first repair order eats it, and nothing on any surface says so. The
+ * commissioning chain that needed that Part is then quietly unwinnable, and the player has no way to
+ * know which of their orders did it. `invisible-feedback-is-FUNCTIONAL`.
+ *
+ * THREE OUTCOMES, and the third is a SILENCE rather than a word:
+ *   • a kind byte     → `SPENDS 1 PARTS` — one unit, which is the sim's own pinned constant
+ *     (`MachineWearSystem.cs:358`, *"exactly one unit of exactly one kind is consumed per service"*).
+ *   • `SPEND_NOTHING` → `SPENDS NOTHING` — the empty-handed jury-rig. It is worth saying out loud
+ *     rather than leaving blank: "this repair is free" is the reason a player picks THIS machine
+ *     first when the ship is down to its last unit, and a blank line reads as "no information".
+ *   • anything else   → `''`. That covers `SPEND_UNKNOWN` (an older host, or a machine the sim would
+ *     refuse a service to outright) AND an `ItemKind` this client has never heard of. ⛔ IT MUST BE A
+ *     SILENCE AND NOT A GUESS: a fabricated `SPENDS 1 PARTS` on a ship with no Parts is worse than
+ *     the nothing this package exists to replace, and `itemWords` already answers `''` for a byte it
+ *     cannot name rather than splicing a number into prose.
+ *
+ * ⚠️ IT IS A HINT, NOT A PROMISE, and the same one `GameSession.HandleCommission` writes: *"from what
+ * is affordable RIGHT NOW rather than from the command's outcome … a module claimed between this line
+ * and the drain still refuses."* A repair order is 9 000 ticks of fetch-and-service and the sim
+ * re-runs its fetch funnel at the end of the walk, so the ship's stock can move between this sentence
+ * and the spend. Nothing is reserved — `MaintenanceSystem`'s class header refuses reservations
+ * deliberately, and a price that claimed to be a promise would be the first step toward one.
+ *
+ * ⛔ NO NUMBER IS DERIVED HERE. The `1` is prose about a pinned sim constant; the KIND is read off
+ * the wire and spelled through `itemWords`, the ONE table this client turns an `ItemKind` byte into
+ * words with (pinned equal to `ThawGate.ItemWords` by a test that parses the C#). A second spelling
+ * of PARTS on this surface is the M2-18 defect exactly.
+ *
+ * PURE and TOTAL. @param {number} [spend] a `devices`-channel `spend` element
+ * @returns {string} an upper-case clause, or `''` for say-nothing
+ */
+export function spendClause(spend) {
+  if (typeof spend !== 'number' || !Number.isFinite(spend)) return '';
+  if (spend === SPEND_NOTHING) return 'SPENDS NOTHING';
+  const words = itemWords(spend);
+  return words ? 'SPENDS 1 ' + words : '';
+}
 
 /**
  * The player-facing name for the machine standing on a tile, from the `devices` channel's own `kind`
@@ -122,13 +165,18 @@ export function prioritiseCrew(selCid, crew) {
  * selecting a pawn, the second can never be answered. What they share is that the menu does not
  * open and the player is told why, which is the shape, not the words.
  *
- * @param {{dev?:{kind?:number, serv?:number, air?:number}|null, selCid?:number|null, crew?:Array|null}} [opts]
- * @returns {{ok:boolean, silent:boolean, cid:number|null, name:string, label:string, hazard:string, reason:string}}
+ * ⭐⭐ AND SINCE "THE ORDER NAMES ITS PRICE" IT ALSO SAYS WHAT THE ORDER WILL SPEND — `spend`, its own
+ * field beside `hazard` for the same reason `hazard` is its own field: a caller that wants to render
+ * the clauses separately (a two-line menu, a tooltip) must not have to re-split the label.
+ *
+ * @param {{kind?:number, serv?:number, air?:number, spend?:number}|null} [opts.dev]
+ * @param {{dev?:{kind?:number, serv?:number, air?:number, spend?:number}|null, selCid?:number|null, crew?:Array|null}} [opts]
+ * @returns {{ok:boolean, silent:boolean, cid:number|null, name:string, label:string, spend:string, hazard:string, reason:string}}
  */
 export function prioritiseOffer(opts) {
   const o = opts || {};
   const name = deviceDisplayName(o.dev ? o.dev.kind : undefined);
-  if (!o.dev) return { ok: false, silent: true, cid: null, name, label: '', hazard: '', reason: '' };
+  if (!o.dev) return { ok: false, silent: true, cid: null, name, label: '', spend: '', hazard: '', reason: '' };
   // ⭐⭐ M3-13 — THE MACHINE IS NEVER SERVICED, SO THERE IS NO ORDER TO OFFER. `serv` is the
   // `devices` channel's own bit (`MaintenanceSystem.IsEverServiceable`, the def's `maint` opt-out);
   // this asks it and derives nothing. It ranks ABOVE the crew question deliberately: "there is
@@ -151,6 +199,11 @@ export function prioritiseOffer(opts) {
       cid: null,
       name,
       label: '',
+      // ⛔ NO PRICE ON A REFUSAL, and `serv` ranking above this is why it is safe to say so: there is
+      // no service at this machine on any ship, ever, so there is nothing for a price to be about.
+      // The wire still carries a `spend` for this row (the channel reports facts about devices, not
+      // answers to one surface's question) and this surface deliberately does not read it.
+      spend: '',
       hazard: '',
       reason: name + ' IS NEVER SERVICED — NO REPAIR TO ORDER HERE',
     };
@@ -160,7 +213,7 @@ export function prioritiseOffer(opts) {
     o.crew,
   );
   if (who.cid == null) {
-    return { ok: false, silent: false, cid: null, name, label: '', hazard: '', reason: who.reason };
+    return { ok: false, silent: false, cid: null, name, label: '', spend: '', hazard: '', reason: who.reason };
   }
   // ⭐⭐ D4 — THE OFFER NAMES THE HAZARD. IT DOES NOT WITHDRAW THE ORDER.
   //
@@ -183,9 +236,24 @@ export function prioritiseOffer(opts) {
   // as before"; a falsy test would stamp a death warning on every machine on the ship the moment the
   // field went missing, and a warning that is always on is a warning nobody reads.
   const hazard = o.dev.air === 0 ? 'NO AIR AT THE WORKSITE — SHE MAY DIE' : '';
+  // ⭐⭐ THE ORDER NAMES ITS PRICE. Same shape as the hazard clause above and for the same reason: the
+  // menu is the one surface that speaks BEFORE the order exists, so it is the only place a cost can
+  // be stated in time to change the player's mind. It is a CLAUSE, never a refusal and never a
+  // confirm — `ok` stays true and `cid` is unchanged, exactly as D4 left it.
+  //
+  // ⛔ NOTE WHAT IS *NOT* TESTED HERE: there is no `=== 0` rule for this element, because `spend`'s
+  // absent value is a SENTINEL rather than a meaningful 0. `spendClause` is total over every input —
+  // `undefined`, an old host's missing element, a kind this client cannot name — and answers `''`,
+  // which is the same silence the surface had before the element existed.
+  const spend = spendClause(o.dev.spend);
+  // ⚠️ PRICE FIRST, HAZARD LAST, AND THE ORDER IS A DECISION. The hazard is life-and-death and the
+  // price is arithmetic, so the hazard keeps the end of the line — the position a reader's eye lands
+  // on last and the position it held alone before this clause existed. Inserting the price AFTER it
+  // would push `SHE MAY DIE` into the middle of a sentence about inventory.
   return {
     ok: true, silent: false, cid: who.cid, name,
-    label: 'PRIORITISE: REPAIR ' + name + (hazard ? ' · ' + hazard : ''),
+    label: 'PRIORITISE: REPAIR ' + name + (spend ? ' · ' + spend : '') + (hazard ? ' · ' + hazard : ''),
+    spend,
     hazard,
     reason: '',
   };
