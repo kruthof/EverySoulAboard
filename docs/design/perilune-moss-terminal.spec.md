@@ -463,9 +463,11 @@ a row-specific rule below overrides it*.
 > IX-M40 authority question.
 >
 > **[CORRECTED] Every row's DERIVATION note ends with the same caveat**, because it is true of every
-> row and a player must not read LAST FAULT as "the current problem": *"LAST FAULT is the last thing
-> that went wrong on this row, NOT the current problem: nothing is published when a machine is
-> repaired, so a fault line never clears itself."* (§5.1 consequence 2, `MachineWearSystem.cs:262`.)
+> row and a player must not read LAST FAULT as "the current problem". ⭐ **RE-WORDED 2026-08-02 (D1),
+> because its old second clause went false**: repairs DO publish now. The shipped sentence is
+> *"LAST FAULT is the last thing that went wrong on this row, NOT the current problem: a completed
+> repair writes its own line in the log but never clears a fault line, so this one can name
+> something that was fixed two days ago."* (§5.1 consequence 2.)
 
 | Row | LOAD | STATE | Notes / traps |
 |---|---|---|---|
@@ -481,28 +483,55 @@ a row-specific rule below overrides it*.
 ### 5.1 Fault attribution — a known-weak join, documented not hidden
 
 `AlarmRaisedEvent` carries **no device id**; `HistorySystem.Add` passes `subjectA = 0` for alarms
-(`HistorySystem.cs:89`), and `SourceId` is a *string* (the device `Name`, or the terminal id for a
+(`HistorySystem.cs:112`), and `SourceId` is a *string* (the device `Name`, or the terminal id for a
 MOSS `alarm()`). So a fault is attributed to a row by **matching device names in the group against
 the entry text** — a string join, and the lane must say so in a doc comment.
 
 **[CORRECTED] A row may additionally declare one structural `HistoryKind` as its own**, because the
 name join alone cannot see a fault that names no device. Only `reactor` does: a brownout entry names
-a *network*, not a device (`HistorySystem.cs:104-110`). **And that structural match must be narrowed
+a *network*, not a device (`HistorySystem.cs:218-259`). **And that structural match must be narrowed
 to the fault, not the recovery**: `HistoryKind.Brownout` covers *both* sentences HistorySystem writes
 from `BrownoutChangedEvent`, and the entry does not carry the direction. Left unnarrowed, the shipped
 slice renders `DAY 2 · POWER NETWORK 1 RECOVERED` in a column headed LAST FAULT — measured, and
 exactly the class of misread this spec exists to stop. The implementation matches HistorySystem's own
 literal (`"browned out"`); a test pins that `RECOVERED` never reaches the column.
 
+> ⭐ **UPDATED 2026-08-02 (D6).** Brownout entries are now COALESCED — one entry per network per
+> sim-hour, rewritten in place as the episode develops (`MECHANICS.md` §13.8.1). The join above is
+> unchanged and the narrowing still holds, because `HistorySystem.EpisodeText` keeps BOTH literals
+> on purpose ("… browned out and flapped N times …" / "… currently recovered.") and says at its own
+> definition that this column is why. Two things a lane should know: the hit's TICK is now the tick
+> the EPISODE began, not its last flap; and `HistoryEntry.SubjectA` now carries the network id, so a
+> future structural join could replace the string sniff entirely.
+
 Three consequences to design around rather than discover later:
 
-1. The 200-entry history ring is roughly **87% brownout spam by day 3** (`MECHANICS.md` §13.8), so
-   non-power rows will frequently have no attributable fault. `—` is the correct, honest render.
+1. ~~The 200-entry history ring is roughly **87% brownout spam by day 3**~~ — it was **100%** on the
+   shipped wreck by sim-hour 5.6, and D6 fixed it (`MECHANICS.md` §13.8.1: 200 entries → 9). Non-power
+   rows can now hold an attributable fault for hours rather than minutes, but a row with none still
+   renders `—`, which remains the correct, honest answer.
    Measured on the slice at day 3: only `reactor` has an attributable fault. Every other row is `—`.
-2. `MaintenanceSystem` publishes **nothing on repair** (`MachineWearSystem.cs:262` — "completion is
-   a notice, not an alarm"), so faults can be shown but recoveries cannot. A fault line is
-   therefore "the last thing that went wrong", **not** "the current problem". Word the column
-   accordingly and say it in the DETAIL derivation note.
+2. **A FAULT LINE NEVER CLEARS ITSELF, and that is now enforced rather than incidental.** The
+   original wording here derived the property from an accident — *"`MaintenanceSystem` publishes
+   nothing on repair, so faults can be shown but recoveries cannot"* — and **that premise died on
+   2026-08-02**: `MaintenanceSystem.DriveWorker` publishes `RepairCompletedEvent`, `HistorySystem`
+   writes a `[Repair]` line naming the crew member, the machine and which rung paid for it, and the
+   FAULT LOG under this column shows it. The CONCLUSION is unchanged and is now a property
+   `ShipSystems` maintains on purpose, in two places:
+   - `IsNotAFault` skips a repair line and a commission line **by kind**, so neither can be
+     attributed as a fault even though both name a device (they are the first Chronicle lines that
+     ever did — the joins in §5.1 were safe by accident before them); and
+   - a brownout **episode** is skipped only when it records no fault at all (a single-edge pure
+     recovery). A coalesced episode that has since recovered **is still the last fault** — the
+     column reads `HistorySystem.BrownoutEpisodeRecordsAFault` on its structural episode word, not
+     the word "recovered" in its prose, and renders `HistorySystem.BrownoutFaultLine` rather than
+     the entry's developing sentence.
+   ⚠️ **That second bullet is a fix, not a description**: for one review cycle the coalescer let a
+   recovery overwrite the record of its own fault, and this column silently reported an OLDER
+   episode. Measured on the driven wreck at tick 864 000: 3 of 21 episodes ended recovered and the
+   reactor row named tick 814 211 while the newer 850 221 was skipped.
+   The client's fallback sentence claiming recoveries could not be shown has been retracted
+   (`moss-screen.js`); `FAULT_CAVEAT` itself never carried the claim and needed no edit.
 3. **[CORRECTED] Designer-rule alarms never attribute to a row.** `DesignerRuleSystem` publishes
    `AlarmRaisedEvent` with the *rule name* as `SourceId`, so `overheat_guard`'s 2,579 alarms carry no
    device name and match nothing. The `thermal` row therefore shows `—` while that rule screams. That

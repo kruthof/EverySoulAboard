@@ -36,7 +36,7 @@ section — read it before you conclude a mechanic works.**
 
 **10 Hz fixed tick.** `Simulation.TicksPerSecond = 10`, `TickSeconds = 1/10`
 (`sim/Sim.Core/Simulation.cs:14-15`). One sim-day = `10 × 60 × 60 × 24 = 864,000` ticks
-(`sim/Sim.Core/Systems/HistorySystem.cs:53`, `SimClockUtil.TicksPerDay`).
+(`sim/Sim.Core/Systems/HistorySystem.cs:71`, `SimClockUtil.TicksPerDay`).
 
 `Simulation.Tick()` (`Simulation.cs:205-226`) does exactly four things, in order:
 
@@ -76,7 +76,7 @@ order. Order is load-bearing (see the class comment).
 | 16 | `ExplorationSystem` | 10 | 1 Hz | `Systems/ExplorationSystem.cs:13` |
 | 17 | `GoalSystem` | 10 | 1 Hz | `Systems/GoalSystem.cs:37` |
 | 18 | `DirectorSystem` | 1 | 10 Hz (heavy pass gated to every 100 ticks) | `Director/DirectorSystem.cs:36`, `director.def:period_ticks` |
-| 19 | `HistorySystem` | 1 | 10 Hz | `Systems/HistorySystem.cs:74` |
+| 19 | `HistorySystem` | 1 | 10 Hz | `Systems/HistorySystem.cs:91` |
 | 20 | `DesignerRuleSystem` (optional) | 1 | 10 Hz | `Sim.Dsl/DesignerRuleSystem.cs:39` |
 | 21 | `ScriptRuntime` (MOSS) | 1 | 10 Hz | `Sim.Dsl/ScriptRuntime.cs:42` |
 
@@ -227,9 +227,25 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `3d23665a724e853d`
-(pinned in `ci.sh`); tick-3000 golden `cb09b584a5f15e52`; slice tick-3000 golden
-`43a1a5c25713faec`. Most recent mover: **M3-7** (PIN M3-b, 2026-08-02) — `Citizen.Skill`, M2-1's
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `7bdd0d6f7756dfdc`
+(pinned in `ci.sh`; this line still read M3-7's superseded `3d23665a724e853d` until
+2026-08-02 — `CLAUDE.md` is the authority, re-measure before quoting either);
+tick-3000 golden `cb09b584a5f15e52`; slice tick-3000 golden `43a1a5c25713faec`.
+
+⚠️ **NO PIN COVERS THE SHIP A PLAYER BOOTS, AND THE D1/D6 PACKAGE MEASURED IT.** P1 is
+`hosts/scenario`'s hand-built `BuildScenario`, P2 is `--ship perilune`, P3 is `--ship slice`;
+`--ship wreck` — `./play.sh`'s default — is behind none of them. That package changed what every
+brownout, repair, thaw and commission writes to the hashed history ring and **all five pins held**,
+because the P1 fixture publishes ZERO brownout edges in three days (its ring is 200/200 `Bond`),
+authors ZERO cryo pods, completes ZERO repairs and issues ZERO commissions, and the two tick-3000
+fixtures reach tick 3000 before the first brownout edge (wreck 128 361, slice 191 331). On the
+wreck the identical code moves the hash hard: at tick 200 000, `291fedc58c4720ed` pre-fix →
+`79c6641856fb779f` shipped. **A hold measured on a fixture that never reaches the code is
+VACUOUS** — M3-7's lesson in a third costume, and this time the blind spot hid a real
+save/reload determinism REGRESSION that independent review found by hand (§13.43.2).
+See §13.37 and §13.8.1.
+
+Most recent mover: **M3-7** (PIN M3-b, 2026-08-02) — `Citizen.Skill`, M2-1's
 last reserved byte, WIDENED to the per-work-type `SkillsRaw` array of six (CITZ v8→v9, OD-M item
 8A), so the citizen fold folds six bytes where it folded one. All three moved together and the move
 is **FOLD-ONLY, measured**: with the widened array present, all six consumers live and the fold
@@ -1649,6 +1665,78 @@ importances (`:241-246`): alarm 0.5 (ship-wide broadcast), death 0.95 (broadcast
 argument 0.55, bond 0.5, relationship change 0.6, accepted `AgreeTask` 0.7 ("promise
 formation"). **Promise *breaking* is not implemented** — §13.11.
 
+### 10.7 The ship's log (`Systems/HistorySystem.cs` + `Memory/Chronicle.cs`)
+
+**ONE ring, two surfaces.** `HistorySystem.Entries` is a `List<HistoryEntry>` capped at
+`MaxEntries = 200` with `RemoveAt(0)` FIFO eviction. There is no separate "sensor log":
+`GameSession.BuildLog()` takes the last 14 entries, the Overview SENSOR LOG island shows the
+last 5 of those, and the MOSS `log` screen shows the same tail above the rendered Chronicle.
+Fixing the ring fixes both. The Chronicle TAB is inert on the standard surface by design
+(`overview-model.js:342`) — M4-7's, not to be re-homed opportunistically.
+
+**Who writes what.** All ingestion is event-driven in `HistorySystem.Tick`, except two systems
+that call `HistorySystem.Record` directly because they are not economy files and hold the only
+context that knows the line is warranted (`EulogySystem`, `CryoSystem`). Economy files may NOT:
+`ArchitectureBoundaryTests.Economy_KnowsNothingAboutSoulsPresentationOrPhysiology` forbids the
+identifier `Chronicle` there with the reason in the test — *"publish an event, let HistorySystem
+write it"*.
+
+| kind | ord | label | sev | written by |
+|---|---|---|---|---|
+| `Generic` | 0 | Note | 0 | authored boot lines (`AuthoredShips`, e.g. the four breached capsules) |
+| `Alarm` | 1 | Alarm | 2 | `AlarmRaisedEvent` |
+| `Death` | 2 | Death | 8 | `CitizenDiedEvent` (name rides the event — the citizen is already gone) |
+| `Goal` | 3 | Objective | 1 | `GoalCompletedEvent` |
+| `Brownout` | 4 | Power | 5 | `BrownoutChangedEvent`, **coalesced per network per sim-hour** — §13.8.1 |
+| `RelationshipChanged` | 5 | Relations | 3 | `RelationshipChangedEvent` |
+| `Argument` | 6 | Argument | 4 | `ArgumentEvent` |
+| `Bond` | 7 | Bond | 4 | `BondEvent` |
+| `ConstructionCompleted` | 8 | Construction | 6 | `ConstructionCompletedEvent` (`BuildSystem`) |
+| `Eulogy` | 9 | Eulogy | 9 | `EulogySystem.Record` |
+| `DeconstructCompleted` | 10 | Salvage | 6 | `DeconstructCompletedEvent`, three arms (salvage / swarf / worth nothing) |
+| `EmergencyThaw` | 11 | Thaw | 11 | `CryoSystem.Open`, emergency arm (M3-5) |
+| `RunEnded` | 12 | Ending | 12 | `CryoSystem` (M3-5) |
+| `Thaw` | 13 | Thaw | 7 | `CryoSystem.Open`, **ordinary arm** (D1, 2026-08-02) |
+| `RepairCompleted` | 14 | Repair | 6 | `RepairCompletedEvent` (`MaintenanceSystem.DriveWorker`), **four arms** (D1) |
+| `DeviceCommissioned` | 15 | Commission | 6 | `DeviceCommissionedEvent` (`CommissionDeviceCommand`) (D1) |
+
+The enum is **append-only** (persisted as a byte, folded into the checksum). Severity picks each
+day's single headline, ties to the earliest entry; tier 6 is a deliberate four-way tie meaning
+"the ship's capability changed and a person made it happen".
+
+⛔ **THE ORDINARY THAW SITS BELOW BOTH DEATH ROWS, AND THAT IS RIMWORLD'S CLASSING** (owner-directed
+2026-08-02 after review; the first draft had it at 10, above both, so a day holding a death AND a
+wake headlined the wake). `docs/design/rimworld-reference.md` §14.3 puts *"wanderer joins"* in the
+**good/neutral event** bucket of the incident deck beside cargo pods and traders, while a raid is a
+*big threat*; §11.3's letter colours say the same (gold for good news, red pulsing for the big ones).
+A joinee is a lesser positive event; a death is a major negative one. `Death` 7→8 and `Eulogy` 8→9
+are a RENUMBER that preserves every pinned pairing and opens the slot Thaw now sits in.
+`EmergencyThaw` stays at 11 because its own sentence already CONTAINS the death.
+
+⛔ **A KIND WITH NO ROW IN BOTH SWITCHES IS INVISIBLE, AND THAT HAS ALREADY HAPPENED TWICE.**
+`EmergencyThaw` and `RunEnded` shipped in M3-5 with rows in neither `Chronicle.Severity` nor
+`Chronicle.Label`, so they rendered as `[Note]` at severity 0 and the ending could never headline
+a day. A missing `switch` case falls through `_ =>` and nothing fails. Mechanised for every future
+member by `ChronicleTests.EveryHistoryKindHasBothALabelAndASeverityRow`.
+
+**The three D1 lines and their arms:**
+
+- **Thaw** — *"Ozawa came out of cryosleep — awake, and awaiting orders."* SubjectA = the new
+  citizen, SubjectB = the capsule. The capsule is not named in prose because every shipped pod is
+  `pod_<sleeper>`. The emergency arm keeps its own distinct kind and sentence.
+- **RepairCompleted** — *"Okafor overhauled the scrubber (scrub_a) — as good as new."* /
+  *"…serviced…"* / *"…patched up … with salvage."* / *"…jury-rigged …, there was nothing aboard to
+  fix it properly."* `RepairTier` rides the event, mirroring `MaintenanceSystem.RestoredCondition`'s
+  four arms; the device kind and NAME ride it too, so the line needs no lookup. SubjectA = worker,
+  SubjectB = device. Published only where a service's work phase actually ends and `Condition` is
+  written — an abandoned job, a vanished stack and a walled-in machine announce nothing.
+- **DeviceCommissioned** — *"A controller module was fitted to the reclaimer (recl_b) — it answers
+  MOSS now."* Nobody is named: commissioning is a paid command, not work a crew member does.
+  Published after the flip, so every refusal is silent.
+
+**NOT written, deliberately:** crafting / batch completions. That is the next spam source, not the
+next feature — a bench working through a bill would produce exactly the shape D6 just removed.
+
 ---
 
 ## 11. MOSS — the automation DSL's sim-facing surface
@@ -1760,7 +1848,7 @@ path caches. `PowerDirty`/`JobsDirty` are forced true and `RoomState.Dirty` defa
 |--------|------|--------------|--------|
 | `BuildSystem` | `'BULD'` | 1 | `Systems/BuildSystem.cs:53,284` |
 | `GoalSystem` | `'GOAL'` | 1 | `Systems/GoalSystem.cs:44,145` |
-| `HistorySystem` | `'HIST'` | 2 | `Systems/HistorySystem.cs:82,202` |
+| `HistorySystem` | `'HIST'` | 2 | `Systems/HistorySystem.cs:105,392` |
 | `SocialSystem` | `'SOCL'` | 2 | `Social/SocialSystem.cs:53,291` |
 | `DirectorSystem` | `'DRCT'` | 1 | `Director/DirectorSystem.cs:38,40` |
 | `NavSystem` | `'NAVS'` | 1 | `Space/NavSystem.cs:28,207` |
@@ -1773,7 +1861,7 @@ path caches. `PowerDirty`/`JobsDirty` are forced true and `RoomState.Dirty` defa
 | `DesignerRuleSystem` | — | 1 | `Sim.Dsl/DesignerRuleSystem.cs:207` |
 
 **`SYSS` free TEXT is hash-exempt** for `HIST`, `SOCL`, `GOAL` and `MEMS`: those checksums
-fold tick + kind + subject ids (`HistorySystem.cs:200-212`), edge key + opinion + tier
+fold tick + kind + subject ids (`HistorySystem.cs:392-403`), edge key + opinion + tier
 (`SocialSystem.cs:289-310`), goal kind + done tick (`GoalSystem.cs:228-238`) and
 counts/ticks/importance bits — never the free text. So rewording an entry never perturbs
 determinism, but **adding** one does. Note the narrowing: this used to be stated as the
@@ -2058,7 +2146,7 @@ Compounding it: the argument gate is `lowerMood < 0` (`argument_mood_threshold =
 §13.4 shows mood is permanently negative for everyone from day 1 — so **the mood half of
 the argument gate is permanently open**.
 
-### 13.8 Crew memory and the Chronicle are flooded by social/brownout spam
+### 13.8 Crew memory is flooded by social spam — ~~and so is the Chronicle~~ (brownout half FIXED)
 
 A direct consequence of §13.7 and §13.11, and it lands squarely on the "talking ship"
 pillar. Measured on the slice with the real defs+rules loaded:
@@ -2071,14 +2159,75 @@ pillar. Measured on the slice with the real defs+rules loaded:
   *"My feelings about ⟨name⟩ changed."* **Zero** persona, player or conversation entries
   survive — `CitizenMemory.Add` evicts the lowest-importance entry, and a 0.5–0.6 social
   event outranks an `EndConversation` memory (0.4) and most `SetDisposition` reasons
-  (0.3–0.7, `EffectValidator.cs:84`).
-- The ship's 200-entry `HistorySystem` buffer at day 3 holds **174 Brownout + 23 Bond + 3
-  Alarm** entries. `HistorySystem.MaxEntries = 200` with `RemoveAt(0)` eviction
-  (`Systems/HistorySystem.cs:76,146-150`) means the Chronicle's window is entirely power
-  flapping.
+  (0.3–0.7, `EffectValidator.cs:84`). **STILL OPEN** — `CitizenMemory` was not touched by the
+  Chronicle fix below and is a different store with a different eviction rule.
 
-So a crew member talked to on day 2 remembers nothing but that she grew closer to people,
-and the ship's log is a brownout ticker.
+#### 13.8.1 The brownout half — finding D6 — is FIXED (2026-08-02)
+
+**THE DEFECT, RE-MEASURED ON THE SHIPPED WRECK** rather than quoted (the earlier figure here —
+"174 Brownout + 23 Bond + 3 Alarm at day 3" — is a SLICE measurement and is kept in §13.11
+where it belongs; `--ship wreck` is what a player boots):
+
+| tick (sim-h) | ring, BEFORE | ring, AFTER |
+|---|---|---|
+| 200 000 (5.56 h) | **200 entries, 200 Brownout**, window ticks 191 431–199 941 | 9 entries — 3 Alarm + 4 Generic + **2 Brownout** |
+| 864 000 (24 h) | **200 entries, 200 Brownout**, window ticks 860 011–863 991 | 30 entries — 5 Alarm + 4 Generic + **21 Brownout** |
+
+`PowerSystem.Balance` published **22 562** `BrownoutChangedEvent`s on network 1 in that first
+sim-day. Every one of them appended an entry, so by sim-hour 5.6 — the T13 playtest ran 5.47 —
+the whole 200-entry ring was power flapping and the ship's own boot lines had been evicted from
+its own log. On the SLICE the same shape: 27 986 edges, 198 Brownout + 2 Bond at day 1.
+
+**THE FIX: episode coalescing in the ring itself** (`Systems/HistorySystem.cs:218-303`,
+`RecordBrownout`). A `BrownoutChangedEvent` scans back for the newest `Brownout` entry on the
+SAME network (`HistoryEntry.SubjectA`, which now carries the network id — it was 0) and, if that
+entry is younger than `HistorySystem.BrownoutQuietTicks` (36 000 ticks = **one sim-hour**, a code
+constant per M2-1's rule-not-tunable precedent, so P4/P5 do not move), **rewrites it in place**
+rather than appending: the tick stays at the episode's first edge, `SubjectB` carries the EPISODE
+WORD, and the text becomes *"Power network 1 browned out — non-critical loads shed; 891 changes
+within the hour, still shedding."* / *"…, since recovered."*
+
+**`SubjectB` IS AN EPISODE WORD, NOT A BARE COUNT** — `HistorySystem.EpisodeWord(edges, shedding)`
+packs the edge count in bits 1.. and **the episode's current direction in bit 0**. Both halves are
+hashed and saved in a field the chapter already wrote, so `StateVersion` stays at **2**.
+⛔ The direction cannot be recovered from the count's parity: an episode whose window expired
+mid-recovery BEGINS with a recovery edge, and the shipped wreck produces both parities on both
+sides (1036 = recovered, 891 = shedding, 647 = recovered). An early draft assumed parity worked.
+
+Four properties worth knowing before touching it:
+
+- ⭐⭐ **IT DROPS A SAME-DIRECTION EDGE, AND THAT IS A DETERMINISM FIX RATHER THAN TIDINESS.**
+  `PowerSystem.Balance` publishes only on a CHANGE, so a network's edges strictly alternate within
+  one uninterrupted run; an edge whose direction the ring already records is therefore a restore or
+  topology-rebuild artefact and is dropped. The direction test deliberately ignores the window (an
+  episode boundary does not break alternation, so a same-direction edge is a duplicate whether the
+  window is open or shut). See §13.43.2 for the regression this closes and its residual.
+- **No new saved state, on purpose.** The throttle is derived from the ring, which is already a
+  save chapter and already hashed. A private `_lastBrownoutTick` would have reproduced
+  `PowerSystem._wasBrownout`'s disease (unsaved state deciding what gets written).
+  ⚠️ The instrument for that claim is
+  `ChronicleSignalTests.TheShippedWreck_ReplaysBitIdentically_WhenTheSaveIsTakenMidEpisode`,
+  which drives the FULL stack on a ship that flaps. The chapter-only round-trip beside it
+  (`TheEpisodeSurvivesASaveAndReload_…`) has no `PowerSystem` in its stack and **cannot see** the
+  defect above — it was offered as the evidence once, and that was the wrong scope for the claim.
+- **It coalesces rather than drops the RECOVERY, and that is an honesty requirement.** A plain drop
+  would log *"browned out"* and swallow the recovery three minutes later, leaving the player looking
+  at a fault that no longer exists.
+- ⚠️ **"browned out" is a LOAD-BEARING LITERAL; the direction is STRUCTURAL.** Every fault-bearing
+  episode line leads with the fault so `ShipSystems.Fault`'s documented `ownKindMustContain` join
+  still matches (`ShipSystems.cs:457`); the single-edge pure recovery deliberately does not contain
+  it. What that column no longer does is sniff for the word "recovered" on a brownout — that is
+  `HistorySystem.BrownoutEpisodeRecordsAFault` now, for the reason in §13.43.2.
+
+The mechanism is RimWorld's, per `docs/design/rimworld-reference.md` §11.1: the **alert stack** is
+a DERIVED condition that exists exactly while it holds, and **letters** are fired once by an event
+and persist (§11.3 calls letters *"the event log the player actually reads"*). A brownout flapping
+at 1 Hz is a CONDITION; RimWorld would never fire a letter per flap. This ring is the letter
+channel — the condition belongs on D2's alerts bar and, later, M5-2's stack.
+
+**WHAT THIS DID NOT FIX** (filed, not chased): `IsWanting` returns true for every device except a
+closed `AirVent`, so the sawtooth GENERATOR is untouched — see §13.11. The log no longer records
+it 22 562 times; the ship still does it.
 
 ### 13.9 `TrustToPlayer` and `RevealDifficulty` are decorative
 
@@ -2149,7 +2298,11 @@ share) changes sim behaviour and moves every pin, so it is its own package.
   (3 kW), MachineShop (2 kW) and SalvageRecycler (1.5 kW) load the bus 100 % of the time
   against 12 kW of solar. Measured: the slice flaps in and out of brownout continuously —
   **174 of the 200 history entries at day 3 are alternating browned-out/recovered on
-  network 1** (see §13.8 for what that does to the Chronicle).
+  network 1**. ⭐ **STILL OPEN, AND IT IS THE GENERATOR RATHER THAN THE SYMPTOM.** D6
+  (2026-08-02) fixed what the flap does to the ship's log (§13.8.1 — the slice's day-1 ring goes
+  from 198 Brownout entries to a handful of hourly episode lines), and fixed nothing about the
+  flap: re-measured on the shipped tree, the slice still publishes **27 986** brownout edges in
+  one sim-day and the wreck **22 562**. `IsWanting` is the cause and it is untouched.
 - **The greywater pool empties and the water loop stalls.** Measured after 3 days:
   `WastewaterLiters = 0.0`, `water` metric pinned at 0.50 from day ~1.3 onward. The loop
   leaks 20 % of every litre of irrigation (only 0.8 is recaptured, `hydro.def`) plus 7 %
@@ -4853,12 +5006,13 @@ mutations and each named its own wrong capsule in the failure text.
   a save taken between the death and the next tick.
 - **The banner is the ONLY standard-surface trace.** The two Chronicle lines are still MOSS-console
   only, which is a general property of the Chronicle and not this package's to change.
-- **Both new lines render as `[Note]` and neither can become a day headline.** `Chronicle.Label`
-  falls through to `"Note"` for any kind it does not name and `Severity` returns 0
-  (`Memory/Chronicle.cs:120-145`). Witnessed in the browser and it reads perfectly well — but the
-  ENDING is arguably the most severe line a run can produce, and it currently loses a headline to a
-  eulogy. FILED rather than fixed: a tag and a severity are a behavioural change to `Chronicle` and
-  owe their own test, and M5-1 reads `RunEnded` off the sim rather than off the prose.
+- ~~**Both new lines render as `[Note]` and neither can become a day headline.**~~ ⭐ **CLOSED
+  2026-08-02** by the D1/D6 package, which swept the CLASS rather than these two rows: `RunEnded`
+  is now `[Ending]` at severity 12, `EmergencyThaw` is `[Thaw]` at 11, and the ordinary `Thaw` is
+  `[Thaw]` at 10 — above `Eulogy`'s 8, so a day on which somebody woke is remembered as the day
+  somebody woke (`Memory/Chronicle.cs:105-183`). The hole was structurally invisible (a missing
+  `switch` case falls through `_ =>` and nothing fails), so it is now mechanised for every future
+  member by `ChronicleTests.EveryHistoryKindHasBothALabelAndASeverityRow`.
 - ⚠️ **The Overview does not repaint while the MOSS console is up** (`repaint()` returns early on
   `shouldShow()`), so the banner is frozen at whatever it last painted for as long as a player sits
   on the console. Pre-existing and general to every Overview island; it cost the acceptance run one
@@ -5976,6 +6130,10 @@ stopped arriving. The Overview draws it in `#ov-alert`, directly under the ENDIN
 ⛔ **NOT A CHRONICLE EVENT, AND THAT IS MEASURED RATHER THAN PREFERRED.** The same demo's finding D6
 is that the Chronicle is a **200-entry ring drowned in brownout spam** — a real event posted there is
 evicted before the player opens the MOSS console. A derived, always-visible line has nothing to miss.
+⭐ **D6 IS NOW FIXED (2026-08-02, §13.8.1) AND THIS DECISION STANDS UNCHANGED.** The ring no longer
+evicts, so a Chronicle line WOULD survive — but a capsule whose price is about to rise is a
+CONDITION, and RimWorld §11.1 puts conditions on the alert stack and events in the letter log. D2
+picked the right channel for the right reason; the reason is now the rule rather than the ring size.
 
 ⭐ **THIS BAR IS A PRE-PAYMENT ON M5-2 / T17, THE ALERT STACK.** The channel is named `alerts`
 (plural) and carries one `text` field; M5-2 should turn that field into a list and keep the channel,
@@ -5986,8 +6144,239 @@ proved the game needs — a stack with one row is a stack nobody can design agai
 
 - **No def-value change** (P4/P5 untouched — the band table and the margin are literals in code).
 - **No new hashed sim state** (the bar is a view channel; `GameSession.cs:1862-1863`'s rule).
-- **No Chronicle change** (finding D6 is a different package).
+- **No Chronicle change** (finding D6 was a different package — it landed 2026-08-02, §13.8.1).
 - **No warning about the `fail` crossing** — the permanent one. Filed above and STILL OPEN after the
   0.50 ruling (~410 sim-hours is distance, not a message): it wants its own sentence, and it is the
   natural second row of M5-2's alert stack. D2 was chartered on the PRICE.
-- **No fix for demo finding D1** (an ordinary thaw writes no Chronicle line). Filed, not chased.
+- ~~**No fix for demo finding D1** (an ordinary thaw writes no Chronicle line).~~ Filed by D2, and
+  **CLOSED 2026-08-02** by the D1/D6 package: `CryoSystem.Open`'s fall-through arm records
+  `HistoryKind.Thaw` naming the sleeper (`Systems/CryoSystem.cs:330-344`).
+
+---
+
+### 13.43 ⭐⭐ The Chronicle tells the story — the flap stops evicting it, and the three player verbs write a line (D1 + D6, 2026-08-02)
+
+**THE PLAYER SENTENCE.** *The ship's log stops being a brownout ticker: repairs, commissioning and
+thaws each write a line the player can actually find, and power flapping no longer evicts them.*
+
+Two owner-triaged findings from the M3 demo, in one lane because they are one surface. §13.8.1 has
+the D6 mechanism and its before/after census; §10.7 has the kind table, the three new lines and
+which code writes each. This section is the **pin record** and the list of what was deliberately
+not done.
+
+#### 13.43.1 THE PIN MATRIX — all five held, and FOUR OF THE FIVE HOLDS ARE VACUOUS
+
+| pin | fixture | before | after | verdict |
+|---|---|---|---|---|
+| **P1** scenario `--days 3 --seed 42` | `hosts/scenario` `BuildScenario` | `7bdd0d6f7756dfdc` | `7bdd0d6f7756dfdc` (twin match) | **HELD — VACUOUS** |
+| **P2** perilune tick-3000 | `SimHost.Build` | `cb09b584a5f15e52` | **HELD** | held, window |
+| **P3** slice tick-3000 | `--ship slice` | `43a1a5c25713faec` | **HELD** | held, window |
+| **P4** defs defaults | — | `661fcdd4b89f1e87` | **HELD** | genuinely inert (no def field) |
+| **P5** defs rules-inclusive | — | `558a1c0a4985f5ea` | **HELD** | genuinely inert (no def field) |
+
+⛔ **WHY P1's HOLD IS VACUOUS, MEASURED RATHER THAN ARGUED.** Instrumenting `Report` in
+`hosts/scenario/Program.cs` (patched, run, restored from an in-memory copy with the mtime moved
+FORWARD — TRAPS 2) and printing a census of the ring at each day boundary:
+
+```
+SCRATCH-CAUSES brownoutEntries=0 thawLines=0 repairLines=0 commissionLines=0 cryoPodsOnShip=0
+```
+
+— on all three days. The P1 fixture's 200-entry ring is **200/200 `Bond`**. It publishes no
+brownout edge in three sim-days, authors **no CryoPod at all**, completes no repair (OD-H boots
+every work type off and the fixture enqueues no command) and issues no commission. **All four
+halves of this package are reached zero times on the pin.**
+
+The four independent stubs were run anyway, because a count and a hash are different evidence
+(each mutation applied in place, measured, reverted from an in-memory copy):
+
+| P1 with… | hash |
+|---|---|
+| the shipped tree (all four live) | `7bdd0d6f7756dfdc` |
+| brownout coalescing stubbed | `7bdd0d6f7756dfdc` |
+| the ordinary-thaw line stubbed | `7bdd0d6f7756dfdc` |
+| the repair event stubbed | `7bdd0d6f7756dfdc` |
+| the commission event stubbed | `7bdd0d6f7756dfdc` |
+
+Every cell identical, and identical to `main` before the lane. **This is M2-12's *"no pin sees the
+generation term"* and M3-7's *"no pin sees the rate term"* in a third costume, and it is worse here
+because the affected surface is the SHIPPED ship.**
+
+⭐ **THE SAME CODE MOVES THE HASH HARD WHERE IT IS REACHED — the driven control, on `--ship wreck`,
+the ship `./play.sh` boots and which no pin covers:**
+
+| cell | `StateHash` @ tick 200 000 | @ tick 864 000 | ring @ 200 000 |
+|---|---|---|---|
+| pre-fix writer (subjects 0, no coalescing) | `291fedc58c4720ed` | `2686a42ad8c1cf46` | 200 entries, all Brownout |
+| **SHIPPED** | **`79c6641856fb779f`** | **`84a8c59eb1eebb9f`** | 9 entries (3 Alarm + 4 Generic + 2 Brownout) |
+
+The pre-fix cell is re-derived on the CURRENT tree (the writer replaced by its old shape) and
+reproduces the value measured on `main` to the digit, which is what makes it a control rather than
+a recollection.
+
+**WHY P2/P3 HOLD, and it is the window rather than a dead system** (M3-9's shape). Measured at
+tick 3000 on all three authored plans: `perilune` 0 entries, `slice` 1 entry, `wreck` 4 entries,
+and **0 brownout edges on every one of them** — the first edge is at tick 128 361 (wreck) and
+191 331 (slice), 43× and 64× later than the golden. `perilune` and `slice` also author 0 CryoPods.
+
+**No re-pin was performed and none was owed**: `ci.sh`'s literal, both golden files and both defs
+checksums are untouched. No new def field exists (`BrownoutQuietTicks` is a code constant per
+M2-1's rule-not-tunable precedent), and `HistorySystem.StateVersion` stays at **2** — `SubjectA`
+and `SubjectB` were already written by `CaptureState` and already folded by `StateChecksum`, so the
+save format did not change at all.
+
+#### 13.43.2 ⛔ TWO DEFECTS INDEPENDENT REVIEW FOUND, AND WHAT THEY COST TO CLOSE
+
+Both were shipped by the lane's first commit, both were caught by review rather than by the gate,
+and both are worth reading before touching this code again.
+
+**DEFECT 1 — a save taken mid-brownout stopped replaying. A determinism REGRESSION against `main`.**
+`PowerSystem` is deliberately not `IStatefulSystem`, so `_wasBrownout` restores as `false` and
+re-publishes a `BrownoutChangedEvent` for a network that was already shedding (a topology rebuild
+does the same). **Before this package that duplicate was one more ring entry which evicted within
+~200 s** — genuinely harmless, and `PowerSystem`'s own header said exactly that: *"a duplicate
+notification, not a state divergence; nothing hashed moves"*. Coalescing folded it into a HASHED,
+never-evicted field and the sentence went false. Measured on the shipped wreck: save at tick
+135 000, `SaveWriter`→`SaveReader`, 60 000 ticks of run-on against an uninterrupted twin ⇒ HIST
+`eff48a500b403996` vs `eff48a500b4e5117`, differing on ONE datum — one episode's edge count, 1036
+against 1037.
+
+⭐ **THE FIX IS AN IDEMPOTENCY RULE DERIVED FROM THE RING, and it is exact rather than heuristic.**
+`PowerSystem.Balance` publishes only on a CHANGE, so a network's edges strictly alternate within one
+uninterrupted run; an edge whose direction the ring already records for that network cannot be a
+real transition. `HistorySystem.RecordBrownout` drops it. That required the direction to become
+STRUCTURAL — hence the episode word (§13.8.1), because parity does not encode it.
+
+Driven, with §13.10's documented matched recompute (`SaveReader` leaves the loaded sim's rooms dirty
+and `RoomState.Recompute` is not gas-idempotent, so the twin must take the same recompute — the
+protocol `SaveRestoreRunOnTests` and `P2ExitTests` already use):
+
+| leg | live | loaded |
+|---|---|---|
+| save @ 100 000 (before this ship's first edge — the control) | `1cd7a257831108b3` | `1cd7a257831108b3` |
+| save @ 135 000 (mid-brownout — the subject) | `8b66921d15d45c9b` | `8b66921d15d45c9b` |
+
+Whole `StateHash`, both legs bit-identical. Instrument:
+`ChronicleSignalTests.TheShippedWreck_ReplaysBitIdentically_WhenTheSaveIsTakenMidEpisode`
+— MID-episode, read literally: episode-boundary save ticks are residual 2 below and do NOT replay.
+⚠️ **The chapter-only round-trip beside it cannot see this** — it has no `PowerSystem` in its stack —
+and it was offered as the evidence in the first commit. Wrong scope for the claim; both tests now
+say so in their own headers.
+
+⛔ **TWO RESIDUALS SURVIVE, AND THE SECOND ONE IS REACHABLE ON THE SHIPPED WRECK.** An earlier draft
+of this section filed only the first and called the replay property otherwise general. It is not,
+and a lane that read it that way would have been wrong.
+
+**RESIDUAL 1 — the evicted-episode corner.** The rule sees only what is still in the ring. If a
+network's newest brownout entry has been evicted (200 newer entries pushed past it), a duplicate
+appends a fresh episode and a reload diverges. Unreachable in practice on the shipped wreck — its
+whole day-1 ring is ~30 entries now, which is this package's point — but real.
+
+**RESIDUAL 2 — a save taken on an episode's OPENING TICK never re-converges.** Found by independent
+review, re-measured here. The idempotency rule DROPS a duplicate edge; it cannot RECONSTRUCT an edge
+the loaded sim never published. With `_wasBrownout` reset, the loaded sim re-derives the episode's
+opening edge on a LATER 1 Hz `Balance` pass than the live sim did, so the coalesced entry's hashed
+TICK STAMP differs — and because the entry is coalesced and never evicted, the difference is
+**permanent and compounding**:
+
+| wreck episode | live | loaded |
+|---|---|---|
+| 164 361 | `t=164361`, 891 edges | `t=164371`, 891 edges |
+| 200 371 | `t=200371`, 34 edges | `t=200451`, 32 edges |
+| …compounding at 236 391 | `t=236391`, 218 edges | `t=236511`, 216 edges |
+| …at 344 571 | 74 edges | 72 edges |
+
+⭐ **THE WINDOW IS NARROW AND WAS SWEPT RATHER THAN ASSUMED.** It sits at the episode boundary and
+ENDS on the tick the entry is stamped: **1 tick** at the 128 361 episode (36-tick sweep, everything
+else clean), **1 tick** at 164 361 (21-tick sweep), **11 ticks** (200 361–200 371) at 200 371. So of
+order 1–11 ticks in every ~36 000 — but *permanent* when hit, which is what makes it worth filing
+rather than rounding away.
+
+⚠️ **ON `main` THE SAME PERTURBATION EXISTS AND SELF-HEALS.** Pre-fix every edge was its own entry,
+so a mis-stamped one evicted within ~200 s. **Coalescing is what makes it permanent** — D1's
+mechanism in a second costume, and no consumer-side rule can close it. The honest fix for
+`_wasBrownout` is the same one D1 already filed: make `PowerSystem` stateful, a new SYSS chapter
+that moves P1/P2/P3. **FILED, not chased** — and residual 2 is now the strongest argument for that
+package rather than a footnote to it. `PowerSystem`'s header carries the deferred obligation, so the
+next consumer of `BrownoutChangedEvent` that accumulates into hashed state does not get a free pass
+from a sentence that was true in 2026-07.
+
+⚠️ **WHAT THE REPLAY TEST THEREFORE PINS, READ ITS NAME LITERALLY:**
+`TheShippedWreck_ReplaysBitIdentically_WhenTheSaveIsTakenMidEpisode` covers MID-episode and pre-edge
+save ticks — **not** episode-boundary ticks. `EpisodeBoundarySaves_DoNotReplay_ThisIsFiledResidual2`
+is the boundary's own instrument and asserts the divergence together with its clean neighbour, so it
+goes red if a future change either closes the residual or widens it past one tick.
+
+**DEFECT 2 — the coalescer made a fault line CLEAR ITSELF.** A whole episode is one entry whose text
+is rewritten in place, so a recovery overwrote the record of its own fault; `ShipSystems`' sniff for
+the word "recovered" then skipped the only evidence the network had ever shed. Measured on the
+driven wreck at tick 864 000: 3 of 21 episodes ended recovered and the reactor row reported the
+tick-814 211 episode while the NEWER 850 221 one was skipped — the inversion of MOSS spec §5.1, and
+it also falsified three prose sites that had been true for months. Closed structurally, in two
+places, both direction-independent: `HistorySystem.BrownoutEpisodeRecordsAFault` decides whether an
+episode is attributable (only a single-edge PURE recovery is not), and `ShipSystems.Fault` renders
+`HistorySystem.BrownoutFaultLine` for a brownout hit rather than the entry's developing sentence —
+so the column can never print "CURRENTLY RECOVERED" under a heading that means the opposite, and
+never depends on where a 56-character truncation lands. The three prose sites are true again:
+`ShipSystems.FaultCaveat` now says *"nothing clears a fault line — not a repair, not a recovery"*,
+which is a claim about code in that same file.
+
+⚠️ **AND THE PRE-EXISTING TEST FOR THIS PROPERTY WAS A COIN FLIP.**
+`ShipSystemsTests.Fault_Column_Is_The_Last_Thing_That_Went_Wrong_And_Never_A_Recovery` drives the
+slice for a day and reads whatever fault falls out — it stayed GREEN through the whole broken
+window, purely because that ship happens to be shedding at its day-1 boundary. It now carries a
+deterministic second leg that appends a recovered episode and a pure recovery and asserts both
+outcomes; the property's primary instrument is
+`ChronicleSignalTests.ARecoveredBrownoutEpisode_IsStillTheLastFault_AndTheColumnPrintsTheFault`,
+whose first leg authors its ring rather than hoping for one.
+
+⚠️ **A THIRD FINDING, FROM RUNNING THE FIXES' OWN MUTATIONS.** The claim *"the direction test
+deliberately ignores the window"* had NO instrument: moving that line below the window `break`
+reddened nothing in the suite. That mutation survived once and is now covered by
+`ADuplicateEdgeIsDropped_EvenAfterTheEpisodeWindowHasExpired`, which has a control leg so it cannot
+be satisfied by dropping every late edge. A claim in a doc comment with no test behind it is what
+the mutation discipline is for.
+
+#### 13.43.3 A REGRESSION THIS PACKAGE CAUGHT IN ITSELF — a repair reported as a fault
+
+`ShipSystems.Fault` attributes the MOSS ledger's LAST FAULT column by matching a row's DEVICE NAMES
+against a history line's text (spec §5.1's admitted weak join). **D1's repair and commission lines
+are the first entries in the whole Chronicle to contain a device NAME**, so the join matched them:
+the ledger reported *"OKAFOR OVERHAULED THE SCRUBBER (SCRUB_A) — AS GOOD AS NE…"* under a column
+headed LAST FAULT — §5.1's exact misread, arriving through the door §5.1 left open. The older
+device-touching lines are safe only by accident: `StripText` names the device KIND ("the scrubber"),
+never `scrub_a`.
+
+Closed by `ShipSystems.IsNotAFault` (`ShipSystems.cs:1101-1127`), which now skips the two GOOD-NEWS
+kinds as well as any line containing "recovered". It lists the good-news kinds rather than
+allow-listing the fault kinds on purpose — an allow-list would silently narrow the name join for
+every existing kind, which is the NINTH trap shape. Driven by
+`ChronicleSignalTests.ARepairLineNamingItsMachine_NeverReachesTheLastFaultColumn`; the mutation
+(delete the `RepairCompleted` clause) was applied and reddens it with the sentence above.
+
+Two consequences documented rather than left to be found:
+
+- **The host's own `FaultCaveat` sentence had gone false and was rewritten.** It read *"nothing is
+  published when a machine is repaired, so a fault line never clears itself."* Repairs publish now.
+  The caveat still HOLDS, for a different reason — the column never reads the repair line — and the
+  shipped sentence says that instead (`ShipSystems.cs:274-277`). ⭐ This is the F1 shape landing
+  exactly where `moss-model.js` predicted it would: the client's copy of the same fact had been
+  deleted in an earlier lane and needed no edit today, while the host's copy did.
+- **A future `HistoryKind` that reports something getting BETTER belongs on `IsNotAFault`'s list.**
+
+#### 13.43.4 What the package deliberately does NOT do
+
+- **No craft/batch Chronicle line.** A bench working through a bill would produce exactly the shape
+  D6 just removed. FILED.
+- **No fix for the sawtooth GENERATOR** — `IsWanting` returns true for every device except a closed
+  `AirVent`, so the wreck still publishes 22 562 brownout edges a sim-day (§13.11). The log stopped
+  recording them; the ship still does them.
+- **No re-home of the Chronicle tab** (inert on the standard surface by design — M4-7's).
+- **No change to `MaxEntries`.** 200 was never the problem; what filled it was.
+- **No LLM prose.** `ChronicleDay.ProseOverride` is still unfilled by anything.
+- **`PowerSystem` is NOT made stateful.** That is the honest fix for `_wasBrownout` and it is a new
+  SYSS chapter that moves P1/P2/P3 — its own package. §13.43.2 states the residual it leaves.
+- **No structural replacement for §5.1's `ownKindMustContain` string join.** `HistoryEntry.SubjectA`
+  now carries the network id, so a brownout could be attributed structurally instead of by prose;
+  the literal is retained because narrowing that join is a change to a documented contract with its
+  own blast radius. FILED.

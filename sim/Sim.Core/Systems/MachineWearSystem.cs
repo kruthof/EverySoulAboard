@@ -349,12 +349,14 @@ namespace Perilune.Sim
                 worker.JobWorkTicks -= Interval;
                 if (worker.JobWorkTicks > 0) return;
 
+                RepairTier tier;
                 if (consumable != null)
                 {
                     // Read the RESTORE LEVEL off the stack in hand BEFORE consuming it — the kind
                     // is the only thing that distinguishes an overhaul from a service, and the
                     // stack may be removed on the next line.
                     float restored = RestoredCondition(sim.Defs, consumable.Kind);
+                    tier = TierOf(consumable.Kind);
                     consumable.Count--; // one unit per service, whichever tier it was
                     if (consumable.Count <= 0) sim.Items.Remove(consumable.Id);
                     else consumable.CarriedBy = 0; // remainder set down where we stand
@@ -378,7 +380,30 @@ namespace Perilune.Sim
                     // ⚠ NOT a livelock argument (see the recruit gate above, which used to make one
                     // and was wrong): a work-phase guard here would not loop.
                     device.Condition = sim.Defs.Wear.JuryRigCondition; // patched, not fixed
+                    tier = RepairTier.JuryRig;
                 }
+
+                // ⭐⭐ D1 — THE REPAIR IS ANNOUNCED. This is the ONLY place in the file where a
+                // service actually completes and `Condition` is written, so it is the only place
+                // that may claim one happened: an abandoned job, a vanished stack and a walled-in
+                // machine all return above and announce nothing (DeconstructSystem's
+                // validate-on-arrival contract, same shape).
+                //
+                // AN EVENT, NOT A `HistorySystem.Record` — the rule is pinned, not stylistic.
+                // `ArchitectureBoundaryTests.Economy_KnowsNothingAboutSoulsPresentationOrPhysiology`
+                // forbids `Chronicle` in this file with the reason written into the test: "narrative
+                // record — publish an event, let HistorySystem write it". `BuildSystem`'s
+                // ConstructionCompletedEvent is the reference implementation.
+                sim.Events.Publish(new RepairCompletedEvent
+                {
+                    Pos = device.Pos,
+                    DeviceId = device.Id,
+                    WorkerId = worker.Id,
+                    Device = (byte)device.Kind,
+                    Tier = (byte)tier,
+                    DeviceName = device.Name,
+                });
+
                 worker.JobKind = JobKind.None;
                 worker.JobWorkTicks = 0;
                 sim.JobsDirty |= JobBoardDirty.Items; // a Parts stack was consumed / set down
@@ -794,6 +819,22 @@ namespace Perilune.Sim
             if (kind == ItemKind.Seals) return defs.Wear.SealServiceCondition; // routine service
             if (kind == ItemKind.Swarf) return defs.Wear.SwarfServiceCondition; // salvage patch-up
             return defs.Wear.JuryRigCondition;
+        }
+
+        /// <summary>
+        /// The same ladder, named rather than valued — what <see cref="RepairCompletedEvent"/>
+        /// carries so the ship's log can say WHICH kind of repair happened. Deliberately a second
+        /// switch on the same input rather than a reverse lookup on the returned float: the two
+        /// service tiers are def scalars (<c>seal_service_condition</c>, <c>swarf_service_condition</c>)
+        /// and a content tune that made two of them equal would silently collapse two distinct
+        /// sentences into one.
+        /// </summary>
+        private static RepairTier TierOf(ItemKind kind)
+        {
+            if (kind == ItemKind.Parts) return RepairTier.Overhaul;
+            if (kind == ItemKind.Seals) return RepairTier.Service;
+            if (kind == ItemKind.Swarf) return RepairTier.SalvagePatch;
+            return RepairTier.JuryRig; // the unreachable arm RestoredCondition also floors
         }
 
         /// <summary>
