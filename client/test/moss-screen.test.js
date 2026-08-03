@@ -793,9 +793,14 @@ test('IX-M5: `log` opens the FAULT LOG; from DETAIL it is filtered to that syste
   typeCmd(s, 'log');
   assert.equal(s.screen.model.screen, 'faultlog');
   assert.equal(s.screen.model.filterId, null, 'from the LEDGER it opens unfiltered (null, not "")');
-  // the fixture's chronicle carries 2 headlines + 3 lines, all day-stamped, newest first
+  // The fixture's chronicle carries 3 LINES over 2 days; its 2 day headlines are not rows (each is
+  // one of its own day's lines re-stamped — see `reduceChron`), and the live `log` tail is not a
+  // second section beneath them (it is the same ring; reading both printed the tail twice).
+  // ⚠️ FILED, not fixed here: this fixture emits its days NEWEST-FIRST, which the host never does
+  // (`Chronicle.Render` emits ascending), so the row order asserted below is the fixture's, not the
+  // ship's. The day STAMPS are still the fixture's own and that is what this leg checks.
   const entries = s.root.byClass('moss-logrow').map((e) => e.textContent);
-  assert.equal(entries.length, 5);
+  assert.equal(entries.length, 3);
   assert.ok(entries[0].startsWith('DAY 212'), entries[0]);
   assert.ok(entries[entries.length - 1].startsWith('DAY 213'));
   assert.ok(s.root.oneClass('moss-note').textContent.includes('NOT THE CURRENT PROBLEM'),
@@ -811,10 +816,48 @@ test('IX-M5: `log` opens the FAULT LOG; from DETAIL it is filtered to that syste
   assert.equal(head.split('REACTOR').length - 1, 1, 'the filtered system is named exactly once');
 });
 
+test('⭐ the rendered fault log lists each fault ONCE, with the live tail also folded in', () => {
+  // The DOM half of the session-E defect. `chron` and the `log` tail are two costumes of the SAME
+  // history ring, so the screen that renders both renders the newest entries twice — and THIS is
+  // the leg that sees it: the model test above can only see the view-model, and the earlier DOM
+  // leg fed `onChron` alone, so the concatenation was invisible to it (measured: restoring the
+  // concatenation in the test double left every existing DOM assertion green).
+  const s = openWithSystems();
+  const chron = msgOf('chron');
+  // A tail that IS a suffix of that chronicle — the shape `GameSession.BuildLog` actually sends.
+  const tailTexts = chron.days[0].lines;
+  s.screen.onChron(chron);
+  s.screen.onLog({ type: 'log', lines: tailTexts.map((t, i) => 'D213.' + (10 + i) + ' ' + t) });
+  typeCmd(s, 'log');
+  const rows = s.root.byClass('moss-logrow').map((e) => e.textContent);
+  assert.equal(rows.length, 3, 'three ring entries, three rows: ' + rows.join(' | '));
+  for (const t of tailTexts) {
+    assert.equal(rows.filter((r) => r.includes(t)).length, 1,
+      'listed more than once on screen: ' + t);
+  }
+  // Non-vacuity in the INCLUSION direction: the tail's lines really are on screen (a fault log that
+  // simply dropped them would satisfy the count above).
+  for (const t of tailTexts) assert.ok(rows.some((r) => r.includes(t)), 'missing from the screen: ' + t);
+});
+
 test('an empty fault log says so rather than rendering a blank pane', () => {
   const s = openWithSystems();
   typeCmd(s, 'log');
   assert.ok(s.root.oneClass('moss-empty').textContent.includes('NO ATTRIBUTABLE FAULTS'));
+});
+
+test('…but a ship with faults and no chronicle YET shows the tail, not that sentence', () => {
+  // IX-M4 honesty at the surface: opening the log REQUESTS `chron`, and between the ask and the
+  // reply the only record the client holds is the live tail. Rendering "NO ATTRIBUTABLE FAULTS ON
+  // RECORD" over fourteen of them would be the screen lying about the ship.
+  const s = openWithSystems();
+  s.screen.onLog({ type: 'log', lines: ['D213.10 Scrubber sc_galley ran at 2.3x nameplate all shift.'] });
+  typeCmd(s, 'log');
+  assert.equal(s.root.byClass('moss-empty').length, 0, 'the pane must not claim an empty record');
+  const rows = s.root.byClass('moss-logrow').map((e) => e.textContent);
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0].startsWith('DAY 213'), rows[0]);
+  assert.ok(rows[0].includes('Scrubber sc_galley ran at 2.3x nameplate all shift.'), rows[0]);
 });
 
 // ---------------- IX-M6: PROGRAM (the shell + directory; the IDE is the follow-up lane) ----------

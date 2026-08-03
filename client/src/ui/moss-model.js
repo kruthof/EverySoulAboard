@@ -394,8 +394,17 @@ export function reducePods(model, msg) {
 }
 
 /**
- * Fold a `chron` message — the FAULT LOG's day-stamped source. Each day contributes its headline
- * plus its lines, all carrying the day so the log can stamp them without re-deriving anything.
+ * Fold a `chron` message — the FAULT LOG's day-stamped source. Each day contributes its LINES,
+ * all carrying the day so the log can stamp them without re-deriving anything.
+ *
+ * <p>⛔ <b>THE DAY HEADLINE IS DELIBERATELY NOT A ROW.</b> `Chronicle.Render` builds a day's
+ * headline as <code>"Day N — " + e.Text</code> of that day's most severe entry, and the SAME entry
+ * is already in `lines` as <code>"[Kind] " + e.Text</code> — so a headline row is one of the day's
+ * own lines wearing a second costume, and the fault log stamps `DAY N` on every row anyway. Taking
+ * it made the day's worst fault print twice ("DAY 0 · Day 0 — Power network 1 browned out…" above
+ * "DAY 0 · [Power] Power network 1 browned out…"). The headline is the CHRONICLE tab's device
+ * (`hud.js` renders it as a day header, where it belongs) and the LLM prose slot
+ * (`ChronicleDay.ProseOverride`) lands there too; this diagnostic list wants the tagged lines.</p>
  * @param {object} model @param {{days?:{day:number,headline:string,lines:string[]}[]}} msg
  * @returns {object}
  */
@@ -407,16 +416,17 @@ export function reduceChron(model, msg) {
   for (const d of days) {
     if (!d || typeof d !== 'object') continue;
     const day = num(d.day, -1);
-    if (d.headline) chron.push({ day, text: str(d.headline) });
     if (Array.isArray(d.lines)) for (const l of d.lines) if (l) chron.push({ day, text: str(l) });
   }
   return { ...m, chron };
 }
 
 /**
- * Fold a `log` channel tail — the FAULT LOG's live section. Log lines open with a `D<day>.<frac>`
- * token (the sensor-log format); it is split off into the entry's day so the log renders one stamp
- * style. A line without the token keeps its text whole and carries day `-1`.
+ * Fold a `log` channel tail — the FAULT LOG's source UNTIL THE CHRONICLE LANDS, and no longer a
+ * second section beneath it (see `faultLogView`: same ring, and reading both printed every one of
+ * these 14 lines twice). Log lines open with a `D<day>.<frac>` token (the sensor-log format); it is
+ * split off into the entry's day so the log renders one stamp style. A line without the token keeps
+ * its text whole and carries day `-1`.
  * @param {object} model @param {{lines?:string[]}|string[]} msg
  * @returns {object}
  */
@@ -1185,8 +1195,38 @@ function faultTokens(m, id) {
 }
 
 /**
- * The FAULT LOG view-model (IX-M5). Newest first — the live `log` tail above the day-stamped
- * chronicle — optionally filtered to one system by the weak name join described in `faultTokens`.
+ * The FAULT LOG view-model (IX-M5). Newest first, optionally filtered to one system by the weak
+ * name join described in `faultTokens`.
+ *
+ * <p>⭐⭐ <b>ONE RING, ONE LIST — the log lists each fault ONCE.</b> `chron` and `log` are not two
+ * records: since D6/D1 (2026-08-03) they are two VIEWS of the SAME 200-entry
+ * `HistorySystem` ring. `chron` carries all 200, day-grouped and kind-tagged; `log` carries the
+ * newest 14 of that same ring, bare. Concatenating them printed the newest 14 twice — once as
+ * "BROWNOUT ON THE REACTOR BUS", once as "[Power] BROWNOUT ON THE REACTOR BUS" — which is the
+ * defect filed at the end of session E and closed here.</p>
+ *
+ * <p><b>THE FIX IS TO STOP DOUBLE-SOURCING, NOT TO DEDUPE.</b> A dedupe would have to match the
+ * two costumes by TEXT, and the text is not stable: a brownout EPISODE entry is rewritten in place
+ * as its edges accumulate (`HistorySystem.BrownoutEpisodeLine` — "…; 748 changes within the hour,
+ * still shedding"), so a `log` tail taken one tick after a `chron` snapshot legitimately disagrees
+ * with it word for word. Measured on the running wreck: the tail said "344 changes" where the
+ * chronicle said "144". A text join would have let exactly the liveliest line through twice.</p>
+ *
+ * <p>So the chronicle is THE source whenever it has landed, and the live tail is its FALLBACK —
+ * never a supplement. The tail matters for one thing and it is not a small thing: `chron` is
+ * requested when this screen opens (see `openFaultLog`), and until the reply arrives a
+ * chronicle-only log would render "NO ATTRIBUTABLE FAULTS ON RECORD" over a ship with faults on
+ * record. That is the IX-M4 honesty rule, so the tail covers exactly that gap and `live` marks
+ * the rows that came from it.</p>
+ *
+ * <p>⚠️ <b>WHAT THIS COSTS, SAID OUT LOUD — AND IT IS THE SUB-DAY STREAM, NOT THE REFRESH.</b> Once
+ * the chronicle has landed the list stops growing tick-by-tick while the screen sits open. It does
+ * still refresh: re-typing `log` re-fires the `chron` request (a command is not a toggle), AND the
+ * host re-emits the chronicle on every DAY ROLLOVER (`GameSession.cs:1988-1994`), which
+ * `MossScreen.onChron` folds and re-renders while the screen is open. So an open fault log catches
+ * up once per sim-day on its own; what is missing is the fault raised while you are reading it.
+ * This screen already says of itself that a fault line is the LAST thing that went wrong and not
+ * the current problem; a sub-day streaming refresh is filed, not built.</p>
  * @param {object} model
  * @returns {{title:string, entries:object[], filterId:string|null}}
  */
@@ -1200,14 +1240,15 @@ export function faultLogView(model) {
     for (const tok of tokens) if (t.indexOf(tok) >= 0) return true;
     return false;
   };
+  // ONE source. The chronicle is the whole ring; the live tail is the newest 14 OF THAT RING, so
+  // reading both is reading the same faults twice. `live` is a fact about which of the two
+  // a row came through, and it is uniform across the list because the list reads one at a time.
+  const src = m.chron.length ? m.chron : m.log;
+  const live = m.chron.length === 0;
   const entries = [];
-  for (let i = m.log.length - 1; i >= 0; i--) {
-    const e = m.log[i];
-    if (keep(e)) entries.push({ day: e.day, text: e.text, live: true });
-  }
-  for (let i = m.chron.length - 1; i >= 0; i--) {
-    const e = m.chron[i];
-    if (keep(e)) entries.push({ day: e.day, text: e.text, live: false });
+  for (let i = src.length - 1; i >= 0; i--) {
+    const e = src[i];
+    if (keep(e)) entries.push({ day: e.day, text: e.text, live });
   }
   const row = id ? m.rows.find((r) => r.id === id) : null;
   return {
