@@ -51,6 +51,9 @@ import {
   demolishTarget, addDecor, removeDecor, escStackRung,
   eraseTarget, tileOrders, roomMarkNameAt, roomTileZoned,
   shipCrewRows,
+  // THE THREE CHROME SENTENCES, keyed on whether a tool is armed — see `zoomChrome`'s header for
+  // the defect (three BUILD announcements on a surface that arms nothing on entry).
+  zoomChrome, ZOOM_HINT_IDLE,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
 // ⭐ M2-10 — the PURE half of the right-click PRIORITISE menu: may it open on this tile, who would the
@@ -71,10 +74,11 @@ const CTX_GAP = 6;              // clearance the right-click menu keeps from bod
 const ITEM_SIDE = U * 1.6;      // furniture box (logical) — reads a touch larger than its tile
 const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the tile edge-to-edge
 const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
-const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · ' +
-  'DIG [G] / STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · ' +
-  'ERASE [C]: DRAG OVER PAINTED ORDERS TO TAKE THEM BACK · ' +
-  'MOVE [M]: PICK A CREW MEMBER, THEN CLICK WHERE THEY SHOULD GO · DEMOLISH REMOVES A GHOST';
+// ⚠️ THE `HINT` CONSTANT THAT STOOD HERE IS GONE, not renamed: the hint line has TWO texts now
+// (`ZOOM_HINT_IDLE` / `ZOOM_HINT_ARMED`, both in the pure `zoomChrome`), and leaving a third copy
+// of one of them in this file is how the two would drift. The markup below seeds the node with the
+// IDLE text because that is the state every entry path lands in (IX-Z-01) — the first `paintChrome`
+// then owns it.
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -106,6 +110,10 @@ let _markTiles = [];      // this room's debris/dig/strip marks, from the `marks
 let _itemTiles = [];      // this room's ground stacks, from the `items` channel (NOT the frame's glyph)
 let _deviceCond = new Map(); // this room's per-device wear, from the `devices` channel — SEE deviceConditionAt
 let _blockedTiles = [];   // this room's REFUSED orders + why, from the `blocked` channel
+// The canvas caption's two counts (VS-Z-12), derived in `repaint` where the frame is and read by
+// `paintChrome`, which `arm()` also calls with no frame in hand. See paintChrome's header.
+let _capPlaced = 0;       // pending designations + placed devices in the focused room
+let _capHere = 0;         // souls standing in the focused room
 // ⭐ M2-10 — the open right-click menu's target, or null when no menu is up: `{tile, deck, cid, name}`.
 // It is captured AT OPEN TIME and never re-derived on the item click, deliberately: the frame keeps
 // arriving while the box is on screen, and an order must go to the machine the player right-clicked,
@@ -223,7 +231,11 @@ function buildSkeleton() {
       //      painted. A hidden control whose EFFECT is visible is not a hidden decision.
       '<div class="hud rz-accepts" id="rz-accepts" hidden></div>' +
       '<div class="hud rz-palette" id="rz-palette"></div>' +
-      '<div class="rz-hint">' + HINT + '</div>' +
+      // AN `id` AS WELL AS THE CLASS, and it is not decoration: the hint is the one chrome text
+      // this file did not own a node reference for — it was a literal baked into this markup string
+      // — and `paintChrome` has to be able to rewrite it. The id is what makes it reachable from a
+      // node rig at all (see `buildChrome`'s note on why the other two handles stay on classes).
+      '<div class="rz-hint" id="rz-hint">' + ZOOM_HINT_IDLE + '</div>' +
     '</div>' +
     // ⭐ M2-10 — THE RIGHT-CLICK MENU. A sibling of the toast and the nudge: a small `.hud` island
     // positioned at the pointer, `hidden` until a right-click lands on a machine. It is OUTSIDE
@@ -268,11 +280,22 @@ function buildSkeleton() {
  *  mutate these nodes in place (guarded text / class toggles); the FIXED palette + breadcrumb nodes
  *  are never torn down, so a hovered/armed tool and the ‹ back link survive every repaint + click. */
 function buildChrome() {
-  // caption — "NAME · BUILD DETAIL · N PLACED"; only the name + count change.
+  // caption — TWO nodes, `{ROOM} · {mode-or-company} · ` + `{n} PLACED`. The middle clause used to
+  // be the literal ` · BUILD DETAIL · ` baked into this string, which is precisely why the caption
+  // announced BUILD on a surface with nothing armed: there was no node that could say anything
+  // else. It is folded into the lead span so `zoomChrome` owns the whole sentence; the count keeps
+  // its own span because VS-Z-12 colours it `#f2b563` and the lead reduced-alpha cream.
   const cap = $('rz-caption');
-  cap.innerHTML = '<span class="rz-cap-name"></span> · BUILD DETAIL · <span class="rz-placed"></span>';
-  _el.capName = cap.querySelector('.rz-cap-name');
+  cap.innerHTML = '<span class="rz-cap-lead"></span><span class="rz-placed"></span>';
+  _el.capLead = cap.querySelector('.rz-cap-lead');
   _el.capPlaced = cap.querySelector('.rz-placed');
+  // ⚠️ THE HINT IS THE ONE HANDLE RESOLVED BY `id`, AND THE ASYMMETRY IS DELIBERATE. The two spans
+  // above are resolved by CLASS through `querySelector`, which is the ONLY thing `room-model.test.js`'s
+  // start-tag scanner models — and that scanner's `<span>` half exists precisely because narrowing it
+  // to `button` once reddened no test at all. Moving these two to `getElementById` would take the
+  // scanner's span half out of service and re-open that blind spot (TRAPS 9th shape). The hint is a
+  // `<div>`, which the scanner does not lift at all, so an id is the only handle that can reach it.
+  _el.hint = $('rz-hint');
 
   // breadcrumb — FIXED links (home / deck / leaf); only the deck number + leaf name change. The
   // `data-rz` targets are stable nodes, so the ‹ click always lands (the "can't go back" fix).
@@ -503,11 +526,17 @@ function repaint() {
   // the lit row in the dock must never be able to disagree about who is selected.
   const selCid = selectedCrewCid(frame);
 
+  // The two caption facts, derived here because here is where a frame is: how much is placed or
+  // pending in this room, and how many souls are standing in it (VS-Z-12).
+  _capPlaced = roomDesigns(designs, _focus).length
+    + roomCells(frame, _focus).filter((c) => c.itemId).length;
+  _capHere = roomCrew(crew, _focus).length;
+
   paintCanvas(frame);
   paintLayers(frame, crew, designs, decor, selCid);
   paintCrewDock(shipCrewRows(crew, currentDeckView(), _focus, selCid));
   paintZoneKey();
-  paintCaption(frame, designs);
+  paintChrome();
   paintBreadcrumb();
   paintMinimap();
   paintPalette();
@@ -901,11 +930,29 @@ function ghostSvg(list) {
 
 // ── chrome ──
 
-function paintCaption(frame, designs) {
-  const nDesigns = roomDesigns(designs, _focus).length;
-  const nDevices = roomCells(frame, _focus).filter((c) => c.itemId).length;
-  setText(_el.capName, _focus.displayName);      // textContent → intrinsically escaped
-  setText(_el.capPlaced, (nDesigns + nDevices) + ' PLACED');
+/**
+ * THE THREE PERMANENT TEXT SURFACES — palette label, hint line, canvas caption — written from ONE
+ * pure derivation so they cannot come to disagree about which mode the room is in.
+ *
+ * ⭐ CALLED FROM `arm()` AS WELL AS FROM `repaint()`, and that is load-bearing rather than tidy.
+ * Repaints are event-driven (`scheduleRepaint` off an arriving frame), so on a PAUSED ship — which
+ * is where a player does most of their building, and the state the nudge exists for — arming a tool
+ * produces no frame and no repaint. Painted only from `repaint`, the caption and hint would keep
+ * saying the disarmed sentence for as long as the ship is stopped.
+ *
+ * The two counts it needs are module state (`_capPlaced` / `_capHere`) rather than arguments for
+ * the same reason: `arm()` has no frame, no designs and no roster in hand, and re-deriving them
+ * there would decode three channels to answer a question about a label. They are facts about the
+ * room, they change only when a frame arrives, and `repaint` is where a frame arrives.
+ */
+function paintChrome() {
+  const c = zoomChrome({
+    armed: _armed, roomName: _focus.displayName, placed: _capPlaced, crewHere: _capHere,
+  });
+  setText(_el.placeLabel, c.label);
+  setText(_el.hint, c.hint);
+  setText(_el.capLead, c.capLead);              // textContent → intrinsically escaped
+  setText(_el.capPlaced, c.capPlaced);
 }
 
 /** WP-3 — paint the key box from the PURE row lists, hiding it when the room has nothing to explain.
@@ -1038,8 +1085,8 @@ function paintMinimap() {
   if (html !== _miniSig) { $('rz-minimap').innerHTML = html; _miniSig = html; }
 }
 
+// The BUTTONS only — the group label moved to `paintChrome`, which owns all three chrome sentences.
 function paintPalette() {
-  setText(_el.placeLabel, 'BUILD ▸ ' + _focus.displayName);
   for (const b of _el.toolBtns) {
     const on = _armed === b.dataset.rztool;
     setCls(b, 'on', on);
@@ -1122,6 +1169,7 @@ function arm(tool) {
   // tool without also restoring a layer for it to reveal.
   _armed = nextRoomTool(_armed, { t: 'toggle', tool });
   _drag = null; // arming/disarming cancels any in-progress sweep
+  paintChrome();  // label + hint + caption all key on `_armed` — see paintChrome's header
   paintPalette();
   paintMatStrip();
   paintAccepts();
