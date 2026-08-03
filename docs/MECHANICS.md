@@ -1179,8 +1179,12 @@ an order naming a DIFFERENT machine still replaces this one through the cancel.
 **⭐ AND IT DISCHARGES `ReasonNoConsumable`.** The `blocked` channel gains a fourth order kind,
 `WireFormat.OrderRepair = 3`, and its rows come from `GameSession._prioritised` — a **host-side,
 transient, never-saved** map of crew id → ordered device id, walked in CITIZEN STORE order (never
-enumerated: a hash layout must not reach the socket). A row is emitted only while
-`IsUnfixableWreck` is true — asked **once per pending order**, in the walk
+enumerated: a hash layout must not reach the socket). ~~A row is emitted only while
+`IsUnfixableWreck` is true~~ ⭐⭐ **CORRECTED 2026-08-03 BY D5 — THE REPAIR WALK NOW EMITS TWO
+REASONS AND THE WRECK RULE IS THE SECOND OF THEM.** A row is emitted while `IsUnfixableWreck` is
+true (`ReasonNoConsumable`) **or while `GameSession.OrderedWorksiteIsOutOfReach` is true**
+(`ReasonNoRoute = 5`, asked FIRST — §13.25 b3 and the retire rule below). `IsUnfixableWreck` is
+asked **once per pending order**, in the walk
 (`hosts/web/GameSession.cs:3136-3181`), and the answer handed to `AddUnfixableRow`
 (`hosts/web/GameSession.cs:2926`) rather than re-asked inside it: below the wreck floor that call is
 up to three full item-store scans. ⭐ **Since M3-14 it is asked `forced: true`**
@@ -1188,14 +1192,27 @@ up to three full item-store scans. ⭐ **Since M3-14 it is asked `forced: true`*
 idle crew member could reach in air"*.
 
 **THE RETIRE RULE IS A WHITELIST**, and it is a whitelist because the blacklist it replaced LEAKED
-(independent review, measured): an entry survives a render only while **(1)** she is held on a job
-at that machine — from then on the held job is the record, §2.2's `curJob` again — or **(2)** the
-machine is an unfixable wreck, the one refusal the badge exists to name. Everything else retires on
-the very next render, so an order refused on Condition, staging, incapability or "somebody else got
-there first" costs nothing and can never later raise a NO PARTS badge for an order nobody holds.
+(independent review, measured). ⭐⭐ **IT HAS THREE ARMS SINCE D5 (2026-08-03), NOT TWO — the
+two-arm wording that stood here was left false by this file's own §13.25 b3 and is corrected in
+place rather than left to drift.** An entry survives a render only while **(0)** the ordered
+worksite is OUT OF REACH for the crew member who was ordered (`OrderedWorksiteIsOutOfReach`, asked
+FIRST — it must be true on both sides of the drop, and arm (1) below would otherwise retire the
+entry at tick 1); or **(1)** she is held on a job at that machine — from then on the held job is
+the record, §2.2's `curJob` again; or **(2)** the machine is an unfixable wreck. Everything else
+retires on the very next render, so an order refused on Condition, staging, incapability or
+"somebody else got there first" costs nothing and can never later raise a NO PARTS badge for an
+order nobody holds.
 Entries are also **pruned** when their crew member leaves the store (§2.1: a designation survives
 its pawn, a direct order does not). ⚠️ The four-reason ladder (`BlockedReason`) is deliberately NOT
 applied to a repair row — `ReasonWorkTypeOff` would be a lie about an order that overrides the grid.
+⭐⭐ **D5 (2026-08-03) ADDS A THIRD ARM, AND IT IS ASKED FIRST — `OrderedWorksiteIsOutOfReach`**
+(`ReasonNoRoute = 5`; §13.25 b3 is the diagnosis). Position is not style: it must be true on BOTH
+sides of the drop, and arm (1) retires the entry the moment the sim takes the order, so a badge that
+rode on `taken` would vanish at tick 1 and be long gone by the abandon at tick 171. It is one A* per
+pending order per render (`_prioritised` is bounded by the crew; the whole walk is gated on it being
+non-empty) — **103 µs measured, Debug, for a FAILING search on the wreck at boot**, which is the
+worst case and a different order of magnitude from the per-tile sweep `WireFormat.Blocked.cs`'s
+header rejects for the other three walks.
 
 **No saved field, no chapter bump, no sim-side order registry**: the held job carries the target,
 as §2.2 keeps the forced flag on `curJob`. RimWorld's re-issuing `priorityWork` record and its
@@ -3616,6 +3633,63 @@ one refusal that DOES reach the player changed its MEANING**: `IsUnfixableWreck`
 headline above now means *"only the ship's-stock rule reaches the player"* — a Parts stack behind the
 pressure frontier no longer reads as NO PARTS.
 
+**b3. ⭐⭐ D5 (2026-08-03) — THE ACCEPTED-THEN-SILENTLY-DROPPED ORDER, DIAGNOSED AND SURFACED. The
+worst case of b2's silence was never one of its four reasons: it was an order the command ACCEPTED
+and a system downstream then ate.** Reproduced headlessly on the shipped wreck, unmodified, from the
+2026-08-03 browser sighting:
+
+- **`fabricator_1`** (24,2,0) in `hall_d0_s2`. Staging tile `(25,2,0)`, from
+  `MaintenanceSystem.TryFindStagingTile(forced: true)` — the same call `PrioritiseJobCommand` makes
+  (`Commands.cs:335`) and `MaintenanceSystem.DriveWorker` makes on every tick she carries the order
+  (`MachineWearSystem.cs:318`). That tile is **walkable and (forced) survivable but NOT REACHABLE**:
+  `door_d0_s2` (27,7,0) boots SHUT and since OD-N doors are actuated through MOSS only.
+- ⛔ **`TryFindStagingTile` asks walkable + survivable and NEVER asks reachable** (`:1148-1160`), so
+  the order is accepted, `JobKind = Maintain`, `HeldByOrder = true`.
+- She then walks **17 sim-seconds** to the ship's one Parts stack at (7,14,0) — tier before distance,
+  so Parts is chosen over the nearer 8-Seals locker — and the instant she stands on it `DriveWorker`'s
+  **pickup branch** re-asks `FindPath(worker → staging)`, gets false, and calls `Abandon`
+  (`MachineWearSystem.cs:464`, whose comment *"unreachable from here — retried from ground truth next
+  second"* is true of the AUTONOMOUS path and false of an order). `Abandon` → `JobKind = None` → the
+  setter clears `HeldByOrder` → **the order is gone**. Measured: taken tick 1, dropped **tick 171**,
+  machine untouched, nothing on any surface.
+- **CONTROLS, DRIVEN.** Strip every consumable ⇒ the drop moves to **tick 1** at her boot tile (the
+  below-wreck-floor arm, `:479`) — a different site, so the baseline is not that one. Open
+  `door_d0_s2` alone ⇒ the identical order is taken and driven to the worksite (she reaches (25,2,0)).
+  Of the eight deck-0 spine doors, that one alone restores the route.
+- ⛔ **IT IS NOT "GEOMETRY-SPECIFIC" AND IT IS NOT FLAKY — IT IS REACHABILITY, AND IT IS
+  DETERMINISTIC.** T13 (2026-08-02) recorded no-repro on five direct orders because every machine it
+  ordered was in the boot-breathable core, or was ordered *after* the MOSS console had opened the
+  hall doors. D5 fires exactly when the ordered machine's staging tile is in a different connected
+  region from the ordered crew member.
+- **THE FIX IS THE SURFACE, NOT THE BEHAVIOUR** (`rimworld-reference.md` §2.2: *"RimWorld's answer to
+  an impossible order is a refusal at the point of the click … It does not accept the order and then
+  fail silently"* — flagged there as **the single most transferable fact in §2 for Perilune**). §2.2's
+  pinned ruling stands, so the order is still accepted; what changed is that the machine wears
+  **`WireFormat.ReasonNoRoute = 5`** on the shipped `blocked` channel (client sentence **NO WAY TO
+  WALK TO IT**) from the frame after the click, **and keeps it after the sim drops the job**. Emitted
+  by `GameSession.OrderedWorksiteIsOutOfReach` / `AddNoRouteRow`, live and never latched, ordered
+  machines only. Instruments: `DroppedOrderTests` (6 legs, driven on `--ship wreck`) +
+  `client/tools/dropped-order-shot.mjs`.
+- ⛔⛔ **THE RESIDUAL, AND IT IS A NARROWER CLAIM THAN "`:464` IS COVERED" — SAY IT BEFORE ANYTHING
+  ELSE.** What is surfaced is **`:464` when the route is shut AT ISSUE TIME**. If the route is open
+  when the order is given and closes DURING it, the order dies at the very same arm and **nothing is
+  said**. Driven on the shipped wreck (independent review found it; re-measured here rather than
+  transcribed): open `door_d0_s2`, order `fabricator_1` ⇒ taken at tick 1, and the first render
+  **retires the pending record** (arm (1) — the held job is the order from then on, so `blocked` is
+  `cells:[]`). Shut the door at tick 41 ⇒ she is dropped at **tick 171** at (7,14,0), the identical
+  pickup branch, with the channel still **empty**. The cause is structural, not a missing predicate:
+  once the record is retired there is nothing left for the render to re-ask about. **The honest fix
+  is a follow-on package**, in one of two shapes — the host keeps retired order records and re-checks
+  them on drop, or the SIM emits a drop reason (an event carrying why `Abandon` fired) and the host
+  reads it. The second is the better shape and is the one that would cover all nine arms at once.
+  **NOT built this round, by ruling.**
+- ⚠️ **WHAT IS ALSO STILL OPEN.** (i) The badge clears when the route opens and the order does **not** come
+  back with it — item **d** below, unchanged. (ii) `DriveWorker` has **NINE** `Abandon(sim, device, worker)` arms (counted in the file) and only
+  this one — the pickup branch at `:464` — is reproduced and surfaced; the other **eight** are a
+  filed CLASS, unmeasured. (iii) A machine with **no staging tile
+  at all** is refused at issue time and is still silent (that is b2's geometry reason, deliberately
+  not widened into here).
+
 **c. NEITHER PRE-EMPTION CALL SITE IS INDIVIDUALLY PINNED** for the hold — the predicate is read
 twice on that path and blinding either alone is green (§6.2c). Named so that a later lane does not
 read the `TryPreempt` line as guarded.
@@ -4574,6 +4648,7 @@ whose meaning depends on a sibling field is exactly the kind of thing that rots*
 | ⭐ `ReasonNoConsumable` (2) | **the `ItemKind` byte the order is waiting for** | `NEEDS PARTS — NOTHING ABOARD TO REPAIR IT WITH` |
 | `ReasonUnreachable` (3) | — | the reason's own sentence |
 | `ReasonWorkTypeOff` (4) | — | ″ |
+| ⭐ `ReasonNoRoute` (5) | — | `NO WAY TO WALK TO IT` (D5, 2026-08-03 — §13.25 b3) |
 
 - **`DetailNone = -1`, not 0** — `0` is `ItemKind.Regolith`, so a zero sentinel could not be told
   from a payload and an airless dig would badge `NEEDS REGOLITH`. (`moss-model.js`'s DA-M1 rule for a

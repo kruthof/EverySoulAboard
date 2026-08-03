@@ -154,8 +154,14 @@ namespace Perilune.Web
     /// The <c>devices</c> channel already carries per-machine condition for that story.
     /// ⭐ <b>M2-9 NARROWS THIS OMISSION WITHOUT REVERSING IT</b>: a machine a player has DIRECTLY
     /// ordered repaired is no longer automatic work, so it is on the channel — as
-    /// <see cref="OrderRepair"/> — and it is on it for ONE reason only (below). The staging refusal
-    /// above is still silent for a repair, ordered or not.
+    /// <see cref="OrderRepair"/>. ⭐⭐ <b>AMENDED 2026-08-03 BY D5 — IT IS NOW ON IT FOR <i>TWO</i>
+    /// REASONS, NOT ONE</b> (this paragraph said "ONE reason only" and that is what a reader is sent
+    /// here to check before adding a third): <see cref="ReasonNoConsumable"/> — nothing aboard to fix
+    /// it with — and <see cref="ReasonNoRoute"/> — the crew member who was ordered cannot walk to it.
+    /// They are asked in that walk in the OPPOSITE order to this sentence: route FIRST, stock second
+    /// (<c>GameSession.BuildBlocked</c>'s repair walk, and <see cref="ReasonNoRoute"/>'s precedence
+    /// paragraph says why). The AIR staging refusal above is still silent for a repair, ordered or
+    /// not — and deliberately so since M3-14, because an order overrides the air.
     ///
     /// <b>⭐ CLOSED (5) — the third silent refusal, discharged by M2-9.</b>
     /// <c>MaintenanceSystem.IsUnfixableWreck</c>: a machine below <c>wear.wreck_threshold</c> with no
@@ -448,7 +454,18 @@ namespace Perilune.Web
         /// reachability can disagree with the behaviour it is supposed to explain, which is the
         /// second-authority defect omission (1) exists to refuse. It is also why the measured cost
         /// stays a dictionary probe rather than a whole-region sweep per neighbour per crew per
-        /// render at 10 Hz.</para>
+        /// render at 10 Hz.
+        /// <br/>⚠️ <b>AND D5 (2026-08-03) IS NOT A COUNTER-EXAMPLE TO THAT REFUSAL — READ THE SCOPE
+        /// BEFORE CONCLUDING THE RULE WAS RELAXED.</b> <see cref="ReasonNoRoute"/> does run a
+        /// <c>FindPath</c> during render, and it escapes both objections rather than overriding
+        /// them: it is not a SECOND implementation (it asks
+        /// <c>MaintenanceSystem.TryFindStagingTile</c> for the tile and the sim's own
+        /// <c>PathService</c> for the route — the identical pair <c>DriveWorker</c> asks, so the
+        /// badge and the executor cannot disagree), and it is not a SWEEP (one A* per PENDING DIRECT
+        /// ORDER, bounded by the crew and gated on <c>_prioritised</c> being non-empty, versus this
+        /// reason's per designated tile × up to 4 neighbours × every crew member). The paragraph
+        /// above still stands for THIS reason and for the dig/strip/build walks; the arithmetic that
+        /// separates the two cases is written out on <see cref="ReasonNoRoute"/>.</para>
         ///
         /// <para>• <b>THE BUILD-MATERIAL CARRIER IS NOT ABOUT THE SITE'S OWN APPROACH AT ALL.</b>
         /// <c>BuildJobSource._matRetryAt</c> is stamped when <c>TryReserveMaterialFor</c> finds no
@@ -589,8 +606,92 @@ namespace Perilune.Web
         public const int ReasonWorkTypeOff = 4;
 
         /// <summary>
+        /// ⭐⭐ <b>D5 — THE CREW MEMBER THE PLAYER ORDERED CANNOT WALK TO THE MACHINE.</b> The
+        /// worksite has a staging tile she is allowed to stand on; there is no route from where she
+        /// is to that tile. Emitted for <see cref="OrderRepair"/> rows only, and only for a machine
+        /// the player DIRECTLY ORDERED — <c>GameSession.OrderedWorksiteIsOutOfReach</c>.
+        ///
+        /// <para><b>THE DEFECT IT CLOSES, MEASURED ON THE SHIPPED WRECK.</b> Right-click ▸
+        /// <i>PRIORITISE: REPAIR</i> on <c>fabricator_1</c> (24,2,0): the order is ACCEPTED —
+        /// <c>PrioritiseJobCommand</c> asks <c>MaintenanceSystem.TryFindStagingTile</c>, which tests
+        /// WALKABLE and SURVIVABLE and <b>never tests REACHABLE</b> — the crew dock reads
+        /// <i>"Heading to service fabricator_1"</i>, she walks 17 sim-seconds to the ship's one Parts
+        /// stack, and the instant she stands on it <c>MaintenanceSystem.DriveWorker</c>'s pickup
+        /// branch re-asks <c>FindPath(worker → staging)</c>, gets false and calls <c>Abandon</c>.
+        /// That clears <c>JobKind</c>, which clears <c>HeldByOrder</c>, which IS the order. Taken at
+        /// tick 1, gone at tick 171, machine untouched, <b>and nothing on any surface said a word</b>.
+        /// The cause is one shut door — <c>door_d0_s2</c> (27,7,0) — and since OD-N doors open through
+        /// MOSS only, a first-hour player has no way to know that is what they are looking at.</para>
+        ///
+        /// <para><b>RIMWORLD IS THE AUTHORITY FOR WHAT WAS WRONG.</b>
+        /// <c>docs/design/rimworld-reference.md</c> §2.2: <i>"RimWorld's answer to an impossible order
+        /// is a refusal at the point of the click — the context menu greys the entry and states the
+        /// reason. It does not accept the order and then fail silently"</i>, flagged there as <b>the
+        /// single most transferable fact in §2 for Perilune</b>. This repo deliberately keeps the
+        /// ACCEPTANCE (§2.2's pinned ruling: an order beats the grid, never incapability, never the
+        /// staging rule) and closes the SILENCE instead — the refusal is legible from the frame after
+        /// the click rather than synchronous with it.</para>
+        ///
+        /// <para>⛔ <b>WHY IT IS NOT <see cref="ReasonUnreachable"/>, WHICH IS THE OBVIOUS RE-USE.</b>
+        /// That reason is documented as, and is, <b>a latched record of a PAST ATTEMPT</b>: the host
+        /// reads <c>JobSystem.IsBackedOff</c> ("a claim was attempted here and it failed"), one of
+        /// whose five carriers fires on the MATERIAL rather than the site — which is why its sentence
+        /// hedges (<i>"NO CREW HAS REACHED IT, OR THE MATERIAL FOR IT"</i>). This answer is neither
+        /// latched nor hedged: the pathfinder was run, from her tile, to the tile the executor will
+        /// path to, and it said no. Emitting it under a code whose contract is "somebody tried once"
+        /// would corrupt the one reason on this channel that is honest about being weak. Two answers,
+        /// two codes — the same call M2-18 made for <see cref="ReasonWorkTypeOff"/>.</para>
+        ///
+        /// <para><b>THE QUESTION IS ASKED, NEVER RE-DERIVED — and it is asked of the SAME TILE the
+        /// executor will path to.</b> <c>MaintenanceSystem.TryFindStagingTile(..., forced: true)</c>
+        /// returns the first walkable+survivable neighbour in canonical <c>Neighbor4</c> order, and
+        /// <c>DriveWorker</c> paths to exactly that tile. So when a machine has two walkable
+        /// neighbours and only the SECOND is reachable, this row is still correct: the order really
+        /// does die, because the sim never tries the second one. A host-side "is any neighbour
+        /// reachable" sweep would be a kinder answer and a WRONG one — the second-authority defect
+        /// this channel's header refuses by name.</para>
+        ///
+        /// <para><b>PRECEDENCE: FIRST among the repair walk's reasons, above
+        /// <see cref="ReasonNoConsumable"/>.</b> An order that cannot be walked to will not be served
+        /// whatever the ship's stock is, and the player's next action is a ROUTE (a door, a dig), not
+        /// a craft. Sending them to the fabrication bench for Parts they cannot deliver is the
+        /// wrong-screen failure <see cref="ReasonWorkTypeOff"/>'s own precedence paragraph argues
+        /// against.</para>
+        ///
+        /// <para>⛔⛔ <b>THE SCOPE IS "SHUT AT ISSUE TIME", NOT "THIS ABANDON ARM IS COVERED".</b> The
+        /// row rides <c>GameSession._prioritised</c>, and that record is RETIRED on the first render
+        /// after the sim takes the order (the whitelist's arm (1)). So an order given while the route
+        /// is OPEN, whose route closes mid-order, dies at the identical arm with nothing said —
+        /// driven: taken tick 1, record retired, door shut tick 41, dropped tick 171, channel empty.
+        /// Structural rather than a missing predicate; the fix is a follow-on package (retired-record
+        /// re-check, or a drop reason published by the sim — the latter covers all nine of
+        /// <c>DriveWorker</c>'s abandon arms at once). <c>MECHANICS</c> §13.25 b3.</para>
+        ///
+        /// <para><b>LIVE, NOT LATCHED</b> — like <see cref="ReasonAir"/> and
+        /// <see cref="ReasonWorkTypeOff"/>, and unlike <see cref="ReasonUnreachable"/>. Re-asked every
+        /// render: open the door and the badge is gone on the next frame. ⚠️ <b>And the order does
+        /// NOT come back with it</b> — RimWorld's <c>Pawn_MindState.priorityWork</c> record, which
+        /// re-issues a forced job after an interruption, is still not built (<c>MECHANICS</c>
+        /// §13.25d), so the player re-orders. That is a real gap, stated rather than implied; it is
+        /// also exactly the shape <see cref="ReasonNoConsumable"/> has shipped with since M2-9 (the
+        /// badge clears when a stack appears; the dead order does not restart).</para>
+        ///
+        /// <para><b>THE COST, MEASURED, BECAUSE THIS FILE'S HEADER TALKS A READER OUT OF EXACTLY THIS
+        /// CALL.</b> The header refuses <c>FindPath</c> for the DIG/STRIP/BUILD walks and it is right
+        /// to: there it would be per designated tile × up to 4 neighbours × every crew member × every
+        /// render. Here it is <b>ONE A* per PENDING REPAIR ORDER per render</b>, and
+        /// <c>_prioritised</c> holds at most one entry per crew member — on the shipped wreck, one.
+        /// A FAILING A* (the worst case: it exhausts the crew member's whole reachable region) on the
+        /// wreck at boot measures <b>103 µs</b> in a Debug build, against a ~517 µs render; in the
+        /// steady state the walk is gated on <c>_prioritised.Count &gt; 0</c> and costs nothing at
+        /// all. That is a different order of magnitude from the sweep the header rejects, and the
+        /// arithmetic is written down here so the next lane does not have to re-derive it.</para>
+        /// </summary>
+        public const int ReasonNoRoute = 5;
+
+        /// <summary>
         /// ⭐ <b>NO DETAIL</b> — the value <see cref="BlockedCell.Detail"/> carries for every reason
-        /// that has nothing to add, which today is four of the five.
+        /// that has nothing to add, which today is five of the six.
         ///
         /// <para><b>−1 AND NOT 0, DELIBERATELY.</b> <c>0</c> is a perfectly real payload in the one
         /// meaning the field currently has (<c>ItemKind.Regolith</c>), so a zero default would make
@@ -632,6 +733,7 @@ namespace Perilune.Web
         ///                                     is waiting for                    ABOARD TO REPAIR IT WITH"
         ///   ReasonUnreachable    (3)          — (DetailNone)                   the reason's own sentence
         ///   ReasonWorkTypeOff    (4)          — (DetailNone)                   the reason's own sentence
+        ///   ReasonNoRoute        (5)          — (DetailNone)                   the reason's own sentence
         /// </code>
         ///
         /// <para><b>WHY A PAYLOAD INT AND NOT A SIXTH REASON CODE.</b> "The order wants a

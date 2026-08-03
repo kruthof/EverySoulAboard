@@ -1325,7 +1325,7 @@ body.moss-open #roomzoom-view{display:none !important}
    colour cue. #c25a3f is STATUS.bad (theme/warm-tokens.js §2.5) — the FAULT colour, deliberately not
    the queue-amber the zone key's back-off swatch uses. */
 .rz-key-sw-blocked-air,.rz-key-sw-blocked-no_approach,.rz-key-sw-blocked-no_consumable,
-.rz-key-sw-blocked-unreachable,.rz-key-sw-blocked-work_type_off{
+.rz-key-sw-blocked-unreachable,.rz-key-sw-blocked-work_type_off,.rz-key-sw-blocked-no_route{
   background:rgba(10,13,20,.82);border:1px solid #c25a3f}
 .rz-key-sw-blocked-no_approach{background:repeating-linear-gradient(45deg,#c25a3f 0 1.5px,transparent 1.5px 4px)}
 /* `work_type_off` is a HOLLOW box with a dashed edge: the only reason in the set whose fix is a
@@ -1337,6 +1337,13 @@ body.moss-open #roomzoom-view{display:none !important}
    and a broken line reads as a broken route. It must stay distinguishable from no_approach's hatch
    at swatch size — the two are adjacent in meaning and would otherwise be one smear. */
 .rz-key-sw-blocked-unreachable{border-style:dotted;border-width:2px}
+/* ⭐ D5 — `no_route` is the SOLID-EDGED BAR: the route question answered strongly (the pathfinder was
+   run and said no), against `unreachable`'s dotted edge, which is the same question answered weakly
+   (somebody tried once and failed). A filled bar across an otherwise empty box reads as "the way is
+   shut" and stays distinct at swatch size from no_approach's 45° hatch and unreachable's dots — the
+   three route-family swatches are the set most at risk of becoming one smear. */
+.rz-key-sw-blocked-no_route{
+  background:linear-gradient(to bottom,transparent 0 38%,#c25a3f 38% 62%,transparent 62% 100%)}
 .rz-pulse{position:absolute;inset:6px;pointer-events:none}
 .rz-pulse-tile{position:absolute;box-sizing:border-box;border:2px solid #f2b563;border-radius:3px;
   animation:rzPulse .16s ease-out forwards;pointer-events:none}

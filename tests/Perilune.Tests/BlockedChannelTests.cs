@@ -138,6 +138,7 @@ namespace Perilune.Tests
             Assert.AreEqual(2, WireFormat.ReasonNoConsumable);
             Assert.AreEqual(3, WireFormat.ReasonUnreachable);
             Assert.AreEqual(4, WireFormat.ReasonWorkTypeOff);
+            Assert.AreEqual(5, WireFormat.ReasonNoRoute);  // D5, appended
         }
 
         // ═══════════════════════════════════════════════════════════════════ the session bridge
@@ -1023,6 +1024,15 @@ namespace Perilune.Tests
         /// designation) ⇒ red on the hash. MUTATION 2: empty the strip or the build walk ⇒ red on the
         /// COVERAGE premise, which is what makes the "all three registries" claim a fact rather than
         /// prose.
+        ///
+        /// <para>⛔ <b>THREE REGISTRIES, NOT FOUR — AND SINCE D5 (2026-08-03) THE FOURTH IS THE
+        /// EXPENSIVE ONE. Say so here, because this test's NAME over-promises.</b> This fixture is
+        /// <c>--ship grid</c> with no direct order, so <c>GameSession._prioritised</c> stays empty and
+        /// the REPAIR walk is gated out entirely — including
+        /// <c>GameSession.OrderedWorksiteIsOutOfReach</c>, the only thing in this builder that runs a
+        /// <c>PathService.FindPath</c> during a render. Purity of THAT walk is pinned by
+        /// <c>DroppedOrderTests.RenderingTheNoRouteRow_RunsAnAStarAndStillTouchesNothing</c>, which
+        /// carries its own coverage premise. Do not read this leg as covering it.</para>
         /// </summary>
         [Test]
         public void Rendering_The_Blocked_Channel_Never_Touches_The_Sim()

@@ -1260,6 +1260,17 @@ namespace Perilune.Web
         /// the player. The command's other refusals — incapable, nothing to service, nowhere
         /// survivable to stand, somebody else already on it — are still SILENT, which is a real gap
         /// and is recorded in <c>docs/MECHANICS.md</c> §13 rather than papered over here.</para>
+        ///
+        /// <para>⭐⭐ <b>D5 (2026-08-03) — THE WRECK RULE IS NO LONGER THE ONLY THING THAT REACHES
+        /// THE PLAYER, AND THE ONE THAT JOINED IT IS NOT A REFUSAL OF THIS COMMAND AT ALL.</b> The
+        /// worst case was an order this command ACCEPTS and <c>MaintenanceSystem.DriveWorker</c>
+        /// then eats: the machine's staging tile is walkable and survivable but UNREACHABLE, so the
+        /// order is taken, she walks to the Parts stack, and the pickup branch abandons the job
+        /// silently (measured on the shipped wreck: taken tick 1, gone tick 171). It now raises
+        /// <see cref="WireFormat.ReasonNoRoute"/> from the frame after this method runs and KEEPS it
+        /// after the job dies — <see cref="OrderedWorksiteIsOutOfReach"/>, and
+        /// <c>MECHANICS</c> §13.25 b3 for the whole diagnosis. ⚠️ Note what did NOT change: this
+        /// method still enqueues, the command still accepts, and nothing here decides a refusal.</para>
         /// </summary>
         private void HandlePrioritise(WebCommand cmd)
         {
@@ -3506,6 +3517,91 @@ namespace Perilune.Web
         }
 
         /// <summary>
+        /// ⭐⭐ <b>D5 — CAN THE CREW MEMBER THE PLAYER ORDERED ACTUALLY WALK TO THIS MACHINE?</b>
+        /// False is the ordinary answer; TRUE is the sighting. The full diagnosis lives on
+        /// <see cref="WireFormat.ReasonNoRoute"/> — read it before touching this method.
+        ///
+        /// <para><b>BOTH QUESTIONS ARE THE SIM'S OWN AND NEITHER IS RE-DERIVED HERE.</b>
+        /// <c>MaintenanceSystem.TryFindStagingTile(..., forced: true)</c> is the call
+        /// <c>PrioritiseJobCommand</c> makes when it accepts the order and the call
+        /// <c>MaintenanceSystem.DriveWorker</c> makes on every tick she carries it;
+        /// <c>PathService.FindPath</c> is the call <c>DriveWorker</c> then makes with the tile it
+        /// returned. This method is those two calls in that order and nothing else, which is what
+        /// makes the badge and the executor incapable of disagreeing.</para>
+        ///
+        /// <para>⛔ <b>NO STAGING TILE AT ALL IS *NOT* THIS ANSWER.</b> A machine with no walkable,
+        /// survivable neighbour is the APPROACH question (<see cref="WireFormat.ReasonNoApproach"/>'s
+        /// subject), it is refused by <c>PrioritiseJobCommand</c> at issue time so no job is ever
+        /// created, and saying "no route" about it would point the player at a door when the problem
+        /// is a wall. Returning false here leaves that case exactly as it was — still silent, still
+        /// FILED (<c>MECHANICS</c> §13.25 b2), and deliberately not widened into by a package whose
+        /// subject is the order that WAS accepted.</para>
+        ///
+        /// <para><b>ONE STAGING TILE, NOT "ANY REACHABLE NEIGHBOUR".</b> <c>TryFindStagingTile</c>
+        /// returns the FIRST qualifying neighbour in canonical <c>Neighbor4</c> order and
+        /// <c>DriveWorker</c> paths to precisely that one. A machine whose first qualifying neighbour
+        /// is unreachable and whose second is reachable therefore really does lose the order, and
+        /// this row is the true statement about it. A kinder host-side sweep over all four would be a
+        /// second authority that disagrees with the sim — the defect this channel's header refuses by
+        /// name. (If that case is ever produced in play, the fix belongs in <c>MaintenanceSystem</c>,
+        /// not here.)</para>
+        ///
+        /// <para><b>COST.</b> One A* per pending order per render, in the state where the entry
+        /// survives the walk; <c>_prioritised</c> holds at most one entry per crew member and the
+        /// whole walk is gated on it being non-empty. Measured worst case (a FAILING search, which
+        /// exhausts her reachable region) on the wreck at boot: 103 µs, Debug. The arithmetic against
+        /// this channel's header — which talks a reader OUT of <c>FindPath</c> for the other three
+        /// walks, and is right to — is written out on <see cref="WireFormat.ReasonNoRoute"/>.</para>
+        ///
+        /// <para>⚠️ <b>THE SCRATCH LIST IS THIS SESSION'S, NEVER THE CITIZEN'S <c>Path</c>.</b>
+        /// <c>FindPath</c> WRITES its out-parameter, so passing <c>c.Path</c> would let a render
+        /// overwrite a live crew member's route — sim state, from the render half, which is the one
+        /// thing this builder may never do. Reused for the life of the session (the
+        /// <c>_prioritiseDrop</c> precedent), so a steady state allocates nothing.</para>
+        /// </summary>
+        private bool OrderedWorksiteIsOutOfReach(Citizen c, Device device)
+        {
+            if (!MaintenanceSystem.TryFindStagingTile(_sim, device.Pos, out var staging, forced: true)) return false;
+            return !_sim.Paths.FindPath(_sim, c.Pos, staging, _reachScratch);
+        }
+
+        /// <summary>Scratch for <see cref="OrderedWorksiteIsOutOfReach"/>'s pathfinder call. Never
+        /// read — only <c>FindPath</c>'s bool answer is used — and never a citizen's own
+        /// <c>Path</c>.</summary>
+        private readonly List<Int3> _reachScratch = new List<Int3>(64);
+
+        /// <summary>
+        /// ⭐⭐ <b>D5 — the row: <see cref="WireFormat.ReasonNoRoute"/> on the machine the player
+        /// pointed at.</b> Bounds-, fog- and duplicate-gated exactly as <see cref="AddUnfixableRow"/>
+        /// is, and for the same reasons — two crew members ordered at one machine are one blocked
+        /// machine, not two.
+        ///
+        /// <para>THE PREDICATE IS NOT RE-ASKED HERE. The caller established it; this method is the
+        /// channel's discipline and nothing about routes. Re-asking would double the A*.</para>
+        ///
+        /// <para><see cref="WireFormat.DetailNone"/>: the reason names no item. ⚠️ It could
+        /// plausibly carry the DOOR — and does not, deliberately. <c>Detail</c> is one int whose
+        /// meaning is decided by <c>Reason</c> (the M3-13 table on <c>BlockedCell</c>), a tile is
+        /// three ints, and "which door" is a question this host cannot answer without a second
+        /// authority on connectivity. The sentence points at the class of fix; finding the door is
+        /// the player's move.</para>
+        /// </summary>
+        private void AddNoRouteRow(Device device)
+        {
+            var p = device.Pos;
+            if (!_sim.World.InBounds(p)) return;
+            if ((_sim.World.GetFlags(p) & TileFlags.Explored) == 0) return;
+            for (int i = 0; i < _blockedScratch.Count; i++)
+            {
+                var row = _blockedScratch[i];
+                if (row.Order == WireFormat.OrderRepair && row.X == p.X && row.Y == p.Y && row.Deck == p.Z) return;
+            }
+            _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z,
+                                                           WireFormat.OrderRepair, WireFormat.ReasonNoRoute,
+                                                           WireFormat.DetailNone));
+        }
+
+        /// <summary>
         /// The sparse BLOCKED-ORDER layer — one <see cref="WireFormat.BlockedCell"/> per site the
         /// player queued that the sim's own rules refuse, read from the two order
         /// registries, the tile flag plane and (M2-9) this host's pending direct orders. See
@@ -3746,6 +3842,32 @@ namespace Perilune.Web
                     // the ORDER can, and an un-bypassed `IsUnfixableWreck` would stamp NO PARTS over
                     // a repair that is already under way three tiles from the stack.
                     bool taken = c.HeldByOrder && c.JobKind == JobKind.Maintain && c.JobTarget == device.Pos;
+
+                    // ⭐⭐ D5 — THE THIRD ARM OF THE WHITELIST, AND IT IS ASKED FIRST, BEFORE `taken`.
+                    // See WireFormat.ReasonNoRoute for the whole diagnosis. Two reasons for the
+                    // position, and neither is style:
+                    //
+                    // (1) IT MUST BE TRUE ON BOTH SIDES OF THE DROP. The sighting is one event with
+                    //     two halves — she is walking (taken == true) and then the sim has abandoned
+                    //     the job (taken == false). Asking after `taken` would badge nothing for the
+                    //     17 sim-seconds she walks, and asking it as a fallback AFTER the remove
+                    //     would badge nothing at all, because `taken` retires the entry. This arm is
+                    //     what keeps the record alive across the abandon: the whole point of the
+                    //     package is that the order does not evaporate, and an entry retired at tick
+                    //     1 evaporates with it.
+                    // (2) PRECEDENCE. A machine nobody can walk to will not be serviced whatever the
+                    //     ship's stock is, so this outranks the wreck rule below — the argument
+                    //     ReasonWorkTypeOff's own precedence paragraph makes about sending the player
+                    //     to the wrong screen.
+                    //
+                    // LIVE, NEVER LATCHED: open the door and this is false on the next frame, the
+                    // entry falls through to the retire rule below and the badge is gone.
+                    if (OrderedWorksiteIsOutOfReach(c, device))
+                    {
+                        AddNoRouteRow(device);
+                        continue;
+                    }
+
                     if (taken || !MaintenanceSystem.IsUnfixableWreck(_sim, device, forced: true))
                     {
                         _prioritised.Remove(c.Id);

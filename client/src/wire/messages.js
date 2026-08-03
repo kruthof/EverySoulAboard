@@ -589,13 +589,26 @@ export const BLOCKED_REASON_UNREACHABLE = 3;
  *  block. The player's next action is the WORK tab, which is why it is a different sentence from
  *  `air` (vent it) and `unreachable` (open the door). */
 export const BLOCKED_REASON_WORK_TYPE_OFF = 4;
+/** ⭐⭐ `no_route` — THE CREW MEMBER THE PLAYER ORDERED CANNOT WALK TO THE MACHINE (D5). Emitted for
+ *  REPAIR rows only, and only for a machine somebody directly ordered.
+ *
+ *  ⚠️ IT IS THE STRONG ANSWER, and that is exactly why it is not `unreachable`. `unreachable` is a
+ *  LATCHED RECORD OF A PAST ATTEMPT ("a claim was attempted here and it failed") and hedges about
+ *  the material; this one means the host ran the pathfinder, from her tile, to the tile the sim will
+ *  send her to, and it said no. Two answers, two codes — see `hosts/web/WireFormat.Blocked.cs`.
+ *
+ *  THE DEFECT IT CLOSES: right-click ▸ PRIORITISE: REPAIR on a machine behind a shut door, the order
+ *  is ACCEPTED, the dock reads "Heading to service X", and ~17 sim-seconds later it reads "Awaiting
+ *  orders" with nothing anywhere saying why. The player's next action is a ROUTE — a door, a dig —
+ *  which is why it is a different sentence from `no_approach` (there is nowhere to stand at all). */
+export const BLOCKED_REASON_NO_ROUTE = 5;
 
 /** Wire order → vocabulary name. Index IS the wire value, so APPEND-ONLY exactly as the C# is. */
 export const BLOCKED_ORDER_NAMES = Object.freeze(['dig', 'strip', 'build']);
 
 /** Wire reason → vocabulary name. Index IS the wire value; APPEND-ONLY. */
 export const BLOCKED_REASON_NAMES = Object.freeze([
-  'air', 'no_approach', 'no_consumable', 'unreachable', 'work_type_off',
+  'air', 'no_approach', 'no_consumable', 'unreachable', 'work_type_off', 'no_route',
 ]);
 
 /** Reason → the SHORT sentence a surface shows the player. Deliberately phrased as what is wrong
@@ -619,6 +632,12 @@ export const BLOCKED_REASON_TEXT = Object.freeze({
   // It points at the fix, like every other row: air → vent it, no_approach → dig to it,
   // work_type_off → open the WORK tab.
   work_type_off: 'NOBODY ABOARD IS ASSIGNED THAT WORK',
+  // ⭐⭐ D5. PAIRED WITH `no_approach` ON PURPOSE AND THE PAIR IS THE WHOLE VOCABULARY: "no way to
+  // STAND next to it" (there is nowhere to put a body) versus "no way to WALK to it" (there is, and
+  // she cannot get there). Two different fixes — dig it out, versus open the route — so two
+  // sentences. Names the WORLD, never the dispatcher, like every other row; and it says nothing
+  // about WHICH door, because this host cannot know that without a second authority on connectivity.
+  no_route: 'NO WAY TO WALK TO IT',
 });
 
 /** ⭐ M3-13 — the wire's "this reason has nothing to add", mirroring `WireFormat.DetailNone`.
