@@ -440,9 +440,34 @@ export function decodeItems(msg) {
  * ⚠️ IT IS A PER-KIND FACT, so it is constant for the life of a session — which is exactly why it
  * must be READ and not guessed: a client-side list of never-serviceable kinds is a hand mirror of a
  * DEF, and it drifts silently the day content moves.
- * @typedef {[number,number,number,number,number,number,number,number]} DeviceTuple
+ *
+ * ⭐⭐ `spend` IS THE TENTH ELEMENT — WHICH CONSUMABLE A SERVICE AT THIS MACHINE WOULD EAT, right now.
+ * A raw `ItemKind` byte, or `SPEND_NOTHING` (the free empty-handed jury-rig), or `SPEND_UNKNOWN`
+ * (nothing to say). It is `MaintenanceSystem.WhatARepairWouldSpend` asked with `forced: true` — the
+ * dispatcher's OWN fetch funnel, not `WantedRepairConsumable`, which is tier 0 unconditionally and
+ * would say PARTS on a Seals-only ship. ⚠️ IT IS A HINT, NOT A PROMISE: a repair is 9 000 ticks of
+ * fetch-and-service and the funnel re-runs at the fetch, so stock can move underneath it. Nothing is
+ * reserved.
+ * @typedef {[number,number,number,number,number,number,number,number,number,number]} DeviceTuple
  * @typedef {{type:'devices', cells:DeviceTuple[]}} DevicesMsg
  */
+
+/**
+ * ⛔ THE `spend` ELEMENT'S "NOTHING TO SAY", mirroring `WireFormat.SpendUnknown`. An older host's
+ * short row decodes to this, and so does a machine the sim would refuse a service to outright
+ * (`RepairSpend.NoService`). Both mean the surface says NOTHING about a price — D4's own send-back
+ * lesson, override-never-source: an absent field must never become a fabricated value, and a
+ * fabricated PARTS is how a player spends the ship's last one believing it was something else.
+ */
+export const SPEND_UNKNOWN = -1;
+
+/**
+ * ⛔ THE `spend` ELEMENT'S "THIS SERVICE IS FREE", mirroring `WireFormat.SpendNothing` — the
+ * empty-handed jury-rig. DISTINCT FROM `SPEND_UNKNOWN` on purpose: "the ship pays nothing for this
+ * repair" is a fact worth telling the player and "this client does not know" is a silence, and one
+ * sentinel for both would turn every unknown into a cheerful, false *SPENDS NOTHING*.
+ */
+export const SPEND_NOTHING = -2;
 
 /**
  * Decode the sparse `devices` channel. Mirrors WireFormat.Devices:
@@ -471,8 +496,15 @@ export function decodeItems(msg) {
  * stakes reversed: a missing bit read as 0 would paint `NO AIR AT THE WORKSITE — SHE MAY DIE` over
  * every machine on the ship the moment a host and a client fell out of step. A hazard warning that is
  * always on is a hazard warning nobody reads.
+ *
+ * ⭐⭐ `spend` (element 10) IS THE FOURTH AND IT BREAKS THE PATTERN — its absent value is
+ * `SPEND_UNKNOWN`, WHICH IS NOT A PRICE. The rule is unchanged and this IS the rule: the absent value
+ * must reproduce the behaviour that shipped before the element existed, and before it existed the
+ * offer said nothing about a price at all. Here that means a SENTINEL rather than a default kind —
+ * defaulting to `ItemKind.Parts` (5) would have every short row confidently name the one item the
+ * shipped wreck has exactly ONE of. Absent means SAY NOTHING, never GUESS.
  * @param {{type:string, cells?:Array}|null} msg
- * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number}[]|null}
+ * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}[]|null}
  */
 export function decodeDevices(msg) {
   if (!msg || msg.type !== 'devices' || !Array.isArray(msg.cells)) return null;
@@ -487,6 +519,11 @@ export function decodeDevices(msg) {
       // is: an older host that sends eight elements must mean "as before", never "every machine
       // aboard is lethal", which would put a death warning on the whole ship from a missing field.
       air: t.length > 8 ? (t[8] | 0) : 1,
+      // ⭐⭐ `spend` — which consumable a service here would eat. ⚠️ THE FALLBACK IS THE SENTINEL, NOT
+      // A KIND: an older host that sends nine elements means "as before", and before this element
+      // existed the offer named no price. A default of 5 (`Parts`) would be a fabricated answer on
+      // every short row.
+      spend: t.length > 9 ? (t[9] | 0) : SPEND_UNKNOWN,
     });
   }
   return out;
@@ -619,6 +656,15 @@ export const ITEM_WORDS = Object.freeze({
   5: 'PARTS',
   6: 'CONTROLLER MODULE',
   7: 'SEALS',
+  // ⭐ SWARF (9) — added with the `spend` element, which put a SECOND consumer on this table: the
+  // PRIORITISE offer's price clause names whichever rung of `RepairConsumableTier` the service would
+  // actually eat, and the bottom rung is Swarf. Without this entry `itemWords(9)` answers `''` and
+  // the clause silently vanishes on exactly the ship where the price matters most — a salvage-only
+  // wreck. ⛔ ITS TWIN IN `ThawGate.ItemWords` LANDED IN THE SAME COMMIT: the pin below is over
+  // EXPLICIT case arms, and `ItemWords`' `default:` arm already returned "SWARF" by
+  // `ToString().ToUpperInvariant()`, so the C# half is behaviourally a no-op and exists to keep the
+  // two tables provably one vocabulary.
+  9: 'SWARF',
 });
 
 /** The player's words for an `ItemKind` byte, or '' when this client has never heard of it. PURE. */

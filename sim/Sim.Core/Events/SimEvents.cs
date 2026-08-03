@@ -137,6 +137,87 @@ namespace Perilune.Sim
     }
 
     /// <summary>
+    /// Which rung of <c>MaintenanceSystem</c>'s ladder a finished service was — the ONE thing that
+    /// distinguishes a machine restored to new from a machine patched with the shredded remains of
+    /// another machine. Persisted nowhere; it rides <see cref="RepairCompletedEvent"/> only, so it
+    /// is free to reorder — but it will not be, because it mirrors
+    /// <c>MaintenanceSystem.RestoredCondition</c>'s four arms one for one.
+    /// </summary>
+    public enum RepairTier : byte
+    {
+        /// <summary>No consumable was in hand: the machine was patched to
+        /// <c>wear.jury_rig_condition</c>, not fixed.</summary>
+        JuryRig = 0,
+        /// <summary><see cref="ItemKind.Swarf"/> — the salvage patch-up rung.</summary>
+        SalvagePatch = 1,
+        /// <summary><see cref="ItemKind.Seals"/> — the routine service rung.</summary>
+        Service = 2,
+        /// <summary><see cref="ItemKind.Parts"/> — a full overhaul, Condition back to 1.0.</summary>
+        Overhaul = 3,
+    }
+
+    /// <summary>
+    /// ⭐⭐ THE REPAIR ARRIVED. Published by <c>MaintenanceSystem.DriveWorker</c> on the tick a
+    /// service's work phase actually ends and <c>Device.Condition</c> is written — never when a job
+    /// is abandoned, never when a worker is merely recruited.
+    ///
+    /// <para><b>WHY AN EVENT AND NOT A DIRECT <c>HistorySystem.Record</c>:</b> the rule is pinned,
+    /// not stylistic. <c>MachineWearSystem.cs</c> is an ECONOMY file
+    /// (<c>ArchitectureBoundaryTests.EconomyFilesInSharedDirectories</c>), and
+    /// <c>Economy_KnowsNothingAboutSoulsPresentationOrPhysiology</c> forbids the identifier
+    /// <c>Chronicle</c> there with the reason written into the test itself: <i>"narrative record —
+    /// publish an event, let HistorySystem write it"</i>. <see cref="ConstructionCompletedEvent"/>
+    /// and <see cref="DeconstructCompletedEvent"/> are the two reference implementations.</para>
+    ///
+    /// <para>The device's KIND and NAME ride the event for the same reason
+    /// <see cref="DeconstructCompletedEvent.Device"/> does — not because the entity is gone (it is
+    /// not), but because HistorySystem reads a tick late and a machine can be stripped, or a
+    /// worker can die, in between. The line must be able to name what was fixed with no lookup.</para>
+    ///
+    /// <para>TRANSIENT, like every other channel on this bus: not saved, not folded into
+    /// <c>Simulation.StateHash</c>. What IS hashed is the history ENTRY it produces.</para>
+    /// </summary>
+    public struct RepairCompletedEvent : ISimEvent
+    {
+        public Int3 Pos;
+        public uint DeviceId;
+        public uint WorkerId;
+        /// <summary><see cref="DeviceKind"/> as a byte (append-only contract).</summary>
+        public byte Device;
+        /// <summary><see cref="RepairTier"/> as a byte — which of the four arms paid for it.</summary>
+        public byte Tier;
+        /// <summary>The device's authored name, so the line can say <i>which</i> scrubber.</summary>
+        public string DeviceName;
+    }
+
+    /// <summary>
+    /// ⭐ A DEVICE BECAME SCRIPTABLE. Published by <c>CommissionDeviceCommand.Execute</c> after the
+    /// module is spent and <c>Device.Scriptable</c> is flipped — so a refusal (no device, already
+    /// commissioned, cannot pay) announces nothing, exactly as
+    /// <see cref="DeconstructCompletedEvent"/>'s validate-on-arrival arm announces nothing.
+    ///
+    /// <para>A COMMAND publishing onto the bus is precedented in the same file
+    /// (<c>SetDoorStateCommand</c> publishes <c>DoorStateChangedEvent</c>; three commands publish
+    /// <c>TileChangedEvent</c>), and it is the route the architecture boundary permits: the direct
+    /// <c>HistorySystem.Record</c> route CryoSystem uses needs a <c>sim.Systems</c> walk, whose
+    /// occurrence count in <c>Commands.cs</c> is pinned at 2 by
+    /// <c>Economy_ReachesIntoShipSystemsAtExactlyTheAllowlistedSites</c>.</para>
+    ///
+    /// <para>Commands execute in phase 1 of a tick and the bus swaps at that tick's end, so
+    /// HistorySystem reads this on the FOLLOWING tick — one tick later than the flip, which is the
+    /// same lag every other Chronicle line already carries.</para>
+    /// </summary>
+    public struct DeviceCommissionedEvent : ISimEvent
+    {
+        public Int3 Pos;
+        public uint DeviceId;
+        /// <summary><see cref="DeviceKind"/> as a byte (append-only contract).</summary>
+        public byte Device;
+        /// <summary>The device's authored name — the handle the player will type at the console.</summary>
+        public string DeviceName;
+    }
+
+    /// <summary>
     /// ⭐ M3-2 — A CAPSULE OPENED AND A PERSON CAME OUT. Published by
     /// <see cref="CryoSystem"/> exactly once per thaw, on the tick the pod actually opens —
     /// never on a cycle that merely finished counting and found nowhere to put anybody

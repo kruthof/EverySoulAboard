@@ -780,9 +780,15 @@ export class MossScreen {
     // §5.1 — say the weak join out loud rather than let the column imply a live diagnosis. The
     // wording is the MODEL's `FAULT_CAVEAT` where it exports one, so the log and the DETAIL screen
     // cannot drift into two different admissions of the same limitation.
+    // ⭐ THE SECOND HALF OF THE FALLBACK WAS RETRACTED ON 2026-08-02 (defect D1). It read
+    // "MAINTENANCE PUBLISHES NOTHING ON REPAIR, SO RECOVERIES CANNOT BE SHOWN", and
+    // `MaintenanceSystem` now publishes `RepairCompletedEvent` — every completed service writes a
+    // `[Repair]` line, so recoveries appear in this very list. The sentence was unreachable (both
+    // the real model and the test fake export `FAULT_CAVEAT`, so `||` never fired) and it was still
+    // wrong to leave standing: the next person to delete the export would have shipped the lie.
+    // What is left is the one claim this screen can make about itself.
     wrap.appendChild(mk(doc, 'div', 'moss-note', S(this.M.FAULT_CAVEAT) ||
-      'A FAULT LINE IS THE LAST THING THAT WENT WRONG, NOT THE CURRENT PROBLEM: ' +
-      'MAINTENANCE PUBLISHES NOTHING ON REPAIR, SO RECOVERIES CANNOT BE SHOWN.'));
+      'A FAULT LINE IS THE LAST THING THAT WENT WRONG, NOT THE CURRENT PROBLEM.'));
     this.bodyEl.replaceChildren(wrap);
     this.advisoryEl.replaceChildren();
   }

@@ -2979,6 +2979,25 @@ namespace Perilune.Web
             var world = _sim.World;
             var defs = _sim.Defs;
             var devices = _sim.Devices.Items;
+            // ⭐⭐ THE PRICE PROLOGUE — BOTH POSSIBLE ANSWERS, COMPUTED ONCE FOR THE WHOLE RENDER.
+            // `MaintenanceSystem.WhatARepairWouldSpend` is a fact about the SHIP'S STOCK with exactly
+            // one device input, `IsBelowWreckFloor` (the Swarf rung's precondition), so there are TWO
+            // answers per render and the row loop selects between them with one float compare.
+            //
+            // ⛔ IT IS NOT AN OPTIMISATION THAT CAN BE SKIPPED: the funnel is up to THREE full
+            // item-store scans and this loop runs ~146 tile-resident rows at 10 Hz, a cost
+            // `FindNearestConsumable`'s own comment already files as owed and unmeasured. Two scans
+            // per render instead of 438 is the difference between an element and a regression.
+            //
+            // `forced: true` because THE OFFER PRICES AN ORDER. D3's autonomous reserve lives inside
+            // the funnel, so the unforced answer is what the STANDING RULE may spend — which on a ship
+            // at or below four loose units is nothing at all, and would print a jury-rig price over
+            // stock the player can still spend by hand. Every other host-side caller of this file's
+            // gates passes `forced: true` for the same reason (MECHANICS.md §7).
+            int spendWreck = WireFormat.RepairSpendWire(
+                MaintenanceSystem.WhatARepairWouldSpend(_sim, belowWreckFloor: true, forced: true, out var kindWreck), kindWreck);
+            int spendSound = WireFormat.RepairSpendWire(
+                MaintenanceSystem.WhatARepairWouldSpend(_sim, belowWreckFloor: false, forced: true, out var kindSound), kindSound);
             for (int n = 0; n < devices.Count; n++)
             {
                 var device = devices[n];
@@ -3015,7 +3034,14 @@ namespace Perilune.Web
                     // ⭐ D4 — COULD A WORKER BE STAGED HERE WITHOUT THE ORDER WAIVING THE AIR RULE?
                     // See WireFormat.Devices.cs's `air` param for what the bit means and why the
                     // approach half is deliberately not folded into it.
-                    StagingAirBit(device.Pos)));
+                    StagingAirBit(device.Pos),
+                    // ⭐⭐ WHICH CONSUMABLE A SERVICE HERE WOULD EAT — one of the two answers computed
+                    // in the prologue, selected by the ONE device input that can change it. The
+                    // discriminator is asked of MaintenanceSystem.IsBelowWreckFloor and NEVER spelled
+                    // `device.Condition < defs.Wear.WreckThreshold` here: that comparison is the Swarf
+                    // rung's precondition and it has one declaration in the sim, beside the fetch that
+                    // obeys it. A host-side copy is how the price and the spend come apart.
+                    MaintenanceSystem.IsBelowWreckFloor(_sim, device) ? spendWreck : spendSound));
             }
             return _devicesScratch;
         }
