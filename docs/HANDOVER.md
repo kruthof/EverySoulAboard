@@ -52,6 +52,13 @@ every lane pin-neutral, proven mechanically (0-line diffs on Golden/ci.sh/conten
   names the TYPE · off-switch never pre-empts · "Awaiting orders" short form · onboarding
   Space row · work-type▸reach inversion · BUILD label collision · ascending click cycle ·
   door art · `'/'` glyph · Rell reads `general crew` · sleeping crew drawn standing.
+- ★ **Owner 08-03, live play: the tool palette reads as an INERT placeholder.** Arming
+  WORKS (rig-verified same day: WALL click → all three surfaces flip to BUILD, ESC back)
+  but the feedback is text-only — the BUTTON itself never changes state, so the row does
+  not feel clickable, and the build content is thin (only WALL/FLOOR have materials; the
+  rest place ghosts into art that isn't there yet). OWNER RULED: enrichment FOLLOWS THE
+  ROADMAP (M4-6 RUG/SHELF · M5-4 art pass · M5-6 removal · unskinned-glyph bug) — no lane
+  now. The cheap pre-playtest candidate, if any, is an armed/pressed state on the button.
 
 ## Open — unscheduled (the load-bearing subset; ★ = new this session)
 
