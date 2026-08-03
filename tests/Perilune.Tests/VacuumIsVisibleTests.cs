@@ -360,7 +360,7 @@ namespace Perilune.Tests
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 var f = part.Split(']')[0].Split(',');
-                Assert.AreEqual(9, f.Length, "a devices tuple is NINE elements since D4");
+                Assert.AreEqual(10, f.Length, "a devices tuple is TEN elements since the price landed");
                 map[f[0] + "," + f[1] + "," + f[2]] = int.Parse(f[8], CultureInfo.InvariantCulture);
             }
             return map;

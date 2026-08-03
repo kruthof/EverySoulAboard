@@ -458,6 +458,92 @@ export function taskWhat(task) {
   return i < 0 ? task : task.slice(0, i);
 }
 
+/**
+ * ⭐⭐ D4 fix-back — THE HOST'S AIR WARNING, VERBATIM. The client's half of a second two-sided contract:
+ * the host half is `GameSession.AirWarningClause` in `hosts/web/GameSession.cs` (:4034).
+ * ⛔ CHANGE ONE AND YOU MUST CHANGE THE OTHER — `client/test/why-line.test.js` pins the pairing, and
+ * unlike `WHY_SEPARATOR` it pins it against the HOST FILE ITSELF, because this literal is a whole
+ * phrase rather than a punctuation mark and a silent drift would simply switch the fix below off.
+ *
+ * ⚠️ THE CLIENT KNOWS THIS PHRASE FOR ONE REASON ONLY: to protect it from the ellipsis. Nothing here
+ * re-derives the warning, decides when it applies, or renders it anywhere the host did not put it —
+ * `AtmosphereSafety.IsBreathable` and the `HeldByOrder` gate are the host's, upstream, untouched.
+ * ⛔ AND IT MUST NOT BECOME A SECOND `WHY_SEPARATOR`: the middot clause rides INSIDE the *what* half
+ * ON PURPOSE (see `GameSession.cs:4019-4030` — spelt with an em dash it would be cut by `taskWhat`
+ * in exactly the case that matters most). Splitting it off and dropping it from the docks is the one
+ * change this constant exists to make impossible.
+ */
+export const AIR_WARNING_CLAUSE = ' · NO AIR';
+
+/**
+ * ⭐ THE TWO CREW DOCKS' CHARACTER BUDGETS — MEASURED IN REAL CHROME, NOT DERIVED FROM THE CSS.
+ *
+ * `client/tools/why-line-shot.mjs` reads `clientWidth` off each shipped element and walks `'M'.repeat(n)`
+ * up until `scrollWidth > clientWidth`. On `--ship wreck` at 1600×1000, this tree (2026-08-02):
+ *
+ *   `.ov-crewtask`  145 px @ 8.5px Space Mono + 0.34px letter-spacing ⇒ **26 characters** (styles.css:1014)
+ *   `.rz-crewtask`  118 px @ 8px   Space Mono + 0.32px letter-spacing ⇒ **22 characters** (styles.css:1381)
+ *
+ * ⚠️ THE ROOM ZOOM NUMBER IS 22, NOT THE 23 EVERY COMMENT IN THIS REPO SAID. The 120 px/23 figure was
+ * carried forward from M2-6 and is off by one dock border plus one character: `Servicing fab… · NO AIR`
+ * (23 chars) measures 120 px in a 118 px box and IS CLIPPED. M2-20's own browser run had the right
+ * number all along ("146 px in a 118 px box") and the derived figure drifted away from it. This is the
+ * repo's own rule arriving on time — a count you did not measure yourself is not evidence.
+ *
+ * ⛔ THEY ARE TWO NUMBERS AND NOT ONE. Clamping the Overview to the Room Zoom's budget would cost four
+ * characters of device name on the surface the player reads most (`Servicing fa…` where `Servicing
+ * fabric…` fits), for no reason except that a different dock is narrower. Each view passes its own.
+ *
+ * ⚠️ AND THE FIX IS STILL THE TEXT, NEVER THE GEOMETRY — M2-20's precedent (`GameSession.cs:4152-4180`),
+ * `overview-view.js`'s dock comment and VS-Z-52 all pre-argue against widening these islands, and this
+ * package does not move one pixel of CSS.
+ */
+export const OV_DOCK_TASK_CHARS = 26;
+export const RZ_DOCK_TASK_CHARS = 22;
+
+/**
+ * ⭐⭐ D4 fix-back — THE STRING A NARROW CREW DOCK RENDERS: the *what* half, shortened so that the AIR
+ * WARNING SURVIVES instead of being the part the ellipsis eats.
+ *
+ * <b>THE DEFECT, MEASURED.</b> D4 made the host say `"Servicing fabricator_1 · NO AIR"` — 31
+ * characters. Both docks ellipsize by CSS, so the row read `"Servicing fabricator…"` and
+ * `"Servicing fabri…"`: the clipped tail is EXACTLY the warning, on the only two surfaces that show a
+ * crew member's task inside a room (the Room Zoom has no selected readout at all — M4 gap). A pawn
+ * the player ordered into a vacuum was silently normal again, which is D4's own defect wearing a
+ * stylesheet.
+ *
+ * <b>THE RULE, and it is deliberately narrow:</b>
+ *   1. it fits ⇒ RETURN IT UNTOUCHED. Every clause-free label — which under OD-H is nearly every
+ *      label for the player's whole first hour — is byte-identical to what shipped before.
+ *   2. it does not fit and carries NO warning ⇒ RETURN IT UNTOUCHED, and let CSS ellipsize exactly as
+ *      it always has. ⛔ This package does not take over truncation in general; a client that started
+ *      shortening every long label would be a second, invisible opinion about the host's prose.
+ *   3. it does not fit and ENDS in the warning ⇒ shorten the BASE and keep the warning whole.
+ *      `"Servicing fabricator_1 · NO AIR"` ⇒ `"Servicing fabric… · NO AIR"` (26) / `"Servicing fa… · NO AIR"` (22).
+ *
+ * The base is trimmed before the ellipsis is appended, so a cut landing on a space cannot ship
+ * `"Servicing … · NO AIR"` — the same hygiene `why-line.test.js` leg (a) demands of the em-dash split.
+ *
+ * PURE. No DOM, no measurement, no font metric: the budget is a MEASURED CONSTANT passed in by the
+ * view that owns the box, so this function is testable in node and identical on both surfaces.
+ * ⚠️ Character-counted rather than pixel-counted BECAUSE THE DOCKS ARE MONOSPACE — Space Mono, one
+ * advance per character including `·` and `…` (verified in the browser: 22 chars = 118 px = the box).
+ * A proportional font would make this wrong, and the rig is what would catch it.
+ *
+ * @param {unknown} task the RAW roster label (with or without either clause)
+ * @param {number} [budget] the dock's measured character budget; omitted ⇒ no shortening at all
+ */
+export function dockTask(task, budget) {
+  const what = taskWhat(task);
+  if (!Number.isFinite(budget) || budget <= 0) return what;   // no box declared ⇒ the pre-D4 fix-back string
+  if (what.length <= budget) return what;                     // rule 1 — it fits
+  if (!what.endsWith(AIR_WARNING_CLAUSE)) return what;        // rule 2 — nothing to protect
+  const keep = budget - AIR_WARNING_CLAUSE.length - 1;        // -1 for the ellipsis this adds
+  if (keep < 1) return what;                                  // the box cannot hold the warning at all
+  const base = what.slice(0, what.length - AIR_WARNING_CLAUSE.length);
+  return base.slice(0, keep).trimEnd() + '…' + AIR_WARNING_CLAUSE;
+}
+
 /** The CREW WATCH task cell for a roster entry: the label the host sent plus whether it counts as
  *  real work (so the row can dim the doing-nothing case instead of implying activity). A crew
  *  member en route to a job counts — they are assigned, just not there yet. PURE.
@@ -470,20 +556,30 @@ export function taskWhat(task) {
  *
  *  ⭐ M2-6 fix-back — `what` IS THE FIELD THE TWO CREW DOCKS RENDER, and `text` the one the
  *  Overview's selected readout renders. They differ only for a clause-bearing label, and the split
- *  exists because the docks are TOO NARROW TO HOLD ONE: `.ov-crewtask` fits ~26 characters (147 px)
- *  and `.rz-crewtask` ~23 (120 px) at the shipped Space Mono sizes, against clause-bearing labels of
+ *  exists because the docks are TOO NARROW TO HOLD ONE: `.ov-crewtask` fits 26 characters (145 px)
+ *  and `.rz-crewtask` 22 (118 px) at the shipped Space Mono sizes (MEASURED — see the budgets above;
+ *  this line said ~26/~23 at 147/120 px until D4 fix-back walked the boxes), against labels of
  *  43–54. Rendering the full string there does not truncate the explanation, it truncates the
  *  PAYLOAD — the priority number is past the ellipsis 100% of the time and the row reads
  *  `"Servicing door_d0_s0 — Re…"`, which is worse than not saying it. ⛔ The fix is the TEXT, never
  *  the dock geometry: that is M2-20's precedent, which shortened its own sentence rather than widen
  *  two shared docks for one label. The whole sentence is fully readable in `.ov-task`
- *  (266 px, wraps), which renders the raw wire field and is deliberately NOT on this derivation. */
-export function watchTask(entry) {
+ *  (264 px, wraps — MEASURED `clientWidth` in real Chrome by `why-line-shot.mjs` STEP 4; this repo
+ *  carried 266 from M2-6), which renders the raw wire field and is deliberately NOT on this derivation.
+ *
+ *  ⭐ D4 fix-back — `what` NOW TAKES THE DOCK'S OWN MEASURED BUDGET (`dockTask` above), because
+ *  dropping the ranking clause is no longer enough: D4's air warning rides INSIDE the *what* half by
+ *  design and `"Servicing fabricator_1 · NO AIR"` is 31 characters against 26 and 22, so the CSS
+ *  ellipsis ate the warning and nothing else. Each view passes its own constant
+ *  (`OV_DOCK_TASK_CHARS` / `RZ_DOCK_TASK_CHARS`); omitting it — which the deprecated console shell
+ *  does, and which renders `text` anyway — leaves this derivation exactly as it was.
+ *  @param {*} entry a roster row @param {number} [budget] the calling dock's character budget */
+export function watchTask(entry, budget) {
   const task = entry && typeof entry.task === 'string' ? entry.task.trim() : '';
   const verb = taskVerb(task);
   return {
     text: task || '—',
-    what: taskWhat(task) || '—',
+    what: dockTask(task, budget) || '—',
     working: taskTag(task) != null || verb === EN_ROUTE_VERB,
     waiting: verb === AWAITING_VERB,
   };

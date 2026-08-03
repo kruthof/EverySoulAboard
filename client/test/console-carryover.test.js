@@ -187,9 +187,14 @@ function wired(source, tokens) {
 // label is 43–54 — see `console-model.js`'s `watchTask`. The token had to move with the line it
 // pins; what it PROVES is unchanged (the row still writes the host's sentence through the shared
 // derivation), and the negative control below still bites.
+// ⭐ D4 fix-back: the call token now carries the dock's MEASURED character budget
+// (`watchTask(e, OV_DOCK_TASK_CHARS)` — 145 px ⇒ 26 chars, browser-measured). Same reason as the
+// `t.text` → `t.what` move above: the token has to travel with the line it names, and what it PROVES
+// is unchanged. It is still the call WITH an argument, so it still cannot be satisfied by the
+// `import { … watchTask … }` line at the top of the file.
 const CREW_TASK_TOKENS = [
   '<span class="ov-crewtask"></span>', "querySelector('.ov-crewtask')",
-  'watchTask(e)', 'setText(rec.taskEl, t.what)', "setCls(rec.taskEl, 'working'",
+  'watchTask(e, OV_DOCK_TASK_CHARS)', 'setText(rec.taskEl, t.what)', "setCls(rec.taskEl, 'working'",
 ];
 
 test('B1: the Overview CREW WATCH row carries a task line fed by the shared watchTask derivation', () => {

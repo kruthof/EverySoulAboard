@@ -32,7 +32,7 @@ import { STOCK_KINDS } from './stock-filter-model.js';
 // defect the `blocked` channel itself exists to argue against.
 // ⭐ M3-13 — `blockedReasonSentence`, NOT `BLOCKED_REASON_TEXT`: a row can carry a `detail` that
 // changes the sentence (`no_consumable` names the item), and the table alone cannot see it.
-import { blockedReasonSentence } from '../wire/messages.js';
+import { blockedReasonSentence, SPEND_UNKNOWN } from '../wire/messages.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -1067,10 +1067,10 @@ export function itemIdForStockKind(kind) {
  * merges; it is not silently dropped, because a channel that disagreed with the sim about one-per-tile
  * is a fact worth being able to see rather than one to paper over.
  *
- * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number}[]|null} devices
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}[]|null} devices
  *        decodeDevices() output
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
- * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number}>}
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}>}
  */
 export function roomDeviceConditions(devices, focusRoom) {
   const out = new Map();
@@ -1092,6 +1092,11 @@ export function roomDeviceConditions(devices, focusRoom) {
       // the vacuum. ⚠️ THE FALLBACK IS 1, matching `decodeDevices`: an absent value means the OLD
       // behaviour (offer with no hazard clause), never "warn on every machine aboard".
       air: d.air === undefined ? 1 : (d.air | 0),
+      // ⭐⭐ `spend` (which consumable a service here would eat) is what `prioritiseOffer` asks before
+      // it promises a repair the ship's last Part pays for. ⚠️ THE FALLBACK IS THE SENTINEL AND NOT A
+      // KIND — the other three fall back to their OLD BEHAVIOUR and so does this one: before the
+      // element existed the offer named no price, so absent means SAY NOTHING.
+      spend: d.spend === undefined ? SPEND_UNKNOWN : (d.spend | 0),
     });
   }
   return out;
@@ -1110,10 +1115,10 @@ export function roomDeviceConditions(devices, focusRoom) {
  * Same key (`"x,y"`), same value shape and the same LAST-ROW-WINS rule as `roomDeviceConditions`, so
  * `client/src/items/wear.js` sees one contract from both surfaces.
  *
- * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number}[]|null} devices
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}[]|null} devices
  *        decodeDevices() output
  * @param {number} deck
- * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number}>}
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}>}
  */
 export function deckDeviceConditions(devices, deck) {
   const out = new Map();
@@ -1142,6 +1147,9 @@ export function deckDeviceConditions(devices, deck) {
       // join (`items/wear.js`) reads both models, and a field on one and not the other is two
       // contracts wearing one name. Same 1-default as `decodeDevices`.
       air: d.air === undefined ? 1 : (d.air | 0),
+      // ⭐⭐ `spend` is carried here for the SAME SHAPE-PARITY reason, with the same sentinel default
+      // as `decodeDevices`. The Overview has no right-click repair menu, so it has no consumer today.
+      spend: d.spend === undefined ? SPEND_UNKNOWN : (d.spend | 0),
     });
   }
   return out;

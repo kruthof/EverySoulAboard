@@ -103,7 +103,14 @@ namespace Perilune.Tests
             Deliver(sim, h);
 
             Assert.That(h.Entries.Count, Is.EqualTo(5));
-            AssertHasKind(h, HistoryKind.Brownout, 0, 0);
+            // ⭐ D6 CHANGED THIS ROW, AND IT IS A CONTRACT CHANGE RATHER THAN A FIXTURE TWEAK: a
+            // brownout entry now carries the NETWORK ID in SubjectA (it was 0) and an EPISODE WORD
+            // in SubjectB — `HistorySystem.EpisodeWord(edges, shedding)`, i.e. `(1 << 1) | 1 == 3`
+            // for the first edge of a shedding episode. Both are folded into the state checksum, so
+            // this is the shape every save and every hash sees. The DIRECTION BIT is not decoration:
+            // it is what lets RecordBrownout tell a real edge from the duplicate `PowerSystem`
+            // re-publishes after a reload, and without it a mid-brownout save does not replay.
+            AssertHasKind(h, HistoryKind.Brownout, 3, HistorySystem.EpisodeWord(1, shedding: true));
             AssertHasKind(h, HistoryKind.RelationshipChanged, a.Id, b.Id);
             AssertHasKind(h, HistoryKind.Argument, a.Id, b.Id);
             AssertHasKind(h, HistoryKind.Bond, a.Id, b.Id);

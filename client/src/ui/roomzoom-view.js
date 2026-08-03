@@ -62,7 +62,7 @@ import { buildDragTiles, dragCaption } from './build-drag-model.js';
 import { prioritiseOffer } from './prioritise-model.js';
 // `surnameOf` + `watchTask` are the Overview CREW WATCH's own two derivations, imported rather than
 // re-stated so the dock in a room and the dock on the ship cannot word one roster row two ways.
-import { taskTag, surnameOf, watchTask } from './console-model.js';
+import { taskTag, surnameOf, watchTask, RZ_DOCK_TASK_CHARS } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
 import {
   materialsForTool, materialItemId, activeMaterial, setMaterial, toolHasMaterial, defaultMaterials,
@@ -1039,12 +1039,21 @@ function paintCrewDock(rows) {
     // this package; a word that reached CREW WATCH and not this dock would make the room the place
     // where the game stops telling you it is waiting on you. `AwaitingOrdersTests` pins both.
     // ⭐ M2-6 fix-back — `t.what`, NOT `t.text`, for the same reason as the Overview's dock and
-    // more so: this one is 120 px ≈ 23 characters. See `console-model.js`'s `watchTask`.
+    // more so: this one is 118 px = 22 characters (measured). See `console-model.js`'s `watchTask`.
     // ⚠️ THIS SURFACE HAS NO SELECTED READOUT, so the ranking clause is not reachable here at all.
     // That is a KNOWN GAP filed as an M4 Persona question, not a silent one — and it is still
     // strictly better than a row that shows the first two letters of the answer.
-    const t = watchTask(r.entry);
+    // ⭐ D4 fix-back — the budget is MEASURED and it is 22, not the 23 the comment above inherited:
+    // `.rz-crewtask` is 118 px at 8px Space Mono, and `"Servicing fab… · NO AIR"` (23) measures 120 px
+    // and clips. THIS IS THE DOCK THE PACKAGE IS FOR — with no readout on this surface, the row below
+    // is the ONLY place inside a room where a held worker's air warning can appear at all.
+    const t = watchTask(r.entry, RZ_DOCK_TASK_CHARS);
     setText(rec.taskEl, t.what);
+    // ⭐ D4 fix-back, the BONUS surface — and on THIS surface it is the only full-sentence rendering
+    // that exists at all: the Room Zoom has no selected readout (the M4 Persona gap named above), so
+    // without this the ranking clause and the full device name are unreachable inside a room. Still
+    // not the fix — hover is invisible feedback, which is why the warning is in the row itself.
+    setAttr(rec.taskEl, 'title', t.text);
     setCls(rec.taskEl, 'working', t.working);
     setCls(rec.taskEl, 'waiting', t.waiting);
     // WHERE: 'HERE' when they are standing in the room on screen, else the room they are in, else

@@ -501,6 +501,38 @@ namespace Perilune.Tests
         /// labels only. The non-vacuity assertion at the end proves the fixture really can produce a
         /// clause, so "no separator found" is a fact about the labels and not about a pawn who was
         /// never going to be given one.</para>
+        ///
+        /// <para>⭐⭐ <b>WIDENED (D4 fix-back) — AND THE WIDENING IS A REPAIR OF THIS TEST'S OWN BLIND
+        /// SPOT, the ninth trap shape.</b> D4 gave <see cref="GameSession.TaskLabel"/> a SECOND
+        /// clause, <c>" · NO AIR"</c>, gated on <see cref="Citizen.HeldByOrder"/>
+        /// (<c>GameSession.cs:4037</c> — the gate line itself, not the opening brace) — and
+        /// <see cref="Parked"/> is never held, so from the day D4
+        /// landed this sweep drove every <see cref="JobKind"/> through a code path where the new
+        /// clause could not appear. The guarantee the client depends on had quietly narrowed to
+        /// "no base label contains the separator <i>when the label has one clause</i>". The sweep is
+        /// therefore run TWICE, the second time HELD IN A VACUUM, and it now pins the thing the
+        /// client's dock shortening actually rests on:</para>
+        /// <list type="number">
+        ///   <item><b>no label carries the separator</b>, air clause live — the split stays safe.</item>
+        ///   <item><b>the ORDER of the two clauses</b>: air first, ranking last. The client strips the
+        ///     LAST <c>" — "</c> (<c>console-model.js</c>'s <c>taskWhat</c>), so with the order flipped
+        ///     the air warning would be the half that gets dropped — on both docks, in exactly the
+        ///     state that matters. That is the same reasoning that chose the middot in the first place
+        ///     (<c>GameSession.cs:4019-4030</c>), asserted rather than restated.</item>
+        /// </list>
+        /// <para><b>MUTATIONS, PHYSICALLY APPLIED (2026-08-03), against a 16-green baseline over this
+        /// fixture + <c>VacuumIsVisibleTests</c>:</b></para>
+        /// <list type="bullet">
+        ///   <item>swap <see cref="GameSession.TaskLabel"/>'s two <c>Append…</c> calls (ranking first)
+        ///     ⇒ <b>RED 1 of 16</b>, this test alone — the ordering leg. Nothing else can see it.</item>
+        ///   <item><c>AppendAirWarning</c> silenced ⇒ <b>RED 2 of 16</b>: this test's air non-vacuity
+        ///     AND <c>VacuumIsVisibleTests.AHeldWorkerInAVacuumIsToldSo_AndNobodyElseIs</c>.</item>
+        ///   <item>the host REWORDS the clause (<c>" · NO OXYGEN"</c>) ⇒ <b>RED 2 of 16</b>, the same
+        ///     pair. ⚠️ This is why the ordering probe below reads <see cref="GameSession.AirWarningClause"/>
+        ///     rather than the literal the sweep counts: a rewording that KEPT the words "NO AIR" but
+        ///     moved off the middot would satisfy a literal scan and break the client's contract, and
+        ///     the constant is exactly what <c>dockTask</c> keys on.</item>
+        /// </list>
         /// </summary>
         [Test]
         public void NoBaseLabel_ContainsTheSeparator()
@@ -524,13 +556,83 @@ namespace Perilune.Tests
                     "fit the crew docks, so this label would be silently cut in half on both surfaces.");
             }
 
-            // NON-VACUITY: the same crew member, given a second work type, DOES produce a separator.
-            // Without this the loop above passes on a build that has stopped emitting clauses at all.
+            // ══════════════════════════════════════════════════════════════════════════════════
+            // ⭐ D4 fix-back — THE SAME SWEEP WITH THE AIR CLAUSE LIVE (see the remarks: this half
+            // exists because `Parked` is never HeldByOrder, so the sweep above cannot reach it).
+            var sim = host.Sim;
+            Int3 airless = default;
+            bool foundAirless = false;
+            foreach (var a in sim.Rooms.Anchors)
+            {
+                var r = sim.Rooms.RoomAt(sim.World, a.Probe);
+                if (r == sim.Rooms.Rooms[0]) continue;                                   // the void sink
+                if (r.TotalMoles > 0) continue;
+                if (sim.Rooms.RoomIdAt(sim.World, a.Probe) == RoomState.DoorMarker) continue; // not a doorway
+                airless = a.Probe; foundAirless = true; break;
+            }
+            Assert.That(foundAirless, Is.True, "the wreck no longer carries an airless compartment — this " +
+                "half of the sweep cannot see the clause it exists for");
+            Assert.That(AtmosphereSafety.IsBreathable(sim, airless), Is.False,
+                "precondition: the 'airless' anchor is breathable, so the air clause will never be appended");
+
+            c.Pos = airless;
+            var fails = new System.Collections.Generic.List<string>();     // blinded legs — `Assert` throws and only the first reports
+            int warned = 0;
+            foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))
+            {
+                c.JobKind = kind;
+                c.HeldByOrder = kind != JobKind.None;   // the sim's invariant: a hold needs a job
+                c.JobTarget = device.Pos;
+                string label = gs.TaskLabel(c);
+                if (label.Contains("NO AIR", StringComparison.Ordinal)) warned++;
+                if (label.Contains(GameSession.RankingSeparator, StringComparison.Ordinal))
+                    fails.Add("the HELD-IN-VACUUM label for JobKind." + kind + " is \"" + label +
+                        "\", which contains the ranking separator");
+            }
+            // NON-VACUITY for this half: the air clause really did appear. Without it the loop above
+            // is the same vacuous sweep it was before the widening, just with an extra field set.
+            if (warned == 0)
+                fails.Add("not one label carried the air warning, so this half of the sweep proves " +
+                    "nothing — the fixture is not actually held in a vacuum (D4's clause is gated on " +
+                    "HeldByOrder and on AtmosphereSafety.IsBreathable)");
+
+            // NON-VACUITY (the original): a second work type DOES produce a separator. Without this the
+            // loops above pass on a build that has stopped emitting clauses at all.
             c.JobKind = JobKind.Maintain;
+            c.HeldByOrder = true;
             c.SetWorkPriority(WorkType.Deconstruct, WorkPriority.Lowest);
-            Assert.That(gs.TaskLabel(c), Does.Contain(GameSession.RankingSeparator),
-                "the fixture cannot produce a clause at all, so the loop above proves nothing about " +
-                "the separator");
+            string both = gs.TaskLabel(c);
+            if (!both.Contains(GameSession.RankingSeparator, StringComparison.Ordinal))
+                fails.Add("the fixture cannot produce a ranking clause at all (\"" + both + "\"), so the " +
+                    "loops above prove nothing about the separator");
+
+            // ⭐ THE ORDER OF THE TWO CLAUSES — air first, ranking last. This is the fact the client's
+            // dock shortening rests on: it strips the LAST " — " and then requires what remains to END
+            // in the air clause (`console-model.js`'s `taskWhat` + `dockTask`).
+            // ⚠️ THE CONSTANT, NOT THE WORDS, FOR THIS ONE PROBE. The sweep above counts "NO AIR"
+            // as a LITERAL on purpose (a non-vacuity count asserted against the thing under test is
+            // self-derivation). This probe is the opposite question — WHERE the clause sits relative
+            // to the separator — and the client keys its shortening on the exact constant, so reading
+            // it here makes a host REWORDING redden the C# side too instead of only the node pairing leg.
+            int air = both.IndexOf(GameSession.AirWarningClause, StringComparison.Ordinal);
+            int why = both.IndexOf(GameSession.RankingSeparator, StringComparison.Ordinal);
+            if (air < 0)
+                fails.Add("the both-clauses label \"" + both + "\" carries no air warning");
+            else if (air > why)
+                fails.Add("the label is \"" + both + "\": the air warning comes AFTER the ranking " +
+                    "separator. The client drops everything past the LAST \" — \" to fit the two crew " +
+                    "docks, so in this order the warning is the half that gets deleted — on both " +
+                    "surfaces, for the one worker the sim will not rescue");
+            else
+            {
+                string what = both.Substring(0, both.LastIndexOf(GameSession.RankingSeparator, StringComparison.Ordinal));
+                if (!what.EndsWith(GameSession.AirWarningClause, StringComparison.Ordinal))
+                    fails.Add("after the client's split the dock half is \"" + what + "\", which does not " +
+                        "end in the air clause — the shortening rule in `dockTask` keys on that suffix " +
+                        "and would silently stop firing");
+            }
+
+            Assert.That(fails, Is.Empty, string.Join("\n", fails));
         }
 
         /// <summary>
