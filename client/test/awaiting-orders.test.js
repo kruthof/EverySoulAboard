@@ -143,8 +143,12 @@ test('MUTATION 3 — the CREW WATCH row never reaches for the work channel (scop
   // the WORK tab is in the same module — so a file-wide scan for `workPriorityFor` would be red on
   // a correct tree and would then be "fixed" by narrowing it into uselessness. The scope is the
   // crew-watch painter, which is where the defect would live.
+  // ⭐ D4 fix-back: the scope locator is `watchTask(e, OV_DOCK_TASK_CHARS)` — the dock now passes its
+  // browser-measured character budget so the air warning survives the ellipsis. The token moved with
+  // the line it names; the claim below is untouched.
   const body = fnBody(codeOnly(src('src/ui/overview-view.js')), 'paintCrewWatch');
-  assert.ok(body.includes('watchTask(e)'), 'the scope is wrong — this is not the crew-watch painter');
+  assert.ok(body.includes('watchTask(e, OV_DOCK_TASK_CHARS)'),
+    'the scope is wrong — this is not the crew-watch painter');
   for (const forbidden of ['workPriorityFor', 'getWork', 'decodeWork']) {
     assert.ok(!body.includes(forbidden),
       `the CREW WATCH row reads ${forbidden}: the state now has TWO sources (the host's sentence `
@@ -152,7 +156,8 @@ test('MUTATION 3 — the CREW WATCH row never reaches for the work channel (scop
   }
   // INCLUSION: plant the violation into the same scope and require the scan to catch it. Without
   // this, "no match" is equally consistent with a scan that is looking in the wrong place.
-  const planted = body.replace('watchTask(e)', 'workPriorityFor(e.cid, 0) != null ? {} : watchTask(e)');
+  const planted = body.replace('watchTask(e, OV_DOCK_TASK_CHARS)',
+    'workPriorityFor(e.cid, 0) != null ? {} : watchTask(e, OV_DOCK_TASK_CHARS)');
   assert.notEqual(planted, body, 'the plant did not apply — the control below is vacuous');
   assert.ok(planted.includes('workPriorityFor'), 'the scan cannot see a planted client-side derivation');
 });

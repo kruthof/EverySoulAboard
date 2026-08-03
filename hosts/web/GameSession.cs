@@ -4135,11 +4135,19 @@ namespace Perilune.Web
         /// Everything before it is the job; everything after it is the ranking clause.
         ///
         /// <para><b>IT IS A PARSING CONTRACT, NOT DECORATION, AND IT HAS A SECOND HALF IN THE
-        /// CLIENT.</b> The two crew docks are ~26 and ~23 characters wide and every clause-bearing
+        /// CLIENT.</b> The two crew docks are <b>26 and 22</b> characters wide — ⚠️ CORRECTED at D4
+        /// fix-back (2026-08-03): this line said <i>~26 and ~23</i>, and 23 characters measure 120 px
+        /// in the Room Zoom's 118 px box, so the figure shipped here WAS THE CLIPPED ONE. The numbers
+        /// are MEASURED, not derived, and they live in one place — <c>OV_DOCK_TASK_CHARS</c> /
+        /// <c>RZ_DOCK_TASK_CHARS</c> in <c>client/src/ui/console-model.js</c>, walked in real Chrome by
+        /// <c>client/tools/why-line-shot.mjs</c> STEP 6/7. ⛔ Do not re-derive them from px here.
+        /// Every clause-bearing
         /// label is 43–54, so a dock that renders the whole string shows a junk fragment
         /// (<i>"Servicing door_d0_s0 — Re…"</i>) — the payload always past the ellipsis. The docks
         /// therefore render only the part BEFORE this separator, and the Overview's selected readout
-        /// (<c>.ov-task</c>, 266 px and wrapping) renders the whole sentence. The client's half of
+        /// (<c>.ov-task</c>, <b>264 px</b> and wrapping — MEASURED <c>clientWidth</c> by
+        /// <c>client/tools/why-line-shot.mjs</c> STEP 4; this line said 266 until D4 fix-back)
+        /// renders the whole sentence. The client's half of
         /// this constant is <c>WHY_SEPARATOR</c> in
         /// <c>client/src/ui/console-model.js</c> — ⛔ change one and you must change the other, and
         /// <c>client/test/why-line.test.js</c> is where that pairing is pinned.</para>
@@ -4195,7 +4203,13 @@ namespace Perilune.Web
         ///   <item>Room Zoom <c>.rz-crewtask</c>: content <b>146 px</b> in a <b>118 px</b> box ⇒
         ///     worse, and this is the narrower dock by design.</item>
         /// </list>
-        /// ⇒ The two docks are ~28 and ~24 characters wide at their shipped font sizes. A sentence
+        /// ⇒ ⚠️ <b>THIS LINE READ "~28 and ~24 characters" AND THE ARITHMETIC WAS WRONG</b> (corrected
+        /// at D4 fix-back, 2026-08-03). The px above are RIGHT — they were browser-measured — but the
+        /// character counts derived from them dropped the 0.04em letter-spacing: the true figures are
+        /// 145/5.542 = 26.2 and 118/5.216 = 22.6, i.e. <b>26 and 22</b> whole characters, walked in the
+        /// browser at D4 fix-back. ⛔ This is where the repo's long-lived "~23" came from, so do not
+        /// re-derive a budget here: the measured constants are <c>OV_DOCK_TASK_CHARS</c> /
+        /// <c>RZ_DOCK_TASK_CHARS</c> in <c>client/src/ui/console-model.js</c>. A sentence
         /// that has to be scrolled to be read is the invisible-feedback defect wearing a longer
         /// word, and widening two shared docks to fit one label is the wrong trade. So the fact
         /// about the PLAYER is kept ("the ship is waiting on you") and the fact about her grid is
