@@ -136,6 +136,53 @@ namespace Perilune.Tests
         [Test]
         public void SeverityLadderPicksTheHigherTierForEachPairing()
         {
+            // ⭐⭐ D1/D6 EXTENDED THIS LADDER AT BOTH ENDS, and the new rungs are checked FIRST
+            // because they are the ones nothing pinned. Five kinds had no Severity row at all until
+            // 2026-08-02 — EmergencyThaw and RunEnded had been rendering as "[Note]" at severity 0
+            // since M3-5 (filed at MECHANICS §13.35), and the three D1 kinds are new. A kind with no
+            // row can never headline a day, which for the ENDING is the worst possible outcome.
+            //
+            // THE TOP OF THE LADDER AS SHIPPED: RunEnded 12 > EmergencyThaw 11 > Eulogy 9 >
+            // Death 8 > Thaw 7 > the work tier 6. Each pairing is asserted against its immediate
+            // neighbour, so a future reshuffle cannot slide one past another unnoticed.
+            // ⚠️ An earlier draft of this comment (and of the code) read
+            // "RunEnded > EmergencyThaw > Thaw > Eulogy" — the ordinary Thaw ABOVE both death rows.
+            // That was corrected under the RimWorld-analogue rule; see the Thaw pairings below.
+            AssertHeadlineText("Every soul aboard is dead.",
+                E(10, "Every soul aboard is dead.", HistoryKind.RunEnded),
+                E(20, "With Vega dead, the ship woke Ozawa.", HistoryKind.EmergencyThaw));
+            AssertHeadlineText("With Vega dead, the ship woke Ozawa.",
+                E(10, "With Vega dead, the ship woke Ozawa.", HistoryKind.EmergencyThaw),
+                E(20, "Bo spoke for Vega.", HistoryKind.Eulogy));
+            // ⛔ AND THE ORDINARY THAW SITS BELOW BOTH DEATH ROWS — RimWorld's own classing
+            // (`rimworld-reference.md` §14.3: "wanderer joins" is a GOOD/NEUTRAL event beside cargo
+            // pods and traders, while a raid is a big threat; §11.3's gold-vs-red letter colours say
+            // the same). A day holding a death AND a wake is remembered as the day somebody died.
+            // Owner-directed 2026-08-02 after review; an earlier draft ranked Thaw above both.
+            AssertHeadlineText("Bo spoke for Vega.",
+                E(10, "Bo spoke for Vega.", HistoryKind.Eulogy),
+                E(20, "Mbeki came out of cryosleep — awake, and awaiting orders.", HistoryKind.Thaw));
+            AssertHeadlineText("Vega has died.",
+                E(10, "Vega has died.", HistoryKind.Death),
+                E(20, "Mbeki came out of cryosleep — awake, and awaiting orders.", HistoryKind.Thaw));
+            // …but still ABOVE the work tier: a soul waking is not a wall going up.
+            AssertHeadlineText("Mbeki came out of cryosleep — awake, and awaiting orders.",
+                E(10, "Mbeki came out of cryosleep — awake, and awaiting orders.", HistoryKind.Thaw),
+                E(20, "Okafor serviced the scrubber (scrub_a).", HistoryKind.RepairCompleted));
+            // …and the work tier: repair and commission rank WITH build (a four-way tie resolved to
+            // the earliest entry), and both must out-rank a brownout — the brownout is usually what
+            // the repair was for.
+            AssertHeadlineText("Vega has died.",
+                E(10, "Vega has died.", HistoryKind.Death),
+                E(20, "Okafor serviced the scrubber (scrub_a).", HistoryKind.RepairCompleted));
+            AssertHeadlineText("Okafor serviced the scrubber (scrub_a).",
+                E(10, "Okafor serviced the scrubber (scrub_a).", HistoryKind.RepairCompleted),
+                E(20, "Power network 1 browned out — non-critical loads shed.", HistoryKind.Brownout));
+            AssertHeadlineText("A controller module was fitted to the reclaimer (recl_b) — it answers MOSS now.",
+                E(10, "A controller module was fitted to the reclaimer (recl_b) — it answers MOSS now.",
+                  HistoryKind.DeviceCommissioned),
+                E(20, "Power network 1 browned out — non-critical loads shed.", HistoryKind.Brownout));
+
             // Spot-check the documented ladder Death>Construction>Brownout>Argument>Alarm>Goal>Generic.
             AssertHeadlineText("A crew member has died.",
                 E(10, "A crew member has died.", HistoryKind.Death),
@@ -155,6 +202,58 @@ namespace Perilune.Tests
             AssertHeadlineText("Objective complete: Restore power",
                 E(10, "Objective complete: Restore power", HistoryKind.Goal),
                 E(20, "something happened", HistoryKind.Generic));
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>SWEEP THE CLASS, NOT THE LIST.</b> Every declared <see cref="HistoryKind"/> except
+        /// <see cref="HistoryKind.Generic"/> must have a row in BOTH of <c>Chronicle</c>'s switches:
+        /// a label of its own, and a severity above Generic's floor so it can headline a day.
+        ///
+        /// <para><b>THIS IS NOT A HYPOTHETICAL GUARD — IT HAS TWO REAL INSTANCES.</b>
+        /// <see cref="HistoryKind.EmergencyThaw"/> and <see cref="HistoryKind.RunEnded"/> shipped in
+        /// M3-5 with rows in NEITHER switch, so the most severe line a run can produce rendered as
+        /// "[Note]" and lost its headline to a eulogy (filed at MECHANICS §13.35, fixed 2026-08-02
+        /// alongside D1's three new kinds). The defect is structurally invisible: a missing case
+        /// falls through the <c>_ =&gt; </c> arm and nothing fails. Appending a member and forgetting
+        /// the renderer is a two-line mistake that no other test in the repo can see.</para>
+        ///
+        /// <para>Driven through the public <see cref="Chronicle.Render"/> — the switches are private,
+        /// and reflecting into them would pin the implementation instead of the output.</para>
+        /// </summary>
+        [Test]
+        public void EveryHistoryKindHasBothALabelAndASeverityRow()
+        {
+            var unlabelled = new List<string>();
+            var unranked = new List<string>();
+
+            foreach (HistoryKind kind in System.Enum.GetValues(typeof(HistoryKind)))
+            {
+                if (kind == HistoryKind.Generic) continue; // "[Note]" at 0 IS Generic's row
+
+                var solo = Chronicle.Render(new List<HistoryEntry> { E(10, "x", kind) });
+                if (solo[0].Lines[0].StartsWith("[Note] ", System.StringComparison.Ordinal))
+                    unlabelled.Add(kind.ToString());
+
+                // Severity: paired against a Generic entry that comes FIRST. The strict '>' in
+                // Render keeps the earliest on a tie, so a kind sitting at Generic's 0 loses the
+                // headline to it — which is exactly the failure this catches.
+                var paired = Chronicle.Render(new List<HistoryEntry>
+                {
+                    E(10, "generic first", HistoryKind.Generic),
+                    E(20, "the real event", kind),
+                });
+                if (paired[0].Headline != "Day 0 — the real event") unranked.Add(kind.ToString());
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(unlabelled, Is.Empty,
+                    "these kinds render as [Note] — add a Chronicle.Label row in the SAME commit as " +
+                    "the enum member: " + string.Join(", ", unlabelled));
+                Assert.That(unranked, Is.Empty,
+                    "these kinds cannot out-rank a Generic note and so can never headline a day — " +
+                    "add a Chronicle.Severity row: " + string.Join(", ", unranked));
+            });
         }
 
         private static void AssertHeadlineText(string expectedText, params HistoryEntry[] entries)

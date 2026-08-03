@@ -134,6 +134,28 @@ evidence, even from this file** — re-measure before quoting.
   | P4 defs defaults checksum | `661fcdd4b89f1e87` | `DefsChecksumTests.cs` |
   | P5 defs rules-inclusive (`defs:` print) | `558a1c0a4985f5ea` | `DefsChecksumTests.cs` |
 
+  ⛔ **NO PIN COVERS `--ship wreck`, THE SHIP `./play.sh` BOOTS — measured by D1/D6, 2026-08-02.**
+  That package changed what every brownout, repair, thaw and commission writes into the **hashed**
+  history ring (`'HIST'` folds tick+kind+SubjectA+SubjectB of every entry; brownout entries now
+  carry a network id and an edge count that were 0), and **all five pins held**. The hold is
+  **VACUOUS ×4**, measured not argued: instrumenting P1's own fixture prints
+  `brownoutEntries=0 thawLines=0 repairLines=0 commissionLines=0 cryoPodsOnShip=0` on all three
+  days — its ring is 200/200 `Bond` — and each of the four halves stubbed independently still reads
+  `7bdd0d6f7756dfdc`. P2/P3 held for the WINDOW (tick 3000 precedes the first brownout edge: wreck
+  128 361, slice 191 331; neither perilune nor slice authors a CryoPod). P4/P5 held genuinely — no
+  def field (the episode window is a code constant, M2-1's rule-not-tunable precedent) and
+  `StateVersion` stayed 2. ⭐ The same code moves a hash hard where it IS reached: on the wreck at
+  tick 200 000, pre-fix `291fedc58c4720ed` (ring 200/200 Brownout) → shipped `79c6641856fb779f`
+  (ring 9). ⛔ **AND A DETERMINISM REGRESSION HID EXACTLY THERE — found by review, invisible to all
+  five pins.** `PowerSystem` is not `IStatefulSystem`, so a reload re-publishes a duplicate
+  `BrownoutChangedEvent`; the first draft folded it into a hashed, never-evicted field and a save
+  taken mid-brownout stopped replaying. Closed FOR MID-EPISODE SAVES by an idempotency rule derived
+  from the ring (save@135000 + 60 000 ticks, `8b66921d15d45c9b` both sides, §13.10 matched
+  recompute) — but ⛔ **NOT for a save on an episode's OPENING tick**, which is filed residual 2:
+  permanent, compounding, narrow (1–11 ticks per ~36 000), and closable only by the same
+  stateful-`PowerSystem` package. Instruments: `ChronicleSignalTests` + `ChronicleTests`, nothing else (MECHANICS
+  §13.43). M2-12's *"no pin sees the generation term"* in a third costume — and this time what the
+  pins could not see was a REGRESSION, not just an absence.
   Last mover: M3-9 (PIN M3-c, 2026-08-02) — **P1 + P4/P5 MOVED, P2/P3 measured HELD**, and the cause
   is a BEHAVIOUR change on every ship: `RestSystem` is the reducer `Citizen.Fatigue` never had, so
   crew who were permanently exhausted now sleep between jobs — and `NeedsSystem`'s ramp is GATED

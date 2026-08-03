@@ -861,6 +861,20 @@ namespace Perilune.Sim
             if (!LooseMatter.TryPay(sim, Currency, sim.Defs.Build.CommissionCost)) return;
             device.Scriptable = true;
             sim.DeviceTopologyVersion++; // hosts re-derive MOSS adapters off this
+
+            // ⭐ D1 — AND THE SHIP REMEMBERS IT. Published AFTER the flip, so every refusal above
+            // announces nothing; HistorySystem reads it on the next tick (commands run in tick
+            // phase 1, the bus swaps at that tick's end). An event rather than a direct
+            // HistorySystem.Record because the Record route needs a `sim.Systems` walk, and this
+            // file's occurrence count for that escape hatch is pinned at 2 by
+            // ArchitectureBoundaryTests.Economy_ReachesIntoShipSystemsAtExactlyTheAllowlistedSites.
+            sim.Events.Publish(new DeviceCommissionedEvent
+            {
+                Pos = _pos,
+                DeviceId = device.Id,
+                Device = (byte)device.Kind,
+                DeviceName = device.Name,
+            });
         }
 
         /// <summary>Free <see cref="Currency"/> units aboard — what a host needs to grey out the

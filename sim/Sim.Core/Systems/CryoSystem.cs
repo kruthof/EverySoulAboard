@@ -326,6 +326,22 @@ namespace Perilune.Sim
                 Record(sim, "With " + dead + " dead, the ship woke " + person.Name + ".",
                        HistoryKind.EmergencyThaw, person.Id, pod.Id);
             }
+            else
+            {
+                // ⭐⭐ D1 (owner-triaged 2026-08-02) — THE ORDINARY THAW WAS SILENT, and it is the
+                // one the player ORDERS. M3-5 wrote the emergency line and left this arm falling
+                // through to nothing, so the single largest change a player can make to the crew
+                // roster — a soul waking because they asked for it — left no trace in the ship's
+                // log at all. A DISTINCT kind, not a re-use of EmergencyThaw: M5-1 builds the
+                // ending out of the emergency line, and "the ship woke somebody because you were
+                // dying" and "you woke somebody" are not the same sentence.
+                // The capsule is NOT named in the prose: every shipped pod is `pod_<sleeper>`
+                // (`AuthoredShips.cs:2022`), so naming it would read "Mbeki came out of capsule
+                // pod_mbeki". The pod id rides SubjectB instead, where a renderer can find it.
+                // "awaiting orders" is OD-G's shape stated as fact — she boots idle, work grid off.
+                Record(sim, person.Name + " came out of cryosleep — awake, and awaiting orders.",
+                       HistoryKind.Thaw, person.Id, pod.Id);
+            }
         }
 
         // ═══════════════════════════════════════════════════════════════════════════════════════

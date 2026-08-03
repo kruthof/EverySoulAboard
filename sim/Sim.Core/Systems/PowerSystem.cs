@@ -39,8 +39,39 @@ namespace Perilune.Sim
     /// derived, not canonical, and are rebuilt from the (saved) device positions. One
     /// consequence worth knowing — <see cref="_wasBrownout"/> starts false on load, so
     /// a save taken mid-brownout re-publishes <see cref="BrownoutChangedEvent"/> after
-    /// the restore. That is a duplicate notification, not a state divergence; nothing
-    /// hashed moves.
+    /// the restore (and a topology rebuild can do the same).
+    ///
+    /// ⚠️ <b>"THAT IS A DUPLICATE NOTIFICATION, NOT A STATE DIVERGENCE; NOTHING HASHED
+    /// MOVES" — THIS PARAGRAPH SAID THAT UNTIL 2026-08-02 AND IT WAS TRUE WHEN WRITTEN.
+    /// IT IS NOT A STANDING GUARANTEE.</b> It held only because the duplicate's single
+    /// consumer, <c>HistorySystem</c>, appended one more ring entry that evicted within
+    /// ~200 s. D6 coalesced that stream, and the duplicate started folding into a
+    /// HASHED, never-evicted episode word — a real determinism regression, found by
+    /// review, measured on the shipped wreck (save at tick 135 000, reload, 60 000 ticks
+    /// of run-on: HIST <c>eff48a500b403996</c> vs <c>eff48a500b4e5117</c>, one episode's
+    /// edge count 1036 against 1037).
+    ///
+    /// It is <b>mostly</b> closed in the consumer: <c>HistorySystem.RecordBrownout</c>
+    /// drops an edge whose direction the ring already records for that network, because
+    /// <see cref="Balance"/> publishes only on a CHANGE and a network's edges therefore
+    /// strictly alternate within one uninterrupted run.
+    ///
+    /// ⛔ <b>"MOSTLY" IS LOAD-BEARING. A SAVE TAKEN ON AN EPISODE'S OPENING TICK STILL
+    /// DOES NOT REPLAY, AND NO CONSUMER-SIDE RULE CAN FIX IT.</b> Dropping a duplicate is
+    /// possible; RECONSTRUCTING an edge this system never published is not. With
+    /// <see cref="_wasBrownout"/> reset, a reloaded sim re-derives that opening edge on a
+    /// LATER 1 Hz pass than the original did, so the history entry it produces carries a
+    /// different — and hashed — tick stamp. Measured on the shipped wreck: +10 ticks at
+    /// its 164 361 episode, +80 at its 200 371 episode, permanent and compounding
+    /// (`HistorySystem.RecordBrownout`'s header carries the full numbers and the swept
+    /// window widths, 1–11 ticks per ~36 000-tick episode).
+    ///
+    /// ⛔ <b>SO THE OBLIGATION IS NOT DISCHARGED, IT IS DEFERRED, AND IT LIVES HERE:</b>
+    /// the honest fix is to make this system <see cref="IStatefulSystem"/> — a new SYSS
+    /// chapter, which moves P1/P2/P3 and is its own package. Any future reader of
+    /// <see cref="BrownoutChangedEvent"/> that accumulates into hashed state inherits the
+    /// same defect and must not assume the consumer-side rule covers it. Do not read the
+    /// first sentence of this block as permission.
     ///
     /// Determinism/allocation: the device store is walked in order everywhere, ids are
     /// handed out by first-encounter in that same order, no RNG. All scratch is

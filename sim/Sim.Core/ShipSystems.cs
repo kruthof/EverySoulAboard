@@ -258,15 +258,26 @@ namespace Perilune.Sim
         }
 
         /// <summary>
-        /// The sentence EVERY row's derivation note ends with (spec §5.1). `MaintenanceSystem`
-        /// publishes nothing on repair (`MachineWearSystem.cs:262` — "completion is a notice, not an
-        /// alarm"), so faults can be shown but recoveries cannot. A player who reads LAST FAULT as
-        /// "the current problem" will chase a fault that was fixed two days ago, and the screen must
-        /// say so rather than let them.
+        /// The sentence EVERY row's derivation note ends with (spec §5.1). A player who reads LAST
+        /// FAULT as "the current problem" will chase a fault that was fixed two days ago, and the
+        /// screen must say so rather than let them.
+        ///
+        /// <para>⚠️ <b>THE SECOND CLAUSE WAS REWRITTEN AT D1/D6 (2026-08-02) BECAUSE ITS OLD PREMISE
+        /// WENT FALSE, NOT ITS CONCLUSION.</b> It read <i>"nothing is published when a machine is
+        /// repaired, so a fault line never clears itself"</i>. The premise is gone —
+        /// <c>MaintenanceSystem</c> publishes <c>RepairCompletedEvent</c> and every completed
+        /// service writes a <c>[Repair]</c> line a player can read in the log directly underneath
+        /// this note. <b>The conclusion is unchanged and is now stated on its own terms:</b>
+        /// NOTHING clears a fault line. Not a repair (a separate entry this column never reads),
+        /// and not a recovery (<see cref="IsNotAFault"/> keeps a recovered brownout EPISODE
+        /// attributable, and <see cref="Fault"/> renders its fault sentence rather than its current
+        /// state). Both of those are properties this file enforces, so the sentence below is a claim
+        /// about code in this file — which is the only kind of claim it may make.</para>
         /// </summary>
         private const string FaultCaveat =
             "LAST FAULT is the last thing that went wrong on this row, NOT the current problem: "
-          + "nothing is published when a machine is repaired, so a fault line never clears itself.";
+          + "nothing clears a fault line — not a repair, not a recovery — so this one can name "
+          + "something that was fixed two days ago.";
 
         private static string DerivationBody(string id)
         {
@@ -424,10 +435,25 @@ namespace Perilune.Sim
                 sb.Append(" There is no reactor aboard — the name is the compartment's.");
             }
 
-            // A brownout entry is a power fault; the RECOVERY entry HistorySystem writes from the
-            // same event (`HistorySystem.cs:104-110`) is not, and must never appear under LAST
-            // FAULT. `BrownoutChangedEvent` carries the direction but the history entry does not,
-            // so the only surviving discriminator is HistorySystem's own literal.
+            // A brownout entry is a power fault; a pure RECOVERY entry is not, and must never appear
+            // under LAST FAULT.
+            //
+            // ⭐ D6 (2026-08-02) COALESCED this stream and the join had to change with it. A
+            // flapping network now owns ONE entry per sim-hour whose text is rewritten in place as
+            // the episode develops, so for a while a recovery OVERWROTE the record of its own fault
+            // and this column skipped the only evidence the network had ever shed — the inversion of
+            // §5.1, caught by independent review. Two things fix it and both are structural rather
+            // than literal:
+            //   · the skip test is `HistorySystem.BrownoutEpisodeRecordsAFault` on the entry's
+            //     episode word, not a sniff for the word "recovered" (see IsNotAFault); and
+            //   · the TEXT this column renders for a brownout hit is
+            //     `HistorySystem.BrownoutFaultLine`, never the entry's own developing sentence, so
+            //     the column cannot print "CURRENTLY RECOVERED" under a heading that means the
+            //     opposite (see Fault).
+            // The `"browned out"` argument below is retained as the belt to that braces: every
+            // fault-bearing episode line leads with it and the pure recovery does not.
+            // What DID change for a reader: the tick a hit reports is when the EPISODE began, not
+            // its last flap.
             var fault = Fault(sim, history, ReactorKinds, HistoryKind.Brownout, "browned out");
             return new ShipSystemRow(IdReactor, "REACTOR", load, state, fault.Day, fault.Text, sb.ToString());
         }
@@ -1028,7 +1054,7 @@ namespace Perilune.Sim
         ///
         /// <para><b>A KNOWN-WEAK JOIN, documented not hidden.</b> `AlarmRaisedEvent` carries no
         /// device id — `HistorySystem.Add` passes `subjectA = 0` for alarms
-        /// (`HistorySystem.cs:88-89`) and `SourceId` is a STRING (the device name, or the terminal
+        /// (`HistorySystem.cs:111-112`) and `SourceId` is a STRING (the device name, or the terminal
         /// id for a MOSS `alarm()`). So attribution is a STRING MATCH of the group's device names
         /// against the entry text, plus an optional structural <see cref="HistoryKind"/> a row
         /// declares as its own (only `reactor` does: a brownout IS a power fault, and its entry text
@@ -1065,13 +1091,11 @@ namespace Perilune.Sim
                 var e = entries[i];
                 if (e.Text == null) continue;
 
-                // A RECOVERY is not a fault, on EITHER branch. HistorySystem writes both the
-                // brownout and its recovery under the same HistoryKind and the entry does not carry
-                // the direction (`HistorySystem.cs:104-110`), so its own literal is the only
-                // discriminator left. The name branch needs the identical guard: nothing stops a
-                // future recovery line from naming a device, and "DAY 2 · … RECOVERED" under a
-                // column headed LAST FAULT is the same misread whichever branch produced it.
-                if (IsRecovery(e.Text)) continue;
+                // GOOD NEWS IS NOT A FAULT, on EITHER branch. The name branch needs the identical
+                // guard: nothing stops a recovery or a repair line from naming a device, and
+                // "DAY 2 · … RECOVERED" under a column headed LAST FAULT is the same misread
+                // whichever branch produced it.
+                if (IsNotAFault(e)) continue;
 
                 bool hit = ownKind.HasValue && e.Kind == (byte)ownKind.Value
                            && (ownKindMustContain == null ||
@@ -1079,16 +1103,62 @@ namespace Perilune.Sim
                 for (int n = 0; n < names.Count && !hit; n++)
                     hit = e.Text.IndexOf(names[n], StringComparison.OrdinalIgnoreCase) >= 0;
                 if (!hit) continue;
-                return ((int)(e.Tick / SimClockUtil.TicksPerDay), Summarize(e.Text));
+
+                // ⭐ A BROWNOUT EPISODE RENDERS ITS FAULT SENTENCE, NEVER ITS CURRENT STATE. The
+                // entry's own text develops as the episode does ("…; 647 changes within the hour,
+                // since recovered.") — true, useful in the FAULT LOG, and exactly the wrong thing
+                // in a column headed LAST FAULT. `HistorySystem.BrownoutFaultLine` is the one copy
+                // of the sentence, so this cannot drift from what the log says happened, and the
+                // column's content no longer depends on where MaxFaultChars truncates.
+                string text = e.Kind == (byte)HistoryKind.Brownout
+                    ? HistorySystem.BrownoutFaultLine(e.SubjectA)
+                    : e.Text;
+                return ((int)(e.Tick / SimClockUtil.TicksPerDay), Summarize(text));
             }
             return (-1, "");
         }
 
-        /// <summary>Whether a history line reads as a RECOVERY rather than a fault. A string sniff of
-        /// HistorySystem's own literals, and said out loud as one: the entries carry no structural
-        /// "this got better" bit to test instead (`HistorySystem.cs:104-110`).</summary>
-        private static bool IsRecovery(string text) =>
-            text.IndexOf("recovered", StringComparison.OrdinalIgnoreCase) >= 0;
+        /// <summary>
+        /// Whether a history line is GOOD NEWS and must therefore never reach a column headed LAST
+        /// FAULT. Three clauses, for three different reasons.
+        ///
+        /// <para>⭐⭐ <b>A BROWNOUT ENTRY IS TESTED STRUCTURALLY, AND THAT IS THE FIX FOR A REAL
+        /// INVERSION.</b> D6 made a whole flapping episode ONE entry whose text is rewritten in
+        /// place, so a recovery overwrote the record of its own fault; a sniff for the word
+        /// "recovered" — which is what stood here — then skipped the only evidence the network had
+        /// ever shed, and the column silently reported an OLDER episode instead. Measured on the
+        /// driven wreck at tick 864 000: 3 of 21 episodes ended recovered and the reactor row named
+        /// tick 814 211 while the newer 850 221 was skipped. <c>BrownoutEpisodeRecordsAFault</c>
+        /// reads the entry's episode word instead and is direction-independent, so a recovered
+        /// episode still surfaces — which is what makes the <see cref="FaultCaveat"/> sentence
+        /// ("nothing clears a fault line") true rather than aspirational. Only the single-edge PURE
+        /// recovery is skipped.</para>
+        ///
+        /// <para>⚠️ <b>The KIND clause was added at D1 (2026-08-02) and it closes a regression that
+        /// package would otherwise have shipped.</b> The name branch below matches any entry whose
+        /// text contains a device NAME, and D1's two new lines are the first in the whole Chronicle
+        /// to carry one: <i>"Okafor serviced the scrubber (scrub_a)."</i> would have surfaced under
+        /// LAST FAULT as though the service were the failure — §5.1's exact misread, arriving
+        /// through the door §5.1 left open. (The older device-touching lines are safe by accident:
+        /// <c>StripText</c> names the device KIND, "the scrubber", never <c>scrub_a</c>.)</para>
+        ///
+        /// <para>⛔ It lists the two GOOD-NEWS kinds rather than allow-listing the fault kinds,
+        /// deliberately — an allow-list would silently narrow the name join for every existing kind,
+        /// and the ninth trap shape is a correct finding that narrows an instrument into a blind
+        /// spot. A future kind that reports something getting BETTER belongs on this list.</para>
+        /// </summary>
+        private static bool IsNotAFault(in HistoryEntry e)
+        {
+            // STRUCTURAL, and it must run BEFORE the text sniff — a recovered episode's line
+            // legitimately contains "recovered" and is still the record of a fault.
+            if (e.Kind == (byte)HistoryKind.Brownout)
+                return !HistorySystem.BrownoutEpisodeRecordsAFault(e.SubjectB);
+
+            if (e.Kind == (byte)HistoryKind.RepairCompleted
+                || e.Kind == (byte)HistoryKind.DeviceCommissioned) return true;
+
+            return e.Text.IndexOf("recovered", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
 
         /// <summary>Uppercase, single-line, bounded fault summary — no day prefix (the client
         /// composes `DAY {n} · {text}`). InvariantCulture upcasing: the dev machine is de-DE and
