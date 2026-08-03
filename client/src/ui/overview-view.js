@@ -54,7 +54,7 @@ import {
   // rewritten. So the bar was a constant painted to look like a reading. `moraleColor` still exists
   // in `console-model.js` for the deprecated console shell, until it dies at M4-8/WP-9.
   clockHHMM, cautionState, surnameOf, speedLabel, logLineParts, logTail,
-  selectedRosterEntry, crewClickTarget, terminalList, watchTask,
+  selectedRosterEntry, crewClickTarget, terminalList, watchTask, OV_DOCK_TASK_CHARS,
 } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
 import { ledgerRows, matterLine, caveatLine, LEDGER_ROW_IDS } from './ledger-model.js';
@@ -1099,13 +1099,24 @@ function paintCrewWatch(crew, selCid) {
       // from the `work` channel. This row only classifies the sentence it was sent, for colour.
       // ─────────────────────────────────────────────────────────────────────────────────────────
       // ⭐ M2-6 fix-back — `t.what`, NOT `t.text`: this dock renders WHAT she is doing and stops at
-      // the separator. It is 147 px ≈ 26 characters and a clause-bearing label is 43–54, so the
+      // the separator. It is 145 px = 26 characters (measured) and a clause-bearing label is 43–54, so the
       // full string does not truncate the explanation — it truncates the PAYLOAD, leaving
-      // "Servicing door_d0_s0 — Re…". The WHY is carried by `.ov-task` below, which is 266 px and
+      // "Servicing door_d0_s0 — Re…". The WHY is carried by `.ov-task` below, which is 264 px and
       // wraps. ⛔ Do not "fix" this back to `t.text` without widening the dock, and see
       // `console-model.js` for why widening is the wrong trade (M2-20's precedent).
-      const t = watchTask(e);
+      // ⭐ D4 fix-back — AND THE BUDGET IS PASSED IN, MEASURED: 145 px ⇒ 26 characters (browser, not
+      // arithmetic). Dropping the ranking clause stopped being enough when D4 gave the label a SECOND
+      // clause that must SURVIVE — the middot air warning rides inside this half on purpose, and at 31
+      // characters `text-overflow` was eating exactly the words that say she is dying. `dockTask`
+      // shortens the device name instead. ⛔ It is this dock's OWN number, not the Room Zoom's (22):
+      // clamping to the narrower dock would cost four characters of device name here for nothing.
+      const t = watchTask(e, OV_DOCK_TASK_CHARS);
       setText(rec.taskEl, t.what);
+      // ⭐ D4 fix-back, the BONUS surface — the WHOLE sentence on hover, zero layout. It is not the
+      // fix (a tooltip needs a gesture nobody knows to perform; the warning itself is in the row
+      // above, always visible), it is the repair for what the fix COSTS: shortening the base puts the
+      // full device name out of reach, and this dock's own readout is the only other place it lived.
+      setAttr(rec.taskEl, 'title', t.text);
       setCls(rec.taskEl, 'working', t.working);
       setCls(rec.taskEl, 'waiting', t.waiting);
       // ⚠️ THERE IS NO MORALE BAR HERE, AND ITS ABSENCE IS THE FEATURE (M1-F, 2026-07-29). A
@@ -1164,7 +1175,8 @@ function paintReadout(frame, rosterMsg, dView, activeDeck) {
   setHidden(_el.roTraits, traits.length === 0);
   // ⭐ M2-6 fix-back — THIS IS WHERE THE `why` CLAUSE IS ACTUALLY READ, and it is the reason the
   // two crew docks are allowed to stop at the separator. The RAW wire field, whole: `.ov-task` is
-  // 266 px and wraps (styles.css), so every clause-bearing label fits in two lines. ⛔ It must NOT
+  // 264 px and wraps (MEASURED `clientWidth`; this comment said 266 until D4 fix-back), so every
+  // clause-bearing label fits in two lines. ⛔ It must NOT
   // be routed through `watchTask` — that derivation's `what` deliberately drops the clause for the
   // narrow docks, and putting this readout on it would delete the explanation from the one place
   // on either surface that can hold it.

@@ -317,6 +317,15 @@ makes on the identical edge.
 `pawnChip`, 28 px), a `.rz-crewname` (surname), a `.rz-crewtask` (the shared `watchTask`; `.working`
 reads amber and nothing else does), and a `.rz-crewwhere` — **`HERE`** in amber when they are standing
 in the room on screen, else the room they are in, else `DECK {n}` for a crew member in a hall.
+⭐ **AMENDED 2026-08-03 (D4 fix-back)** — `.rz-crewtask` also carries a **hover `title`**: the WHOLE
+task sentence, raw off the wire, both clauses included. The row's own text is the *what* half
+shortened to this dock's **measured 22-character budget** (118 px — ⚠️ *not* the ~23 that every
+comment in `console-model.js`, both views and `GameSession.cs` carried since M2-6: 23 characters
+measure 120 px in this 118 px box, so the inherited figure was the CLIPPED one) so that D4's `· NO AIR` warning cannot be the
+part the ellipsis eats. The `title` is NOT the feature — hover is invisible feedback and the warning
+is in the always-visible row — it exists because this surface has **no selected readout** (the M4
+Persona gap), so shortening the base would otherwise put the full device name and the ranking clause
+out of reach inside a room.
 *RimWorld analogue:* the **colonist bar** — every colonist, always, wherever the camera is.
 
 **VS-Z-54** — The selected row carries `.sel` (`border-color:#cf7a33`, `background:rgba(34,27,18,.8)`
