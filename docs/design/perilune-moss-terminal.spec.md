@@ -249,8 +249,8 @@ export const STATE  = { NOMINAL: 0, ATTEND: 1, DEGRADED: 2, OFFLINE: 3 };
 export function openMoss();                          // → fresh model, SCREEN.LEDGER, row 0 selected
 export function reduceSystems(model, msg);           // `systems` channel; preserves selection by row ID
 export function reduceMossEvent(model, msg);         // moss ev: sys | exec | source | diag | audit | rterror
-export function reduceChron(model, msg);             // `chron` channel → the FAULT LOG source
-export function reduceLog(model, msg);               // `log` channel tail → FAULT LOG live section
+export function reduceChron(model, msg);             // `chron` channel → the FAULT LOG's rows (LINES, not headlines)
+export function reduceLog(model, msg);               // `log` channel tail → the FAULT LOG source UNTIL `chron` lands
 
 // ---- input (pure state machines; return {model, effects}) ----
 export function keyPress(model, key, mods);          // ArrowUp/Down, Enter, Escape, Tab, PageUp/Down, Home/End
@@ -285,6 +285,33 @@ copy of every derivation's prose, and it lives next to the code that computes th
 | `{k:'moss', op:'open', tid}` | load a terminal's program source (PROGRAM screen) |
 | `{k:'chron'}` | request the chronicle |
 | `{k:'exit'}` | leave MOSS, restore the ship view |
+
+> ⭐ **Amended 2026-08-03 by `faultlog-dedupe`. THE FAULT LOG HAS ONE SOURCE, NOT TWO.** The two
+> comments above used to read *"the FAULT LOG source"* and *"FAULT LOG live section"*, and
+> `faultLogView` did exactly what they described: the live `log` tail, then the whole chronicle
+> beneath it. That was harmless while the two channels were different records and became a DEFECT
+> when session E's D6/D1 work made ONE 200-entry `HistorySystem` ring back both — `chron` carries
+> all 200 day-grouped and kind-tagged, `log` carries the newest 14 of the SAME ring, so the newest
+> 14 faults printed TWICE (measured in the shipping browser on the unmodified wreck: 29 rows for a
+> 14-entry ring). `faultLogView` now reads the chronicle whenever it has landed and the tail ONLY
+> until it does — never both. Two consequences a later lane must not undo:
+>
+> - **It is not a dedupe, and must not become one.** A brownout EPISODE entry is rewritten in place
+>   as its edges accumulate, so the tail and a chronicle snapshot one tick older legitimately
+>   disagree word for word (measured: "344 changes" vs "144"). Matching the two costumes by text
+>   would let exactly the liveliest line through twice.
+> - **The day HEADLINE is no longer a row.** `Chronicle.Render` builds it as `"Day N — " + e.Text`
+>   of the day's most severe entry, which is already in `lines` as `"[Kind] " + e.Text`; it is the
+>   CHRONICLE tab's device (and the `ProseOverride` slot's home), not this diagnostic list's.
+>
+> ⚠️ **The cost, stated:** once the chronicle has landed the list no longer grows tick-by-tick while
+> the screen sits open. It is not frozen, though, and the honest statement says both halves: besides
+> a re-typed `log` (which re-fires the `{k:'chron'}` effect), the host re-emits the chronicle on
+> every **DAY ROLLOVER** (`GameSession.cs:1988-1994`) and `MossScreen.onChron` re-folds and re-renders
+> while the screen is open (`moss-screen.js:349-358`) — so an open fault log refreshes once per
+> sim-day on its own. What is missing is only the sub-day stream; that refresh is FILED, not built.
+> The tail's remaining job is IX-M4 honesty: between the ask and the reply a chronicle-only list
+> would print NO ATTRIBUTABLE FAULTS ON RECORD over a faulted ship.
 
 **M-PURITY** — `moss-model.js` must contain no `document`, no `window`, no `fetch`, no
 `Date.now()`/`new Date()`, no `Math.random()`. A node test asserts this by source scan, and the

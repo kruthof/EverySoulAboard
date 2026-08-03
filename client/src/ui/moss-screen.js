@@ -346,7 +346,10 @@ export class MossScreen {
     this.render();
   }
 
-  /** Fold a `chron` message — the FAULT LOG's source. */
+  /** Fold a `chron` message — the FAULT LOG's source WHENEVER IT HAS LANDED (see `faultLogView`;
+   *  until it does the live tail stands in). Arrives on the `{k:'chron'}` request this screen makes
+   *  when the log opens, and again on every DAY ROLLOVER (`GameSession.cs:1988-1994`), so a log
+   *  left open does refresh — once per sim-day. */
   onChron(msg) {
     this._chron = msg;
     if (!this.opened) return;
@@ -354,7 +357,8 @@ export class MossScreen {
     this.render();
   }
 
-  /** Fold a `log` channel tail — the FAULT LOG's live section. */
+  /** Fold a `log` channel tail — the FAULT LOG's source UNTIL THE CHRONICLE LANDS, and no longer a
+   *  second section beneath it (same ring; reading both printed these lines twice). */
   onLog(msg) {
     this._log = msg;
     if (!this.opened) return;
@@ -772,7 +776,10 @@ export class MossScreen {
       for (const en of entries) {
         const day = en && typeof en.day === 'number' && en.day >= 0 ? 'DAY ' + en.day : '—';
         const line = day.padEnd(9) + S(en && en.text);
-        // `live` marks the running sensor tail apart from the day-stamped chronicle.
+        // `live` marks rows that came through the running sensor tail rather than the day-stamped
+        // chronicle. It is uniform across the list by construction — the model reads ONE of the two
+        // windows onto the history ring, never both (see `faultLogView`); reading both is what made
+        // the newest 14 faults print twice.
         list.appendChild(mk(doc, 'div', 'moss-logrow' + (en && en.live ? ' live' : ''), line));
       }
       wrap.appendChild(list);
