@@ -34,7 +34,7 @@ import {
   BLOCKED_ORDER_NAMES, BLOCKED_REASON_NAMES, BLOCKED_REASON_TEXT,
   BLOCKED_ORDER_DIG, BLOCKED_ORDER_STRIP, BLOCKED_ORDER_BUILD,
   BLOCKED_REASON_AIR, BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE,
-  BLOCKED_REASON_UNREACHABLE, BLOCKED_REASON_WORK_TYPE_OFF,
+  BLOCKED_REASON_UNREACHABLE, BLOCKED_REASON_WORK_TYPE_OFF, BLOCKED_REASON_NO_ROUTE,
   BLOCKED_DETAIL_NONE, ITEM_WORDS, itemWords, blockedReasonSentence,
 } from '../src/wire/messages.js';
 import { roomBlockedTiles, roomTileRect } from '../src/ui/room-model.js';
@@ -106,11 +106,12 @@ test('the order and reason vocabularies are pinned EQUAL to the host constants',
   assert.equal(constOf('ReasonNoConsumable'), BLOCKED_REASON_NO_CONSUMABLE);
   assert.equal(constOf('ReasonUnreachable'), BLOCKED_REASON_UNREACHABLE);
   assert.equal(constOf('ReasonWorkTypeOff'), BLOCKED_REASON_WORK_TYPE_OFF);
+  assert.equal(constOf('ReasonNoRoute'), BLOCKED_REASON_NO_ROUTE);
 
   // The NAME tables are indexed BY the wire value, so a hole or a reorder mis-labels every badge.
   assert.deepEqual(BLOCKED_ORDER_NAMES, ['dig', 'strip', 'build']);
   assert.deepEqual(BLOCKED_REASON_NAMES,
-    ['air', 'no_approach', 'no_consumable', 'unreachable', 'work_type_off']);
+    ['air', 'no_approach', 'no_consumable', 'unreachable', 'work_type_off', 'no_route']);
   for (const name of BLOCKED_REASON_NAMES) {
     assert.ok(BLOCKED_REASON_TEXT[name], `reason '${name}' has no player-facing sentence — a badge `
       + 'with no words is the silence this channel exists to remove, wearing a new costume');
@@ -525,6 +526,39 @@ test('a work-type-off row reaches the key as WORDS, and they are M2-20\'s vocabu
     'a second vocabulary for one player confusion. M2-20 says "Awaiting orders" on the PERSON; this '
     + 'surface says its half on the TILE, and three packages describing one confusion is how a repo '
     + 'acquires two names for one predicate.');
+});
+
+// ⭐⭐ D5 — THE CONSUMER CHAIN FOR `no_route`, END TO END THROUGH THE SHIPPED MODULES, exactly as
+// the work_type_off leg above does it: a wire row carrying reason 5 must arrive in the VISIBLE key as
+// WORDS. It is the same claim and the same failure mode — a badge whose legend reads "REASON UNKNOWN
+// TO THIS CLIENT" is the silence this channel exists to remove, arriving one layer further down —
+// and this package's whole point is that the player is TOLD, so a row that renders wordless closes
+// nothing.
+// MUTATION: drop 'no_route' from BLOCKED_REASON_NAMES ⇒ red (the name resolves '' and the text falls
+// back to UNKNOWN). MUTATION 2: delete the `no_route` entry from BLOCKED_REASON_TEXT ⇒ red the same
+// way, on the other half of the seam. Both were run.
+test('a no-route row reaches the key as WORDS, and they are not no_approach\'s', () => {
+  const tiles = fold([row(ROOM.rx, ROOM.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_ROUTE)]);
+  assert.equal(tiles.length, 1, 'premise: the row is in the focused room');
+  assert.equal(tiles[0].reasonName, 'no_route');
+  assert.ok(!/UNKNOWN/.test(tiles[0].reasonText),
+    'the client could not name reason 5 \u2014 the order was dropped silently and the badge explaining it '
+    + 'draws with no explanation, which is D5 one layer down');
+
+  const html = blockedKeyHtml(tiles);
+  assert.match(html, /rz-key-sw-blocked-no_route/, 'the key row needs its swatch hook');
+  assert.ok(html.includes(BLOCKED_REASON_TEXT.no_route),
+    'the sentence must reach the visible key, not only the <title>');
+
+  // ⚠️ THE PAIR IS THE VOCABULARY. `no_approach` and `no_route` are two different worlds with two
+  // different fixes (dig it out / open the route); if they ever collapse into one sentence the badge
+  // stops being actionable, which is the only thing it is for.
+  assert.notEqual(BLOCKED_REASON_TEXT.no_route, BLOCKED_REASON_TEXT.no_approach,
+    'no_route and no_approach must not say the same thing \u2014 one means there is nowhere to stand, the '
+    + 'other means there is and she cannot get there');
+  assert.notEqual(BLOCKED_REASON_TEXT.no_route, BLOCKED_REASON_TEXT.unreachable,
+    'nor may it borrow the hedged sentence of the LATCHED reason \u2014 this answer is a live pathfinder '
+    + 'result, and saying "or the material for it" about it would be a confident lie');
 });
 
 test('blockedKeyHtml singularises one order and stays escaped', () => {
