@@ -101,7 +101,10 @@ Traps: **1** raw-text guard satisfied by commented-out code — strip comments (
 restore from an in-memory copy, `shutil.copy`+`utime` never `copy2` · **3** a FALSE RED — a
 mutation red for the wrong reason (crash ≠ semantic; parse de-DE output correctly) ·
 **4** pin HOW an API was called by recording the argument at the seam, never a text scan ·
-**5** shell traps — unquoted `$flags`, greps with no non-vacuity check.
+**5** shell traps — unquoted `$flags`, greps with no non-vacuity check; 2026-08-03
+addendum: a waiter whose own argv matches its pattern never exits (wait on a PID, never a
+pattern) · broad `pkill -f` kills SIBLING agents' gates/hosts (kill recorded PIDs only) ·
+a leaked headless Chrome OOM-kills someone else's gate as exit-137 (reads as a suite crash).
 
 Shapes: **4th** a guard whose scope filter excludes the violation (non-vacuity must be an
 INCLUSION test) · **5th** `assert` throws, so only a multi-leg test's first leg reports

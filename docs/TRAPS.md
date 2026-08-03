@@ -107,6 +107,29 @@ shared event object across capture/target/bubble).
 - A grep with no non-vacuity check: assert your matcher matches *something* before believing
   it matched nothing.
 
+**Addendum (2026-08-03, session E — five agents on one shared box, three shapes in one day):**
+
+- **A waiter that can find itself never exits.** `until ! ps aux | grep -q '[c]i.sh'` and
+  `pgrep -f "<lane>/ci.sh"` both matched the WAITER'S OWN command line — the `[c]` bracket
+  trick defeats *grep finds itself*, not *the waiter finds itself*. Cost: two agents read
+  ~15-min hangs as running gates; one queued gate never started. **Wait on a PID
+  (`while kill -0 $pid`) or a sentinel line in a log — never on a pattern your own argv
+  contains.** Sibling: a stale `--filter` after a test RENAME returns exit 0 — a filter
+  matching nothing looks exactly like a pass; re-check the filter after every rename.
+- **A broad `pkill -f` is an attack on every other agent on the machine.** Twice in one
+  session (`pkill` on a test-host pattern; `pkill -f "hosts/web"`) an agent killed a
+  SIBLING lane's process mid-run — one hit a reviewer's gate, one hit a verification rig's
+  host. The victim's failure reads as ITS OWN flake. **Kill only PIDs you recorded when
+  you spawned them; use dedicated ports; never a pattern that can match someone else's
+  process.**
+- **A leaked headless Chrome fails SOMEBODY ELSE'S gate as an OOM `SIGKILL` (exit 137)**
+  that reads exactly like a test-suite crash — trap 3's family (red for the wrong reason),
+  one process boundary removed. `process.on('exit')` does not fire on SIGINT/SIGTERM, so a
+  Ctrl+C'd rig still leaks. Related: SIGINT does not stop a detached web host (no tty ⇒
+  `CancelKeyPress` never fires) — the next host on that port dies `HttpListenerException
+  (48)`, or worse, a rig silently talks to the PREVIOUS, poisoned host. **SIGTERM + poll
+  the port free before starting the next.**
+
 ---
 
 ## Part B — the trap SHAPES (cited as "the Nth trap shape")
