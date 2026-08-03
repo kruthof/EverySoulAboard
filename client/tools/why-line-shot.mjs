@@ -68,6 +68,26 @@
 // a probe that cannot see clipping fails before the fix is credited (STEP 3's note: `scrollWidth` is
 // never less than `clientWidth`, so "fits" and "broken probe" look identical otherwise).
 
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ 2026-08-03 — THE STEP-2 SELECTION FLAKE, AND WHY A RIG'S OWN RACES ARE A GATE PROBLEM.
+//
+// Filed in HANDOVER as "no poll — coin-flip red on a fresh host". The cause is NOT slow paint: the
+// crew-row gesture is fire-and-forget at a tile that may already be stale (full receipts on
+// `ensureSelected` below), so waiting longer could never have fixed it. SIX blind waits stood in
+// for preconditions — counted off this diff, not remembered: 6 call sites removed and 2 added (the
+// 250 ms poll cadence inside `waitFor` and the 600 ms retry cadence inside `ensureSelected`), 13
+// real ones before and 9 after. Five became `waitFor(…)` polls with hard, NAMED timeouts: the
+// first `roster` on the host socket · the page coming up · the onboarding card actually CLOSING ·
+// the work grid painting ≥ 4 cells · the readout following the grid flip. The sixth — `sleep(900)`
+// after the selection click — is not a poll at all: STEP 2 now RE-CLICKS her row until the host
+// reports the selection back on `frame.sel`, because a missed click never resolves by waiting.
+//
+// ⛔ AND THE FLAKE WAS THE SMALLER HALF. With nobody selected, `.ov-task` is `hidden`, so STEP 4's
+// `check(!ro.overflows)` PASSED — `scrollWidth 0` is not `> clientWidth 0`. A red run that also
+// prints a vacuous PASS is a rig teaching a future lane the wrong thing; `clientW > 0` closes it.
+// The whole file's oldest lesson, in a third costume: a fitting row and a broken probe measure the
+// same, so every leg has to carry its own non-vacuity.
+
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -89,6 +109,41 @@ mkdirSync(OUT, { recursive: true });
 let failures = 0;
 const check = (ok, what) => { log((ok ? '  PASS  ' : '  FAIL  ') + what); if (!ok) failures += 1; };
 
+/**
+ * ⭐ WAIT FOR A CONDITION, NEVER FOR A CLOCK (2026-08-03, the STEP-2 flake package).
+ *
+ * Every `sleep(n)` that stood in for a precondition in this tool was a BET that a cold `dotnet`
+ * start, a cold Chrome, a cold module graph and two websockets all finish inside `n` ms on a box
+ * that may be running three other agents' gates. That bet loses at random, and this file's own
+ * history says what a lost bet costs: not a clean red, but a RESULT-GENERATOR — `setCell`'s header
+ * already records a run that "kept producing confident output about a state that is not there".
+ *
+ * ⛔ THE HARD TIMEOUT IS THE POINT, not the poll. A rig that quietly carries on without its
+ * precondition is worse than a flaky one (OD-P: fail hard on a mis-capture), so this NAMES what
+ * never appeared, prints whatever `diagnose` can see instead, and exits. `fatal: false` is for the
+ * one legitimate other case: a PRODUCT claim, which must stay a `check` so the FAIL is reported
+ * with all the others rather than truncating the run.
+ *
+ * @param {string} what     the missing thing, spelt as the sentence the error should read
+ * @param {() => any} probe truthy ⇒ done; its value is returned (so `centre(sel)` works directly)
+ */
+async function waitFor(what, probe, { timeoutMs = 30000, everyMs = 250, code = 9, fatal = true, diagnose = null } = {}) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const v = await probe();
+    if (v) return v;
+    await sleep(everyMs);
+  }
+  if (!fatal) return null;
+  let extra = '';
+  try { if (diagnose) extra = ' — what IS there: ' + JSON.stringify(await diagnose()); } catch { /* best effort */ }
+  console.error(`FAIL: waited ${Math.round(timeoutMs / 1000)}s and ${what} never appeared${extra}. `
+    + 'This is a PRECONDITION of the checks below, so the run stops rather than reporting findings '
+    + 'about a state that was never established.');
+  process.exit(code);
+  return null;   // unreachable; keeps the return type honest
+}
+
 // ────────────────────────────────────────────── 1. the sim's own truth, on an independent socket
 const latest = new Map();
 let ws;
@@ -97,7 +152,10 @@ await new Promise((res, rej) => {
   ws.onopen = res; ws.onerror = () => rej(new Error('no host on ' + HOST_PORT));
   ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m?.type) latest.set(m.type, m); };
 });
-await sleep(2500);
+// POLLED, not slept: the socket opening says the HttpListener is up, not that the sim has ticked.
+// A cold host broadcasts its first `roster` seconds later, and 2500 ms was a guess about that gap.
+await waitFor('a `roster` message arrived on the host socket', () => latest.has('roster'),
+  { timeoutMs: 30000, code: 2, diagnose: () => ({ channelsSeen: [...latest.keys()] }) });
 const roster = latest.get('roster');
 if (!roster?.crew?.length) { console.error('FAIL: no roster on the wire'); process.exit(2); }
 const rell = roster.crew[0];
@@ -207,14 +265,49 @@ const releaseText = () => evaluate('clearInterval(window.__dockHold)');
 await call('Page.enable');
 await call('Runtime.enable');
 await call('Page.navigate', { url: `http://localhost:${CLIENT_PORT}/?port=${HOST_PORT}` });
-await sleep(6000);
-const onb = await centre('[data-onb-begin]');
-if (onb) { log('dismissing the onboarding card'); await clickAt(onb.x, onb.y); await sleep(2500); }
+// ⚠️ POLLED, NOT SLEPT (×3). `sleep(6000)` + a one-shot `centre` was the shape: if the card had not
+// painted yet the dismissal was SILENTLY SKIPPED — and the card is a modal overlay, so every click
+// in every step below would then land on it, and the run would die four steps later inside
+// `setCell` blaming the work grid. Three separate conditions, three separate sentences:
+await waitFor('the client rendered anything at all (the onboarding card or the Overview)',
+  () => evaluate("!!document.querySelector('[data-onb-begin], .ov-crewwatch')"), { timeoutMs: 60000, code: 4 });
+// The card is opened SYNCHRONOUSLY by `initOnboarding` whenever `perilune.introSeen.v1` is unset
+// (onboarding.js:349) and this tool always launches Chrome on a fresh `--user-data-dir`, so it is
+// expected here — but it is not REQUIRED (a reused profile has seen it), so its absence is logged,
+// never fatal. A card that will not CLOSE is fatal: nothing below could be clicked.
+// …and a GRACE POLL rather than a one-shot, because the gate above can be satisfied by the
+// Overview alone: `.ov-crewwatch` and the card are both built at init, and nothing orders them.
+const onb = await waitFor('the onboarding card ([data-onb-begin])', () => centre('[data-onb-begin]'),
+  { timeoutMs: 5000, fatal: false });
+if (!onb) log('no onboarding card on screen (a profile that has seen it) — continuing');
+else {
+  log('dismissing the onboarding card');
+  await clickAt(onb.x, onb.y);
+  // ⛔ THE POLARITY IS DELIBERATE. This is the one probe whose answer is an ABSENCE, and a naive
+  // `!(await evaluate(…))` would read a FAILED evaluate (undefined) as "the card is gone" — a
+  // mis-capture silently passing, which is the shape this whole package exists to remove. Asking
+  // for the literal `0` makes every non-answer keep waiting, so an unreadable page ends in the loud
+  // timeout below instead of a false all-clear.
+  await waitFor('the onboarding card closed after BEGIN was clicked (it is a modal overlay — every '
+    + 'click below would land on it instead of the ship)',
+    async () => (await evaluate("document.querySelector('[data-onb-begin]')?1:0")) === 0,
+    { timeoutMs: 20000, code: 4 });
+}
+// The real "the page is live" condition, and it is a THREE-part one: the module graph ran, the
+// page's own socket connected, and a `frame` + `roster` have been painted into a row.
+await waitFor('the Overview painted a CREW WATCH row (.ov-crew)',
+  () => evaluate("!!document.querySelector('.ov-crew')"), { timeoutMs: 60000, code: 4 });
 
 const openWorkTab = async () => {
-  const tab = await centre('[data-ov-tab="work"]');
-  if (!tab) { console.error('FAIL: no WORK tab button'); process.exit(7); }
-  await clickAt(tab.x, tab.y); await sleep(1200);
+  const tab = await waitFor('the WORK tab button ([data-ov-tab="work"])',
+    () => centre('[data-ov-tab="work"]'), { timeoutMs: 20000, code: 7 });
+  await clickAt(tab.x, tab.y);
+  // …and the panel it opens is built from the `work` channel, so the click is not the arrival.
+  // ≥ 4 because `setCell` addresses indices 0 and 3 — an INCLUSION bound, not "> 0" (4th shape).
+  const cellsNow = () => evaluate("document.querySelectorAll('.ov-worklist .ov-workrow .ov-workcell').length");
+  await waitFor('the work grid painted at least 4 cells (.ov-worklist .ov-workrow .ov-workcell) after '
+    + 'the WORK tab was clicked', async () => (await cellsNow()) >= 4,
+  { timeoutMs: 20000, code: 7, diagnose: async () => ({ cells: await cellsNow() }) });
 };
 // Indexed off the NodeList, not `nth-of-type` — the cells are not guaranteed to be the only
 // element type among their siblings, and a selector that silently matches nothing would make every
@@ -261,6 +354,66 @@ async function setCell(i, want) {
   process.exit(8);
 }
 
+/**
+ * ⭐⭐ SELECT HER, AND MAKE THE HOST SAY SO — the fix for the filed STEP-2 flake (2026-08-03).
+ *
+ * ⛔ THE RACE, AND IT IS NOT A SLOW-PAINT RACE. Selection here is HOST state and the gesture is
+ * FIRE-AND-FORGET at a tile that may already be stale. `Hud.selectCrewByCid` → `crewRowClick`
+ * (hud.js:934) latches nothing client-side: it reads the pawn's tile out of the LAST FRAME IT
+ * RECEIVED (`crewClickTarget`, console-model.js:166) and sends `Cmd.click(x, y)`. The host selects
+ * whoever is standing on that tile WHEN THE COMMAND LANDS, and the answer comes back on `frame.sel`
+ * ("Never latched client-side" — console-model.js:146). STEP 1 has just switched REPAIR on, so she
+ * is WALKING: one frame of staleness and the click hits empty floor and selects NOBODY.
+ *
+ * ⭐ MEASURED, DRIVEN, not deduced (2026-08-03): five runs against fresh hosts were green, so the
+ * click was forced to land mid-walk (speed 100× first, click once the label read "Heading to…").
+ * Run 3 of 3 reported `.ov-ro-task {"hidden":true,"text":""}` and 4 FAILs in STEPS 4–5 — exactly the
+ * filed "coin-flip red on a fresh host". The other two were green: it is a race, not a break.
+ *
+ * ⚠️ AND `sleep(900)` COULD NEVER HAVE FIXED IT. Waiting longer does not un-miss a click that
+ * already landed on empty floor; the only repair is to ask the host whether it selected her and
+ * CLICK AGAIN AT HER NEW TILE if it did not. Hence a poll that re-reads the row's rectangle and
+ * re-clicks, not a poll that only watches.
+ *
+ * ⛔ TWO CONDITIONS, BOTH REQUIRED, AND THE SECOND IS WHY THE FLAKE WAS QUIET. `.ov-crew.sel` is the
+ * frame-derived truth (overview-view.js:1133 ← `selectedCrewCid(frame)`) and `.ov-ro-task` is the
+ * element STEPS 4–5 actually measure. The old code checked NEITHER: `if (row) {…}` made a missing
+ * row a silent skip, and on an unselected crew `.ov-task` is `hidden`, so STEP 4's
+ * `check(!ro.overflows)` PASSED VACUOUSLY — `scrollWidth 0` is not `> clientWidth 0`. A fitting row
+ * and a hidden row measure the same, which is this rig's own oldest lesson (see the header).
+ */
+const SELECTION_TIMEOUT_MS = 30000;
+const selectionState = `(()=>{const s=document.querySelector('.ov-crew.sel'),t=document.querySelector('.ov-ro-task');`
+  + `return {sel:s?s.dataset.ovCrew:null,taskHidden:!t||t.hasAttribute('hidden'),task:t?t.textContent:null};})()`;
+async function ensureSelected(cid, when) {
+  const want = String(cid);
+  const rowSel = `.ov-crew[data-ov-crew="${want}"]`;
+  await waitFor(`the CREW WATCH row for cid ${want} (${rowSel})`, () => centre(rowSel),
+    { timeoutMs: SELECTION_TIMEOUT_MS, code: 9 });
+  const t0 = Date.now();
+  let st = null, clicks = 0;
+  while (Date.now() - t0 < SELECTION_TIMEOUT_MS) {
+    st = await json(selectionState);
+    if (st && st.sel === want && !st.taskHidden && st.task) {
+      log(`  selection (${when}): cid ${want} is SELECTED on the host`
+        + (clicks ? ` after ${clicks} click(s) on her row` : ' already'));
+      return st;
+    }
+    const row = await centre(rowSel);
+    if (row) { clicks += 1; await clickAt(row.x, row.y); }
+    await sleep(600);
+  }
+  console.error(
+    `FAIL: the host never reported cid ${want} as selected — ${clicks} clicks on ${rowSel} over `
+    + `${SELECTION_TIMEOUT_MS / 1000}s and the last read was ${JSON.stringify(st)} (${when}). The row `
+    + 'click sends `click(x,y)` at her tile and the host answers on `frame.sel`; if she is walking '
+    + 'faster than a frame the click lands on floor, and if that never resolves the selected readout '
+    + 'STEPS 4-5 measure is `hidden` — a 0px box that would let their overflow legs pass vacuously. '
+    + 'So the run stops here rather than reporting on an element nobody selected.');
+  process.exit(9);
+  return null;
+}
+
 // ── STEP 1: the grid boots off, and she is awaiting orders ──
 await leaveRoomZoom();   // a previous run's STEP 7 must not decide which surface this one starts on
 log('\nSTEP 1 — boot state (OD-G/OD-H)');
@@ -272,8 +425,7 @@ log('  `work` on the wire:', JSON.stringify(latest.get('work')?.cells));
 
 // ── STEP 2: select her so the readout is on screen, and run the clock until she works ──
 log('\nSTEP 2 — select the pawn, run the ship, wait for a job');
-const row = await centre('.ov-crew');
-if (row) { await clickAt(row.x, row.y); await sleep(900); }
+await ensureSelected(rell.cid, 'STEP 2');
 // 100x over the WIRE, exactly as work-tab-shot.mjs does it ({"cmd":"speed","delta":+3} walks the
 // speed index 1 → 4). The SIM is untouched by that — it is the same fixed 10 Hz tick, just more of
 // them per wall-second — and driving it from this socket rather than the page keeps the measurement
@@ -289,6 +441,10 @@ check(working.includes(' — '), 'the host is emitting a ranking clause (two wor
 
 // ── STEP 3: THE DEFECT — do the docks overflow? ──
 log('\nSTEP 3 — the two crew docks must NOT overflow');
+// Re-asked, not assumed: up to 90 s of 100× ship has run since STEP 2 selected her, and the
+// selection lives on the HOST. Idempotent — when it is still selected this is two reads and no
+// click; when it is not, this is the same repair rather than four confusing FAILs downstream.
+await ensureSelected(rell.cid, 'after the job wait');
 const ovDock = await box('.ov-crewtask');
 log('  .ov-crewtask:', JSON.stringify(ovDock));
 check(ovDock && !ovDock.overflows,
@@ -302,7 +458,11 @@ log('\nSTEP 4 — the ranking clause, whole, in the selected readout');
 const ro = await box('.ov-task');
 log('  .ov-task:', JSON.stringify(ro));
 log(`\n  ⭐ VERBATIM .ov-task READOUT: ${JSON.stringify(ro?.text)}\n`);
-check(ro && !ro.overflows, `.ov-task content ${ro?.scrollW}px in a ${ro?.clientW}px box (it wraps)`);
+// ⛔ `clientW > 0` IS NON-VACUITY, NOT BELT-AND-BRACES. An unselected crew leaves this element
+// `hidden`, and `scrollWidth 0` is not `> clientWidth 0` — so without this term the leg PASSES on a
+// readout that is not on screen at all, which is precisely how the STEP-2 flake stayed quiet.
+check(ro && ro.clientW > 0 && !ro.overflows,
+  `.ov-task content ${ro?.scrollW}px in a ${ro?.clientW}px box (it wraps; a 0px box means HIDDEN)`);
 check(ro && /is priority \d/.test(ro.text), 'the readout carries the priority the job was chosen at');
 check(ro && ro.text.includes(working), 'the readout is the host\'s whole sentence, unaltered');
 await png('01-clause-in-readout.png');
@@ -313,8 +473,13 @@ const before = ro?.text || '';
 await openWorkTab();
 check(await setCell(0, 4), 'REPAIR set to 4');
 check(await setCell(3, 1), 'STRIP set to 1');
-await sleep(2500);
-const after = await box('.ov-task');
+// POLLED, and DELIBERATELY NON-FATAL. "The readout follows the grid" is a PRODUCT claim, not a rig
+// precondition: if it never follows, that must arrive as the FAIL below alongside every other
+// result, never as an exit that truncates STEPS 6-7. The poll only removes the 2500 ms guess about
+// how long the command→sim→wire→repaint round trip takes at 100×.
+const after = await waitFor('the selected readout followed the grid flip',
+  async () => { const b = await box('.ov-task'); return (b && b.text && b.text !== before) ? b : null; },
+  { timeoutMs: 20000, fatal: false }) || await box('.ov-task');
 log(`  ⭐ VERBATIM .ov-task AFTER THE FLIP: ${JSON.stringify(after?.text)}`);
 check(after && after.text !== before, 'the readout changed when the grid changed');
 check(after && /is priority \d/.test(after.text), 'and it still names a priority');
