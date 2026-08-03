@@ -90,11 +90,27 @@ element — no per-lamp light pools in Level 2 (individual LAMP items carry thei
 §5/§6). It never occludes furniture (behind all item layers, above the floor+grid).
 
 **VS-Z-12** — **Canvas footer caption**: bottom-left inside the floor, `left:20 bottom:16;
-pointer-events:none; font-size:9.5px; letter-spacing:.16em; color:rgba(255,240,220,.5);` reading
-`{ROOM NAME} · BUILD DETAIL · {n} PLACED`, where `{n}` is the count of pending designations +
-placed devices in this room and is coloured `#f2b563`. `{ROOM NAME}` is CLIENT-DERIVED (uppercase)
-by mapping the focused room's `decks` `roomType` through the `roomType`→label table, with the
-`decks` `anchorName` as the fallback label — no channel carries a human name (VS-Z-04).
+pointer-events:none; font-size:9.5px; letter-spacing:.16em; color:rgba(255,240,220,.5);` where `{n}`
+is the count of pending designations + placed devices in this room and is coloured `#f2b563`.
+`{ROOM NAME}` is CLIENT-DERIVED (uppercase) by mapping the focused room's `decks` `roomType` through
+the `roomType`→label table, with the `decks` `anchorName` as the fallback label — no channel carries
+a human name (VS-Z-04).
+
+⚠️ **AMENDED 2026-08-03 (the first screen in a room is the room).** It read `{ROOM NAME} · BUILD
+DETAIL · {n} PLACED` **unconditionally**, which made the canvas footer one of three surfaces
+announcing BUILD on a room the player had just opened with nothing armed (IX-Z-01/02). It now has
+two texts, keyed on the armed slot:
+
+| armed slot | caption |
+|---|---|
+| a tool is armed | `{ROOM NAME} · BUILD DETAIL · {n} PLACED` *(unchanged)* |
+| nothing armed | `{ROOM NAME} · {k} CREW HERE · {n} PLACED`, and `NO CREW HERE` at `k = 0` |
+
+`{k}` is the number of crew standing inside this room's rect — the same `here` fact the crew dock's
+WHERE column prints, so the footer and the dock cannot word one truth two ways. The DOM is two
+spans, `.rz-cap-lead` (everything up to and including the second `·`) and `.rz-placed` (the amber
+count); the former was `.rz-cap-name` and carried the room name only, with ` · BUILD DETAIL · `
+baked into the markup between them — which is *why* the caption could not say anything else.
 
 ---
 
@@ -435,8 +451,17 @@ VS-60). Every non-current slot is a click target back to that room's Room Zoom /
 **VS-Z-45** — Bottom-centre, `left:50%; bottom:24; transform:translateX(-50%); display:flex;
 flex-direction:column; align-items:center; gap:8px;`. Top element is the palette bar on the shared
 `.hud` glass, `display:flex; gap:7px; align-items:center; padding:9px 12px; border-radius:12px;`,
-led by the label `BUILD ▸ {ROOM NAME}` (`font-size:9px; letter-spacing:.16em; color:var(--txt-faint);
-flex:none;`).
+led by a group label (`font-size:9px; letter-spacing:.16em; color:var(--txt-faint); flex:none;`).
+
+⚠️ **AMENDED 2026-08-03 (the first screen in a room is the room).** The label read
+`BUILD ▸ {ROOM NAME}` **unconditionally**. With nothing armed it now reads **`TOOLS ▸ {ROOM NAME}`**;
+`BUILD ▸ {ROOM NAME}` returns the moment a tool is armed and is unchanged in that state. The label
+never blanks and the bar never hides — IX-Z-02 declares the palette always visible, and eighteen
+unexplained buttons is a worse first screen than a de-emphasised one. `TOOLS` is the noun for the
+shelf; `BUILD` is the verb for the mode, and it is spoken only while the mode is on. It is
+deliberately **not** vocabulary adjacent to the Overview WORK tab's `BUILD` column header — that
+collision is a separate carried owner item with its own standing HOLD test, and this amendment moves
+away from it rather than into it.
 
 **VS-Z-46** — **Palette tools, in order**: `WALL`, `DOOR`, `BUNK`, `DESK`, `CHAIR`, `LOCKER`,
 `SHELF`, `LAMP`, `RUG`, `PLANT`, `⌫ DEMOLISH`. Each button: `padding:8px 13px; border-radius:7px;
@@ -451,13 +476,51 @@ look.)
 Exactly one tool is active at a time (single-slot, interaction spec). Hover on an inactive button:
 fg `#b3aa9c`, bd `#3a332a→#cf7a33` per the game-ui palette-hover grammar (VS-47).
 
-**VS-Z-48** — **Hint line** below the bar: `font-size:9.5px; letter-spacing:.06em;
-color:var(--txt-dim);` (bumped from the mock's `#57503f` per §9 — this is load-bearing instruction),
-text: `SELECT AN ITEM · CLICK THE FLOOR TO PLACE · CLICK A GHOST WITH DEMOLISH TO REMOVE`.
+**VS-Z-48** — **Hint line** below the bar (`#rz-hint`): `font-size:9.5px; letter-spacing:.06em;
+color:var(--txt-dim);` (bumped from the mock's `#57503f` per §9 — this is load-bearing instruction).
 
-**VS-Z-49** — The palette bar never wraps; at min viewport width it scrolls horizontally inside its
-own `overflow-x:auto` with the scrollbar hidden (`scrollbar-width:none`), the eleven tools fitting at
-1280 with the paddings above (safety valve only, per game-ui VS-26).
+⚠️ **RESTATED 2026-08-03, AND THE OLD TEXT HAD ALREADY DRIFTED.** This clause declared
+`SELECT AN ITEM · CLICK THE FLOOR TO PLACE · CLICK A GHOST WITH DEMOLISH TO REMOVE`; the surface has
+not said that since the sweep/order tools landed, and nothing pinned it, so spec and screen simply
+diverged. Reconciled here by writing down what ships, and the line now has **two texts** keyed on the
+armed slot — which is the package. Both live as `ZOOM_HINT_IDLE` / `ZOOM_HINT_ARMED` in the pure
+`client/src/ui/room-model.js`; the view holds no copy (pinned).
+
+- **nothing armed** — `CLICK A CREW MEMBER TO SELECT THEM · RIGHT-CLICK A MACHINE TO PRIORITISE ITS
+  REPAIR · PICK A TOOL ABOVE TO BUILD · ESC RETURNS TO THE SHIP`. The two verbs it names first are
+  the ones a disarmed room actually has (IX-Z-30 select; the M2-10 right-click PRIORITISE menu) and
+  neither was advertised anywhere before. The build offer is the **tail** of the line, not its head
+  — pinned as an ordering, not as a string.
+  ⚠️ **"A MACHINE", NOT "A TILE", AND THE DISTINCTION IS LOAD-BEARING.** `prioritiseOffer` refuses a
+  tile carrying no `devices` row **silently and by design**, so on the shipped cryo bay — mostly
+  bare floor — a hint promising "right-click a tile" would advertise the one gesture that answers
+  with nothing. An invitation to silence is the same defect this clause exists to remove, wearing
+  the opposite sign.
+- **a tool armed** — `WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · DIG [G] /
+  STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · ERASE [C]: DRAG OVER PAINTED ORDERS TO
+  TAKE THEM BACK · MOVE [M]: PICK A CREW MEMBER, THEN CLICK WHERE THEY SHOULD GO · DEMOLISH REMOVES A
+  GHOST · ESC DISARMS`. This is the shipped crib sheet minus its stale leading `PICK A TOOL · ` (a
+  tool *is* picked by then) plus `ESC DISARMS`, which is what `escStackRung` has always done on this
+  rung with nothing on the surface saying so.
+
+**VS-Z-49** — ⚠️ **RESTATED 2026-08-03 — the shipped behaviour is the OPPOSITE of what this clause
+said, and the tests pin the shipped one.** It read: *"The palette bar never wraps; at min viewport
+width it scrolls horizontally inside its own `overflow-x:auto` with the scrollbar hidden
+(`scrollbar-width:none`), the eleven tools fitting at 1280 with the paddings above."* The
+palette-overflow package measured that idiom putting three tools off the right edge behind a hidden
+scrollbar and replaced it: `.rz-palette` **WRAPS** (`flex-wrap:wrap; justify-content:center;
+width:max-content; max-width:100%`) inside a `.rz-palette-wrap` that carries the width budget
+(`max-width:calc(100vw - 64px)`) and **no** height cap or clipping overflow — the bar grows downward
+instead of hiding its tail. `client/test/palette-layout.test.js` pins every one of those, including
+the absence of a clipping `overflow` on all three rows. The hint line below it wraps for the same
+reason and by the same default (no `white-space` override on `.rz-hint`).
+⚠️ **AND SIZE THAT BOX FROM THE ARMED TEXT, NOT THE NEUTRAL ONE.** A sentence here claimed the
+neutral hint was "the longer of the two"; it is not, and a later lane budgeting the row from that
+claim would use the smaller number. **Measured in real Chrome at 1600×1000** by
+`client/tools/roomzoom-neutral-shot.mjs`: neutral **138 chars / 881 px, one line**; armed
+**299 chars / 1462 px, wrapping to two lines** inside the wrapper's `calc(100vw - 64px)` budget.
+The armed text is the worst case in both axes, and the wrap it takes is visible in
+`docs/design/shots/roomzoom-neutral-02-armed.png`.
 
 ---
 

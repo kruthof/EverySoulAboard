@@ -27,6 +27,7 @@ import {
   roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
+  zoomChrome, ZOOM_HINT_IDLE, ZOOM_HINT_ARMED,
 } from '../src/ui/room-model.js';
 import { ITEMS, isDeviceItem } from '../src/items/index.js';
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM } from '../src/items/glyph-map.js';
@@ -1119,6 +1120,12 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  // ⭐ THE HINT LINE, registered here because the neutral-first-screen package gave it two texts
+  // and therefore a node reference. It is a `<div>`, so the start-tag scanner below (which lifts
+  // `button|span` only) cannot resolve it and `_el.hint` would be null — every hint assertion in
+  // this file would then read the seeded markup rather than what `paintChrome` wrote, which is
+  // exactly the "guard that cannot bite" shape. Trap 4's corollary: fix the harness.
+  'rz-hint',
   // hud.js writes these unconditionally on a roster/status dispatch (see relations-view.test.js).
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
   // ⚠️ ADDED FOR THE PAUSED-NUDGE LEG (M1-C review, 2026-07-29), and it is trap 4's corollary again:
@@ -1188,6 +1195,14 @@ class RzEl extends DomEl {
     return this._scanned.filter((e) => e.classList.contains(cls));
   }
   getBoundingClientRect() { return this._rect; }
+  /** ⭐ ADDED FOR THE CAPTION'S CREW-COUNT LEG (the neutral-first-screen package), and it is trap 4's
+   *  corollary once more: `hud.js`'s `reconcileRows` — the CONSOLE CREW WATCH's row reconciler,
+   *  reached by `renderRoster` — calls it, so this rig could not dispatch a roster AT ALL and the
+   *  header above says so. Without it there is no way to drive "how many souls are in this room"
+   *  through the shipping path, and `_capHere` could be hard-zero forever with every test green.
+   *  Order-insensitive (append, never insert), exactly as `zoom-pawn.test.js`'s sibling rig spells
+   *  it: nothing here asserts row ORDER — that is the sibling's subject, driven on its own rig. */
+  insertBefore(el) { return this.appendChild(el); }
   closest(sel) {
     let n = this;
     while (n && n.nodeType === 1) {
@@ -1403,6 +1418,23 @@ function rzArm(tool) {
   rzFire(b, 'click', {});
 }
 
+// ── the three chrome sentences, read back off the LIVE nodes ───────────────────────────────────
+// ⚠️ THE HINT IS READ FROM ITS NODE, NOT FROM `rzRoot.innerHTML`, and the change is not cosmetic.
+// The root markup carries the SEEDED text only (`ZOOM_HINT_IDLE`, written once by `buildChrome`);
+// what the player reads is whatever `paintChrome` last wrote into `#rz-hint`. Asserting the markup
+// string could never see a hint that stopped being repainted — the assertion would pass on a
+// surface whose hint was frozen at boot, which is the precise defect this instrument now guards.
+const rzHint = () => rzDoc.getElementById('rz-hint').textContent;
+const rzLabel = () => rzPalette.querySelector('.rz-place-label').textContent;
+// The caption is its TWO spans joined (VS-Z-12 colours the count separately). Read off the scanned
+// start tags rather than the container's `textContent`: the scanner deliberately keeps its nodes
+// out of `childNodes`, so the container reads '' here and an assertion against it would be vacuous.
+const rzCaption = () => {
+  const cap = rzDoc.getElementById('rz-caption');
+  const part = (cls) => (cap.querySelector(cls) || { textContent: '' }).textContent;
+  return part('.rz-cap-lead') + part('.rz-placed');
+};
+
 // ── WP-6: driving the ACCEPTS chips ────────────────────────────────────────────────────────────
 // `dom-lite` parses no markup, so `_el.accepts`'s real chips (written as one `innerHTML` string) are
 // not clickable nodes here — exactly as `_el.toolBtns` is empty and `rzArm` builds its own
@@ -1513,10 +1545,16 @@ test('WP-4: the palette actually PAINTS a DIG and a STRIP button, labelled and a
     assert.ok(html.includes('data-rztool="' + tool + '"'), `no palette button for '${tool}'`);
     assert.ok(html.includes('>' + label + '<'), `the '${tool}' button is missing its label '${label}'`);
   }
-  // And the hint line names the two new hotkeys, since nothing else on the surface can.
-  const hint = rzRoot.innerHTML;
-  assert.match(hint, /DIG \[G\]/);
-  assert.match(hint, /STRIP \[V\]/);
+  // And the hint line names the two new hotkeys. ⚠️ AMENDED BY THE NEUTRAL-FIRST-SCREEN PACKAGE:
+  // the hint has TWO texts now, and the crib sheet is the ARMED one — with nothing armed the line
+  // says what a disarmed room offers instead (select a pawn, right-click to prioritise). So the
+  // tool is armed first, and the read is off the live node. The hotkeys themselves are also taught
+  // by the onboarding card's "CONTROLS · INSIDE A ROOM" block (`onboarding.js`), which is joined to
+  // these same `arm(...)` call sites — so this is no longer the surface's only naming of them.
+  rzArm('dig');
+  assert.match(rzHint(), /DIG \[G\]/);
+  assert.match(rzHint(), /STRIP \[V\]/);
+  rzArm('dig');
 });
 
 test('WP-4: DIG arms and disarms through the palette, and so does STRIP (one exclusive slot)', () => {
@@ -1842,8 +1880,10 @@ test('M1-C: the palette PAINTS an ERASE button, labelled, and the hint names its
   assert.ok(html.includes('data-rztool="erase"'), 'no palette button for erase');
   assert.ok(html.includes('>' + TOOL_LABEL.erase + '<'),
     `the erase button is missing its label '${TOOL_LABEL.erase}'`);
-  assert.match(rzRoot.innerHTML, /ERASE \[C\]/,
-    'the palette hint does not name the C hotkey — and nothing else on this surface can');
+  rzArm('erase');                                 // the crib sheet is the ARMED hint (see rzHint)
+  assert.match(rzHint(), /ERASE \[C\]/,
+    'the armed palette hint does not name the C hotkey');
+  rzArm('erase');
   // ERASE AND DEMOLISH MUST NOT WEAR THE SAME ICON. They are the most confusable pair on the bar
   // (one takes an ORDER off a tile, the other takes a THING off the floor) and colour alone does not
   // separate them for a player scanning seventeen labels.
@@ -2031,8 +2071,10 @@ test('the palette PAINTS a STOCKPILE button, labelled, and the hint names its ho
   assert.ok(html.includes('data-rztool="stockpile"'), 'no palette button for stockpile');
   assert.ok(html.includes('>' + TOOL_LABEL.stockpile + '<'),
     `the stockpile button is missing its label '${TOOL_LABEL.stockpile}'`);
-  assert.match(rzRoot.innerHTML, /STOCKPILE \[Z\]/,
-    'the palette hint does not name the Z hotkey — and nothing else on this surface can');
+  rzArm('stockpile');                             // the crib sheet is the ARMED hint (see rzHint)
+  assert.match(rzHint(), /STOCKPILE \[Z\]/,
+    'the armed palette hint does not name the Z hotkey');
+  rzArm('stockpile');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -2161,19 +2203,237 @@ test('the chrome SPANS resolve and the painters write through them — caption, 
   assert.ok(name, 'the fixture room has no display name — every assertion below would be vacuous');
   const label = rzPalette.querySelector('.rz-place-label');
   assert.ok(label, 'the palette has no `.rz-place-label` handle');
-  assert.equal(label.textContent, 'BUILD ▸ ' + name,
-    'the palette\'s room label is not what `paintPalette` writes — either the span did not resolve ' +
-    '(so `setText` no-opped on null) or the wording moved');
+  // ⚠️ AMENDED BY THE NEUTRAL-FIRST-SCREEN PACKAGE: this span is written by `paintChrome` now, and
+  // its wording keys on whether a tool is armed. Both cells are asserted, because a handle that
+  // resolved once and then stopped being repainted would satisfy either one alone.
+  assert.equal(label.textContent, 'TOOLS ▸ ' + name,
+    'the palette\'s DISARMED room label is not what `paintChrome` writes — either the span did not ' +
+    'resolve (so `setText` no-opped on null) or the wording moved');
+  rzArm('wall');
+  assert.equal(label.textContent, 'BUILD ▸ ' + name, 'the ARMED label is not the BUILD wording');
+  rzArm('wall');
 
   const cap = rzDoc.getElementById('rz-caption');
-  assert.equal(cap.querySelector('.rz-cap-name').textContent, name,
-    'the caption\'s room name did not arrive — `_el.capName` resolved to null');
+  assert.match(cap.querySelector('.rz-cap-lead').textContent, new RegExp('^' + name + ' · '),
+    'the caption\'s room name did not arrive — `_el.capLead` resolved to null');
   assert.match(cap.querySelector('.rz-placed').textContent, /^\d+ PLACED$/,
     'the caption\'s placed-count did not arrive — `_el.capPlaced` resolved to null');
 
   const bc = rzDoc.getElementById('rz-breadcrumb');
   assert.equal(bc.querySelector('.rz-crumb-leaf').textContent, name,
     'the breadcrumb leaf did not arrive — `_el.crumbLeaf` resolved to null');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐ THE FIRST SCREEN IN A ROOM IS THE ROOM (carried playtest item, 2026-08-03).
+//
+//   *"Opening a room shows the room and its people — not a build palette demanding a tool."*
+//
+// THE FILED COMPLAINT SAID "the Room Zoom opens with BUILD armed" AND THE STATE WAS ALREADY RIGHT:
+// `enterRoom` sets `_armed = null` (IX-Z-01), and so do `exitRoom`, the minimap room swap and the
+// crew-row jump. The defect was PRESENTATION — three simultaneous announcements of a mode that was
+// not on, on the first frame of every room:
+//     BUILD ▸ HOLD  /  PICK A TOOL · WALL/FLOOR: …  /  HOLD · BUILD DETAIL · n PLACED
+// and not one word about what the disarmed surface actually does. That last half is why this is a
+// package and not a string edit: the two verbs a player has with nothing armed — a click selects
+// the pawn under it (IX-Z-30, pinned by `zoom-pawn.test.js`'s BASELINE) and a right-click opens
+// PRIORITISE (M2-10, pinned by `prioritise-menu.test.js`) — were UNADVERTISED ANYWHERE.
+//
+// ⚠️ WHAT THESE TESTS CANNOT SEE, said before the assertions rather than after: NOTHING HERE IS A
+// PIXEL. Whether the longer neutral hint fits its box at the shipped Space Mono size, and whether
+// the palette still reads as de-emphasised next to it, are questions only a layout engine answers —
+// `client/tools/roomzoom-neutral-shot.mjs` is where they are answered, in real Chrome, and its
+// overflow probe is the acceptance instrument for this package.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+// MUTATION: `label: 'BUILD ▸ ' + room` unconditionally ⇒ RED (leg 1).
+// MUTATION: `hint: ZOOM_HINT_ARMED` unconditionally ⇒ RED (leg 1).
+// MUTATION: `capLead: room + ' · BUILD DETAIL · '` unconditionally ⇒ RED (leg 1).
+test('zoomChrome: with NOTHING armed not one of the three surfaces says BUILD', () => {
+  const idle = zoomChrome({ armed: null, roomName: 'HOLD', placed: 3, crewHere: 2 });
+  assert.equal(idle.armed, false);
+  // The whole point, asserted as an ABSENCE over the two MODE surfaces at once — a per-string
+  // equality would pass if a fourth BUILD sentence were added tomorrow.
+  for (const [what, s] of Object.entries(
+    { label: idle.label, capLead: idle.capLead, capPlaced: idle.capPlaced })) {
+    assert.doesNotMatch(s, /BUILD/,
+      `the DISARMED ${what} still announces BUILD ('${s}') — the surface is claiming a mode that ` +
+      'is not on, which is the whole defect');
+  }
+  // ⚠️ THE HINT IS EXEMPT FROM THAT SWEEP ON PURPOSE, AND THE EXEMPTION IS ITSELF PINNED. The hint's
+  // job is to OFFER the verbs, building included ("PICK A TOOL ABOVE TO BUILD") — a hint that never
+  // said the word would leave eighteen buttons unexplained, which is the opposite defect. What it
+  // must not do is lead with it: the room and its people come FIRST, the palette last.
+  assert.ok(idle.hint.indexOf('SELECT') < idle.hint.indexOf('BUILD'),
+    `the neutral hint offers BUILD before it offers SELECT ('${idle.hint}') — the first screen in a `
+    + 'room is the room and its people, so the build offer is the tail of this line, not its head');
+  assert.doesNotMatch(idle.hint, /^PICK A TOOL/,
+    'the neutral hint still OPENS with the imperative that shipped — that is the complaint verbatim');
+  // …and it says where you are, who is with you, and what you can do instead.
+  assert.equal(idle.label, 'TOOLS ▸ HOLD');
+  assert.equal(idle.capLead, 'HOLD · 2 CREW HERE · ');
+  assert.equal(idle.capPlaced, '3 PLACED');
+  assert.equal(idle.hint, ZOOM_HINT_IDLE);
+  assert.match(idle.hint, /SELECT/, 'the neutral hint does not name the select verb (IX-Z-30)');
+  assert.match(idle.hint, /PRIORITISE/, 'the neutral hint does not name the right-click verb (M2-10)');
+  // ⭐ AND IT MUST PROMISE THE GESTURE THAT ANSWERS. `prioritiseOffer` refuses a tile with no
+  // `devices` row SILENTLY and by design (pinned twice in `prioritise-menu.test.js`), and most of
+  // the shipped cryo bay is bare floor — so "RIGHT-CLICK A TILE", which is what the first draft of
+  // this line said, advertises the one gesture that returns nothing. An invitation to silence is
+  // the same defect as an unadvertised verb, wearing the opposite sign.
+  assert.match(idle.hint, /RIGHT-CLICK A MACHINE/,
+    `the neutral hint reads ${JSON.stringify(idle.hint)} — it must aim the right-click at a MACHINE. `
+    + 'A tile with no devices row opens no menu and sends no command, on purpose.');
+  assert.doesNotMatch(idle.hint, /RIGHT-CLICK A TILE/, 'the hint invites a right-click on bare floor');
+  assert.match(idle.hint, /TOOL/, 'the neutral hint does not say how to start building');
+});
+
+// MUTATION: `armed = false` in zoomChrome ⇒ RED. MUTATION: return the idle strings when armed ⇒ RED.
+test('zoomChrome: arming a tool brings the BUILD presentation back, on all three at once', () => {
+  const armed = zoomChrome({ armed: 'wall', roomName: 'HOLD', placed: 3, crewHere: 2 });
+  assert.equal(armed.armed, true);
+  assert.equal(armed.label, 'BUILD ▸ HOLD');
+  assert.equal(armed.capLead, 'HOLD · BUILD DETAIL · ');
+  assert.equal(armed.hint, ZOOM_HINT_ARMED);
+  // The armed crib sheet lost its stale leading imperative and gained the rung ESC actually does.
+  assert.doesNotMatch(armed.hint, /^PICK A TOOL/,
+    'the armed hint still opens with PICK A TOOL — a tool IS picked, so the line was stale the ' +
+    'moment it could be read');
+  assert.match(armed.hint, /ESC DISARMS/, '`escStackRung` disarms on this rung and nothing says so');
+  // ONE INPUT drives all three. A per-surface flag could let the label and the caption disagree.
+  for (const tool of ROOM_TOOLS) {
+    const c = zoomChrome({ armed: tool, roomName: 'HOLD', placed: 0, crewHere: 0 });
+    assert.equal(c.label, 'BUILD ▸ HOLD', `the label is not the armed wording for '${tool}'`);
+    assert.equal(c.capLead, 'HOLD · BUILD DETAIL · ', `the caption disagrees with the label for '${tool}'`);
+    assert.equal(c.hint, ZOOM_HINT_ARMED, `the hint disagrees with the label for '${tool}'`);
+  }
+});
+
+// The company clause, at each of the three shapes a room comes in. `''` is included because
+// `_armed` is the empty string for no tool nowhere in this codebase — but `zoomChrome` is a public
+// export and a caller passing `''` must not be told a tool is armed.
+test('zoomChrome: the caption counts the souls in the room, and 0 is a sentence not a zero', () => {
+  const at = (n) => zoomChrome({ armed: null, roomName: 'HOLD', placed: 0, crewHere: n }).capLead;
+  assert.equal(at(0), 'HOLD · NO CREW HERE · ');
+  assert.equal(at(1), 'HOLD · 1 CREW HERE · ');
+  assert.equal(at(4), 'HOLD · 4 CREW HERE · ');
+  assert.equal(zoomChrome({ armed: '', roomName: 'HOLD' }).label, 'TOOLS ▸ HOLD',
+    'an empty-string tool was read as armed');
+  // Missing fields must not print `undefined` at a player.
+  const bare = zoomChrome({ armed: null, roomName: 'HOLD' });
+  assert.equal(bare.capLead, 'HOLD · NO CREW HERE · ');
+  assert.equal(bare.capPlaced, '0 PLACED');
+  assert.equal(zoomChrome().label, 'TOOLS ▸ ', 'zoomChrome() with no argument threw or printed junk');
+});
+
+/**
+ * ⭐ THE OUTCOME, DRIVEN THROUGH THE SHIPPING CONTROLLER — because every assertion above would pass
+ * on a tree where `paintChrome` is never called. The room is entered through `enterRoom` (the
+ * Overview's own hook), the tool is armed by CLICKING the shipped palette button, and it is
+ * disarmed with the real ESC handler.
+ *
+ * ⚠️ THE THREE NODES ARE BLANKED BEFORE THE ENTRY, AND THAT LINE IS THE TEST. Without it the
+ * assertions below were satisfied by the afterEach hook's own `rzArm('stockpile')` pair — which
+ * calls `paintChrome` on its way past — so dropping `paintChrome()` from `repaint()` entirely left
+ * this test GREEN (measured, not feared: fail=1, and the one red was the crew-count leg below).
+ * "Entering a room paints the room" cannot be asserted on a surface something else just painted.
+ *
+ * MUTATION: revert `paintChrome` to `setText(_el.placeLabel, 'BUILD ▸ ' + _focus.displayName)`
+ *           ⇒ RED on the first label leg.
+ * MUTATION: drop `paintChrome()` from `arm()`   ⇒ RED on the armed legs (no frame arrives here, so
+ *           nothing else repaints — which is exactly the paused-ship case the call is there for).
+ * MUTATION: drop `paintChrome()` from `repaint()` ⇒ RED on the first leg (entry paints nothing).
+ * MUTATION: `_el.hint = null`                    ⇒ RED (the seeded markup is not what is read).
+ * MUTATION: `_capPlaced = 0`                     ⇒ RED (the count is a fact about the room).
+ */
+test('DRIVEN: entering a room paints the NEUTRAL sentences; arming restores BUILD; ESC restores neutral', () => {
+  const name = roomTileRect(fixView, 'hold').displayName;
+  assert.ok(name, 'the fixture room has no display name — every assertion below would be vacuous');
+
+  // Blank every surface this test reads, then enter through the Overview's own hook. See above.
+  for (const sel of ['.rz-cap-lead', '.rz-placed']) rzDoc.getElementById('rz-caption').querySelector(sel).textContent = '';
+  rzPalette.querySelector('.rz-place-label').textContent = '';
+  rzDoc.getElementById('rz-hint').textContent = '';
+  rzApi.exit();
+  rzApi.enter('hold');
+
+  // ── the first screen, straight off the real entry path
+  assert.equal(rzLabel(), 'TOOLS ▸ ' + name,
+    'the palette label still announces BUILD on a surface that armed nothing');
+  assert.equal(rzHint(), ZOOM_HINT_IDLE,
+    'the hint line is not the neutral text. If it is the ARMED crib sheet, `paintChrome` keyed on ' +
+    'the wrong thing; if it is empty, `_el.hint` resolved to null and the player reads the seeded ' +
+    'markup forever.');
+  assert.doesNotMatch(rzCaption(), /BUILD/, 'the canvas caption still says BUILD DETAIL');
+  assert.match(rzCaption(), new RegExp('^' + name + ' · '), 'the caption does not name the room');
+  // ⚠️ AN ABSOLUTE FLOOR, NOT A SHAPE. The pin that stood in the chrome-SPANS test was
+  // `/^\d+ PLACED$/`, which `0 PLACED` satisfies — so `_capPlaced = 0` survived GREEN when it was
+  // physically applied (fail=0). A count that is allowed to be zero is not pinned at all (trap 7's
+  // shape: only an absolute floor sees a broken magnitude). The fixture hold really holds ten.
+  assert.match(rzCaption(), / 10 PLACED$/,
+    `the caption reads '${rzCaption()}' — the fixture hold carries ten placed devices + pending `
+    + 'designations. If this number moved, re-derive it from the capture before editing the literal.');
+
+  // ── arm WALL by clicking the shipped palette button: all three flip together
+  rzArm('wall');
+  assert.equal(rzLabel(), 'BUILD ▸ ' + name, 'arming did not bring the BUILD label back');
+  assert.equal(rzHint(), ZOOM_HINT_ARMED, 'arming did not bring the tool crib sheet back');
+  assert.match(rzCaption(), /BUILD DETAIL/, 'arming did not bring the BUILD caption back');
+
+  // ── ESC — the real rung (`escStackRung` → 'disarm'), not a second click
+  const esc = rzKey('Escape');
+  assert.ok(esc.defaultPrevented, 'the Room Zoom did not swallow ESC');
+  assert.equal(rzLabel(), 'TOOLS ▸ ' + name, 'ESC disarmed the tool and left the BUILD label up');
+  assert.equal(rzHint(), ZOOM_HINT_IDLE, 'ESC disarmed the tool and left the crib sheet up');
+  assert.doesNotMatch(rzCaption(), /BUILD/, 'ESC disarmed the tool and left the BUILD caption up');
+});
+
+/**
+ * The caption's company clause, driven — the ONE leg that proves `_capHere` is wired to the roster
+ * at all. Without it `roomCrew(crew, _focus).length` could be `0` forever and every assertion above
+ * would stay green, because this rig dispatches no roster by default.
+ *
+ * The roster is dispatched HERE and cleared again at the end: it is shared HUD state that the
+ * afterEach hook does not reset, and a crew member left standing in the hold would start drawing
+ * pawns into `#rz-layers` for every later test in this file.
+ *
+ * MUTATION: `_capHere = 0` in `repaint` ⇒ RED. MUTATION: count the SHIP's crew rather than the
+ * room's (`crew.length`) ⇒ RED — VANE stands outside the hold for exactly that reason.
+ */
+test('DRIVEN: the caption counts the souls standing in THIS room, not the ship\'s roster', () => {
+  const inside = { cid: 101, name: 'Ada Vale', role: 'engineer', deck: HOLD.deck, x: HOLD.rx + 1, y: HOLD.ry + 1, task: 'Idle' };
+  const outside = { cid: 103, name: 'Bo Vane', role: 'medic', deck: HOLD.deck, x: HOLD.rx + HOLD.rw + 3, y: HOLD.ry, task: 'Idle' };
+  // NON-VACUITY: the two probes must really be in and out of the room, or this leg passes by
+  // missing the rect — the same hole `crewRoomSlot`'s three fixtures were added to close.
+  assert.equal(roomCrew([inside, outside], HOLD).length, 1,
+    'the fixture crew are not one-in / one-out of the hold — re-derive their tiles');
+  try {
+    Hud.renderRoster({ type: 'roster', crew: [inside, outside] });
+    Hud.renderFrame(wreck);                       // a frame is what schedules the paint
+    rzApi.exit(); rzApi.enter('hold');            // …and enterRoom repaints inline
+    assert.match(rzCaption(), /· 1 CREW HERE ·/,
+      `the caption reads '${rzCaption()}' — it should count the ONE soul in the hold`);
+  } finally {
+    Hud.renderRoster({ type: 'roster', crew: [] });
+    Hud.renderFrame(wreck);
+  }
+});
+
+// ⚠️ ONE TEXT, ONE HOME. The hint used to be a `const HINT` literal inside `roomzoom-view.js`; it is
+// two exported constants in the pure model now, and a copy left behind in the view is how the line
+// the player reads and the line the tests assert would come to differ. Comment-stripped (trap 1),
+// with an inclusion control so a scan that can find nothing looks different from a scan that found
+// nothing.
+test('the hint line has exactly ONE home — no copy left behind in the view', () => {
+  const view = codeOnly(readFileSync(join(HERE, '../src/ui/roomzoom-view.js'), 'utf8'));
+  assert.ok(view.includes('ZOOM_HINT_IDLE'),
+    'the control failed: the view does not mention ZOOM_HINT_IDLE at all, so the scan below is '
+    + 'searching a string it cannot understand');
+  for (const fragment of ['PICK A TOOL', 'DRAG TO SWEEP A RUN', 'DEMOLISH REMOVES A GHOST']) {
+    assert.ok(!view.includes(fragment),
+      `roomzoom-view.js still carries the hint fragment '${fragment}'. The hint's two texts live in `
+      + 'room-model.js (`ZOOM_HINT_IDLE` / `ZOOM_HINT_ARMED`); a second copy here drifts.');
+  }
 });
 
 // The material swatches get `type="button"` for the same reason the tool buttons do — one palette,

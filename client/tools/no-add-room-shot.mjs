@@ -250,12 +250,19 @@ async function enterAndCensus(anchor) {
   // ⚠️ THE SELECTORS HERE ARE CLASSES, NOT IDS, and getting that wrong is how this rig produced its
   // first (false) negative: `#rz-capname` matches nothing, so the caption read '' and the tool
   // reported an unenterable room while the room was open on screen. The real names are
-  // `.rz-cap-name` / `.rz-crumb-leaf` (`roomzoom-view.js:252,265`) and the furniture group is
-  // `.rz-furniture` (`:728`). A rig that cannot read the thing it is judging reports a confident
-  // wrong answer — which is the exact failure this file's header promises to avoid.
+  // `.rz-cap-lead` / `.rz-crumb-leaf` and the furniture group is `.rz-furniture`. A rig that cannot
+  // read the thing it is judging reports a confident wrong answer — which is the exact failure this
+  // file's header promises to avoid.
+  //
+  // ⭐ RE-POINTED 2026-08-03 (the neutral-first-screen package). The span was `.rz-cap-name` and held
+  // the room name ALONE, with ` · BUILD DETAIL · ` baked into the caption's markup beside it. It is
+  // `.rz-cap-lead` now and holds the whole lead clause — `{ROOM} · BUILD DETAIL · ` when a tool is
+  // armed, `{ROOM} · {k} CREW HERE · ` when none is (VS-Z-12 as amended) — so this rig takes the
+  // part BEFORE the first separator. What it is asserting is unchanged: entering the compartment
+  // shows that compartment's name.
   return json(`JSON.stringify({
     open: document.body.classList.contains('roomzoom-open'),
-    caption: (document.querySelector('.rz-cap-name')?.textContent || '').trim(),
+    caption: (document.querySelector('.rz-cap-lead')?.textContent || '').split(' · ')[0].trim(),
     crumb: (document.querySelector('.rz-crumb-leaf')?.textContent || '').trim(),
     furniture: document.querySelectorAll('#rz-layers .rz-furniture > g').length,
     layers: !!document.getElementById('rz-layers'),

@@ -43,6 +43,15 @@ Conventions:
   `armedTool` slot (canvas input mode), (b) whatever floating panels the game-ui already owns
   (dialogue / citizen). Selecting a palette tool is not a "mode change" beyond arming that slot; the
   palette is always visible.
+  ⚠️ **AMENDED 2026-08-03 — the palette is always visible, and with nothing armed it must not TALK
+  like a mode.** IX-Z-01's `armedTool = null` was honoured from the first commit; what shipped
+  anyway was a first frame carrying three simultaneous BUILD announcements (palette label, hint
+  line, canvas caption — VS-Z-45 / VS-Z-48 / VS-Z-12), so a player opening a room read a build
+  prompt and no word about the two verbs a disarmed room has: a click **selects** the pawn under it
+  (IX-Z-30) and a right-click opens the **PRIORITISE** menu. Those three texts are now keyed on the
+  armed slot and say where the player is and what they can do while it is empty. **The palette is
+  neither hidden nor collapsed** — this clause stands, and the de-emphasis is carried entirely by
+  the three text surfaces. Nothing about arming, hotkeys, the reducer or the ESC stack changes.
 - **IX-Z-03** Arming any tool disarms the previous one (single slot). Leaving the Room Zoom
   (IX-Z-40/41), the deck changing out from under the focus room, and disconnect all disarm.
 - **IX-Z-04** All selected/active visual states (armed palette button, ghost tiles, minimap
