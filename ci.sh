@@ -28,6 +28,42 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
+# ⛔⛔ D1/D6 (2026-08-02) DID NOT MOVE THIS LITERAL, AND THE HOLD IS VACUOUS — read this before
+# trusting the pin below to cover the history ring. That package changed what every brownout,
+# repair, thaw and commission writes into HistorySystem.Entries, which IS hashed state (the 'HIST'
+# StateChecksum folds tick+kind+SubjectA+SubjectB of every entry, and it now folds a network id and
+# an edge count that used to be 0). All five pins held anyway. The cause is the FIXTURE, measured by
+# instrumenting Report() in hosts/scenario/Program.cs and printing a census of the ring at each day
+# boundary (patched, run, restored from an in-memory copy, mtime moved forward — TRAPS 2):
+#     SCRATCH-CAUSES brownoutEntries=0 thawLines=0 repairLines=0 commissionLines=0 cryoPodsOnShip=0
+# on all three days. THIS FIXTURE'S RING IS 200/200 `Bond` ENTRIES. It publishes no brownout edge in
+# three sim-days, authors NO CryoPod at all, completes no repair (OD-H boots every work type off and
+# nothing here enqueues a command) and issues no commission — so all four halves of the package are
+# reached ZERO times here. The four independent stubs were run anyway and every one read
+# 7bdd0d6f7756dfdc, identical to the shipped tree and to main before the lane.
+# ⭐ THE SAME CODE MOVES A HASH HARD WHERE IT IS REACHED. On --ship wreck (the ship ./play.sh boots,
+# which NO pin covers), driven: at tick 200 000 the pre-fix writer reads 291fedc58c4720ed with a ring
+# of 200 entries, all Brownout; the shipped tree reads 79c6641856fb779f with 9 entries (3 Alarm +
+# 4 Generic + 2 Brownout). At tick 864 000: 2686a42ad8c1cf46 (200/200) vs 84a8c59eb1eebb9f (30).
+# ⛔ AND THE WRECK IS WHERE A DETERMINISM REGRESSION HID, FOUND BY REVIEW AND NOT BY ANY PIN. Because
+# PowerSystem is not IStatefulSystem, a reload re-publishes a duplicate BrownoutChangedEvent; the
+# first draft of the coalescer folded it into a hashed, never-evicted field, so a save taken mid-
+# brownout stopped replaying (HIST eff48a500b403996 vs eff48a500b4e5117 — one episode 1036 edges
+# against 1037). Closed for MID-EPISODE saves by an idempotency rule derived from the ring, driven
+# with the documented §13.10 matched recompute: save@135000 + 60 000 ticks reads StateHash
+# 8b66921d15d45c9b on BOTH sims; the pre-first-edge control at save@100000 reads 1cd7a257831108b3 on
+# both. ⛔ NOT closed for a save taken on an episode's OPENING tick — the rule drops a duplicate edge
+# and cannot reconstruct one the loaded sim never published, so the entry's hashed tick stamp
+# differs permanently (+10 ticks at the wreck's 164361 episode, +80 at 200371, compounding). Swept
+# window: 1-11 ticks per ~36000-tick episode. That is FILED RESIDUAL 2; the honest fix is the same
+# stateful-PowerSystem package, and MECHANICS §13.43.2 carries the numbers. Instruments:
+# ChronicleSignalTests.TheShippedWreck_ReplaysBitIdentically_WhenTheSaveIsTakenMidEpisode and
+# EpisodeBoundarySaves_DoNotReplay_ThisIsFiledResidual2. NO PIN SEES ANY OF THIS.
+# P2/P3 held for the WINDOW: tick 3000 precedes the first brownout edge on every authored plan
+# (wreck 128 361, slice 191 331) and neither perilune nor slice authors a CryoPod. P4/P5 held
+# genuinely — no def field exists; the episode window is a code constant (M2-1's rule-not-tunable
+# precedent). Instruments: ChronicleSignalTests + ChronicleTests, and nothing else. See
+# MECHANICS §13.43. This is M2-12's "no pin sees the generation term" in a third costume.
 # ⭐⭐ M3-9 (PIN M3-c, 2026-08-02): 3d23665a724e853d -> 7bdd0d6f7756dfdc. CREW SLEEP. Until this row
 # `Citizen.Fatigue` had NO reducer anywhere (NeedsSystem's own header said so), so every crew member
 # on every ship saturated at 1.0 after ~16 h and stayed there. `RestSystem` is the reducer: a crew

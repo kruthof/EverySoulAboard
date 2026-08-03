@@ -41,9 +41,10 @@ namespace Perilune.Sim
     ///
     /// Templates are keyed on <see cref="HistoryKind"/> (the human text already carries the
     /// subject names HistorySystem wove in). Each day's headline is its single most-severe
-    /// event: Death &gt; Construction &gt; Brownout &gt; Argument/Bond &gt; Relationship &gt;
-    /// Alarm &gt; Goal &gt; Generic; ties resolve to the earliest event (entries are stored in
-    /// tick order). Day boundaries use the <see cref="SimClockUtil.TicksPerDay"/> convention
+    /// event: RunEnded &gt; EmergencyThaw &gt; Eulogy &gt; Death &gt; Thaw &gt;
+    /// Construction/Deconstruct/Repair/Commission &gt; Brownout &gt; Argument/Bond &gt;
+    /// Relationship &gt; Alarm &gt; Goal &gt; Generic; ties resolve to the earliest event (entries
+    /// are stored in tick order). Day boundaries use the <see cref="SimClockUtil.TicksPerDay"/> convention
     /// (the same divisor as <see cref="HistoryEntry.Day"/>). Day numbers format under
     /// InvariantCulture (the de-DE dev machine is the live culture canary).
     ///
@@ -103,15 +104,56 @@ namespace Perilune.Sim
         // just under Argument/Bond.
         private static int Severity(byte kind) => (HistoryKind)kind switch
         {
+            // ⭐⭐ THE TOP OF THE LADDER — THE CREW ROSTER. These are the entries that change WHO IS
+            // ABOARD, which on a post-raid wreck is the run's actual subject.
+            //
+            // RunEnded is unconditionally first: there is no day after it, so nothing on that day
+            // can out-rank it. EmergencyThaw sits above the death tier because its own sentence
+            // ALREADY CONTAINS the death ("With <name> dead, the ship woke <name>") — promoting it
+            // costs the day's death line nothing, it says the same thing better.
+            //
+            // ⛔ THE ORDINARY THAW SITS BELOW DEATH AND EULOGY, AND THAT IS RIMWORLD'S CLASSING
+            // RATHER THAN a judgement call (binding mechanism rule; owner-directed 2026-08-02 after
+            // review). `docs/design/rimworld-reference.md` §14.3 puts "wanderer joins" in the
+            // GOOD/NEUTRAL EVENT bucket of the incident deck, beside cargo pods and traders, while
+            // a raid is a "big threat"; §11.3's letter colours match — gold for good news, red
+            // pulsing for the big ones. A joinee is a lesser positive event; a death is a major
+            // negative one. So a day that holds BOTH is remembered as the day somebody died. An
+            // earlier draft of this row had Thaw at 10, above both, and headlined the thaw.
+            //
+            // ⚠️ FIVE KINDS BELOW EXISTED WITH NO ROW AT ALL UNTIL THIS PACKAGE (EmergencyThaw and
+            // RunEnded since M3-5, filed at MECHANICS §13.35): they fell through to 0 and rendered
+            // as "[Note]", so the most severe line a run can produce lost its headline to a eulogy.
+            // Swept as a CLASS rather than added one at a time.
+            //
+            // Death 7→8 and Eulogy 8→9 are a RENUMBER, not a reorder: every pinned pairing (Eulogy >
+            // Death > Construction > Brownout > …) is preserved, and the gap is what gives the
+            // ordinary Thaw a slot of its own between the work tier and the death tier.
+            HistoryKind.RunEnded => 12,
+            HistoryKind.EmergencyThaw => 11,
+
             // A eulogy outranks the bare death line it accompanies: on a death day the
             // friend's words ARE the headline (N5). No prior day carries a Eulogy entry,
             // so this only ever reshapes death days (append-only in effect).
-            HistoryKind.Eulogy => 8,
-            HistoryKind.Death => 7,
+            HistoryKind.Eulogy => 9,
+            HistoryKind.Death => 8,
+            HistoryKind.Thaw => 7,
             HistoryKind.ConstructionCompleted => 6,
             // E0-5: build's inverse ranks with build. Tearing the ship apart for salvage is at
             // least as much the story of a day as raising a wall was.
             HistoryKind.DeconstructCompleted => 6,
+            // D1: repair ranks WITH build and its inverse — the same tier for the same reason.
+            // Putting the machine back is as much the story of a day on a wreck as raising a wall
+            // was on a colony, and it must out-rank a brownout: the brownout is usually what the
+            // repair was FOR (`PowerSystem` browns out when a worn SolarWing under-supplies).
+            HistoryKind.RepairCompleted => 6,
+            // Commissioning joins the same tier — a FOUR-WAY TIE now, on purpose. Tier 6 means "the
+            // ship's capability changed and a person made it happen"; a fitted controller module is
+            // permanent, paid for in a terminal currency, and is the whole MOSS gate. Ties resolve
+            // to the earliest entry (the strict '>' in Render), which is the tie-break
+            // Construction/Deconstruct have used since E0-5. Below Brownout it must NOT go: a power
+            // flap is the one thing this ladder already out-ranks by design.
+            HistoryKind.DeviceCommissioned => 6,
             HistoryKind.Brownout => 5,
             HistoryKind.Argument => 4,
             HistoryKind.Bond => 4,
@@ -140,6 +182,13 @@ namespace Perilune.Sim
             HistoryKind.Bond => "Bond",
             HistoryKind.ConstructionCompleted => "Construction",
             HistoryKind.DeconstructCompleted => "Salvage",
+            // ⭐ Swept as a class with the severity rows above. EmergencyThaw and RunEnded have
+            // existed since M3-5 and rendered as "[Note]" until now; the three D1 kinds are new.
+            HistoryKind.RunEnded => "Ending",
+            HistoryKind.EmergencyThaw => "Thaw",
+            HistoryKind.Thaw => "Thaw",
+            HistoryKind.RepairCompleted => "Repair",
+            HistoryKind.DeviceCommissioned => "Commission",
             HistoryKind.Generic => "Note",
             _ => "Note",
         };

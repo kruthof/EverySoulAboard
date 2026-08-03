@@ -93,6 +93,12 @@ export const SYSTEM_IDS = [
  * module cannot see and would have gone silently false the day `MaintenanceSystem` starts
  * publishing on repair. That limit travels in the host's own `derivation`, where it has one copy.
  * (This is F1's shape at smaller scale: an unversioned second copy of a fact about code elsewhere.)
+ *
+ * ⭐ THAT DAY ARRIVED — 2026-08-02, defect D1. `MaintenanceSystem.DriveWorker` now publishes
+ * `RepairCompletedEvent` and `HistorySystem` writes a `[Repair]` line for every completed service,
+ * so recoveries ARE shown. This constant needed no edit, which is the whole receipt for narrowing
+ * it: the sentence about host code that WOULD have gone false had already been deleted. The stale
+ * claim survived only as `moss-screen.js`'s unreachable fallback literal, and that is now gone too.
  */
 export const FAULT_CAVEAT =
   'The FAULT LOG filter in this client attributes a line to a system by matching that system\'s ' +

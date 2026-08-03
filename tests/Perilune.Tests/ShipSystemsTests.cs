@@ -717,9 +717,19 @@ namespace Perilune.Tests
         [Test]
         public void Fault_Column_Is_The_Last_Thing_That_Went_Wrong_And_Never_A_Recovery()
         {
-            // The brownout KIND covers both the fault and its recovery (HistorySystem.cs:104-110).
+            // The brownout KIND covers both the fault and its recovery (HistorySystem.cs:218-303).
             // Only the fault belongs under LAST FAULT — a row reading "POWER NETWORK 1 RECOVERED"
             // in a column headed LAST FAULT is exactly the class of misread this spec exists to stop.
+            //
+            // ⚠️ THIS LEG WAS A COIN FLIP UNTIL 2026-08-02, and independent review said so. Driving
+            // the slice for a day and reading whatever fault falls out pins the property ONLY while
+            // that ship happens to be SHEDDING at the day boundary — which it happens to be. Through
+            // the whole window in which D6's coalescer made a recovered episode skip itself, this
+            // test stayed green. The drive is kept (it is the honest "the shipped slice really does
+            // brown out" statement) and a DETERMINISTIC second leg is added below, which forces the
+            // newest brownout entry to be a recovered episode. The property's real instrument is
+            // ChronicleSignalTests.ARecoveredBrownoutEpisode_IsStillTheLastFault…; this is its
+            // sibling on the slice.
             var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
             while (host.Sim.TickCount < SimClockUtil.TicksPerDay) host.Sim.Tick();
 
@@ -729,6 +739,31 @@ namespace Perilune.Tests
             StringAssert.DoesNotContain("RECOVERED", reactor.FaultText);
             Assert.AreEqual(reactor.FaultText.ToUpperInvariant(), reactor.FaultText, "uppercase, no day prefix");
             StringAssert.DoesNotContain("DAY ", reactor.FaultText, "the client composes the day prefix");
+
+            // THE DETERMINISTIC LEG: append a RECOVERED episode after everything the drive produced,
+            // so the newest brownout entry is one that ended good. The column must still report a
+            // fault, and must still report THAT entry's day rather than falling back to an older one.
+            // The text comes from HistorySystem's own renderer: shipped code produces an entry's
+            // prose and its episode word from the same call, so authoring one without the other
+            // would describe a state the sim cannot reach.
+            long recoveredTick = host.Sim.TickCount + 10;
+            uint recoveredWord = HistorySystem.EpisodeWord(4, shedding: false);
+            host.History.Record(recoveredTick, HistorySystem.BrownoutEpisodeLine(1, recoveredWord),
+                                HistoryKind.Brownout, subjectA: 1, subjectB: recoveredWord);
+            var afterRecovery = Row(ShipSystems.Compute(host.Sim, host.History), "reactor");
+            Assert.AreEqual((int)(recoveredTick / SimClockUtil.TicksPerDay), afterRecovery.FaultDay,
+                "a RECOVERED episode is still the record of a fault and must not be skipped");
+            StringAssert.Contains("BROWNED OUT", afterRecovery.FaultText);
+            StringAssert.DoesNotContain("RECOVERED", afterRecovery.FaultText);
+
+            // …and the one entry that records NO fault — a single-edge pure recovery — must still be
+            // skipped, or the guard above has simply been deleted rather than narrowed.
+            uint pureRecoveryWord = HistorySystem.EpisodeWord(1, shedding: false);
+            host.History.Record(recoveredTick + 10, HistorySystem.BrownoutEpisodeLine(1, pureRecoveryWord),
+                                HistoryKind.Brownout, subjectA: 1, subjectB: pureRecoveryWord);
+            var afterPureRecovery = Row(ShipSystems.Compute(host.Sim, host.History), "reactor");
+            Assert.AreEqual(afterRecovery.FaultDay, afterPureRecovery.FaultDay,
+                "a pure recovery is not a fault and must not become the newest one");
 
             // Without a HistorySystem the ledger still computes; the column is honestly empty
             // rather than a fabricated placeholder.
