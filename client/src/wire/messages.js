@@ -565,6 +565,15 @@ export function decodeDevices(msg) {
 export const BLOCKED_ORDER_DIG = 0;
 export const BLOCKED_ORDER_STRIP = 1;
 export const BLOCKED_ORDER_BUILD = 2;
+/** ⭐ `repair` — a DIRECT ORDER the player gave a named crew member at a named machine (M2-9).
+ *  ⛔ IT WAS MISSING FROM `BLOCKED_ORDER_NAMES` FROM M2-9 UNTIL 2026-08-03, which is the only reason
+ *  it needs a comment of its own: the host emitted `3`, the names array had three entries, so
+ *  `blockedOrderName` answered `''`, `roomBlockedTiles` fell back to its literal `'ORDER'`, and every
+ *  repair badge in the game read `ORDER BLOCKED — …` where it meant `REPAIR BLOCKED — …`. A hole in
+ *  an index-is-the-value table is invisible by construction; the derivation test in
+ *  `client/test/blocked-model.test.js` now reads the host's `Order*` constants and requires a name
+ *  for every one of them, so a fourth verb cannot ship nameless again. */
+export const BLOCKED_ORDER_REPAIR = 3;
 
 /** Blocked REASON codes, mirroring `WireFormat.ReasonAir`/`ReasonNoApproach`/`ReasonNoConsumable`.
  *  `no_consumable` is RESERVED: the host declares it so two lanes cannot both claim the value, and
@@ -603,8 +612,12 @@ export const BLOCKED_REASON_WORK_TYPE_OFF = 4;
  *  which is why it is a different sentence from `no_approach` (there is nowhere to stand at all). */
 export const BLOCKED_REASON_NO_ROUTE = 5;
 
-/** Wire order → vocabulary name. Index IS the wire value, so APPEND-ONLY exactly as the C# is. */
-export const BLOCKED_ORDER_NAMES = Object.freeze(['dig', 'strip', 'build']);
+/** Wire order → vocabulary name. Index IS the wire value, so APPEND-ONLY exactly as the C# is.
+ *  ⚠️ A HOLE IN THIS TABLE IS SILENT: `blockedOrderName` answers `''` for a value the host really
+ *  emits, and the badge falls back to the generic word. `repair` (3) sat in that hole from M2-9
+ *  until 2026-08-03. Pinned member-for-member against the host's `Order*` constants — never
+ *  hand-checked — by `client/test/blocked-model.test.js`. */
+export const BLOCKED_ORDER_NAMES = Object.freeze(['dig', 'strip', 'build', 'repair']);
 
 /** Wire reason → vocabulary name. Index IS the wire value; APPEND-ONLY. */
 export const BLOCKED_REASON_NAMES = Object.freeze([

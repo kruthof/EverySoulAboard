@@ -318,7 +318,7 @@ namespace Perilune.Sim
             if (!TryFindStagingTile(sim, device.Pos, out var staging, forced))
             {
                 DropCarried(sim, worker); // machine walled in mid-job
-                Abandon(sim, device, worker);
+                Abandon(sim, device, worker, JobDropReason.NoWorksiteTile);
                 return;
             }
 
@@ -330,7 +330,7 @@ namespace Perilune.Sim
                     // External interference (a path we never set, or displaced) —
                     // restart from ground truth on a later pass.
                     DropCarried(sim, worker);
-                    Abandon(sim, device, worker);
+                    Abandon(sim, device, worker, JobDropReason.Displaced);
                     return;
                 }
 
@@ -340,7 +340,7 @@ namespace Perilune.Sim
                     if (!sim.Items.TryGet(worker.CarryingItemId, out consumable) || consumable.CarriedBy != worker.Id)
                     {
                         worker.CarryingItemId = 0; // stack vanished under us
-                        Abandon(sim, device, worker);
+                        Abandon(sim, device, worker, JobDropReason.CargoLost);
                         return;
                     }
                     consumable.Pos = worker.Pos; // glue at our 1 Hz cadence
@@ -416,7 +416,7 @@ namespace Perilune.Sim
                 if (!sim.Items.TryGet(worker.CarryingItemId, out var carried) || carried.CarriedBy != worker.Id)
                 {
                     worker.CarryingItemId = 0; // stack vanished under us — restart from ground truth
-                    Abandon(sim, device, worker);
+                    Abandon(sim, device, worker, JobDropReason.CargoLost);
                     return;
                 }
                 carried.Pos = worker.Pos; // glue at our 1 Hz cadence
@@ -425,7 +425,7 @@ namespace Perilune.Sim
                 if (!Int3.IsAdjacent4(worker.Pos, device.Pos))
                 {
                     DropCarried(sim, worker); // route was lost — the stack re-enters the pool
-                    Abandon(sim, device, worker);
+                    Abandon(sim, device, worker, JobDropReason.NoRouteToWorksite);
                     return;
                 }
                 // M3-7 — the service begins, parts in hand, and WHO is holding them decides how long
@@ -461,12 +461,14 @@ namespace Perilune.Sim
                     }
                     else
                     {
-                        Abandon(sim, device, worker);
+                        // ⭐⭐ D5's ARM. She is standing ON the stack and the leg to the worksite is
+                        // gone: the order dies here, 17 sim-seconds after a click that was accepted.
+                        Abandon(sim, device, worker, JobDropReason.NoRouteToWorksite);
                     }
                     return;
                 }
                 if (sim.Paths.FindPath(sim, worker.Pos, best.Pos, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-                else Abandon(sim, device, worker); // unreachable from here — retried from ground truth next second
+                else Abandon(sim, device, worker, JobDropReason.NoRouteToConsumable); // unreachable from here — retried from ground truth next second
                 return;
             }
 
@@ -476,7 +478,7 @@ namespace Perilune.Sim
             // service (RepairSpend.NoService), at or above it the service is FREE (RepairSpend.Nothing).
             if (IsBelowWreckFloor(sim, device))
             {
-                Abandon(sim, device, worker); // no consumable, no free fix; the recruit gate will not re-offer it
+                Abandon(sim, device, worker, JobDropReason.NoConsumable); // no consumable, no free fix; the recruit gate will not re-offer it
                 return;
             }
             if (Int3.IsAdjacent4(worker.Pos, device.Pos))
@@ -497,7 +499,7 @@ namespace Perilune.Sim
                 return;
             }
             if (sim.Paths.FindPath(sim, worker.Pos, staging, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-            else Abandon(sim, device, worker); // unreachable right now — the standing rule retries
+            else Abandon(sim, device, worker, JobDropReason.NoRouteToWorksite); // unreachable right now — the standing rule retries
         }
 
         // ------------------------------------------------------------------ helpers
@@ -1163,9 +1165,55 @@ namespace Perilune.Sim
         /// Drop the Maintain job (worker keeps any externally-given path). The standing
         /// rule re-recruits from ground truth on a later pass — nothing is reserved,
         /// nothing leaks. Callers drop carried cargo first where applicable.
+        ///
+        /// <para>⭐⭐ <b>D5 FOLLOW-ON — AND IT SAYS WHY, WHEN THE JOB WAS THE PLAYER'S ORDER.</b>
+        /// <see cref="DriveWorker"/> reaches this method from NINE places
+        /// (<see cref="JobDropReason"/> carries the table, arm by arm), and every one of them used
+        /// to leave the same silence: <c>AbandonOrphan</c> clears <see cref="Citizen.JobKind"/>,
+        /// whose setter releases <see cref="Citizen.HeldByOrder"/>, <b>which IS the order</b> — so
+        /// the order evaporated with no record anywhere that it had ever existed. This is the one
+        /// funnel, so one publish covers all nine (<c>MECHANICS</c> §13.25 b3).</para>
+        ///
+        /// <para>⛔⛔ <b>THE FUNNEL HAS ONE KNOWN EXCEPTION AND IT IS NAMED HERE, BECAUSE "the ONE
+        /// funnel" AND "the compiler stops a tenth arm" BOTH READ AS COMPLETE AND ARE NOT.</b>
+        /// <see cref="DriveWorkers"/> at <c>:207</c> calls <see cref="AbandonOrphan"/> <b>directly</b>
+        /// — bypassing this method entirely — when the machine a servicer is holding has been
+        /// deconstructed out from under her. That path publishes nothing, so a player's order dies
+        /// there in silence too. It is defensible rather than accidental: the badge's site IS the
+        /// machine's tile, and there is no machine, so there is nothing to draw a row on; the host's
+        /// dropped-order walk independently drops any record whose device no longer resolves
+        /// (<c>!_sim.Devices.TryGet</c>). Censused, not assumed — <c>AbandonOrphan</c> has exactly
+        /// two callers in this file, <c>:207</c> and the line below.</para>
+        ///
+        /// <para>⛔ <b><paramref name="reason"/> HAS NO DEFAULT VALUE, ON PURPOSE</b> —
+        /// <c>WireFormat.BlockedCell</c>'s constructor makes the identical argument for the identical
+        /// hazard. A defaulted parameter would let a TENTH arm ship silently wearing whichever reason
+        /// happened to be first in the enum, and the compiler is the only thing that can catch that:
+        /// no test can see an arm that does not exist yet.</para>
+        ///
+        /// <para>⚠️ <b>THE HOLD IS READ FIRST AND THE ORDERING IS LOAD-BEARING.</b>
+        /// <c>AbandonOrphan</c> is what clears it, so a publish written after that line would read
+        /// <c>false</c> every time and the channel would be permanently empty — mute in a way that
+        /// every "no row appears" assertion in the suite would agree with.</para>
+        ///
+        /// <para><b>ORDERS ONLY.</b> The dispatcher's own abandons are the ORDINARY case — M1-H's
+        /// backoff funnel exists because this method is reached thousands of times a day on an
+        /// unattended ship — and publishing them would put an unbounded per-tick stream on the bus
+        /// for a reader that only ever wants the rare one. Argued in full on
+        /// <see cref="OrderDroppedEvent"/>; the consequence for THIS file is that the branch below is
+        /// false on every pinned fixture, which is why the package is pin-neutral.</para>
         /// </summary>
-        private void Abandon(Simulation sim, Device device, Citizen worker)
+        private void Abandon(Simulation sim, Device device, Citizen worker, JobDropReason reason)
         {
+            if (worker.HeldByOrder)
+                sim.Events.Publish(new OrderDroppedEvent
+                {
+                    Pos = device.Pos,
+                    DeviceId = device.Id,
+                    CitizenId = worker.Id,
+                    Reason = (byte)reason,
+                });
+
             AbandonOrphan(worker);
             // M1-H — THE ONE FUNNEL (see CraftingSystem.Abandon for the argument; it is the same
             // one). Every abandon here says "this machine could not use this crew member right

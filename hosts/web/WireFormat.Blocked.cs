@@ -363,6 +363,15 @@ namespace Perilune.Web
         /// fault: paint a solid block of dig orders and its interior tiles all report this until the
         /// rim is cleared. That is honest — nothing IS happening on those tiles yet — but it is not a
         /// defect to chase.</para>
+        ///
+        /// <para>⭐ <b>SINCE THE D5 FOLLOW-ON (2026-08-03) IT ALSO REACHES <see cref="OrderRepair"/>
+        /// ROWS, FROM A SECOND EMITTER.</b> <c>GameSession.AddNoApproachRow</c> raises it on a machine
+        /// whose direct order the sim DROPPED because the machine lost its staging tile mid-job
+        /// (<c>MaintenanceSystem.DriveWorker</c>'s first line, <c>JobDropReason.NoWorksiteTile</c>).
+        /// Same sentence, same question — <c>TryFindStagingTile(forced: true)</c>, re-asked live every
+        /// render — reached from a repair order rather than from the world walk. ⛔ It does NOT close
+        /// <c>MECHANICS</c> §13.25 b2, which is the order refused AT ISSUE TIME for want of a staging
+        /// tile: that one creates no job at all, so there is nothing to report and it stays filed.</para>
         /// </summary>
         public const int ReasonNoApproach = 1;
 
@@ -658,14 +667,24 @@ namespace Perilune.Web
         /// wrong-screen failure <see cref="ReasonWorkTypeOff"/>'s own precedence paragraph argues
         /// against.</para>
         ///
-        /// <para>⛔⛔ <b>THE SCOPE IS "SHUT AT ISSUE TIME", NOT "THIS ABANDON ARM IS COVERED".</b> The
-        /// row rides <c>GameSession._prioritised</c>, and that record is RETIRED on the first render
-        /// after the sim takes the order (the whitelist's arm (1)). So an order given while the route
-        /// is OPEN, whose route closes mid-order, dies at the identical arm with nothing said —
-        /// driven: taken tick 1, record retired, door shut tick 41, dropped tick 171, channel empty.
-        /// Structural rather than a missing predicate; the fix is a follow-on package (retired-record
-        /// re-check, or a drop reason published by the sim — the latter covers all nine of
-        /// <c>DriveWorker</c>'s abandon arms at once). <c>MECHANICS</c> §13.25 b3.</para>
+        /// <para>⭐⭐ <b>THE SCOPE WAS "SHUT AT ISSUE TIME"; SINCE THE D5 FOLLOW-ON (2026-08-03) THE
+        /// MID-ORDER CASE IS COVERED TOO, BY A SECOND EMITTER ON THE SAME CODE.</b> What stood here
+        /// was: the row rides <c>GameSession._prioritised</c>, that record is RETIRED on the first
+        /// render after the sim takes the order (the whitelist's arm (1)), so an order given while
+        /// the route was OPEN and closed mid-order died at the identical arm with nothing said
+        /// (driven: taken tick 1, record retired, door shut tick 41, dropped tick 171, channel
+        /// empty). That is now closed from the SIM side, which is where the ruling put it:
+        /// <c>MaintenanceSystem.Abandon</c> — the one funnel all NINE of <c>DriveWorker</c>'s abandon
+        /// arms go through — publishes <c>OrderDroppedEvent</c> with a <c>JobDropReason</c>;
+        /// <c>GameSession.NoteDroppedOrders</c> catches it at the TICK boundary and files it; and
+        /// <c>BuildBlocked</c>'s FIFTH walk re-asks <c>OrderedWorksiteIsOutOfReach</c> — this same
+        /// method — every render. So this constant now has two callers and ONE question behind both.
+        /// <br/>⛔ <b>AND THEY NEVER BOTH ANSWER FOR ONE MACHINE.</b> A live pending record outranks a
+        /// dead one: <c>NoteDroppedOrders</c> files nothing while <c>_prioritised</c> holds the crew
+        /// member (the issue-time case keeps its record precisely BECAUSE this question is asked
+        /// before the taken-retire rule), so the issue-time half owns the badge from the click to the
+        /// drop and beyond, and the mid-order half exists only where the pending record is already
+        /// gone. <c>MECHANICS</c> §13.25 b3.</para>
         ///
         /// <para><b>LIVE, NOT LATCHED</b> — like <see cref="ReasonAir"/> and
         /// <see cref="ReasonWorkTypeOff"/>, and unlike <see cref="ReasonUnreachable"/>. Re-asked every
@@ -779,10 +798,12 @@ namespace Perilune.Web
         /// nothing. <c>GameSession.BuildBlocked</c> emits digs on the z,y,x world walk (the
         /// <c>IJobSource</c> rule-3 scan order the three per-tile channels already use), then strips in
         /// <c>DeconstructSystem.Pending</c> list order, then builds in <c>BuildSystem.Pending</c> list
-        /// order, then (M2-9) direct repair orders in CITIZEN STORE order — four deterministic index
+        /// order, then (M2-9) PENDING direct repair orders in CITIZEN STORE order, then (D5 follow-on,
+        /// 2026-08-03) DROPPED direct repair orders in the same CITIZEN STORE order — five
+        /// deterministic index
         /// walks over plain <c>List</c>s that are themselves saved, hashed state. No hash container's
-        /// internal layout can reach the socket: the repair walk probes a dictionary by crew id but
-        /// never enumerates one, for exactly that reason.
+        /// internal layout can reach the socket: the two repair walks probe a dictionary by crew id but
+        /// never enumerate one, for exactly that reason.
         ///
         /// InvariantCulture on every number (its own <see cref="BlockedIc"/>, so this file is readable
         /// in isolation), one line, no whitespace — the house wire style.

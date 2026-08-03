@@ -32,7 +32,8 @@ import { dirname, join } from 'node:path';
 import {
   decode, decodeBlocked, decodeDecks, decodeRooms,
   BLOCKED_ORDER_NAMES, BLOCKED_REASON_NAMES, BLOCKED_REASON_TEXT,
-  BLOCKED_ORDER_DIG, BLOCKED_ORDER_STRIP, BLOCKED_ORDER_BUILD,
+  BLOCKED_ORDER_DIG, BLOCKED_ORDER_STRIP, BLOCKED_ORDER_BUILD, BLOCKED_ORDER_REPAIR,
+  blockedOrderName,
   BLOCKED_REASON_AIR, BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE,
   BLOCKED_REASON_UNREACHABLE, BLOCKED_REASON_WORK_TYPE_OFF, BLOCKED_REASON_NO_ROUTE,
   BLOCKED_DETAIL_NONE, ITEM_WORDS, itemWords, blockedReasonSentence,
@@ -101,6 +102,7 @@ test('the order and reason vocabularies are pinned EQUAL to the host constants',
   assert.equal(constOf('OrderDig'), BLOCKED_ORDER_DIG);
   assert.equal(constOf('OrderStrip'), BLOCKED_ORDER_STRIP);
   assert.equal(constOf('OrderBuild'), BLOCKED_ORDER_BUILD);
+  assert.equal(constOf('OrderRepair'), BLOCKED_ORDER_REPAIR);
   assert.equal(constOf('ReasonAir'), BLOCKED_REASON_AIR);
   assert.equal(constOf('ReasonNoApproach'), BLOCKED_REASON_NO_APPROACH);
   assert.equal(constOf('ReasonNoConsumable'), BLOCKED_REASON_NO_CONSUMABLE);
@@ -109,13 +111,70 @@ test('the order and reason vocabularies are pinned EQUAL to the host constants',
   assert.equal(constOf('ReasonNoRoute'), BLOCKED_REASON_NO_ROUTE);
 
   // The NAME tables are indexed BY the wire value, so a hole or a reorder mis-labels every badge.
-  assert.deepEqual(BLOCKED_ORDER_NAMES, ['dig', 'strip', 'build']);
+  assert.deepEqual(BLOCKED_ORDER_NAMES, ['dig', 'strip', 'build', 'repair']);
   assert.deepEqual(BLOCKED_REASON_NAMES,
     ['air', 'no_approach', 'no_consumable', 'unreachable', 'work_type_off', 'no_route']);
   for (const name of BLOCKED_REASON_NAMES) {
     assert.ok(BLOCKED_REASON_TEXT[name], `reason '${name}' has no player-facing sentence — a badge `
       + 'with no words is the silence this channel exists to remove, wearing a new costume');
   }
+});
+
+// ⭐⭐ THE HOLE THAT SHIPPED, AND THE GUARD THAT WOULD HAVE CAUGHT IT. `BLOCKED_ORDER_NAMES` had
+// THREE entries while the host had emitted FOUR order values since M2-9, so `blockedOrderName(3)`
+// answered `''`, `roomBlockedTiles` fell back to its literal `'ORDER'`, and every direct repair order
+// in the game wore `ORDER BLOCKED — …`. ⛔ The `deepEqual` above could not see it: it pins the array
+// against a HAND-WRITTEN literal, so a hole is only caught by whoever remembered to widen the
+// literal — which is the same hand that forgot the entry. This test derives the expectation from the
+// HOST instead (`DEVICE_KIND_NAMES`' precedent, M2-10: read the enum, require agreement member for
+// member, by name AND by index).
+// MUTATION: drop `'repair'` from BLOCKED_ORDER_NAMES ⇒ red here and in the label leg below.
+// MUTATION 2: append `public const int OrderThaw = 4;` to WireFormat.Blocked.cs ⇒ red here, by name.
+test('every order value the HOST declares has a name in this client — derived, not hand-copied', () => {
+  const declared = [...WIRE_BLOCKED_CS.matchAll(/public const int Order(\w+)\s*=\s*(\d+)\s*;/g)]
+    .map((m) => [m[1].toLowerCase(), Number(m[2])]);
+
+  // NON-VACUITY BY INCLUSION (traps §5, 4th shape): a parse that matched nothing would pass every
+  // assertion in the loop below without running one of them.
+  assert.equal(declared.length, 4,
+    `hosts/web/WireFormat.Blocked.cs declares ${declared.length} Order* constants and this test `
+    + 'expects 4 — if a verb was added, name it in BLOCKED_ORDER_NAMES and raise this number');
+  assert.deepEqual(declared.map((d) => d[1]), [0, 1, 2, 3],
+    'the Order* constants are no longer 0..3 in declaration order — the names table is indexed BY '
+    + 'the wire value, so a gap or a reorder mis-labels badges rather than dropping them');
+
+  for (const [name, value] of declared) {
+    assert.equal(BLOCKED_ORDER_NAMES[value], name,
+      `the host emits order ${value} as \`${name}\` and this client calls it `
+      + `\`${BLOCKED_ORDER_NAMES[value]}\`. A badge reading the wrong verb is worse than no badge: `
+      + 'it tells the player to go and look at the wrong screen.');
+    assert.equal(blockedOrderName(value), name);
+  }
+  assert.equal(BLOCKED_ORDER_NAMES.length, declared.length,
+    'this client names an order the host does not declare — a word with no wire value behind it');
+});
+
+// ⭐ THE PLAYER-VISIBLE HALF OF THE SAME FIX, DRIVEN THROUGH THE REAL FOLD rather than asserted on
+// the table. `roomBlockedTiles` builds the badge label, and its fallback (`b.orderName || 'ORDER'`)
+// is what turned the missing name into a plausible-looking sentence instead of an empty one — the
+// exact shape that let it live for four days of playtesting.
+test('a direct repair order badges REPAIR BLOCKED, not the generic ORDER BLOCKED', () => {
+  const rows = decodeBlocked(msg([[5, 3, 1, BLOCKED_ORDER_REPAIR, BLOCKED_REASON_NO_ROUTE, BLOCKED_DETAIL_NONE]]));
+  assert.equal(rows[0].orderName, 'repair');
+
+  const tiles = roomBlockedTiles(rows, ROOM);
+  assert.equal(tiles.length, 1, 'the row must land inside the room rect, or this leg is vacuous');
+  assert.equal(tiles[0].label, 'REPAIR BLOCKED — NO WAY TO WALK TO IT');
+  assert.ok(!tiles[0].label.startsWith('ORDER BLOCKED'),
+    'the generic fallback is back: the player is told an unnamed "order" is stuck on a machine they '
+    + 'right-clicked and told to REPAIR');
+
+  // ⚠️ THE KEY BOX IS THE SURFACE THAT NEEDS NO HOVER — this module's own header calls the `<title>`
+  // inadequate on its own, so the verb has to reach the VISIBLE key too. `blockedKeyHtml` skips any
+  // order name it reads as the literal 'ORDER', which is exactly what the missing entry produced.
+  const key = blockedKeyHtml(tiles);
+  assert.match(key, /1 REPAIR ORDER STUCK/,
+    'the visible key still reads the generic "1 ORDER STUCK" for a repair the player ordered by name');
 });
 
 // MUTATION: delete `case 'blocked'` from main.js ⇒ this fails here AND in

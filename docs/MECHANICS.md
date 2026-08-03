@@ -1213,6 +1213,13 @@ pending order per render (`_prioritised` is bounded by the crew; the whole walk 
 non-empty) — **103 µs measured, Debug, for a FAILING search on the wreck at boot**, which is the
 worst case and a different order of magnitude from the per-tile sweep `WireFormat.Blocked.cs`'s
 header rejects for the other three walks.
+⭐⭐ **AND SINCE THE D5 FOLLOW-ON (2026-08-03) THERE IS A FIFTH WALK BESIDE THIS ONE**, over
+`GameSession._dropped` — the orders the SIM has already eaten, filed from `OrderDroppedEvent` at the
+TICK boundary (`NoteDroppedOrders`, called from `AdvanceTicks`, never from `Render`). The two maps
+are **disjoint by construction**: `NoteDroppedOrders` files nothing while `_prioritised` holds that
+crew member, and `HandlePrioritise` clears `_dropped` when a new order supersedes. So the whitelist
+above still governs the PENDING half alone, and the badge is never emitted twice for one order.
+§13.25 b3′.
 
 **No saved field, no chapter bump, no sim-side order registry**: the held job carries the target,
 as §2.2 keeps the forced flag on `curJob`. RimWorld's re-issuing `priorityWork` record and its
@@ -3668,27 +3675,112 @@ and a system downstream then ate.** Reproduced headlessly on the shipped wreck, 
   **`WireFormat.ReasonNoRoute = 5`** on the shipped `blocked` channel (client sentence **NO WAY TO
   WALK TO IT**) from the frame after the click, **and keeps it after the sim drops the job**. Emitted
   by `GameSession.OrderedWorksiteIsOutOfReach` / `AddNoRouteRow`, live and never latched, ordered
-  machines only. Instruments: `DroppedOrderTests` (6 legs, driven on `--ship wreck`) +
-  `client/tools/dropped-order-shot.mjs`.
-- ⛔⛔ **THE RESIDUAL, AND IT IS A NARROWER CLAIM THAN "`:464` IS COVERED" — SAY IT BEFORE ANYTHING
-  ELSE.** What is surfaced is **`:464` when the route is shut AT ISSUE TIME**. If the route is open
-  when the order is given and closes DURING it, the order dies at the very same arm and **nothing is
-  said**. Driven on the shipped wreck (independent review found it; re-measured here rather than
-  transcribed): open `door_d0_s2`, order `fabricator_1` ⇒ taken at tick 1, and the first render
-  **retires the pending record** (arm (1) — the held job is the order from then on, so `blocked` is
-  `cells:[]`). Shut the door at tick 41 ⇒ she is dropped at **tick 171** at (7,14,0), the identical
-  pickup branch, with the channel still **empty**. The cause is structural, not a missing predicate:
-  once the record is retired there is nothing left for the render to re-ask about. **The honest fix
-  is a follow-on package**, in one of two shapes — the host keeps retired order records and re-checks
-  them on drop, or the SIM emits a drop reason (an event carrying why `Abandon` fired) and the host
-  reads it. The second is the better shape and is the one that would cover all nine arms at once.
-  **NOT built this round, by ruling.**
-- ⚠️ **WHAT IS ALSO STILL OPEN.** (i) The badge clears when the route opens and the order does **not** come
-  back with it — item **d** below, unchanged. (ii) `DriveWorker` has **NINE** `Abandon(sim, device, worker)` arms (counted in the file) and only
-  this one — the pickup branch at `:464` — is reproduced and surfaced; the other **eight** are a
-  filed CLASS, unmeasured. (iii) A machine with **no staging tile
-  at all** is refused at issue time and is still silent (that is b2's geometry reason, deliberately
-  not widened into here).
+  machines only. Instruments: `DroppedOrderTests` (**16** legs since the follow-on, driven on
+  `--ship wreck`) + `client/tools/dropped-order-shot.mjs`.
+- ⛔⛔ **THE RESIDUAL THAT STOOD HERE — `:464` ONLY WHEN THE ROUTE IS SHUT AT ISSUE TIME — IS CLOSED
+  BY THE D5 FOLLOW-ON (2026-08-03), FROM THE SIM SIDE, AND THE OLD SENTENCE IS KEPT BECAUSE IT IS THE
+  DIAGNOSIS.** What was wrong: if the route was open when the order was given and closed DURING it,
+  the order died at the very same arm and **nothing was said**. Driven on the shipped wreck: open
+  `door_d0_s2`, order `fabricator_1` ⇒ taken at tick 1, and the first render **retires the pending
+  record** (arm (1) — the held job is the order from then on, so `blocked` is `cells:[]`). Shut the
+  door at tick 41 ⇒ she is dropped at **tick 171** at (7,14,0), the identical pickup branch, with the
+  channel still **empty**. Structural, not a missing predicate: once the record is retired there is
+  nothing left for the render to re-ask about.
+
+- ⭐⭐ **b3′ — THE FIX: THE SIM SAYS WHY IT LET GO (D5 follow-on, 2026-08-03).** The ruled shape was
+  the second of the two offered: **the SIM emits a drop reason and the host reads it**, which covers
+  all nine arms at once instead of patching one.
+
+  - **`MaintenanceSystem.Abandon` is the ONE funnel** every one of `DriveWorker`'s **NINE**
+    `Abandon` call sites goes through (`:321 :333 :343 :419 :428 :466 :471 :481 :502` — re-counted in
+    this tree AFTER the edit. ⚠️ The diagnosis above names the pickup branch `:464`, which was its
+    line BEFORE this package put a two-line comment over it: same arm, moved number. The COUNT is the
+    load-bearing part and it is what is pinned, by
+    `DroppedOrderTests.DriveWorkerHasNineAbandonArms_AndEveryDropReasonIsUsedByOne`, which counts CALL
+    SITES rather than trusting any table, with a commented-out-code control).
+    It now takes a **`JobDropReason`** with **no default value**,
+    so the compiler — not a test — is what stops a tenth arm shipping mute.
+    ⛔ **ONE KNOWN EXCEPTION, NAMED because "the ONE funnel" reads as complete and is not:**
+    `DriveWorkers` at `:207` calls `AbandonOrphan` **directly**, bypassing `Abandon`, when the ordered
+    machine has been deconstructed mid-service — so that path publishes nothing and a player's order
+    dies there silently as well. Defensible rather than accidental (the badge's site is the machine's
+    tile and there is no machine; the host's walk independently drops a record whose device no longer
+    resolves), and censused rather than assumed: `AbandonOrphan` has exactly two callers, `:207` and
+    the funnel. Six reasons for nine arms;
+    the arm→reason table lives on the enum in `sim/Sim.Core/Events/SimEvents.cs` and the two collapses
+    (`:343`/`:419` cargo, `:428`/`:466`/`:502` worksite route) are argued there.
+  - **`OrderDroppedEvent`** (Pos = the DEVICE's tile, DeviceId, CitizenId, Reason) is published there
+    **only when the job was `HeldByOrder`** — the hold IS the order. The dispatcher's own abandons are
+    the ordinary case (M1-H's backoff funnel exists because of that thrash) and would be an unbounded
+    per-tick stream for a reader that wants the rare one. ⚠️ **The hold is read BEFORE
+    `AbandonOrphan`**, whose `JobKind` setter releases it; a publish written after that line reads
+    `false` every time and the channel is permanently empty — a mutation that was run and reddens
+    **6** legs (re-measured; the "5" first written here predated `DroppedOrderTests`' purity leg).
+  - **TRANSIENT.** Not saved, not folded into `StateHash`, no def field, no `IStatefulSystem`. That is
+    deliberate and it is the chronicle-signal lesson: a transient event folded into a hashed,
+    never-evicted field is what broke save/restore that lane (CLAUDE.md's pin block).
+  - **Host: `GameSession.NoteDroppedOrders`, called from `AdvanceTicks`, NEVER from `Render`.** The bus
+    is double-buffered and swaps at the end of every tick, and the run loop advances up to
+    `MaxTicksPerFrame` ticks between renders — a render-side read loses a one-tick event outright
+    (mutation run: moving the call into `BuildBlocked` reddens **6** legs, re-measured). It files into `_dropped`
+    (crew id → device id + reason), host-side render scratch exactly like `_prioritised`.
+  - ⭐ **ONE SURFACE, NO DOUBLE-BADGING: a LIVE PENDING RECORD ALWAYS WINS.** `NoteDroppedOrders`
+    files nothing while `_prioritised` holds that crew member, and `HandlePrioritise` clears
+    `_dropped` for her. The two maps are therefore disjoint by construction and describe the two
+    halves of an order's life. In the ISSUE-TIME case the pending record is never retired (the
+    no-route question is asked before the taken-retire rule), so it owns the badge from the click
+    through the drop and `_dropped` stays empty — pinned by
+    `TheIssueTimeBadgeOWNSTheMachine_TheDropFilesNothingBehindIt`, on the RECORD count, because both
+    emitters dedupe per order+tile and a duplicate record would be invisible on the wire until the
+    day one cleared and the other did not.
+  - ⭐ **THE RULE FOR WHETHER A DROP GETS A ROW, and it is one sentence: a dropped order is badged if
+    and only if the host can RE-ASK THE SIM'S OWN KILLING QUESTION, LIVE.** Three of the six qualify,
+    each a call into `MaintenanceSystem`, so the badge and the executor cannot disagree:
+
+    | `JobDropReason` | arms | live re-ask | row |
+    |---|---|---|---|
+    | `NoRouteToWorksite` | `:428 :466 :502` | `OrderedWorksiteIsOutOfReach` (TryFindStagingTile + FindPath) | `ReasonNoRoute` — NO WAY TO WALK TO IT |
+    | `NoWorksiteTile` | `:321` | `!TryFindStagingTile(forced: true)` | `ReasonNoApproach` — NO WAY TO STAND NEXT TO IT |
+    | `NoConsumable` | `:481` | `IsUnfixableWreck(forced: true)` | `ReasonNoConsumable` + the item |
+    | `Displaced` | `:333` | — per-worker transient, FILED (residual below) | none |
+    | `CargoLost` | `:343 :419` | — per-worker transient, FILED (residual below) | none |
+    | `NoRouteToConsumable` | `:471` | — no host-side twin, FILED | none |
+
+    So the badge is **LIVE, not latched**, even though its trigger was an instant: the record only says
+    which question to ask about which machine, and it is dropped the moment the world stops agreeing
+    (open the door ⇒ badge gone AND record gone, next frame). There is no timer anywhere.
+  - **Instruments:** `DroppedOrderTests` (16 legs, driven on `--ship wreck` through `gs.AdvanceTicks`,
+    never `sim.Tick()` — the run loop's own path, and the only one where the event has been read) +
+    `client/test/blocked-model.test.js` + `client/tools/dropped-order-shot.mjs`.
+    **THIRTEEN named mutations physically applied**, each red for the right reason and reverted from
+    an in-memory copy (11 C#, 2 client).
+- ⛔⛔ **RESIDUAL b3-R, NAMED — A `Displaced`/`CargoLost` DROP OF A PLAYER'S ORDER EVAPORATES
+  PERMANENTLY AND SILENTLY UNDER OD-H.** This is a residual of the package, not a footnote to it, and
+  it is stated before the softer items because it is the one a playtester can hit.
+  ⚠️ **The justification first shipped for these two rows was FALSE and is retracted here rather than
+  quietly reworded:** it said they were *"self-healing — the standing rule re-recruits from ground
+  truth on the next pass"*. It does not. `FindNearestReachableIdle` gates on `CanTakeWorkType`
+  (`MachineWearSystem.cs:598`, mirrored in `HasClaimableWork` at `:534`) and **OD-H boots every work
+  type OFF**, so nothing re-recruits anybody until the player opens the WORK tab.
+  **DRIVEN on the shipped wreck** (independent review found it; re-measured here rather than
+  transcribed): order `fabricator_1` with the route open ⇒ taken tick 1, the first render retires the
+  pending record; yank the carried stack at the pickup, **tick 171** ⇒ `CargoLost` at `:419`, the sim
+  publishes and **the host really does FILE the drop** — the event mechanism is working — and then the
+  fifth walk's default arm discards it. **3 000 further ticks: never re-recruited, `JobKind` stays
+  `None`, `blocked` reads `cells:[]` throughout.** The order is gone with nothing on any surface.
+  **The honest justification, and the only one now claimed:** these are **per-worker transients** —
+  what killed the job is a fact about a MOMENT and a PAWN, never a standing property of the machine,
+  so there is no world question for a render to re-ask, and under the live-re-ask discipline that
+  governs this channel no honest badge is available. **The fix is §13.25d's** (nothing re-issues a
+  forced job after an interruption), not another row here; a latched sentence would be the one thing
+  the discipline exists to refuse.
+- ⚠️ **WHAT IS ALSO STILL OPEN.** (i) The badge clears when the route opens and the order does
+  **not** come back with it — item **d** below, unchanged. (ii) `NoRouteToConsumable` has no
+  host-side twin, because "can she walk to a stack `FindNearestConsumable` would choose" is a
+  private, per-worker-position declaration and re-using the WORKSITE's route for it would be a second
+  authority. (iii) A machine with **no staging tile at all**
+  is refused at issue time and is still silent (b2's geometry reason — the mid-order twin IS surfaced
+  now, and that says nothing about the issue-time one: no job is ever created there).
 
 **c. NEITHER PRE-EMPTION CALL SITE IS INDIVIDUALLY PINNED** for the hold — the predicate is read
 twice on that path and blinding either alone is green (§6.2c). Named so that a later lane does not
@@ -4649,6 +4741,14 @@ whose meaning depends on a sibling field is exactly the kind of thing that rots*
 | `ReasonUnreachable` (3) | — | the reason's own sentence |
 | `ReasonWorkTypeOff` (4) | — | ″ |
 | ⭐ `ReasonNoRoute` (5) | — | `NO WAY TO WALK TO IT` (D5, 2026-08-03 — §13.25 b3) |
+
+⭐ **ORDER VALUE `3` (`OrderRepair`) HAD NO NAME IN THE CLIENT FROM M2-9 UNTIL 2026-08-03.**
+`BLOCKED_ORDER_NAMES` was `['dig','strip','build']`, so `blockedOrderName(3)` answered `''`, and both
+surfaces fell through: the badge read `ORDER BLOCKED — …` and the key `1 ORDER STUCK` for a machine
+the player had explicitly right-clicked and told to REPAIR. Fixed with `'repair'` at index 3, and the
+hand-written `deepEqual` that could not see the hole is now backed by a DERIVATION test that parses
+the host's `Order*` constants and requires a name for every one (the `DEVICE_KIND_NAMES` precedent,
+M2-10). Filed by `dropped-order-shot.mjs`, which observed it and now CHECKS it.
 
 - **`DetailNone = -1`, not 0** — `0` is `ItemKind.Regolith`, so a zero sentinel could not be told
   from a payload and an airless dig would badge `NEEDS REGOLITH`. (`moss-model.js`'s DA-M1 rule for a
