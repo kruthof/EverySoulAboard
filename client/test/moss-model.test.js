@@ -927,28 +927,104 @@ test('the transcript ring is bounded', () => {
 
 // ---------------- fault log ----------------
 
+// ⛔ THE FIXTURE'S TWO HALVES ARE THE SAME RING, BECAUSE THE SHIP'S ARE. `chron` is
+// `Chronicle.Render` over the whole 200-entry `HistorySystem` ring — day-grouped, each line
+// `"[Kind] " + entry.Text` — and `log` is `GameSession.BuildLog`'s tail of THAT SAME ring, the
+// newest 14 as `"D<day>.<frac> " + entry.Text`. Both shapes were read off a running `--ship wreck`
+// host on 2026-08-03 before this fixture was written.
+//
+// ⚠️ THE FIXTURE THIS REPLACED WAS DISJOINT — `log` lived on day 213 and `chron` on days 190/211,
+// no entry in both — so it could not see the shipped defect (the newest 14 printed TWICE) even
+// though the code under it was the code that printed them. A fault-log fixture whose tail is not a
+// suffix of its chronicle is testing a ship that does not exist.
 const CHRON = {
   type: 'chron',
   days: [
-    { day: 190, headline: 'Day 190 — a quiet watch', lines: ['REACTOR SCRAM DRILL COMPLETED'] },
-    { day: 211, headline: 'Day 211 — the tanks', lines: ['TANK_HYDRO RAN DRY', 'GALLEY MEAL SKIPPED'] },
+    { day: 190, headline: 'Day 190 — REACTOR SCRAM DRILL COMPLETED',
+      lines: ['[Note] REACTOR SCRAM DRILL COMPLETED'] },
+    { day: 211, headline: 'Day 211 — TANK_HYDRO RAN DRY',
+      lines: ['[Alarm] TANK_HYDRO RAN DRY', '[Note] GALLEY MEAL SKIPPED', '[Note] THE TANKS ARE QUIET'] },
+    { day: 213, headline: 'Day 213 — BROWNOUT ON THE REACTOR BUS',
+      lines: ['[Power] BROWNOUT ON THE REACTOR BUS', '[Alarm] SCRUBBER_AFT WORN'] },
   ],
 };
+// The newest two entries of the same ring, in the sensor tail's costume.
 const LOG = { type: 'log', lines: ['D213.10 BROWNOUT ON THE REACTOR BUS', 'D213.44 SCRUBBER_AFT WORN'] };
 
-test('the fault log joins chron + the live log tail, newest first', () => {
+/** The FACT a rendered row is about: the ring entry's own text, out of whichever costume. */
+const factOf = (t) => t.replace(/^\[[A-Za-z]+\] /, '');
+
+test('⭐ the fault log lists each fault ONCE — chron + log are one ring, not two records', () => {
   let m = reduceChron(reduceLog(linked(), LOG), CHRON);
   m = submitCommand(m, 'log').model;
   const view = faultLogView(m);
   assert.equal(view.title, 'FAULT LOG');
   assert.equal(view.filterId, null);
-  assert.equal(view.entries[0].text, 'SCRUBBER_AFT WORN', 'the newest live line leads');
-  assert.equal(view.entries[0].day, 213, 'the D-token became the day stamp');
-  assert.equal(view.entries[0].live, true);
-  assert.equal(view.entries[1].text, 'BROWNOUT ON THE REACTOR BUS');
-  assert.equal(view.entries[2].live, false, 'then the chronicle, newest day first');
-  assert.equal(view.entries[2].day, 211);
-  assert.equal(view.entries.length, 2 + 2 + 3);
+  // Newest first, the chronicle's own lines, and NOTHING repeated from the live tail.
+  assert.deepEqual(view.entries.map((e) => e.text), [
+    '[Alarm] SCRUBBER_AFT WORN',
+    '[Power] BROWNOUT ON THE REACTOR BUS',
+    '[Note] THE TANKS ARE QUIET',
+    '[Note] GALLEY MEAL SKIPPED',
+    '[Alarm] TANK_HYDRO RAN DRY',
+    '[Note] REACTOR SCRAM DRILL COMPLETED',
+  ]);
+  assert.deepEqual(view.entries.map((e) => e.day), [213, 213, 211, 211, 211, 190]);
+  assert.deepEqual(view.entries.map((e) => e.live), [false, false, false, false, false, false]);
+
+  // THE OUTCOME, stated as the player's sentence: no fault is listed twice. This is the leg that
+  // the shipped concatenation fails — it printed SCRUBBER_AFT WORN and BROWNOUT ON THE REACTOR BUS
+  // a second time, bare, above the tagged copies.
+  const facts = view.entries.map((e) => factOf(e.text));
+  assert.equal(new Set(facts).size, facts.length, 'a fault appears twice: ' + facts.join(' | '));
+  // …and not by hiding anything: the two the live tail also carries are present, once each.
+  for (const t of ['BROWNOUT ON THE REACTOR BUS', 'SCRUBBER_AFT WORN'])
+    assert.equal(facts.filter((f) => f === t).length, 1, t + ' must be listed exactly once');
+  // Non-vacuity: the tail really does overlap the chronicle in this fixture (a disjoint one would
+  // satisfy every assertion above while the defect stood).
+  const tail = LOG.lines.map((l) => l.replace(/^D\d+\.\d+\s+/, ''));
+  for (const t of tail) assert.ok(facts.includes(t), 'the fixture tail must overlap the chronicle: ' + t);
+  assert.equal(view.entries.length, 6, 'six ring entries, six rows');
+});
+
+test('the day HEADLINE is not a second row — it is the day\'s own worst line, re-stamped', () => {
+  const m = submitCommand(reduceChron(reduceLog(linked(), LOG), CHRON), 'log').model;
+  const view = faultLogView(m);
+  for (const d of CHRON.days) {
+    assert.ok(!view.entries.some((e) => e.text === d.headline), 'headline leaked as a row: ' + d.headline);
+    // the fact it names is still in the list — through its tagged line, exactly once
+    const fact = d.headline.replace(/^Day \d+ — /, '');
+    assert.equal(view.entries.filter((e) => factOf(e.text) === fact).length, 1,
+      'the day\'s worst fault must be listed exactly once: ' + fact);
+  }
+});
+
+test('before the chronicle lands the live tail IS the log — never an empty pane over a faulted ship', () => {
+  // IX-M4 honesty: `openFaultLog` REQUESTS `chron`; until the reply arrives a chronicle-only list
+  // would say NO ATTRIBUTABLE FAULTS ON RECORD while the ring holds fourteen of them.
+  const m = submitCommand(reduceLog(linked(), LOG), 'log').model;
+  assert.deepEqual(m.chron, [], 'the fixture for this leg has no chronicle yet');
+  const view = faultLogView(m);
+  assert.deepEqual(view.entries.map((e) => e.text), ['SCRUBBER_AFT WORN', 'BROWNOUT ON THE REACTOR BUS']);
+  assert.deepEqual(view.entries.map((e) => e.day), [213, 213], 'the D-token became the day stamp');
+  assert.deepEqual(view.entries.map((e) => e.live), [true, true]);
+});
+
+test('a live brownout episode whose text has moved on is still ONE row (this is not a text dedupe)', () => {
+  // ⭐ WHY THE FIX IS "ONE SOURCE" AND NOT "MATCH THE TWO COSTUMES BY TEXT". `HistorySystem`
+  // rewrites a brownout EPISODE entry IN PLACE as its edges accumulate
+  // (`BrownoutEpisodeLine`), so a `log` tail sampled after a `chron` snapshot legitimately
+  // disagrees with it word for word. MEASURED on a running `--ship wreck` host, 2026-08-03: the
+  // tail said "344 changes within the hour" where the chronicle still said "144".
+  const line = (n) => 'Power network 1 browned out — non-critical loads shed; ' + n +
+    ' changes within the hour, still shedding.';
+  const ch = { type: 'chron', days: [{ day: 0, headline: 'Day 0 — ' + line(144), lines: ['[Power] ' + line(144)] }] };
+  const lg = { type: 'log', lines: ['D0.53 ' + line(344)] };
+  const view = faultLogView(submitCommand(reduceChron(reduceLog(linked(), lg), ch), 'log').model);
+  assert.equal(view.entries.length, 1, 'one episode, one row — a text join would have printed two');
+  // The chronicle is the record, so its snapshot of the sentence is what shows. That staleness is
+  // the documented cost of dropping the tail; the alternative was printing the episode twice.
+  assert.equal(view.entries[0].text, '[Power] ' + line(144));
 });
 
 test('the fault log filter is the documented weak NAME join (§5.1)', () => {
@@ -958,7 +1034,7 @@ test('the fault log filter is the documented weak NAME join (§5.1)', () => {
   assert.equal(view.filterId, 'reactor');
   assert.equal(view.title, 'FAULT LOG — REACTOR');
   assert.deepEqual(view.entries.map((e) => e.text),
-    ['BROWNOUT ON THE REACTOR BUS', 'REACTOR SCRAM DRILL COMPLETED']);
+    ['[Power] BROWNOUT ON THE REACTOR BUS', '[Note] REACTOR SCRAM DRILL COMPLETED']);
   // once DETAIL is fetched, member device NAMES widen the join
   const water = submitCommand(submitCommand(reduceChron(reduceLog(linked(), LOG), CHRON), 'open water reclaim').model, 'log').model;
   assert.deepEqual(faultLogView(water).entries.map((e) => e.text), [],
@@ -968,10 +1044,10 @@ test('the fault log filter is the documented weak NAME join (§5.1)', () => {
     { ev: 'sys', tid: 'water_reclaim', devices: [['tank_hydro', 'WaterTank', 20, 1, 0, 0, 4, 4, '']] });
   const filtered = { ...named, screen: SCREEN.FAULTLOG, filterId: 'water_reclaim' };
   // The join is a loose SUBSTRING match on purpose: on a diagnostic screen, catching an extra
-  // line ('the tanks' from the device `tank_hydro`) is a far cheaper mistake than hiding a real
-  // fault. §5.1 says out loud that this is a string join, and this is what that costs.
+  // line ('THE TANKS ARE QUIET', off the device `tank_hydro`) is a far cheaper mistake than hiding
+  // a real fault. §5.1 says out loud that this is a string join, and this is what that costs.
   assert.deepEqual(faultLogView(filtered).entries.map((e) => e.text),
-    ['TANK_HYDRO RAN DRY', 'Day 211 — the tanks']);
+    ['[Note] THE TANKS ARE QUIET', '[Alarm] TANK_HYDRO RAN DRY']);
 });
 
 test('reduceChron / reduceLog: garbage is a no-op', () => {

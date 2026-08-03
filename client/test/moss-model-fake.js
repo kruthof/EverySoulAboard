@@ -102,8 +102,9 @@ export function reduceChron(model, msg) {
   const days = msg && Array.isArray(msg.days) ? msg.days : null;
   if (!days) return model;
   const chron = [];
+  // Mirrors the real reducer: the day HEADLINE is not a row (it is one of the day's own lines
+  // re-stamped, and the fault log stamps the day on every row itself).
   for (const d of days) {
-    if (d.headline) chron.push({ day: d.day | 0, text: String(d.headline) });
     for (const l of (d.lines || [])) chron.push({ day: d.day | 0, text: String(l) });
   }
   return { ...model, chron };
@@ -112,7 +113,16 @@ export function reduceChron(model, msg) {
 export function reduceLog(model, msg) {
   const lines = msg && Array.isArray(msg.lines) ? msg.lines : null;
   if (!lines) return model;
-  return { ...model, log: lines.map((l) => ({ day: -1, text: String(l) })) };
+  // Mirrors the real reducer's `D<day>.<frac>` split. It used to keep the whole line and stamp
+  // day -1, which was harmless while the tail was never the only source and is a LIE now that it
+  // is (the fallback would have rendered `—   D213.10 …` in a DOM test and looked fine).
+  return {
+    ...model,
+    log: lines.map((l) => {
+      const mt = /^D(\d+)\.\d+\s+(.*)$/.exec(String(l));
+      return mt ? { day: parseInt(mt[1], 10), text: mt[2] } : { day: -1, text: String(l) };
+    }),
+  };
 }
 
 // ---- input: the IX-M8 routing table ------------------------------------------------------------
@@ -360,8 +370,11 @@ export function faultLogView(model) {
   const row = id ? model.rows.find((r) => r.id === id) : null;
   const keep = (e) => !id || e.text.toLowerCase().indexOf(normalizeSystemId(id).split('_')[0]) >= 0;
   const entries = [];
-  for (let i = model.log.length - 1; i >= 0; i--) if (keep(model.log[i])) entries.push({ ...model.log[i], live: true });
-  for (let i = model.chron.length - 1; i >= 0; i--) if (keep(model.chron[i])) entries.push({ ...model.chron[i], live: false });
+  // ONE source, mirroring the real view-model: the chronicle when it has landed, the live tail
+  // only until it does. `chron` and `log` are two windows onto the same history ring.
+  const src = model.chron.length ? model.chron : model.log;
+  const live = model.chron.length === 0;
+  for (let i = src.length - 1; i >= 0; i--) if (keep(src[i])) entries.push({ ...src[i], live });
   return {
     title: id ? 'FAULT LOG — ' + (row ? row.label : id) : 'FAULT LOG',
     entries,
