@@ -138,8 +138,22 @@ const zoomOpen = await evaluate(`!document.getElementById('roomzoom-view')?.hidd
 check(!!zoomOpen, 'the Room Zoom opened (otherwise every check below is vacuous)');
 check(!(await evaluate(`!!document.querySelector('[data-rztool="operate"]')`)),
   'the palette has no OPERATE button');
-check(!/OPERATE/.test(await evaluate(`document.querySelector('.rz-hint')?.textContent||''`) || ''),
-  'the palette hint no longer teaches OPERATE');
+// ⚠️ BOTH HINT TEXTS ARE READ, AND THE SECOND ONE IS THE ONE THAT MATTERS (re-pointed 2026-08-03).
+// The hint line has two texts since the neutral-first-screen package: with nothing armed it names
+// only the disarmed verbs, and with a tool armed it is the per-tool crib sheet. Entry arms nothing,
+// so a check that read the line once would be asking whether a sentence that lists NO tools
+// mentions OPERATE — an absence over an empty set. `B` arms WALL, which is what puts the crib sheet
+// (the text that USED to teach OPERATE) on screen.
+const hintText = async () => (await evaluate(`document.querySelector('.rz-hint')?.textContent||''`)) || '';
+const idleHint = await hintText();
+await key('b'); await sleep(600);
+const armedHint = await hintText();
+await key('b'); await sleep(400);                 // …and put the tool back down
+check(armedHint.length > 0 && armedHint !== idleHint,
+  'the ARMED palette hint is on screen and differs from the disarmed one (without this the OPERATE '
+  + 'check below reads a line that lists no tools at all, and passes for the wrong reason)');
+check(!/OPERATE/.test(idleHint) && !/OPERATE/.test(armedHint),
+  'neither palette hint teaches OPERATE');
 await key('o');
 await sleep(600);
 check(!(await evaluate(`!!document.querySelector('.rz-operate-layer, .rz-operable')`)),

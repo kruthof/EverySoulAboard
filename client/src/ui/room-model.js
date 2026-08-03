@@ -1550,3 +1550,92 @@ export function escStackRung(s) {
   if (s && s.roomOpen) return 'exit';
   return 'pass';
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE THREE CHROME SENTENCES (VS-Z-12 caption · VS-Z-45 palette label · VS-Z-48 hint). PURE.
+//
+// ⚠️ THE DEFECT THIS EXISTS FOR WAS PRESENTATION, NOT STATE, and the distinction is the whole
+// package. The filed complaint reads *"the Room Zoom opens with BUILD armed"* — and it does NOT:
+// `enterRoom` sets `_armed = null` (IX-Z-01), as do the room swap, the crew-row jump and exit.
+// What a player MET on the first frame were three simultaneous announcements of a mode that was
+// not on:
+//     palette label   BUILD ▸ QUARTERS
+//     hint line       PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · …
+//     canvas caption  QUARTERS · BUILD DETAIL · 3 PLACED
+// Three imperatives to build, and not one word about the two things the disarmed surface actually
+// does: a click selects the pawn under it (IX-Z-30) and a right-click opens the PRIORITISE menu
+// (M2-10). "Invisible feedback is FUNCTIONAL" cuts both ways — a surface that advertises the verb
+// it is NOT in is the same defect wearing the opposite sign.
+//
+// ⛔ THE RIMWORLD CITE IS DELIBERATELY NARROW, because the reference does not answer the question
+// this package asks and inventing a §-number for it is the thing CLAUDE.md forbids. What §2.2 DOES
+// state, source-grade, is the mechanism the neutral hint now advertises: *"Select one colonist,
+// right-click a target … choose from the context menu"* — a verb reached with no designator in
+// hand at all, i.e. the disarmed surface is a WORKING surface, not a waiting room. §2.1 is the
+// other half: a designation is *"a request made to the world"* that the player picks up as a paint
+// tool; picking one up is an act, and the label may say so once it has happened. What the
+// reference states NOTHING about is the Architect menu's boot state, so no claim here rests on it.
+//
+// Keyed on ONE input — is a tool armed — so the label, the hint and the caption cannot come to
+// disagree about which mode the surface is in. Everything else is a fact about the room.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The hint line with NOTHING armed: where you are and the three things you can do from here.
+ *
+ * ⚠️ IT SAYS **A MACHINE**, NOT "A TILE", AND THE FIRST DRAFT SAID THE WRONG ONE. `prioritiseOffer`
+ * refuses a tile with no `devices` row SILENTLY and on purpose (`prioritise-model.js`: *"a stray
+ * right-click on bare floor is not an intent aimed at anything"*, pinned twice in
+ * `prioritise-menu.test.js`). On the shipped cryo bay most tiles ARE bare floor, so
+ * `RIGHT-CLICK A TILE TO PRIORITISE A JOB` invited the one gesture that answers with nothing —
+ * this package's own thesis inverted, an advertised verb that is not there. The wording follows the
+ * model's own two sentences: the menu row reads `PRIORITISE: REPAIR {name}` and its no-selection
+ * refusal already says *"RIGHT-CLICK THE MACHINE"*.
+ */
+export const ZOOM_HINT_IDLE =
+  'CLICK A CREW MEMBER TO SELECT THEM · RIGHT-CLICK A MACHINE TO PRIORITISE ITS REPAIR · ' +
+  'PICK A TOOL ABOVE TO BUILD · ESC RETURNS TO THE SHIP';
+
+/** The hint line with a tool armed — the per-tool crib sheet that shipped as the surface's ONLY
+ *  hint. Its leading `PICK A TOOL · ` is gone (a tool IS picked, so the imperative was stale the
+ *  moment it could be read) and `ESC DISARMS` is appended, which is what `escStackRung` has always
+ *  done on this rung and nothing on the surface said. */
+export const ZOOM_HINT_ARMED =
+  'WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · ' +
+  'DIG [G] / STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · ' +
+  'ERASE [C]: DRAG OVER PAINTED ORDERS TO TAKE THEM BACK · ' +
+  'MOVE [M]: PICK A CREW MEMBER, THEN CLICK WHERE THEY SHOULD GO · DEMOLISH REMOVES A GHOST · ' +
+  'ESC DISARMS';
+
+/**
+ * What the palette label, the hint line and the canvas caption say right now.
+ *
+ * `capLead` and `capPlaced` are the caption's TWO nodes rather than one string because VS-Z-12
+ * colours the count `#f2b563` and the rest reduced-alpha cream; concatenating them here would
+ * either lose the colour or put markup in a pure function.
+ *
+ * @param {{armed:string|null, roomName:string, placed?:number, crewHere?:number}} s
+ * @returns {{armed:boolean, label:string, hint:string, capLead:string, capPlaced:string}}
+ */
+export function zoomChrome(s) {
+  const o = s || {};
+  const armed = o.armed != null && o.armed !== '';
+  const room = String(o.roomName == null ? '' : o.roomName);
+  const placed = o.placed | 0;
+  const here = o.crewHere | 0;
+  return {
+    armed,
+    // ⭐ THE LABEL STILL NAMES THE PALETTE — IX-Z-02 declares it always visible, so a blank label
+    // would leave eighteen unexplained buttons rather than a de-emphasised group. `TOOLS` is the
+    // noun for a shelf of tools; `BUILD` is the verb for a mode, and it returns when the mode does.
+    // Deliberately NOT near the WORK tab's `BUILD` column header (a separate carried owner item
+    // with a standing HOLD test) — this vocabulary moves away from that collision, never into it.
+    label: (armed ? 'BUILD ▸ ' : 'TOOLS ▸ ') + room,
+    hint: armed ? ZOOM_HINT_ARMED : ZOOM_HINT_IDLE,
+    // Disarmed the caption says WHERE YOU ARE AND WHO IS WITH YOU; armed it says which detail of
+    // the room you are editing. `HERE` is the crew dock's own word for "standing in this room"
+    // (`shipCrewRows(...).here`), so the footer and the dock cannot word one fact two ways.
+    capLead: room + ' · ' + (armed ? 'BUILD DETAIL' : (here ? here + ' CREW HERE' : 'NO CREW HERE')) + ' · ',
+    capPlaced: placed + ' PLACED',
+  };
+}
