@@ -5,67 +5,79 @@ ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Eve
 older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-04, session I CLOSED — three owner-triage lanes landed same-day, playtest in 3 days)
+## Current state (2026-08-04, session K CLOSED — M4 CHARTERED IN FULL, playtest in 3 days)
 
-**Gate on `main` (`489bd78`): the final merge's tree is byte-identical to its gated lane
-tree (tree-hash-verified); the TRAPS-8 chain ran the FULL `./ci.sh` in every lane — last
-reading 1889 dotnet + 1312 node, twin MATCH `7bdd0d6f7756dfdc` (re-measure before
-quoting). Pin table (CLAUDE.md authoritative, UNCHANGED): P1 `7bdd0d6f7756dfdc` · P2
-`cb09b584a5f15e52` · P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87` · P5
-`558a1c0a4985f5ea`. NO PIN MOVED ×3 lanes.**
+**Gate on `main` (`a7cc2b4`): the merge's tree is byte-identical to its gated lane tree
+(tree-hash-verified, `44a6de89…`); the lane ran the FULL `./ci.sh` at its FINAL commit —
+1889 dotnet + 1312 node, twin MATCH `7bdd0d6f7756dfdc` (re-measure before quoting). Pin
+table (CLAUDE.md authoritative, UNCHANGED): P1 `7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52`
+· P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. Docs-only lane;
+`git diff 2e4ce40 -- tests/Perilune.Tests/Golden/ ci.sh content/` = 0 lines.**
 
-**OD-R (2026-08-04, owner-direct, session J; AMENDED same day — "more than a tone, an
-important part of gameplay"): the game is RimWorld × Factorio × THIS WAR OF MINE, and TWoM
-is a GAMEPLAY PILLAR.** Scoped by three follow-ups, recommendations adopted: triage is
-EMERGENT from real scarcity (never scripted, never dice) · DETERMINISTIC MENTAL BREAKS —
-mood gates BEHAVIOUR (T12's missing half, RW§4's mechanism, TWoM's tone) · lands INSIDE
-M4+M5 (M4-1's charter grows a TWoM-gameplay section; M5-1's ending is the payoff).
-Recorded in ROADMAP §5 + TARGET §1.3/§2/T12 — **nothing implementable before the M4-1
-charter** (no break table, no scarcity retune, no misery meters). Same
-ruling batch: **PROCESS §2 gained the lane-selection gate + `rows:` disclosure** — the
-owner's drift check ("are we losing ourselves in details?"): meta-work (rigs, guards about
-guards, DOM tests for shipped affordances) never runs as its own lane; every session-log
-row now discloses which TARGET rows moved, or `none`; two `none` sessions force the
-topmost ROADMAP row.
+**M4 IS CHARTERED — `docs/design/perilune-m4.packages.md` (2132 lines, M3 house format,
+citations re-measured on `2e4ce40`).** Forced pick under PROCESS §2 (sessions I+J were
+both `rows: none`, so the topmost unmerged ROADMAP row — M4-1 — was mandatory) and named
+by OD-R's binds cell (the M4-1/M5-1 charters written at M4 open, against the three
+registers). One Opus implementer + one independent reviewer; ONE SEND-BACK (5 MAJOR + 11
+MINOR, all fixed and re-verified) + 4 post-approval nits, every verdict enforced. What it
+contains:
+- **M4-1's Persona design IS the charter's §5**: layout, tabs, orders, transcript, the
+  `controls.js` T-key THIRD DOOR (invisible to the `CREW_INTERACTION` census — it bypasses
+  hud.js), the mount (body-level sibling, MOSS-takeover precedent), Rell's unauthored
+  identity (ruled: M4-3 authors her a sheet, REVERSING M3-8's refusal — and that reddens
+  `SleeperPersonaTests.cs:493-494` by construction, named in MUTATIONS), "Incapable Of",
+  empty-relationships copy, per-person history without a cid on Chronicle lines. Design
+  questions **(a)–(h)** each ruled-or-forked with a routing box (charter's call vs owner
+  batch). Keymap census MEASURED: `E` recommended for Persona (`P` is bound —
+  `toggleSprites`, `controls.js:282`; the reviewer caught the charter claiming it free).
+- **⭐⭐ THE TWoM-GAMEPLAY SECTION (OD-R's mandate)**: deterministic break ladder — RW§4's
+  one-tunable→three-tier DERIVATION adopted (not re-litigable), break roster from OD-R's
+  verbs (refuse/stop/withdraw), a dwell/DECAYING-counter over hashed mood (hard reset was
+  DEFEATED by the measured mood sawtooth — review finding; the leaky integrator is the
+  recommended fix, fork (h)), the per-person tunable's HOME priced as fork (g) (traits
+  may NOT be the source — `PersonaSheet` is host-owned/unhashed, a hashed break reading it
+  is a cross-host determinism violation; the `SleeperAptitudes`-precedent hashed byte is
+  recommended), catharsis analogue priced, sleep-freeze clause. Emergent-triage and grief
+  registers chartered; TARGET §2 honoured (no dice, no misery meters, no fed bars).
+- **Pin chain `M4-a…c`** (M4-4 real-or-delete · the first break · social ignition), each
+  with its VACUITY stated (under OD-H no pinned fixture works — instrument tables name
+  `MentalBreakTests`-to-be etc. as the sole cover, M3-9's lesson) · **conflict matrix +
+  12 couplings** (the three pinned lists move in ONE commit with M4-2; M4-2/M4-8 ordering
+  tension — `openPersonaForSelected` belongs in `ship-state.js`, which WP-9 creates) ·
+  **M5-1 forward charter** (the ending = survivors-and-cost payoff on M3-5's shipped
+  state) · **§10 owner batch, five items, silence defaults stated** (below) · playtest
+  clause: **the 08-07 findings amend this charter BEFORE M4-2 implements.**
 
-**THREE OWNER RULINGS (2026-08-04, in-session — recorded as OD-Q in ROADMAP §5):**
-⭐⭐ **D7 brownout trade — KEEP THE CACHE** (ships as-is; one-line revert stays at
-`AuthoredShips.cs:2661`; the reprice alternative stays filed, not taken) · ⭐ **`doors`
-RATIFIED and `vents` IS the second noun** (shipped same day, below) · ⭐ **SHELF/RUG keep
-the honest refusal until M4-6** (buttons stay).
+## Open on the owner (playtest 2026-08-07; then the M4 batch — default-to-recommendation after three days)
 
-**Three merges** (each 1 Opus implementer + 1 independent reviewer; every verdict
-enforced): **vents-verb** (typed `vents` lists the wreck's 3 vents in the doors grammar at
-the REPAIRED tier — same predicate as the exec arm; `VENT_D1` carries `· BOARD FAULT`
-because listing is reading and the workaround loop needs the id, while the actuation
-refusal is untouched; new `Ask.Vents`, and the pairwise refusal walk now DISCOVERS enum
-members — the 9th-shape blindness the hand-list had; outcome test: repair → `vents` →
-open a healthy vent by the printed id; reviewer APPROVE, fix-back ×3 text/test-shape) ·
-**crew-sel-collision** (the chip-collision class's THIRD instance closed — `.rz-crew.sel`
-owns inset+ring, a channel `:hover`/`:active` cannot produce; hover a warm neutral; the
-class-sweep guard WIDENED, `STATE_CLASSES ['.on','.sel']` with per-member spelling pinned —
-the planted `.sel` violation the chip lane measured GREEN now reds; SEND-BACK closed
-text-only: the rig comment named `--deck 1`, an invocation that exits before its own
-section — grid crew never leave deck 0, driven 7 runs across two reviews) ·
-**moss-scroll-affordance** (`▾ N MORE` on the MOSS console — a passive SIGN per OD-P,
-counting each `.moss-cline` by its OWN box because MOSS lines wrap, a gate-sentence
-refusal is TWO line boxes, measured 43.53 vs 21.77; ⭐ REVIEW CAUGHT A REAL REGRESSION:
-the sign's clearance padding grew `scrollHeight` and collapsed the autoscroll lane's 24px
-follow slack to ~1px, driven A/B — fixed by subtracting the live padding at the seam,
-`shouldFollowTail` sha-identical, the slack band now pinned BOTH sides and unit-visible;
-re-review APPROVE).
+- **⭐⭐ THE M4 OWNER BATCH (`perilune-m4.packages.md` §10, five items, each with silence
+  default): 1** who builds the first mental break (REC: ninth package M4-9 / silence:
+  defer to M5) · **2** `Citizen.Health`/`Morale`/`Archetype` real-or-delete (REC: real,
+  RW§6.1 safety-net shape / silence: keep-and-stop-showing; NO zero-pin option exists) ·
+  **3** may a player order override a break (REC: graduated by tier / silence: RimWorld's
+  no) · **4** may thawed sleepers arrive with real SOCL bonds (REC: yes, seeded in
+  `CryoSystem` / silence: no — bonds stay prose, Feud cut, D-3 unclosed) · **5**
+  Chronicle severity tie (REC = silence: keep it, earliest wins). Plus the M4-1 design
+  itself is under owner review (design questions (a)–(h) are the charter's calls,
+  overridable there).
+- Carried from 08-02/08-03 (unchanged): maintenance vs furnishing budget · NO-CONSUMABLE
+  badge unreachable in the OPENING state · ACCEPTS row 10 chips boot lit · FLOOR default
+  + toast ratify · furniture as a real pawn job · bench wait · heater tier · rung-1 ·
+  vacuum services class · UI list. (The Chronicle severity tie moved INTO the M4 batch,
+  item 5.)
 
-## Open on the owner (playtest 2026-08-07 — the three ⭐ pre-playtest calls are RULED)
+## Open — unscheduled (★ new session K; receipts in the merge commits + the M4 charter §12/§13)
 
-- Should maintenance eat the furnishing budget at all (per-kind reserve — sim-core)? ·
-  NO-CONSUMABLE badge unreachable in the OPENING state (frontier pacing fact, not D3) ·
-  ACCEPTS row: 10 chips boot lit (invert the vocabulary?) · Chronicle severity tie: a
-  brownout usually out-headlines ORDER DROPPED · FLOOR default kept + toast (deviation,
-  argued from your OD-G) — ratify · furniture as a real pawn job (the RimWorld answer; L,
-  spine, post-playtest) · carried batch from 08-02 (bench wait · heater tier · rung-1 ·
-  vacuum services class · UI list) unchanged.
-
-## Open — unscheduled (★ new this session; receipts in the merge commits + MECHANICS §13.44–§13.49)
+- ★ NEW (session K, filed by the charter lane): the post-M3-9 MOOD ENVELOPE is stale in
+  THREE docs (MECHANICS §13.4's numbers pre-date REST; the break package's FIRST required
+  measurement is day-means + envelope + sawtooth AMPLITUDE + PERIOD — nothing may be
+  tuned before it) · D-3's premise ("Fatigue has no reducer") is stale post-M3-9, may be
+  partly self-healing, nobody has looked · `SocialSystem.cs:150`'s `_roll.NextFloat()` is
+  a runtime-roll SHAPE TARGET §2 forbids in outcomes (filed, not ruled; the break ladder
+  is forbidden from copying it) · M4-5/M4-6/M4-8 move no TARGET row (checklist gap) ·
+  `CitizenMemory.Episodic` as a wire channel is the better long answer for per-person
+  history (a package, not a clause) · `CmdKind.Operate` removal is CHECK-BEFORE-DELETING
+  in M4-8 · M3's coupling 7 undercounted the MOSS doors (three, not one — charter §12.16).
 
 - Carried: Room Zoom furniture layer flickers ±1 piece at rest · ContextAction SILENCE on
   refused device clicks · MOSS-live stray clicks actuate doors, no confirm/undo · klaxon
@@ -76,7 +88,7 @@ re-review APPROVE).
   staleness ≤1.2 s toast race (benign) · mixed FLOOR sweep overcounts · D5 family /
   spend-visible / Chronicle residuals (stateful PowerSystem · episode-boundary saves ·
   `IsWanting` sawtooth · no pin covers the wreck · fault-log right-edge clip).
-- ★ NEW: the CREW-tab `▾ N MORE` precedent has NO DOM test (`hud.js` `updateCrewMore`
+- ★ (session I): the CREW-tab `▾ N MORE` precedent has NO DOM test (`hud.js` `updateCrewMore`
   unexercised — found reading it as the precedent) · the clearance guard is
   PADDING-SHAPED (`padBottomPx` reads `padding-bottom` only; a margin/spacer/border
   clearance would silently reintroduce the slack regression — IX-M16's prose is the only
@@ -101,20 +113,17 @@ re-review APPROVE).
 
 ## Next
 
-1. **The playtest 2026-08-07.** All three pre-playtest ⭐ rulings are in. The chain test's
-   action recipe IS the playtest script (DoorsVerbTests, ~6.7 sim-h at speed); typed
-   `vents` now covers the deck-1 puzzle's noun the same way `doors` covered the
-   fabrication doors.
-2. Owner triage above, then M4 opens after the gate — **M4-1 Persona design first, and the
-   M4-1/M5-1 charters are written against OD-R's three registers** (RimWorld = mechanism ·
-   MOSS/Factorio = automation later · This War of Mine = the survival tone the Persona,
-   Chronicle and ending serve). T12's remaining half (mood gates no behaviour yet) is the
-   natural first TWoM-register row.
-3. ⛔ The former "candidate small lanes" (`vents-shot.mjs` · CREW-tab affordance DOM test ·
-   `.crew-more` shared-prefix rename) are META-WORK under PROCESS §2's new lane-selection
-   gate — none moves a TARGET row or carries a player sentence. They stay FILED in the
-   lists above; they run only on owner triage or riding a real lane. Do not pick them as
-   session work.
+1. **The playtest 2026-08-07.** All three pre-playtest ⭐ rulings are in; the chain test's
+   action recipe IS the playtest script (DoorsVerbTests, ~6.7 sim-h at speed). **Its
+   findings amend the M4 charter before M4-2 implements** (the charter's §1 exposure
+   table names which sections are most revisable).
+2. **The owner: review the M4-1 Persona design and answer the §10 batch** (five items,
+   silence defaults stated; default-to-recommendation after three days per ROADMAP's
+   standing rule). Nothing in M4 implements before this + the playtest amendment.
+3. After that, M4's merge order opens at `perilune-m4.packages.md` §3 (M4-2 first unless
+   batch item 1 = A inserts M4-9's pin lane; the M4-2/M4-8 ordering tension is chartered).
+4. ⛔ The former "candidate small lanes" (`vents-shot.mjs` · CREW-tab DOM test ·
+   `.crew-more` rename) stay META-WORK under PROCESS §2 — FILED, not session work.
 
 ## Session log (append one row per session; prune when > ~40 rows)
 
@@ -134,3 +143,4 @@ re-review APPROVE).
 | 08-04 H | TWELVE lanes (owner-directed, AFK): chip-collision · brownout-cadence · rig-hardening · palette-honesty · parts-affordability(D7) · onboarding-thaw · gate-sentences · moss-autoscroll · pod-poll-spam · rig-premises · palette-three-tools · moss-doors-verb | **"can't build / can't defreeze" AUDITED then CLOSED: every build button priced+honest, first bunk affordable (⭐⭐ brownout trade FILED for the owner), 3 new tools · the card TEACHES the thaw, MOSS refusals name the next step, the console scrolls+stops spamming, typed `doors` ends the secret-door stall · the log survives a WEEK · rigs can't coin-flip or leak · ⭐⭐ THE LIVE-PLAYER CHAIN PROVEN DRIVEN (repair→doors→craft→CM→commission, ~6.7 sim-h)** | 12× in-lane full gates + final tree ≡ gated tree (exit 0, twin MATCH), pins UNMOVED ×5, tests →1876/1297 |
 | 08-04 I | vents-verb · crew-sel-collision · moss-scroll-affordance (owner-triage; THREE same-day rulings → OD-Q) | **⭐⭐ D7 RULED keep-the-cache · `doors` RATIFIED and typed `vents` SHIPS (the deck-1 puzzle's noun is learnable; BOARD FAULT visible in the listing) · picking a crew row visibly ARMS it (3rd chip-collision instance closed, guard widened to discover `.sel`) · the MOSS console says `▾ N MORE` — and its review CAUGHT the sign eating the autoscroll slack (fixed at the seam, both sides of the band pinned)** | 3× in-lane full gates + TRAPS-8 re-gates ×2 + final tree ≡ gated tree, pins UNMOVED ×5, tests →1889/1312 |
 | 08-04 J | twom-axis-drift-guardrails + twom-gameplay-pillar (docs-only, owner-direct) | **OD-R — the game is RimWorld × Factorio × THIS WAR OF MINE, and TWoM is a GAMEPLAY PILLAR** (owner amended same day: "more than a tone"; three follow-ups adopted — emergent triage from real scarcity · deterministic mental breaks gate BEHAVIOUR (T12's missing half) · lands inside M4+M5; nothing implementable before the M4-1 charter) · **the drift check the owner asked for**: PROCESS §2 lane-selection gate + `rows:` disclosure, HANDOVER's meta-work candidates demoted behind owner triage | docs-only ×2, full gate exit 0 each, doc-sentinel tests green; rows: none (owner-directed ruling batch) |
+| 08-04 K | m4-1-persona-design (forced topmost row after two `none` sessions) | **M4 CHARTERED IN FULL — THE PERSON** (`perilune-m4.packages.md`, 2132 lines): the Persona design with (a)–(h) ruled-or-forked (keymap census says `E`; the T-key third door named; Rell ruled authored, its pin move named) · **⭐⭐ OD-R's TWoM-gameplay section — the deterministic break ladder priced in hashed fields** (review DEFEATED the hard-reset counter with the measured sawtooth; decaying counter recommended; the tunable's unhashed-trait trap named) · M5-1 forward charter · five-item owner batch with silence defaults; 1 send-back (5 MAJOR + 11 MINOR) + 4 nits, all enforced | docs-only, full gate exit 0 in-lane at FINAL commit, twin MATCH, pins UNMOVED ×5, merge tree ≡ lane tree; rows: M4-1 (T16 + T12's OD-R half → chartered) |

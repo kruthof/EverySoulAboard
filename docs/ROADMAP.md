@@ -92,9 +92,17 @@ ordinals.
   pod bay states per-pod failure reasons that direct the player's repairs, and the pods'
   repair items form an escalating production-chain ladder (M3-6's census + M3-13's
   refusals carry the ladder; content authoring for the chain depths is new M3 scope).
-- **M4:** M4-1 Persona design (INFRA) · M4-2 build it · M4-3 dossier stops lying · M4-4
-  Health/Morale real-or-delete · M4-5 onboarding rewrite · M4-6 RUG/SHELF · M4-7 Chronicle
-  reachable · M4-8 WP-9 console deletion.
+- **M4:** ✅ **CHARTERED IN FULL, 2026-08-04 — `docs/design/perilune-m4.packages.md`**
+  (queue, seams, pin rows `M4-a…c`, conflict matrix + 12 couplings, and a **five-item
+  owner batch — OPEN, every item with a stated silence default**; written against OD-R's
+  three registers per the binds cell: M4-1's Persona design IS the charter's §5, with the
+  TWoM-gameplay section — deterministic break ladder priced in hashed fields, design
+  questions (a)–(h) ruled-or-forked — and an M5-1 forward charter. **Owner review
+  pending; the 08-07 playtest's findings amend the charter before M4-2 implements**).
+  The outline that follows is kept as the index.
+  M4-1 Persona design (INFRA — doc written, owner review open) · M4-2 build it · M4-3
+  dossier stops lying · M4-4 Health/Morale real-or-delete · M4-5 onboarding rewrite ·
+  M4-6 RUG/SHELF · M4-7 Chronicle reachable · M4-8 WP-9 console deletion.
 - **M5:** M5-1 the ending · M5-2 alerts · M5-3 mid-game goal · M5-4 art pass · M5-5
   Regolith→Rubble rename · M5-6 device-removal hole · M5-7 save/load (own lane).
 
