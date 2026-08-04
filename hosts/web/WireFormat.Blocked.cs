@@ -722,8 +722,21 @@ namespace Perilune.Web
         public const int DetailNone = -1;
 
         /// <summary>
+        /// ⭐ <b>NO OWNER</b> — the value <see cref="BlockedCell.Cid"/> carries for every row that is
+        /// not one named crew member's direct order, which is the three registry walks (dig, strip,
+        /// build) and therefore most rows on most ships.
+        ///
+        /// <para><b>−1 AND NOT 0, FOR <see cref="DetailNone"/>'s REASON EXACTLY.</b> Citizen ids are
+        /// <c>uint</c> and this repo's stores hand out small ones; <c>0</c> is not a live id today but
+        /// it is not reserved either, and a zero sentinel would make "this row belongs to nobody"
+        /// indistinguishable from "this row belongs to crew 0" the day one is issued. The client's
+        /// half is <c>BLOCKED_CID_NONE</c> in <c>client/src/wire/messages.js</c>.</para>
+        /// </summary>
+        public const int CidNone = -1;
+
+        /// <summary>
         /// One refused order on the <c>blocked</c> channel. Tuple
-        /// <c>[x, y, deck, order, reason, detail]</c>, append-only (a future field is a trailing
+        /// <c>[x, y, deck, order, reason, detail, cid]</c>, append-only (a future field is a trailing
         /// element, exactly as <see cref="ZoneTile"/>, <see cref="MarkCell"/>,
         /// <see cref="ItemCell"/> and <see cref="DeviceCell"/> document).
         ///
@@ -776,18 +789,58 @@ namespace Perilune.Web
         /// which are position-stable under an APPEND and were re-read to confirm it. The C# side is
         /// compiler-enforced: this constructor takes six arguments and has no default, so a
         /// construction site that was not updated does not build.</para>
+        ///
+        /// ─────────────────────────────────────────────────────────────────────────────────────
+        /// <para>⭐⭐ <b>D5 OVERVIEW — <see cref="Cid"/>, THE SEVENTH ELEMENT: WHOSE ORDER THIS IS.</b>
+        /// The crew member whose direct order this row is about, or <see cref="WireFormat.CidNone"/>
+        /// for a row that belongs to nobody in particular. Only the two REPAIR walks ever set it —
+        /// <c>GameSession.BuildBlocked</c>'s pending walk and its dropped walk — because those are the
+        /// only rows that exist because ONE named person was told to do ONE thing.</para>
+        ///
+        /// <para><b>WHY THE TILE CHANNEL LEARNS A PERSON, when its own header says the tuple is keyed
+        /// by TILE.</b> It is not a second key; it is a per-row payload exactly like
+        /// <see cref="Detail"/>, and the reason it exists is a MEASURED player defect. The Room Zoom
+        /// badge is drawn from this channel, but the Level-1 Overview — the screen a first-hour player
+        /// actually watches — showed the ordered crew member a bare <i>"Awaiting orders"</i> while the
+        /// badge sat one screen away (MECHANICS §13.25 b3, the D5 family's last playtest-facing
+        /// residue). The Overview's crew dock is keyed by CREW, so joining it to this channel needs the
+        /// owner ON the row. ⛔ THE ALTERNATIVE WAS A SECOND AUTHORITY: the host could have composed a
+        /// sentence into the roster's <c>task</c> string instead, which would have put a second copy of
+        /// <c>BLOCKED_REASON_TEXT</c> on this side of the wire — the one thing that table's own header
+        /// refuses (<i>"the SIM owns the words, the wire carries the byte"</i>). One int, one vocabulary,
+        /// and the dock cannot come to a different answer than the badge because it reads the same row.</para>
+        ///
+        /// <para>⛔ <b>THE PER-TILE DEDUPE OUTRANKS IT, AND THE CONSEQUENCE IS NAMED RATHER THAN
+        /// HIDDEN.</b> The three repair emitters drop a row whose tile already carries a repair row —
+        /// <i>two crew members ordered at one machine are one blocked machine, not two</i> — so in that
+        /// state the surviving row carries the FIRST crew member's id in citizen-store order and the
+        /// second crew member gets no dock line. Keeping the badge honest wins: a second row would draw
+        /// a second scrim on one tile. Reachable only by ordering two people at one machine while
+        /// neither holds the job; FILED, not fixed here.</para>
+        ///
+        /// <para>⚠️ <b>SAME APPEND HAZARD AS <see cref="Detail"/>, AND THE SAME CENSUS WAS RE-RUN.</b>
+        /// <c>decodeBlocked</c> in <c>client/src/wire/messages.js</c> is still the only index-reader in
+        /// <c>client/src/</c> that goes past <c>[4]</c>; the four screenshot rigs that index the raw
+        /// tuple read <c>c[0]</c>–<c>c[5]</c> for census lines (<c>blocked-shot.mjs</c>,
+        /// <c>blocked-reach-shot.mjs</c>, <c>work-blocked-shot.mjs</c>, <c>dropped-order-shot.mjs</c>)
+        /// and are position-stable under an APPEND. The C# side is compiler-enforced: this constructor
+        /// now takes SEVEN arguments and still has no default.</para>
         /// </summary>
         public readonly struct BlockedCell
         {
-            public readonly int X, Y, Deck, Order, Reason, Detail;
+            public readonly int X, Y, Deck, Order, Reason, Detail, Cid;
 
             /// <param name="detail">Per-reason payload — see the table above. Pass
             /// <see cref="WireFormat.DetailNone"/> when the reason has nothing to add. NO DEFAULT
             /// VALUE, on purpose: a defaulted parameter would let a new construction site ship a
             /// silent <c>DetailNone</c> for a reason that has something to say, and the compiler is
             /// the only thing on this side of the wire that can catch that.</param>
-            public BlockedCell(int x, int y, int deck, int order, int reason, int detail)
-            { X = x; Y = y; Deck = deck; Order = order; Reason = reason; Detail = detail; }
+            /// <param name="cid">The crew member whose direct order this row is about, or
+            /// <see cref="WireFormat.CidNone"/>. NO DEFAULT VALUE, for <c>detail</c>'s reason exactly:
+            /// a defaulted <c>CidNone</c> on a repair row is a row the Overview's crew dock silently
+            /// cannot show, which is the defect this element exists to close.</param>
+            public BlockedCell(int x, int y, int deck, int order, int reason, int detail, int cid)
+            { X = x; Y = y; Deck = deck; Order = order; Reason = reason; Detail = detail; Cid = cid; }
         }
 
         /// <summary>
@@ -822,7 +875,8 @@ namespace Perilune.Web
                       .Append(',').Append(c.Deck.ToString(BlockedIc))
                       .Append(',').Append(c.Order.ToString(BlockedIc))
                       .Append(',').Append(c.Reason.ToString(BlockedIc))
-                      .Append(',').Append(c.Detail.ToString(BlockedIc)).Append(']');
+                      .Append(',').Append(c.Detail.ToString(BlockedIc))
+                      .Append(',').Append(c.Cid.ToString(BlockedIc)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();
