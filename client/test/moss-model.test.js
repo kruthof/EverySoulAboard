@@ -1015,9 +1015,9 @@ test('a live brownout episode whose text has moved on is still ONE row (this is 
   // rewrites a brownout EPISODE entry IN PLACE as its edges accumulate
   // (`BrownoutEpisodeLine`), so a `log` tail sampled after a `chron` snapshot legitimately
   // disagrees with it word for word. MEASURED on a running `--ship wreck` host, 2026-08-03: the
-  // tail said "344 changes within the hour" where the chronicle still said "144".
+  // tail said "344 changes in this episode" where the chronicle still said "144".
   const line = (n) => 'Power network 1 browned out — non-critical loads shed; ' + n +
-    ' changes within the hour, still shedding.';
+    ' changes in this episode, still shedding.';
   const ch = { type: 'chron', days: [{ day: 0, headline: 'Day 0 — ' + line(144), lines: ['[Power] ' + line(144)] }] };
   const lg = { type: 'log', lines: ['D0.53 ' + line(344)] };
   const view = faultLogView(submitCommand(reduceChron(reduceLog(linked(), lg), ch), 'log').model);

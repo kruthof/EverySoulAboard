@@ -1105,7 +1105,7 @@ namespace Perilune.Sim
                 if (!hit) continue;
 
                 // ⭐ A BROWNOUT EPISODE RENDERS ITS FAULT SENTENCE, NEVER ITS CURRENT STATE. The
-                // entry's own text develops as the episode does ("…; 647 changes within the hour,
+                // entry's own text develops as the episode does ("…; 647 changes in this episode,
                 // since recovered.") — true, useful in the FAULT LOG, and exactly the wrong thing
                 // in a column headed LAST FAULT. `HistorySystem.BrownoutFaultLine` is the one copy
                 // of the sentence, so this cannot drift from what the log says happened, and the

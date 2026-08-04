@@ -35,6 +35,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { dismissOnboarding } from './rig-lib.mjs';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8420');
@@ -129,11 +130,12 @@ await call('Page.enable'); await call('Runtime.enable');
 await call('Page.navigate', { url: `http://localhost:${CLIENT_PORT}/?port=${HOST_PORT}` });
 await sleep(6000);
 
-for (let i = 0; i < 15; i++) {
-  const onb = await centre('[data-onb-begin]');
-  if (onb) { await clickAt(onb.x, onb.y); await sleep(1500); break; }
-  await sleep(1000);
-}
+// THE ONBOARDING CARD, DISMISSED AND VERIFIED GONE (`rig-lib.mjs`'s shared helper, which arrived
+// on `main` while this lane was open). ⚠️ THIS TOOL WAS WRITTEN WITH THE ONE-SHOT LOOP THAT HELPER
+// REPLACES and was ported at merge time rather than left as the one rig still carrying the filed
+// defect: the one-shot could SILENTLY SKIP a card that had not painted yet, and every click below
+// then landed on a full-screen modal instead of the ship.
+await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
 
 const mossTab = await centre('[data-ov-tab="moss"]');
 if (!mossTab) { console.error('FAIL: no MOSS tab on the Overview'); failures += 1; }
