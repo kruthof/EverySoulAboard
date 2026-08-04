@@ -494,7 +494,7 @@ charter found by opening files.
 > | `I` | ⚠️ **discouraged by the file itself** — `controls.js:312-313` calls it *"vim-adjacent"* while explaining why STRIP is `V`. |
 > | `O` | ⚠️ **free only because M3-15 DELETED it.** `O` was the OPERATE verb, and `surface-boundary.test.js:1083-1140` is an **anti-resurrection guard** that reddens on the deleted identifiers. Re-binding the key is legal (the guard names identifiers, not keystrokes) but it re-uses a keystroke that meant something else four days ago. **Do not.** |
 > | `N` `Q` `U` `Y` | free, no mnemonic. |
-> | `P` | ⛔ **TAKEN.** Taking it means **re-homing `toggleSprites`** — a live view toggle wired through `main.js:72,193,364` and `controls.js:102,112`, with three test doubles (`input.test.js:182,217`, `zoom-pawn.test.js:719`). **Five files plus three fixtures for a mnemonic. REFUSED unless the owner asks.** |
+> | `P` | ⛔ **TAKEN.** Taking it means **re-homing `toggleSprites`** — a live view toggle whose census is **SIX occurrences across TWO source files**: five in code (`main.js:72,193,364`; `controls.js:112,282`) plus a JSDoc typedef (`controls.js:102`), with **three test doubles** (`input.test.js:182,217`, `zoom-pawn.test.js:719`). **Five code sites in two files plus three fixtures, for a mnemonic. REFUSED unless the owner asks.** |
 >
 > ⚠️ **And re-derive this census on the tree you are on** — it is a measurement, and the first draft's
 > one-word version of it (*"`P` is free"*) was wrong.
@@ -787,10 +787,12 @@ save, which is a determinism violation, not a display bug.**
 |---|---|---|---|
 | **(i)** | **GLOBAL LITERAL** — one threshold band for everyone; no per-person tunable in v1 | **1 field** (dwell) **+1** if catharsis needs a reprieve tick ⇒ **1–2** | **Cheapest, and it is a STATED DEVIATION from RW§4's "one per-pawn stat", not an adoption.** ⛔ **Taking it means WITHDRAWING §13.5's mitigation**: every person at the same mood then breaks at the same second, and the sharpness risk is **unabsorbed**. **Say that in the commit; do not quietly keep the mitigation sentence.** |
 | **(ii)** | ⭐ **A HASHED PER-CITIZEN THRESHOLD BYTE**, set at generation/thaw, from an **authored** source | **2 fields** (threshold + dwell) **+1** for catharsis option 2's expiry ⇒ **2–3** | ⭐ **RECOMMENDED — it is what the analogue says**, and `PROCESS.md` §2 makes RimWorld's shape the decision for mechanisms. ⭐ **The source is already precedented: `SleeperAptitudes` authors per-person literals applied INSIDE `CryoSystem` at the thaw and they are HASHED (CITZ v9) — M3-8's competence half exactly.** A temperament column is one more column in a table that already has six, and Rell keeps a default. **No `PersonaSheet` read, no determinism hole.** |
-| (iii) | Derive it from `Citizen.Archetype` (`:38`) — the only *existing* hashed per-citizen identity byte | 1 field (dwell) | ⚠️ **Elegant and it would give a dead field a reader** — ⛔ **but it COLLIDES WITH §10 ITEM 2 OPTION B, WHICH DELETES `Archetype`.** ⇒ **Do not take (iii) without answering item 2 first**, and if item 2 = B, (iii) is off the table. *Recorded so the two items are not answered independently.* |
+| (iii) | Derive it from `Citizen.Archetype` (`:38`) — the only *existing* hashed per-citizen identity byte | 1 field (dwell) | ⚠️ **Elegant and it would give a dead field a reader** — ⛔ **but it COLLIDES WITH §10 ITEM 2, WHICH MAY DELETE `Archetype`.** **B** deletes all three fields outright; ⚠️ **and A does too on its own wording — *"`Morale`/`Archetype` still deleted or still dead"* — so A-with-deletion forecloses (iii) exactly as B does.** ⇒ ⛔ **(iii) survives ONLY under C, or under an A that explicitly KEEPS `Archetype`.** **Do not take (iii) without answering item 2 first.** *Recorded so the two items are not answered independently.* |
 
-⛔ **CROSS-ITEM DEPENDENCY, STATED SO THE BATCH IS ANSWERED AS A SET:** **§10 item 2 = B (delete
-`Archetype`) forecloses option (iii).** (i) and (ii) survive every answer to item 2.
+⛔ **CROSS-ITEM DEPENDENCY, STATED SO THE BATCH IS ANSWERED AS A SET:** **§10 item 2 forecloses
+option (iii) under B, and under any A that takes its own *"`Morale`/`Archetype` still deleted"*
+clause** — ⇒ **(iii) needs C, or an A that keeps `Archetype` on purpose.** **(i) and (ii) survive
+every answer to item 2.**
 
 ---
 
@@ -811,7 +813,7 @@ always true does.**
 | # | option | cost | verdict |
 |---|---|---|---|
 | 1 | **HARD RESET** (the first draft's default) | none | ⛔ **NO LONGER THE DEFAULT.** Its stated justification — *"RimWorld's rate model has no memory of how long you were low"* — is **true and irrelevant**: RimWorld does not need that memory **because its input is already smoothed** (see the withdrawn-argument box above). **Keep only if the re-measured sawtooth turns out to sit entirely on one side of the chosen threshold.** |
-| 2 | ⭐ **DECAYING COUNTER** — the counter falls while above the threshold instead of zeroing | one literal (the decay rate); **no extra field** | ⭐ **RECOMMENDED.** A leaky integrator **is a low-pass filter**, so it puts the smoothing back on the *input side* where RimWorld has it — the thing option 1 does not do. ⚠️ **The first draft called this *"strictly more punishing"*; that was the wrong axis** — it is more *stable*, and whether it is more punishing is the threshold's job. |
+| 2 | ⭐ **DECAYING COUNTER** — the counter falls while above the threshold instead of zeroing | one literal (the decay rate); **no extra field** | ⭐ **RECOMMENDED.** A leaky integrator **is a low-pass filter**, so it puts smoothing back where option 1 has none. ⚠️ ⭐ **BE PRECISE ABOUT WHAT IT SMOOTHS, BECAUSE IT IS NOT THE SAME SIGNAL: RimWorld low-passes THEN thresholds (the mood itself is smoothed); this thresholds THEN low-passes (the smoothing acts on the boolean).** For a duty-cycle input — which a meal-driven sawtooth is — the two are **behaviourally alike**, since a leaky integrator over a square wave converges on its duty cycle. **They are not identical, and the measurement decides** whether the difference matters here. ⚠️ **The first draft called this *"strictly more punishing"*; that was the wrong axis** — it is more *stable*, and whether it is more punishing is the threshold's job. |
 | 3 | **HYSTERESIS** — arm below `T_break`, re-arm only above `T_rearm > T_break` | one literal per tier | ⚠️ **Standard, cheap, composes with 2** — and **insufficient alone** if the sawtooth's amplitude exceeds the band, which at ~29 points it may well. **Take it WITH 2, not instead of.** |
 
 ⛔ **AND THE HONEST CLOSING: THIS FORK IS DECIDED BY A MEASUREMENT THIS CHARTER DID NOT TAKE.** The
@@ -1252,7 +1254,7 @@ delta-gate field list + client decoder in ONE commit (M3-13's precedent, `…m3.
 | 2 | wire a section to a field the sim never writes | ⚠️ **this is the whole class of bug the package exists to end**, and `panels.js:236-241` already says the rule: *"Do not add a field to this REAL list on the strength of it being on the wire; **ask whether the sim moves it**."* ⇒ **each newly-REAL section needs a DRIVEN leg proving the value CHANGES in a run** |
 | 3 | author Rell a skill spread | ⛔ **REFUSED in review** — M3-8 settled it (both options pin-neutral, decided on design). This package authors her **sheet**, never her spread |
 | 4 | ⭐ **author Rell's sheet and leave `SleeperPersonaTests.cs:493` standing** | ⛔ **IT GOES RED BY CONSTRUCTION** — `Does.Contain("\"role\":\"general crew\"")` against a roster row that now carries her authored `RoleNow` (`GameSession.cs:2486`). **The pin MOVES in this commit** with a replacement assertion and a rewritten header at `:458`. ⚠️ **Named here because the first draft's mutation table did not name it, and a package that reddens a deliberate pin without naming it is indistinguishable from one that broke something** |
-| 4 | update the REAL/SAMPLE ledger comment without changing the code (or vice versa) | `dossier-honesty.test.js:216-286` pins that the prose ledger and the drawing code **agree**, with planted-violation controls both ways |
+| 5 | update the REAL/SAMPLE ledger comment without changing the code (or vice versa) | `dossier-honesty.test.js:216-286` pins that the prose ledger and the drawing code **agree**, with planted-violation controls both ways |
 
 **ACCEPTANCE.** Open the window on **Rell** and on a **thawed sleeper**; every band is populated from
 the sim; **no `◇ SAMPLE` badge exists anywhere in the client** (this is the exit gate's own clause).
@@ -1834,6 +1836,7 @@ put the player's word above the grid.
 |---|---|---|
 | **A** | ⭐ **A GRADUATED OVERRIDE: an order still lands at MINOR (she refuses only the dangerous class), is REFUSED at MAJOR, and is IMPOSSIBLE at EXTREME** | ⭐ **RECOMMENDED.** It keeps the direct-order game intact for the common case, makes the ladder *mean* something (each tier takes one more thing away from you), and gives the refusal a sentence the player can act on. **It is a deviation from RimWorld and would be stated as one in the package's commit.** |
 | **B** | **RimWorld's answer: no override at any tier** | the analogue, unmodified. ⛔ **SILENCE DEFAULT** — for mechanisms, RimWorld's shape IS the decision, and absent a ruling the analogue wins. ⚠️ **Cost: the first time a break fires, the player's only verb stops working with no ladder and no warning** |
+| **C** | **Always overridable** | ⛔ **Then the break gates nothing and OD-R clause (ii) is not implemented.** Listed to be refused |
 
 > ### ⛔ RECONCILING B WITH §11's *"THREE TIERS, NOT RE-LITIGABLE"* — SAID HERE SO THE TWO ARE NOT READ AS A CONTRADICTION
 >
@@ -1845,7 +1848,6 @@ put the player's word above the grid.
 > observable), and the charter's roster table is re-cut to say so. ⛔ **Nobody may read B as
 > permission to drop a tier from the derivation** — that would re-litigate the analogue, which this
 > item does not ask about.
-| **C** | **Always overridable** | ⛔ **Then the break gates nothing and OD-R clause (ii) is not implemented.** Listed to be refused |
 
 ⚠️ **The roster mapping rides on this item**: minor = *refuse dangerous orders* · major = *stop
 working* · extreme = *withdraw* (§5's table). **Under B the minor tier collapses into the major one**
@@ -2037,7 +2039,7 @@ statement about WHEN it was true, never a reason to trust it now.***
   `client/src/main.js:72,192-200,364` (`toggleSprites`) · `client/test/input.test.js:182,217` +
   `client/test/zoom-pawn.test.js:719` (its doubles) ·
   `tests/Perilune.Tests/SleeperPersonaTests.cs:458,485-495` (the Rell pin and its message) ·
-  `sim/Sim.Core/SleeperAptitudes.cs:66-76,98-120,164` · `MECHANICS.md:5818-5824,5884-5896,2049-2052` ·
+  `sim/Sim.Core/SleeperAptitudes.cs:66-76` (Rell has no row), `:98-120` (the prose table), ⭐ **`:135` `Names` and `:145-159` `Rows` — the ARRAY the incapability claim actually rests on, not the comment** — and `:160` `Count = 7` · `MECHANICS.md:5818-5824,5884-5896,2049-2052` ·
   `sim/Sim.Core/Memory/Chronicle.cs:51,124-186` (every severity arm) ·
   `docs/design/rimworld-reference.md:1380-1400,1401-1412` ·
   `docs/design/perilune-console-retirement.plan.md:244-255` · `docs/TARGET.md:63-70` ·
