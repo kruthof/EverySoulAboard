@@ -1626,3 +1626,92 @@ test('doors: BOTH signposts name the verb — a command nobody can discover is o
   assert.ok(/DOORS/.test(hints),
     'the LEDGER footer does not name DOORS beside PODS and COMMISSION: ' + hints);
 });
+
+// ═══════════════════════════════════════════════════════ the `vents` DIRECTORY verb
+//
+// ⭐ OWNER-DIRECTED, 2026-08-04: the `doors` shape is RATIFIED and `vents` is the sanctioned second
+// noun. Same shape, different stall — OD-N put the vents behind MOSS too, and on the shipping wreck
+// the upper deck's only source of air is a NAME (`vent_d1`, OD-O's dead board) while the
+// life-support compartment's authored first gesture is `open vent_ls`. Two keys with no surface
+// that could read them out.
+//
+// ⚠️ STILL NO THIRD NOUN and still no filter grammar: two nouns were ruled, `ls` was not.
+
+test('vents: `vents` parses as a NAV verb — not a device write, not UNKNOWN', () => {
+  const cmd = parseCommand('vents');
+  assert.equal(cmd.kind, 'nav',
+    'it names no device — and the entire reason it exists is that the player does not yet KNOW ' +
+    'a vent name, so it cannot be a device line');
+  assert.equal(cmd.verb, 'vents');
+  assert.deepEqual(cmd.args, []);
+});
+
+test('vents: typing `vents` sends the wire op and NOTHING else', () => {
+  const before = openMoss();
+  const out = submitCommand(before, 'vents');
+  assert.deepEqual(out.effects, [{ k: 'moss', op: 'vents' }],
+    'the ONLY effect is the ask — the `devices` channel carries ledger wear and no vent census, ' +
+    'no OPEN/SHUT and no board-fault flag, so any local listing would be invented');
+  assert.equal(out.model.screen, SCREEN.LEDGER, 'it opens no screen');
+  const added = out.model.console.slice(before.console.length);
+  assert.deepEqual(added.map((l) => l.stream), [0],
+    'the client answered for the ship instead of asking it. Added: ' + JSON.stringify(added));
+});
+
+test('vents: case, spacing and stray-argument tolerance, like every other nav verb', () => {
+  for (const raw of ['VENTS', '  Vents  ', 'vents deck 1']) {
+    assert.deepEqual(submitCommand(openMoss(), raw).effects, [{ k: 'moss', op: 'vents' }],
+      '`vents` is ONE noun — a filter would be a grammar, and the ratification covered a noun, ' +
+      'not a query language. Failed for: ' + JSON.stringify(raw));
+  }
+});
+
+test('vents: the ship\'s listing reaches the transcript verbatim, on the exec channel', () => {
+  // ⭐ NO NEW WIRE SHAPE — the listing rides `MossExec`'s existing stream-1 lines, which
+  // `reduceMossEvent` already folds. This test is what says the client needs no new arm.
+  // ⚠️ THE FIXTURE IS THREE OF THE SHIPPING WRECK'S FOUR LINES, NOT THE WHOLE REPLY — the header
+  // and two of its three rows (VENT_CRYO is left out), so the header's `3 ABOARD` deliberately does
+  // not match the row count here. That is the doors fixture's shape and it is fine for what THIS
+  // test asks: the reducer must carry whatever lines arrive, unedited, and it has no opinion about
+  // how many there are. The whole reply is pinned in C#, against the real wire, by
+  // `VentsVerbTests.TheWreckListingIsPinnedVERBATIM`. What the subset keeps on purpose is OD-O's
+  // flag row, which must survive the trip unedited: a client that re-rendered it would be a second
+  // vocabulary for a fault.
+  const asked = submitCommand(openMoss(), 'vents');
+  const shown = reduceMossEvent(asked.model, {
+    ev: 'exec', tid: '@console', ok: true,
+    lines: [
+      [1, 'VENTS — 3 ABOARD · 2 OPEN · 1 SHUT'],
+      [1, 'VENT_LS · DECK 0 AT 35,6 · SHUT'],
+      [1, 'VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT'],
+    ],
+  });
+  const out = shown.console.slice(asked.model.console.length)
+    .filter((l) => l.stream === 1).map((l) => l.text);
+  assert.deepEqual(out, [
+    'VENTS — 3 ABOARD · 2 OPEN · 1 SHUT',
+    'VENT_LS · DECK 0 AT 35,6 · SHUT',
+    'VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT',
+  ], 'the ship\'s own words must arrive unedited, un-re-cased and un-re-ordered');
+
+  const dark = reduceMossEvent(asked.model, {
+    ev: 'exec', tid: '@console', ok: false,
+    lines: [[2, 'MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE VENTS']],
+  });
+  assert.ok(dark.console.some((l) => l.stream === 2 && /TO REACH THE VENTS$/.test(l.text)),
+    'the dark-ship refusal must land on the error stream with its own noun intact');
+});
+
+test('vents: BOTH signposts name the verb — a command nobody can discover is one nobody sends', () => {
+  const helped = submitCommand(openMoss(), 'help');
+  const lines = helped.model.console.filter((l) => l.stream === 1).map((l) => l.text);
+  assert.ok(lines.some((l) => l.startsWith('VENTS')),
+    'HELP does not list VENTS, and the onboarding card hands the player to HELP. Saw:\n' +
+    lines.join('\n'));
+  // …and the screen the player is ON. ⚠️ HELP is 14 lines in a ~7-line pane (FILED, not this
+  // lane's), which is exactly why the permanent footer has to carry the verb too.
+  const hints = footerHints(openMoss()).join(' · ');
+  assert.ok(/VENTS/.test(hints),
+    'the LEDGER footer does not name VENTS beside DOORS: ' + hints);
+  assert.ok(/DOORS/.test(hints), 'INCLUSION CONTROL: the footer lost DOORS as well — ' + hints);
+});

@@ -4567,6 +4567,7 @@ Two tiers, two predicates, two files, named so the split reads in the code.
 | `sys` (`GameSession.cs:452`) · `audit` (`:506`) · `exec` (`:465`) | **REPAIRED** | `MossGate.IsServerLive` | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO BRING MOSS ONLINE` (`Ask.Ship`; the name and the place are DERIVED — §13.47) |
 | `exec` → `open`/`close`/`lock`/`unlock`, `set <dev>.rate`, bare `<dev>.<prop>` reads | **REPAIRED** | (inside `exec`) | same |
 | ⭐ `doors` (OD-P, 2026-08-04) | **REPAIRED** — *the directory for the verbs on the two rows above, so it can only sit at their tier* | `MossGate.IsServerLive` | the OFFLINE sentence, tailed `…TO REACH THE DOORS` (`Ask.Doors`, and this op is its FIRST shipping-surface caller — §13.48) |
+| ⭐ `vents` (owner-ratified second noun, 2026-08-04) | **REPAIRED** — *the same argument, unchanged: it is the directory for `open`/`close` and for OD-O's `set <dev>.rate` workaround* | `MossGate.IsServerLive` | the OFFLINE sentence, tailed `…TO REACH THE VENTS` (**`Ask.Vents`, a NEW member** — reusing `Ask.Doors` would answer the wrong noun — §13.49) |
 | `open` (program source, `:472`) · `set` (program install, `:495`) | **COMMISSIONED** | `MossGate.CanInstallProgram` (`MossGate.cs:146`) | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO TERM_MOSS` |
 | `thaw` (M3-3, `:571`) · `pods` (M3-4, `:530`) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **and since M3-4 the SHIP gate is asked FIRST on both** | ship: the OFFLINE sentence, tailed `…TO REACH THE PODS` (`Ask.Pods`, §13.47) · target: `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL` (`pods` answers `MossGate.NotCommissionedRefusal` instead, because it refuses before it names a capsule) |
 | ⭐ `commission` (M3-17, `GameSession.cs:663`) | **REPAIRED** — *the act that crosses the split, so it can only sit on this side of it* | `MossGate.EvaluateCommission` (`MossGate.cs:290`), whose term 1 IS the ship gate | ship: the OFFLINE sentence · target: `ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON TERM_MOSS` · price: `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0; A MACHINE SHOP MAKES THEM FROM 2 PARTS` (the source clause is derived from `recipes.def` — §13.47). Accepted: `COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN` (**stream 1**, via `Reply` — §13.41) |
@@ -7813,12 +7814,169 @@ this.**
 - **No `ls`, no directory framework, no second noun.** OD-P's row says expansion is VISION and
   *"never implement from this row"*; exactly one verb ships, as a defect closure, and the shape
   awaits the owner's ratification. The note is in `MossGate.cs` where the next expander will look.
+  ✅ **RATIFIED 2026-08-04** — the owner ruled the shape RIGHT and sanctioned `vents` as the second
+  noun (§13.49). `ls` and a generic framework were **not** ratified and remain forbidden.
 - **No argument.** `doors deck 1` is a filter, a filter is a grammar, and a second grammar is a
   second package. Arguments are ignored, `pods`' rule.
 - **No screen.** The listing is transcript text, not a `SCREEN.DOORBAY`. A screen would need a
   reducer, a renderer, a key map and a footer — and the thing the player needs is a name they can
   read and re-type, which the transcript already gives them.
-- **No vents.** OD-N gates `open`/`close` on vents through `SetDeviceStateCommand` too, and `vent_ls`
-  is the wreck's opening move. It is the obvious second noun and it is exactly the thing the one-verb
-  self-limit forbids this lane from taking. **FILED for the owner's ratification pass.**
+- ~~**No vents.** OD-N gates `open`/`close` on vents through `SetDeviceStateCommand` too, and
+  `vent_ls` is the wreck's opening move. It is the obvious second noun and it is exactly the thing
+  the one-verb self-limit forbids this lane from taking. **FILED for the owner's ratification
+  pass.**~~ ✅ **CLOSED 2026-08-04 by the owner's ruling — §13.49.**
 - **No TUI sender.** `hosts/tui` has no MOSS op surface at all; nothing was narrowed.
+
+---
+
+### 13.49 ⭐⭐ `vents` — the second directory noun, and OD-O's dead board as a COLUMN (2026-08-04)
+
+**THE OWNER'S RULING, IN SESSION.** The `doors` lane (§13.48) shipped as a defect closure and carried
+a question to HANDOVER's owner list: *is the typed directory the right shape, and is `vents` the
+second noun?* **Both answered YES.** This package is that noun. ⚠️ It is **owner-directed work, not a
+third reading of OD-P** — that row still ends *"never implement from this row"*, and what the owner
+ratified is a SHAPE plus ONE NOUN, not a charter for MOSS-OS. `ls`, `machines`, `crew`, `rooms` and a
+generic directory framework are all still unbuilt and still un-asked-for.
+
+**WHAT IT IS FOR, AND IT IS NOT `doors`' STALL.** OD-N put the vents behind MOSS in the same breath
+as the doors, and MOSS addresses a vent BY NAME. On the shipping wreck:
+
+- `vent_d1` is the upper deck's **only** source of air, and OD-O's dead-board puzzle (§13.31,
+  `BoardFaultTests`). The workaround the owner designed — `every 1s: set(vent_d1.rate, max)` — is a
+  program that has to spell the device's name.
+- `vent_ls` is authored SHUT precisely so that *"the player's first act in this compartment is to
+  open it"* (`AuthoredShips.cs`), which is a typed `open vent_ls`.
+
+Two keys the player must type, on a surface that could not read either of them out.
+
+#### 13.49.1 The seam — `doors`' seam with one file more and no wire change
+
+| where | what |
+|---|---|
+| `sim/Sim.Core/MossGate.cs` `DescribeVents(sim)` | the listing: a census header, then one row per `DeviceKind.AirVent` in `Device.Id` order. PURE — reads live state, mutates nothing, draws no RNG |
+| `MossGate.NoVentsLine` · `MossGate.BoardFaultFlag` | the degenerate arm, and the dead-board column's two words |
+| `MossGate.Ask.Vents` (**new enum member**) + `AskWords` | `…TO REACH THE VENTS` |
+| `MossGate.UnnamedRow` | was `UnnamedDoor`; **renamed, not copied** — `PlaceWords`' rule, one spelling of a nameless row |
+| `hosts/web/GameSession.cs` the `case "vents":` arm | the ship gate (`Ask.Vents`), then `WireFormat.MossExec(tid, true, lines)` — the **existing** reply channel |
+| `client/src/ui/moss-model.js` `parseCommand` · `navCommand` · `HELP_LINES` · `footerHints` | `vents` joins the nav vocabulary, HELP names it, the LEDGER footer names it |
+
+⛔ **`WireFormat.cs` TAKES A ZERO DIFF** — the listing rides `MossExec`'s existing stream-1 lines, so
+`reduceMossEvent` needed no arm and the client needed no renderer. Asserted at the wire by
+`TheReplyRidesTheExecChannel_AndAddsNoWireShape` (one message, `ev:"exec"`, `ok:true`, all stream 1).
+
+⛔ **AND THE TWO COMPOSERS ARE SIBLINGS, NOT INSTANCES.** `DescribeDoors` and `DescribeVents` share
+`PlaceWords` and `UnnamedRow` and nothing else. Folding them into one table-driven `DescribeDevices`
+was refused: their flag columns are different predicates on different commands (`IsLocked` on
+`SetDoorStateCommand`; `DeviceFault.BlocksActuation` on `SetDeviceStateCommand`), and a framework is
+the thing OD-P's row forbids and the ratification did not grant.
+
+#### 13.49.2 ⭐ `Ask.Vents` IS A NEW MEMBER, AND REUSING `Ask.Doors` WOULD HAVE BEEN THE DEFECT
+
+`MossGate.Ask` is the type §13.47 added so a refusal answers the noun the player asked about. Its
+`Doors` member is even documented as *"the doors and vents OD-N put behind the server"* — so reusing
+it would have compiled, shipped, and answered a player who typed `vents` with
+`…TO REACH THE DOORS`: the owner-reported defect (`thaw` → *TYPE PODS* → a clause about DOORS)
+in a fourth costume. The member's old *"three values, not one per op"* note was about `exec` — whose
+line is free text and genuinely cannot be classified — and never about a dedicated typed noun.
+
+⚠️ **AND THE INSTRUMENT FOR THAT NOTE HAD GONE BLIND — the NINTH shape, caught here.**
+`MossGateTests.TheTailAnswersTheVERBThatWasRefused_AndPodsNeverSaysDOORS` named its three members by
+hand, so a FOURTH member with a copied tail would have passed it. Its pairwise leg now walks
+`Enum.GetValues(typeof(MossGate.Ask))`, so a fifth member cannot ship a borrowed sentence.
+
+#### 13.49.3 The listing, as shipped, and the wreck's census
+
+Driven on `--ship wreck` with `term_moss` serviced — **4 lines, pinned VERBATIM** by
+`VentsVerbTests.TheWreckListingIsPinnedVERBATIM` (the derived-census test is a separate instrument;
+neither is the other's source):
+
+```
+VENTS — 3 ABOARD · 2 OPEN · 1 SHUT
+VENT_CRYO · DECK 0 AT 10,1 · OPEN
+VENT_LS · DECK 0 AT 35,6 · SHUT              ← the life-support compartment's authored first gesture
+VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT   ← OD-O's dead board; directly above VENT_CRYO
+```
+
+- **`DeviceKind.AirVent` only.** A `Scrubber` shares the vent's DSL adapter *and* shares
+  `ShipSystems.LifeSupportKinds` with it, so "everything that moves air" was the plausible wrong
+  filter — it is mutation 2, and it reddens six tests including the exclusion leg.
+- Everything structural is §13.48's and is not re-argued: live `sim.Devices` state (never the plan),
+  explicit `Device.Id` order, the census stated in a header, `(UNNAMED)` for a nameless row,
+  `NO VENTS ABOARD` for the empty ship (M3-13: a screen that says nothing is a broken verb — and
+  unlike the doors' arm this one is genuinely reachable, since a ship need not carry a vent).
+
+#### 13.49.4 ⭐⭐ THE DEAD BOARD IS A COLUMN — and `vent_d1` IS LISTED
+
+`SetDeviceStateCommand.Execute` computes `_open.HasValue && !DeviceFault.BlocksActuation(device)` —
+the same shape as `SetDoorStateCommand`'s `open && !IsLocked`. So the doors lane's ruling applies
+unchanged: *a listing that showed OPEN/SHUT and hid the one flag that decides whether the verb it
+teaches will work would be teaching a dead key*. The flag is ` · BOARD FAULT`, appended.
+
+Three decisions inside that, each taken from the doors grammar rather than invented:
+
+1. **THE ROW IS PRINTED.** Listing is READING; the refusal belongs to ACTUATION. And the OD-O
+   workaround needs the same string the row carries, so hiding `vent_d1` would delete the puzzle's
+   key from the only surface that names it.
+2. **THE FLAG IS NOT `DeviceFault.Refusal`.** *CONTROLLER FAULT — BOARD UNRESPONSIVE* is a member of
+   the pairwise-distinct console-sentence family and is **unchanged by this package**; a directory
+   that printed it would be a READ impersonating a refusal. The two-word column borrows the
+   refusal's noun (the BOARD) so the player meets one fact, not two — asserted both ways in
+   `TheDeadBoardIsACOLUMN_OnTheOneVentThatHasOne`.
+3. ⭐ **UNLIKE `LOCKED`, THIS COLUMN IS REACHABLE ON SHIPPED CONTENT.** `vent_d1` is the game's only
+   faulted device (censused by `BoardFaultTests`), so the flag is driven on the shipping wreck and
+   *"exactly one row carries it"* is a real non-vacuity control rather than a fabricated one. The
+   column also reads the COMMAND'S OWN PREDICATE, not `Device.Faulted` — and
+   `TheFlagFollowsTheFault_BothWays` moves the fault to a different vent to prove the flag follows
+   it rather than the name.
+
+⛔ **NO POWER AND NO CONDITION COLUMN — the doors ruling, and the asymmetry it hides is stated out
+loud rather than left as a trap.** `SetDeviceStateCommand` gates the shutter on the SHIP and the
+BOARD and nothing else, so neither field changes the verb this listing teaches. ⚠️ **But a vent is
+not a door once it is open:** `AtmosphereSystem` injects only on `IsOpen && Powered &&
+IsOperational`, scaled by `EffectiveRate` — so `OPEN` here is an honest statement about the SHUTTER
+and **is not a promise of air**, and `vent_d1` prints `OPEN` while injecting nothing at rate 0. That
+gap is real and is **FILED, not columned in**: the room's pressure and the LEDGER are where air is
+answered, and an `· NO AIR` column would be a second (and partial) authority for it.
+
+#### 13.49.5 The outcome test — and what it deliberately does NOT re-run
+
+`VentsVerbTests.TheIdTheListingPrintsIsTheNameOpenAccepts`: on the shipping wreck, through the real
+`GameSession` — type `vents` on the dark ship (refused, *…TO REACH THE VENTS*) → service `term_moss`
+→ type `vents` → pick a shut, sound vent **from the ship** and take its id **out of the reply's own
+text** → type `open <that string, VERBATIM and not case-folded>` → the shutter moves → the next
+`vents` says `OPEN`. Then the contrast: OD-O's vent resolves by its printed id too (no
+*NO SUCH DEVICE*) and is refused **by the board**, in `DeviceFault.Refusal`'s unchanged words, with
+its shutter unmoved.
+
+⛔ **THE ~6.7 SIM-HOUR FABRICATION CHAIN IS NOT REPEATED.** That proof is `DoorsVerbTests`' and
+belongs to that lane; a second copy would buy someone else's claim and eight seconds of gate time.
+What this test owns is the JOIN — *the string the directory prints is the string the actuation verb
+resolves*.
+
+#### 13.49.6 Mutations, pins, and what is NOT here
+
+**Eleven mutations, each physically applied to the shipped tree, watched red for the right reason and
+reverted from an in-memory copy** (trap 2 — never `git checkout`): drop a vent · widen the filter to
+`AirVent|Scrubber` · drop the `DECK` term from `PlaceWords` (reddens this listing AND §13.47's two
+offline-sentence tests, which is the shape of a single spelling) · freeze the state word · drop the
+board-fault column · delete the gate · move the gate a tier up · answer `Ask.Doors` · and three
+client ones (the nav case, the HELP line, the footer).
+
+⚠️ **ONE OF THEM WAS INERT ON THE FIRST TRY AND SAYING SO IS THE POINT.** The tier-up mutation was
+first written as `MossGate.CanInstallProgram(_sim, tid)` — which returns TRUE for the `@console`
+pseudo-tid, because that predicate deliberately permits a terminal id with no device behind it. It
+reddened only the two dark-ship legs and left the tier CONTRAST test green, which is a mutation that
+looks like a pass. Re-driven as `ThawGate.CommissionedConsoleName` (the predicate `pods` actually
+uses) it reddens ten tests including the contrast. *A mutation that does not bite proves nothing
+about the guard.*
+
+**PINS: no def field, no `DeviceKind`, no save chapter, no hashed state, no spine file.** The verb is
+a READ — `TheDirectoryIsAREAD_ItMovesNoShipState` runs a twin session and requires `StateHash`
+equality across the ask — so P1–P5 cannot move by construction; the full `./ci.sh` is the evidence
+and is reported on the commit.
+
+**NOT here:** no third noun · no filter grammar (`vents deck 1` is ignored, `doors`' rule) · no
+screen · no client-side census (the `devices` channel carries ledger wear and no vent state at all) ·
+no change to actuation, to the vent puzzle, or to any refusal text · no TUI sender · **no fix for
+HELP's overflow** — it is now 14 lines in a ~7-line pane, which is a FILED item and not this lane's
+(the permanent footer, which `pre-wrap`s rather than clipping, is the mitigation).

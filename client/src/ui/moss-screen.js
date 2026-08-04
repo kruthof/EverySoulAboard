@@ -199,7 +199,7 @@ export const FOLD_SLACK_PX = 1;
  * hanging indent (`text-indent:-2ch`), and on the shipped wreck in Chrome at 1280×800 (2026-08-04,
  * every `.moss-cline`'s own `getBoundingClientRect().height`):
  *
- *     21.77  HELP                  this list          ← and all thirteen HELP columns
+ *     21.77  HELP                  this list          ← and all fourteen HELP columns
  *     21.77  > commission
  *     43.53  MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE …   ⇐ EXACTLY TWO LINE BOXES
  *     21.77  NO POD BAY ON THIS LINK — TYPE PODS
@@ -437,7 +437,7 @@ export class MossScreen {
      *
      * ⛔ THE GAP IT CLOSES, and it is what the autoscroll lane's fix left standing: the console now
      * FOLLOWS its newest line, but a reader who scrolled back — or one on a screen that overflows
-     * on arrival, `HELP` being 13 lines in a ~7-line pane — has no signal at all that anything is
+     * on arrival, `HELP` being 14 lines in a ~7-line pane — has no signal at all that anything is
      * below the fold. `max-height:22vh; overflow-y:auto` renders no visible scrollbar on this
      * platform (`--hide-scrollbars` in the rigs, and macOS overlay scrollbars fade out at rest), so
      * "there is more" was a fact the pane knew and never said. `HELP`'s own footer mitigates one

@@ -417,12 +417,30 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
  * `ARMABLE`) and every member is swept by the same legs — the owner's "sweep the class, not the
  * list" applied to the guard rather than only to the fix.
  *
- * ⛔ AND THE CLASS IS THE ONE `discoverArmable` CAN NAME, WHICH IS NARROWER THAN "EVERY ARMABLE
+ * ⭐⭐ AND THE THIRD INSTANCE WAS FOUND BY THIS GUARD'S OWN CONFESSION, WHICH IS THE POINT OF WRITING
+ * LIMITS DOWN. The chip lane's version of the ⛔ block below named `.rz-crew.sel` as the collision it
+ * could not see and FILED it; on 2026-08-04 the crew dock was measured in real Chrome and had it
+ * exactly — `.rz-crew:hover` and `.rz-crew.sel` both `#cf7a33`. Read off a live EIGHT-ROW dock by
+ * `zoom-pawn-shot.mjs` §5b (rest and hover are one unselected row with the pointer off it and on it;
+ * selected is the row beside it, in the same session):
+ *
+ *     rest      bg rgba(18,15,11,.55)  border 1px rgb(46,40,32)/.6  shadow none
+ *     hover     bg rgba(18,15,11,.55)  border 1px rgb(207,122,51)   shadow none   ← the selected edge
+ *     selected  bg rgba(34,27,18,.8)   border 1px rgb(207,122,51)   shadow none
+ *
+ * ⛔ AND THAT RUN IS ALSO THE RECEIPT FOR WHY THE SHADOW LEG IS WRITTEN AS A CHANNEL AND NOT AS A
+ * DIFFERENCE: `sameLook(hover, selected)` was FALSE on the defect — the two really did differ, on a
+ * dark-on-dark fill over a blurred glass island — so a byte-comparison would have passed it, for the
+ * second time in two lanes. The alphabet of state spellings is now `.on` + `.sel` (`STATE_CLASSES`),
+ * which is the repair of this file's OWN blind spot rather than one more hand-added row.
+ *
+ * ⛔ THE CLASS IS STILL THE ONE `discoverArmable` CAN NAME, WHICH IS NARROWER THAN "EVERY ARMABLE
  * CONTROL". An earlier draft of this paragraph said a fourth armable control "fails the membership
  * pin until it is either listed or given a real armed look", and independent review DROVE that and
- * found it false twice over. Read `discoverArmable`'s own ⛔ block for the two measured blind spots
- * and the live counterexample on this surface today. What is true is the weaker sentence: a control
- * that spells its armed state `.on` on a `.rz-` class cannot be added without this file noticing.
+ * found it false twice over. Read `discoverArmable`'s own ⛔ block for the measured blind spots and
+ * for the live counterexample that is STILL on this surface (`.rz-mini-slot.cur`). What is true is
+ * the weaker sentence: a control that spells its chosen state `.on` or `.sel` on a `.rz-` class
+ * cannot be added without this file noticing.
  *
  * ⚠️ THE CAUSE WAS NOT IN THE MODEL. `paintPalette` has always toggled `.on` off `_armed`, and
  * `room-model.test.js` now drives that end to end. Measured in real Chrome on the shipped tree, the
@@ -446,6 +464,11 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
  * drove the pre-fix CSS through the rig and it exited 0 GREEN, because the two states differed on a
  * dark-on-dark fill while matching on border and shadow. Neither instrument judges CONTRAST. This
  * file keeps the part a browserless gate can — **armed must carry a signal `:hover` does not.**
+ * ⚠️ AND THE FOURTH MEMBER'S BROWSER INSTRUMENT IS A DIFFERENT FILE: `palette-shot.mjs` only knows
+ * the three palette controls, so `.rz-crew` is measured by `zoom-pawn-shot.mjs` §5b (the crew dock's
+ * own rig), which reads FOUR states rather than three — a crew row is normally shown selected with
+ * the pointer on a DIFFERENT row, which no chip ever is. Driven both sides of this fix: RED on the
+ * shipped defect naming the shadow channel, GREEN after, box 168x52 unchanged in every state.
  *
  * ⚠️ LEG 4 IS NOT DECORATION. It is why the armed ring is a `box-shadow` rather than a thicker
  * border or a bolder weight: shadows do not participate in layout, and anything that re-measures the
@@ -494,6 +517,12 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
  *           until review drove it; see `reMeasures`.
  * MUTATION: `font:700 12px var(--font-mono)` or `padding-inline:18px` on the armed rule ⇒ RED (same
  *           shape, and the reason the leg matches by FAMILY rather than by property name).
+ * MUTATION: restore the pre-2026-08-04 `.rz-crew` pair (`:hover` and `.sel` both `#cf7a33`, no
+ *           shadow, no `:active`) ⇒ RED on the border leg, the shadow leg, the `.sel:hover`/
+ *           `.sel:active` specificity leg AND the missing-`:active` leg — the crew dock's shipped
+ *           defect, driven as its own control rather than described.
+ * MUTATION: give `.rz-crew:hover` the selected `box-shadow` ⇒ RED on the pointer-shadow leg (the
+ *           pointer claiming the state's exclusive channel).
  *
  * ⛔ THE LIMIT, STATED SO NOBODY READS THIS AS MORE THAN IT IS. This pins that armed and hover are
  * DIFFERENT, never that armed is LOUD ENOUGH. Reverting `:hover` alone to its old
@@ -547,43 +576,73 @@ function reMeasures(prop) {
     .test(prop);
 }
 /**
- * THE CLASS OF ARMABLE ROOM-ZOOM CONTROLS — every element this surface writes `.on` onto, and the
- * number of armed rules each one is expected to carry.
+ * THE TWO SPELLINGS OF "THE STATE THE PLAYER CHOSE" ON THIS SURFACE.
  *
- * All three are written by the same three lines of shipped code: `paintPalette`'s
- * `setCls(b, 'on', on)` (roomzoom-view.js), `paintMatStrip`'s `'rz-mat-chip' + (… ? ' on' : '')`
- * (roomzoom-view.js:1125) and `acceptsRowHtml`'s `'rz-acc-chip' + (on ? ' on' : '')`
- * (accepts-row.js:95). `.rz-tool` carries TWO armed rules because DEMOLISH overrides the other
- * seventeen (`.rz-tool.demo.on`); the two chips carry one each. If a member's count changes, that is
- * a real edit and the number must be RE-DERIVED — but a count that fell to zero means the legs for
- * that member are reading nothing, which is how this whole shape passes over a broken control.
+ * ⭐ `.sel` WAS ADDED 2026-08-04, AND IT IS THE 9th-SHAPE REPAIR OF THIS FILE'S OWN BLIND SPOT. The
+ * chip lane's version of `discoverArmable` looked for `.on` alone; its comment then named the live
+ * counterexample it could not see (`.rz-crew.sel`) and FILED it. That file was one instance of the
+ * defect wide, so the guard was too — a narrowed instrument going blind exactly where the next
+ * instance was already sitting. Widening the alphabet is what closes it, not another hand-added row.
  */
-const ARMABLE = { '.rz-tool': 2, '.rz-mat-chip': 1, '.rz-acc-chip': 1 };
+const STATE_CLASSES = ['.on', '.sel'];
 
 /**
- * The same class DISCOVERED from the stylesheet: every `.rz-*` element that has an armed (`.on`) rule.
+ * THE CLASS OF ARMABLE ROOM-ZOOM CONTROLS — every element this surface writes a chosen-state class
+ * onto, HOW it spells that state, and the number of armed rules each one is expected to carry.
+ *
+ * All four are written by the same four lines of shipped code: `paintPalette`'s
+ * `setCls(b, 'on', on)` (roomzoom-view.js), `paintMatStrip`'s `'rz-mat-chip' + (… ? ' on' : '')`
+ * (roomzoom-view.js:1125), `acceptsRowHtml`'s `'rz-acc-chip' + (on ? ' on' : '')`
+ * (accepts-row.js:95) and `paintCrewDock`'s `setCls(rec.el, 'sel', r.selected)`
+ * (roomzoom-view.js:1098). `.rz-tool` carries TWO armed rules because DEMOLISH overrides the other
+ * twenty (`.rz-tool.demo.on`) — measured here, not inherited: `ROOM_TOOLS.length` is 21 and exactly
+ * one of them takes the `demo` class (`paintPalette`, roomzoom-view.js:350). The chips and the crew
+ * row carry one armed rule each. If a member's count
+ * changes, that is a real edit and the number must be RE-DERIVED — but a count that fell to zero
+ * means the legs for that member are reading nothing, which is how this whole shape passes over a
+ * broken control.
+ *
+ * ⚠️ `.rz-crew` IS NOT A PALETTE CONTROL AND IS SWEPT HERE ANYWAY, deliberately: the thing this
+ * section pins is a CLASS OF DEFECT, not a region of the screen, and the class's membership is
+ * "spells a chosen state, and has a pointer state that can borrow its paint". Splitting the sweep by
+ * which island a control lives on is how the second and third instances survived the first fix.
+ */
+const ARMABLE = [
+  { member: '.rz-tool', state: '.on', rules: 2 },
+  { member: '.rz-mat-chip', state: '.on', rules: 1 },
+  { member: '.rz-acc-chip', state: '.on', rules: 1 },
+  { member: '.rz-crew', state: '.sel', rules: 1 },
+];
+const KEY = (a) => a.member + a.state;
+
+/**
+ * The same class DISCOVERED from the stylesheet: every `.rz-*` element that has a chosen-state rule,
+ * reported as `member + state` (`.rz-tool.on`, `.rz-crew.sel`, …) so the SPELLING is pinned too.
  *
  * ⚠️ THIS IS THE ANSWER TO "SWEEP THE CLASS, NOT THE LIST", AND IT IS THE LEG THAT WOULD HAVE CAUGHT
- * TODAY'S DEFECT ON 2026-08-03. The version of this file that shipped that morning hand-named
- * `.rz-tool`, so the identical `#cf7a33` collision on `.rz-acc-chip` — six lines further down the
- * same stylesheet — was invisible to it. A list finds what someone thought of; discovery answers for
+ * THE 2026-08-03 DEFECT. The version of this file that shipped that morning hand-named `.rz-tool`,
+ * so the identical `#cf7a33` collision on `.rz-acc-chip` — six lines further down the same
+ * stylesheet — was invisible to it. A list finds what someone thought of; discovery answers for
  * everything the sheet declares IN THE SHAPE IT KNOWS HOW TO READ.
  *
- * ⛔ AND THAT SHAPE IS THE WHOLE LIMIT, STATED HERE BECAUSE IT WAS OVERSTATED FIRST AND THE
+ * ⛔ AND THAT SHAPE IS STILL THE WHOLE LIMIT, STATED HERE BECAUSE IT WAS OVERSTATED ONCE AND THE
  * OVERSTATEMENT WAS DRIVEN DOWN BY INDEPENDENT REVIEW. The predicate is literal on TWO counts, and
- * either one alone is a blind spot. Both were applied to `styles.css` and both exited GREEN:
+ * either one alone is a blind spot. All four lines below were applied to `styles.css` and driven
+ * (2026-08-04, this lane — the first two are the same controls the chip lane ran, RE-DRIVEN because
+ * `.sel` moved one of them from GREEN to RED and a quoted result is not a measurement):
  *
- *     .rz-newthing2.sel{border-color:#cf7a33}   ← armed spelled `.sel`, `.rz-` present → GREEN
- *     .zoomchip.on     {border-color:#cf7a33}   ← armed spelled `.on`, no `.rz-`      → GREEN
- *     .rz-newthing3.on {border-color:#cf7a33}   ← CONTROL, both conditions met        → RED
+ *     .rz-newthing2.sel{border-color:#cf7a33}   ← `.sel` is now a known spelling → RED  (was GREEN)
+ *     .zoomchip.on     {border-color:#cf7a33}   ← armed spelled `.on`, no `.rz-` → GREEN
+ *     .rz-newthing4.cur{border-color:#cf7a33}   ← a THIRD spelling, `.rz-` present → GREEN
+ *     .rz-newthing3.on {border-color:#cf7a33}   ← CONTROL, both conditions met   → RED
  *
- * So this discovers "controls that spell armed `.on` on a `.rz-` class", NEVER "every armable
- * control on this surface". ⭐ THE COUNTEREXAMPLE IS ALREADY IN THE FILE IT SCANS: the crew dock's
- * rows are `.rz-crew`, they spell selection `.sel`, and `.rz-crew:hover` and `.rz-crew.sel`
- * (styles.css:1402-1403) BOTH set `border-color:#cf7a33` with no shadow on either side — a hovered
- * row and the selected row draw the same edge. That is this package's defect in its third instance,
- * it is invisible to everything below, and it is FILED rather than chased (PROCESS §2): widening the
- * predicate to `.sel` is a different package with a different subject.
+ * So this discovers "controls that spell their chosen state `.on` or `.sel` on a `.rz-` class",
+ * NEVER "every armable control on this surface". ⭐ THE COUNTEREXAMPLE IS STILL IN THE FILE IT SCANS,
+ * and it is a different one now that `.rz-crew` is a member: `.rz-mini-slot.cur` (styles.css) spells
+ * the minimap's current-room slot `.cur`. It is NOT today's defect — that rule declares
+ * `cursor:default` and nothing else, so there is no paint for a pointer state to borrow, and the
+ * minimap's highlight is drawn in SVG rather than by the cascade — but it is the shape the third
+ * instance had, and naming it here is cheaper than rediscovering it. FILED, not chased (PROCESS §2).
  *
  * Subject-compound only, so `.rz-mat-chip.on .rz-mat-name` (whose subject is the NAME span, not the
  * chip) is correctly not a member: it is armed PAINT on a child, not an armable control.
@@ -594,8 +653,10 @@ function discoverArmable() {
     for (const s of r.sels) {
       if (isPseudoElement(s)) continue;
       const sx = simples(subject(s));
-      if (!sx.includes('.on')) continue;
-      for (const c of sx) if (c.startsWith('.rz-')) found.add(c);
+      for (const state of STATE_CLASSES) {
+        if (!sx.includes(state)) continue;
+        for (const c of sx) if (c.startsWith('.rz-')) found.add(c + state);
+      }
     }
   return [...found].sort();
 }
@@ -604,36 +665,46 @@ function discoverArmable() {
 // MUTATION: delete `.rz-mat-chip.on` from styles.css ⇒ RED naming it as no longer armable at all.
 // MUTATION: add `.rz-newthing.on{…}` to styles.css ⇒ RED — a control in the shape this scan reads
 //           cannot enter the surface without the legs below being pointed at it.
-// ⛔ NEGATIVE RESULT, DRIVEN, NOT A MISSING MUTATION: `.rz-newthing2.sel{…}` and `.zoomchip.on{…}`
-//           are both GREEN. See `discoverArmable`'s ⛔ block — that is the predicate's reach, and
-//           the assertion below must not be read as covering more.
+// MUTATION: add `.rz-newthing2.sel{…}` ⇒ RED, which is NEW on 2026-08-04: the chip lane drove this
+//           exact line and measured it GREEN, and that green was the blind spot `.rz-crew.sel` was
+//           sitting in. Re-driven here rather than quoted.
+// MUTATION: rename the crew dock's state to `.on` in styles.css ⇒ RED twice, on the membership set
+//           (`.rz-crew.on` discovered where `.rz-crew.sel` is listed) and on that member's rule
+//           COUNT (0 parsed, 1 expected) — the member's SPELLING is pinned, not only its existence.
+//           (styles.css only: this file never reads the painter, so the JS half is not what reddens
+//           it. `zoom-pawn.test.js` is what pins the class the painter actually writes.)
+// ⛔ NEGATIVE RESULT, DRIVEN, NOT A MISSING MUTATION: `.zoomchip.on{…}` (no `.rz-`) and
+//           `.rz-newthing4.cur{…}` (a spelling the alphabet does not carry) are both GREEN. See
+//           `discoverArmable`'s ⛔ block — that is the predicate's reach, and the assertion below
+//           must not be read as covering more.
 test('the ARMABLE class is DISCOVERED from the stylesheet, and the sweep covers all of it', () => {
   const found = discoverArmable();
-  assert.ok(found.length >= 3, `only ${found.length} armable \`.rz-*\` controls discovered in ` +
+  assert.ok(found.length >= 4, `only ${found.length} armable \`.rz-*\` controls discovered in ` +
     'styles.css — the discovery itself has stopped working, and a sweep over nothing is free');
-  assert.deepEqual(found, Object.keys(ARMABLE).sort(),
-    'the set of `.rz-` controls whose SUBJECT compound carries `.on` no longer matches the set this ' +
-    'file sweeps. Every one of them is a control the player ARMS, and each is one `border-color` ' +
-    'edit away from the 2026-08-03 defect (hover wearing the armed colour). Add it to `ARMABLE` — ' +
-    'or, if a rule was deliberately deleted, say so here and re-derive the counts. (This says ' +
-    'nothing about controls that spell armed some other way, e.g. `.rz-crew.sel` — see the ⛔ block ' +
-    'over `discoverArmable`.)');
+  assert.deepEqual(found, ARMABLE.map(KEY).sort(),
+    'the set of `.rz-` controls whose SUBJECT compound carries a chosen-state class (`.on`, `.sel`) ' +
+    'no longer matches the set this file sweeps. Every one of them is a control the player picks, ' +
+    'and each is one `border-color` edit away from the 2026-08-03 defect (a pointer state wearing ' +
+    'the chosen colour). Add it to `ARMABLE` — or, if a rule was deliberately deleted, say so here ' +
+    'and re-derive the counts. (This says nothing about controls that spell their state some THIRD ' +
+    'way, e.g. `.rz-mini-slot.cur` — see the ⛔ block over `discoverArmable`.)');
 });
 
 const memberOf = (m) => (sx) => sx.includes(m);
-const ARMED = (m) => (sx) => memberOf(m)(sx) && sx.includes('.on');
-const POINTER = (m, pseudo) => (sx) => memberOf(m)(sx) && !sx.includes('.on') && sx.includes(pseudo);
+const ARMED = (m, state) => (sx) => memberOf(m)(sx) && sx.includes(state);
+const POINTER = (m, state, pseudo) => (sx) =>
+  memberOf(m)(sx) && !sx.includes(state) && sx.includes(pseudo);
 
-for (const [member, ruleCount] of Object.entries(ARMABLE)) {
-  test(`the ARMED \`${member}\` carries a signal \`:hover\`/\`:active\` cannot produce`, () => {
-    const armedRules = rulesWhere(ARMED(member));
-    const pointer = { ':hover': declsWhere(POINTER(member, ':hover')),
-      ':active': declsWhere(POINTER(member, ':active')) };
+for (const { member, state, rules: ruleCount } of ARMABLE) {
+  test(`the ARMED \`${member}${state}\` carries a signal \`:hover\`/\`:active\` cannot produce`, () => {
+    const armedRules = rulesWhere(ARMED(member, state));
+    const pointer = { ':hover': declsWhere(POINTER(member, state, ':hover')),
+      ':active': declsWhere(POINTER(member, state, ':active')) };
     // Non-vacuity, and it is the whole risk here: every leg below is a comparison or an absence, and
     // both are free over an empty rule set. The COUNT is pinned as well as the presence — the merged
     // form of this test could not see a deleted rule while a sibling survived.
     assert.equal(armedRules.length, ruleCount,
-      `${armedRules.length} armed rules parsed out of styles.css for ${member}, expected ` +
+      `${armedRules.length} armed rules parsed out of styles.css for ${member}${state}, expected ` +
       `${ruleCount}. If a rule was deliberately added or removed, re-derive this number — but if it ` +
       'dropped, the legs below are reading less than they claim and would pass on a broken control');
 
@@ -672,10 +743,13 @@ for (const [member, ruleCount] of Object.entries(ARMABLE)) {
       // is written later in the file — a property that moving one rule silently destroys. Repeating
       // `:hover`/`:active` on the armed selector states it instead of relying on source order, which
       // is what "an armed control cannot be washed out by not moving the mouse" actually needs.
+      // ⭐ AND `.rz-crew` IS WHY THIS LEG IS NOT THEORETICAL. Selecting a crew member MOVES THE CAMERA
+      // to her (the RimWorld colonist-bar gesture, `zoom-pawn-shot.mjs` §5), so the player's pointer
+      // is still sitting on the row they just picked when the surface repaints.
       for (const pseudo of [':hover', ':active'])
-        if (!sels.some((s) => subject(s).includes('.on') && subject(s).includes(pseudo)))
-          bad.push(`${sel} is not also written for \`.on${pseudo}\`. Its armed look then depends on ` +
-            `source order to beat the equal-specificity \`${member}${pseudo}\` rule — reorder the ` +
+        if (!sels.some((s) => subject(s).includes(state) && subject(s).includes(pseudo)))
+          bad.push(`${sel} is not also written for \`${state}${pseudo}\`. Its armed look then depends ` +
+            `on source order to beat the equal-specificity \`${member}${pseudo}\` rule — reorder the ` +
             'file and the state the player just chose disappears under their own cursor.');
       // The armed look must not RE-MEASURE the control (see `reMeasures` and the block comment above).
       // An INCLUSION test over every property the rule declares — never a list of names to hunt for.
@@ -687,7 +761,9 @@ for (const [member, ruleCount] of Object.entries(ARMABLE)) {
         if (reMeasures(p))
           bad.push(`${sel} sets \`${p}\`, which changes the control's BOX. Arming would reflow a ` +
             'WRAPPING row and can push the last controls out of reach — the clipping defect this ' +
-            'file guards, and all three of these rows wrap. Use a `box-shadow` ring; shadows do not ' +
+            'file guards, and three of these rows wrap. (`.rz-crew` does not wrap: it is a SCROLLING ' +
+            'flex column under a `max-height`, where a row that grows shoves its neighbours around ' +
+            'under a pointer that is reading them.) Use a `box-shadow` ring; shadows do not ' +
             'participate in layout.');
     }
     for (const pseudo of [':hover', ':active'])
@@ -695,8 +771,8 @@ for (const [member, ruleCount] of Object.entries(ARMABLE)) {
         bad.push(`\`${member}${pseudo}\` has acquired a \`box-shadow\` — it is now claiming the armed ` +
           'state\'s exclusive channel, which is how the border colour was lost the first time');
 
-    assert.deepEqual(bad, [], `the armed ${member} is not distinguishable from a hovered or pressed ` +
-      'one:\n  ' + bad.join('\n  '));
+    assert.deepEqual(bad, [], `the armed ${member}${state} is not distinguishable from a hovered or ` +
+      'pressed one:\n  ' + bad.join('\n  '));
   });
 }
 

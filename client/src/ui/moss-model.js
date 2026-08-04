@@ -112,6 +112,7 @@ const HELP_LINES = [
   'LOG [system]          fault log, optionally filtered',
   'PROG [terminal]       the MOSS program directory / editor',
   'DOORS                 every door aboard — its id, where it is, open or shut',
+  'VENTS                 every vent aboard — its id, where it is, open or shut',
   'COMMISSION            fit a controller module to this console — opens programs and PODS',
   'PODS                  the cryo bay — who is aboard, and what each capsule needs',
   'THAW <n|name>         begin that capsule\'s cycle (also: ENTER on a POD BAY row)',
@@ -815,8 +816,11 @@ export function parseCommand(text) {
     // that have never crossed the wire) and the ship answers on the transcript.
     // ⭐ OD-P — `doors` is the third of that shape. It is deliberately NOT a `device` line: it names
     // no device, and the whole reason it exists is that the player does not yet KNOW a device name.
+    // ⭐ `vents` is the fourth, and the owner-ratified second DIRECTORY (2026-08-04). ⚠️ It must be
+    // listed HERE and not left to fall through: `vents` matches no device pattern, so `default:`
+    // would answer UNKNOWN COMMAND for a verb HELP advertises.
     case 'help': case 'status': case 'log': case 'prog': case 'clear': case 'exit':
-    case 'doors': case 'pods': case 'thaw': case 'commission':
+    case 'doors': case 'vents': case 'pods': case 'thaw': case 'commission':
       return { verb, args, raw, kind: 'nav' };
     case 'open': {
       const navish = args.length !== 1 || SYSTEM_IDS.indexOf(normalizeSystemId(args[0])) >= 0;
@@ -930,10 +934,25 @@ function navCommand(m, cmd, argText) {
       // new had to be added to the wire or to `reduceMossEvent` to render it.
       //
       // ⚠️ ARGUMENTS ARE IGNORED, exactly as `pods` ignores them. `doors` is one noun; `doors
-      // deck 1` is a filter, a filter is a grammar, and this lane self-limits to ONE verb — OD-P's
-      // row is the SHAPE precedent, not a charter ("never implement from this row"), so a second
-      // noun waits on the owner's ratification.
+      // deck 1` is a filter, and a filter is a grammar. (⭐ The owner ratified this shape on
+      // 2026-08-04 and sanctioned `vents` as the second noun — below. Still no filters, and still
+      // no `ls`.)
       return { model: m, effects: [{ k: 'moss', op: 'doors' }] };
+    }
+    case 'vents': {
+      // ⭐⭐ THE VENT DIRECTORY — the owner-ratified SECOND NOUN (2026-08-04), `doors`' shape
+      // exactly. OD-N put the vents behind MOSS too, and MOSS addresses a vent by NAME: on the
+      // shipping wreck the upper deck's only source of air is `vent_d1` and the life-support
+      // compartment's first gesture is `open vent_ls` — two keys the player had to type and had no
+      // way to read.
+      //
+      // ⛔ NO SCREEN AND NO LOCAL LIST, for the door directory's reason, which is if anything
+      // stronger here: the `devices` channel carries ledger wear, and it carries no vent census, no
+      // OPEN/SHUT, and no board-fault flag at all. The SHIP answers, on the transcript, in its own
+      // words, on the ordinary `exec` lines.
+      //
+      // ⚠️ ARGUMENTS IGNORED — `doors`' rule, unchanged.
+      return { model: m, effects: [{ k: 'moss', op: 'vents' }] };
     }
     case 'pods': {
       // ⛔ NO SCREEN CHANGE HERE. The ask goes out; `reducePods` opens the bay when the ship
@@ -1133,8 +1152,12 @@ export function footerHints(model) {
       // ⭐ OD-P — DOORS joins it for THAT SENTENCE, applied to a worse stall: the door names are
       // what the fabrication chain (and therefore the whole opening) is locked behind, and the
       // player has no other way to learn one. It is listed FIRST of the three, in arc order.
+      // ⭐ VENTS joins beside DOORS (owner-ratified noun, 2026-08-04) for the SAME sentence: the
+      // one machine that can give the upper deck air is a name, and HELP is where a verb goes to
+      // be undiscoverable — it is 14 lines in a ~7-line pane (a FILED item, not this lane's).
+      // ⚠️ `.moss-foot` is `white-space:pre-wrap`, so a longer signpost WRAPS; it does not clip.
       return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL',
-        'TYPE: LOG, PROG, DOORS, PODS, COMMISSION, HELP',
+        'TYPE: LOG, PROG, DOORS, VENTS, PODS, COMMISSION, HELP',
         '[ESC] BACK TO SHIP'];
   }
 }

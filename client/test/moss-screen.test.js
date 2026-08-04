@@ -1829,7 +1829,18 @@ function fakeLayout(el, clientHeight = CONSOLE_CLIENT_H, stride = CONSOLE_STRIDE
   return el;
 }
 
-/** `help`'s twelve lines, at the length and count the shipped model prints them. */
+/**
+ * Twelve output lines — a STAND-IN for `help`, not a copy of it.
+ *
+ * ⚠️ THE CLAIM THIS DOCSTRING USED TO MAKE ("at the length and count the shipped model prints them")
+ * IS NOT TRUE AND MUST NOT BE RESTORED. Re-derived at the TRAPS-8 merge (2026-08-04) by parsing
+ * `HELP_LINES` out of `moss-model.js` on the merged tree: the model prints **14**, because the
+ * `vents` lane added a row (it was 13 when this fixture was written, and 12 before that). The
+ * fixture is deliberately NOT chased to match — what these tests need from it is a transcript TALL
+ * ENOUGH to overflow a 157px pane, and every expected count below is arithmetic on ITS size, not on
+ * the model's. Chasing the model would move the autoscroll lane's pinned arithmetic for a fidelity
+ * nothing here depends on.
+ */
 const HELP_OUTPUT = [
   'HELP                  this list',
   'STATUS                every row, load and state, as one block',
@@ -1997,11 +2008,36 @@ test('doors: typing `doors` sends the wire op through the real screen', () => {
     'the listing never reached the console pane:\n' + text);
 });
 
+// ═══════════════════════════════════════════════════════ the `vents` DIRECTORY verb
+//
+// The owner-ratified second noun (2026-08-04), same seam and same trap-4 discipline as `doors`
+// above: the assertion is the MESSAGE the screen sends, recorded at the send.
+
+test('vents: typing `vents` sends the wire op through the real screen', () => {
+  const s = bayScreen(null);
+  typeCmd(s, 'vents');
+  assert.deepEqual(s.sent.slice(-1), [{ type: 'moss', op: 'vents', tid: '@console' }],
+    'the directory must be ASKED for — the client holds no vent census to print');
+  assert.equal(s.root.dataset.screen, 'ledger',
+    'and it opens no screen: the ship answers on the transcript the player is already looking at');
+
+  // ⭐ NO NEW WIRE SHAPE — the reply is an ordinary `exec` block and the transcript renders it,
+  // OD-O's board-fault column included, unedited.
+  s.screen.onMossEvent({
+    type: 'moss', ev: 'exec', tid: '@console', ok: true,
+    lines: [[1, 'VENTS — 3 ABOARD · 2 OPEN · 1 SHUT'],
+      [1, 'VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT']],
+  });
+  const text = s.root.byClass('moss-cline').map((el) => el.textContent).join('\n');
+  assert.ok(/VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT/.test(text),
+    'the listing never reached the console pane:\n' + text);
+});
+
 // ---------------- THE SCROLL AFFORDANCE — "▾ N MORE" (2026-08-04) ----------------
 //
 // ⛔ THE GAP, and it is the one the autoscroll lane left standing (HANDOVER open list, ★ 2026-08-04):
 // the console now FOLLOWS its newest line, but a reader who scrolled back — or one on a screen that
-// overflows the instant it prints, `HELP` being 13 lines in a ~7-line pane — gets NO signal that
+// overflows the instant it prints, `HELP` being 14 lines in a ~7-line pane — gets NO signal that
 // anything is below the fold. `max-height:22vh; overflow-y:auto` shows no resting scrollbar on this
 // platform, so "there is more" was a fact the pane knew and never said.
 //
@@ -2140,7 +2176,8 @@ test('▾ N MORE: a reader parked above the fold is TOLD how many lines are belo
   assert.ok(el.scrollHeight > el.clientHeight, 'precondition: the transcript really overflows');
 
   parkAt(s, 0);                                  // the defect's own state: the top of the answer
-  // 14 lines in a 157px pane at a 21.79px line box ⇒ 7 fully readable, 7 below. The number is the
+  // 14 FIXTURE lines (boot + echo + HELP_OUTPUT's twelve — not the model's HELP, see that
+  // fixture's note) in a 157px pane at a 21.79px line box ⇒ 7 fully readable, 7 below. The number is the
   // bug report's own: "the hidden seven were the BOTTOM seven".
   assert.equal(expectedMore(s), 7, 'precondition: the fixture really hides seven lines');
   // MUTATION 1 (driven): `linesBelowFold` clamped to `return 0` — the shipped silence, verbatim.
