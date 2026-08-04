@@ -29,11 +29,35 @@
 //
 // Exits non-zero on any failed check. NOT wired into ./ci.sh: it needs a browser and a running host,
 // and the gate stays browser-free (the rule awaiting-shot.mjs / vacuum-shot.mjs state).
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ 2026-08-03 — THE START STATE, SAID OUT LOUD (rig-hardening lane).
+//
+// ⛔ THIS RIG REQUIRES A FRESH HOST AND ENFORCES IT — it does not merely ask. Its whole subject is a
+// badge that appears BECAUSE the player ordered something, so both controls need a ship where
+// nobody has ordered anything: `_prioritised` is per-SESSION host state with no cancel verb, so the
+// premise below ABORTS (exit 2) on a host that already carries this tool's own no-route row. That is
+// the one piece of state it cannot reset. Everything else it resets and PROVES:
+//   · LENS   → `{cmd:'lens',name:'none'}` on this tool's own socket.
+//   · ROOM   → `leaveRoomZoom()` before the first read and after the last: the focused room is HOST
+//              state (`wire/session.js`), and this rig ENTERS one, so leaving it open would boot the
+//              next rig on this host into a Room Zoom it did not choose.
+//   · SELECT → `verifiedClick`, which re-clicks until the HOST says somebody is selected.
+//
+// ⭐ AND EVERY GESTURE IS WITNESSED. `Cmd.click` reaches `ContextAction`, which TOGGLES the device on
+// the clicked tile when no citizen stands there (GameSession.cs:1936-1958, whenever the MOSS server
+// is LIVE — measured note below). A rig that re-clicks a walking pawn could actuate the machine it is
+// about to order a repair on — so the `devices` channel is fingerprinted before the first gesture
+// and compared after the last (final check).
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { dismissOnboarding, verifiedClick, die, deviceOpenState, actuationDiff } from './rig-lib.mjs';
+// The host's own answer to "who is selected", imported rather than restated: `frame.sel` is a TILE
+// and the join to a cid is `messages.js`'s, so the rig cannot drift from the client's reading.
+import { selectedCrewCid } from '../src/wire/messages.js';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8360');
@@ -75,6 +99,11 @@ await new Promise((res, rej) => {
 // selected. Reset it so nothing below is read through somebody else's wash.
 ws.send(JSON.stringify({ cmd: 'lens', name: 'none' }));
 await sleep(2500);
+
+// ⭐ THE ACTUATION WITNESS'S BASELINE, taken before this tool has clicked anything at all — so every
+// gesture it makes (including the retries) is inside the window the final check compares.
+const devicesAtStart = deviceOpenState(latest);
+log(`devices channel at boot: ${Object.keys(devicesAtStart).length} tile-resident devices witnessed`);
 
 // ⚠️⚠️ A PREMISE, NOT A CHECK — AND THE DISTINCTION WAS MEASURED, NOT ANTICIPATED. Running this tool
 // TWICE against the same `play.sh` reddened both controls, because the first run's order is still
@@ -131,12 +160,34 @@ const evaluate = async (expr) => (await call('Runtime.evaluate', { expression: e
 const json = async (expr) => { const s = await evaluate(`JSON.stringify(${expr})`); return (s && s !== 'null') ? JSON.parse(s) : null; };
 async function png(name) {
   const r = await call('Page.captureScreenshot', { format: 'png' });
-  if (!r.result?.data) { console.error('FAIL: captureScreenshot returned nothing for ' + name); process.exit(6); }
+  // Through the shared exit: this guard used to `process.exit` with the browser still running,
+  // which is the leaked-Chrome OOM this package is FOR (see `die`'s header).
+  if (!r.result?.data) die(chrome, 6, 'captureScreenshot returned nothing for ' + name);
   const p = join(OUT, PREFIX + name); writeFileSync(p, Buffer.from(r.result.data, 'base64')); log('  wrote', p);
 }
 async function clickAt(x, y) {
   for (const type of ['mousePressed', 'mouseReleased'])
     await call('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, buttons: type === 'mousePressed' ? 1 : 0 });
+}
+/** ⛔ IS A ROOM OPEN? ASK THE SURFACE'S STATE, NEVER "does `.rz-canvas` exist". MEASURED THE HARD WAY
+ *  (2026-08-03, this lane): the node is in the DOM while the Room Zoom is SHUT, so
+ *  `centre('.rz-canvas')` answers a ZERO-SIZE RECT — an object, and objects are truthy. A retry that
+ *  settled on it would report the room "already open" and never click. `body.roomzoom-open` is the
+ *  class the view sets; the `w > 0` term makes it a fact about layout rather than about markup. */
+const roomIsOpen = async () => (await evaluate(
+  `(()=>{const c=document.querySelector('.rz-canvas');const r=c&&c.getBoundingClientRect();`
+  + `return (document.body.classList.contains('roomzoom-open')&&r&&r.width>0)?1:0;})()`)) === 1;
+
+/** ⚠️ BACK OUT OF ANY OPEN ROOM — the focused room is HOST state (`wire/session.js`), and this rig
+ *  ENTERS one. Called before the first read and after the last so a poisoned session cannot cross
+ *  runs (or reach another rig sharing this host) in either direction. */
+async function leaveRoomZoom() {
+  for (let i = 0; i < 4; i++) {
+    if (!(await roomIsOpen())) return;
+    for (const type of ['keyDown', 'keyUp'])
+      await call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(1200);
+  }
 }
 const centre = async (sel) => json(
   `(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;`
@@ -159,22 +210,44 @@ async function pollFor(fn, ms = 20000, step = 500) {
 await call('Page.enable'); await call('Runtime.enable');
 await call('Page.navigate', { url: `http://localhost:${CLIENT_PORT}/?port=${HOST_PORT}` });
 await sleep(6000);
-for (let i = 0; i < 20; i++) {                       // the one-shot onboarding card
-  const onb = await centre('[data-onb-begin]');
-  if (onb) { await clickAt(onb.x, onb.y); await sleep(1500); break; }
-  await sleep(1000);
-}
+// THE ONBOARDING CARD, DISMISSED AND VERIFIED GONE (shared helper, 2026-08-03). The one-shot
+// this replaces could SILENTLY SKIP a card that had not painted yet, and every click below
+// then landed on a full-screen modal instead of the ship.
+await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
+// …and hand this run an OVERVIEW, whatever the last one left focused (see the START STATE header).
+await leaveRoomZoom();
 
 // ───────────────────────── 3. select the crew member, then open the frontier hall in Room Zoom.
 log('\nSETUP — select the crew member and open ' + ANCHOR);
 const crew = await pollFor(() => centre('.ov-crew'));
 check(!!crew, 'the crew dock has a row to select');
-if (crew) { await clickAt(crew.x, crew.y); await sleep(1500); }
+// ⭐⭐ THE FILED DEFECT (HANDOVER "Tooling", 2026-08-03): this was ONE fire-and-forget click at
+// `.ov-crew` plus `sleep(1500)`. Selection is HOST state and nothing latches it client-side —
+// `crewRowClick` (hud.js:940) sends `Cmd.click` at the pawn's LAST-FRAME tile
+// (`crewClickTarget`, console-model.js:166) and the host selects whoever is standing there WHEN THE
+// COMMAND LANDS. She wanders, so one frame of staleness selects NOBODY, and a rig that then reports
+// on the badge is reporting about a ship nobody is looking at. Waiting longer never un-misses a
+// click; only re-deriving her row and clicking again does.
+await verifiedClick({
+  what: 'the HOST reports a crew member selected (frame.sel lands on a crew tile)',
+  target: () => centre('.ov-crew'),
+  settled: async () => selectedCrewCid(latest.get('frame')) != null,
+  clickAt, log, chrome, timeoutMs: 30000, code: 9,
+  diagnose: async () => ({ sel: latest.get('frame')?.sel, crew: latest.get('frame')?.crew }),
+});
 const hall = await pollFor(() => centre(`.pl-room[data-anchor="${ANCHOR}"]`));
 check(!!hall, `the frontier hall ${ANCHOR} is on the Overview`);
 if (!hall) { chrome.kill('SIGKILL'); process.exit(1); }
-await clickAt(hall.x, hall.y);
-await pollFor(() => centre('.rz-canvas'), 15000);
+// VERIFIED, and it removes a CRASH-red as well as a false one: the old cut clicked once and polled
+// for `.rz-canvas` WITHOUT ACTING ON THE ANSWER, so a room that did not open dereferenced null two
+// steps later (`canvas.x`) — a TypeError reads as a broken tool, not as a finding (TRAPS 3).
+await verifiedClick({
+  what: `the Room Zoom opened on ${ANCHOR} (body.roomzoom-open + a laid-out canvas)`,
+  target: () => centre(`.pl-room[data-anchor="${ANCHOR}"]`),
+  settled: roomIsOpen,
+  clickAt, log, chrome, timeoutMs: 25000, code: 10,
+});
+await sleep(1200);
 
 const before = await badges();
 log('  badges before the order:', JSON.stringify(before));
@@ -212,7 +285,26 @@ check(!!menu && /PRIORITISE: REPAIR/.test(menu), 'the PRIORITISE offer opened ov
 const row = await centre('.rz-ctx-item');
 check(!!row, 'the offer row is clickable');
 if (!row) { chrome.kill('SIGKILL'); process.exit(1); }
-await clickAt(row.x, row.y);
+// ⛔⛔ THE ONE RETRY IN THIS FILE THAT COULD MUTATE THE SHIP, AND IT IS GUARDED FOR THAT REASON. A
+// re-click at a REMEMBERED offer-row position after the menu has closed is a plain left click on the
+// Room Zoom canvas — which lands on a tile, and `ContextAction` toggles a device standing there
+// (GameSession.cs:1936-1958). So the retry does BOTH things the house rule asks for: it re-derives
+// `.rz-ctx-item` from the CURRENT frame every attempt, and it REFUSES TO CLICK AT ALL unless the
+// menu is still open (the guard). The settle condition is the menu having CLOSED — the row consumed
+// the gesture. Deliberately NOT "the order arrived on the wire": that is a PRODUCT claim (D5's own
+// premise, §2.2 — the order is accepted) and folding it into a rig precondition would convert a
+// real product failure into an exit code nobody reads as a finding (the 9th shape).
+await verifiedClick({
+  what: 'the PRIORITISE offer row took the click (the context menu closed)',
+  target: () => centre('.rz-ctx-item'),
+  // ⛔ POLARITY, BOTH WAYS ROUND, and it is why these are two expressions and not one negated. Each
+  // asks for a LITERAL, so a failed `evaluate` (undefined — an unreadable page, a dead renderer) is
+  // neither "closed" nor "open": the loop neither declares success nor fires a click into the room.
+  settled: async () => (await evaluate("(()=>{const e=document.querySelector('.rz-ctx');return (e&&!e.hidden)?0:1;})()")) === 1,
+  guard: async () => ((await evaluate("(()=>{const e=document.querySelector('.rz-ctx');return (e&&!e.hidden)?1:0;})()")) === 1
+    ? null : 'the context menu is not open — a click now would land on the floor of the room'),
+  clickAt, log, chrome, timeoutMs: 15000, everyMs: 500, code: 11,
+});
 
 // ───────────────────────── 5. ⭐ THE BADGE ARRIVES WHILE SHE IS STILL WALKING.
 // ⚠️ HONEST SCOPE: this leg proves THE BADGE IS UP, not that it arrived BEFORE the drop. She is
@@ -286,6 +378,33 @@ check(mine.length === 1, `exactly ONE no-route row is on the wire (${mine.length
 check(mine.every((c) => c[3] === ORDER_REPAIR), 'and it is a REPAIR-order row');
 check(mine.every((c) => c[5] === -1), 'with DetailNone (-1) — this reason names no item');
 
+// ═════════════════ 8. ⭐⭐ THE ACTUATION WITNESS — what did this rig's own clicks DO to the ship?
+//
+// ⛔ EVERY RETRY LOOP ABOVE BUYS ITS ROBUSTNESS WITH THIS RISK, so the risk is measured rather than
+// argued. `Cmd.click(x,y)` runs `ContextAction` (GameSession.cs:475): a citizen on the tile SELECTS,
+// otherwise the DEVICE on that tile is TOGGLED (:1936-1958) whenever the MOSS server is LIVE.
+// ⭐ HOW REACHABLE, MEASURED (2026-08-03) — the first draft of this note said "doors/vents are
+// gated, every other kind is not", AND THAT IS WRONG: BOTH commands open with
+// `if (!MossGate.IsServerLive(sim)) return;` (Commands.cs:84 + its SetDoorState sibling), and
+// ContextAction's `actuates` flag governs only the STATUS LINE. Driven: one click at each of the
+// 49 deck-0 device tiles on the SHIPPED WRECK moved NOTHING (MOSS boots dark, `term_moss` 0.14
+// under Terminal's 0.20 floor) — while the same sweep on a MOSS-LIVE ship (`--ship grid`) SHUT
+// EIGHT DOORS (`kind 0 at 5,7,0: open 1 → 0`, and seven more). So the hazard is SHUT TODAY and
+// OPENS the moment the player repairs `term_moss` — the game's own ladder. The witness is quiet
+// now and will bite then; see `rig-lib.mjs`'s header for the full receipts.
+// This rig orders a REPAIR on a machine; a stray click that also
+// flipped a machine would make the badge it photographs a fact about the rig, not about the game.
+//
+// ⚠️ NON-VACUITY IS THE `witnessed > 0` TERM — an INCLUSION bound (4th shape), because an empty
+// `devices` channel diffs empty and would pass for ever. Only tiles present in BOTH snapshots are
+// compared: the channel is fog-gated, so an arriving row is new sight rather than a toggle.
+const witnessed = Object.keys(devicesAtStart).length;
+const actuated = actuationDiff(devicesAtStart, deviceOpenState(latest));
+check(witnessed > 0 && actuated.length === 0,
+  `THE RIG DID NOT ACTUATE THE SHIP IT PHOTOGRAPHED — ${witnessed} devices witnessed across the run, `
+  + `${actuated.length} changed state${actuated.length ? ': ' + actuated.join(' · ') : ''}`);
+
+await leaveRoomZoom();   // the focused room is HOST state — hand the session back on the Overview
 chrome.kill('SIGKILL');
 log(failures ? `\n${checks} checks run, ${failures} FAILED` : `\nall checks passed — ${checks} checks, 0 failures`);
 process.exit(failures ? 1 : 0);
