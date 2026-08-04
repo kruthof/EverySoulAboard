@@ -105,11 +105,33 @@ namespace Perilune.Tests
             Assert.That(h.Entries.Count, Is.EqualTo(5));
             // ⭐ D6 CHANGED THIS ROW, AND IT IS A CONTRACT CHANGE RATHER THAN A FIXTURE TWEAK: a
             // brownout entry now carries the NETWORK ID in SubjectA (it was 0) and an EPISODE WORD
-            // in SubjectB — `HistorySystem.EpisodeWord(edges, shedding)`, i.e. `(1 << 1) | 1 == 3`
-            // for the first edge of a shedding episode. Both are folded into the state checksum, so
+            // in SubjectB — `HistorySystem.EpisodeWord(edges, shedding, runStep)`. The word's
+            // LAYOUT moved when the cadence package added the run step (edges are bits 4.., the step
+            // bits 1-3, the direction still bit 0), which is why this row is written through the
+            // encoder and not as the literal it used to be. Both are folded into the state checksum, so
             // this is the shape every save and every hash sees. The DIRECTION BIT is not decoration:
             // it is what lets RecordBrownout tell a real edge from the duplicate `PowerSystem`
             // re-publishes after a reload, and without it a mid-brownout save does not replay.
+            //
+            // ⛔⛔ AND THE PACKED LAYOUT ITSELF IS PINNED BY THE TWO LITERALS BELOW, BECAUSE WRITING
+            // THIS ROW THROUGH THE ENCODER MADE IT INVISIBLE. SubjectB is HASHED and SAVED, but
+            // every producer and every consumer in the repo goes through EpisodeWord/BrownoutEdges/
+            // BrownoutRunStep/BrownoutIsShedding — so encoder and decoder stay symmetric under ANY
+            // change to EdgeShift or RunStepMask and the whole gate stays green while the bytes on
+            // disk and in the fold move. That is CLAUDE.md's NINTH shape (a correct narrowing that
+            // creates a blind spot), and RingSaturationTests' `SubjectB == 0u` literal is the
+            // in-family precedent for closing it. 17 = (1 << 4) | (0 << 1) | 1 and
+            // 18 = (1 << 4) | (1 << 1) | 0, which together nail the edge shift, the step field's
+            // position AND the direction bit's position — the last of these being the one datum a
+            // reload's idempotency rule reads (MECHANICS §13.46.3), and the one an old save still
+            // finds where it left it (§13.46.2).
+            Assert.That(HistorySystem.EpisodeWord(1, shedding: true), Is.EqualTo(17u),
+                "THE PACKED LAYOUT: one edge, shedding, step 0 packs to 17 — edges at bit 4, step " +
+                "at bits 1-3, DIRECTION AT BIT 0. Move any of those and this literal is the only " +
+                "thing in the repo that notices");
+            Assert.That(HistorySystem.EpisodeWord(1, shedding: false, 1), Is.EqualTo(18u),
+                "…and one edge, recovered, at run step 1 packs to 18 — the step's own bits, pinned " +
+                "separately so a change to RunStepMask cannot hide behind the edge shift");
             AssertHasKind(h, HistoryKind.Brownout, 3, HistorySystem.EpisodeWord(1, shedding: true));
             AssertHasKind(h, HistoryKind.RelationshipChanged, a.Id, b.Id);
             AssertHasKind(h, HistoryKind.Argument, a.Id, b.Id);

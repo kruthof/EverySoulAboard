@@ -1711,7 +1711,7 @@ write it"*.
 | `Alarm` | 1 | Alarm | 2 | `AlarmRaisedEvent` |
 | `Death` | 2 | Death | 8 | `CitizenDiedEvent` (name rides the event — the citizen is already gone) |
 | `Goal` | 3 | Objective | 1 | `GoalCompletedEvent` |
-| `Brownout` | 4 | Power | 5 | `BrownoutChangedEvent`, **coalesced per network per sim-hour** — §13.8.1 |
+| `Brownout` | 4 | Power | 5 | `BrownoutChangedEvent`, **coalesced per network per episode window** — one sim-hour, backing off to 8 on a chronic network — §13.8.1 + §13.46 |
 | `RelationshipChanged` | 5 | Relations | 3 | `RelationshipChangedEvent` |
 | `Argument` | 6 | Argument | 4 | `ArgumentEvent` |
 | `Bond` | 7 | Bond | 4 | `BondEvent` |
@@ -2231,17 +2231,22 @@ sim-day. Every one of them appended an entry, so by sim-hour 5.6 — the T13 pla
 the whole 200-entry ring was power flapping and the ship's own boot lines had been evicted from
 its own log. On the SLICE the same shape: 27 986 edges, 198 Brownout + 2 Bond at day 1.
 
-**THE FIX: episode coalescing in the ring itself** (`Systems/HistorySystem.cs:218-303`,
-`RecordBrownout`). A `BrownoutChangedEvent` scans back for the newest `Brownout` entry on the
+**THE FIX: episode coalescing in the ring itself** (`Systems/HistorySystem.cs:428-651`,
+`RecordBrownout` and its header). A `BrownoutChangedEvent` scans back for the newest `Brownout` entry on the
 SAME network (`HistoryEntry.SubjectA`, which now carries the network id — it was 0) and, if that
 entry is younger than `HistorySystem.BrownoutQuietTicks` (36 000 ticks = **one sim-hour**, a code
-constant per M2-1's rule-not-tunable precedent, so P4/P5 do not move), **rewrites it in place**
+constant per M2-1's rule-not-tunable precedent, so P4/P5 do not move — ⭐ **since §13.46 that is the
+BASE window: an episode belonging to a run that never goes quiet gets `BrownoutEpisodeWindow(step)`,
+this value doubled up to 8 sim-hours**), **rewrites it in place**
 rather than appending: the tick stays at the episode's first edge, `SubjectB` carries the EPISODE
 WORD, and the text becomes *"Power network 1 browned out — non-critical loads shed; 891 changes
-within the hour, still shedding."* / *"…, since recovered."*
+in this episode, still shedding."* / *"…, since recovered."*
+⚠️ The trailing clause read *"within the hour"* until §13.46 made a window eight of them; this is the
+quote a later lane reads FIRST, so it is corrected here as well as at the four call sites.
 
-**`SubjectB` IS AN EPISODE WORD, NOT A BARE COUNT** — `HistorySystem.EpisodeWord(edges, shedding)`
-packs the edge count in bits 1.. and **the episode's current direction in bit 0**. Both halves are
+**`SubjectB` IS AN EPISODE WORD, NOT A BARE COUNT** — `HistorySystem.EpisodeWord(edges, shedding,
+runStep)` packs the edge count in bits 4.., **the run's backoff step in bits 1-3** (§13.46, which
+moved the count's bits) and **the episode's current direction in bit 0**. All three are
 hashed and saved in a field the chapter already wrote, so `StateVersion` stays at **2**.
 ⛔ The direction cannot be recovered from the count's parity: an episode whose window expired
 mid-recovery BEGINS with a recovery edge, and the shipped wreck produces both parities on both
@@ -6875,6 +6880,13 @@ pass at the brownout cadence (or at `MaxEntries`) is the follow-on, and it is D6
 not this one's. For the 2026-08-07 playtest the horizon is far past the session; for a long unattended
 run it is not.
 
+> ⭐ **SETTLED 2026-08-04 — §13.46.** The brownout half of that table is closed: the episode window
+> now backs off to 8 sim-hours on a network that never goes quiet, so `Brownout` runs at ~3 entries a
+> sim-day instead of 23-24. Re-measured on the same unattended wreck, day 4.50 is **113 entries with
+> all four boot lines** (was 200/200 with two) and day 6.00 is **155 with all four** (was 200/200 with
+> none). ⛔ **The KLAXON half of this section is now the dominant producer and is still open** — the
+> horizon moved to day ~7.6, not to infinity.
+
 ### 13.45 ⭐⭐ When an order dies mid-way, the ship's log records it (b3-R, 2026-08-03)
 
 **THE PLAYER SENTENCE.** *An order I gave that dies mid-way leaves a line in the ship's log — who
@@ -7054,3 +7066,204 @@ would pin a defect this package cannot fix.
 - **No alerts-bar row and no toast.** RimWorld's split (§11.1) puts a standing condition on the alert
   stack and a fired event in the letter channel; this ring is the letter channel. M5-2 owns the other
   half.
+
+### 13.46 ⭐⭐ A grid that flaps all day reads as episodes, not as a ticker — the brownout cadence (D6's ledger, 2026-08-04)
+
+**THE PLAYER SENTENCE.** *At day 4+ the ship's log still tells the whole story — the boot lines and
+the real faults survive, and a power grid that flaps all day reads as episodes rather than as an
+entry-per-hour ticker.*
+
+§13.44.6 filed this and named its owner: *"the dominant producer is then `Brownout` at ~24 entries
+per sim-day … a second pass at the brownout cadence (or at `MaxEntries`) is the follow-on, and it is
+D6's ledger to settle, not this one's."* This is the settlement.
+
+#### 13.46.1 THE DEFECT, RE-MEASURED ON THE UNATTENDED SHIPPED WRECK
+
+`--ship wreck` booted through `SimHost` (so the real MOSS rules load), work grid OFF — the OD-H
+default, and the ship a playtester looks at before opening the WORK tab. D6 bounded a flapping
+network to ONE entry per sim-hour; on a network that **never stops flapping** that is still a ticker,
+just a slower one. **The BEFORE column is re-derived ON THIS TREE** with `RecordBrownout`'s backoff
+reverted in place (patched, run, restored from an in-memory copy with the mtime moved FORWARD —
+TRAPS 2), not recalled from §13.44.6:
+
+| unattended wreck | day 1.50 | day 3.00 | day 4.50 | day 6.00 |
+|---|---|---|---|---|
+| ring total — BEFORE | 49 | 128 | **200 — FULL** | **200 — FULL** |
+| ring total — **AFTER** | **23** | **70** | **113** | **155** |
+| tick-0 boot lines — BEFORE | 4 | 4 | **2** | **0** |
+| tick-0 boot lines — **AFTER** | **4** | **4** | **4** | **4** |
+| `Brownout` — BEFORE | 33 | 69 | 105 | 97 |
+| `Brownout` — **AFTER** | **7** | **11** | **16** | **20** |
+| `Alarm` — BEFORE / AFTER | 12 / 12 | 55 / 55 | 93 / 93 | 103* / 131 |
+| oldest surviving entry — BEFORE | t=0 | t=0 | t=0 | **t=1 714 581** |
+| oldest surviving entry — **AFTER** | **t=0** | **t=0** | **t=0** | **t=0** |
+
+\* the BEFORE day-6 alarm count is depressed by eviction, not by the klaxon — the ring is full.
+⭐ **AT DAY 6.00 NOTHING HAS BEEN EVICTED AT ALL**: the ring spans ticks 0–5 153 400, i.e. the whole
+run. The brownout producer went from **23–24 entries a sim-day to ~3**.
+
+#### 13.46.2 THE MECHANISM — the episode window BACKS OFF while the fault persists
+
+`Systems/HistorySystem.cs`, `RecordBrownout` + `BrownoutEpisodeWindow` + `BrownoutMaxRunStep`.
+
+An episode entry now carries a **RUN STEP** (`HistorySystem.BrownoutRunStep`) and folds edges for
+`BrownoutEpisodeWindow(step)` = `BrownoutQuietTicks << min(step, BrownoutMaxRunStep)` — **one
+sim-hour at step 0, doubling per step, capped at 8 sim-hours** (`BrownoutMaxRunStep = 3`). When an
+entry's window shuts, the next edge decides what happens next **and it decides it from the ring
+alone**: that entry is this network's NEWEST brownout entry, so nothing has been recorded since its
+window shut. An edge in the *immediately following* window ⇒ the network never went quiet for a whole
+window ⇒ the SAME run, and the new episode opens at `step + 1`. An edge later than that ⇒ a full
+window of provable silence ⇒ the run is over, and the next episode opens at **step 0** with the
+ordinary sim-hour.
+
+- ⭐ **A ONE-OFF BROWNOUT ON A HEALTHY GRID IS UNCHANGED.** Step 0's window IS `BrownoutQuietTicks`.
+  Only a fault that has already failed to go quiet for a whole window earns a longer one, so the
+  backoff is a statement about how CHRONIC the fault is — derived from the ring, never from a timer.
+- ⭐ **IT BACKS THE CADENCE OFF RATHER THAN FOLDING THE RUN INTO ONE ENTRY, AND THE OBVIOUS SHAPE WAS
+  REJECTED WITH A REASON THIS REPO ALREADY WROTE DOWN.** Coalescing a permanent flap into a single
+  never-closing entry is what "episode-run coalescing" literally asks for; §13.44.2 argues against it
+  for the klaxon and the argument transfers intact — `GameSession.BuildLog` renders the ring's last
+  14 entries POSITIONALLY, so an entry that is never re-announced scrolls out of the tail as the
+  ship's story grows, and on this ring it would eventually be EVICTED, leaving a network that has
+  been shedding for a week with **no representation in the log at all**. Three announcements a
+  sim-day is what that visibility costs. ⭐ **AND THE CEILING IS SIZED AGAINST THE TAIL, MEASURED:**
+  on the shipped wreck the largest gap between `Brownout` entries in the visible tail is **13 entries
+  against `BuildLog`'s take of 14 — one slot to spare**, so a chronic grid is always in the MOSS
+  fault log; `BrownoutMaxRunStep = 4` would double that to ~26 and lose it from the tail entirely.
+  `ShipSystems.Fault` scans the WHOLE ring and is the fallback, but the tail is what a player reads.
+- **NO NEW SAVED STATE, `StateVersion` STAYS 2** — D6's argument, unchanged. The step rides in
+  `HistoryEntry.SubjectB`, which `CaptureState` already writes and `StateChecksum` already folds.
+- ⚠️⚠️ **THE WORD'S LAYOUT MOVED, AND THAT IS THE ONE COMPATIBILITY COST — READ THE DIRECTION
+  CAREFULLY, THE FIRST DRAFT OF THIS BULLET HAD IT BACKWARDS.** `SubjectB` is now
+  `[31..4] edges | [3..1] run step | [0] direction` where it was `[31..1] edges | [0] direction`. The
+  count shifted UP three bits, so an old word decoded by the shipped reader reads its edge count
+  **8× too SMALL**, and the count's low three bits read as a run step. Driven through the shipped
+  decoder: old `(edges << 1) | dir` with edges 15 → 1, 8 → 1, 7 → 0, 2 → 0; edges 1036 → 129, step 4.
+- ⛔ **AND IT FLIPS `BrownoutEpisodeRecordsAFault` ON ONE BAND — the hazard the saturation rule below
+  names for WRAP and which the SHIFT reintroduced.** That predicate is `shedding || edges >= 2`, so a
+  pre-package episode that ended **RECOVERED with 2–15 edges** decodes to 0 or 1 edges with the
+  direction bit still false and goes `true → false`: `ShipSystems.IsNotAFault` then silently drops a
+  real brownout loaded from an old save out of the MOSS ledger's LAST FAULT column. Swept, driven —
+  every old word in that band flips; edges ≥ 16 and every shedding word do not; old single-edge pure
+  recoveries were already not-a-fault. **THE HONEST SCOPE:** the save FORMAT is unchanged (same
+  chapter, same field, same width) and this can never fail a LOAD; the direction bit — the one datum
+  determinism depends on — is where it always was, so the idempotency rule is correct on an old save.
+  What it CAN do is understate one episode's count, mis-size one episode's window, and hide one band
+  of recovered episodes from LAST FAULT until that entry evicts. ⭐ **No save/load ships to a player
+  before M5-7**, which is why this is documented rather than versioned (D6's precedent, which made
+  the same trade when `SubjectB` went from a hard 0 to an episode word) — **but a lane that lands
+  persistence owes this band a migration or a `StateVersion` bump.** Edges themselves SATURATE rather
+  than wrap (268 435 455 ≈ 11 900 sim-days at the wreck's measured 22 562 edges/day), because a
+  wrapped count is the same defect arriving from the other end.
+- **The text is window-agnostic now:** *"…; 748 changes in this episode, still shedding."* — "within
+  the hour" went false the moment a window could be eight of them. `"browned out"` is still the
+  load-bearing literal (§13.8.1) and is untouched; the four copies of the sentence in
+  `ShipSystems.cs`, `moss-model.js`, `moss-model.test.js` and `HistorySystemTests.cs` were corrected
+  in the same commit — **and so was the fifth and load-bearing one, §13.8.1's own quotation of the
+  sentence**, which an earlier draft of this bullet missed while claiming there were four.
+
+#### 13.46.3 ⛔ THE IDEMPOTENCY RULE IS UNTOUCHED — the claim, and how it is DRIVEN
+
+§13.43.2's rule (*an edge whose direction the ring already records for that network cannot be a real
+transition*) is a determinism fix, not tidiness, and it **derives its truth from the ring** — so
+anything that changes what the ring records for a network can break mid-episode save replay.
+
+**THE STRUCTURAL CLAIM:** the rule consults ONE entry (this network's newest `Brownout` entry, via
+the unchanged `kind + SubjectA` predicate), reads ONE bit (direction, bit 0, at the same place), and
+answers **before any window or step is computed** — every line this package added is downstream of
+its `return`. Its decision function is unchanged. What did change is in its favour: at ~3 entries a
+sim-day instead of 24, a network's newest brownout entry survives in the ring far longer, so
+**RESIDUAL 1 (the evicted-episode corner) gets strictly narrower.**
+
+**DRIVEN, with §13.10's documented matched recompute** (`SaveWriter`→`SaveReader`, twin marked dirty,
+20 000 ticks of run-on, whole `StateHash` asserted) —
+`BrownoutCadenceTests.TheShippedWreck_ReplaysBitIdentically_WhenTheSaveIsTakenInsideABackedOffWindow`:
+
+| leg | window | live | loaded |
+|---|---|---|---|
+| save @ 100 000 — before this ship's first edge (control) | — | identical | identical |
+| save @ **211 000** — inside the step-1 window, *past where the old sim-hour window would have shut* | 72 000 | identical | identical |
+| save @ **501 000** — deep inside the ceiling window | 288 000 | identical | identical |
+
+`ChronicleSignalTests.TheShippedWreck_ReplaysBitIdentically_WhenTheSaveIsTakenMidEpisode` (the
+sim-hour window at 135 000) and `EpisodeBoundarySaves_DoNotReplay_ThisIsFiledResidual2` are both
+**unchanged and green**, so residual 2's one-tick boundary width at episode 128 361 did not move.
+
+⛔⛔ **AND HALF OF ALL SAVE TICKS ON A FLAPPING NETWORK ANSWER NOTHING — the first draft of that test
+used two of them and SURVIVED the idempotency mutation.** `PowerSystem.Balance` publishes only on a
+CHANGE, so after a reload with `_wasBrownout` reset it emits a duplicate **only if the network is
+SHEDDING at the moment of the save**; on a recovered tick there is no duplicate, the rule is never
+reached, and the leg is green with the rule *deleted*. Measured: ticks 210 000 and 500 000 are
+RECOVERED (0 duplicate edges from the loaded sim), 211 000 and 501 000 are SHEDDING (1 each). The
+save ticks moved and a `Shedding` clause is now asserted by INCLUSION. CLAUDE.md's **fourth shape**,
+caught by running the mutation rather than by reading the test.
+⚠️ **FILED:** the sibling in `ChronicleSignalTests` carries no such clause — its 135 000 is a shedding
+tick **by luck**, exactly as §13.43.2 records `ShipSystemsTests`' fault-column leg being green by luck.
+
+#### 13.46.4 THE PIN MATRIX — all five held, and every hold is measured
+
+| pin | before | after | verdict |
+|---|---|---|---|
+| **P1** scenario `--days 3 --seed 42` | `7bdd0d6f7756dfdc` | `7bdd0d6f7756dfdc` (twin match) | **HELD — VACUOUS, driven** |
+| **P2** perilune tick-3000 | `cb09b584a5f15e52` | **HELD** | held — vacuous (window) |
+| **P3** slice tick-3000 | `43a1a5c25713faec` | **HELD** | held — vacuous (window) |
+| **P4** defs defaults | `661fcdd4b89f1e87` | **HELD** | genuinely inert (no def field) |
+| **P5** defs rules-inclusive | `558a1c0a4985f5ea` | **HELD** | genuinely inert (no def field) |
+
+⛔ **WHY P1's HOLD IS VACUOUS, RE-MEASURED RATHER THAN QUOTED.** `Report` in
+`hosts/scenario/Program.cs` was instrumented to census the ring at every day boundary (patched, run,
+restored from an in-memory copy with the mtime moved FORWARD — TRAPS 2):
+
+```
+SCRATCH-BRNCAD-P1 ring=200 brownoutEntries=0 brownoutNets=0 firstBrownoutTick=-1 kinds[Bond=200]
+```
+
+— on days 0, 1, 2 and 3, and the day-3 hash read `7bdd0d6f7756dfdc` with the instrumentation in
+place. The pinned fixture's ring is **200/200 `Bond`** and it publishes **no brownout edge at all**
+in three sim-days, so every line this package touches is reached zero times on it.
+
+**WHY P2/P3 HOLD, and it is the window rather than a dead system.** Measured at tick 3000 on all
+three authored plans booted through `SimHost`: **0 `Brownout` entries on every one of them**, and the
+first brownout entry lands at tick **128 361** (wreck), **191 331** (slice) and **246 671** (perilune)
+— 43×, 64× and 82× later than the golden. ⭐ **The tick-3000 hashes are byte-identical with the
+backoff live and with it reverted in place** (`cb09b584a5f15e52` / `43a1a5c25713faec` both ways, and
+the wreck's own `77a7a8e4ee5e2140` both ways), which is what makes the hold structural.
+
+**No re-pin was performed and none was owed.** `ci.sh`'s literal, both golden files and both defs
+checksums are untouched; `BrownoutMaxRunStep` is a CODE CONSTANT per M2-1's rule-not-tunable
+precedent (a def scalar would move P4/P5 for a number nobody tunes, and a def field pinned only by a
+checksum is not pinned at all), and `HistorySystem.StateVersion` stays at **2**.
+
+⭐ **THE SAME CODE MOVES THE HASH HARD WHERE IT IS REACHED — the driven control on `--ship wreck`,
+which no pin covers.** BEFORE is the current tree with `RecordBrownout` reverted in place:
+
+| wreck mark | BEFORE | **SHIPPED** | ring BEFORE → AFTER |
+|---|---|---|---|
+| tick 200 000 | `67f85d56a6c78e1b` | **`63c257fae5cdbd60`** | 9 (2 Brownout) → 9 (2 Brownout) |
+| tick 864 000 | `2e4e1bf5d60cba78` | **`fefc095f6bd68ddd`** | 30 (21 Brownout) → **14 (5 Brownout)** |
+| tick 5 184 000 (day 6) | `7d82025dee8d0bb5` | **`799bf0db001c2cb1`** | 200 (0 boot) → **155 (4 boot)** |
+
+⚠️ **NOTE THE FIRST ROW: THE CENSUS IS IDENTICAL AND THE HASH IS NOT.** At tick 200 000 the wreck has
+two brownout entries either way — the backoff has not bitten yet — but `SubjectB` is hashed and its
+LAYOUT moved, so the fold differs. Do not read a matching entry census as a matching hash.
+
+#### 13.46.5 What the package deliberately does NOT do
+
+- ⛔ **IT DOES NOT MAKE THE RING PERMANENTLY UNSATURATED, and §13.44.6's own warning applies to this
+  section verbatim.** The horizon moves from **day ~4.2 to day ~7.6**, and after that the ring turns
+  over again. The dominant producer is now the **klaxon at ~28 entries a sim-day** (its coalesced
+  ≤ 25/day plus the wreck's machine-failure alarms) against a chronic grid's ≤ 3/day. **FILED, not
+  chased:** the next pass at ring saturation is the alarm cadence or `MaxEntries`, and it is
+  §13.44's ledger, not this one's. For the 2026-08-07 playtest the horizon is far past the session.
+- **No fix for the GENERATOR.** `IsWanting` returns true for every device except a closed `AirVent`,
+  so the wreck still publishes ~22 562 brownout edges a sim-day (§13.11). The log records ~3 lines a
+  day about it; the ship still does them.
+- **`PowerSystem` is NOT made stateful.** That is still the honest fix for `_wasBrownout` and still a
+  new SYSS chapter that moves P1/P2/P3 — its own package. Residuals 1 and 2 (§13.43.2) and §13.44.5
+  all still argue for it; this package narrows residual 1 and moves neither of the others.
+- **No change to `MaxEntries`.** 200 was never the problem; what filled it was.
+- **No new non-vacuity clause on `ChronicleSignalTests`' mid-episode replay leg** — filed in §13.46.3
+  rather than chased, because widening a neighbouring lane's test is not this package's scope.
+- **No alerts-bar row for a standing brownout.** RimWorld's split (§11.1) puts the CONDITION on the
+  alert stack and this ring is the letter channel; D2's bar and M5-2's stack own that half, and the
+  visibility argument in §13.46.2 is exactly why the log still re-announces in the meantime.

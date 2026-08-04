@@ -399,16 +399,76 @@ namespace Perilune.Sim
         // ═══════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>
-        /// How long one brownout EPISODE lasts as far as the log is concerned: every
-        /// <see cref="BrownoutChangedEvent"/> on a network within this many ticks of that network's
-        /// newest surviving <see cref="HistoryKind.Brownout"/> entry folds INTO that entry instead
-        /// of appending a new one. 36 000 ticks = one sim-hour at 10 Hz.
+        /// The BASE window: how long a FRESH brownout episode lasts as far as the log is concerned.
+        /// Every <see cref="BrownoutChangedEvent"/> on a network within this many ticks of that
+        /// network's newest surviving <see cref="HistoryKind.Brownout"/> entry folds INTO that entry
+        /// instead of appending a new one. 36 000 ticks = one sim-hour at 10 Hz.
+        ///
+        /// <para>⭐ <b>IT IS THE FLOOR, NOT THE ONLY WINDOW.</b> An episode belonging to a run that
+        /// has already failed to go quiet gets <see cref="BrownoutEpisodeWindow"/><c>(step)</c>
+        /// instead — this value doubled, up to <see cref="BrownoutMaxRunStep"/>. Step 0 is this
+        /// value exactly, so a one-off brownout on a healthy grid is unchanged.</para>
         ///
         /// <para><b>A CODE CONSTANT, NOT A DEF FIELD, DELIBERATELY</b> — M2-1's rule-not-tunable
         /// precedent (<c>MinDaysOfFood</c>): a def scalar would move P4/P5 for a number nobody
         /// tunes, and a def field pinned only by a checksum is not pinned at all.</para>
         /// </summary>
         public const long BrownoutQuietTicks = 36000;
+
+        /// <summary>
+        /// ⭐⭐ <b>HOW FAR THE EPISODE WINDOW IS ALLOWED TO BACK OFF WHEN A NETWORK NEVER STOPS
+        /// FLAPPING — the ceiling on <see cref="BrownoutEpisodeWindow"/>, expressed as doublings of
+        /// <see cref="BrownoutQuietTicks"/>.</b> 3 ⇒ a window of at most
+        /// <c>36 000 &lt;&lt; 3 = 288 000</c> ticks = <b>8 sim-hours</b> ⇒ at most <b>3 ring entries
+        /// per sim-day</b> from a permanently browned-out network.
+        ///
+        /// <para><b>THE SIZING SENTENCE, AND IT IS THE REASON FOR THE NUMBER.</b> Before this
+        /// package a chronically flapping network wrote one entry per sim-HOUR forever — the ≤ 25/day
+        /// cap D6 sized itself against — and measured on the unattended shipped wreck that was
+        /// <b>23–24 entries a sim-day, the ring's single dominant producer</b>: at day 4.50 the ring
+        /// was 200/200 with 2 of 4 boot lines left, and at day 6.00 it was 200/200 with none
+        /// (MECHANICS §13.44.6 filed exactly this as D6's ledger to settle). The klaxon's coalesced
+        /// cadence (<see cref="AlarmQuietTicks"/>) is ≤ 25/day and is NOT this package's to change,
+        /// so the budget that matters is: a chronic grid must stop being comparable to it. At 8
+        /// sim-hours the steady-state producers total ≤ 28 entries/day against
+        /// <see cref="MaxEntries"/> = 200, which puts the ring's turnover horizon past a sim-WEEK
+        /// instead of at day ~4.2. Retune this and that budget is what has to be re-derived.</para>
+        ///
+        /// <para>⛔ <b>THE CEILING EXISTS BECAUSE UNBOUNDED BACKOFF GOES SILENT.</b> Without it the
+        /// wreck's run would announce itself at day 0.15, 0.19, 0.27, 0.44, 0.77, 1.44, 2.77, 5.44 —
+        /// a standing power fault with nothing in the log for 2.7 sim-days at a stretch. That is the
+        /// failure mode <see cref="AlarmQuietTicks"/>' header names for a permanently-sounding alarm
+        /// folded into ONE entry: <c>GameSession.BuildLog</c> renders the ring's last 14 entries
+        /// POSITIONALLY, so an entry that stops being re-announced scrolls out of the tail and a
+        /// still-failing network becomes INVISIBLE. Three announcements a sim-day keeps it in the
+        /// tail and in every day of the Chronicle.
+        /// ⭐ <b>AND THE CEILING IS SIZED AGAINST THAT TAIL, MEASURED RATHER THAN GUESSED:</b> on the
+        /// shipped wreck the largest gap between <see cref="HistoryKind.Brownout"/> entries in the
+        /// visible tail is <b>13 against <c>GameSession.BuildLog</c>'s take of 14 — one slot to
+        /// spare</b>. A ceiling of 4 would double the gap to ~26 and drop a chronic grid out of the
+        /// fault log entirely. <c>ShipSystems.Fault</c> scans the WHOLE ring and is the fallback, but
+        /// the tail is what a player reads.</para>
+        ///
+        /// <para><b>A CODE CONSTANT, NOT A DEF FIELD</b> — M2-1's rule-not-tunable precedent and
+        /// <see cref="BrownoutQuietTicks"/>' own, for the same two reasons: a def scalar would move
+        /// P4/P5 for a number nobody tunes, and a def field pinned only by a checksum is not pinned
+        /// at all.</para>
+        /// </summary>
+        public const uint BrownoutMaxRunStep = 3;
+
+        /// <summary>
+        /// The window an episode entry keeps folding edges into, given how many STEPS its run has
+        /// already spent: <c>BrownoutQuietTicks &lt;&lt; min(step, BrownoutMaxRunStep)</c> — one
+        /// sim-hour for a fresh episode, doubling per step, 8 sim-hours at the ceiling.
+        ///
+        /// <para>⭐ <b>A ONE-OFF BROWNOUT IS UNCHANGED BY THIS ENTIRE PACKAGE.</b> Step 0's window
+        /// IS <see cref="BrownoutQuietTicks"/>, so an incident on a healthy grid reads exactly as it
+        /// did before — same entry, same tick, same window. Only a network that has already failed
+        /// to go quiet for a whole window earns a longer one. The backoff is a statement about how
+        /// CHRONIC the fault is, and it is derived from the ring rather than from a timer.</para>
+        /// </summary>
+        public static long BrownoutEpisodeWindow(uint runStep)
+            => BrownoutQuietTicks << (int)(runStep < BrownoutMaxRunStep ? runStep : BrownoutMaxRunStep);
 
         /// <summary>
         /// <b>THE DEFECT (measured on the shipped wreck, unmodified, before this method existed):</b>
@@ -472,6 +532,46 @@ namespace Perilune.Sim
         /// next real edge still flips), so a same-direction edge is a duplicate whether the window
         /// is open or shut.</para>
         ///
+        /// <para>⭐⭐ <b>THE SECOND PASS (2026-08-03) — THE CADENCE, WHICH IS THE HALF D6 LEFT OPEN.</b>
+        /// D6 bounded a flapping network to ONE entry per sim-hour. On a network that never stops
+        /// flapping that is still a ticker, just a slower one: measured on the unattended shipped
+        /// wreck, <b>23–24 brownout entries a sim-day, the ring's single dominant producer</b> — the
+        /// ring was 200/200 at day 4.50 with 2 of 4 boot lines left and 200/200 at day 6.00 with
+        /// none, its oldest surviving entry stamped tick ~1.71M. MECHANICS §13.44.6 filed that as
+        /// D6's own ledger to settle; this is the settlement.</para>
+        ///
+        /// <para><b>THE MECHANISM: THE EPISODE WINDOW BACKS OFF WHILE THE FAULT PERSISTS.</b> An
+        /// episode entry carries a RUN STEP (<see cref="BrownoutRunStep"/>) and folds edges for
+        /// <see cref="BrownoutEpisodeWindow"/><c>(step)</c> — one sim-hour at step 0, doubling per
+        /// step, capped at <see cref="BrownoutMaxRunStep"/> = 8 sim-hours. When an entry's window
+        /// shuts, the next edge decides what happens next, and it can decide it from the ring alone:
+        /// that entry is this network's NEWEST, so nothing has been recorded since its window shut.
+        /// An edge in the immediately following window ⇒ the network never went quiet for a whole
+        /// window ⇒ the SAME run, and the new episode opens at step + 1. An edge later than that ⇒ a
+        /// full window of provable silence ⇒ the run ended, and the next episode opens at step 0 with
+        /// the ordinary sim-hour. So a healthy grid's one-off brownout is bit-for-bit what it was
+        /// before this package, and only a chronic one earns a longer window.</para>
+        ///
+        /// <para>⭐ <b>IT BACKS THE CADENCE OFF RATHER THAN FOLDING THE RUN INTO ONE ENTRY, AND THE
+        /// ALTERNATIVE WAS MEASURED BEFORE IT WAS REJECTED.</b> Folding a permanent flap into a
+        /// single never-closing entry is the obvious shape and it is the one
+        /// <see cref="AlarmQuietTicks"/>' header already argues against for the klaxon:
+        /// <c>GameSession.BuildLog</c> renders the ring's last 14 entries POSITIONALLY, so an entry
+        /// that is never re-announced scrolls out of the tail as the ship's story grows — and on this
+        /// ring it would eventually be EVICTED, leaving a network that has been shedding for a week
+        /// with no representation in the log at all. Backoff keeps the announcement and pays ≤ 3
+        /// entries a sim-day for it.</para>
+        ///
+        /// <para>⛔ <b>THE IDEMPOTENCY RULE IS UNTOUCHED BY ALL OF THIS, AND THAT IS A STRUCTURAL
+        /// CLAIM RATHER THAN AN INTENTION.</b> The rule consults ONE entry (this network's newest
+        /// <see cref="HistoryKind.Brownout"/> entry), reads ONE bit (direction, bit 0, at the same
+        /// place it has always been), and answers BEFORE any window or step is computed — the
+        /// backoff is entirely downstream of the <c>return</c>. Nothing about which entry is
+        /// consulted changed either: the scan predicate is still kind + <see cref="HistoryEntry.SubjectA"/>.
+        /// What DID change is in the rule's favour — with 3 entries a sim-day instead of 24, this
+        /// network's newest brownout entry survives in the ring far longer, so RESIDUAL 1 below gets
+        /// strictly narrower.</para>
+        ///
         /// <para>⚠️ <b>TWO RESIDUALS, AND THE SECOND ONE IS REACHABLE ON THE SHIPPED WRECK. NEITHER
         /// IS CLOSED BY THIS RULE.</b></para>
         ///
@@ -512,23 +612,47 @@ namespace Perilune.Sim
         {
             uint net = (uint)e.NetworkId;
 
+            // The step the NEXT episode of this network opens at. 0 unless the scan below finds that
+            // this network's run is still alive — see THE RUN STEP in the header.
+            uint nextStep = 0u;
+
             for (int i = Entries.Count - 1; i >= 0; i--)
             {
                 var prior = Entries[i];
                 if (prior.Kind != (byte)HistoryKind.Brownout || prior.SubjectA != net) continue;
 
-                // IDEMPOTENCY FIRST, and OUTSIDE the window test — see the header. Edges alternate
+                // IDEMPOTENCY FIRST, and OUTSIDE every window test — see the header. Edges alternate
                 // in any uninterrupted run, so a same-direction edge is a restore/rebuild duplicate.
+                // ⛔ NOTHING THIS PACKAGE ADDED SITS ABOVE THIS LINE, AND THAT IS THE POINT: the rule
+                // reads the same field (bit 0) off the same entry (this network's newest) and answers
+                // before any notion of a window or a step exists. Its decision function is unchanged.
                 if (BrownoutIsShedding(prior.SubjectB) == e.InBrownout) return;
 
-                if (tick - prior.Tick >= BrownoutQuietTicks) break; // the episode timed out
-                uint word = EpisodeWord(BrownoutEdges(prior.SubjectB) + 1, e.InBrownout);
-                Entries[i] = new HistoryEntry(prior.Tick, BrownoutEpisodeLine(e.NetworkId, word),
-                                              (byte)HistoryKind.Brownout, net, word);
-                return;
+                uint step = BrownoutRunStep(prior.SubjectB);
+                long window = BrownoutEpisodeWindow(step);
+                long gap = tick - prior.Tick;
+
+                if (gap < window)
+                {
+                    uint word = EpisodeWord(BrownoutEdges(prior.SubjectB) + 1, e.InBrownout, step);
+                    Entries[i] = new HistoryEntry(prior.Tick, BrownoutEpisodeLine(e.NetworkId, word),
+                                                  (byte)HistoryKind.Brownout, net, word);
+                    return;
+                }
+
+                // ⭐ THE EPISODE TIMED OUT — SO ASK WHETHER THE RUN DID. `prior` is this network's
+                // NEWEST brownout entry, so no edge has been recorded since its window shut: an edge
+                // landing in the very next window means the network never went quiet for a whole one
+                // and this is the SAME failure still going, which earns a longer window. An edge
+                // arriving later than that proves a full window of silence, so the run is over and
+                // the next episode starts at step 0 with the ordinary sim-hour.
+                nextStep = gap < window * 2
+                    ? (step < BrownoutMaxRunStep ? step + 1u : BrownoutMaxRunStep)
+                    : 0u;
+                break;
             }
 
-            uint first = EpisodeWord(1, e.InBrownout);
+            uint first = EpisodeWord(1, e.InBrownout, nextStep);
             Add(tick, BrownoutEpisodeLine(e.NetworkId, first), HistoryKind.Brownout, net, first);
         }
 
@@ -536,9 +660,38 @@ namespace Perilune.Sim
 
         /// <summary>
         /// A <see cref="HistoryKind.Brownout"/> entry's <see cref="HistoryEntry.SubjectB"/> packs
-        /// TWO facts: <b>bit 0 is the direction the episode currently sits in</b> (1 = shedding),
-        /// and <b>bits 1.. are the edge count</b>. Both are hashed and both are saved, because they
-        /// are the same already-captured field — no <c>StateVersion</c> bump, no new chapter.
+        /// THREE facts: <b>bit 0 is the direction the episode currently sits in</b> (1 = shedding),
+        /// <b>bits 1–3 are the run's backoff step</b> (<see cref="BrownoutRunStep"/>), and
+        /// <b>bits 4.. are the edge count</b>. All three are hashed and all three are saved, because
+        /// they are the same already-captured field — no <c>StateVersion</c> bump, no new chapter.
+        ///
+        /// <para>⚠️⚠️ <b>THE STEP FIELD MOVED THE EDGE COUNT'S BITS, AND A SAVE WRITTEN BEFORE THIS
+        /// PACKAGE READS BACK DIFFERENTLY BECAUSE OF IT.</b> The count shifted UP by three bits, so
+        /// an old word decoded here reads its edge count <b>8× too SMALL</b> (a right shift of 4
+        /// applied to a value packed at a shift of 1), and the count's low three bits read as a run
+        /// step. Driven through this class's own decoder: old <c>(edges &lt;&lt; 1) | dir</c> with
+        /// edges 15 → 1, 8 → 1, 7 → 0, 2 → 0; edges 1036 → 129, step 4.
+        ///
+        /// <para>⛔ <b>AND THAT IS NOT ONLY A WRONG NUMBER IN A PROSE LINE — IT FLIPS
+        /// <see cref="BrownoutEpisodeRecordsAFault"/> ON ONE BAND, WHICH IS THE HAZARD THIS FILE
+        /// ALREADY NAMES FOR WRAP AND MISSED FOR THE SHIFT.</b> That predicate is
+        /// <c>shedding || edges &gt;= 2</c>. A pre-package episode that ended RECOVERED with
+        /// <b>2–15 edges</b> decodes to 0 or 1 edges with the direction bit still false, so it goes
+        /// <c>true → false</c> and <c>ShipSystems.IsNotAFault</c> silently drops a real brownout
+        /// loaded from an old save out of the MOSS ledger's LAST FAULT column. Swept, driven: every
+        /// old word in that band flips, edges ≥ 16 and every shedding word do not. Old single-edge
+        /// pure recoveries were already not-a-fault, so they are unaffected.</para>
+        ///
+        /// <para><b>THE SCOPE, STATED HONESTLY RATHER THAN MINIMISED.</b> The save FORMAT is
+        /// unchanged — same chapter, same field, same width — and only what this class reads out of
+        /// a field it owns moved; that is the trade D6 itself made when <c>SubjectB</c> went from a
+        /// hard 0 to an episode word without a version bump. It can never fail a LOAD, and the
+        /// direction bit — the one datum determinism depends on — is at the same place it always was,
+        /// so the idempotency rule is correct on an old save. What it CAN do on an old save is
+        /// understate one episode's count, mis-size one episode's window, and hide one band of
+        /// recovered episodes from LAST FAULT until that entry evicts. ⭐ <b>No save/load ships to a
+        /// player before M5-7</b>, which is why this is documented rather than versioned — but a lane
+        /// that lands persistence owes this band a migration or a <see cref="StateVersion"/> bump.</para>
         ///
         /// <para>⛔ <b>THE DIRECTION BIT CANNOT BE DERIVED FROM THE COUNT'S PARITY.</b> An earlier
         /// draft of this package assumed it could ("odd = shedding"). It is false: an episode whose
@@ -547,10 +700,34 @@ namespace Perilune.Sim
         /// shipped wreck: an entry at 1036 edges read "recovered" while one at 891 read "shedding",
         /// and another at 647 read "recovered" — both parities on both sides.</para>
         /// </summary>
-        public static uint EpisodeWord(uint edges, bool shedding) => (edges << 1) | (shedding ? 1u : 0u);
+        public static uint EpisodeWord(uint edges, bool shedding, uint runStep = 0u)
+            => ((edges <= MaxFoldedEdges ? edges : MaxFoldedEdges) << EdgeShift)
+             | ((runStep & RunStepMask) << 1)
+             | (shedding ? 1u : 0u);
 
-        /// <summary>Edges folded into a brownout episode entry (≥ 1).</summary>
-        public static uint BrownoutEdges(uint episodeWord) => episodeWord >> 1;
+        // The layout, in one place so no caller open-codes it. bits: [31..4] edges | [3..1] run step
+        // | [0] direction. Three bits of step is one more than BrownoutMaxRunStep can produce, so a
+        // ceiling change of one costs no re-layout; the edge field still holds 268 435 455, which at
+        // the wreck's measured 22 562 edges/sim-day is 11 900 sim-days — it saturates rather than
+        // wrapping, because a wrapped count could read as a PURE RECOVERY and change what
+        // BrownoutEpisodeRecordsAFault says about a network that never recovered.
+        private const int EdgeShift = 4;
+        private const uint RunStepMask = 0x7u;
+        private const uint MaxFoldedEdges = uint.MaxValue >> EdgeShift;
+
+        /// <summary>Edges folded into a brownout episode entry (≥ 1), saturating.</summary>
+        public static uint BrownoutEdges(uint episodeWord) => episodeWord >> EdgeShift;
+
+        /// <summary>
+        /// ⭐ How many steps of BACKOFF this episode's run has already spent — 0 for a fresh
+        /// episode, and the input to <see cref="BrownoutEpisodeWindow"/>. It is stored rather than
+        /// derived for the same reason the edge count is: the ring is the only state this coalescer
+        /// has, and a private field would be <c>PowerSystem._wasBrownout</c>'s disease (unsaved
+        /// state deciding what gets written). Because it rides in the already-captured, already-folded
+        /// <see cref="HistoryEntry.SubjectB"/>, a save taken mid-run restores mid-run with the run's
+        /// backoff intact and <see cref="StateVersion"/> stays at <b>2</b>.
+        /// </summary>
+        public static uint BrownoutRunStep(uint episodeWord) => (episodeWord >> 1) & RunStepMask;
 
         /// <summary>Whether the episode entry's network is shedding as of its newest folded edge.</summary>
         public static bool BrownoutIsShedding(uint episodeWord) => (episodeWord & 1u) != 0u;
@@ -615,8 +792,8 @@ namespace Perilune.Sim
                     ? BrownoutFaultLine(networkId)
                     : $"Power network {networkId} recovered.";
             return shedding
-                ? $"Power network {networkId} browned out — non-critical loads shed; {edges} changes within the hour, still shedding."
-                : $"Power network {networkId} browned out — non-critical loads shed; {edges} changes within the hour, since recovered.";
+                ? $"Power network {networkId} browned out — non-critical loads shed; {edges} changes in this episode, still shedding."
+                : $"Power network {networkId} browned out — non-critical loads shed; {edges} changes in this episode, since recovered.";
         }
 
         /// <summary>

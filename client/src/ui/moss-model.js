@@ -1207,7 +1207,7 @@ function faultTokens(m, id) {
  *
  * <p><b>THE FIX IS TO STOP DOUBLE-SOURCING, NOT TO DEDUPE.</b> A dedupe would have to match the
  * two costumes by TEXT, and the text is not stable: a brownout EPISODE entry is rewritten in place
- * as its edges accumulate (`HistorySystem.BrownoutEpisodeLine` — "…; 748 changes within the hour,
+ * as its edges accumulate (`HistorySystem.BrownoutEpisodeLine` — "…; 748 changes in this episode,
  * still shedding"), so a `log` tail taken one tick after a `chron` snapshot legitimately disagrees
  * with it word for word. Measured on the running wreck: the tail said "344 changes" where the
  * chronicle said "144". A text join would have let exactly the liveliest line through twice.</p>
