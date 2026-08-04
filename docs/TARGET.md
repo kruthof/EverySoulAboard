@@ -8,7 +8,8 @@ optimization target. A work package exists to move a row in §3 or a gate in
 
 ## 1. The game, in order
 
-**Every Soul Aboard is RimWorld × Factorio on a wrecked ship — built in that order.**
+**Every Soul Aboard is RimWorld × Factorio × This War of Mine on a wrecked ship — built in
+that order.** (Third axis recorded 2026-08-04, OD-R.)
 
 1. **Phase 1 (NOW): the RimWorld loop.** Order → pawn does it → the ship visibly changes.
    You wake one pawn in a post-raid cryo wreck; you decide who does what (work priorities,
@@ -28,9 +29,20 @@ optimization target. A work package exists to move a row in §3 or a gate in
    to automate* stays a hard choice. Binding three-clause test for any automation feature:
    removes a chore never a decision · carries a specific soul's fingerprint · gated behind
    scarcity. (`docs/design/perilune-automation-and-souls.md` is the design authority.)
-3. **Always: people, not pawns.** Crew are persons — memory, relationships, a chronicle, a
-   voice (LLM-ready, never LLM-required). Ship playable fully offline; all crew interaction
-   through one Persona window.
+3. **Always: people, not pawns — and This War of Mine is the register they live in**
+   (OD-R, 2026-08-04). Crew are persons — memory, relationships, a chronicle, a voice
+   (LLM-ready, never LLM-required). The survival TONE is This War of Mine's: scarcity that
+   cannot be fully relieved, choices about who to wake and who to risk, consequences
+   carried by named people and told by the Chronicle — endurance, not power fantasy. The
+   premise already carries it (everyone awake is dead · thaw triage · over-thaw punishes
+   itself · `NO AIR AT THE WORKSITE — SHE MAY DIE`). **Mechanism scope is UNCHARTERED**: it
+   lands where the roadmap already points — M4 THE PERSON (mood gating behaviour, Persona,
+   Chronicle reachable) and M5's ending — and every M4/M5 package charter names which of
+   the three registers it serves. RimWorld stays the mechanism authority; TWoM is the tonal
+   authority for how M4/M5 get charted. No new systems (moral-choice engine, mental-break
+   table, scavenge cycle) before the M4-1 charter; file ideas against M4-1/M5-1, never
+   implement from this paragraph. Ship playable fully offline; all crew interaction through
+   one Persona window.
 
 **The premise** (`perilune-wreck-start.plan.md`): the MSV *Perilune* was raided under way;
 everyone awake is dead, the machines are shot, MOSS is dark. One pod cycles. The loop:
@@ -49,6 +61,9 @@ automation surface is the door to every remaining soul.
 - **No dice in outcomes.** A jam is a computed consequence of a hashed mood/skill state,
   never a runtime roll. The Director schedules; physics never changes with difficulty.
 - **No Sims micro-needs, no cosmetic operators** (a decorative −5% is worse than nothing).
+- **No misery meters.** This War of Mine is a register, not a mechanics import: mood stays
+  a computed consequence (T12's shape), never a bar the player feeds; sadness that changes
+  no decision is a decoration (the cosmetic-operator rule, applied to tone).
 - **No planetfall colony game, no 3D, no multiplayer.**
 - **No new UI off the standard surface** (Overview + Room Zoom; test-enforced).
 
