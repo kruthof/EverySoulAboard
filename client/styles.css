@@ -707,6 +707,9 @@ canvas{
 .moss-notes{margin-top:1.1em;border-top:1px dashed var(--moss-faint);padding-top:.6em}
 .moss-notes-head{color:var(--moss-faint);letter-spacing:.18em;margin-bottom:.3em}
 .moss-note{color:var(--moss-dim);white-space:normal;max-width:92ch;margin-top:.5em}
+/* The POD BAY's poll has stood down and the rows above are a photograph — amber, the same
+   ATTEND/DEGRADED weight the ledger's warn state uses, because a stale census IS a warning. */
+.moss-note.moss-stale{color:var(--moss-warn);letter-spacing:.08em}
 /* ---- M3-4 THE POD BAY. Same monospace grid as the ledger; the WHY column is the only one allowed
    to run long, so it is the one that never gets a fixed width. ---- */
 .moss-subhead-row{display:flex;align-items:baseline;gap:2ch;justify-content:space-between}
