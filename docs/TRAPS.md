@@ -135,6 +135,17 @@ shared event object across capture/target/bubble).
   (48)`, or worse, a rig silently talks to the PREVIOUS, poisoned host. **SIGTERM + poll
   the port free before starting the next.**
 
+**Addendum (2026-08-04, session H — twelve overnight lanes, one more receipt):**
+
+- **A pipe's exit code is the WRAPPER'S, not the command's.** `./ci.sh 2>&1 | tail -45`
+  exited **0 on a gate that had been killed** (tail's own success), and the same lane's
+  mutation runner reported `fail=0` for four mutations for the identical reason — two
+  false greens in one lane, both caught only because the implementer re-ran unpiped.
+  Sibling shape: `nohup setsid …` on macOS (no `setsid`) silently ran nothing, and an
+  agent then watched the log's LINE COUNT grow-check for 18 minutes without reading the
+  one line it contained (`setsid: No such file or directory`). **Read exit codes off the
+  process, never through a pipe; a count is not evidence — read the content.**
+
 **Addendum (2026-08-03, session G — four parallel lanes, three more receipts):**
 
 - **A kill filter on the PROJECT name hits every sibling running the same project.** An

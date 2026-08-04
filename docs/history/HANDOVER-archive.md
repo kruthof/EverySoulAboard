@@ -287,3 +287,15 @@ Overview-dock-bare badge (merged `41bc3d0`), b3-R's log silence (merged `025e529
 owner-ruled), the palette armed-state (merged `472721d`, owner-approved), deep-capsule art
 (owner: intact correct), headline order (owner: death first stands). All other open items
 were carried forward into session G's rewritten block.)*
+
+---
+
+## Archived 2026-08-04 (session H ritual): session G's current-state block
+
+*(Session G's block is superseded by session H's rewrite; its log row stays live. Gate then:
+main `5d9deb0`, 1850 dotnet + 1257 node. Session G's four merges: overview-dock-badge
+`41bc3d0` · ring-saturation `c316936` · palette-armed-state `472721d` ·
+b3r-dropped-order-chronicle `025e529`. Everything open from that block was either closed by
+session H's twelve merges (ring horizon, palette collisions ×3 classes, build silence,
+thaw teaching, MOSS console scrolling/spam, doors directory) or carried into session H's
+rewritten lists.)*
