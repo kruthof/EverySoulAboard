@@ -1981,6 +1981,14 @@ the ship getting *cold* and nothing warms it back up. Radiators have a 10 °C fl
 not**, and nothing heats a room deliberately. The message also tells the player the exact
 opposite of what is happening.
 
+> ⭐ **RECONCILED 2026-08-03 (§13.44): the LOG no longer records each firing — the SHIP still does
+> them.** Repeated alarms coalesce into one entry per sim-hour run (`HistorySystem.RecordAlarm`),
+> because 197 copies of this one sentence had filled the whole 200-entry ring by day 1.4 on the
+> shipped wreck and evicted every repair, boot line and real fault from it. The firing counts above
+> are unchanged and still the defect underneath: re-measured on `--ship wreck`, **2 512 firings in
+> three sim-days, first at tick 1 085 400 (day 1.26)** — the day-1.21/2,579 figures here are the
+> SLICE's and are kept as such. Nothing warms the ship; §13.44.5 files that half.
+
 ### 13.3 `FollowPlayer` is written, saved and hashed — and read by nothing
 
 `EffectValidator.cs:38` sets `mind.FollowingPlayer`. It is persisted
@@ -6615,3 +6623,224 @@ Two consequences documented rather than left to be found:
   now carries the network id, so a brownout could be attributed structurally instead of by prose;
   the literal is retained because narrowing that join is a change to a documented contract with its
   own blast radius. FILED.
+
+### 13.44 ⭐⭐ A standing klaxon stops eating the ship's log — the alarm coalescer (ring saturation, 2026-08-03)
+
+**THE PLAYER SENTENCE.** *A sustained thermal alarm reads as one line that stays current, not two
+hundred copies — and the log's real story survives a day at speed.*
+
+D6 (§13.8.1) took the brownout ticker out of the ring. The same ring then filled with a DIFFERENT
+repeated sentence, from the other end of the sim. This is that defect and its close; the mechanism
+is D6's, deliberately, and `HistorySystem.RecordAlarm`'s header carries the full argument.
+
+#### 13.44.1 THE DEFECT, MEASURED ON THE SHIPPED WRECK
+
+`--ship wreck` is what `./play.sh` boots and **no pin covers it**. Driven UNATTENDED — the OD-H
+default, work grid OFF, which is the ship a playtester looks at before opening the WORK tab —
+through `SimHost.Build(…, ShipChoice.Wreck)` so the real `content/core/SimDefs/rules/overheat_guard.moss`
+is loaded (a bare `ShipPlanBuilder` stack carries no `DesignerRuleSystem` and reports zero alarms —
+§13.21's verification note records the same trap, and it is why the fixtures here boot through the
+host).
+
+`overheat_guard` fires `alarm("THERMAL LOAD HIGH — check radiators")` whenever `ship.heat < 0.5`,
+every 60 s. On the wreck `ship.heat` goes 1.000 → 0.667 (by tick 777 601) → 0.333 and never comes
+back, so the **first firing lands at tick 1 085 400 (day 1.26) and one arrives every 600 ticks
+forever** — 2 512 firings in three sim-days. Every one of them appended a ring entry.
+
+| at tick 1 300 000 (day 1.50), unattended wreck | BEFORE | AFTER |
+|---|---|---|
+| ring total | **200 / 200 — FULL** | **49** |
+| `Alarm` | 197 | 12 |
+| — the klaxon | **197 identical copies of one sentence** | 6 entries (one per sim-hour, ×60 folded each) |
+| — `MACHINE FAILURE` (distinct real faults) | **0 — all evicted** | **6, all surviving** |
+| `Brownout` | 3 | 33 |
+| `Generic` (the four tick-0 boot lines) | **0 — all evicted** | **4, all surviving** |
+| ring window | ticks 1 182 000–1 299 600 (3.3 sim-h) | ticks 0–1 282 471 (the whole run) |
+
+At three sim-days, before: 197 `Alarm` + 3 `Brownout`, nothing else. After: 128 entries — 55
+`Alarm` + 69 `Brownout` + 4 `Generic`, still under the 200 cap, so **nothing is evicted at all** —
+⛔ **at day 3. That stops being true at day ~4.2 and §13.44.6's last block has the numbers; do not
+read this row as a permanent property.**
+The BEFORE column is the shipped tree with `RecordAlarm` reverted to its pre-fix body, measured in
+place (applied, run, restored from an in-memory copy — TRAPS 2), not a recollection.
+
+Both consumers read this one ring, so both drowned at once and both are fixed at once: the
+Chronicle (`Chronicle.Render`) and the MOSS fault log, whose `GameSession.BuildLog` renders the ring's
+**last 14 entries** — i.e. fourteen copies of the same sentence.
+
+⚠️ **WITH THE WORK GRID ON THE DEFECT DOES NOT REPRODUCE, and that is why these fixtures are
+unattended.** With `GiveAllCrewAllWork()` the crew keep patching the radiators, `ship.heat` never
+falls under 0.5 and `overheat_guard` fires **zero** times in three sim-days (measured). That is the
+exact opposite of D6's fixture in `ChronicleSignalTests`, which needs the grid ON to produce a
+repair to lose. A lane that reuses one fixture for both defects will measure nothing.
+
+#### 13.44.2 THE FIX — one entry per RUN, D6's shape
+
+`Systems/HistorySystem.cs:RecordAlarm`. An incoming alarm scans back for an entry this same writer
+could have produced for this same alarm; if the run it belongs to opened within
+`HistorySystem.AlarmQuietTicks` (36 000 ticks = one sim-hour, a **code constant** per M2-1's
+rule-not-tunable precedent and D6's `BrownoutQuietTicks` precedent, so P4/P5 cannot move), the entry
+is **rewritten in place**: the tick stays at the run's first firing and `SubjectB` carries the count.
+
+- **IDENTITY IS THE RENDERED LINE.** `AlarmRaisedEvent` is two strings and carries no ids, so there
+  is no structural key; a candidate matches iff `prior.Text == AlarmLine(line, prior.SubjectB)`.
+  That is "same rule id + same message" exactly, since the line is `"{SourceId}: {Message}"`.
+  ⛔ It is **not** a text-dedupe of the ring: two runs separated by a quiet hour are two entries.
+  Hashing the text into `SubjectA` was rejected — a collision risk in a HASHED field.
+- ⭐⭐ **A FIRST FIRING IS BIT-IDENTICAL TO THE PRE-COALESCING WRITER.** `AlarmRepeatWord` encodes one
+  firing as **0**, so a single-firing alarm stores `(tick, Alarm, 0, 0)` exactly as `Add` did and
+  folds into `StateChecksum` identically. **Only a second firing of the same line moves a hash** —
+  the defect's own case and nothing else. This is what makes the pin survey below structural.
+- **The base line stays a PREFIX** (`"…; 60 times within the hour."` is appended). `ShipSystems.Fault`
+  searches an entry's text for a device NAME and `Summarize` truncates at 56 characters; a prefixed
+  count would have pushed the name past the truncation — §13.43.3's class of silent-column failure.
+- **No new saved state, `StateVersion` stays 2.** The throttle is derived from the ring, which is
+  already a save chapter and already hashed. D6's argument, unchanged.
+
+⚠️ **WHY THERE IS NO IDEMPOTENCY RULE HERE, unlike `RecordBrownout`.** D6 needed one because
+`PowerSystem` is not `IStatefulSystem` and re-publishes an edge after a reload (§13.43.2). Every
+alarm publisher was checked against that shape: `DesignerRuleSystem` **is** stateful and saves its
+`every` timers, latches and halt flags (SYSS blob v1), `ScriptRuntime` likewise; `MachineWearSystem`
+fires on a saved `Device.Condition` crossing; `NeedsSystem` fires once per death. None can
+re-publish an alarm a live twin did not — and a drop rule invented anyway would swallow the second
+REAL firing of an alarm that legitimately repeats.
+
+⭐ **THE WINDOW IS MEASURED FROM THE RUN'S FIRST FIRING, NOT ITS LAST, AND THAT IS A CHOICE AGAINST A
+LONGER-LIVED ENTRY.** Measuring from the last firing would give a permanently-sounding alarm exactly
+ONE entry — which sounds better and is worse: `BuildLog` renders the last 14 entries POSITIONALLY, so
+an entry frozen at its old ring position scrolls out of the tail as the ship's story grows and a
+still-sounding alarm becomes INVISIBLE. Re-announcing once per sim-hour keeps a standing fault in the
+tail and in every day of the Chronicle, at ≤ 25 entries per sim-day against a 200 ring.
+
+#### 13.44.3 THE PIN MATRIX — all five held, and the holds are NOT all the same kind
+
+| pin | before | after | verdict |
+|---|---|---|---|
+| **P1** scenario `--days 3 --seed 42` | `7bdd0d6f7756dfdc` | `7bdd0d6f7756dfdc` (twin match) | **HELD — VACUOUS, driven** |
+| **P2** perilune tick-3000 | `cb09b584a5f15e52` | **HELD** | held — vacuous (no alarm exists) |
+| **P3** slice tick-3000 | `43a1a5c25713faec` | **HELD** | held — vacuous (no alarm exists) |
+| **P4** defs defaults | `661fcdd4b89f1e87` | **HELD** | genuinely inert (no def field) |
+| **P5** defs rules-inclusive | `558a1c0a4985f5ea` | **HELD** | genuinely inert (no def field) |
+
+⛔ **WHY P1's HOLD IS VACUOUS, MEASURED RATHER THAN ARGUED.** `Report` in `hosts/scenario/Program.cs`
+was instrumented to census the ring at every day boundary (patched, run, restored from an in-memory
+copy with the mtime moved FORWARD — TRAPS 2):
+
+```
+SCRATCH-P1 ring=200 alarmEntries=0 coalescedAlarms=0     # days 0, 1, 2 and 3
+```
+
+The pinned fixture's 200-entry ring holds **zero `Alarm` entries at every day boundary** — it is
+200/200 `Bond`, as §13.43.1 measured for D6. The fixture DOES load the rule (`defs: 558a1c0a4985f5ea
+(18 files, 0 problems, 1 rules)`); that ship simply never gets cold. And the stub control was run,
+because a count and a hash are different evidence: **with `RecordAlarm`'s coalescer stubbed out to
+the pre-fix `Add`, P1 reads `7bdd0d6f7756dfdc` — identical to the shipped tree, to the digit.**
+
+**WHY P2/P3 HOLD, and it is the window rather than a dead system.** Measured at tick 3000 on all
+three authored plans booted through `SimHost`: **0 `AlarmRaisedEvent`s on every one of them**, and
+the rings are `perilune` 0 entries, `slice` 18 (13 `RelationshipChanged` + 4 `Bond` + 1 `Goal`),
+`wreck` 4 (`Generic`). The wreck's first alarm is at tick 1 085 400 — **362× later than the golden**.
+
+⛔ **DO NOT READ ANY OF THIS AS "THE PINS COVER ALARM COALESCING". THEY DO NOT.** This is M2-12's
+*"no pin sees the generation term"* in its fourth costume, and as with D1/D6 the affected surface is
+the SHIPPED ship. The instruments are `RingSaturationTests` and nothing else.
+
+#### 13.44.4 A PRE-EXISTING REPLAY DIVERGENCE THIS LANE MEASURED AND DID NOT CAUSE
+
+`TheShippedWreck_ReplaysBitIdentically_WhenTheSaveIsTakenMidAlarmRun` asserts the ALARM entries
+across a save/reload, not the whole `StateHash`, and the reason is measured. At save tick 1 100 000
+(mid-run) with the documented §13.10 matched recompute, exactly **one** ring entry differs after
+6 000 ticks of run-on, and it is a `Brownout` one:
+
+| | live | loaded |
+|---|---|---|
+| ring[36] (`t=1066381`, net 1) | word `2225` — 1112 edges | word `2221` — 1110 edges |
+
+Same tick stamp, two fewer edges published by the reloaded sim — §13.10's last-bit atmosphere drift
+amplified through `PowerSystem`'s shedding threshold, not a duplicate edge. ⭐ **The control was
+DRIVEN: with `RecordAlarm`'s coalescer reverted to the pre-fix writer the same leg produces the same
+divergence at the same index with the same two numbers**, so it predates this lane and belongs to
+D6's filed residual family (§13.43.2). The alarm entries themselves are bit-identical on both legs,
+and the **control leg (save at tick 100 000, before any alarm) replays on the WHOLE `StateHash`,
+every system**. FILED, not chased — the honest fix is the same stateful-`PowerSystem` package.
+
+⚠️ **AND THE TWIN'S SYSTEM ARRAY MUST BE THE HOST'S.** `SimHost` brackets the authoritative stack
+with three host wrappers (EffectPump first, Memory + Eulogy last), so a hand-rolled
+`SystemStack.CreateDefault` array is OFF BY ONE against the save's chapters. Measured: with a
+hand-rolled stack even the CONTROL leg failed to replay — which would have been read as this
+package's defect. A second `SimHost.Build` is the correct twin.
+
+#### 13.44.5 ⛔⛔ THE RESIDUAL THIS PACKAGE OWNS — a save on a firing tick never re-converges
+
+Found by independent review, re-measured here. **Filed, not chased** (PROCESS §2 "SHIP IT FILED"),
+on D6 residual 2's precedent — and like that one it is worth reading before touching this code.
+
+**THE MECHANISM, and it is the MIRROR of D6's.** §13.43.2's defect was an event *re-published* after
+a reload. This is the other direction: **the event bus is not a save chapter.** An
+`AlarmRaisedEvent` published on the very tick a save is taken is never written into the save, so the
+loaded sim publishes one FEWER firing than its uninterrupted twin. No idempotency rule can close it
+— dropping a duplicate is possible, reconstructing a lost event is not — which is exactly why the
+answer here is a filed residual rather than a mechanism. `RecordAlarm`'s header carries the same
+statement, and an earlier draft of that header surveyed only direction 1: CLAUDE.md's **fourth
+shape**, a survey whose scope excludes the violation.
+
+**MEASURED ON THE SHIPPED WRECK** (`SimHost.Build(… Wreck)`, real `SaveWriter`→`SaveReader`,
+§13.10's matched recompute, 200 000 ticks of run-on; the klaxon fires on 1 085 400 + 600k):
+
+| save tick | live | loaded | verdict |
+|---|---|---|---|
+| **1 085 400** — the run's OPENING firing tick | `1085400/b60` | `1086000/b60` | tick stamp AND count |
+| **1 086 000** — a later firing tick | `1085400/b11` | `1085400/b10` | count alone |
+| **1 085 700** — a NON-firing tick (control) | — | — | **clean**, alarms and whole `StateHash` |
+
+⭐ **AND IT COMPOUNDS RATHER THAN HEALING.** Over 200 000 ticks of run-on from the 1 085 400 save,
+**every subsequent run inherits the 600-tick offset** — live `1085400 · 1121400 · 1157400 · 1193400 ·
+1229400 · 1265400` against loaded `1086000 · 1122000 · 1158000 · 1194000 · 1230000 · 1266000` — and
+the trailing counts end 34 against 33.
+
+⚠️ **COALESCING IS WHAT MAKES IT PERMANENT — §13.8.1's D6 sentence verbatim, and it is a DRIVEN
+control, not an analogy.** With `RecordAlarm`'s coalescer reverted to the pre-fix `Add`, the same leg
+reads **`ALARMS_EQUAL=True HASH_EQUAL=True`**: each firing was its own entry, so the mis-stamped one
+evicted within the ring's turnover. Folding them into an entry that survives the whole run converts a
+self-healing perturbation into a compounding one.
+
+**WIDTH: 1 tick in 600 — 0.17 %** — and unlike D6's residual 2 (1–11 ticks per ~36 000) it does not
+sit at a rare boundary: on the shipped wreck the klaxon sounds **continuously** from tick 1 085 400 to
+end of run, so every 600th tick is a bad save tick for as long as the ship is cold.
+
+**THE CLOSER is the same family as D6's residual 2** — save-boundary event delivery (draining or
+persisting the in-flight event buffer), not a consumer-side rule in `HistorySystem`. Both residuals
+now argue for the same package. ⚠️ `RingSaturationTests.TheShippedWreck_ReplaysBitIdentically_…`
+samples only NON-firing save ticks and its header says so as a blind spot: **it would stay green
+through every instance of this defect.** If the residual is ever closed, add a firing-tick leg there
+and delete this section — do not widen the existing legs.
+
+#### 13.44.6 What the package deliberately does NOT do
+
+- **No fix for the GENERATOR.** The wreck still gets cold and `overheat_guard` still fires 2 512
+  times in three sim-days (§13.2). The log stopped recording each one; the ship still does them.
+  Closing that is a content/thermal decision, not a log one. FILED.
+- **No change to the alarm's TEXT**, which still tells the player the exact opposite of what is
+  happening ("THERMAL LOAD HIGH" while the ship freezes) — §13.2's standing observation, untouched.
+- **No change to `MaxEntries`.** 200 was never the problem; what filled it was.
+- **No alerts-bar / alert-stack work.** RimWorld's split (§11.1) says a standing condition belongs on
+  the alert stack and this ring is the letter channel; D2's bar and M5-2's stack own that half.
+- **No touch to `CitizenMemory`**, whose separate 42-`alarm` eviction problem (§13.8) is a different
+  store with a different rule and is STILL OPEN.
+
+⛔ **AND IT DOES NOT MAKE THE RING PERMANENTLY UNSATURATED — say this out loud, because §13.44.1's
+"nothing is evicted at all" is true AT DAY 3 AND FALSE LATER.** Driven on the same unattended wreck:
+
+| | day 1.50 | day 3.00 | day 4.50 | day 6.00 |
+|---|---|---|---|---|
+| ring total | 49 | 128 | **200 — FULL** | **200** |
+| tick-0 boot lines surviving | 4 | 4 | **2** | **0** |
+| `Alarm` / `Brownout` | 12 / 33 | 55 / 69 | 93 / 105 | 103 / 97 |
+
+So the package moves the saturation horizon from **day ~1.4 to day ~4.2**, roughly a 3× extension,
+and after that the ring turns over again. The dominant producer is then **`Brownout` at ~24 entries
+per sim-day** (D6's own ≤ 25/day episode cap) rather than the klaxon, whose coalesced entries run at
+~25/day against the same cap — together ~48/day against a 200 ring. **FILED, not chased:** a second
+pass at the brownout cadence (or at `MaxEntries`) is the follow-on, and it is D6's ledger to settle,
+not this one's. For the 2026-08-07 playtest the horizon is far past the session; for a long unattended
+run it is not.
