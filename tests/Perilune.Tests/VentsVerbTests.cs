@@ -259,7 +259,15 @@ namespace Perilune.Tests
             {
                 var parts = row.Split(new[] { " · " }, StringSplitOptions.None);
                 Assert.That(parts.Length, Is.InRange(3, 4), "malformed row: " + row);
-                var v = vents.First(x => x.Name.ToUpperInvariant() == parts[0]);
+                // ⚠️ GUARDED, NOT `First(…)` — trap 3. A row naming something that is not a vent
+                // (a widened filter) made `First` throw a raw InvalidOperationException, which is a
+                // CRASH-red: it reads as a broken test rather than as the semantic failure it is.
+                // The lookup now says WHICH row it could not join and to what.
+                var v = vents.FirstOrDefault(x => x.Name.ToUpperInvariant() == parts[0]);
+                Assert.That(v, Is.Not.Null,
+                    "the listing printed a row for `" + parts[0] + "`, which is not a vent this ship "
+                    + "carries — the whole row: " + row + "\nthe ship's vents: "
+                    + string.Join(", ", vents.Select(x => x.Name.ToUpperInvariant())));
                 Assert.That(parts[1], Is.EqualTo("DECK " + v.Pos.Z.ToString(ic)
                     + " AT " + v.Pos.X.ToString(ic) + "," + v.Pos.Y.ToString(ic)),
                     "the place on " + row + " is not where " + v.Name + " stands");

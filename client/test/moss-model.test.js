@@ -1669,9 +1669,14 @@ test('vents: case, spacing and stray-argument tolerance, like every other nav ve
 test('vents: the ship\'s listing reaches the transcript verbatim, on the exec channel', () => {
   // ⭐ NO NEW WIRE SHAPE — the listing rides `MossExec`'s existing stream-1 lines, which
   // `reduceMossEvent` already folds. This test is what says the client needs no new arm.
-  // The block below is the shipping wreck's, pinned in C# by
-  // `VentsVerbTests.TheWreckListingIsPinnedVERBATIM` — including OD-O's flag, which must survive
-  // the trip unedited: a client that re-rendered the row would be a second vocabulary for a fault.
+  // ⚠️ THE FIXTURE IS THREE OF THE SHIPPING WRECK'S FOUR LINES, NOT THE WHOLE REPLY — the header
+  // and two of its three rows (VENT_CRYO is left out), so the header's `3 ABOARD` deliberately does
+  // not match the row count here. That is the doors fixture's shape and it is fine for what THIS
+  // test asks: the reducer must carry whatever lines arrive, unedited, and it has no opinion about
+  // how many there are. The whole reply is pinned in C#, against the real wire, by
+  // `VentsVerbTests.TheWreckListingIsPinnedVERBATIM`. What the subset keeps on purpose is OD-O's
+  // flag row, which must survive the trip unedited: a client that re-rendered it would be a second
+  // vocabulary for a fault.
   const asked = submitCommand(openMoss(), 'vents');
   const shown = reduceMossEvent(asked.model, {
     ev: 'exec', tid: '@console', ok: true,

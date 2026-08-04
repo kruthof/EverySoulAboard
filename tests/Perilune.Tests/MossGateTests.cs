@@ -620,9 +620,17 @@ namespace Perilune.Tests
 
             // EXHAUSTIVE PAIRWISE — every member against every other, so a member added later
             // cannot ship a copied tail without failing here.
+            //
+            // ⚠️ THE NON-VACUITY GUARD IS ACCUMULATED, NEVER ASSERTED HERE (the FIFTH shape).
+            // `Assert.That` THROWS, and this test is deliberately blinded-legs: an assert in the
+            // MIDDLE would swallow every leg below it — the pods/doors/ship legs — and report only
+            // its own message. The guard's job is real (a shrunken enum would make the walk measure
+            // less than the hand-written legs it replaced), so it stays; it just joins `problems`
+            // like everything else and surfaces at the single final assert.
             var asks = (MossGate.Ask[])System.Enum.GetValues(typeof(MossGate.Ask));
-            Assert.That(asks.Length, Is.GreaterThanOrEqualTo(4),
-                "the enum shrank — the walk below would be measuring less than the hand-written legs");
+            if (asks.Length < 4)
+                problems.Add("the enum shrank to " + asks.Length + " members — the walk below is "
+                             + "measuring less than the hand-written legs it stands in for");
             for (int i = 0; i < asks.Length; i++)
                 for (int j = i + 1; j < asks.Length; j++)
                     if (MossGate.OfflineRefusal(sim, asks[i]) == MossGate.OfflineRefusal(sim, asks[j]))
