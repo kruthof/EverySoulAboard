@@ -5,94 +5,97 @@ ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Eve
 older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-04, session H CLOSED — TWELVE lanes landed overnight on the owner's direction, playtest in 3 days)
+## Current state (2026-08-04, session I CLOSED — three owner-triage lanes landed same-day, playtest in 3 days)
 
-**Gate on `main` (`58b375b`): FULL `./ci.sh` exit 0 — 1876 dotnet + 1297 node, twin MATCH
-`7bdd0d6f7756dfdc`** (the final merge's tree is byte-identical to its gated lane tree,
-tree-hash-verified; re-measure before quoting). **Pin table (CLAUDE.md authoritative,
-UNCHANGED): P1 `7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52` · P3 `43a1a5c25713faec` · P4
-`661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. NO PIN MOVED ×12 lanes.**
+**Gate on `main` (`489bd78`): the final merge's tree is byte-identical to its gated lane
+tree (tree-hash-verified); the TRAPS-8 chain ran the FULL `./ci.sh` in every lane — last
+reading 1889 dotnet + 1312 node, twin MATCH `7bdd0d6f7756dfdc` (re-measure before
+quoting). Pin table (CLAUDE.md authoritative, UNCHANGED): P1 `7bdd0d6f7756dfdc` · P2
+`cb09b584a5f15e52` · P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87` · P5
+`558a1c0a4985f5ea`. NO PIN MOVED ×3 lanes.**
 
-**The owner's overnight direction (2026-08-03, verbatim): "i cannot builld anything except
-the walls.. there is still no way to defreeze others" — both were AUDITED, then closed.**
-Two driven audits first (scratchpad artifacts): BUILD — every furniture tool was fully
-wired; the blocker was 3-Parts price vs 1 aboard, refused SILENTLY (and FLOOR's default
-swept a no-op; SHELF/RUG drew client-local lies). THAW — the arc WORKS (119/119); no
-surface taught it (9 stalls ranked; the CM chain sat behind doors no surface could name).
+**THREE OWNER RULINGS (2026-08-04, in-session — recorded as OD-Q in ROADMAP §5):**
+⭐⭐ **D7 brownout trade — KEEP THE CACHE** (ships as-is; one-line revert stays at
+`AuthoredShips.cs:2661`; the reprice alternative stays filed, not taken) · ⭐ **`doors`
+RATIFIED and `vents` IS the second noun** (shipped same day, below) · ⭐ **SHELF/RUG keep
+the honest refusal until M4-6** (buttons stay).
 
-**Twelve merges** (each 1 Opus implementer + 1 independent reviewer; every review verdict
-enforced): **chip-collision** (armed-owns-shadow on `.rz-mat/acc-chip`, class-swept) ·
-**brownout-cadence** (episode backoff 1h→8h cap; day-6 ring 155, ZERO eviction, horizon
-→~7.6 d; SubjectB layout literal-pinned) · **rig-hardening** (rig-lib.mjs: verifiedClick /
-verified dismissal ×13 sites / actuation witness — a MOSS-live sweep SHUT 8 DOORS, filed;
-fatal paths kill Chrome, 10 leaks→0) · **palette-honesty** (price+stock on chips, cost row,
-refusals out loud, FLOOR names the armed material, SHELF/RUG stop lying; price pinned by
-3-way def↔default↔command agreement) · **parts-affordability D7** (7 cabin-stores Parts
-crates; first bunk in the first hour, driven; ⭐ see owner list) · **onboarding-thaw** (the
-card says the seven can be WOKEN + MOSS row + CRAFT line; discharged the card's own owed
-note) · **gate-sentences** (offline refusal names TERM_MOSS/deck/tile + the asked noun;
-commission refusal names the machine-shop recipe — all derived) · **moss-autoscroll** (the
-console follows its newest line; parked readers hold — HELP was 7-of-14 hidden) ·
-**pod-poll-spam** (bay poll stands down after one unanswered period; typed refusals print
-by construction) · **rig-premises** (heater/thaw rigs true again post-D7; "nothing loose"
-is unreachable IN THE OPENING STATE — a conjunction ending at the frontier, measured) ·
-**palette-three-tools** (GROWBED/MEDBED/TABLE join, priced, zero CSS; purse-decides rig) ·
-**moss-doors-verb** (⭐ typed `doors` lists every door at the REPAIRED tier; ⭐⭐ its outcome
-test is THE FIRST DRIVEN LIVE-PLAYER CHAIN PROOF: repair → doors → open by printed ids →
-CRAFT → Regolith→Scrap→Parts→CM ~6.7 sim-h → commission ACCEPTED off a crafted module).
+**Three merges** (each 1 Opus implementer + 1 independent reviewer; every verdict
+enforced): **vents-verb** (typed `vents` lists the wreck's 3 vents in the doors grammar at
+the REPAIRED tier — same predicate as the exec arm; `VENT_D1` carries `· BOARD FAULT`
+because listing is reading and the workaround loop needs the id, while the actuation
+refusal is untouched; new `Ask.Vents`, and the pairwise refusal walk now DISCOVERS enum
+members — the 9th-shape blindness the hand-list had; outcome test: repair → `vents` →
+open a healthy vent by the printed id; reviewer APPROVE, fix-back ×3 text/test-shape) ·
+**crew-sel-collision** (the chip-collision class's THIRD instance closed — `.rz-crew.sel`
+owns inset+ring, a channel `:hover`/`:active` cannot produce; hover a warm neutral; the
+class-sweep guard WIDENED, `STATE_CLASSES ['.on','.sel']` with per-member spelling pinned —
+the planted `.sel` violation the chip lane measured GREEN now reds; SEND-BACK closed
+text-only: the rig comment named `--deck 1`, an invocation that exits before its own
+section — grid crew never leave deck 0, driven 7 runs across two reviews) ·
+**moss-scroll-affordance** (`▾ N MORE` on the MOSS console — a passive SIGN per OD-P,
+counting each `.moss-cline` by its OWN box because MOSS lines wrap, a gate-sentence
+refusal is TWO line boxes, measured 43.53 vs 21.77; ⭐ REVIEW CAUGHT A REAL REGRESSION:
+the sign's clearance padding grew `scrollHeight` and collapsed the autoscroll lane's 24px
+follow slack to ~1px, driven A/B — fixed by subtracting the live padding at the seam,
+`shouldFollowTail` sha-identical, the slack band now pinned BOTH sides and unit-visible;
+re-review APPROVE).
 
-## Open on the owner (playtest 2026-08-07 — THREE DAYS OUT; ⭐ = decide before it)
+## Open on the owner (playtest 2026-08-07 — the three ⭐ pre-playtest calls are RULED)
 
-- ⭐⭐ **THE BANDS DON'T OVERLAP (D7's measured finding):** one furniture piece needs 3
-  Parts aboard; at 3 Parts aboard the wreck STOPS BROWNING OUT (9 episodes/day→0, wing_b
-  0.10→0.80 — autonomy lifts it once Repair is granted) and thaw rung 4 cheapens. Shipped:
-  the ruled route (author stock, OD-F) with the trade taken. One-line revert
-  (`AuthoredShips.cs:2661`). Alternatives measured & filed at the site: unstageable cache ·
-  reprice `device_place_cost` 3→2 + `device_parts` 2→1 + ONE crate (keeps the crisis,
-  moves P4/P5). **Rule: keep the cache, or trade?** Commissioning pace measured UNCHANGED.
-- ⭐ **`doors` verb ratification:** shipped as a defect closure in OD-P's typed style
-  (owner's "ls to read directories" is the precedent, NOT the authorization — OD-P says
-  "never implement from this row"). Ratify the shape? And is `vents` the second noun?
-- ⭐ **SHELF/RUG (M4-6 wire-or-remove):** they now refuse honestly instead of lying;
-  buttons kept pending your call.
 - Should maintenance eat the furnishing budget at all (per-kind reserve — sim-core)? ·
   NO-CONSUMABLE badge unreachable in the OPENING state (frontier pacing fact, not D3) ·
-  ACCEPTS row: 10 chips boot lit (lit=accepted reads as 10 armed buttons — invert the
-  vocabulary?) · crew dock `.rz-crew.sel` hover/selected collision (3rd instance of the
-  class) · Chronicle severity tie: a brownout usually out-headlines ORDER DROPPED ·
-  FLOOR default kept + toast (deviation, argued from your OD-G) — ratify · furniture as a
-  real pawn job (the RimWorld answer; L, spine, post-playtest) · carried batch from 08-02
-  (bench wait · heater tier · rung-1 · vacuum services class · UI list) unchanged.
+  ACCEPTS row: 10 chips boot lit (invert the vocabulary?) · Chronicle severity tie: a
+  brownout usually out-headlines ORDER DROPPED · FLOOR default kept + toast (deviation,
+  argued from your OD-G) — ratify · furniture as a real pawn job (the RimWorld answer; L,
+  spine, post-playtest) · carried batch from 08-02 (bench wait · heater tier · rung-1 ·
+  vacuum services class · UI list) unchanged.
 
-## Open — unscheduled (new ★ this session; full receipts in MECHANICS §13.44–§13.48)
+## Open — unscheduled (★ new this session; receipts in the merge commits + MECHANICS §13.44–§13.49)
 
-- ★ Room Zoom furniture layer flickers ±1 piece at rest (product, cause unmeasured,
-  fog-gated projection suspected) · ★ ContextAction on a dark ship: standard surface shows
-  SILENCE on refused device clicks (nothing renders the `status` channel) · ★ MOSS-live
-  stray clicks actuate doors, no confirm/undo (product hazard, measured: 8 doors shut by
-  one sweep) · ★ klaxon is again the dominant ring producer (~28/day; horizon ~7.6 d) ·
-  ★ save-tick event-loss family: §13.44.5 + §13.45.5 + brownout compat band (old words
-  2–15 edges flip RecordsAFault — a persistence lane owes a migration) · ★ HELP is 13
-  lines in a ~7-line pane (footer is the mitigation) · ★ `.moss-console` has no scroll
-  affordance · ★ pushed `pods`/terminal-state channel would retire the poll · ★ carried/
-  reserved Parts make the build refusal an upper bound (silent when ≥3 aboard all
-  reserved) · ★ ledger staleness ≤1.2 s can toast a refusal over a success (benign) ·
-  ★ mixed FLOOR sweep overcounts committed tiles · D5 family / spend-visible / Chronicle
-  residuals carried (stateful PowerSystem · episode-boundary saves · `IsWanting` sawtooth
-  · no pin covers the wreck · fault-log right-edge clip).
-- Tooling ★: gate-sentences-shot + commission-shot share the count-diff `prompt()` defect
-  (doors-shot's echo anchor is the fix) · onboarding-shot room-click flake (1-in-3) + not
-  yet on rig-lib · work-tab-shot's incompatible local `waitFor` · `--place-cost` defs echo
-  · 17 rigs verify dismissal by hand · NOTHING GATES client/tools (now 42 tools).
+- Carried: Room Zoom furniture layer flickers ±1 piece at rest · ContextAction SILENCE on
+  refused device clicks · MOSS-live stray clicks actuate doors, no confirm/undo · klaxon
+  dominant ring producer (~28/day) · save-tick event-loss family (§13.44.5 + §13.45.5 +
+  brownout compat band) · HELP is now FOURTEEN lines in the ~7-line pane (the ▾ sign +
+  footer mitigate; the pane is still 22vh) · pushed `pods`/terminal-state channel would
+  retire the poll · carried/reserved Parts make the build refusal an upper bound · ledger
+  staleness ≤1.2 s toast race (benign) · mixed FLOOR sweep overcounts · D5 family /
+  spend-visible / Chronicle residuals (stateful PowerSystem · episode-boundary saves ·
+  `IsWanting` sawtooth · no pin covers the wreck · fault-log right-edge clip).
+- ★ NEW: the CREW-tab `▾ N MORE` precedent has NO DOM test (`hud.js` `updateCrewMore`
+  unexercised — found reading it as the precedent) · the clearance guard is
+  PADDING-SHAPED (`padBottomPx` reads `padding-bottom` only; a margin/spacer/border
+  clearance would silently reintroduce the slack regression — IX-M16's prose is the only
+  cover) · `_updateConsoleMore` does O(rows) rect reads per scroll event + a
+  `getComputedStyle` per render (unmeasured) · `.crew-more`/`.moss-more` share a
+  byte-identical declaration prefix (cost two reviewers a false-green anchor each) ·
+  `background` vs `background-color` longhand can copy the selected fill past the colour
+  legs (the shadow channel still separates) · `.rz-mini-slot.cur` is the alphabet's
+  remaining spelling (measured NOT a collision — no hover rule to borrow from) · vents:
+  the BOARD FAULT column reads `DeviceFault.BlocksActuation` ≡ `Faulted` today,
+  predicate-vs-field UNPINNED (an inert mutation, said out loud) · OPEN-is-not-air
+  asymmetry (`vent_d1` prints OPEN while injecting nothing at rate 0 — honest about the
+  shutter, filed) · MECHANICS §13.31 tier-table line refs were stale on main and are
+  +43 lines worse.
+- Tooling ★: `vents-shot.mjs` filed (the vents verb has no Chrome witness; client path is
+  doors', asserted through the real screen module) · carried: gate-sentences-shot +
+  commission-shot count-diff `prompt()` defect · onboarding-shot flake · work-tab-shot
+  `waitFor` · 17 rigs verify dismissal by hand · NOTHING GATES client/tools (43 tools) ·
+  stale "seventeen" counts in `palette-layout.test.js` (the new "twenty" makes the
+  contradiction visible) · zoom-pawn-shot §5b exits 0 unmeasured on `--ship wreck`
+  (declared convention, loudly logged).
 
 ## Next
 
-1. **The playtest 2026-08-07.** The chain test's action recipe IS the playtest script
-   (DoorsVerbTests, ~6.7 sim-h at speed). First-hour risks all closed; the board's biggest
-   remaining unknown is the ⭐⭐ brownout trade — decide it first.
+1. **The playtest 2026-08-07.** All three pre-playtest ⭐ rulings are in. The chain test's
+   action recipe IS the playtest script (DoorsVerbTests, ~6.7 sim-h at speed); typed
+   `vents` now covers the deck-1 puzzle's noun the same way `doors` covered the
+   fabrication doors.
 2. Owner triage above, then M4 opens after the gate (M4-1 Persona design first).
-3. Candidate small lanes if wanted: crew-dock `.sel` collision (same fix shape as the
-   palette, third instance) · MOSS scroll affordance ("▾ N MORE", CREW-tab precedent).
+3. Candidate small lanes if wanted: `vents-shot.mjs` (Chrome witness, doors-shot is the
+   template) · the CREW-tab affordance DOM test (the precedent's own hole, found this
+   session) · the `.crew-more`/`.moss-more` shared-prefix disambiguation (one-line rename
+   or comment, saves the next reviewer a false green).
 
 ## Session log (append one row per session; prune when > ~40 rows)
 
@@ -110,3 +113,4 @@ CRAFT → Regolith→Scrap→Parts→CM ~6.7 sim-h → commission ACCEPTED off a
 | 08-03 F | faultlog-dedupe · whyline-shot-flake · d5-drop-reason | **each fault ONCE · the rig stops coin-flipping · ⭐ the sim SAYS WHY it let go (§13.25 b3 closed, b3-R named)** | green ×3 + final gate `dbaff5f`, pins UNMOVED ×5, tests →1841/1247 |
 | 08-03 G | overview-dock-badge · ring-saturation · palette-armed-state · b3r-dropped-order-chronicle | **the OVERVIEW says why an order is stuck · a klaxon writes ONE line (ring 200/200→49) · the palette PRESSES · ⭐ ORDER DROPPED in the log (b3-R closed, owner-ruled)**; 4 owner rulings in-session | green ×4 + final gate `025e529`+docs `5d9deb0`, pins UNMOVED ×5, tests →1850/1257 |
 | 08-04 H | TWELVE lanes (owner-directed, AFK): chip-collision · brownout-cadence · rig-hardening · palette-honesty · parts-affordability(D7) · onboarding-thaw · gate-sentences · moss-autoscroll · pod-poll-spam · rig-premises · palette-three-tools · moss-doors-verb | **"can't build / can't defreeze" AUDITED then CLOSED: every build button priced+honest, first bunk affordable (⭐⭐ brownout trade FILED for the owner), 3 new tools · the card TEACHES the thaw, MOSS refusals name the next step, the console scrolls+stops spamming, typed `doors` ends the secret-door stall · the log survives a WEEK · rigs can't coin-flip or leak · ⭐⭐ THE LIVE-PLAYER CHAIN PROVEN DRIVEN (repair→doors→craft→CM→commission, ~6.7 sim-h)** | 12× in-lane full gates + final tree ≡ gated tree (exit 0, twin MATCH), pins UNMOVED ×5, tests →1876/1297 |
+| 08-04 I | vents-verb · crew-sel-collision · moss-scroll-affordance (owner-triage; THREE same-day rulings → OD-Q) | **⭐⭐ D7 RULED keep-the-cache · `doors` RATIFIED and typed `vents` SHIPS (the deck-1 puzzle's noun is learnable; BOARD FAULT visible in the listing) · picking a crew row visibly ARMS it (3rd chip-collision instance closed, guard widened to discover `.sel`) · the MOSS console says `▾ N MORE` — and its review CAUGHT the sign eating the autoscroll slack (fixed at the seam, both sides of the band pinned)** | 3× in-lane full gates + TRAPS-8 re-gates ×2 + final tree ≡ gated tree, pins UNMOVED ×5, tests →1889/1312 |
