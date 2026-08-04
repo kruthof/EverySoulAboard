@@ -26,7 +26,7 @@ import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import {
   selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices, decodeWork,
-  decodeWorkCaps,
+  decodeWorkCaps, decodeBlocked,
 } from '../wire/messages.js';
 // `deckDeviceConditions` is the wear join; `eraseTarget`/`tileOrders` are the un-designate precedence
 // + the tile-facts derivation it runs on, SHARED VERBATIM with the Room Zoom (M1-C) rather than
@@ -55,6 +55,7 @@ import {
   // in `console-model.js` for the deprecated console shell, until it dies at M4-8/WP-9.
   clockHHMM, cautionState, surnameOf, speedLabel, logLineParts, logTail,
   selectedRosterEntry, crewClickTarget, terminalList, watchTask, OV_DOCK_TASK_CHARS,
+  crewBlockedOrder,
 } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
 import { ledgerRows, matterLine, caveatLine, LEDGER_ROW_IDS } from './ledger-model.js';
@@ -410,6 +411,16 @@ function buildIslands() {
     '</div>' +
     '<div class="ov-traits ov-ro-traits" hidden></div>' +
     '<div class="ov-task ov-ro-task" hidden></div>' +
+    // ⭐⭐ D5 OVERVIEW — the stuck order's own line, under the task line. The dock cell is 26
+    // characters and the longest sentence this channel emits is 45; this box is 264 px and WRAPS
+    // (⚠️ MEASURED ON THIS ELEMENT, not inherited from `.ov-task` and not derived from the island:
+    // `.ov-readout` is 298 px in the stylesheet, `.ov-roblocked` is a zero-padding sibling inside it,
+    // and `overview-dock-badge-shot.mjs` walks both at clientWidth 264 and asserts they agree — three
+    // places in this package said 298 from the island's number until it did), so it is where the whole
+    // sentence is readable without a hover. Its own element rather than more text in `.ov-task`, because the
+    // two say different things: `.ov-task` is the host's answer to "what is she doing" and this is
+    // the channel's answer to "why did what I asked for not happen".
+    '<div class="ov-roblocked" hidden></div>' +
     '<div class="ov-atmos ov-ro-atmos" hidden>' +
       '<div class="ov-atmos-lbl"></div>' +
       '<div class="ov-atmos-row"><span>ATMOS</span><span class="ov-atmos-v good ov-ro-atmosA"></span></div>' +
@@ -438,6 +449,7 @@ function buildIslands() {
   _el.roRole = _root.querySelector('.ov-selR');
   _el.roTraits = _root.querySelector('.ov-ro-traits');
   _el.roTask = _root.querySelector('.ov-ro-task');
+  _el.roBlocked = _root.querySelector('.ov-roblocked');
   _el.roAtmos = _root.querySelector('.ov-ro-atmos');
   _el.roAtmosLbl = _root.querySelector('.ov-ro-atmos .ov-atmos-lbl');
   _el.roAtmosA = _root.querySelector('.ov-ro-atmosA');
@@ -826,12 +838,17 @@ function repaint() {
   const lens = frame ? (frame.lens || 'none') : 'none';
   const selCid = selectedCrewCid(frame);
 
+  // ⭐⭐ D5 OVERVIEW — the `blocked` channel, decoded ONCE per repaint and handed to both surfaces
+  // that word it. The SAME cached message the Room Zoom's badge layer decodes (`Hud.getBlocked`), so
+  // the dock line and the badge are two renderings of one row and cannot come to different answers.
+  const blocked = decodeBlocked(Hud.getBlocked());
+
   paintScene(frame, dView, crew, designsMsg, activeDeck, lens, selCid);
   paintTopbar(activeDeck, dView);
   paintDeckRail(dView, activeDeck);
-  paintCrewWatch(crew, selCid);
+  paintCrewWatch(crew, selCid, blocked);
   paintWork(crew);
-  paintReadout(frame, rosterMsg, dView, activeDeck);
+  paintReadout(frame, rosterMsg, dView, activeDeck, blocked);
   paintLens(lens);
   paintCommand(activeDeck);
   paintSensor();
@@ -1039,7 +1056,7 @@ function paintDeckRail(dView, activeDeck) {
 
 // ── left CREW WATCH dock ──
 
-function paintCrewWatch(crew, selCid) {
+function paintCrewWatch(crew, selCid, blocked) {
   setText(_el.cwHdr, 'CREW WATCH — ' + crew.length + ' SOUL' + (crew.length === 1 ? '' : 'S'));
   setHidden(_el.cwEmpty, crew.length !== 0);
   // Rows are created ONCE per cid and mutated in place — the portrait <svg> is never refetched and a
@@ -1111,14 +1128,58 @@ function paintCrewWatch(crew, selCid) {
       // shortens the device name instead. ⛔ It is this dock's OWN number, not the Room Zoom's (22):
       // clamping to the narrower dock would cost four characters of device name here for nothing.
       const t = watchTask(e, OV_DOCK_TASK_CHARS);
-      setText(rec.taskEl, t.what);
+      // ⭐⭐ D5 OVERVIEW — AND WHEN THE ORDER SHE WAS GIVEN IS STUCK, THIS ROW SAYS SO INSTEAD.
+      //
+      // THE DEFECT THIS CLOSES, in the words HANDOVER filed it in: *"badge Room-Zoom-only (Overview
+      // dock bare)"*. The D5 follow-on made the ship say why a direct repair order cannot land — on
+      // the MACHINE'S TILE, in the Room Zoom. Here, on the screen a first-hour player actually
+      // watches, the crew member the player had just ordered went back to reading "Awaiting orders"
+      // and nothing pointed at the badge. Invisible feedback is functional breakage (binding).
+      //
+      // ⛔ IT REPLACES THE LABEL RATHER THAN APPENDING TO IT, AND THE REASON IS THE BOX, MEASURED.
+      // The dock is 26 characters (`OV_DOCK_TASK_CHARS`, browser-walked). A middot clause in D4's
+      // shape — "Awaiting orders · NO WAY TO WALK TO IT", 38 — would put `dockTask`'s budget at
+      // 26-23-1 = 2 characters of base and ship "Aw… · NO WAY TO WALK TO IT". All three sentences a
+      // REPAIR row can carry lead with their payload (`NO WAY TO WALK TO IT` 20, `NO WAY TO STAND
+      // NEXT TO IT` 26, `NEEDS PARTS — …` names the item in its first two words), so a bare
+      // replacement is fully visible where an appended clause is not, and CSS ellipsis on the long
+      // one eats prose rather than payload — the exact inversion of the M2-6/D4 defects.
+      // ⛔ AND IT IS NOT A THIRD WORD FOR "doing nothing": "Awaiting orders" is M2-20's honest word
+      // for a crew member the player has given no work to, and this row is the state where that
+      // sentence is FALSE — she was given an order and the ship could not run it.
+      //
+      // ⛔⛔ THE COST OF REPLACING RATHER THAN APPENDING, NAMED (found by independent review). The
+      // argument above is made against the "Awaiting orders" BASE, and a replacement does not only
+      // drop the base: it drops everything the label was carrying, including D4's ` · NO AIR`, whose
+      // own constant says dropping the warning from the docks is "the one change this constant exists
+      // to make impossible" (`console-model.js` AIR_WARNING_CLAUSE). MEASURED: a host label of
+      // "Servicing fabricator_1 · NO AIR" renders here as "NO WAY TO WALK TO IT".
+      // ⚠️ STRUCTURALLY POSSIBLE, NOT SHOWN REACHABLE — review probed the shipped wreck for 900 ticks
+      // and measured the two states co-occurring ZERO times (the air clause is gated on `HeldByOrder`
+      // and a stuck order is one the sim could not run). The hover below still carries `t.text` whole,
+      // clause included. If the co-occurrence is ever driven, the fix is a composition rule here, not
+      // a wider dock — M2-20's precedent.
+      //
+      // ⚠️ THE `title` STILL CARRIES THE HOST'S OWN TASK LABEL, whole. The reason is what the game
+      // could not do; the label is what she is doing instead, and both are true at once.
+      const bl = crewBlockedOrder(blocked, e.cid);
+      setText(rec.taskEl, bl ? bl.sentence : t.what);
       // ⭐ D4 fix-back, the BONUS surface — the WHOLE sentence on hover, zero layout. It is not the
       // fix (a tooltip needs a gesture nobody knows to perform; the warning itself is in the row
       // above, always visible), it is the repair for what the fix COSTS: shortening the base puts the
       // full device name out of reach, and this dock's own readout is the only other place it lived.
-      setAttr(rec.taskEl, 'title', t.text);
-      setCls(rec.taskEl, 'working', t.working);
-      setCls(rec.taskEl, 'waiting', t.waiting);
+      // ⚠️ A NEWLINE, NEVER `WHY_SEPARATOR`. The two halves are a fault and an activity, not a what
+      // and a why, and spelling the ranking separator in a VIEW is the second implementation of the
+      // host's parsing contract that `why-line.test.js` exists to refuse.
+      setAttr(rec.taskEl, 'title', bl ? bl.sentence + '\n' + t.text : t.text);
+      // ⭐ D5 OVERVIEW — `blocked` LAST, and the two work-state classes are turned OFF under it. The
+      // dock's legibility mechanism is colour (amber = work is happening, dim = it is not), and a
+      // stuck order is neither: it is a FAULT, and it takes the `blocked` channel's own fault red so
+      // the eye finds it in a column of grey rows. Ordered after the other two for the reason M2-20
+      // ordered `waiting` before `working` — the last class declared in `styles.css` wins.
+      setCls(rec.taskEl, 'working', !bl && t.working);
+      setCls(rec.taskEl, 'waiting', !bl && t.waiting);
+      setCls(rec.taskEl, 'blocked', !!bl);
       // ⚠️ THERE IS NO MORALE BAR HERE, AND ITS ABSENCE IS THE FEATURE (M1-F, 2026-07-29). A
       // `.ov-morale` / `.ov-morale-fill` pair used to sit under the task line, its width and colour
       // driven by `e.morale` off the roster wire. That number is `Citizen.Morale`, and NO SYSTEM IN
@@ -1136,7 +1197,7 @@ function paintCrewWatch(crew, selCid) {
 
 // ── right SELECTED readout ──
 
-function paintReadout(frame, rosterMsg, dView, activeDeck) {
+function paintReadout(frame, rosterMsg, dView, activeDeck, blocked) {
   const sel = selectedRosterEntry(frame, rosterMsg);
   // The empty↔selected states, the traits, task and atmos box are all pre-built and toggled — the
   // TALK/MOVE/BIO buttons are never rebuilt, so an armed/hovered action survives every repaint.
@@ -1150,6 +1211,7 @@ function paintReadout(frame, rosterMsg, dView, activeDeck) {
   if (!has) {
     setHidden(_el.roTraits, true);
     setHidden(_el.roTask, true);
+    setHidden(_el.roBlocked, true);
     setHidden(_el.roAtmos, true);
     _roBustCid = null; _roTraitsKey = '';
     return;
@@ -1182,6 +1244,13 @@ function paintReadout(frame, rosterMsg, dView, activeDeck) {
   // on either surface that can hold it.
   setText(_el.roTask, '> ' + (sel.task || ''));
   setHidden(_el.roTask, false);
+  // ⭐⭐ D5 OVERVIEW — …and, under it, WHY THE ORDER THE PLAYER GAVE HER IS NOT HAPPENING. Same
+  // `crewBlockedOrder` join as the dock row above, same decoded message, so the readout, the dock and
+  // the Room Zoom badge are three renderings of ONE row. Hidden — not blanked — when nothing about
+  // her is stuck, so the box does not keep an empty line where a fault used to be.
+  const roBlocked = crewBlockedOrder(blocked, sel.cid);
+  setText(_el.roBlocked, roBlocked ? 'ORDER STUCK — ' + roBlocked.sentence : '');
+  setHidden(_el.roBlocked, !roBlocked);
   if (room && room.atmos) {
     const a = room.atmos;
     setText(_el.roAtmosLbl, 'CURRENT ROOM · ' + roomName);

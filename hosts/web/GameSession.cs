@@ -3537,8 +3537,12 @@ namespace Perilune.Web
             // the WORLD, and the one reason that names a thing — ReasonNoConsumable — is emitted by
             // `AddUnfixableRow` and never from here. Written as the constant rather than as a literal
             // −1 so a reader of this line finds the table in `WireFormat.BlockedCell`.
+            // ⭐ D5 OVERVIEW — `CidNone`. A dig/strip/build site is a DESIGNATION: it belongs to the
+            // ship, not to a named person (§2.1's own line — "a designation survives the pawn, a DIRECT
+            // ORDER does not"), so there is no crew member for the Overview's dock to hang it on. Only
+            // the two repair walks below name an owner.
             _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z, order, reason,
-                                                           WireFormat.DetailNone));
+                                                           WireFormat.DetailNone, WireFormat.CidNone));
         }
 
         /// <summary>
@@ -3604,7 +3608,11 @@ namespace Perilune.Web
         /// they are bounded by the crew; a tile may still legitimately carry BOTH a dig row and a
         /// repair row, exactly as it may carry a dig and a build row today.)</para>
         /// </summary>
-        private void AddUnfixableRow(Device device)
+        /// <param name="cid">⭐ D5 OVERVIEW — the crew member whose order this is, for the row's
+        /// seventh element. Passed in rather than looked up: the caller is mid-walk over the citizen
+        /// store and already holds her, and a lookup here would be a second answer to a question the
+        /// caller has already answered.</param>
+        private void AddUnfixableRow(Device device, uint cid)
         {
             var p = device.Pos;
             if (!_sim.World.InBounds(p)) return;
@@ -3626,7 +3634,7 @@ namespace Perilune.Web
             // the day the top tier moves — omission (1) of this channel's header, by name.
             _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z,
                                                            WireFormat.OrderRepair, WireFormat.ReasonNoConsumable,
-                                                           (int)MaintenanceSystem.WantedRepairConsumable));
+                                                           (int)MaintenanceSystem.WantedRepairConsumable, (int)cid));
         }
 
         /// <summary>
@@ -3699,7 +3707,9 @@ namespace Perilune.Web
         /// authority on connectivity. The sentence points at the class of fix; finding the door is
         /// the player's move.</para>
         /// </summary>
-        private void AddNoRouteRow(Device device)
+        /// <param name="cid">⭐ D5 OVERVIEW — the ordered crew member, for the row's seventh element.
+        /// See <see cref="AddUnfixableRow"/>'s note on why it is passed rather than looked up.</param>
+        private void AddNoRouteRow(Device device, uint cid)
         {
             var p = device.Pos;
             if (!_sim.World.InBounds(p)) return;
@@ -3711,7 +3721,7 @@ namespace Perilune.Web
             }
             _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z,
                                                            WireFormat.OrderRepair, WireFormat.ReasonNoRoute,
-                                                           WireFormat.DetailNone));
+                                                           WireFormat.DetailNone, (int)cid));
         }
 
         /// <summary>
@@ -3731,7 +3741,9 @@ namespace Perilune.Web
         /// dig/strip/build walk gives through <c>AddIfBlocked</c>, reached from the repair order. No
         /// new vocabulary, no new wire element.</para>
         /// </summary>
-        private void AddNoApproachRow(Device device)
+        /// <param name="cid">⭐ D5 OVERVIEW — the ordered crew member, for the row's seventh element.
+        /// See <see cref="AddUnfixableRow"/>'s note on why it is passed rather than looked up.</param>
+        private void AddNoApproachRow(Device device, uint cid)
         {
             var p = device.Pos;
             if (!_sim.World.InBounds(p)) return;
@@ -3743,7 +3755,7 @@ namespace Perilune.Web
             }
             _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z,
                                                            WireFormat.OrderRepair, WireFormat.ReasonNoApproach,
-                                                           WireFormat.DetailNone));
+                                                           WireFormat.DetailNone, (int)cid));
         }
 
         /// <summary>
@@ -4010,7 +4022,7 @@ namespace Perilune.Web
                     // entry falls through to the retire rule below and the badge is gone.
                     if (OrderedWorksiteIsOutOfReach(c, device))
                     {
-                        AddNoRouteRow(device);
+                        AddNoRouteRow(device, c.Id);
                         continue;
                     }
 
@@ -4019,7 +4031,7 @@ namespace Perilune.Web
                         _prioritised.Remove(c.Id);
                         continue;
                     }
-                    AddUnfixableRow(device);
+                    AddUnfixableRow(device, c.Id);
                 }
             }
 
@@ -4097,7 +4109,7 @@ namespace Perilune.Web
                         // let go. One A* per dropped order per render, the cost written out on
                         // `WireFormat.ReasonNoRoute` (103 µs worst case against a ~517 µs render).
                         case JobDropReason.NoRouteToWorksite:
-                            if (OrderedWorksiteIsOutOfReach(c, device)) { AddNoRouteRow(device); continue; }
+                            if (OrderedWorksiteIsOutOfReach(c, device)) { AddNoRouteRow(device, c.Id); continue; }
                             break;
 
                         // The approach itself is gone. Same call, same flag, same declaration as the
@@ -4105,7 +4117,7 @@ namespace Perilune.Web
                         // (see AddNoApproachRow).
                         case JobDropReason.NoWorksiteTile:
                             if (!MaintenanceSystem.TryFindStagingTile(_sim, device.Pos, out _, forced: true))
-                            { AddNoApproachRow(device); continue; }
+                            { AddNoApproachRow(device, c.Id); continue; }
                             break;
 
                         // `IsUnfixableWreck(forced: true)` is `IsBelowWreckFloor && no consumable
@@ -4115,7 +4127,7 @@ namespace Perilune.Web
                         // uses position only to break distance ties — its own doc says so.)
                         case JobDropReason.NoConsumable:
                             if (MaintenanceSystem.IsUnfixableWreck(_sim, device, forced: true))
-                            { AddUnfixableRow(device); continue; }
+                            { AddUnfixableRow(device, c.Id); continue; }
                             break;
 
                         // ⛔ THE THREE THAT ARE FILED RATHER THAN BADGED, NAMED SO A READER DOES NOT

@@ -153,13 +153,20 @@ test('the bare em-dash placeholder for a MISSING label is not mistaken for a cla
 // that a bare class name also matches the `querySelector` that resolves the node, so a scan for it
 // stayed green while the row rendered nothing.
 const DOCK_PAYLOAD = 'setText(rec.taskEl, t.what)';
+// ⭐ D5 OVERVIEW — the Overview's row acquired a SECOND thing it can say: when the direct order this
+// crew member was given is stuck, the `blocked` channel's fault sentence replaces the label (the
+// dock is 26 characters and an appended clause would leave two of them for the base — argued at the
+// line itself). `t.what` is still the whole of the other branch, which is what this leg has always
+// pinned; the ternary is spelt out so the scan cannot be satisfied by a row that renders the reason
+// and has quietly stopped rendering the task.
+const OV_DOCK_PAYLOAD = 'setText(rec.taskEl, bl ? bl.sentence : t.what)';
 
 test('MUTATION 1 — the OVERVIEW\'s crew dock renders the WHAT half', () => {
   const raw = src('src/ui/overview-view.js');
-  assert.ok(codeOnly(raw).includes(DOCK_PAYLOAD),
-    `the Overview's crew dock no longer renders the WHAT half (looked for: ${DOCK_PAYLOAD}). If it `
+  assert.ok(codeOnly(raw).includes(OV_DOCK_PAYLOAD),
+    `the Overview's crew dock no longer renders the WHAT half (looked for: ${OV_DOCK_PAYLOAD}). If it `
     + 'went back to the full string, every row now ends in a truncated priority number.');
-  assert.equal(codeOnly(commentOutLines(raw, DOCK_PAYLOAD)).includes(DOCK_PAYLOAD), false,
+  assert.equal(codeOnly(commentOutLines(raw, OV_DOCK_PAYLOAD)).includes(OV_DOCK_PAYLOAD), false,
     'the scan passes on a source where the line is COMMENTED OUT, so it proves nothing (trap 1)');
 });
 
@@ -432,8 +439,17 @@ test('(d) BONUS: both docks carry the whole sentence as a hover title', () => {
   // "invisible feedback is FUNCTIONAL" is binding. It is the repair for what the fix COSTS: with the
   // base shortened, the full device name is out of reach, and in the Room Zoom (no readout) so is the
   // ranking clause. `t.text` is the RAW wire field, so this surface is the whole sentence.
-  const TITLE = "setAttr(rec.taskEl, 'title', t.text)";
-  for (const f of ['src/ui/overview-view.js', 'src/ui/roomzoom-view.js']) {
+  // ⭐ D5 OVERVIEW — TWO LITERALS NOW, BECAUSE THE TWO DOCKS NO LONGER WRITE THE SAME LINE. The
+  // Overview's row can be replaced by the `blocked` channel's fault sentence, and when it is, the
+  // hover carries BOTH — the reason first, then the host's own label on a second line — so the
+  // shortened row never costs the player the whole sentence. The Room Zoom dock is untouched by that
+  // package and keeps the original expression; one constant for two different lines would only look
+  // like two guards (the fifth trap shape).
+  const TITLES = {
+    'src/ui/overview-view.js': "setAttr(rec.taskEl, 'title', bl ? bl.sentence + '\\n' + t.text : t.text)",
+    'src/ui/roomzoom-view.js': "setAttr(rec.taskEl, 'title', t.text)",
+  };
+  for (const [f, TITLE] of Object.entries(TITLES)) {
     const raw = src(f);
     assert.ok(codeOnly(raw).includes(TITLE), `${f} does not carry the full sentence on hover (${TITLE})`);
     assert.equal(codeOnly(commentOutLines(raw, TITLE)).includes(TITLE), false,

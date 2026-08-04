@@ -3754,6 +3754,64 @@ and a system downstream then ate.** Reproduced headlessly on the shipped wreck, 
     `client/test/blocked-model.test.js` + `client/tools/dropped-order-shot.mjs`.
     **THIRTEEN named mutations physically applied**, each red for the right reason and reverted from
     an in-memory copy (11 C#, 2 client).
+
+- ⭐⭐ **b3″ — THE BADGE REACHES THE SCREEN THE PLAYER IS ACTUALLY LOOKING AT (D5 OVERVIEW,
+  2026-08-03).** Everything above is drawn on the machine's TILE, in the **Room Zoom**. On the
+  **Level-1 Overview** the ordered crew member went straight back to `Awaiting orders`
+  (`GameSession.AwaitingOrdersLabel` — M2-20's honest word for a state that was no longer hers) and
+  nothing pointed at the badge one screen away. Filed in HANDOVER as *"badge Room-Zoom-only (Overview
+  dock bare)"* and named there a **first-hour playtest risk**; `dropped-order-shot.mjs` STEP 6 carried
+  it as an explicit PREMISE.
+  - **THE MECHANISM IS A JOIN, NOT A SECOND ANSWER.** `WireFormat.BlockedCell` grows a **seventh
+    element, `Cid`** (`WireFormat.Blocked.cs`, append-only exactly as M3-13's `Detail` was, sentinel
+    `WireFormat.CidNone = -1`): the two REPAIR walks stamp the ordered crew member's id on the row they
+    already emit (`GameSession.AddNoRouteRow` / `AddNoApproachRow` / `AddUnfixableRow`, each taking the
+    id from the walk that already holds her), and the three registry walks send `CidNone` — a
+    designation belongs to the ship, not to a person (§2.1). The client joins in one pure function,
+    `crewBlockedOrder` (`client/src/ui/console-model.js`), wording the row through
+    `blockedReasonSentence` — the SAME one entry point the badge and the key box use.
+  - ⛔ **THE HOST DOES NOT COMPOSE A SENTENCE.** The rejected alternative was a clause appended to the
+    roster's `task` string in D4's shape; it would have put a second copy of `BLOCKED_REASON_TEXT`
+    host-side (`messages.js`: *the SIM owns the words, the wire carries the byte*) **and** would not
+    have fitted: `"Awaiting orders · NO WAY TO WALK TO IT"` is 38 characters against the dock's
+    measured 26, so `dockTask` would have shipped `"Aw… · NO WAY TO WALK TO IT"`. The row therefore
+    **replaces** the label rather than extending it, and all three repair sentences lead with their
+    payload (20 / 26 / `NEEDS PARTS — …`), so the one that overflows loses prose, not payload.
+  - **TWO SURFACES ON THE OVERVIEW:** the crew dock cell `.ov-crewtask` in the channel's fault red
+    (`.ov-crewtask.blocked`, the work/waiting classes explicitly off — a stuck order is a FAULT, not
+    an activity), plus `.ov-roblocked` under the selected readout, which wraps at **264 px** and is the
+    only place the 45-character `no_consumable` sentence is readable whole. ⚠️ **264 is the ELEMENT,
+    298 is the ISLAND** (`.ov-readout`'s stylesheet width) — this line said 298 until the element was
+    walked in Chrome; `overview-dock-badge-shot.mjs` measures `.ov-roblocked` and its `.ov-task`
+    sibling at clientWidth 264 apiece and asserts they agree. Hover carries reason +
+    the host's own label.
+  - ⭐ **LIVE BY CONSTRUCTION, not by a second timer.** Both surfaces re-derive from the same decoded
+    `blocked` message the Room Zoom badge is drawn from (`Hud.getBlocked`, decoded once per repaint in
+    `overview-view.js`), and `crewBlockedOrder` holds no state — so the frame the host drops the row,
+    the dock, the readout and the badge go together.
+  - ⛔ **NAMED COST 1: THE PER-TILE DEDUPE OUTRANKS THE OWNER.** Two crew ordered at one machine are one
+    blocked machine, not two, so the surviving row carries the FIRST crew member's id in citizen-store
+    order and the second gets no dock line (the badge stays correct). Reachable only while neither
+    holds the job. **FILED.**
+  - ⛔ **NAMED COST 2: THE REPLACEMENT DISCARDS D4's ` · NO AIR` CLAUSE** (found by independent
+    review). The dock row REPLACES the host's task label, and a replacement drops everything that
+    label carried — including the air warning, whose own constant says dropping it from the docks is
+    *"the one change this constant exists to make impossible"* (`console-model.js` `AIR_WARNING_CLAUSE`).
+    **Measured client-side:** a host label of `"Servicing fabricator_1 · NO AIR"` renders as
+    `"NO WAY TO WALK TO IT"`. ⚠️ **Structurally possible, NOT shown reachable** — a 900-tick probe of
+    the shipped wreck measured the two states co-occurring **zero** times, which follows from the
+    clause being gated on `HeldByOrder` while a stuck order is one the sim could not run. The hover
+    title still carries the raw label, clause and all; a tooltip is not a fix, which is why this is a
+    named cost rather than a closed one. If it is ever driven, the fix is a composition rule at the
+    dock row, never a wider dock (M2-20's precedent).
+  - **Instruments:** `DroppedOrderTests.TheRowNamesTheORDEREDCrewMember_SoTheOverviewsDockCanSayIt`
+    (driven on `--ship wreck`, asserted on BOTH sides of the drop) +
+    `BlockedChannelTests.A_Designation_Belongs_To_Nobody_And_Sends_The_Cid_Sentinel_Not_Zero` +
+    `client/test/overview-dock-badge.test.js` + `client/tools/overview-dock-badge-shot.mjs` (real
+    Chrome: the sentence is in the dock, `scrollWidth <= clientWidth`, and it LEAVES when
+    `door_d0_s2` opens). **SEVEN named mutations physically applied**, each red for the right reason
+    and reverted from an in-memory copy (2 C#, 5 client) — one of them, hiding the readout line, was
+    a SURVIVOR on the first pass and is what the readout's own scan leg exists to close.
 - ⛔⛔ **RESIDUAL b3-R, NAMED — A `Displaced`/`CargoLost` DROP OF A PLAYER'S ORDER EVAPORATES
   PERMANENTLY AND SILENTLY UNDER OD-H.** This is a residual of the package, not a footnote to it, and
   it is stated before the softer items because it is the one a playtester can hit.
