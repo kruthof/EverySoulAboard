@@ -52,7 +52,14 @@ namespace Perilune.Tests
     /// <para>⭐⭐ <b>D3 (2026-08-02) MOVED THIS FILE'S HEADLINE AND IT IS SAID HERE RATHER THAN
     /// LEFT IN THE LEGS.</b> <see cref="MaintenanceSystem.AutonomousRepairReserve"/> stops the
     /// STANDING RULE at the ship's last 4 loose units, so unattended recovery no longer clears the
-    /// whole backlog — it clears <c>11 − 4 = 7</c> of it and hands the rest to the player. M1-I's
+    /// whole backlog — it clears <c>18 − 4 = 14</c> of it and hands the rest to the player.
+    /// ⚠️ THIS ARITHMETIC READ <c>11 − 4 = 7</c> UNTIL D7 (2026-08-03), and it went stale for the
+    /// reason a headline always does: D7 moved the ship's stock to 18 units and updated the
+    /// matching leg (<see cref="Unattended_TheCoreIsLiftedDownToTheReserve_AndTheRestStayOrderable"/>'s
+    /// non-vacuity assertion, 7 → 14) without moving the sentence that summarises it. The
+    /// dispatcher sees ONE pile — <c>AuthoredConsumableUnits</c> is
+    /// <c>MaintenanceSizedUnits + CabinStoresUnits</c> — so the autonomous spend-down doubled while
+    /// D3's floor did not move. M1-I's
     /// question ("does the stock cover the backlog?") is unchanged and still answered YES; what
     /// changed is WHO spends the last four units. FOUR legs were restated in the same commit:
     /// <see cref="Unattended_TheCoreIsLiftedDownToTheReserve_AndTheRestStayOrderable"/>,
@@ -96,11 +103,29 @@ namespace Perilune.Tests
         /// board). Each needs exactly ONE unit; a service consumes exactly one.</summary>
         private const int WreckedMachinesOnTheBoardAtBoot = 11;
 
-        /// <summary>Total authored maintenance-consumable UNITS on the wreck: 1 Parts + 2 Seals in
-        /// the reactor bay (shipped before M1-I) + 8 Seals in the cryo-bay damage-control locker.
-        /// Equal to <see cref="WreckedMachinesOnTheBoardAtBoot"/> BY DESIGN, and that equality is
-        /// the whole package — <see cref="TheAuthoredStock_MatchesTheBootBacklog_UnitForUnit"/>.</summary>
-        private const int AuthoredConsumableUnits = 11;
+        /// <summary>The units M1-I SIZED AGAINST THE BOARD: 1 Parts + 2 Seals in the reactor bay
+        /// (shipped before M1-I) + 8 Seals in the cryo-bay damage-control locker. Equal to
+        /// <see cref="WreckedMachinesOnTheBoardAtBoot"/> BY DESIGN, and that equality is M1-I's whole
+        /// package — <see cref="TheAuthoredStock_MatchesTheBootBacklog_UnitForUnit"/>.</summary>
+        private const int MaintenanceSizedUnits = 11;
+
+        /// <summary>⭐ D7 (2026-08-03) — the <c>cabin stores</c>: SEVEN one-unit Parts crates on the
+        /// cryo bay's bottom row, authored against <c>build.device_place_cost</c> so the player can
+        /// place furniture at all, NOT against the maintenance board.
+        ///
+        /// <para>⚠️ <b>THE SIM CANNOT TELL THE TWO PILES APART AND THIS FILE MUST NOT PRETEND IT
+        /// CAN.</b> Parts is <c>RepairConsumableTier(0)</c>, so autonomous maintenance spends the
+        /// cabin stores FIRST and the D3 reserve — a floor on the ship's TOTAL loose units, all
+        /// three rungs summed — can never protect them. The split below is a statement of AUTHORING
+        /// INTENT, and it is kept as two constants only so that
+        /// <see cref="TheAuthoredStock_MatchesTheBootBacklog_UnitForUnit"/> can still assert M1-I's
+        /// derivation (board == maintenance-sized stock) instead of losing it inside a bigger
+        /// total. Everything DRIVEN in this file measures the total.</para></summary>
+        private const int CabinStoresUnits = 7;
+
+        /// <summary>Total authored maintenance-consumable UNITS on the wreck — what every DRIVEN leg
+        /// here spends down, because the dispatcher sees one pile.</summary>
+        private const int AuthoredConsumableUnits = MaintenanceSizedUnits + CabinStoresUnits;
 
         /// <summary>What the ship shipped before M1-I, restated so the regression witness below
         /// cannot silently become a test of the current stock.</summary>
@@ -109,6 +134,14 @@ namespace Perilune.Tests
         /// <summary>The locker's tile, written out. Cryo-bay bottom-right, diagonally opposite the
         /// capsule the crew member wakes in.</summary>
         private static readonly Int3 LockerTile = new Int3(9, 6, 0);
+
+        /// <summary>D7's seven <c>cabin stores</c> tiles, written out by hand for the same reason
+        /// <see cref="LockerTile"/> is — the same row, inboard of the locker.</summary>
+        private static readonly Int3[] CabinStoresTiles =
+        {
+            new Int3(2, 6, 0), new Int3(3, 6, 0), new Int3(4, 6, 0), new Int3(5, 6, 0),
+            new Int3(6, 6, 0), new Int3(7, 6, 0), new Int3(8, 6, 0),
+        };
 
         /// <summary>The door on <c>hall_d0_s1</c>'s spine-side apron — the compartment this ship's
         /// own <c>GoalSpec</c> names. Written out by hand rather than searched for, so that a leg
@@ -167,16 +200,49 @@ namespace Perilune.Tests
         }
 
         /// <summary>Reduce the ship to the pre-M1-I stock: 1 Parts + 2 Seals, in the reactor bay.
-        /// Implemented by deleting the cryo-bay locker stack, identified by its TILE, not its label
-        /// — a label is prose and would make this control track a rename.</summary>
+        /// Implemented by deleting the cryo-bay stacks, identified by their TILES, not their labels
+        /// — a label is prose and would make this control track a rename.
+        /// <para>⚠️ D7: it must now clear the <c>cabin stores</c> row TOO. Deleting only the locker
+        /// left 15 units on the deck and the "pre-fix stock is 3 units" precondition below caught it
+        /// — which is exactly what that precondition is for.</para></summary>
         private static void RestoreThePreFixStock(Simulation sim)
         {
             var doomed = new List<uint>();
             foreach (var it in sim.Items.Items)
-                if (it.Pos == LockerTile &&
-                    (it.Kind == ItemKind.Parts || it.Kind == ItemKind.Seals || it.Kind == ItemKind.Swarf))
-                    doomed.Add(it.Id);
+            {
+                if (it.Kind != ItemKind.Parts && it.Kind != ItemKind.Seals && it.Kind != ItemKind.Swarf) continue;
+                bool inCryo = it.Pos == LockerTile;
+                foreach (var tile in CabinStoresTiles) if (it.Pos == tile) inCryo = true;
+                if (inCryo) doomed.Add(it.Id);
+            }
             foreach (var id in doomed) sim.Items.Remove(id);
+        }
+
+
+        /// <summary>
+        /// ⚠️⚠️ <b>D7 (2026-08-03) — THE WRECK ON ITS MAINTENANCE-SIZED STOCK, i.e. with the
+        /// <c>cabin stores</c> stripped.</b> Those seven Parts are authored against
+        /// <c>build.device_place_cost</c> so the player can place furniture at all, and the
+        /// dispatcher cannot tell them from repair stock — so on the shipped ship the frontier leg
+        /// below no longer strands <c>wing_b</c> at all (measured: 0.875, fixed). Its SUBJECT is
+        /// M1-I's disclosed limit — <i>"one door click inserts three frontier machines that outrank
+        /// wing_b"</i> — so it is driven on the stock that limit was derived against, and the cache
+        /// is removed BY TILE (never by label; prose tracks renames).
+        /// <para>⛔ That the shipped ship now passes where this fixture fails is a CONTENT
+        /// CONSEQUENCE filed for the owner, not a defect settled here. Same treatment, same reason,
+        /// as <c>ChronicleSignalTests.WreckInPowerDeficit</c>.</para>
+        /// </summary>
+        private static Simulation BootOnMaintenanceSizedStock()
+        {
+            var sim = Boot();
+            var doomed = new List<uint>();
+            foreach (var it in sim.Items.Items)
+            {
+                if (it.Kind != ItemKind.Parts) continue;
+                foreach (var tile in CabinStoresTiles) if (it.Pos == tile) { doomed.Add(it.Id); break; }
+            }
+            foreach (uint id in doomed) sim.Items.Remove(id);
+            return sim;
         }
 
         private static void Drive(Simulation sim, int simHours)
@@ -213,6 +279,20 @@ namespace Perilune.Tests
                 "AuthoredShips.PeriluneWreck's damage-control locker block");
             Assert.That(ConsumableUnits(sim), Is.EqualTo(AuthoredConsumableUnits),
                 "the authored consumable stock moved");
+            // ⭐ D7 — M1-I's derivation, kept alive as an assertion rather than absorbed into the
+            // bigger total. Subtracting the cabin stores by TILE is the only way to ask "is the
+            // MAINTENANCE-sized stock still one unit per board machine?" on a ship where the
+            // dispatcher sees one pile. If a future lane moves the cabin stores, this reads as a
+            // stock change and says so — which is the review it is here to force.
+            int outsideTheCabinStores = ConsumableUnits(sim);
+            foreach (var it in sim.Items.Items)
+                foreach (var tile in CabinStoresTiles)
+                    if (it.Pos == tile && it.Kind == ItemKind.Parts) outsideTheCabinStores -= it.Count;
+            Assert.That(outsideTheCabinStores, Is.EqualTo(WreckedMachinesOnTheBoardAtBoot),
+                "M1-I's derivation is gone: the stock authored FOR THE BOARD is no longer one unit " +
+                "per wrecked machine on it. (D7's cabin stores are excluded here by tile — they are " +
+                "authored against build.device_place_cost, and the sim cannot tell the two piles " +
+                "apart, which is why every DRIVEN leg below spends the total.)");
         }
 
         /// <summary>The locker exists, is where the header says it is, and is FETCHABLE at boot —
@@ -358,8 +438,12 @@ namespace Perilune.Tests
                     "autonomy must stop ON the reserve — spending past it is finding D3, leaving " +
                     "the critical path unbuyable; not reaching it means the stock or the backlog moved");
                 Assert.That(AuthoredConsumableUnits - MaintenanceSystem.AutonomousRepairReserve,
-                    Is.EqualTo(7), "NON-VACUITY: seven units really were spendable, so the run above " +
-                    "did real work rather than declining everything");
+                    Is.EqualTo(14), "NON-VACUITY: fourteen units really were spendable, so the run " +
+                    "above did real work rather than declining everything. ⚠️ D7: this read SEVEN " +
+                    "until the `cabin stores` cache authored seven more Parts — the dispatcher sees " +
+                    "ONE pile, so the autonomous spend-down doubled. The leg's claim (autonomy stops " +
+                    "ON the reserve, and the offenders it leaves are still orderable) is unchanged " +
+                    "and still measured.");
                 Assert.That(offenders.Count, Is.LessThanOrEqualTo(MaintenanceSystem.AutonomousRepairReserve),
                     "⛔ WINNABILITY: more machines left below the floor than there are reserved units " +
                     "to fix them with — the player cannot finish the recovery by hand. Offenders: " +
@@ -563,13 +647,13 @@ namespace Perilune.Tests
             // DEFECT DESCRIBED ABOVE. Each is built, topped up and waited out the same way; the
             // ONLY difference is the SetDoorStateCommand. Both results are recorded into locals and
             // asserted together, so neither leg can hide behind the other's throw (fifth shape).
-            var closed = Boot();
+            var closed = BootOnMaintenanceSizedStock();
             TopUpTheReserve(closed);
             WaitForTheConsole(closed, "CLOSED cell");
             Drive(closed, 6);
             float closedWingB = ByName(closed, WingB).Condition;
 
-            var open = Boot();
+            var open = BootOnMaintenanceSizedStock();
             TopUpTheReserve(open);
             WaitForTheConsole(open, "OPEN cell");
             int opened = 0;
@@ -619,8 +703,11 @@ namespace Perilune.Tests
         private static void TopUpTheReserve(Simulation sim)
         {
             sim.AddItem(ItemKind.Seals, MaintenanceSystem.AutonomousRepairReserve, LockerTile);
+            // ⚠️ D7: MaintenanceSizedUnits, not AuthoredConsumableUnits. Its only caller is the
+            // frontier leg, which now runs on BootOnMaintenanceSizedStock() — the `cabin stores`
+            // are stripped there, so the budget this helper tops up is M1-I's 11 + the reserve.
             Assert.That(ConsumableUnits(sim),
-                Is.EqualTo(AuthoredConsumableUnits + MaintenanceSystem.AutonomousRepairReserve),
+                Is.EqualTo(MaintenanceSizedUnits + MaintenanceSystem.AutonomousRepairReserve),
                 "the top-up did not land — the spendable budget is not the 11 this leg measures");
         }
 

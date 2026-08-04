@@ -109,10 +109,17 @@ namespace Perilune.Tests
         /// <summary>After the wreck's single Parts overhauls <c>wing_c</c> to 1.00: 3.93 + 3.54 + 6.00.
         /// This is the step the benches are bought with.</summary>
         private const float AfterWingCKW = 13.47f;
-        /// <summary>THE CEILING REACHABLE ON BOOT STOCK, WITHOUT CRAFTING, and it is 17.40 —
-        /// NOT 18.00. The wreck carries exactly one Parts, so out of the hold exactly ONE wing
-        /// reaches Condition 1.00 and the ladder's next rung (Seals → 0.90) takes the other two.
-        /// 6.00 + 5.70 + 5.70.
+        /// <summary>The 1.00 / 0.90 / 0.90 STATE, in kW: 6.00 + 5.70 + 5.70.
+        /// <para>⚠️⚠️ <b>D7 (2026-08-03) RETIRED THE WORD "CEILING" IN THIS NAME — the CONSTANT and
+        /// its assertion are unchanged and still correct.</b> It was 17.40 because the wreck carried
+        /// exactly ONE Parts, so out of the hold exactly one wing reached 1.00 and the ladder's next
+        /// rung (Seals → 0.90) took the other two. The <c>cabin stores</c> cache
+        /// (<c>AuthoredShips.PeriluneWreck</c>) authors seven more Parts for
+        /// <c>build.device_place_cost</c>, and the dispatcher sees ONE pile — so three Parts
+        /// overhauls are now affordable out of the hold and the boot-stock ceiling is
+        /// <see cref="PristineKW"/>. What this constant pins is the arithmetic of the 1.00/0.90/0.90
+        /// state, which the legs below set BY HAND; that is unaffected, which is why nothing here
+        /// was re-measured. Do not re-read it as "what the opening can reach".</para>
         /// <para>⚠️ "ON BOOT STOCK" IS THE WHOLE QUALIFIER AND AN EARLIER DRAFT OMITTED IT, saying
         /// one wing could EVER reach 1.00. That is false: Parts are producible (`recipes.def:21`,
         /// Fabricator 2 Scrap → 1 Parts; `deconstruct.def:19-21`, floor(2 × Condition) Parts per
@@ -122,9 +129,10 @@ namespace Perilune.Tests
         private const float CeilingKW = 17.40f;
         /// <summary>Three wings at Condition 0.00 — the floor of the affine map, 3 × 6 × 0.5.</summary>
         private const float FloorKW = 9.00f;
-        /// <summary>Three wings at Condition 1.00. Out of reach on boot stock (one Parts aboard) but
-        /// craftable later; it is here as the map's OTHER endpoint, because two points pin a slope
-        /// and one point cannot.</summary>
+        /// <summary>Three wings at Condition 1.00. It is here as the map's OTHER endpoint, because
+        /// two points pin a slope and one point cannot. ⚠️ D7: it is no longer out of reach on boot
+        /// stock — the wreck holds eight Parts, three of which buy this state (at the price of the
+        /// furniture those same units pay for). See <see cref="CeilingKW"/>.</summary>
         private const float PristineKW = 18.00f;
         /// <summary>Three wings at 0.06 — every one of them below machines.def `fail` (0.10).
         /// 3 × 6 × 0.53. Under an <c>IsOperational</c> gate this figure is 0.00.</summary>
@@ -256,11 +264,12 @@ namespace Perilune.Tests
         /// band on the figure <c>PowerSystem</c> itself tallied. This is the owner's sentence as
         /// arithmetic: <b>10.65 kW at boot → 13.47 after the Parts overhauls <c>wing_c</c> → 17.40
         /// once both Seals have gone into the other two wings.</b>
-        /// <para>⚠️ 17.40 AND NOT 18.00 IS THE POINT OF THE THIRD LEG: the wreck carries one Parts,
-        /// so on boot stock only one wing reaches 1.00 and the other two stop at the Seals rung
-        /// (0.90). A package that pinned 18.00 would pin a state the OPENING cannot reach — later,
-        /// once the player is crafting Parts, it is reachable, which is why the qualifier is
-        /// "on boot stock" and not "ever".</para>
+        /// <para>⚠️ 17.40 AND NOT 18.00 WAS THE POINT OF THE THIRD LEG while the wreck carried one
+        /// Parts: on boot stock only one wing reached 1.00 and the other two stopped at the Seals
+        /// rung (0.90). ⚠️ D7 (2026-08-03) authored the <c>cabin stores</c> and the ship now holds
+        /// eight Parts, so 18.00 IS reachable out of the hold — the third leg no longer reads as a
+        /// reachability claim and is kept because it pins the third point on the affine map.
+        /// See <see cref="CeilingKW"/> for the full note.</para>
         /// <para>⚠️ ONE ASSERT, EVERY LEG IN IT — <c>Assert</c> throws, and a per-leg assertion
         /// would let the boot figure hide both later ones (the fifth trap shape).</para>
         /// </summary>
@@ -464,8 +473,11 @@ namespace Perilune.Tests
         /// <summary>
         /// ⭐ <b>AND THE LIGHTS COME ON.</b> The second half of the same sentence, and the one a
         /// player actually sees. Run the wreck seven sim-hours unattended — the bank is flat and
-        /// deck 0's lamps are shedding — then bring the wings to the REACHABLE ceiling (one Parts
-        /// and two Seals: 1.00 / 0.90 / 0.90) and hold the ship there for 120 balance seconds.
+        /// deck 0's lamps are shedding — then bring the wings to 1.00 / 0.90 / 0.90 (one Parts and
+        /// two Seals) and hold the ship there for 120 balance seconds. ⚠️ M2-12 called that state
+        /// "the reachable ceiling"; D7's <c>cabin stores</c> retired that reading — see
+        /// <see cref="CeilingKW"/>. The state is still reachable and still 17.40 kW, which is all
+        /// this leg uses it for.
         /// <para>⚠️ <b>120 PASSES, NOT ONE, AND THE "BEFORE" HALF IS SAMPLED THE SAME WAY.</b> A
         /// ship in persistent deficit with a flat bank does not settle dark — it FLICKERS at 0.5 Hz
         /// (measured: lit, dark, lit, dark, for ever), because a battery bursts any charge inside
@@ -501,7 +513,7 @@ namespace Perilune.Tests
 
             if (litEvery != Window)
                 offenders.Add($"deck 0's eight lamps were lit in {litEvery} of {Window} balance seconds after the " +
-                              "wings were repaired to the reachable ceiling — at 17.40 kW against 14.80 kW of " +
+                              "wings were repaired to 1.00 / 0.90 / 0.90 — at 17.40 kW against 14.80 kW of " +
                               "demand they must be lit in every one of them");
             if (industryEvery != Window)
                 offenders.Add($"the benches ran in {industryEvery} of {Window} passes after the repair, not all of them");

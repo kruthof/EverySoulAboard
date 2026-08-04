@@ -244,10 +244,24 @@ namespace Perilune.Tests
             Assert.That(compared, Is.EqualTo(12), "PRECONDITION: twelve capsules were compared");
             Assert.That(problems, Is.Empty,
                 "the surface and the sim disagree about a capsule. " + string.Join(" | ", problems));
-            // MEASURED, not guessed: the wreck boots with 10 Seals and 1 Parts, so rungs 1/2/3
-            // (Lindqvist, Ozawa, Ferreira) are affordable and rungs 4–7 (Mbeki, Bahri, Nakamura,
-            // Torres) are not ⇒ FOUR sealed rows where "SEALED" and "thawable" disagree.
-            Assert.That(disagreeIfDerivedFromState, Is.GreaterThanOrEqualTo(4),
+            // MEASURED, not guessed: the wreck boots with 10 Seals and — since D7's `cabin stores`
+            // (2026-08-03) — EIGHT Parts, so rungs 1/2/3/4 (Lindqvist, Ozawa, Ferreira, Mbeki) are
+            // affordable and rungs 5–7 (Bahri, Nakamura, Torres — all ControllerModule) are not
+            // ⇒ THREE sealed rows where "SEALED" and "thawable" disagree.
+            // ⚠️⚠️ IT WAS FOUR UNTIL D7, AND THE CHANGE IS A REAL ONE, NOT A COUNT DRIFTING. Rung 4
+            // costs 2 Parts and the ship carried 1, so Mbeki's capsule used to be behind the
+            // crafting ladder and is now affordable at tick 0. `ThawGate` prices its rungs through
+            // `LooseMatter.Affordable` — the SAME position-free lens `PlaceDeviceCommand` pays with
+            // — so ANY Parts authored ANYWHERE aboard cheapens the thaw ladder by this rung; there
+            // is no placement that avoids it. FILED for the owner as part of D7's report, not
+            // settled here.
+            // EQUALITY, not a floor: the value is now exactly derived, and a `>=` could not see it
+            // drop further. Twelve capsules − 1 open (Rell) − 4 breached = 7 sealed candidates; of
+            // those, rungs 1-4 are affordable (Seals 1, Seals 2, Parts 1, Parts 2 — the ship holds
+            // 10 Seals and 8 Parts) and rungs 5-7 want a ControllerModule, of which the wreck holds
+            // ZERO and can hold none until the MachineShop runs. ⇒ exactly THREE sealed rows where
+            // "SEALED" and "thawable" disagree.
+            Assert.That(disagreeIfDerivedFromState, Is.EqualTo(3),
                 "NON-VACUITY: the cheap re-derivation this test exists to forbid (thawable == SEALED) "
                 + "must be WRONG on this ship, or the agreement above is satisfiable by accident");
         }

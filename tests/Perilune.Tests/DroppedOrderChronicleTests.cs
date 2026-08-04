@@ -131,9 +131,11 @@ namespace Perilune.Tests
             Assert.That(her.HeldByOrder, Is.True, "premise: …and HELD — the hold IS the order, and it " +
                 "is the only thing `Abandon` publishes for");
 
-            // She walks to the ship's one Parts stack (7,14,0) and picks it up — measured at tick
-            // ~171 on this ship. Waited for rather than assumed: the pickup is what makes the yank
-            // below reach the CARGO arm instead of some earlier one.
+            // She walks to the NEAREST Parts stack and picks it up — measured at tick ~51 on this
+            // ship since D7 put the `cabin stores` crates at (2..8,6,0) five tiles from her capsule
+            // (it was ~171 at the reactor bay's (7,14,0) when that was the only Parts aboard; driven
+            // 2×2 in DroppedOrderTests' header). Waited for rather than assumed: the pickup is what
+            // makes the yank below reach the CARGO arm instead of some earlier one.
             for (int i = 0; i < 600 && her.CarryingItemId == 0; i++) gs.AdvanceTicks(1);
             Assert.That(her.CarryingItemId, Is.Not.EqualTo(0u),
                 "COVERAGE PREMISE FAILED: she never picked a stack up, so the yank below removes " +
