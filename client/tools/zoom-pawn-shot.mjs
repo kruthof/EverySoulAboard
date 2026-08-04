@@ -23,10 +23,18 @@
 //     the selection visibly moves" IS NOT EXERCISABLE on `--ship wreck` — there is no second pawn.
 //     `--ship grid` (8 crew, still reachable by flag, the economy baseline) is where that leg runs,
 //     and it runs with `--multi`. It is NOT routed around and NOT silently skipped.
-//   · the wreck's deck 1 has NO enterable rooms at all, so every wreck leg is deck 0. `--ship grid`
-//     is the opposite: its crew leave deck 0 within the first sim-minutes and settle in deck 1, so
-//     the grid run needs `--deck 1`. Hard-coding either is what produced this rig's first false
+//   · the wreck's deck 1 has NO enterable rooms at all, so every wreck leg is deck 0. THE DECK IS A
+//     FLAG rather than a constant because hard-coding one is what produced this rig's first false
 //     finding ("no crew member on deck 0 at all", which was a fact about the rig).
+//     ⛔ AND THE DEFAULT IS RIGHT FOR BOTH SHIPS ON THIS TREE — CORRECTED 2026-08-04, because the
+//     line that stood here said "`--ship grid`'s crew leave deck 0 within the first sim-minutes and
+//     settle in deck 1, so the grid run needs `--deck 1`", and that is measurably FALSE. Driven FIVE
+//     times — twice by this lane (a fresh host, and again at ~5 min of sim) and three times by
+//     independent review (fresh, ~5 min, ~25 min). All EIGHT grid crew are on deck 0, in halls, in
+//     every one of the five, so `--deck 1` finds zero movers and the run dies at the SUBJECT probe
+//     before section 4. `--multi` alone — i.e. deck 0 — is the two-pawn invocation, and the seeding
+//     below is what puts two of them in a room. A usage line nobody had re-driven cost two lanes a
+//     diagnosis each.
 //   · `--ship grid` crew take a DIG job seconds after being placed and walk back out of the room, so
 //     sections 4–7 degrade to notes there rather than to failures. Those legs are validated on the
 //     WRECK, which is the shipping game; `--multi` exists for the two-pawn leg and nothing else.
@@ -35,7 +43,7 @@
 //   1. ./play.sh --host-port 8462 --client-port 8463 --no-open              (the wreck)
 //      …or:  dotnet run --project hosts/web -- --port N --ship grid  + client/serve.py  (--multi)
 //   2. node client/tools/zoom-pawn-shot.mjs --out docs/design/shots [--host-port 8462]
-//      node client/tools/zoom-pawn-shot.mjs --host-port N --multi --deck 1     (the two-pawn leg)
+//      node client/tools/zoom-pawn-shot.mjs --host-port N --multi     (the two-pawn leg + §5b, deck 0)
 //
 // Exits non-zero if the host will not answer, if Chrome never paints, if a gesture does not land, or
 // — the point — if the selection is invisible in the room, or a MOVE order does not move anybody.
@@ -114,10 +122,15 @@ const { decodeDecks, decodeRooms, selectedCrewCid } = await import('../src/wire/
 const { decksView } = await import('../src/ui/decks-model.js');
 const { deckSlots, roomTileRect, roomFit, U } = await import('../src/ui/room-model.js');
 
-// THE DECK IS A FLAG, not a constant, and the reason is a MEASURED fact about `--ship grid`: its
-// eight crew migrate off deck 0 within the first sim-minutes and settle in deck 1's HOLD. A rig that
-// hard-coded deck 0 reported "no crew member on deck 0 at all" and would have looked like a finding
-// about the surface. (On `--ship wreck`, deck 0 is the only deck with enterable rooms at all.)
+// THE DECK IS A FLAG, not a constant, because a rig that hard-coded one reported "no crew member on
+// deck 0 at all" and would have looked like a finding about the surface. (On `--ship wreck`, deck 0
+// is the only deck with enterable rooms at all.)
+// ⛔ WHAT THIS COMMENT USED TO ASSERT WAS FALSE, AND IT WAS THE CAUSE OF THAT SAME RED IN REVERSE —
+// corrected 2026-08-04. It said `--ship grid`'s "eight crew migrate off deck 0 within the first
+// sim-minutes and settle in deck 1's HOLD", which sent two lanes to `--deck 1` and straight into the
+// SUBJECT probe's exit 2. Re-driven five times — twice by this lane, three times by independent
+// review (fresh, ~5 min, ~25 min of sim) — and all eight are on DECK 0, in halls, in every one of
+// them. The default `--deck 0` is correct for both ships today.
 // ⭐ THE ACTUATION WITNESS'S BASELINE, taken before this tool has clicked anything — the final check
 // compares it against the same reading, so every gesture (including the retries) is in the window.
 const devicesAtStart = deviceOpenState(latest);
@@ -176,7 +189,15 @@ if (MULTI) {
 // being true the day the authored ship moves.
 const SUBJECT = roster().find((c) => c.deck === DECK && slots.some((s) => inRect(c, s.rect)))
   || roster().find((c) => c.deck === DECK);
-if (!SUBJECT) { console.error('FAIL: no crew member on deck 0 at all'); process.exit(2); }
+// ⚠️ THE MESSAGE NAMES THE DECK IT ACTUALLY LOOKED ON. It hard-coded "deck 0" whatever `--deck`
+// said, so a `--deck 1` run died claiming deck 0 was empty while the roster printed eight souls
+// standing on deck 0 six lines above — a red that names the wrong deck sends the reader to the ship
+// instead of to the flag, which is exactly what happened twice (see the DECK-is-a-flag note above).
+if (!SUBJECT) {
+  console.error(`FAIL: no crew member on deck ${DECK} at all (the roster above is what this run can `
+    + 'see; if they are all standing on another deck, that is a `--deck` argument, not a ship bug)');
+  process.exit(2);
+}
 const HER_SLOT = slots.find((s) => inRect(SUBJECT, s.rect)) || null;
 const OTHER_SLOT = slots.find((s) => s !== HER_SLOT) || null;
 log(`SUBJECT: ${SUBJECT.name} (cid ${SUBJECT.cid}) in ${HER_SLOT ? HER_SLOT.displayName : 'a hall'}`);
@@ -422,7 +443,9 @@ const screenOf = (tx, ty) => ({
 // aboard (Rell), and section 5 has just selected her — so "an unselected row" does not exist there
 // and the legs would compare the selected state with itself. Reported as UNREACHABLE, never
 // skipped silently. It is reachable IN THE GAME (every thaw adds a row, which is the wreck's own
-// ladder) and it runs here on `--ship grid --multi --deck 1`, which has eight.
+// ladder) and it runs here on `--ship grid --multi` — deck 0, the DEFAULT, which is where all eight
+// grid crew actually stand (see the corrected note over `const DECK`; `--deck 1` exits 2 at the
+// SUBJECT probe and never reaches this section at all).
 log('\n=== CREW DOCK LOOK: a hovered row must not wear the SELECTED row\'s edge ===');
 const ROWSTATE = (cid) => `(()=>{const b=document.querySelector('[data-rzcrew="${cid}"]');
   if(!b)return null;const cs=getComputedStyle(b);const r=b.getBoundingClientRect();
