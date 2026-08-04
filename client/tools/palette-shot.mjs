@@ -282,7 +282,28 @@ for (const tool of ['wall', 'stockpile']) {
 // byte-identical; (5) arming does not re-measure the button's box; (6) ESC returns it to the hover
 // look. They do NOT — and cannot — assert that the armed state is LOUD ENOUGH to notice; no
 // automated check here judges contrast. That remains a human call on the four PNGs this writes.
-const STATE = (tool) => `(()=>{const b=document.querySelector('.rz-tool[data-rztool="${tool}"]');
+// ⭐ RUN OVER THE **CLASS** OF ARMABLE CONTROLS, NOT OVER THE TOOL BUTTON ALONE — 2026-08-03, second
+// pass. The first version of this section photographed `.rz-tool` only, the CSS fix was made there
+// only, and the palette lane's own reviewer then found the identical `#cf7a33` collision on
+// `.rz-acc-chip` and a near-identical one on `.rz-mat-chip` — the two OPTION ROWS that hang directly
+// under the palette and that a player reaches immediately after arming WALL or STOCKPILE. Three
+// members now go through the same six legs:
+//
+//     tool     .rz-tool[data-rztool="wall"]   armed by clicking it · released by ESC
+//     matchip  .rz-mat-chip[data-rzmat=…]     armed by picking it  · released by picking a sibling
+//     accchip  .rz-acc-chip[data-rzaccept=…]  armed by toggling in · released by toggling out
+//
+// ⚠️ EACH MEMBER'S RELEASE IS THE ONE A PLAYER ACTUALLY HAS, not a shared convenience. There is no
+// ESC for a chip: the material swatches are a radio group, so the only way to un-light one is to pick
+// another, and an ACCEPTS chip un-lights by being clicked again. Using ESC for all three would have
+// tested a rung two of them do not own.
+//
+// ⚠️ AND THE STARTING STATE IS PREPARED, NOT ASSUMED. A tool boots unarmed; a material swatch boots
+// with ONE already lit; every ACCEPTS chip boots LIT, because an untouched stockpile accepts
+// everything. Photographing "rest" on a control that is already armed compares the armed look with
+// itself and passes for free, so each chip target is first driven to a genuinely unarmed chip — the
+// swatch leg picks one that is not the active material, the ACCEPTS leg clicks its chip out first.
+const STATE = (sel) => `(()=>{const b=document.querySelector('${sel}');
   if(!b)return null;const cs=getComputedStyle(b);const r=b.getBoundingClientRect();
   return {cls:b.className,pressed:b.getAttribute('aria-pressed'),bg:cs.backgroundColor,color:cs.color,
     border:cs.borderTopWidth+' '+cs.borderTopColor,shadow:cs.boxShadow,weight:cs.fontWeight,
@@ -291,76 +312,209 @@ const STATE = (tool) => `(()=>{const b=document.querySelector('.rz-tool[data-rzt
 
 await setWidth(WIDTHS[0]);
 await sleep(600);
-const LOOK = 'wall';
-const seen = {};
-const away = await evalJson(`(()=>{const p=document.querySelector('.rz-palette').getBoundingClientRect();
-  return {x:p.x+p.width/2,y:Math.max(4,p.y-90)};})()`);
 const moveTo = async (x, y) => { await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await sleep(650); };
+// Clear of the WHOLE wrapper, not just the palette: the option rows are siblings of the palette
+// inside it, and a "rest" reading taken while the pointer sits on the subject is a comparison of one
+// state with itself. Which the rest-vs-hover leg below would then catch — this only stops it being
+// the normal case for the two new members.
+const away = await evalJson(`(()=>{const p=document.querySelector('.rz-palette-wrap').getBoundingClientRect();
+  return {x:p.x+p.width/2,y:Math.max(4,p.y-60)};})()`);
+if (!away) die(9, 'no .rz-palette-wrap — the armed-look legs have nowhere to park the pointer');
 
-await moveTo(away.x, away.y);                                   // pointer OFF the palette
-seen.rest = await evalJson(STATE(LOOK));
-if (!seen.rest) die(9, `no ${LOOK.toUpperCase()} button for the armed-look legs`);
-const zoom = { x: seen.rest.x - 7, y: seen.rest.y - 7, width: seen.rest.w + 14, height: seen.rest.h + 14 };
-await png('look-rest.png', zoom);
+const clickTool = async (tool) => {
+  const b = await evalJson(`(()=>{const b=document.querySelector('.rz-tool[data-rztool="${tool}"]');
+    if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+  if (!b) die(9, `no ${tool.toUpperCase()} button to reach the option row with`);
+  await clickAt(b.x, b.y);
+  await sleep(1100);
+};
+const clickSel = async (sel) => {
+  const b = await evalJson(`(()=>{const b=document.querySelector('${sel}');if(!b)return null;
+    const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+  if (!b) die(9, `no element for ${sel}`);
+  await clickAt(b.x, b.y);
+  await sleep(900);
+};
 
-await moveTo(seen.rest.cx, seen.rest.cy);                       // pointer ON it, still unarmed
-seen.hover = await evalJson(STATE(LOOK));
-await png('look-hover.png', zoom);
+const sameLook = (a, b) => a.bg === b.bg && a.color === b.color && a.border === b.border && a.shadow === b.shadow;
 
-await clickAt(seen.rest.cx, seen.rest.cy); await sleep(900);    // armed, pointer still on it
-await assertLinked('after arming for the look legs');
-seen.armed = await evalJson(STATE(LOOK));
-await png('look-armed.png', zoom);
+/**
+ * Read a control's paint ONCE IT HAS STOPPED MOVING — two identical readings in a row, or give up
+ * and report the last one.
+ *
+ * ⚠️ NOT DEFENSIVENESS: a mid-transition value was CAUGHT, in this rig, during the pre-fix control
+ * run. `.rz-mat-chip` carries `transition:…border-color .09s…`, its strip is re-rendered wholesale
+ * when the selection changes (`paintMatStrip` replaces the row's `innerHTML`, so the node under the
+ * pointer is a NEW node that re-enters `:hover` on the next mouse move), and the released reading
+ * came back `rgb(155, 97, 48)` — a colour that exists in neither state, part-way between rest and
+ * hover. A single `sleep` is a guess about how long a repaint takes; this asks the page instead.
+ * Without it the release leg is a coin-flip whose red says "the state latched", which is a sentence
+ * about a defect that is not there — the why-line rig's 2026-08-03 flake in a new costume.
+ */
+async function readSettled(sel) {
+  let prev = await evalJson(STATE(sel));
+  for (let i = 0; i < 8 && prev; i++) {
+    await sleep(300);
+    const now = await evalJson(STATE(sel));
+    if (now && sameLook(prev, now)) return now;
+    prev = now;
+  }
+  return prev;
+}
 
-await key('Escape'); await sleep(900);                          // the disarm rung the owner names
-seen.escaped = await evalJson(STATE(LOOK));
-await png('look-rest-again.png', zoom);
+/**
+ * Photograph and read ONE armable control through rest → hover → armed → released, and return both
+ * the readings and everything wrong with them. The clip is recomputed from each state's OWN rect:
+ * arming a tool reveals an option row, which moves the wrapper, and a clip frozen at the rest
+ * position then photographs empty background — a PNG that shows nothing looks exactly like a PNG that
+ * shows no change.
+ */
+async function readLook({ name, sel, arm, release }) {
+  const seen = {};
+  const shot = async (file, s) => png(file, { x: s.x - 7, y: s.y - 7, width: s.w + 14, height: s.h + 14 });
 
-for (const [k, v] of Object.entries(seen))
-  log(`LOOK ${k.padEnd(8)} cls="${v.cls}" pressed=${v.pressed} bg=${v.bg} color=${v.color} ` +
-      `border=${v.border} shadow=${v.shadow === 'none' ? 'none' : 'yes'} box=${v.w}x${v.h}`);
+  await moveTo(away.x, away.y);                                 // pointer OFF the whole wrapper
+  seen.rest = await readSettled(sel);
+  if (!seen.rest) die(9, `no ${name} control (${sel}) for the armed-look legs`);
+  await shot(`look-${name}-rest.png`, seen.rest);
+
+  await moveTo(seen.rest.cx, seen.rest.cy);                     // pointer ON it, still unarmed
+  seen.hover = await readSettled(sel);
+  await shot(`look-${name}-hover.png`, seen.hover);
+
+  await arm(seen.rest);                                         // armed, pointer still on it
+  await assertLinked(`after arming ${name} for the look legs`);
+  seen.armed = await readSettled(sel);
+  await shot(`look-${name}-armed.png`, seen.armed);
+
+  await release(seen.rest);                                     // the release rung THIS member owns
+  await moveTo(seen.rest.cx, seen.rest.cy);                     // …and back under the pointer
+  seen.released = await readSettled(sel);
+  await shot(`look-${name}-rest-again.png`, seen.released);
+
+  for (const [k, v] of Object.entries(seen))
+    log(`LOOK ${name.padEnd(8)} ${k.padEnd(8)} cls="${v.cls}" pressed=${v.pressed} bg=${v.bg} ` +
+        `color=${v.color} border=${v.border} shadow=${v.shadow === 'none' ? 'none' : 'yes'} box=${v.w}x${v.h}`);
+
+  // The assertions. NON-VACUITY FIRST: `rest` and `hover` must actually DIFFER, or the pointer never
+  // landed and every comparison below is being made between two identical readings of one state — the
+  // exact shape of a green run that measured nothing.
+  const out = [];
+  const at = (m) => `${name}: ${m}`;
+  if (sameLook(seen.rest, seen.hover))
+    out.push(at('rest and HOVER are identical — either the pointer never established :hover or the ' +
+      'control was ALREADY armed when "rest" was read, so every comparison below is vacuous. ' +
+      'Nothing here is evidence until this leg passes.'));
+  // ⚠️ THE ARM CHECK IS THE `.on` CLASS, NOT `aria-pressed`, AND THAT IS A GENERALISATION WITH A
+  // REASON. The tool-only version of this leg read `pressed !== 'true'`, which would fail every run
+  // on a material swatch: `paintMatStrip` deliberately emits NO `aria-pressed`, because exactly one
+  // swatch is ever lit and six independent toggles is not what the player has (the honest spelling is
+  // role="radio"/aria-checked, a keyboard change nobody has made). `.on` is the class the stylesheet
+  // actually paints off, and it is the one thing all three members share.
+  if (!seen.armed.cls.split(/\s+/).includes('on'))
+    out.push(at(`the click did not arm it (cls="${seen.armed.cls}" pressed=${seen.armed.pressed})`));
+  // ⚠️ THE HEADLINE LEG, AND IT IS NOT A BYTE-COMPARISON — the first draft's was, and independent
+  // review DROVE the hole rather than arguing it: run against the exact PRE-FIX css, `sameLook(armed,
+  // hover)` came back FALSE and this rig exited 0 GREEN **on the very defect the package exists to
+  // fix**. The two states did differ — on a dark-on-dark fill and a text hue — they just did not
+  // differ anywhere a player could see, while matching on the border and on the (absent) shadow.
+  // A difference an instrument can read is not a difference the PLAYER can read, and byte-identity is
+  // the weakest possible reading of "looks the same". So the leg NAMES THE CHANNEL instead: hover must
+  // carry no shadow and armed must carry one, which is the one signal that cannot be produced by the
+  // pointer and cannot quietly converge as two colours drift toward each other. Verified red against
+  // the historical CSS and green on the shipped tree, for all three members.
+  if (!(seen.armed.shadow !== 'none' && seen.hover.shadow === 'none'))
+    out.push(at('the ARMED state does not OWN the shadow channel — armed must carry a box-shadow and ' +
+      'hover must not. Without an exclusive channel the two states are only ever a colour edit apart, ' +
+      'which is how the 2026-08-03 defect happened: armed and hovered differed on paper and not on ' +
+      `screen. (armed shadow: ${seen.armed.shadow} · hover shadow: ${seen.hover.shadow})`));
+  if (sameLook(seen.armed, seen.hover))
+    out.push(at('ARMED and HOVERED are byte-identical across every channel read here. The player\'s ' +
+      'cursor is on the control they just clicked, so this is what they actually see: a control that ' +
+      `does not answer. (bg ${seen.armed.bg} · color ${seen.armed.color} · border ${seen.armed.border})`));
+  if (seen.armed.w !== seen.rest.w || seen.armed.h !== seen.rest.h)
+    out.push(at(`arming RE-MEASURED the control (${seen.rest.w}x${seen.rest.h} → ${seen.armed.w}x` +
+      `${seen.armed.h}). The armed look must not reflow a wrapping row — that is this tool's own ` +
+      'subject, and all three of these rows wrap.'));
+  if (!sameLook(seen.released, seen.hover))
+    out.push(at('the release rung did not return it to its unarmed look — the state latched. ' +
+      `(released bg ${seen.released.bg} border ${seen.released.border} shadow ${seen.released.shadow} ` +
+      `vs hover bg ${seen.hover.bg} border ${seen.hover.border} shadow ${seen.hover.shadow})`));
+  return { seen, out };
+}
+
+const armedLook = {};
+const lookBad = [];
+
+// ── member 1: the tool button. Released by ESC, the rung the owner's sentence names. ───────────
+{
+  const sel = '.rz-tool[data-rztool="wall"]';
+  const r = await readLook({
+    name: 'tool', sel,
+    arm: async (s) => { await clickAt(s.cx, s.cy); await sleep(900); },
+    release: async () => { await key('Escape'); await sleep(900); },
+  });
+  armedLook.tool = r.seen; lookBad.push(...r.out);
+}
+
+// ── member 2: a material swatch. Reached by arming WALL; the target is a swatch that is NOT the
+// active material, and it is released by picking a sibling — a radio group has no other way. ───
+{
+  await clickTool('wall');
+  const pick = await evalJson(`(()=>{const cs=[...document.querySelectorAll('.rz-mat-chip')];
+    if(cs.length<2)return null;const off=cs.find(c=>!c.classList.contains('on'));
+    const on=cs.find(c=>c.classList.contains('on'));if(!off||!on)return null;
+    return {target:off.dataset.rzmat,sibling:on.dataset.rzmat,n:cs.length};})()`);
+  if (!pick) die(9, 'the material strip did not offer one lit and one unlit swatch — the swatch legs ' +
+    'need a genuinely unarmed target and a sibling to release it with');
+  log(`material strip: ${pick.n} swatches, target rzmat=${pick.target}, release via rzmat=${pick.sibling}`);
+  const sel = `.rz-mat-chip[data-rzmat="${pick.target}"]`;
+  const r = await readLook({
+    name: 'matchip', sel,
+    arm: async (s) => { await clickAt(s.cx, s.cy); await sleep(900); },
+    release: async () => { await clickSel(`.rz-mat-chip[data-rzmat="${pick.sibling}"]`); },
+  });
+  armedLook.matchip = r.seen; lookBad.push(...r.out);
+  await clickTool('wall');                                      // disarm, back to a known slot
+}
+
+// ── member 3: an ACCEPTS chip. Reached by arming STOCKPILE. Every chip boots LIT, so the target is
+// toggled OUT first — otherwise "rest" would be a reading of the armed state. ──────────────────
+{
+  await clickTool('stockpile');
+  const pick = await evalJson(`(()=>{const cs=[...document.querySelectorAll('.rz-acc-chip')];
+    if(!cs.length)return null;return {target:cs[0].dataset.rzaccept,n:cs.length,
+      litAtBoot:cs.filter(c=>c.classList.contains('on')).length};})()`);
+  if (!pick) die(9, 'no ACCEPTS chips after arming STOCKPILE');
+  log(`accepts row: ${pick.n} chips, ${pick.litAtBoot} lit at boot, target rzaccept=${pick.target}`);
+  const sel = `.rz-acc-chip[data-rzaccept="${pick.target}"]`;
+  await clickSel(sel);                                          // toggle it OUT — now genuinely unarmed
+  const stillOn = await evaluate(`!!document.querySelector('${sel}.on')`);
+  if (stillOn) die(9, 'the ACCEPTS chip would not toggle OUT, so "rest" would be a reading of the ' +
+    'ARMED state and every leg after it would compare that state with itself');
+  const r = await readLook({
+    name: 'accchip', sel,
+    arm: async (s) => { await clickAt(s.cx, s.cy); await sleep(900); },
+    release: async (s) => { await clickAt(s.cx, s.cy); await sleep(900); },
+  });
+  armedLook.accchip = r.seen; lookBad.push(...r.out);
+  await clickSel(sel);                                          // mask back to ACCEPT_ALL
+  await clickTool('stockpile');
+}
+
 // ⚠️ NOT pushed into `results`. Every summary below filters that array on `r.clipped.length`, and a
 // row with no `clipped` field threw a TypeError there — a crash AFTER the measurement, which reads
 // as a failed run of the layout check that had in fact already passed (this repo's FALSE RED shape,
 // trap 3). The armed-look readings are a different measurement and are reported on their own.
-const armedLook = seen;
-
-// The assertions. NON-VACUITY FIRST: `rest` and `hover` must actually DIFFER, or the pointer never
-// landed and every comparison below is being made between two identical readings of one state — the
-// exact shape of a green run that measured nothing.
-const sameLook = (a, b) => a.bg === b.bg && a.color === b.color && a.border === b.border && a.shadow === b.shadow;
-const lookBad = [];
-if (sameLook(seen.rest, seen.hover))
-  lookBad.push('rest and HOVER are identical — the pointer never established :hover, so the armed-vs-' +
-    'hover comparison below is vacuous. Nothing here is evidence until this leg passes.');
-if (seen.armed.cls === seen.rest.cls || seen.armed.pressed !== 'true')
-  lookBad.push(`the click did not arm ${LOOK.toUpperCase()} (cls="${seen.armed.cls}" pressed=${seen.armed.pressed})`);
-// ⚠️ THE HEADLINE LEG, AND IT IS NOT A BYTE-COMPARISON — the first draft's was, and independent
-// review DROVE the hole rather than arguing it: run against the exact PRE-FIX css, `sameLook(armed,
-// hover)` came back FALSE and this rig exited 0 GREEN **on the very defect the package exists to
-// fix**. The two states did differ — on a dark-on-dark fill and a text hue — they just did not
-// differ anywhere a player could see, while matching on the border and on the (absent) shadow.
-// A difference an instrument can read is not a difference the PLAYER can read, and byte-identity is
-// the weakest possible reading of "looks the same". So the leg NAMES THE CHANNEL instead: hover must
-// carry no shadow and armed must carry one, which is the one signal that cannot be produced by the
-// pointer and cannot quietly converge as two colours drift toward each other. Verified red against
-// the historical CSS and green on the shipped tree.
-if (!(seen.armed.shadow !== 'none' && seen.hover.shadow === 'none'))
-  lookBad.push('the ARMED state does not OWN the shadow channel — armed must carry a box-shadow and ' +
-    'hover must not. Without an exclusive channel the two states are only ever a colour edit apart, ' +
-    'which is how the 2026-08-03 defect happened: armed and hovered differed on paper and not on ' +
-    `screen. (armed shadow: ${seen.armed.shadow} · hover shadow: ${seen.hover.shadow})`);
-if (sameLook(seen.armed, seen.hover))
-  lookBad.push('ARMED and HOVERED are byte-identical across every channel read here. The player\'s ' +
-    'cursor is on the button they just clicked, so this is what they actually see: a control that ' +
-    `does not answer. (bg ${seen.armed.bg} · color ${seen.armed.color} · border ${seen.armed.border})`);
-if (seen.armed.w !== seen.rest.w || seen.armed.h !== seen.rest.h)
-  lookBad.push(`arming RE-MEASURED the button (${seen.rest.w}x${seen.rest.h} → ${seen.armed.w}x` +
-    `${seen.armed.h}). The armed look must not reflow a wrapping row — that is this tool's own subject.`);
-if (!sameLook(seen.escaped, seen.hover))
-  lookBad.push('ESC did not return the button to its unarmed look — the state latched. ' +
-    `(escaped bg ${seen.escaped.bg} border ${seen.escaped.border} vs hover bg ${seen.hover.bg} ` +
-    `border ${seen.hover.border})`);
+//
+// ⛔ WHAT THESE LEGS ACTUALLY ASSERT, stated exactly, because an earlier draft of this header
+// overstated it as "refuses to pass when hover and armed resolve alike" and that was measurably
+// false. Per member they assert: (1) rest and hover really differ, so the rig is not comparing one
+// state with itself; (2) the click really armed it; (3) **armed OWNS the shadow channel** — armed has
+// a box-shadow and hover has none; (4) armed and hover are not byte-identical; (5) arming does not
+// re-measure the control's box; (6) the member's own release rung returns it to the hover look. They
+// do NOT — and cannot — assert that the armed state is LOUD ENOUGH to notice; no automated check here
+// judges contrast. That remains a human call on the twelve PNGs this writes.
 
 writeFileSync(join(OUT, PREFIX + 'measurements.json'), JSON.stringify({ widths: results, armedLook }, null, 2));
 log('  wrote', join(OUT, PREFIX + 'measurements.json'));
@@ -390,9 +544,9 @@ if (ariaBad.length) {
 if (lookBad.length) {
   console.error('\nFAIL: the ARMED LOOK does not read as armed:');
   for (const m of lookBad) console.error('  ' + m);
-  console.error('  see ' + join(OUT, PREFIX + 'look-{rest,hover,armed,rest-again}.png'));
+  console.error('  see ' + join(OUT, PREFIX + 'look-{tool,matchip,accchip}-{rest,hover,armed,rest-again}.png'));
   process.exit(1);
 }
 log('\nOK — every palette control is reachable at every measured width, the armed tool says so, ' +
-    'and an armed button does not look like a merely hovered one');
+    'and no armed control — tool, material swatch or ACCEPTS chip — looks like a merely hovered one');
 process.exit(0);
