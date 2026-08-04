@@ -36,7 +36,9 @@
 //      took the same route for the same measured reason. The SIM plays everything after it.
 //
 // ⛔ AND ONE THING IS NOT FAKED AT ALL, WHICH IS THE POINT OF STEP 2. The ship is the shipping
-// wreck, with its authored 1 Parts + 10 Seals aboard. The state in which a repair order has NO
+// wreck, with its authored 8 Parts + 10 Seals aboard (⚠️ it read "1 Parts + 10 Seals" until D7,
+// 2026-08-03, added the seven-crate `cabin stores` — see STEP 2's own note below, and re-measure
+// the wait budget before trusting this step). The state in which a repair order has NO
 // consumable is REACHED BY PLAYING: REPAIR is switched on in the WORK tab (a real player click) and
 // the maintenance board spends and carries the stock down — the behaviour M3-4 FILED, measured
 // twice. No defs overlay, no planted state, no item removed by this tool.
@@ -420,8 +422,15 @@ await escape();
 await sleep(1200);
 
 // ⛔ REACHED BY PLAYING. Switch REPAIR on in the WORK tab and let the maintenance board spend and
-// carry the wreck's 1 Parts + 10 Seals down to nothing loose — the behaviour M3-4 filed and measured
-// twice ("6 of the wreck's 10 Seals + its only Parts in ~10 sim-h, and the pawn CARRIES the rest").
+// carry the wreck's stock down to nothing loose — the behaviour M3-4 filed and measured twice
+// ("6 of the wreck's 10 Seals + its only Parts in ~10 sim-h, and the pawn CARRIES the rest").
+// ⚠️⚠️ **D7 (2026-08-03) MADE THIS STEP TAKE LONGER AND THIS RIG HAS NOT BEEN RE-RUN.** The quoted
+// M3-4 measurement is against a ship holding ELEVEN consumable units; the `cabin stores` cache took
+// the wreck to EIGHTEEN, and Parts is the tier the board spends FIRST — so roughly seven more
+// services (~2 more sim-hours at the measured ~4 units/sim-hour) stand between boot and "nothing
+// loose". If this step starts reporting that it never reached the state, THAT is the reason and the
+// fix is the wait budget, not the badge. ⛔ Unverified: no Chrome available in D7's lane and nothing
+// gates `client/tools/*.mjs`, so no red would have told us.
 // Carried and reserved stacks are invisible to `FindNearest`, which is exactly what makes the order
 // unpayable while matter is still aboard.
 log('  loose repair consumables at boot:', looseConsumables());

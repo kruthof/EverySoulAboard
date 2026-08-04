@@ -1,7 +1,7 @@
 // ⭐⭐ THE ORDER NAMES ITS PRICE — the CLIENT half, driven through the pure model the Room Zoom's
 // right-click menu actually calls.
 //
-// WHAT WAS WRONG (T13 run, 2026-08-02): `--ship wreck` boots with EXACTLY ONE `Parts` unit aboard,
+// WHAT WAS WRONG (T13 run, 2026-08-02): `--ship wreck` THEN booted with EXACTLY ONE `Parts` unit aboard,
 // the player's first repair order eats it, and no surface says so. The commissioning chain that
 // needed that Part is then quietly unwinnable and the player has no way to know which order did it.
 // `invisible-feedback-is-FUNCTIONAL`. The sim answers a new question, the host puts a bare int on the

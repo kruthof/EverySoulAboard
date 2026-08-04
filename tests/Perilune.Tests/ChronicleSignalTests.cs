@@ -37,6 +37,37 @@ namespace Perilune.Tests
         private static ISimSystem[] Stack()
             => SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()));
 
+        /// <summary>
+        /// ⚠️⚠️ <b>D7 (2026-08-03) — THE WRECK WITH ITS <c>cabin stores</c> STRIPPED, AND THIS FILE
+        /// HAS TO ASK FOR IT BY NAME NOW.</b> The <c>cabin stores</c> cache
+        /// (<c>AuthoredShips.PeriluneWreck</c>) authors seven Parts so the player can afford
+        /// furniture at all — and <c>Parts</c> is <c>RepairConsumableTier(0)</c>, so autonomous
+        /// maintenance spends them FIRST. Measured, driven, one sim-day with all work granted, one
+        /// leg per cache size: at 0 or 1 extra Parts the ship writes <b>9</b> brownout episodes and
+        /// <c>wing_b</c> ends at <b>0.10</b>; at 2 or more it writes <b>ZERO</b> and <c>wing_b</c>
+        /// ends at <b>0.80</b>. Two spare Parts are exactly enough to lift the stranded wing, and a
+        /// lifted wing closes the power deficit that IS the brownout.
+        ///
+        /// <para>⛔ So the shipped ship no longer browns out inside a sim-day, and the legs in this
+        /// file whose SUBJECT is a brownout flap would be measuring a ship with no power problem.
+        /// They strip the cache instead of being deleted or weakened: the fixture they need is "the
+        /// wreck in power deficit", the cache is the only thing between the shipped ship and that
+        /// fixture, and removing it by TILE (never by label — prose tracks renames) says so out
+        /// loud. ⚠️ This is a CONSEQUENCE OF A CONTENT DECISION and it is filed for the owner, not
+        /// settled here — if the wreck is meant to stop browning out, these legs should be retired
+        /// rather than propped up.</para>
+        /// </summary>
+        private static Simulation WreckInPowerDeficit()
+        {
+            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneWreck(), Stack()).GiveAllCrewAllWork();
+            var doomed = new List<uint>();
+            foreach (var it in sim.Items.Items)
+                if (it.Kind == ItemKind.Parts && it.Pos.Z == 0 && it.Pos.Y == 6 && it.Pos.X >= 2 && it.Pos.X <= 8)
+                    doomed.Add(it.Id);
+            foreach (uint id in doomed) sim.Items.Remove(id);
+            return sim;
+        }
+
         private static HistorySystem History(Simulation sim)
         {
             for (int i = 0; i < sim.Systems.Length; i++)
@@ -98,7 +129,7 @@ namespace Perilune.Tests
             // WORK ON, because the outcome is about a ship being played: OD-H boots every work type
             // off, and an unattended wreck completes no repair to lose. This is the WORK tab, which
             // is the first thing the T13 playtest does.
-            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneWreck(), Stack()).GiveAllCrewAllWork();
+            var sim = WreckInPowerDeficit();
             var history = History(sim);
             Assert.That(history, Is.Not.Null, "precondition: the default stack carries a HistorySystem");
             int bootLines = history.Entries.Count(e => e.Tick == 0);
@@ -594,7 +625,7 @@ namespace Perilune.Tests
             var authoredRow = ShipSystems.Compute(authored, ring).Rows.First(r => r.Id == "reactor");
 
             // ── LEG 2: the shipped wreck, driven a full sim-day ────────────────────────────────
-            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneWreck(), Stack()).GiveAllCrewAllWork();
+            var sim = WreckInPowerDeficit();
             var history = History(sim);
             for (int i = 0; i < 864000; i++) sim.Tick();
             var episodes = history.Entries.Where(e => e.Kind == (byte)HistoryKind.Brownout).ToList();

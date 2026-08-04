@@ -635,11 +635,20 @@ can be expressed. There is deliberately **no `IsOperational` gate**: the floor i
 share, not zero, so repair is a gradient rather than a cliff. **Demand stays flat** — a
 worn scrubber pays its full `draw` for reduced output. Measured on `--ship wreck`: three
 wings at Condition 0.31/0.18/0.06 supply **10.65 kW**, one Parts overhaul takes it to
-**13.47**, and the reachable ceiling (one Parts + two Seals) is **17.40**, against a flat
+**13.47**, and the 1.00/0.90/0.90 state (one Parts + two Seals) is **17.40**, against a flat
 14.80 kW of demand (14.30 until M3-11 put `vent_d1` on the trunk — an open `AirVent` is 0.5 kW
 of LifeSupport, and it pays it while broken because only generation rides `EffectiveRate`).
 Read at the seam via `PowerSystem.LastGenerationKW` / `LastDemandKW`, which exist only so
 tests can pin the ledger without re-deriving it.
+⚠️ **17.40 WAS CALLED "THE REACHABLE CEILING" UNTIL D7 (2026-08-03) AND IS NOT ONE ANY MORE.**
+That reading rested on the wreck carrying exactly ONE Parts, so only one wing could reach 1.00
+out of the hold. D7's `cabin stores` author seven more (`AuthoredShips.PeriluneWreck`), the ship
+boots with EIGHT, and three Parts overhauls put all three wings at 1.00 ⇒ **18.00 kW is reachable
+on boot stock**. It is not free: those are the same units furniture is bought with
+(`build.device_place_cost` = 3), so the ceiling and the first bunk compete for one pile. The three
+figures above are unchanged and still correct — they are points on the affine map
+(`EffectiveRate = Rate × (0.5 + 0.5 × Condition)`), which is what `GenerationWearTests` pins with
+hand-set conditions; only the word "ceiling" was retired.
 A battery can burst its entire stored energy inside one 1-second balance pass, so
 **batteries bridge any load until empty** (`:131-133`, comment). Battery capacity is
 `Device.BatteryCapacityKWh = 40` (`Entities/Device.cs:71`).
@@ -3686,13 +3695,22 @@ and a system downstream then ate.** Reproduced headlessly on the shipped wreck, 
   `door_d0_s2` (27,7,0) boots SHUT and since OD-N doors are actuated through MOSS only.
 - ⛔ **`TryFindStagingTile` asks walkable + survivable and NEVER asks reachable** (`:1148-1160`), so
   the order is accepted, `JobKind = Maintain`, `HeldByOrder = true`.
-- She then walks **17 sim-seconds** to the ship's one Parts stack at (7,14,0) — tier before distance,
-  so Parts is chosen over the nearer 8-Seals locker — and the instant she stands on it `DriveWorker`'s
+- She then walks **5 sim-seconds** to the NEAREST Parts stack — a `cabin stores` crate at (3,6,0);
+  tier before distance, so Parts is chosen over the 8-Seals locker beside it — and the instant she
+  stands on it `DriveWorker`'s
   **pickup branch** re-asks `FindPath(worker → staging)`, gets false, and calls `Abandon`
   (`MachineWearSystem.cs:464`, whose comment *"unreachable from here — retried from ground truth next
   second"* is true of the AUTONOMOUS path and false of an order). `Abandon` → `JobKind = None` → the
-  setter clears `HeldByOrder` → **the order is gone**. Measured: taken tick 1, dropped **tick 171**,
+  setter clears `HeldByOrder` → **the order is gone**. Measured: taken tick 1, dropped **tick 51**,
   machine untouched, nothing on any surface.
+  ⚠️ **D7 (2026-08-03) SHORTENED THIS ROUTE AND THE NUMBERS ARE RE-MEASURED, NOT ADJUSTED.** This
+  line read *"walks 17 sim-seconds to the ship's one Parts stack at (7,14,0) … dropped tick 171"*,
+  true while the reactor bay held the only Parts aboard. The `cabin stores` cache puts seven
+  one-unit Parts crates at (2..8, 6, 0) and she wakes at (3,1,0). Driven as a 2×2, the cache the only
+  difference: **with it, tick 51 at (3,6,0); with the crates removed, tick 171 at (7,14,0)** — the
+  old trace reproduced to the digit. The diagnosis is unchanged; only the walk is. ⛔ Neither number
+  was ever asserted — both lived in prose here and in `DroppedOrderTests`' header, so the gate stayed
+  green while they went stale.
 - **CONTROLS, DRIVEN.** Strip every consumable ⇒ the drop moves to **tick 1** at her boot tile (the
   below-wreck-floor arm, `:479`) — a different site, so the baseline is not that one. Open
   `door_d0_s2` alone ⇒ the identical order is taken and driven to the worksite (she reaches (25,2,0)).

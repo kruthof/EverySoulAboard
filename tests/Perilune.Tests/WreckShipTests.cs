@@ -188,7 +188,8 @@ namespace Perilune.Tests
         ///
         /// And what it was TRYING to say was not true anyway. Being below the wreck floor does not
         /// stop <c>MaintenanceSystem</c> touching a pod; it only stops it being bodged with EMPTY
-        /// HANDS. The wreck's opening stock was 1 Parts + 2 Seals (11 units since M1-I), the four wrecked pods are the
+        /// HANDS. The wreck's opening stock was 1 Parts + 2 Seals (18 units today: M1-I's locker took
+        /// it to 11, D7's 7-crate <c>cabin stores</c> to 18), the four wrecked pods are the
         /// four lowest-Condition devices on the ship, and the system recruits neediest-first — so
         /// unattended it spent every last consumable on the coffins. The real guard is the DEF:
         /// <c>CryoPod</c>'s <c>maint</c> is 0, the opt-out, so a pod is never on the board at all.
@@ -277,10 +278,11 @@ namespace Perilune.Tests
             Assert.That(wreckedAtBoot.Count, Is.EqualTo(PodsWreckedDead), "fixture: four wrecked capsules at boot");
             int partsAtBoot = Ground(sim, ItemKind.Parts), sealsAtBoot = Ground(sim, ItemKind.Seals);
             // 1 Parts + 2 Seals in the reactor bay + the 8-Seal cryo-bay damage-control locker
-            // M1-I added. Written out by hand, like every other literal in this file: it is the pin
-            // on the ship's opening stock, and changing the ship means changing it here on purpose.
-            Assert.That(partsAtBoot + sealsAtBoot, Is.EqualTo(11),
-                "fixture: the opening carries 1 Parts + 10 Seals (M1-I)");
+            // M1-I added + D7's SEVEN one-unit `cabin stores` Parts crates on the cryo bay's bottom
+            // row. Written out by hand, like every other literal in this file: it is the pin on the
+            // ship's opening stock, and changing the ship means changing it here on purpose.
+            Assert.That(partsAtBoot + sealsAtBoot, Is.EqualTo(18),
+                "fixture: the opening carries 8 Parts + 10 Seals (M1-I's locker + D7's cabin stores)");
 
             for (int t = 0; t < 86400; t++) sim.Tick();   // one sim-day, no player input at all
 
@@ -1538,9 +1540,14 @@ namespace Perilune.Tests
             Assert.That(onNetwork, Is.GreaterThanOrEqualTo(3),
                 "fixture: all three deck-0 benches must be trayed, or the check above is vacuous");
 
-            // ⭐ THE LEG THAT NOW CATCHES THE UNWINNABLE SHIP (M2-12). Bring the wings to the
-            // ceiling the opening can reach — the ship's one Parts overhauls one wing to 1.00 and
-            // its Seals take the other two to 0.90, which is 17.40 kW against 14.80 of demand —
+            // ⭐ THE LEG THAT NOW CATCHES THE UNWINNABLE SHIP (M2-12). Bring the wings to
+            // 1.00 / 0.90 / 0.90 — one Parts overhaul and two Seals services, 17.40 kW against
+            // 14.80 of demand. ⚠️ D7 (2026-08-03): M2-12 called this "the ceiling the opening can
+            // reach" and that reading is retired — the `cabin stores` cache authors seven more
+            // Parts, so three overhauls (18.00 kW) are affordable out of the hold, at the price of
+            // the furniture those units also pay for. This leg's subject is unchanged: it asks
+            // whether the benches run at a state the opening can REACH, and 1.00/0.90/0.90 still is
+            // one (it is now the cheaper of two). See GenerationWearTests.CeilingKW —
             // and hold the ship there for twelve sim-hours. If the benches are dark HERE, no
             // amount of repairing gets the matter ladder running and the opening is unwinnable.
             //
