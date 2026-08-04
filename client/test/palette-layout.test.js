@@ -405,6 +405,166 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
     'stopped resolving the subject and now fires on any selector merely CONTAINING the row');
 });
 
+/**
+ * ARMED MUST NOT LOOK LIKE HOVERED — the 2026-08-03 owner defect, pinned where its cause lived.
+ *
+ * ⚠️ THE CAUSE WAS NOT IN THE MODEL. `paintPalette` has always toggled `.on` off `_armed`, and
+ * `room-model.test.js` now drives that end to end. Measured in real Chrome on the shipped tree, the
+ * click landed correctly — `cls="rz-tool on"`, `aria-pressed="true"` — and the owner still reported
+ * that "the BUTTON itself never changes state". Both states were read off the SAME button at the
+ * SAME pixels:
+ *
+ *     HOVER  bg rgba(26,22,17,.5)  color rgb(179,170,156)  border 1px rgb(207,122,51)  shadow none
+ *     ARMED  bg rgb(58,42,18)      color rgb(242,181,99)   border 1px rgb(207,122,51)  shadow none
+ *
+ * Identical borders, because `.rz-tool:hover` had borrowed `#cf7a33` — the ARMED border colour. The
+ * player's cursor is always on the button they just clicked, so the loudest edge signal was already
+ * amber BEFORE the click and arming moved only a dim fill and a text hue. A state that is painted
+ * and still not visible is the "invisible feedback is FUNCTIONAL" rule failing in the stylesheet.
+ *
+ * A source scan again, and for the same reason the file header gives: there is no layout engine here
+ * and none of this is provable in node. `client/tools/palette-shot.mjs` is the instrument: it
+ * measures rest / hover / armed / post-ESC in real Chrome and requires the armed state to OWN the
+ * shadow channel (armed has one, hover has none). ⚠️ That is narrower than "refuses to pass when
+ * hover and armed resolve alike", which is what an earlier draft of this sentence claimed — review
+ * drove the pre-fix CSS through the rig and it exited 0 GREEN, because the two states differed on a
+ * dark-on-dark fill while matching on border and shadow. Neither instrument judges CONTRAST. This
+ * file keeps the part a browserless gate can — **armed must carry a signal `:hover` does not.**
+ *
+ * ⚠️ LEG 4 IS NOT DECORATION. It is why the armed ring is a `box-shadow` rather than a thicker
+ * border or a bolder weight: shadows do not participate in layout, and anything that re-measures the
+ * button on arm reflows the EIGHTEEN-tool wrapping row — which is the clipping defect this entire
+ * file exists for. The obvious way to make the armed look "louder" is the one that re-opens it.
+ * (EIGHTEEN measured today, twice — `ROOM_TOOLS.length` and `palette-shot.mjs`'s live `18/18`. Note
+ * that this file's own header and four comments in `room-model.test.js` still say "seventeen"; those
+ * are stale and are FILED rather than edited from here.)
+ *
+ * Legs are blinded (trap shape 5): one `assert` at the end, so a regression names every state that
+ * has drifted rather than only the first.
+ *
+ * ⚠️ EVERY LEG IS CHECKED PER ARMED RULE, NOT OVER THE MERGED BLOB, AND THAT IS A BUG FIX IN THIS
+ * TEST — found by applying its own named mutations and watching two of them stay GREEN. The palette
+ * has TWO armed rules: `.rz-tool.on`, which paints the seventeen ordinary tools, and
+ * `.rz-tool.demo.on`, which overrides it for DEMOLISH alone (18 = 17 + 1, measured). Merging
+ * their declarations meant deleting `box-shadow` from the rule that paints SEVENTEEN buttons still
+ * matched `/box-shadow/`, because DEMOLISH's rule kept its own: **a surviving sibling masked a
+ * missing one.** That is trap shape 4 — a guard whose scope cannot catch its subject — reproduced
+ * inside the guard written to close a different one. Each rule now answers for itself.
+ *
+ * MUTATION: give `:hover` the armed border colour (`border-color:#f2b563`) — the defect in its exact
+ *           historical shape, hover borrowing the armed edge ⇒ RED on the border leg, BOTH rules.
+ * MUTATION: drop `box-shadow` from `.rz-tool.on` ONLY, leaving DEMOLISH's ⇒ RED (this is the one
+ *           that was green before the per-rule fix).
+ * MUTATION: add `font-weight:700` to the `.rz-tool.on` rule ⇒ RED on the box leg.
+ * MUTATION: `border:3px solid #f2b563` on `.rz-tool.on` — the SHORTHAND, which is how anyone would
+ *           actually write "make the armed edge thicker" ⇒ RED on the box leg. This one was GREEN
+ *           until review drove it; see `reMeasures`.
+ * MUTATION: `font:700 12px var(--font-mono)` or `padding-inline:18px` on the armed rule ⇒ RED (same
+ *           shape, and the reason the leg matches by FAMILY rather than by property name).
+ *
+ * ⛔ THE LIMIT, STATED SO NOBODY READS THIS AS MORE THAN IT IS. This pins that armed and hover are
+ * DIFFERENT, never that armed is LOUD ENOUGH. Reverting `:hover` alone to its old
+ * `border-color:#cf7a33` is green here — measured, not assumed — and correctly so: against today's
+ * `#f2b563` armed edge the two really are distinguishable. A pair of colours that differ by one
+ * hex digit would also pass. "Can a player see it" is a question for `palette-shot.mjs`, which
+ * photographs the same button in all three states; this file only keeps the two from COLLIDING,
+ * which is the specific way the state went invisible on 2026-08-03.
+ */
+
+/** Every rule whose SUBJECT compound satisfies `pred`, as `{ sel, decls }`. */
+function rulesWhere(pred) {
+  return RULES.filter((r) => r.sels.some((s) => !isPseudoElement(s) && pred(simples(subject(s)))))
+    .map((r) => ({ sel: r.sels[0], decls: r.decls }));
+}
+/** Declarations merged, in source order, from every rule whose SUBJECT compound satisfies `pred`. */
+function declsWhere(pred) {
+  return rulesWhere(pred).map((r) => r.decls).join(';');
+}
+/** The last value `prop` takes in a merged declaration blob, or null. */
+function valueOf(decls, prop) {
+  let v = null;
+  for (const m of decls.matchAll(new RegExp('(?:^|;)\\s*' + prop + '\\s*:\\s*([^;]+)', 'g'))) v = m[1].trim();
+  return v;
+}
+/** Every property NAME declared in a blob, lower-cased, in source order. */
+const propsOf = (decls) => [...decls.matchAll(/(?:^|;)\s*([a-zA-Z-]+)\s*:/g)].map((m) => m[1].toLowerCase());
+
+/**
+ * Does this declared property change the button's BOX, rather than only its paint?
+ *
+ * ⚠️ ASKED AS A PREDICATE OVER WHAT THE RULE ACTUALLY DECLARES, NOT AS A FIXED LIST OF PROPERTY
+ * NAMES TO LOOK FOR — and that is a bug fix, found by independent review DRIVING it. The first
+ * draft scanned a hand-written list (`font-weight`, `letter-spacing`, `font-size`, `padding`,
+ * `border-width`) and `border:3px solid #f2b563` on `.rz-tool.on` was measured FULLY GREEN: the
+ * SHORTHAND is the natural spelling — the base `.rz-tool` rule two lines above uses it — and it
+ * widens the border box 2px per side on a shrink-to-fit button, rewrapping the eighteen-tool row
+ * unseen. `font` and `padding-inline` are the same shape. That is TRAPS' 4th shape (a guard whose
+ * scope filter excludes the violation) sitting inside the guard whose own comment claimed to have
+ * closed that shape for its `box-shadow` sibling. A list of things to look for can only find what
+ * someone thought of; a predicate over the declared set has to answer for everything.
+ *
+ * Prefix-matched by FAMILY so shorthand and every longhand are covered at once, minus the two
+ * families that provably only paint: `*-color` and `*-radius` never move an edge. Everything else
+ * under border/padding/margin/font/spacing/sizing can, including `border-style:none`, which
+ * collapses a border to zero width.
+ */
+function reMeasures(prop) {
+  if (/-color$|radius$/.test(prop)) return false;   // paint only — the armed rule sets `border-color`
+  return /^(?:border|padding|margin|font|letter-spacing|word-spacing|(?:min-|max-)?(?:width|height)|inline-size|block-size)/
+    .test(prop);
+}
+const TOOL = (sx) => sx.includes('.rz-tool');
+const ARMED = (sx) => TOOL(sx) && sx.includes('.on');
+const HOVER = (sx) => TOOL(sx) && !sx.includes('.on') && sx.includes(':hover');
+
+test('the ARMED tool button carries a signal `:hover` cannot produce', () => {
+  const armedRules = rulesWhere(ARMED);
+  const hover = declsWhere(HOVER);
+  // Non-vacuity, and it is the whole risk here: every leg below is a comparison or an absence, and
+  // both are free over an empty rule set. The COUNT is pinned as well as the presence — the merged
+  // form of this test could not see a deleted rule while a sibling survived.
+  assert.equal(armedRules.length, 2,
+    `${armedRules.length} armed rules parsed out of styles.css, expected 2 (\`.rz-tool.on\` and ` +
+    '`.rz-tool.demo.on`). If a rule was deliberately added or removed, re-derive this number — but ' +
+    'if it dropped to 0 or 1, the legs below are reading nothing and would pass on a broken palette');
+  assert.ok(/border-color/.test(hover),
+    'no `.rz-tool:hover` rule was parsed out of styles.css — the comparison has no other half');
+
+  const bad = [];
+  // EACH armed rule answers for itself: `.rz-tool.on` paints sixteen tools and `.rz-tool.demo.on`
+  // paints DEMOLISH, and either can regress alone.
+  for (const { sel, decls } of armedRules) {
+    for (const prop of ['border-color', 'background', 'background-color']) {
+      const a = valueOf(decls, prop), h = valueOf(hover, prop);
+      if (a !== null && h !== null && a === h)
+        bad.push(`${sel} — ${prop} is '${a}' on BOTH armed and hover. That is the owner's defect ` +
+          'exactly: the cursor that arms a tool has already painted it, so the click changes ' +
+          'nothing under the pointer.');
+    }
+    // A channel hover does not touch AT ALL, so the two cannot converge by a colour edit alone.
+    if (!/box-shadow/.test(decls))
+      bad.push(`${sel} declares no \`box-shadow\` — the ring/depth was the one armed signal that did ` +
+        'not depend on two colours staying different, and it is gone from this rule.');
+    // The armed look must not RE-MEASURE the button (see `reMeasures` and the block comment above).
+    // An INCLUSION test over every property the rule declares — never a list of names to hunt for.
+    const declared = propsOf(decls);
+    if (!declared.length)
+      bad.push(`${sel} parsed to ZERO declared properties — the box-reflow leg below is vacuous ` +
+        'for this rule, which is exactly how it would pass over a rule it cannot read.');
+    for (const p of declared)
+      if (reMeasures(p))
+        bad.push(`${sel} sets \`${p}\`, which changes the button's BOX. Arming would reflow the ` +
+          'eighteen-tool wrapping row and can push the last tools out of reach — the clipping ' +
+          'defect this file guards. Use a `box-shadow` ring; shadows do not participate in layout.');
+  }
+  if (/box-shadow/.test(hover))
+    bad.push('`:hover` has acquired a `box-shadow` — it is now claiming the armed state\'s ' +
+      'exclusive channel, which is how the border colour was lost the first time');
+
+  assert.deepEqual(bad, [], 'the armed tool button is not distinguishable from a hovered one:\n  ' +
+    bad.join('\n  '));
+});
+
 // …and the same property demonstrated ON THE REAL FILE rather than on synthetic input, which is the
 // gap the two controls above cannot close by themselves. `styles.css` genuinely contains the
 // forbidden text in BOTH forms: a live one (`.tabrow`, on the deprecated console shell — out of this

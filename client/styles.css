@@ -1517,11 +1517,47 @@ body.moss-open #roomzoom-view{display:none !important}
   padding:9px 12px;border-radius:12px;width:max-content;max-width:100%}
 .rz-place-label{font-size:9px;letter-spacing:.16em;color:var(--ink-faint,#57503f);flex:none;padding-right:2px;
   white-space:nowrap}
+/* THE TOOL BUTTONS, AND THEIR THREE STATES — rest, hover, ARMED.
+ *
+ * ⚠️ WHY THE ARMED RULE IS SO LOUD, and why `:hover` was made QUIETER to pay for it. The owner's
+ * 2026-08-03 live-play note was that the palette "reads as an INERT placeholder": clicking a tool
+ * announced itself in the label, the hint and the caption, but "the BUTTON itself never changes
+ * state, so the row does not feel clickable". The arming was never broken — `paintPalette` has
+ * always toggled `.on` off `_armed`, measured in real Chrome (`cls="rz-tool on"`, `aria-pressed=
+ * "true"`, the moment the click lands). The defect was entirely HERE, and it was one shared colour:
+ *
+ *     .rz-tool:hover{color:#b3aa9c;border-color:#cf7a33}   ← the ARMED border colour
+ *     .rz-tool.on   {background:#3a2a12;color:#f2b563;border-color:#cf7a33}
+ *
+ * Hover borrowed `#cf7a33`, the armed border. A player's cursor is ALWAYS on the button they just
+ * clicked, so the strongest edge signal on the control was already amber BEFORE the click, and
+ * arming moved only a dim fill and a text hue — both dark-on-dark. Measured side by side at the
+ * same pixels, hovered-and-unarmed and armed were very nearly the same picture. So the state was
+ * painted and still invisible, which is this repo's "invisible feedback is FUNCTIONAL" rule with the
+ * cause in the stylesheet rather than in the model.
+ *
+ * The fix gives the armed state a signal `:hover` cannot produce at all — a bright fill, a lit
+ * border, an INSET shadow (pressed-in depth) and an outer ring — and demotes hover to a warm
+ * neutral that says "clickable" without saying "armed".
+ *
+ * ⭐ THE RING IS A `box-shadow`, NOT A WIDER BORDER, AND THAT IS LOAD-BEARING RATHER THAN TASTE.
+ * Shadows do not participate in layout. A thicker border, a bolder `font-weight` or extra
+ * `letter-spacing` would all re-measure the button on arm and reflow the EIGHTEEN-tool wrapping row —
+ * which is `palette-shot.mjs`'s whole subject, a tool pushed off the end where the player cannot
+ * reach it. The armed button here occupies exactly the same box it did at rest. */
 .rz-tool{flex:none;padding:8px 13px;border-radius:7px;font-size:10.5px;letter-spacing:.04em;cursor:pointer;
-  background:rgba(26,22,17,.5);color:var(--ink-mute,#8c8377);border:1px solid #3a332a;white-space:nowrap}
-.rz-tool:hover{color:#b3aa9c;border-color:#cf7a33}
-.rz-tool.on{background:#3a2a12;color:#f2b563;border-color:#cf7a33}
-.rz-tool.demo.on{background:#3a1a10;color:#e07a5f;border-color:#a53a25}
+  background:rgba(26,22,17,.5);color:var(--ink-mute,#8c8377);border:1px solid #3a332a;white-space:nowrap;
+  transition:background-color .09s ease,border-color .09s ease,color .09s ease,box-shadow .09s ease}
+/* "you can click this" — deliberately NOT the armed amber. See the block comment above. */
+.rz-tool:hover{color:#cdc3b2;border-color:#6b5c45;background:rgba(46,39,29,.62)}
+/* the press itself, so the row answers under the finger as well as after it */
+.rz-tool:active{background:#241b11;border-color:#8a6c3f}
+/* ARMED — pressed-in and lit. `:hover`/`:active` are repeated so the cursor that armed the tool can
+   never wash the state back out; without them the player would disarm the look by not moving. */
+.rz-tool.on,.rz-tool.on:hover,.rz-tool.on:active{background:#5a3f14;color:#ffd489;border-color:#f2b563;
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.62),0 0 0 2px rgba(207,122,51,.34)}
+.rz-tool.demo.on,.rz-tool.demo.on:hover,.rz-tool.demo.on:active{background:#6a2410;color:#ffb59d;
+  border-color:#e07a5f;box-shadow:inset 0 2px 4px rgba(0,0,0,.62),0 0 0 2px rgba(165,58,37,.4)}
 .rz-hint{font-size:9.5px;letter-spacing:.06em;color:var(--ink-mute,#8c8377)}
 
 /* material picker strip (shown when WALL/FLOOR armed) — item-set swatches, active one lit.
