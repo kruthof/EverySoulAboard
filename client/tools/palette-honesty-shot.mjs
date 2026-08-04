@@ -13,11 +13,14 @@
 //      that lies fully inside its button, and every button lies fully inside the palette's clipping
 //      box — at six viewport widths, because the cost line makes eighteen buttons TALLER and WIDER
 //      and that is exactly the regression `palette-shot.mjs` exists to catch.
-//   2. A REFUSED CLICK SAYS WHY. Arm BUNK on the shipped `--ship wreck`, click clear floor, and read
-//      the toast back off the live DOM.
+//   2. A BUNK CLICK ANSWERS EITHER WAY. Arm BUNK on the shipped `--ship wreck`, click clear floor,
+//      and require the outcome the ship's own cost row promised: a placement that PLACES and SPENDS
+//      when it can pay, the refusal sentence when it cannot. Neither branch may pass on silence.
 //   3. THE FLOOR DEFAULT DRAG ANSWERS. Arm FLOOR, sweep without touching a swatch, read the toast.
 //   4. SHELF STOPS PRETENDING. Arm SHELF, click, and require BOTH the sentence AND the absence of
 //      any `.rz-decor` group in the rendered layer stack.
+//   5. THE THREE NEW TOOLS PLACE AND ARE PAID FOR. GROWBED / MEDBED / TABLE arm, price, and either
+//      put a piece in the room AND take 3 PARTS off the ship for it, or say why not.
 //
 // ⭐ EVERY TOAST READ IS PRECEDED BY A BLANKING WRITE, and that is the rig's own non-vacuity rule: a
 // toast left on screen by the PREVIOUS leg reads exactly like one the current gesture produced. The
@@ -44,7 +47,18 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+// ⭐ THE EXPECTED COST-LINE COUNT IS DERIVED FROM THE PALETTE'S OWN TABLES, NOT TYPED (2026-08-04).
+// It was the literal `9` ("7 furniture + 2 decor") until GROWBED, MEDBED and TABLE joined the bar and
+// made it 12. A hand-typed census in a harness that is NOT in `./ci.sh` does not fail when it goes
+// stale — it fails on the next person's unrelated run, naming a defect that is not there. Imported
+// from the shipped modules for the reason `heater-shot.mjs`'s own imports give: this tool cannot then
+// drift from what the surface believes.
+import { ROOM_TOOLS } from '../src/ui/room-model.js';
+import { chipCostText, DEVICE_PLACE_COST_PARTS } from '../src/ui/build-cost-model.js';
+
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
+/** How many palette buttons the shipped tables say carry a cost line at all. */
+const PRICED_CHIPS = ROOM_TOOLS.filter((t) => chipCostText(t) !== '').length;
 const HOST_PORT = +arg('host-port', '8394');
 const CLIENT_PORT = +arg('client-port', '8395');
 const OUT = resolve(arg('out', '.'));
@@ -264,7 +278,10 @@ for (const w of WIDTHS) {
       `cost lines ${m.costs.length}  chip box ${m.costs[0] ? m.costs[0].btnW + 'x' + m.costs[0].btnH : 'n/a'}  ` +
       `cost box ${m.costs[0] ? m.costs[0].w + 'x' + m.costs[0].h : 'n/a'}`);
   if (m.clipped.length) note(`w=${w}: tools UNREACHABLE — ${m.clipped.join(', ')}`);
-  if (m.costs.length !== 9) note(`w=${w}: ${m.costs.length} cost lines, expected 9 (7 furniture + 2 decor)`);
+  if (m.costs.length !== PRICED_CHIPS) {
+    note(`w=${w}: ${m.costs.length} cost lines in the live palette, but ROOM_TOOLS + chipCostText ` +
+      `say ${PRICED_CHIPS} tools carry one. The markup and the model disagree.`);
+  }
   for (const c of m.costs) {
     if (!(c.w > 0 && c.h > 0)) note(`w=${w}: the ${c.tool} price has a ZERO box (${c.w}x${c.h}) — rendered and invisible`);
     if (!c.inButton) note(`w=${w}: the ${c.tool} price escapes its own button`);
@@ -302,6 +319,65 @@ const costRow = async () => evalJson(`(()=>{const e=document.getElementById('rz-
   `const r=e.getBoundingClientRect();const l=e.querySelector('.rz-cost-line');` +
   `return {hidden:e.hidden,text:e.textContent.trim(),w:Math.round(r.width),h:Math.round(r.height),` +
   `fault:!!(l&&l.classList.contains('fault')),color:l?getComputedStyle(l).color:''};})()`);
+
+// ───────────────────────────────────────────── THE SPEND, READ OFF THE SURFACE'S OWN LEDGER SIGNAL
+//
+// ⛔⛔ WHY A DEBIT DECIDES AND THE PIECE COUNT ONLY CORROBORATES — MEASURED, NOT PREFERRED.
+// STEP 2 and STEP 5 used to call a placement PROVED by `.rz-furniture > g` going up by one. THAT
+// COUNT IS NOISY: review named it 2026-08-04, and this rig then reproduced it on its own run —
+// 20 pieces after MEDBED's REFUSED click, 19 before TABLE's, 20 after TABLE's (also refused), with
+// the ship's purse flat at 2 PARTS through all three. So `after === before + 1` can green WITHOUT A
+// PLACEMENT, which is precisely the silent no-op both legs exist to catch, and it can red on a real
+// one. It is kept — a piece the player cannot SEE is not a placement either — but it is de-noised
+// (max over five samples, `furnitureSample`) and it is not what decides.
+//
+// The verdict is the ship's PURSE, because it is the SIM's own receipt and it does not flicker:
+// `PlaceDeviceCommand` charges `defs.Build.DevicePlaceCost` = 3 PARTS and charges it LAST, after
+// every legality check, so nothing but a placement that actually happened moves it and an illegal
+// or unaffordable click provably leaves it alone. A piece that appeared for free did not come from
+// this click; a debit that landed did.
+//
+// ⚠️ AND THE DEBIT IS WHAT THE CANDIDATE-TILE LOOP BREAKS ON, not the count. Using a flickering
+// signal as control flow is how a rig clicks again on a tile it already built — buying a second
+// device with the player's Parts to satisfy its own instrument.
+//
+// ⭐⭐ THE PLANTED CONTROL, RUN RATHER THAN ARGUED (2026-08-04). "The debit adds something the count
+// could not see" is a claim, so it was DRIVEN: `PlaceDeviceCommand`'s charge was neutered to
+// `TryPay(sim, 0)` on a rebuilt host — placements land, nothing is ever paid for — and this rig was
+// run against it. It went RED on STEP 2 and on all three STEP 5 tools, naming the missing debit
+// every time. ⛔ AND THE MEDBED LEG IS THE WHOLE ARGUMENT IN ONE LINE: its census moved
+// `24 → 25`, EXACTLY `before + 1`, with the purse flat at 8 PARTS — the old count-only predicate
+// would have called that a PLACED, PAID-FOR bunk and greened the run. The charge was then restored
+// byte-identically and the rig re-run green (STEP 2 8 → 5 PARTS, GROWBED 5 → 2).
+//
+// ⚠️ THE NUMBER IS THE SURFACE'S OWN, NOT A SECOND DERIVATION. `paletteCostRow` writes the armed
+// tool's row out of `partsUnits(Hud.getLedger())` — the same reader the Overview's LEDGER island
+// prints — so parsing the row here asks the shipped client what it believes the ship holds. Both of
+// the row's shapes carry it: `BUNK ▸ 3 PARTS · 8 ABOARD` and `BUNK ▸ NEEDS 3 PARTS — SHIP HAS 2`.
+/** PARTS aboard, off the armed cost row. `null` when no priced tool is armed (the row is hidden). */
+const partsFromRow = (row) => {
+  if (!row || row.hidden || !row.text) return null;
+  const m = /(?:· (\d+) ABOARD|SHIP HAS (\d+))$/.exec(row.text);
+  return m ? +(m[1] !== undefined ? m[1] : m[2]) : null;
+};
+const partsNow = async () => partsFromRow(await costRow());
+/**
+ * Poll the row until the purse reads `want`, hard-bounded; return the LAST value seen either way.
+ * ⚠️ THE WAIT IS NOT POLITENESS. The host re-samples the `ledger` channel only when a render pass
+ * finds a WALL SECOND has elapsed (`GameSession.cs`'s `_ledgerAtWall` cadence, ~1.0–1.2 s) and
+ * NOTHING forces a fresh census on a place command, so a read taken straight after the click can
+ * still be the pre-click balance. Returning the last value rather than throwing keeps the caller in
+ * charge of the sentence: a debit that never arrives is reported as the number it actually was.
+ */
+const settleParts = async (want, budgetMs = 6000) => {
+  const t0 = Date.now();
+  let seen = await partsNow();
+  while (seen !== want && Date.now() - t0 < budgetMs) {
+    await sleep(300);
+    seen = await partsNow();
+  }
+  return seen;
+};
 /** ⭐ BLANK THE TOAST, CONFIRM IT IS BLANK, then gesture. A toast left up by the previous leg reads
  *  exactly like one this leg produced — this is the rig's own non-vacuity rule. */
 const blankToast = async () => {
@@ -317,6 +393,32 @@ const floorPoints = async (n) => evalJson(`(()=>{const c=document.getElementById
   const r=c.getBoundingClientRect(); const out=[];
   for (let i=0;i<${n};i++) out.push({x:r.x+r.width*(0.42+i*0.06), y:r.y+r.height*0.56});
   return out;})()`);
+/**
+ * Furniture pieces drawn in the focused room — one `<g>` per piece, SAMPLED FIVE TIMES OVER ~1 s AND
+ * MAXED, returned with the raw series so every log line carries its own evidence.
+ *
+ * ⛔ THE SAMPLING IS NOT CAUTION, IT IS THE MEASURED SHAPE OF THIS SIGNAL. A single read of this
+ * selector OSCILLATES on the shipped wreck with nothing happening: this rig's own run recorded the
+ * cryo bay's count at 20 immediately after MEDBED's refused click and at 19 immediately before
+ * TABLE's, then 20 again after TABLE's — a click the sim refused, with the ship's purse flat at 2
+ * PARTS across all three reads. One piece flickers in and out of the drawn layer for reasons that
+ * are not the gesture (the layer is rebuilt from the projected frame at the wire's 10 Hz, and the
+ * projection is fog-gated — a walking pawn is the obvious suspect, NOT MEASURED, so it is named as a
+ * suspect and nothing is claimed). Max-over-a-second collapses the oscillation; the debit below is
+ * what actually decides the verdict.
+ */
+const furnitureSample = async (samples = 5) => {
+  const seen = [];
+  for (let s = 0; s < samples; s++) {
+    seen.push(await evaluate(`document.querySelectorAll('#rz-layers .rz-furniture > g').length`));
+    if (s + 1 < samples) await sleep(260);
+  }
+  return { max: Math.max(...seen), seen, txt: Math.max(...seen) + ' [' + seen.join(' ') + ']' };
+};
+/** The candidate tiles both click legs draw from — STEP 2 takes the head, STEP 5 the tail. One
+ *  device per tile means a fixed point is a FALSE RED generator (trap 3), so every affordable click
+ *  is TRIED across several and only an all-candidates-failed run is reported. */
+const spots = await floorPoints(10);
 
 // ───────────────────────────────────────────── STEP 2: a refused placement says why
 log('\nSTEP 2 — a placement the wreck cannot pay for');
@@ -332,18 +434,91 @@ if (!/^BUNK ▸ (NEEDS 3 PARTS — SHIP HAS \d+|3 PARTS · \d+ ABOARD)$/.test(ar
 if (!(armedRow.w > 0 && armedRow.h > 0)) note('the cost row has a zero box — written and invisible');
 await png('02-bunk-armed-priced.png');
 
-const [placeAt] = await floorPoints(1);
-await blankToast();
-await clickAt(placeAt.x, placeAt.y);
-await sleep(900);
-const placeToast = await toast();
-log(`  refused click toast: hidden=${placeToast.hidden} "${placeToast.text}" ${placeToast.w}x${placeToast.h} px`);
-if (placeToast.hidden || !placeToast.text) note('a furniture click on the shipped wreck said NOTHING — the owner\'s defect');
-else if (!/^BUNK ▸ NEEDS 3 PARTS — SHIP HAS \d+$/.test(placeToast.text)) {
+// ⛔⛔ THIS STEP'S PREMISE IS READ OFF THE SHIP, NOT ASSUMED — CORRECTED 2026-08-04, AND THE
+// CORRECTION IS THE POINT RATHER THAN A TIDY-UP.
+//
+// It used to require the refusal sentence UNCONDITIONALLY: `--ship wreck` booted holding ONE Parts
+// unit against a price of three, so every furniture click on the shipped ship was refused and this
+// leg simply pinned that. Then D7 (`lane/parts-affordability`, main a985fa5) put SEVEN one-unit
+// cabin-stores crates in the cryo bay so the first bunk could go down in the first hour — the ship
+// boots with EIGHT Parts and BUNK is now AFFORDABLE. The old leg would have reported
+// *"a furniture click on the shipped wreck said NOTHING — the owner's defect"* against a placement
+// that WORKED: a red naming the exact defect the package deleted, which is this repo's FALSE RED
+// shape (trap 3) with a content change as its cause. The harness is not in `./ci.sh`, so nothing
+// caught it; it is caught here because this lane had to run the rig.
+//
+// So the leg now asks the COST ROW — the surface's own statement of what the ship can pay — and
+// requires the matching outcome. Both branches are real requirements: an unaffordable click must
+// name its price, and an affordable one must NOT invent a refusal.
+//
+// ⛔⛔ AND NEITHER BRANCH MAY PASS ON SILENCE — CORRECTED 2026-08-04 (review), BECAUSE THE FIRST
+// REWRITE OF THIS LEG RE-CREATED THE DEFECT IT EXISTS FOR. It read `if (refusal sentence) note()
+// else ok()`, so a click that said NOTHING AND PLACED NOTHING took the `else` and reported
+// *"a placement the ship CAN pay for invents no refusal"* — green. That is M3-10's shipped bug
+// exactly (`TryFurnitureKind` fell to `default`, `HandlePlace` returned, and a refused placement is
+// a silent no-op by design: the palette did nothing and said nothing for weeks and every test was
+// green). A leg whose affordable branch asserts only the ABSENCE of a sentence cannot see it.
+// So the affordable branch now requires the two POSITIVE facts a real placement leaves behind — a
+// piece in the room AND 3 PARTS off the ship — and the unaffordable branch still requires the
+// sentence. Silence fails on both sides.
+const affordable = / · \d+ ABOARD$/.test(armedRow.text);
+const partsAboard = partsFromRow(armedRow);
+log(`  the ship's own answer: ${affordable ? 'CAN' : 'CANNOT'} pay (${partsAboard} Parts aboard)`);
+if (partsAboard === null) note('the armed cost row states no Parts balance — the spend cannot be checked');
+const bunkBefore = await furnitureSample();
+const bunkTries = affordable ? spots.slice(0, 3) : [spots[0]];
+let bunkAfter = bunkBefore, placeToast = null, bunkTried = 0, bunkPartsAfter = partsAboard;
+for (const at of bunkTries) {
+  bunkTried += 1;
+  await blankToast();
+  await clickAt(at.x, at.y);
+  await sleep(1200);
+  placeToast = await toast();
+  bunkPartsAfter = await settleParts(affordable ? partsAboard - DEVICE_PLACE_COST_PARTS : partsAboard);
+  bunkAfter = await furnitureSample();
+  if (!affordable || partsAboard - bunkPartsAfter === DEVICE_PLACE_COST_PARTS) break;
+  log(`    (candidate ${bunkTried} at x=${Math.round(at.x)} bought nothing — one device per tile; trying the next)`);
+}
+const bunkSpent = partsAboard === null || bunkPartsAfter === null ? null : partsAboard - bunkPartsAfter;
+log(`  click toast: hidden=${placeToast.hidden} "${placeToast.text}" ${placeToast.w}x${placeToast.h} px`);
+log(`  furniture pieces ${bunkBefore.txt} → ${bunkAfter.txt} (after ${bunkTried} candidate tile(s))   ` +
+    `PARTS ${partsAboard} → ${bunkPartsAfter} (spent ${bunkSpent})`);
+if (affordable) {
+  // ⛔ THE DEBIT IS ASKED FIRST because it is the sim's receipt and it does not flicker; the piece
+  // count is asked second because a placement the player cannot SEE is not a placement either.
+  if (bunkSpent !== DEVICE_PLACE_COST_PARTS) {
+    note(`the ship holds ${partsAboard} PARTS against a price of ${DEVICE_PLACE_COST_PARTS} and ` +
+      `${bunkTried} BUNK click(s) BOUGHT NOTHING — the purse went ${partsAboard} → ${bunkPartsAfter} ` +
+      `(${bunkSpent} spent) and the toast said "${placeToast.text}". THE SIM TOOK NOTHING, and it ` +
+      'charges LAST — so on any tree where `PlaceDeviceCommand` still does, nothing was placed and ' +
+      'the button is armed and inert, silently: the owner\'s defect.');
+  } else if (bunkAfter.max !== bunkBefore.max + 1) {
+    note(`the ship PAID ${bunkSpent} PARTS for a BUNK and the room does not show it — the furniture ` +
+      `census went ${bunkBefore.txt} → ${bunkAfter.txt}. Matter left the ship and the player can see ` +
+      'nothing for it, which is `invisible-feedback-is-FUNCTIONAL` with the money already spent.');
+  } else {
+    ok(`a placement the ship CAN pay for PLACES (${bunkBefore.max} → ${bunkAfter.max} pieces) and is ` +
+       `PAID FOR (${partsAboard} → ${bunkPartsAfter} PARTS)`);
+  }
+  if (!placeToast.hidden && /NEEDS \d+ PARTS/.test(placeToast.text)) {
+    note(`the ship holds ${partsAboard} Parts against a price of 3 and the click was still refused: ` +
+      `"${placeToast.text}". A surface that refuses a placement the sim will accept is the silent ` +
+      'no-op re-created from the other side.');
+  }
+} else if (placeToast.hidden || !placeToast.text) {
+  note('a furniture click on the shipped wreck said NOTHING — the owner\'s defect');
+} else if (!/^BUNK ▸ NEEDS 3 PARTS — SHIP HAS \d+$/.test(placeToast.text)) {
   note(`the click said "${placeToast.text}", which is not the refusal sentence`);
-} else ok('a refused placement names its price and the ship\'s stock');
-if (!(placeToast.w > 0 && placeToast.h > 0)) note('the refusal toast has a zero box');
-await png('03-refused-click.png');
+} else {
+  ok('a refused placement names its price and the ship\'s stock');
+  if (!(placeToast.w > 0 && placeToast.h > 0)) note('the refusal toast has a zero box');
+  // ⚠️ The purse is asserted in BOTH directions; the piece count is NOT asserted here. A refused
+  // click must take nothing (`TryPay` is never reached), and that is a hard fact. "The count did not
+  // move" is not — it flickers on its own (see `furnitureSample`), so asserting it on the refusal
+  // side would red on noise while adding nothing the debit has not already settled.
+  if (bunkSpent !== 0) note(`a REFUSED BUNK click still took ${bunkSpent} PARTS off the ship`);
+}
+await png('03-place-click.png');
 await armTool('bunk');   // disarm
 
 // ───────────────────────────────────────────── STEP 3: the FLOOR default drag
@@ -421,9 +596,159 @@ if (decorAfter.n !== 0) note(`the SHELF click left ${decorAfter.n} decor group(s
 await png('06-shelf-honest.png');
 await armTool('shelf');  // disarm
 
+// ───────────────────────────────────────────── STEP 5: the three tools added 2026-08-04
+//
+// ⭐⭐ THE PLAYER SENTENCE, DRIVEN ON THE SHIP THE PLAYER BOOTS: GROWBED, MEDBED and TABLE arm,
+// price, and PLACE — and the ship pays for them out of the same purse STEP 2's BUNK already drew on,
+// so the run walks off the end of it and the later clicks are refused and say so. That the ship runs
+// out mid-run is not an inconvenience to work around, it is the second half of the evidence: at 3
+// PARTS each the wreck's boot stock buys a couple of pieces, and the click after that must produce a
+// sentence rather than a silence. The vacuity floor below asserts the SHAPE (both halves reached),
+// never the arithmetic, so a content lane that re-stocks the wreck does not turn this into a chore.
+//
+// ⚠️ THE VERDICT IS THE RENDERED ROOM, NOT THE TOAST. A toast is what the CLIENT said; the piece in
+// `#rz-layers` is what the SIM sent back — the Room Zoom draws devices out of the projected frame,
+// and the one historical exception (SHELF/RUG's module-local `_decor` array, which drew art for
+// furniture the ship did not have) is deleted and is guarded by STEP 4's planted control. So a new
+// `<g>` bearing the piece's own id at the clicked tile is the sim confirming the placement.
+//
+// ⚠️ AND THE NON-VACUITY IS THE BEFORE-COUNT. "A piece appeared" is worthless without "there was no
+// piece there a moment ago", and the wreck AUTHORS furniture in these rooms already — so the census
+// is taken immediately before each click and required to go UP BY ONE.
+//
+// ⛔⛔ BUT THE CENSUS IS NOT ASKED ALONE, AND THAT CORRECTION IS THE POINT (review, 2026-08-04).
+// `after === before + 1` over `.rz-furniture > g` is UNSOUND ON ITS OWN: measured on this rig, the
+// count went 19 → 20 across a click the sim REFUSED and 20 → 19 with no gesture sent at all, so the
+// PLACED verdict could green without a placement — the exact silent no-op this leg exists to catch.
+// Every placement is therefore required to move the ship's PURSE by the same click:
+// `PlaceDeviceCommand` charges 3 PARTS and charges them LAST (`Commands.cs` — every earlier
+// rejection leaves the matter untouched), so a debit of exactly `DEVICE_PLACE_COST_PARTS` is the
+// sim's own receipt for the placement, read off the surface's armed cost row. Piece AND receipt, or
+// the leg reports which one is missing. A refused click must move NEITHER.
+//
+// ⛔ THE PIECE CANNOT BE NAMED FROM THE DOM, AND SAYING SO IS THE HONEST FORM OF THIS LEG. The
+// registry's `buildItem` is handed `idPrefix: 'rz-f-<tx>-<ty>'` (`roomzoom-view.js`'s
+// `furnitureSvg`) — the TILE, never the piece id — and `dining-table` and `med-bed` emit no gradient
+// defs at all, so there is no string in the rendered markup that says "hydroponics". A first draft
+// of this leg matched `[id*="hydroponics"]` and would have counted ZERO forever while reporting it
+// as "the sim never sent the device back": a rig that cannot find anything and a rig that found
+// nothing look identical (TRAPS, 4th shape). So the leg asks the two questions the DOM CAN answer:
+//   (a) did the room gain a furniture group — `.rz-furniture > g`, one per drawn piece;
+//   (b) did it draw as REAL ART rather than the VS-Z-25 dashed placeholder, which is the one path
+//       that emits a `<text>` node carrying the sim's raw glyph char (`"` GrowBed, `d` MedBed,
+//       `t` Table). Zero of those after the click is "it drew itself", and it is the same predicate
+//       `heater-shot.mjs` uses for the bare `E`.
+log('\nSTEP 5 — GROWBED, MEDBED and TABLE (the three the sim accepted and the palette never offered)');
+/** Raw-glyph placeholder chips bearing this kind's char — the "we don't skin it" fallback. */
+const rawChips = async (ch) => evaluate(
+  `[...document.querySelectorAll('#rz-layers .rz-furniture text')].filter(t=>t.textContent.trim()===${JSON.stringify(ch)}).length`);
+const NEW_TOOLS = [
+  { tool: 'growbed', label: 'GROWBED', piece: 'hydroponics', glyph: '"' },
+  { tool: 'medbed', label: 'MEDBED', piece: 'med-bed', glyph: 'd' },
+  { tool: 'table', label: 'TABLE', piece: 'dining-table', glyph: 't' },
+];
+// ⚠️ THE TARGET TILE IS TRIED, NOT ASSUMED — a FALSE RED guard (trap 3), and it is the one this leg
+// would otherwise have shipped. `floorPoints` is a HEURISTIC: fractions of the canvas width at a
+// fixed height. The one-device-per-tile rule means a click on a tile that already holds furniture is
+// refused by the SIM, silently and correctly — and this leg would have read that as "the ship could
+// pay and the click placed NOTHING", i.e. as the new button being inert, which is the exact defect
+// it exists to disprove. So an affordable tool gets several candidates and only a run where EVERY
+// candidate failed is reported: "the sim refused six clear-looking tiles" is a real finding; one
+// occupied tile is not. (STEP 2's affordable branch draws from the same `spots` list for the same
+// reason, from the head; this leg takes the tail.)
+const step5 = [];
+for (const [i, t] of NEW_TOOLS.entries()) {
+  await armTool(t.tool);
+  if (!(await armedTools()).includes(t.tool)) { note(`the ${t.label} click did not arm the tool`); continue; }
+  const row = await costRow();
+  const chip = (await evalJson(MEASURE)).costs.find((c) => c.tool === t.tool);
+  const canPay = / · \d+ ABOARD$/.test(row.text);
+  log(`  ${t.label.padEnd(8)} chip="${chip ? chip.text : 'NONE'}" cant=${chip ? chip.cant : '?'}  row="${row.text}"  canPay=${canPay}`);
+  if (!chip) note(`${t.label} carries no cost line on its chip at all`);
+  else if (chip.text !== '3 PARTS') note(`the ${t.label} chip prices a placement as "${chip.text}"`);
+  else if (!(chip.w > 0 && chip.h > 0)) note(`the ${t.label} price has a ZERO box — rendered and invisible`);
+  if (row.hidden || !new RegExp('^' + t.label + ' ▸ (NEEDS 3 PARTS — SHIP HAS \\d+|3 PARTS · \\d+ ABOARD)$').test(row.text)) {
+    note(`arming ${t.label} says "${row.text}", which is neither a price nor a refusal`);
+  }
+
+  const before = await furnitureSample();
+  const partsBefore = partsFromRow(row);
+  if (partsBefore === null) note(`${t.label}: the armed cost row states no Parts balance — the spend cannot be checked`);
+  // One click for a refusal (the sentence is a property of the tool, not of the tile); up to four
+  // candidate tiles for a placement, for the FALSE RED reason stated above. ⭐ THE LOOP BREAKS ON THE
+  // DEBIT, never on the piece count — see the debit block for why a flickering signal must not steer
+  // control flow (it makes the rig buy a second device to satisfy its own instrument).
+  const tries = canPay ? spots.slice(i * 2 + 2, i * 2 + 6) : [spots[i * 2 + 2]];
+  let after = before, said = null, tried = 0, partsAfter = partsBefore;
+  for (const at of tries) {
+    tried += 1;
+    await blankToast();
+    await clickAt(at.x, at.y);
+    await sleep(1200);
+    said = await toast();
+    partsAfter = await settleParts(canPay ? partsBefore - DEVICE_PLACE_COST_PARTS : partsBefore);
+    after = await furnitureSample();
+    if (!canPay || partsBefore - partsAfter === DEVICE_PLACE_COST_PARTS) break;
+    log(`    (candidate ${tried} at x=${Math.round(at.x)} bought nothing — one device per tile; trying the next)`);
+  }
+  const chips = await rawChips(t.glyph);
+  const spent = partsBefore === null || partsAfter === null ? null : partsBefore - partsAfter;
+  log(`    click → furniture pieces ${before.txt} → ${after.txt} (after ${tried} candidate tile(s))   ` +
+      `PARTS ${partsBefore} → ${partsAfter} (spent ${spent})   ` +
+      `raw '${t.glyph}' chips ${chips}   toast="${said.text}"`);
+  step5.push({ ...t, canPay, row: row.text, chip: chip && chip.text,
+    before: before.max, beforeSeries: before.seen, after: after.max, afterSeries: after.seen, tried,
+    partsBefore, partsAfter, spent, rawChips: chips, toast: said.text });
+  if (canPay) {
+    // ⛔ THE PURSE FIRST. `.rz-furniture > g` is corroboration and is noisy (this rig measured it
+    // moving on a REFUSED click); `PlaceDeviceCommand` charges 3 PARTS LAST, after every legality
+    // check, and nothing else on the shipped wreck spends them — so no debit means no placement, and
+    // a piece that appeared for free did not come from this click.
+    if (spent !== DEVICE_PLACE_COST_PARTS) {
+      note(`${t.label}: the ship could pay and ${tried} click(s) BOUGHT NOTHING — the purse went ` +
+        `${partsBefore} → ${partsAfter} PARTS (${spent} spent, ${DEVICE_PLACE_COST_PARTS} owed) with ` +
+        `the furniture census reading ${before.txt} → ${after.txt} and the toast "${said.text}". THE ` +
+        'SIM TOOK NOTHING, and it charges LAST — so on any tree where `PlaceDeviceCommand` still ' +
+        'does, it never placed the device and the button is armed and inert: "verb parity is NOT ' +
+        'sufficient" on a brand-new tool.');
+    } else if (after.max !== before.max + 1) {
+      note(`${t.label}: the ship PAID ${spent} PARTS and the room does not show the piece — the ` +
+        `furniture census went ${before.txt} → ${after.txt}. Matter left the ship and the player can ` +
+        'see nothing for it.');
+    } else if (chips !== 0) {
+      note(`${t.label}: a piece landed but drew as ${chips} dashed VS-Z-25 placeholder chip(s) ` +
+        `carrying the raw glyph '${t.glyph}' — the ${t.piece} art in the registry is not being reached.`);
+    } else {
+      ok(`${t.label} PLACED on the shipped wreck (${before.max} → ${after.max} pieces), was PAID FOR ` +
+         `(${partsBefore} → ${partsAfter} PARTS) and drew as the real ${t.piece} art`);
+    }
+    if (/NEEDS \d+ PARTS/.test(said.text)) note(`${t.label}: an affordable placement toasted a refusal`);
+  } else if (!said.text || said.hidden) {
+    note(`${t.label}: the ship cannot pay and the click said NOTHING — the owner's original defect ` +
+      'on a brand-new button');
+  } else if (!new RegExp('^' + t.label + ' ▸ NEEDS 3 PARTS — SHIP HAS \\d+$').test(said.text)) {
+    note(`${t.label}: the refused click said "${said.text}"`);
+  } else {
+    ok(`${t.label} is refused HONESTLY once the ship has spent down: "${said.text}"`);
+    // The purse is asserted on this side too — a refused click never reaches `TryPay`. The piece
+    // count is deliberately NOT asserted here: it flickers on its own, and the debit has already
+    // settled the question. (This is where the un-de-noised version reddened on noise, measured.)
+    if (spent !== 0) note(`${t.label}: a REFUSED click still took ${spent} PARTS off the ship`);
+  }
+  await png(`07-${t.tool}.png`);
+  await armTool(t.tool);   // disarm
+}
+// The run must have exercised BOTH halves, or half the leg above was never reached — the assertion
+// is on the SHAPE, not on the arithmetic, so a future stock change does not make this a chore.
+if (!step5.some((s) => s.canPay)) note('STEP 5 never reached an affordable click — the placement half is vacuous');
+if (!step5.some((s) => !s.canPay)) note('STEP 5 never reached an unaffordable click — the refusal half is vacuous');
+const zoomCrop = await evalJson(`(()=>{const e=document.getElementById('rz-layers');const r=e.getBoundingClientRect();` +
+  `return {x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)};})()`);
+if (zoomCrop) await png('08-room-after-placements.png', zoomCrop);
+
 // ───────────────────────────────────────────── done
 writeFileSync(join(OUT, PREFIX + 'measurements.json'), JSON.stringify({
-  widths, chipState, armedRow, placeToast, floorToast, shelfToast, decorAfter,
+  widths, chipState, armedRow, placeToast, floorToast, shelfToast, decorAfter, step5,
 }, null, 2));
 log('  wrote', join(OUT, PREFIX + 'measurements.json'));
 
@@ -435,6 +760,7 @@ if (problems.length) {
   for (const p of problems) console.error('  · ' + p);
   process.exit(1);
 }
-log('\nOK — every build button carries its price, a refused click says why, the FLOOR default drag ' +
-    'explains itself, and SHELF/RUG no longer draw furniture the ship does not have');
+log('\nOK — every build button carries its price, an affordable click PLACES and is PAID FOR, a ' +
+    'refused one says why, the FLOOR default drag explains itself, and SHELF/RUG no longer draw ' +
+    'furniture the ship does not have');
 process.exit(0);

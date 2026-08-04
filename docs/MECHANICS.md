@@ -4832,13 +4832,61 @@ agree at boot (60 = 60) and part company the moment a stack is reserved.
 - **The bay POLLS at 1 Hz while it is up** (`moss-screen.js:79`). It is a request/reply op, not a
   pushed channel, and `GameSession.Send` drops a byte-identical payload — so re-asking on `systems`
   would stall on a quiet ship, which is most of a cycle. A pushed `pods` channel is the tidier
-  answer and is a different package.
+  answer and is a different package. ⭐ **The poll's REFUSAL SPAM is closed — see the subsection
+  below; the pushed-channel question is still open.**
 - **A pod that finishes with NO free exit tile still blocks the bay forever, silently** (M3-2's
   filing, carried). It reads CYCLING here and counts down to a number it never leaves; the gate
   cannot see the exit tile and neither can this screen.
 - **The bay is reached through `hud.js`'s MOSS door**, which M4-8 deletes. This package added **zero**
   hud.js state — pinned by `surface-boundary.test.js` with a negative control — so M4-8 re-homes one
   door, not a cache.
+
+#### ⭐ THE POLL STANDS DOWN WHEN THE SHIP STOPS ANSWERING (2026-08-04)
+
+⛔ **The defect it closes**, found by review on the moss-autoscroll merge and driven: the 1 Hz poll
+sends `moss pods` with no keystroke, and when MOSS stops being live under an open bay — a brownout
+drops `Device.Powered`, or wear takes the console under `MaintainBelow` — the `pods` arm answered
+**every** poll with `Refuse` → `MossExec(ok:false,[(2,sentence)])`, which `reduceMossEvent` pushed
+onto the transcript. **One unbidden line per second**; `CONSOLE_CAP` is 200, so ~3.3 minutes erased
+the player's whole transcript, on the screen the thaw arc is run from.
+
+`MossScreen.refreshPods` now stands the poll down after ONE unanswered period: `_podPollAwaiting` is
+set when a poll goes out and cleared **only** by an `ev:pods` reply; the next period finding it still
+set goes quiet and repaints. The bound is **one unbidden line per stand-down**, and that one line is
+the ship's own sentence (the §13.47 tail that names the terminal to repair).
+
+⛔ **IT IS A SEND-SIDE RULE AND NEVER A TRANSCRIPT FILTER**, because the wire cannot support one:
+`WireFormat.MossExec` carries `tid`/`ok`/`lines` and **never the op that produced it**, so a poll's
+refusal and a TYPED command's are the same message. Nothing touches `pushConsole` — **a typed `pods`
+refusal still prints, by construction rather than by a predicate.**
+
+⚠️ **RESUME IS THE PLAYER'S ACT, AND THE REASON IS ONE MISSING TERM, NOT TWO.**
+`MossGate.IsServerLive` is `Kind == Terminal && Powered && Condition >= MaintainBelow`.
+
+| term | reaches the client? | where |
+|---|---|---|
+| `Condition` | ⭐ **YES** | the `devices` channel — `DeviceCell` carries a `Cond` byte and `Kind` per device (`main.js:268` routes it). Measured on the shipped wreck at boot: two `Kind == Terminal` rows, `Cond` **36** and **8** (0.141 / 0.031) against Terminal `maint` **0.20** (`machines.def:31`) |
+| `Powered` | ⛔ **NO — refused BY NAME** | `WireFormat.Devices.cs` lists it in the deliberate omissions: `PowerSystem.Balance` re-stamps it on every drawing device once a second, so carrying it would make this dirty-gated payload differ on nearly every render. The tuple is ten elements and none is power |
+
+⛔ **THE HALF THAT IS MISSING IS THE DECIDING HALF, AND THAT IS THE WHOLE ARGUMENT.** A client that
+resumed on `Cond >= 0.20` alone would call MOSS live on a **REPAIRED terminal under a DARK GRID** —
+precisely the brownout this package exists for — and would resume polling straight back into the
+refusals it had just stopped. Guessing the gate reinstates the spam. The poll restarts on an `ev:pods` reply — a
+typed `pods` that worked, **or a LATE answer to the poll itself**, so a stand-down caused by latency
+heals with no keystroke — and the bay says it has stood down (`POD_POLL_STALE`, amber, on the bay and
+never on the transcript), so a frozen census is never mistaken for a live one.
+
+⛔ **A PREMISE THE RIG SKETCH CARRIED, CORRECTED BY MEASUREMENT:** on the **boot wreck the bay cannot
+be opened at all** — a boot-state `moss pods` over a plain socket comes back `ev:exec ok:false`, and
+`reducePods` is the only thing that moves the screen to PODBAY. The defect's window is a bay opened
+while the ship was live that then goes dark under the player, never a cold boot. ⚠️ This says nothing
+about the **authored fixture ships** (`perilune`/`slice`/`grid`), whose gate really is open before the
+first tick — mechanised by `MossGateTests.EveryFixtureShipBootsWithTheGateOPEN`. The wreck is not one
+of them: it carries no `term_hydro` at all, and its shut gate is authored and documented.
+
+Instruments: three driven `moss-screen.test.js` tests (blinded legs, fake clock) and
+`client/tools/pod-poll-shot.mjs` — real Chrome, real 1 Hz, real host: a 6 s window sends **1** frame
+and gains **1** line, and its STEP 4 physically removes the stand-down and re-measures **6 and 6**.
 
 ---
 
@@ -5446,7 +5494,8 @@ all start working again in this commit.**
 
 **ACCEPTANCE, DRIVEN IN REAL CHROME** (`client/tools/heater-shot.mjs`, shots
 `docs/design/shots/heater-*.png`). Fast-forward with the game's own speed stepper until the reactor
-bay is the coldest pressurised compartment at **5.78 °C** → palette shows **18 tools**, HEATER among
+bay is the coldest pressurised compartment at **5.78 °C** → palette shows **21 tools** (**18** when
+this run was taken; GROWBED/MEDBED/TABLE joined `ROOM_TOOLS` on 2026-08-04), HEATER among
 them, none clipped → one click places it (`0 -> 1` on the `devices` channel, read from an
 INDEPENDENT socket) → it draws as the real `space-heater` piece, not a dashed `E` chip → 60 s at
 100× takes the bay to **14.62 °C** while the control compartment moves 1.74 °C (a 5.1× ratio).
@@ -7714,8 +7763,9 @@ free text and always has.
 
 `client/tools/doors-shot.mjs` (new; `gate-sentences-shot.mjs`'s harness shape — CDP, trusted
 keystrokes, the sim's truth read off an **independent** socket, never the page, and `rig-lib.mjs`'s
-`dismissOnboarding`). Run against `./play.sh --host-port 8430 --client-port 8431 --no-open`,
-**ALL CHECKS PASSED**:
+`dismissOnboarding`). Run against `./play.sh --host-port 8430 --client-port 8431 --no-open` on the
+**post-TRAPS-8 merged tree** (`main` at `72e355c`, which moved `moss-screen.js` and `styles.css`
+under this pane), **ALL CHECKS PASSED** — the committed screenshots are that run's:
 
 1. The LEDGER footer reads `TYPE: LOG, PROG, DOORS, PODS, COMMISSION, HELP` — the verb is on screen
    unconditionally, not only in a HELP list a player must know to ask for. `HELP` lists it too.
@@ -7728,8 +7778,11 @@ keystrokes, the sim's truth read off an **independent** socket, never the page, 
    screen, which it would not have been before §13.46 landed the same day).
 5. ⭐⭐ **THE LOOP CLOSED.** The tool reads `DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT` off the DOM the way a
    player reads it, confirms on the **independent socket** that the sim agrees that door is shut,
-   types `open door_d0_s1`, and the `devices` channel flips that tile's open bit to 1. A re-typed
-   `doors` then prints that row as `OPEN`.
+   types **`open DOOR_D0_S1` — the id VERBATIM, exactly as printed** — and the `devices` channel
+   flips that tile's open bit to 1. A re-typed `doors` then prints that row as `OPEN`. ⚠️ An earlier
+   draft lower-cased the id here, so the rig never typed the string a player reads; the prompt's own
+   case tolerance is now driven rather than assumed, and this is `door_d0_s1` — the door the
+   fabrication chain is behind.
 
 ⭐ **THE HARNESS HAS ITS OWN NON-VACUITY CONTROL, RUN.** With the `case "doors":` arm renamed so the
 op rejoins `default: break;` (the silent swallow) and the host rebuilt, the tool reports **7 FAILED**
