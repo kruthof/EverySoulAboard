@@ -6,10 +6,11 @@
 **The game: RimWorld × Factorio × This War of Mine on a wrecked ship — built in that
 order.** Phase 1 (NOW) is the RimWorld loop: order → pawn does it → the ship visibly
 changes. Phase 2 (later, owner-gated) is the automation game via MOSS —
-control-not-conveyance, operated by named souls. This War of Mine is the third REGISTER
-(OD-R, 2026-08-04): the survival tone — scarcity, who-to-wake triage, consequences carried
-by named people — it lands in the M4/M5 charters and **nothing is implementable from it
-today** (no moral-choice engine, no misery meters; TARGET §1.3/§2).
+control-not-conveyance, operated by named souls. This War of Mine is the third GAMEPLAY
+PILLAR (OD-R, 2026-08-04, amended same day — "more than a tone"): emergent can't-save-
+everyone triage from real scarcity + deterministic mental breaks (mood gates BEHAVIOUR,
+RW§4's mechanism, no dice, no misery meters) — it lands in the M4/M5 charters and
+**nothing is implementable before the M4-1 charter** (TARGET §1.3/§2, ROADMAP OD-R).
 **For every mechanism decision, RimWorld's implementation is the analogue**: cite
 `docs/design/rimworld-reference.md` (§1–§3, §6.1 are source-grade), do not re-derive from
 memory. Defaults may deliberately differ where the owner decided (work grid boots OFF, pawn

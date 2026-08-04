@@ -14,10 +14,14 @@ quoting). Pin table (CLAUDE.md authoritative, UNCHANGED): P1 `7bdd0d6f7756dfdc` 
 `cb09b584a5f15e52` · P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87` · P5
 `558a1c0a4985f5ea`. NO PIN MOVED ×3 lanes.**
 
-**OD-R (2026-08-04, owner-direct, session J): the game is RimWorld × Factorio × THIS WAR
-OF MINE.** The third REGISTER (survival tone: thaw triage, scarcity, consequences carried
-by named people) is recorded in ROADMAP §5 + TARGET §1.3/§2 — it AIMS the M4/M5 charters
-and **nothing is implementable from it** (OD-P's scope shape; no misery meters). Same
+**OD-R (2026-08-04, owner-direct, session J; AMENDED same day — "more than a tone, an
+important part of gameplay"): the game is RimWorld × Factorio × THIS WAR OF MINE, and TWoM
+is a GAMEPLAY PILLAR.** Scoped by three follow-ups, recommendations adopted: triage is
+EMERGENT from real scarcity (never scripted, never dice) · DETERMINISTIC MENTAL BREAKS —
+mood gates BEHAVIOUR (T12's missing half, RW§4's mechanism, TWoM's tone) · lands INSIDE
+M4+M5 (M4-1's charter grows a TWoM-gameplay section; M5-1's ending is the payoff).
+Recorded in ROADMAP §5 + TARGET §1.3/§2/T12 — **nothing implementable before the M4-1
+charter** (no break table, no scarcity retune, no misery meters). Same
 ruling batch: **PROCESS §2 gained the lane-selection gate + `rows:` disclosure** — the
 owner's drift check ("are we losing ourselves in details?"): meta-work (rigs, guards about
 guards, DOM tests for shipped affordances) never runs as its own lane; every session-log
@@ -129,4 +133,4 @@ re-review APPROVE).
 | 08-03 G | overview-dock-badge · ring-saturation · palette-armed-state · b3r-dropped-order-chronicle | **the OVERVIEW says why an order is stuck · a klaxon writes ONE line (ring 200/200→49) · the palette PRESSES · ⭐ ORDER DROPPED in the log (b3-R closed, owner-ruled)**; 4 owner rulings in-session | green ×4 + final gate `025e529`+docs `5d9deb0`, pins UNMOVED ×5, tests →1850/1257 |
 | 08-04 H | TWELVE lanes (owner-directed, AFK): chip-collision · brownout-cadence · rig-hardening · palette-honesty · parts-affordability(D7) · onboarding-thaw · gate-sentences · moss-autoscroll · pod-poll-spam · rig-premises · palette-three-tools · moss-doors-verb | **"can't build / can't defreeze" AUDITED then CLOSED: every build button priced+honest, first bunk affordable (⭐⭐ brownout trade FILED for the owner), 3 new tools · the card TEACHES the thaw, MOSS refusals name the next step, the console scrolls+stops spamming, typed `doors` ends the secret-door stall · the log survives a WEEK · rigs can't coin-flip or leak · ⭐⭐ THE LIVE-PLAYER CHAIN PROVEN DRIVEN (repair→doors→craft→CM→commission, ~6.7 sim-h)** | 12× in-lane full gates + final tree ≡ gated tree (exit 0, twin MATCH), pins UNMOVED ×5, tests →1876/1297 |
 | 08-04 I | vents-verb · crew-sel-collision · moss-scroll-affordance (owner-triage; THREE same-day rulings → OD-Q) | **⭐⭐ D7 RULED keep-the-cache · `doors` RATIFIED and typed `vents` SHIPS (the deck-1 puzzle's noun is learnable; BOARD FAULT visible in the listing) · picking a crew row visibly ARMS it (3rd chip-collision instance closed, guard widened to discover `.sel`) · the MOSS console says `▾ N MORE` — and its review CAUGHT the sign eating the autoscroll slack (fixed at the seam, both sides of the band pinned)** | 3× in-lane full gates + TRAPS-8 re-gates ×2 + final tree ≡ gated tree, pins UNMOVED ×5, tests →1889/1312 |
-| 08-04 J | twom-axis-drift-guardrails (docs-only, owner-direct) | **OD-R — the game is RimWorld × Factorio × THIS WAR OF MINE** (third register recorded; aims M4/M5 charters, nothing implementable from it) · **the drift check the owner asked for**: PROCESS §2 lane-selection gate + `rows:` disclosure, HANDOVER's meta-work candidates demoted behind owner triage | docs-only, doc-sentinel tests green; rows: none (owner-directed ruling batch) |
+| 08-04 J | twom-axis-drift-guardrails + twom-gameplay-pillar (docs-only, owner-direct) | **OD-R — the game is RimWorld × Factorio × THIS WAR OF MINE, and TWoM is a GAMEPLAY PILLAR** (owner amended same day: "more than a tone"; three follow-ups adopted — emergent triage from real scarcity · deterministic mental breaks gate BEHAVIOUR (T12's missing half) · lands inside M4+M5; nothing implementable before the M4-1 charter) · **the drift check the owner asked for**: PROCESS §2 lane-selection gate + `rows:` disclosure, HANDOVER's meta-work candidates demoted behind owner triage | docs-only ×2, full gate exit 0 each, doc-sentinel tests green; rows: none (owner-directed ruling batch) |
