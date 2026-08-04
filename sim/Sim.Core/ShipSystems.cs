@@ -1146,9 +1146,24 @@ namespace Perilune.Sim
         /// deliberately — an allow-list would silently narrow the name join for every existing kind,
         /// and the ninth trap shape is a correct finding that narrows an instrument into a blind
         /// spot. A future kind that reports something getting BETTER belongs on this list.</para>
+        ///
+        /// <para>⭐⭐ <b>b3-R ADDS THE FIRST MEMBER THAT IS NOT GOOD NEWS, AND THE HEADING IS WHY.</b>
+        /// <see cref="HistoryKind.OrderDropped"/> is bad news — but it is bad news about a PERSON and
+        /// an ORDER, never about the machine's condition, and the column is headed LAST FAULT on a
+        /// row that is a census of HARDWARE. The line names its machine (<i>"ORDER DROPPED — Okafor
+        /// let go of the fabricator (fabricator_1): …"</i>), so it is the second kind in the whole
+        /// Chronicle that the name join can match — §13.43.3's regression exactly, arriving through
+        /// the same door §5.1 left open — and without this clause a pristine fabricator whose repair
+        /// order died of a shut door would report itself FAULTED. What this method decides is
+        /// <b>"may this line stand under LAST FAULT"</b>, which is broader than "is it good news";
+        /// the name says so and this clause is the reason to read it literally.</para>
         /// </summary>
         private static bool IsNotAFault(in HistoryEntry e)
         {
+            // A DROPPED ORDER IS NOT A MACHINE FAULT — see the header. The real failure of that
+            // machine, if there is one, has its own alarm line and reaches this column on its own.
+            if (e.Kind == (byte)HistoryKind.OrderDropped) return true;
+
             // STRUCTURAL, and it must run BEFORE the text sniff — a recovered episode's line
             // legitimately contains "recovered" and is still the record of a fault.
             if (e.Kind == (byte)HistoryKind.Brownout)

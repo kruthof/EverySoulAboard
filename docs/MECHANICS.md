@@ -1723,6 +1723,7 @@ write it"*.
 | `Thaw` | 13 | Thaw | 7 | `CryoSystem.Open`, **ordinary arm** (D1, 2026-08-02) |
 | `RepairCompleted` | 14 | Repair | 6 | `RepairCompletedEvent` (`MaintenanceSystem.DriveWorker`), **four arms** (D1) |
 | `DeviceCommissioned` | 15 | Commission | 6 | `DeviceCommissionedEvent` (`CommissionDeviceCommand`) (D1) |
+| `OrderDropped` | 16 | Order | 5 | `OrderDroppedEvent` (`MaintenanceSystem.Abandon`), **all six reasons** (b3-R, 2026-08-03) |
 
 The enum is **append-only** (persisted as a byte, folded into the checksum). Severity picks each
 day's single headline, ties to the earliest entry; tier 6 is a deliberate four-way tie meaning
@@ -1757,6 +1758,26 @@ member by `ChronicleTests.EveryHistoryKindHasBothALabelAndASeverityRow`.
 - **DeviceCommissioned** — *"A controller module was fitted to the reclaimer (recl_b) — it answers
   MOSS now."* Nobody is named: commissioning is a paid command, not work a crew member does.
   Published after the flip, so every refusal is silent.
+
+**The b3-R line (2026-08-03):**
+
+- **OrderDropped** — *"ORDER DROPPED — Rell let go of the fabricator (fabricator_1): the parts in
+  hand were gone."* SubjectA = the crew member, SubjectB = the machine (RepairCompleted's
+  convention, so both halves of one order's life key the same way). The reason clause is
+  `HistorySystem.DropReasonClause`, **the one authority for what the sim says killed an order** —
+  one clause per `JobDropReason`, six of them, deliberately NOT the client's `BLOCKED_REASON_TEXT`
+  (that table is keyed by the wire's three live-re-ask `Reason*` values; §13.45.2 argues the split).
+  The prefix is uppercase because the `log` and SENSOR LOG surfaces render raw text with no kind
+  tag — only the Chronicle prepends `[Order]`. The device is resolved by ID rather than carried on
+  the event, which is safe HERE and is not safe in general (§13.45.1).
+- ⛔ **It is the second kind whose text names a device, so it is on `ShipSystems.IsNotAFault`'s skip
+  list** — and the FIRST member of that list that is not good news. A dropped order is bad news
+  about a PERSON and an ORDER, never about the machine's condition; §13.43.3's regression, second
+  instance, and this time caught before it shipped (driven: without the clause the FABRICATION row
+  reports `ORDER DROPPED — RELL LET GO OF THE FABRICATOR (FABRICATO…` under LAST FAULT).
+- **No coalescer, and that is a decision** — see §13.45.1. Both siblings on this ring
+  (`RecordAlarm`, `RecordBrownout`) exist because a CONDITION fired an event forever; a dropped
+  order needs a click, and under OD-H nothing re-recruits her afterwards.
 
 **NOT written, deliberately:** crafting / batch completions. That is the next spam source, not the
 next feature — a bench working through a bill would produce exactly the shape D6 just removed.
@@ -3820,9 +3841,13 @@ and a system downstream then ate.** Reproduced headlessly on the shipped wreck, 
     `door_d0_s2` opens). **SEVEN named mutations physically applied**, each red for the right reason
     and reverted from an in-memory copy (2 C#, 5 client) — one of them, hiding the readout line, was
     a SURVIVOR on the first pass and is what the readout's own scan leg exists to close.
-- ⛔⛔ **RESIDUAL b3-R, NAMED — A `Displaced`/`CargoLost` DROP OF A PLAYER'S ORDER EVAPORATES
-  PERMANENTLY AND SILENTLY UNDER OD-H.** This is a residual of the package, not a footnote to it, and
-  it is stated before the softer items because it is the one a playtester can hit.
+- ⛔⛔ **RESIDUAL b3-R — A `Displaced`/`CargoLost` DROP OF A PLAYER'S ORDER EVAPORATED PERMANENTLY
+  AND SILENTLY UNDER OD-H. ⭐ THE SILENCE IS CLOSED (2026-08-03, owner-ruled) BY A CHRONICLE LINE —
+  §13.45. THE BADGE HALF IS STILL REFUSED AND THE DIAGNOSIS BELOW IS KEPT BECAUSE IT IS WHY.**
+  What the log now holds for every one of the six reasons: *"ORDER DROPPED — Rell let go of the
+  fabricator (fabricator_1): the parts in hand were gone."* What is still true: no live badge for
+  these three, and no re-issue (item **d**). The rest of this block is the measurement that ruled
+  the shape, unchanged.
   ⚠️ **The justification first shipped for these two rows was FALSE and is retracted here rather than
   quietly reworded:** it said they were *"self-healing — the standing rule re-recruits from ground
   truth on the next pass"*. It does not. `FindNearestReachableIdle` gates on `CanTakeWorkType`
@@ -3840,6 +3865,11 @@ and a system downstream then ate.** Reproduced headlessly on the shipped wreck, 
   governs this channel no honest badge is available. **The fix is §13.25d's** (nothing re-issues a
   forced job after an interruption), not another row here; a latched sentence would be the one thing
   the discipline exists to refuse.
+  ⭐ **AND THE OWNER RULED THE THIRD OPTION, WHICH IS NEITHER: THE SHIP'S LOG.** A badge must be
+  re-askable because it claims to say what is TRUE NOW; a history line claims only that something
+  HAPPENED, and a moment that no longer exists is exactly what a log is for. So all six reasons —
+  including the three that also badge, because the badge vanishes with the world and the line does
+  not — write one `HistoryKind.OrderDropped` entry from `HistorySystem`. **§13.45.**
 - ⚠️ **WHAT IS ALSO STILL OPEN.** (i) The badge clears when the route opens and the order does
   **not** come back with it — item **d** below, unchanged. (ii) `NoRouteToConsumable` has no
   host-side twin, because "can she walk to a stack `FindNearestConsumable` would choose" is a
@@ -6844,3 +6874,183 @@ per sim-day** (D6's own ≤ 25/day episode cap) rather than the klaxon, whose co
 pass at the brownout cadence (or at `MaxEntries`) is the follow-on, and it is D6's ledger to settle,
 not this one's. For the 2026-08-07 playtest the horizon is far past the session; for a long unattended
 run it is not.
+
+### 13.45 ⭐⭐ When an order dies mid-way, the ship's log records it (b3-R, 2026-08-03)
+
+**THE PLAYER SENTENCE.** *An order I gave that dies mid-way leaves a line in the ship's log — who
+let go, which machine, and the sim's own reason — so even a drop with no honest live badge (worker
+displaced, cargo lost) is no longer silent.*
+
+The residual is §13.25 b3-R, and it is the D5 follow-on's own: `MaintenanceSystem.Abandon` publishes
+`OrderDroppedEvent` with one of **six** `JobDropReason`s, and `GameSession` badges a machine only
+where it can RE-ASK the sim's killing question live. Three qualify. `Displaced`, `CargoLost` and
+`NoRouteToConsumable` are facts about a MOMENT and a PAWN, so no honest badge exists — and under
+OD-H nothing re-recruits her, measured: 3 000 further ticks, `JobKind` `None`, `blocked` `cells:[]`
+throughout. **The owner ruled the filed one-package follow-on** (2026-08-03): a Chronicle line, no
+live badge (that stays refused under the live-re-ask discipline), no re-issue (§13.25d stays open).
+
+#### 13.45.1 THE MECHANISM — one consumer, one funnel, no coalescer
+
+`HistorySystem.Tick` reads `OrderDroppedEvent` and writes ONE `HistoryKind.OrderDropped = 16` entry:
+`Add(tick, OrderDroppedText(sim, drop), OrderDropped, drop.CitizenId, drop.DeviceId)`. Both
+consumers of the ring get it for free — the MOSS `log` screen / Overview SENSOR LOG
+(`GameSession.BuildLog`, last 14 entries) and the `chron` payload (`Chronicle.Render`) — and the
+host needed **no change at all**. Driven on the shipped wreck, both payloads carry it (§13.45.3).
+
+- ⛔ **ALL SIX REASONS WRITE THE LINE, INCLUDING THE THREE THAT ALSO BADGE.** The badge and the line
+  are different claims: a badge says what is TRUE NOW and is dropped the frame the world stops
+  agreeing (open the door ⇒ badge gone); the line says something HAPPENED and never clears. A player
+  who fixes the door still deserves to know the order died.
+- ⛔ **NO COALESCER, AND IT IS SAID HERE BECAUSE THIS IS WHERE THE NEXT READER WILL LOOK FOR ONE.**
+  `RecordAlarm` (§13.44) and `RecordBrownout` (§13.8.1) exist because a CONDITION was firing an
+  event at 1 Hz forever. A drop needs a player to click a machine, the sim to take the job and the
+  world to change under it; one order can die once, and under OD-H nothing re-recruits her
+  afterwards. There is no repeating source to fold, and folding would need a hashed count for a
+  stream that produces single entries.
+- **THE STREAM IS RARE BY CONSTRUCTION, NOT BY THROTTLE**: `Abandon` publishes only when the job was
+  `HeldByOrder` — the hold IS the order — so the dispatcher's own thousands-a-day abandons never
+  reach the bus (`DroppedOrderTests.AnAutonomousAbandonIsNotAnOrder_AndIsNeverFiled` is that gate's
+  instrument and is untouched here).
+- ⚠️ **THE DEVICE IS RESOLVED BY ID, WHICH IS SAFE HERE AND IS NOT A GENERAL LICENCE.**
+  `CitizenDiedEvent` carries a NAME and `DeconstructCompletedEvent` carries a KIND precisely because
+  their subject leaves the store on the publishing tick. A drop is the opposite: `Abandon` is handed
+  a live `Device`, and the one path that abandons a DECONSTRUCTED machine (`DriveWorkers`' direct
+  `AbandonOrphan` at `MachineWearSystem.cs:207`) deliberately publishes nothing — the known
+  exception on `Abandon`'s own doc comment, unchanged by this package. The `"a machine"` fallback is
+  written rather than assumed.
+- **TRANSIENT STAYS TRANSIENT.** No new saved field outside the ring entry itself, no def field, no
+  `IStatefulSystem` change, `HistorySystem.StateVersion` stays **2** (`SubjectA`/`SubjectB` were
+  already captured and already folded). The reason lives in the TEXT and is therefore hash-exempt,
+  exactly as `RepairTier` is.
+
+#### 13.45.2 THE WORDS, AND WHY THEY ARE NOT A SECOND COPY OF THE BADGE'S
+
+`HistorySystem.DropReasonClause` is **the one authority for what the sim says killed an order** —
+one clause per `JobDropReason`, swept as a CLASS (`DroppedOrderChronicleTests`: every declared
+member worded, all distinct, none falling through to the fallback), never a list of today's six.
+
+| `JobDropReason` | clause |
+|---|---|
+| `NoWorksiteTile` | there was nowhere left to stand next to it |
+| `Displaced` | the job was interrupted part-way through |
+| `CargoLost` | the parts in hand were gone |
+| `NoRouteToWorksite` | there was no way to walk to it |
+| `NoRouteToConsumable` | there was no way to walk to the parts |
+| `NoConsumable` | there was nothing aboard to fix it with |
+
+⛔ **THE CLIENT'S `BLOCKED_REASON_TEXT` IS A DIFFERENT AUTHORITY FOR A DIFFERENT CHANNEL, AND
+MERGING THEM WOULD HAVE COST MORE THAN IT SAVED.** That table is keyed by `WireFormat.Reason*` —
+**three** values, each a question the host can put to the sim again this frame ("NO WAY TO WALK TO
+IT"), rendered through `blockedReasonSentence`, the client's own single entry point. This table is
+keyed by `JobDropReason` — **six** values, a historical statement about a moment that no longer
+exists. Wording the log through the badge's table needs a mapping that discards three reasons —
+exactly the three b3-R is FOR — and wording the badge through this one puts history prose on a live
+surface. No pronouns anywhere in the table: `Citizen` carries no gender, and the crew member is
+already named before the colon.
+
+⚠️ **AND THE POSITIVE ASSERTION IN THE OUTCOME TEST READS THIS SAME AUTHORITY, SO IT AGREES WITH A
+MIS-WIRED ARM.** Said out loud because it is the shape a green test hides: the leg that closes it
+asserts NO OTHER reason's clause appears in the line (driven — swapping `CargoLost`'s arm for
+`NoConsumable`'s reddens it by name, plus the distinctness sweep). What is still not pinned by
+anything is whether a clause is the RIGHT sentence for its arm; that is prose, and the switch's
+member names are what carry it.
+
+#### 13.45.3 THE PIN MATRIX — all five held, and every hold is VACUOUS on this package
+
+| pin | before | after | verdict |
+|---|---|---|---|
+| **P1** scenario `--days 3 --seed 42` | `7bdd0d6f7756dfdc` | `7bdd0d6f7756dfdc` (twin match) | **HELD — VACUOUS, measured** |
+| **P2** perilune tick-3000 | `cb09b584a5f15e52` | **HELD** | held — vacuous (no order exists) |
+| **P3** slice tick-3000 | `43a1a5c25713faec` | **HELD** | held — vacuous (no order exists) |
+| **P4** defs defaults | `661fcdd4b89f1e87` | **HELD** | genuinely inert (no def field) |
+| **P5** defs rules-inclusive | `558a1c0a4985f5ea` | **HELD** | genuinely inert (no def field) |
+
+⛔ **THE HOLDS ARE MEASURED, NOT ARGUED — and the CAUSE is one sentence: nothing behind a pin ever
+gives an order, so `Citizen.HeldByOrder` is false on every fixture and `Abandon` publishes nothing.**
+The census, taken rather than reasoned (P1's `Report` instrumented, run, restored from an in-memory
+copy with the mtime moved FORWARD — TRAPS 2; the ship fixtures booted through `SimHost` and driven
+to tick 3000):
+
+```
+SCRATCH-B3R-P1 ring=0   orderDropped=0 heldByOrder=0     # day 0
+SCRATCH-B3R-P1 ring=200 orderDropped=0 heldByOrder=0     # days 1, 2 and 3
+SCRATCH-B3R SHIP Perilune tick3000 ring=0  orderDropped=0 heldByOrder=0 hash=cb09b584a5f15e52
+SCRATCH-B3R SHIP Slice    tick3000 ring=18 orderDropped=0 heldByOrder=0 hash=43a1a5c25713faec
+SCRATCH-B3R SHIP Wreck    tick3000 ring=4  orderDropped=0 heldByOrder=0
+SCRATCH-B3R SHIP Grid     tick3000 ring=0  orderDropped=0 heldByOrder=0
+SCRATCH-B3R WRECK200k ring=9 orderDropped=0              # the unattended SHIPPED ship, 200 000 ticks
+```
+
+⛔ **DO NOT READ THIS AS "THE PINS COVER THE DROPPED-ORDER LINE". THEY DO NOT** — M2-12's *"no pin
+sees the generation term"* in its fifth costume, and as with D1/D6/§13.44 the affected surface is the
+SHIPPED ship. ⭐ **The same code writes a line where it IS reached, driven on `--ship wreck` through
+`gs.AdvanceTicks` — order `fabricator_1` with `door_d0_s2` open, yank the carried stack at the
+pickup (tick 171) ⇒ at tick 181 the ring gains**
+
+```
+ORDER DROPPED — Rell let go of the fabricator (fabricator_1): the parts in hand were gone.
+```
+
+**and it is in the shipped `log` payload and in the `chron` payload in the same frame** (both read
+off the session, not off the ring). The instruments are `DroppedOrderChronicleTests` (3 tests) and
+`ChronicleTests.EveryHistoryKindHasBothALabelAndASeverityRow`, **and nothing else**.
+
+**SIX NAMED MUTATIONS, PHYSICALLY APPLIED**, each red for the reason named and reverted from an
+in-memory copy: (1) the consumer deleted from `HistorySystem.Tick` ⇒ *"no surface in the game
+remembers that it existed"*; (2) the publish moved BELOW `AbandonOrphan` — the hold-read order
+§13.25 b3′ calls load-bearing ⇒ the same red, channel permanently empty; (3) the `OrderDropped`
+clause deleted from `ShipSystems.IsNotAFault` ⇒ the FABRICATION row reads `ORDER DROPPED — RELL LET
+GO OF THE FABRICATOR (FABRICATO…` under LAST FAULT; (4) `DropReasonClause`'s `CargoLost` arm swapped
+for another member's ⇒ two instruments red; (5) the `Chronicle` label row deleted ⇒ the line renders
+`[Note]`; (6) the severity row deleted ⇒ it can no longer out-rank an alarm.
+
+#### 13.45.4 THE DAY-HEADLINE LADDER — a dropped order ties with a brownout, deliberately
+
+`Chronicle.Severity` puts `OrderDropped` at **5**, tied with `Brownout` and resolved by the strict
+`>` in `Render` (earliest entry keeps the headline). It must not sink below the power flap — D1's
+own reasoning one tier up: the order that died is usually the repair the brownout was FOR, and a day
+remembered as *"the power flapped"* when what happened is *"the fix you ordered never arrived"* names
+the symptom. It must not rise to the work tier either: tier 6 means *"the ship's capability changed
+and a person made it happen"*, and here nothing changed at all. ⛔ **Death (8) and the ordinary thaw
+(7) still out-rank it — owner-ruled, restated 2026-08-03, and pinned by
+`ADeathAndAThawStillOutrankADroppedOrder` with an inclusion control so the two legs cannot be
+satisfied by a kind ranked at the floor.** (`rimworld-reference.md` §11.1 would put an interrupted
+forced job in the TRANSIENT message channel rather than the letter stack; Perilune has no transient
+channel, and the owner ruled the log line because the alternative here is permanent silence. That
+classing is why it sits low on this ladder rather than beside the work tier.)
+
+#### 13.45.5 ⛔ THE RESIDUAL THIS PACKAGE INHERITS — a save on the drop's own tick loses the line
+
+**The sibling of §13.44.5, and it is filed rather than chased, on the same argument.** The event bus
+is not a save chapter: an `OrderDroppedEvent` published on the very tick a save is taken is never
+written, so the loaded sim's ring lacks the entry its uninterrupted twin has — permanently, because
+nothing re-publishes it (`Abandon` fires once and the job is already gone) and because the ring is a
+hashed save chapter, so the two runs' HIST folds differ from then on. No idempotency rule can close
+it: dropping a duplicate is possible, **reconstructing a lost event is not**. The closer is the same
+family as D6's residual 2 and §13.44.5's — save-boundary event delivery — not a consumer-side rule
+in `HistorySystem`. Three residuals now argue for that one package.
+
+⭐ **THE WIDTH IS HONESTLY NARROWER THAN THE KLAXON'S, AND FOR A STRUCTURAL REASON.** §13.44.5's
+alarm case is 1 tick in 600 *continuously*, because the klaxon sounds forever on a cold ship. A drop
+requires a player-held order to die: at most one tick per order given, and under OD-H orders are the
+rare deliberate act — the shipped wreck driven unattended for 200 000 ticks publishes **zero**
+(measured above). The exposure is therefore "the exact tick a save lands on the drop of an order the
+player gave", not a periodic window. **Not chased, and not instrumented either**: adding a leg for it
+would pin a defect this package cannot fix.
+
+#### 13.45.6 What the package deliberately does NOT do
+
+- **No live badge for the three transient reasons.** The live-re-ask discipline (§13.25 b3′) refuses
+  a latched sentence, and that ruling stands — the log is a different channel with a different
+  contract, which is the whole point of the owner's shape.
+- **No re-issue of the order.** §13.25d is untouched: nothing brings the order back when the world
+  agrees again, and the player re-orders.
+- **Nothing for the ORPHAN path.** A machine deconstructed under a live order still dies silently at
+  `MachineWearSystem.cs:207` (`AbandonOrphan` direct, bypassing the funnel). Named on `Abandon`'s
+  doc comment since the D5 follow-on; a line there would need the event the funnel never publishes.
+- **No structural reason byte in the ring.** The reason is prose, hash-exempt like `RepairTier` — a
+  hashed reason field would move nothing today and would be a save-format change for a consumer that
+  does not exist.
+- **No alerts-bar row and no toast.** RimWorld's split (§11.1) puts a standing condition on the alert
+  stack and a fired event in the letter channel; this ring is the letter channel. M5-2 owns the other
+  half.

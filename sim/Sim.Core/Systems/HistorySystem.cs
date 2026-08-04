@@ -38,6 +38,16 @@ namespace Perilune.Sim
         Thaw = 13,                 // "<name> came out of cryosleep…" — an ordinary, player-ordered wake
         RepairCompleted = 14,      // a machine was overhauled / serviced / patched (MaintenanceSystem)
         DeviceCommissioned = 15,   // a controller module was fitted; the device answers MOSS now
+
+        // ⭐⭐ b3-R (owner-ruled 2026-08-03). The ORDER the player gave died mid-way and the ship
+        // said nothing that outlived the frame. Three of the six `JobDropReason`s carry a LIVE badge
+        // (the host re-asks the sim's killing question every render); the other three —
+        // `Displaced`, `CargoLost`, `NoRouteToConsumable` — are per-worker transients with no
+        // standing world question to re-ask, so under the live-re-ask discipline no honest badge is
+        // available and the order evaporated permanently (MECHANICS §13.25 b3-R). The log is the
+        // channel that CAN hold them: a badge says what is true now, history says what happened.
+        // ALL SIX write the line, badge or no badge, for that reason.
+        OrderDropped = 16,         // "ORDER DROPPED — <who> let go of <machine>: <why>" (MaintenanceSystem.Abandon)
     }
 
     /// <summary>One line of ship history, day-stamped ("Day 142.12 — Blight detected in Bay 3").</summary>
@@ -159,6 +169,22 @@ namespace Perilune.Sim
 
             foreach (var fitted in sim.Events.Read<DeviceCommissionedEvent>())
                 Add(tick, CommissionText(fitted), HistoryKind.DeviceCommissioned, fitted.DeviceId);
+
+            // ⭐⭐ b3-R — THE ORDER THAT DIED MID-WAY LEAVES A TRACE. `MaintenanceSystem.Abandon`
+            // publishes only when the abandoned job was `Citizen.HeldByOrder` — the hold IS the
+            // order — so this stream is the RARE one by construction: the dispatcher's own abandons
+            // (thousands a day on an unattended ship, which is why M1-H has a backoff funnel) never
+            // reach the bus at all.
+            //
+            // ⛔ NO COALESCER HERE, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT — say it where
+            // the next reader of `RecordAlarm`/`RecordBrownout` will look for one. Those two exist
+            // because a CONDITION was firing an event at 1 Hz forever (§13.8.1, §13.44). A dropped
+            // order needs a player to have clicked a machine and the sim to have taken the job and
+            // the world to have changed under it; one click can produce at most one drop, and OD-H
+            // guarantees nothing re-recruits her afterwards. There is no repeating source to fold.
+            foreach (var drop in sim.Events.Read<OrderDroppedEvent>())
+                Add(tick, OrderDroppedText(sim, drop), HistoryKind.OrderDropped,
+                    drop.CitizenId, drop.DeviceId);
         }
 
         // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -606,9 +632,7 @@ namespace Perilune.Sim
         private static string RepairText(Simulation sim, in RepairCompletedEvent e)
         {
             string who = NameOf(sim, e.WorkerId);
-            string what = string.IsNullOrEmpty(e.DeviceName)
-                ? "the " + ((DeviceKind)e.Device).ToString().ToLowerInvariant()
-                : "the " + ((DeviceKind)e.Device).ToString().ToLowerInvariant() + " (" + e.DeviceName + ")";
+            string what = DevicePhrase(e.Device, e.DeviceName);
             switch ((RepairTier)e.Tier)
             {
                 case RepairTier.Overhaul:     return $"{who} overhauled {what} — as good as new.";
@@ -618,13 +642,103 @@ namespace Perilune.Sim
             }
         }
 
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // ⭐⭐ b3-R — THE DROPPED ORDER'S LINE. The badge is what is true now; this is what happened.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// ⭐⭐ <b>THE ONE AUTHORITY FOR WHAT THE SIM SAYS KILLED AN ORDER</b> — one clause per
+        /// <see cref="JobDropReason"/>, and nothing anywhere else may word a drop reason.
+        ///
+        /// <para>⛔ <b>IT IS NOT A SECOND COPY OF THE BADGE'S SENTENCES, AND THE DIFFERENCE IS
+        /// STRUCTURAL RATHER THAN STYLISTIC.</b> The client's <c>BLOCKED_REASON_TEXT</c>
+        /// (<c>client/src/wire/messages.js</c>) is keyed by <c>WireFormat.Reason*</c> — the LIVE
+        /// re-ask channel, three values, each of them a question the host can put to the sim again
+        /// this frame ("NO WAY TO WALK TO IT"). This table is keyed by <see cref="JobDropReason"/> —
+        /// <b>six</b> values, a HISTORICAL statement about one moment that no longer exists. Wording
+        /// the log through the badge's table would need a mapping that discards three reasons
+        /// (exactly the three b3-R is FOR), and wording the badge through this one would put history
+        /// prose on a live surface. Two channels, two vocabularies, one authority each.</para>
+        ///
+        /// <para>⚠️ <b>NO PRONOUNS, DELIBERATELY.</b> <c>Citizen</c> carries no gender, so a clause
+        /// saying "she" would be an invention; the crew member is already named by
+        /// <see cref="OrderDroppedText"/> before the colon and the clause states the WORLD's reason.
+        /// Past tense, because the whole line is.</para>
+        ///
+        /// <para>The default arm exists only because C# demands totality: a reason declared without a
+        /// clause would ship a line that says nothing, which is the silence this package removes.
+        /// <c>DroppedOrderChronicleTests.EveryDropReasonHasItsOwnSentence</c> sweeps the CLASS (every
+        /// declared member, distinct, never the fallback) rather than listing today's six.</para>
+        /// </summary>
+        public static string DropReasonClause(JobDropReason reason)
+        {
+            switch (reason)
+            {
+                case JobDropReason.NoWorksiteTile:     return "there was nowhere left to stand next to it";
+                case JobDropReason.Displaced:          return "the job was interrupted part-way through";
+                case JobDropReason.CargoLost:          return "the parts in hand were gone";
+                case JobDropReason.NoRouteToWorksite:  return "there was no way to walk to it";
+                case JobDropReason.NoRouteToConsumable:return "there was no way to walk to the parts";
+                case JobDropReason.NoConsumable:       return "there was nothing aboard to fix it with";
+                default:                               return "the sim gave no reason";
+            }
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>"ORDER DROPPED — Okafor let go of the fabricator (fabricator_1): there was no way
+        /// to walk to it."</b> — the line b3-R exists to write.
+        ///
+        /// <para><b>WHY THE LOG AND NOT A BADGE, in one sentence:</b> a badge is only honest while
+        /// the host can RE-ASK the sim's killing question live (<c>GameSession.BuildBlocked</c>'s
+        /// fifth walk), and three of the six reasons are per-worker transients with no standing
+        /// world question — so those orders died with nothing on any surface at all. The ring has no
+        /// such requirement: it records what HAPPENED. All six write the line, including the three
+        /// that also badge, because the badge vanishes with the world and the log does not
+        /// (MECHANICS §13.25 b3-R, owner-ruled 2026-08-03).</para>
+        ///
+        /// <para><b>THE PREFIX IS UPPERCASE AND THE REST IS NOT.</b> The MOSS <c>log</c> screen and
+        /// the Overview's SENSOR LOG render the raw text with no kind tag (only the Chronicle
+        /// prepends <c>[Order]</c>), so the line has to announce itself in its own first two words or
+        /// it reads as narration of a repair that never happened.</para>
+        ///
+        /// <para>⚠️ <b>THE DEVICE IS RESOLVED BY ID, WHICH IS SAFE HERE AND IS NOT SAFE FOR EVERY
+        /// EVENT ON THIS BUS.</b> <c>CitizenDiedEvent</c> and <c>DeconstructCompletedEvent</c> carry
+        /// their subject's NAME/KIND precisely because the subject is removed from the store on the
+        /// publishing tick. A drop is the opposite case: <c>MaintenanceSystem.Abandon</c> is handed a
+        /// live <c>Device</c>, and the one path that abandons a DECONSTRUCTED machine
+        /// (<c>DriveWorkers</c>' direct <c>AbandonOrphan</c> at <c>:207</c>) deliberately publishes
+        /// nothing. The fallback is still written rather than assumed.</para>
+        ///
+        /// <para>⛔ <b>THE REASON LIVES IN THE TEXT AND IS THEREFORE HASH-EXEMPT</b>, exactly as
+        /// <c>RepairTier</c> is: the HIST fold takes tick + kind + subjects only. The structural
+        /// fields follow <see cref="HistoryKind.RepairCompleted"/>'s convention — SubjectA the crew
+        /// member, SubjectB the machine — so the two halves of one order's life (the drop and, if it
+        /// is ever re-ordered and finished, the repair) key the same way.</para>
+        /// </summary>
+        private static string OrderDroppedText(Simulation sim, in OrderDroppedEvent e)
+        {
+            string who = NameOf(sim, e.CitizenId);
+            string what = sim.Devices.TryGet(e.DeviceId, out var device)
+                ? DevicePhrase((byte)device.Kind, device.Name)
+                : "a machine";
+            return $"ORDER DROPPED — {who} let go of {what}: {DropReasonClause((JobDropReason)e.Reason)}.";
+        }
+
+        /// <summary>"the reclaimer (recl_b)", or "the reclaimer" for an unnamed device — the one
+        /// phrase every device-naming line in this file composes, so a machine cannot read one way
+        /// in a repair line and another in a drop line.</summary>
+        private static string DevicePhrase(byte deviceKind, string name)
+        {
+            string kind = "the " + ((DeviceKind)deviceKind).ToString().ToLowerInvariant();
+            return string.IsNullOrEmpty(name) ? kind : kind + " (" + name + ")";
+        }
+
         /// <summary>"A controller module was fitted to the reclaimer (recl_b) — it answers MOSS now."
         /// Nobody is named: commissioning is a command the player pays for, not work a crew member
         /// does, and inventing a worker would be a lie the Chronicle is specifically for avoiding.</summary>
         private static string CommissionText(in DeviceCommissionedEvent e)
         {
-            string kind = ((DeviceKind)e.Device).ToString().ToLowerInvariant();
-            string what = string.IsNullOrEmpty(e.DeviceName) ? "the " + kind : $"the {kind} ({e.DeviceName})";
+            string what = DevicePhrase(e.Device, e.DeviceName);
             return $"A controller module was fitted to {what} — it answers MOSS now.";
         }
 
