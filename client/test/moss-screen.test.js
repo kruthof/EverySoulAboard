@@ -1996,3 +1996,28 @@ test('doors: typing `doors` sends the wire op through the real screen', () => {
   assert.ok(/DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT/.test(text),
     'the listing never reached the console pane:\n' + text);
 });
+
+// ═══════════════════════════════════════════════════════ the `vents` DIRECTORY verb
+//
+// The owner-ratified second noun (2026-08-04), same seam and same trap-4 discipline as `doors`
+// above: the assertion is the MESSAGE the screen sends, recorded at the send.
+
+test('vents: typing `vents` sends the wire op through the real screen', () => {
+  const s = bayScreen(null);
+  typeCmd(s, 'vents');
+  assert.deepEqual(s.sent.slice(-1), [{ type: 'moss', op: 'vents', tid: '@console' }],
+    'the directory must be ASKED for — the client holds no vent census to print');
+  assert.equal(s.root.dataset.screen, 'ledger',
+    'and it opens no screen: the ship answers on the transcript the player is already looking at');
+
+  // ⭐ NO NEW WIRE SHAPE — the reply is an ordinary `exec` block and the transcript renders it,
+  // OD-O's board-fault column included, unedited.
+  s.screen.onMossEvent({
+    type: 'moss', ev: 'exec', tid: '@console', ok: true,
+    lines: [[1, 'VENTS — 3 ABOARD · 2 OPEN · 1 SHUT'],
+      [1, 'VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT']],
+  });
+  const text = s.root.byClass('moss-cline').map((el) => el.textContent).join('\n');
+  assert.ok(/VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT/.test(text),
+    'the listing never reached the console pane:\n' + text);
+});

@@ -530,6 +530,9 @@ namespace Perilune.Web
         ///   exec  → run ONE prompt line through the DSL's own device adapters (see ExecConsole)
         ///   doors → ⭐ the DOOR DIRECTORY — one line per Door (id · place · OPEN/SHUT), so the
         ///           name `open` needs is learnable in the game. A READ; rides the `exec` reply.
+        ///   vents → ⭐ the VENT DIRECTORY — the same shape on the owner-ratified second noun
+        ///           (2026-08-04): one line per AirVent (id · place · OPEN/SHUT[· BOARD FAULT]).
+        ///           A READ; rides the `exec` reply.
         ///   pods  → ⭐ M3-4: the POD BAY census — one row per CryoPod, each carrying the gate's own
         ///           verdict (state, refusal ordinal, sentence, and whether it may cycle). A READ.
         ///   thaw  → ⭐ M3-3: ask the ship to wake the capsule named in `text`, through the console
@@ -543,7 +546,7 @@ namespace Perilune.Web
         /// could open the MOSS tab and type <c>open door_d0_s1</c> and the door opened. The console
         /// was the wider hole, not the Room Zoom's click.</para>
         /// <list type="table">
-        ///   <item><term><c>sys</c> · <c>audit</c> · <c>exec</c> · <c>doors</c></term><description><b>REPAIRED
+        ///   <item><term><c>sys</c> · <c>audit</c> · <c>exec</c> · <c>doors</c> · <c>vents</c></term><description><b>REPAIRED
         ///   tier</b> — <see cref="MossGate.IsServerLive"/>. Reading the ship, or writing one device
         ///   one line at a time, needs a working computer. This covers the DEVICE verbs
         ///   (<c>open</c>/<c>close</c>/<c>lock</c>/<c>unlock</c>), <c>set &lt;dev&gt;.rate</c> and
@@ -655,9 +658,9 @@ namespace Perilune.Web
                     }
                     break;
                 }
-                // ⭐⭐ THE `doors` DIRECTORY (a defect closure in OD-P's typed-only style; OD-P's own
-                // row forbids implementing from it, so the SHAPE awaits ratification — see
-                // MossGate.DescribeDoors' header). Every door the ship knows, one per line, so the
+                // ⭐⭐ THE `doors` DIRECTORY (shipped as a defect closure in OD-P's typed-only style;
+                // ⭐ the owner RATIFIED the shape on 2026-08-04 — see MossGate.DescribeDoors'
+                // header). Every door the ship knows, one per line, so the
                 // NAME `open` needs is learnable in the game. Until this op, OD-N had made the doors
                 // MOSS-only and NO SURFACE ANYWHERE NAMED ONE — and the fabrication chain that the
                 // whole thaw arc is built on sits behind two of them on the shipping wreck. A READ:
@@ -697,6 +700,36 @@ namespace Perilune.Web
                     var outLines = new List<(int Stream, string Text)>(doorLines.Count);
                     for (int i = 0; i < doorLines.Count; i++) outLines.Add((1, doorLines[i]));
                     Emit(WireFormat.MossExec(tid, true, outLines));
+                    break;
+                }
+                // ⭐⭐ THE `vents` DIRECTORY — the OWNER-RATIFIED SECOND NOUN (2026-08-04), in the
+                // `doors` shape exactly. Every vent the ship knows, one per line, so the NAME
+                // `open`/`set … .rate` needs is learnable in the game. OD-N put the vents behind
+                // MOSS in the same breath as the doors, and on the shipping wreck the upper deck's
+                // ONLY source of air is one named machine (`vent_d1`) while the life-support
+                // compartment's first player gesture is opening another (`vent_ls`). A READ: it
+                // enqueues nothing and changes nothing.
+                case "vents":
+                {
+                    // ⛔ THE **REPAIRED** TIER, FOR `doors`' REASON AND NOT A NEW ONE: this is the
+                    // directory for `open`/`close` (and the `set <dev>.rate` workaround OD-O's
+                    // puzzle turns on), all of which reach the sim through `exec` at THIS tier
+                    // (MECHANICS §13.31). One tier up, a player whose console is repaired could
+                    // actuate a vent and still not learn its name; ungated, a dead computer
+                    // enumerates the ship.
+                    //
+                    // ⭐ `Ask.Vents`, NOT `Ask.Doors`. The gate is the same and the NOUN is not: a
+                    // player who typed `vents` and was answered "…TO REACH THE DOORS" is the exact
+                    // wrong-noun defect the Ask enum exists to close (§13.47).
+                    if (!MossGate.IsServerLive(_sim))
+                    { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Vents)); break; }
+                    // ⛔ NO NEW WIRE SHAPE, and no new composer — `MossGate.DescribeVents` writes the
+                    // words in Sim.Core beside the gate, and they ride `MossExec`'s existing stream-1
+                    // lines. WireFormat.cs stays at a ZERO diff and `reduceMossEvent` needs no arm.
+                    var ventLines = MossGate.DescribeVents(_sim);
+                    var ventOut = new List<(int Stream, string Text)>(ventLines.Count);
+                    for (int i = 0; i < ventLines.Count; i++) ventOut.Add((1, ventLines[i]));
+                    Emit(WireFormat.MossExec(tid, true, ventOut));
                     break;
                 }
                 // ⭐⭐ M3-3 — THE THAW. A MOSS *SCREEN* verb: a distinct op, sent by the POD BAY
@@ -4931,7 +4964,7 @@ namespace Perilune.Web
         /// {"cmd":"deck","dz":1} / {"cmd":"lens","name":"power"} / {"cmd":"speed","delta":-1} /
         /// {"cmd":"pause"}), and the dialogue/MOSS commands keyed by "type"
         /// ({"type":"talk","cid":N} / {"type":"say","sid":N,"text":".."} / {"type":"bye","sid":N} /
-        /// {"type":"moss","op":"open|set|audit|sys|exec|doors|pods|thaw|commission","tid":"..","text"?}). For `thaw`,
+        /// {"type":"moss","op":"open|set|audit|sys|exec|doors|vents|pods|thaw|commission","tid":"..","text"?}). For `thaw`,
         /// `text` is the capsule's Device.Name (M3-3). Unknown/garbage ⇒
         /// Kind.Unknown (ignored by the session).</summary>
         public static WebCommand Parse(string json)
