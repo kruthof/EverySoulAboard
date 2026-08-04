@@ -171,6 +171,13 @@ test('MUTATION 3 — the CREW WATCH row never reaches for the work channel (scop
 // (One constant, because the two surfaces genuinely write the same line — they share the row-record
 // shape as well as the derivation. Two names for one string would only look like two guards.)
 const WAITING_PAYLOAD = "setCls(rec.taskEl, 'waiting', t.waiting)";
+// ⭐ D5 OVERVIEW — AND THE TWO SURFACES NO LONGER WRITE THE SAME LINE, so the shared constant above
+// is now the Room Zoom's alone. The Overview's row acquired a FOURTH state — the direct order this
+// crew member was given is stuck, and the `blocked` channel says why — which is a FAULT rather than
+// an activity, so it turns the other two states off explicitly rather than layering on them. The
+// `!bl &&` is spelt into the token deliberately: a scan for the bare old line would go green on a
+// tree where the fault state had been dropped and `waiting` had quietly taken the row back.
+const OV_WAITING_PAYLOAD = "setCls(rec.taskEl, 'waiting', !bl && t.waiting)";
 
 /** Comment out every line containing `token` — the trap-1 negative control, shared by both legs. */
 function commentOutLines(source, token) {
@@ -179,10 +186,10 @@ function commentOutLines(source, token) {
 
 test('MUTATION 4 — the OVERVIEW\'s CREW WATCH writes the waiting class', () => {
   const raw = src('src/ui/overview-view.js');
-  assert.ok(codeOnly(raw).includes(WAITING_PAYLOAD),
-    `the Overview no longer writes the waiting class (looked for: ${WAITING_PAYLOAD})`);
+  assert.ok(codeOnly(raw).includes(OV_WAITING_PAYLOAD),
+    `the Overview no longer writes the waiting class (looked for: ${OV_WAITING_PAYLOAD})`);
   // NEGATIVE CONTROL — commented out, the same scan must FAIL (CLAUDE.md trap 1).
-  assert.equal(codeOnly(commentOutLines(raw, WAITING_PAYLOAD)).includes(WAITING_PAYLOAD), false,
+  assert.equal(codeOnly(commentOutLines(raw, OV_WAITING_PAYLOAD)).includes(OV_WAITING_PAYLOAD), false,
     'the scan passes on a source where the line is COMMENTED OUT, so it proves nothing');
 });
 
@@ -204,9 +211,15 @@ test('MUTATION 4 — the ROOM ZOOM\'s crew dock writes the same class, and it is
 // claim this leg makes is unchanged: BOTH docks still write the host's sentence through the shared
 // derivation, and neither may go silent.
 test('MUTATION 4 — and BOTH docks still render the host\'s text through the shared derivation', () => {
-  for (const f of ['src/ui/overview-view.js', 'src/ui/roomzoom-view.js']) {
+  // ⭐ D5 OVERVIEW — the Overview's payload gained the stuck-order branch (see the constant above);
+  // `t.what` is still the whole of the other branch, which is what this leg pins.
+  const PAYLOAD = {
+    'src/ui/overview-view.js': 'setText(rec.taskEl, bl ? bl.sentence : t.what)',
+    'src/ui/roomzoom-view.js': 'setText(rec.taskEl, t.what)',
+  };
+  for (const [f, line] of Object.entries(PAYLOAD)) {
     const code = codeOnly(src(f));
-    assert.ok(code.includes('setText(rec.taskEl, t.what)'),
+    assert.ok(code.includes(line),
       `${f} stopped writing the task TEXT — the class without the sentence is a colour with no word`);
     assert.ok(code.includes('watchTask('),
       `${f} no longer uses the shared derivation, so the two surfaces can now disagree`);

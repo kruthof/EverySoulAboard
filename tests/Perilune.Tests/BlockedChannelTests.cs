@@ -48,23 +48,27 @@ namespace Perilune.Tests
             var cells = new[]
             {
                 new WireFormat.BlockedCell(3, 4, 0, WireFormat.OrderDig, WireFormat.ReasonAir,
-                                           WireFormat.DetailNone),
+                                           WireFormat.DetailNone, WireFormat.CidNone),
                 new WireFormat.BlockedCell(58, 15, 1, WireFormat.OrderBuild, WireFormat.ReasonNoApproach,
-                                           WireFormat.DetailNone),
+                                           WireFormat.DetailNone, WireFormat.CidNone),
                 // ⭐ M3-13 — a row that DOES carry a detail, so the sixth element is pinned by a real
                 // value and not only by the sentinel. A sentinel-only fixture would pass against a
                 // serializer that hard-coded `-1`. (`Seals`, a real repair-ladder item: pairing
                 // OrderRepair with a ControllerModule would restate the charter's false premise —
                 // a repair order never wants one.)
+                // ⭐ D5 OVERVIEW — …and it is the ONE row here that names an OWNER (crew 12), for the
+                // same reason: a sentinel-only fixture would pass against a serializer that hard-coded
+                // `-1` into the seventh element, and the seventh element is what lets the Overview's
+                // crew dock say which person's order is stuck.
                 new WireFormat.BlockedCell(9, 1, 2, WireFormat.OrderRepair, WireFormat.ReasonNoConsumable,
-                                           (int)ItemKind.Seals),
+                                           (int)ItemKind.Seals, 12),
             };
             string json = WireFormat.Blocked(cells);
             StringAssert.Contains("\"type\":\"blocked\"", json);
-            // tuple order: [x, y, deck, order, reason, detail]
-            StringAssert.Contains("[3,4,0,0,0,-1]", json);
-            StringAssert.Contains("[58,15,1,2,1,-1]", json);
-            StringAssert.Contains("[9,1,2,3,2,7]", json);
+            // tuple order: [x, y, deck, order, reason, detail, cid]
+            StringAssert.Contains("[3,4,0,0,0,-1,-1]", json);
+            StringAssert.Contains("[58,15,1,2,1,-1,-1]", json);
+            StringAssert.Contains("[9,1,2,3,2,7,12]", json);
             Assert.AreEqual("{\"type\":\"blocked\",\"cells\":[]}",
                 WireFormat.Blocked(Array.Empty<WireFormat.BlockedCell>()));
             Assert.AreEqual("{\"type\":\"blocked\",\"cells\":[]}", WireFormat.Blocked(null),
@@ -80,7 +84,7 @@ namespace Perilune.Tests
         public void The_Tuple_Leads_With_X_Y_Deck_Like_Every_Other_Sparse_Channel()
         {
             string blocked = WireFormat.Blocked(new[]
-                { new WireFormat.BlockedCell(7, 3, 1, 1, 1, WireFormat.DetailNone) });
+                { new WireFormat.BlockedCell(7, 3, 1, 1, 1, WireFormat.DetailNone, WireFormat.CidNone) });
             StringAssert.Contains("[7,3,1,", blocked,
                 "the blocked tuple no longer leads with x,y,deck — the shape six sparse channels share");
             StringAssert.Contains("[7,3,1,", WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0, 1, 1, WireFormat.SpendUnknown) }),
@@ -108,13 +112,14 @@ namespace Perilune.Tests
             try
             {
                 var loud = new CultureInfo("de-DE");
-                var cell = new[] { new WireFormat.BlockedCell(1234, 7, 2, 1, 1, WireFormat.DetailNone) };
+                var cell = new[] { new WireFormat.BlockedCell(1234, 7, 2, 1, 1, WireFormat.DetailNone,
+                                                              WireFormat.CidNone) };
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
                 string inv = WireFormat.Blocked(cell);
                 Thread.CurrentThread.CurrentCulture = loud;
                 Assert.AreEqual(inv, WireFormat.Blocked(cell),
                     "a wire payload that changes with the operator's locale is not a wire payload");
-                StringAssert.Contains("[1234,7,2,1,1,-1]", inv, "no group separators, no locale digits");
+                StringAssert.Contains("[1234,7,2,1,1,-1,-1]", inv, "no group separators, no locale digits");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }
@@ -173,30 +178,31 @@ namespace Perilune.Tests
 
         /// <summary>Parse the emitted tuples back out, in wire order. Deliberately POSITIONAL: the
         /// tuple IS the contract, and a parser that named its fields would not notice a reorder.</summary>
-        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail)> Tuples(string json)
+        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail, int Cid)> Tuples(string json)
         {
-            var list = new List<(int, int, int, int, int, int)>();
+            var list = new List<(int, int, int, int, int, int, int)>();
             int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
             Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 string body = part.Split(']')[0];
                 var f = body.Split(',');
-                Assert.AreEqual(6, f.Length, "a blocked tuple is SIX elements since M3-13, saw: [" + body + "]");
+                Assert.AreEqual(7, f.Length, "a blocked tuple is SEVEN elements since D5 OVERVIEW, saw: [" + body + "]");
                 list.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                           int.Parse(f[1], CultureInfo.InvariantCulture),
                           int.Parse(f[2], CultureInfo.InvariantCulture),
                           int.Parse(f[3], CultureInfo.InvariantCulture),
                           int.Parse(f[4], CultureInfo.InvariantCulture),
-                          int.Parse(f[5], CultureInfo.InvariantCulture)));
+                          int.Parse(f[5], CultureInfo.InvariantCulture),
+                          int.Parse(f[6], CultureInfo.InvariantCulture)));
             }
             return list;
         }
 
-        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail)> Rows(GameSession gs) =>
+        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail, int Cid)> Rows(GameSession gs) =>
             Tuples(BlockedJson(gs));
 
-        private static (int X, int Y, int Deck, int Order, int Reason, int Detail)? RowAt(GameSession gs, Int3 p)
+        private static (int X, int Y, int Deck, int Order, int Reason, int Detail, int Cid)? RowAt(GameSession gs, Int3 p)
         {
             foreach (var t in Rows(gs))
                 if (t.X == p.X && t.Y == p.Y && t.Deck == p.Z) return t;
@@ -307,6 +313,44 @@ namespace Perilune.Tests
                     "reason " + r.Reason + " at (" + r.X + "," + r.Y + "," + r.Deck + ") sent detail " +
                     r.Detail + " instead of the sentinel. 0 is ItemKind.Regolith — a zero default " +
                     "makes 'nothing to add' indistinguishable from 'this order wants rubble'.");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>D5 OVERVIEW — THE SEVENTH ELEMENT'S SENTINEL, ON THE BUILDER, and it is the exact
+        /// sibling of the leg above.</b> A dig/strip/build site is a DESIGNATION: it belongs to the
+        /// ship, not to a named person (§2.1 — <i>a designation survives the pawn, a direct order does
+        /// not</i>), so every row these three walks emit must carry <see cref="WireFormat.CidNone"/>.
+        ///
+        /// <para>⛔ <b>WHY −1 AND NOT 0, stated as a test rather than as a comment:</b> citizen ids are
+        /// unsigned and <c>0</c> is not reserved. A zero default would make "this row belongs to
+        /// nobody" indistinguishable from "this row is crew 0's personal order", and the Overview's
+        /// crew dock would stamp <i>NO BREATHABLE AIR WHERE THE CREW MUST STAND</i> over whichever
+        /// crew member holds that id — a fault sentence about a person who was never given an order.</para>
+        ///
+        /// <para>⚠️ <b>NON-VACUITY FIRST</b>, for the reason the leg above states: with no row of a
+        /// non-repair order this loop is quantified over an empty set and cannot fail.</para>
+        ///
+        /// <para>MUTATION: pass <c>0</c> instead of <c>WireFormat.CidNone</c> in
+        /// <c>GameSession.AddIfBlocked</c> ⇒ RED.</para>
+        /// </summary>
+        [Test]
+        public void A_Designation_Belongs_To_Nobody_And_Sends_The_Cid_Sentinel_Not_Zero()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var (airless, _) = FindAirlessSite(sim);
+            sim.World.SetFlag(airless, TileFlags.Designated, true);
+
+            var rows = Rows(gs);
+            var designations = rows.Where(r => r.Order != WireFormat.OrderRepair).ToList();
+            Assert.That(designations.Count, Is.GreaterThan(0),
+                "⛔ NON-VACUITY: this run produced no dig/strip/build row at all, so the loop below " +
+                "is quantified over an empty set and could not fail.");
+            foreach (var r in designations)
+                Assert.AreEqual(WireFormat.CidNone, r.Cid,
+                    "order " + r.Order + " at (" + r.X + "," + r.Y + "," + r.Deck + ") named crew " +
+                    r.Cid + " as its owner. A designation has no owner — and 0 is a legal citizen id, " +
+                    "so a zero default puts a fault sentence on a real person's dock row.");
         }
 
         // ═══════════════════════════════════════════════ INCLUSION: each order kind, on its own

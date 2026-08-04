@@ -36,7 +36,7 @@ import {
   blockedOrderName,
   BLOCKED_REASON_AIR, BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE,
   BLOCKED_REASON_UNREACHABLE, BLOCKED_REASON_WORK_TYPE_OFF, BLOCKED_REASON_NO_ROUTE,
-  BLOCKED_DETAIL_NONE, ITEM_WORDS, itemWords, blockedReasonSentence,
+  BLOCKED_DETAIL_NONE, BLOCKED_CID_NONE, ITEM_WORDS, itemWords, blockedReasonSentence,
 } from '../src/wire/messages.js';
 import { roomBlockedTiles, roomTileRect } from '../src/ui/room-model.js';
 import { blockedCellSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/blocked-overlay.js';
@@ -62,18 +62,18 @@ const msg = (cells) => ({ type: 'blocked', cells });
 
 // MUTATION: swap `.Append(c.Order…)` and `.Append(c.Reason…)` in WireFormat.Blocked.cs ⇒ this fails
 // and names the file. MUTATION 2: reorder the `BlockedCell` constructor parameters ⇒ same.
-test('the wire tuple order is [x, y, deck, order, reason, detail] on BOTH sides of the seam', () => {
+test('the wire tuple order is [x, y, deck, order, reason, detail, cid] on BOTH sides of the seam', () => {
   const emitted = [...WIRE_BLOCKED_CS.matchAll(/\.Append\(c\.(\w+)\.ToString\(BlockedIc\)\)/g)].map((m) => m[1]);
-  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Order', 'Reason', 'Detail'],
+  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Order', 'Reason', 'Detail', 'Cid'],
     'hosts/web/WireFormat.Blocked.cs no longer appends the tuple in the order this client reads it. '
     + 'The tuple is POSITIONAL — a swap reports a dig as a strip, or "no approach" as "no air" — and '
     + 'there is no compiler across this seam.');
 
-  const ctor = /BlockedCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/
+  const ctor = /BlockedCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/
     .exec(WIRE_BLOCKED_CS);
   assert.ok(ctor, 'the BlockedCell constructor was not found — this parse has rotted, and the append '
     + 'scan alone cannot see a CALLER that fills the fields in the wrong order');
-  assert.deepEqual(ctor.slice(1, 7), ['x', 'y', 'deck', 'order', 'reason', 'detail']);
+  assert.deepEqual(ctor.slice(1, 8), ['x', 'y', 'deck', 'order', 'reason', 'detail', 'cid']);
 });
 
 // ⭐ M3-13 — THE SENTINEL IS PINNED ACROSS THE SEAM TOO, and it is NOT covered by the tuple-order
@@ -88,6 +88,21 @@ test('DetailNone is pinned equal on both sides — a sentinel that disagrees is 
   assert.equal(BLOCKED_DETAIL_NONE, -1,
     'the sentinel must stay OUT of the ItemKind range: 0 is Regolith, and a 0 sentinel cannot be '
     + 'told from a real payload');
+});
+
+// ⭐⭐ D5 OVERVIEW — THE SECOND SENTINEL, PINNED THE SAME WAY AND FOR THE SAME REASON. `CidNone` is a
+// hand mirror across a seam with no compiler, and an append scan sees the POSITION of `Cid`, never
+// its "belongs to nobody" value. If the host sent 0 and this client kept −1, every dig/strip/build
+// row would claim to be crew 0's personal order and the Overview dock would put a fault sentence on
+// whichever crew member happens to hold that id.
+// MUTATION: change `CidNone` to 0 in the C# ⇒ red here.
+test('CidNone is pinned equal on both sides — a sentinel that disagrees is a citizen id', () => {
+  const m = /public const int CidNone\s*=\s*(-?\d+)\s*;/.exec(WIRE_BLOCKED_CS);
+  assert.ok(m, 'hosts/web/WireFormat.Blocked.cs no longer declares `CidNone` — this parse rotted');
+  assert.equal(Number(m[1]), BLOCKED_CID_NONE);
+  assert.equal(BLOCKED_CID_NONE, -1,
+    'the sentinel must stay OUT of the citizen-id range: ids are unsigned and 0 is not reserved, so '
+    + 'a 0 sentinel cannot be told from a real owner');
 });
 
 // The house tripwire idiom: marks-model.test.js parses WireFormat.Marks.cs, zone-model.test.js parses
@@ -196,9 +211,11 @@ test('the channel is dispatched by the standard client and cached for a reconnec
 // ══════════════════════════════════════════════════════════════════════════════ the decoder
 
 test('decodeBlocked reads the tuple and names both codes', () => {
-  const out = decodeBlocked(msg([[5, 6, 1, BLOCKED_ORDER_STRIP, BLOCKED_REASON_AIR, BLOCKED_DETAIL_NONE]]));
+  const out = decodeBlocked(msg([[5, 6, 1, BLOCKED_ORDER_STRIP, BLOCKED_REASON_AIR,
+                                  BLOCKED_DETAIL_NONE, BLOCKED_CID_NONE]]));
   assert.deepEqual(out, [{
-    x: 5, y: 6, deck: 1, order: 1, reason: 0, detail: -1, orderName: 'strip', reasonName: 'air',
+    x: 5, y: 6, deck: 1, order: 1, reason: 0, detail: -1, cid: -1,
+    orderName: 'strip', reasonName: 'air',
   }]);
 });
 

@@ -658,6 +658,12 @@ export const BLOCKED_REASON_TEXT = Object.freeze({
  *  payload. Same rule as `moss-model.js`'s −1/UNKNOWN row state. */
 export const BLOCKED_DETAIL_NONE = -1;
 
+/** ⭐⭐ D5 OVERVIEW — the wire's "this row belongs to no named crew member", mirroring
+ *  `WireFormat.CidNone`. Every dig/strip/build row carries it (a designation belongs to the SHIP);
+ *  only the two REPAIR walks name an owner, because only a direct order is one person told one thing.
+ *  −1 and not 0 for `BLOCKED_DETAIL_NONE`'s reason: `0` is not a reserved citizen id. */
+export const BLOCKED_CID_NONE = -1;
+
 /**
  * ⭐⭐ M3-13 — THE REFUSAL-SENTENCE ITEM VOCABULARY, MIRRORING `ThawGate.ItemWords` IN
  * `sim/Sim.Core/ThawGate.cs`. Index IS the `ItemKind` byte; a hole is a kind no refusal has yet had
@@ -796,8 +802,13 @@ export function blockedReasonName(reason) {
  * emits — silence, on the channel that exists to remove silence. Defaulting to `0` would claim the
  * order wants Regolith, because `0` is a real `ItemKind`; `-1` claims nothing and the sentence
  * falls back to the reason's own generic words.
+ * ⭐⭐ D5 OVERVIEW — `cid` IS THE SEVENTH ELEMENT, decoded the same way and for the same reasons: the
+ * gate stays at `< 5` (raising it would DROP every row an older host emits — silence, on the channel
+ * that exists to remove silence) and a missing element reads as `BLOCKED_CID_NONE`, never as `0`,
+ * which is not a reserved citizen id. It is what lets the Overview's CREW-keyed dock join this
+ * TILE-keyed channel without inventing a second answer to "whose order is stuck".
  * @param {{type:string, cells?:Array}|null} msg
- * @returns {{x:number,y:number,deck:number,order:number,reason:number,detail:number,orderName:string,reasonName:string}[]|null}
+ * @returns {{x:number,y:number,deck:number,order:number,reason:number,detail:number,cid:number,orderName:string,reasonName:string}[]|null}
  */
 export function decodeBlocked(msg) {
   if (!msg || msg.type !== 'blocked' || !Array.isArray(msg.cells)) return null;
@@ -808,6 +819,7 @@ export function decodeBlocked(msg) {
     out.push({
       x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, order, reason,
       detail: t.length > 5 ? (t[5] | 0) : BLOCKED_DETAIL_NONE,
+      cid: t.length > 6 ? (t[6] | 0) : BLOCKED_CID_NONE,
       orderName: blockedOrderName(order), reasonName: blockedReasonName(reason),
     });
   }

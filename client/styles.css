@@ -1024,6 +1024,20 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
    Declared BEFORE `.working` so that if a crew member ever carried both, work wins. */
 .ov-crewtask.waiting{color:var(--ink-body,#b3aa9c);font-style:italic}
 .ov-crewtask.working{color:var(--amber-light,#f2b563)}
+/* ⭐⭐ D5 OVERVIEW — the FOURTH state, and it is a fault rather than an activity: the direct order
+   this crew member was given cannot land, and the `blocked` channel says why. LAST of the three, so
+   it wins the cascade if a row ever carried two (the view turns the other two off explicitly; this
+   rule is the belt to that braces).
+   ⚠️ THE COLOUR IS THE `blocked` CHANNEL'S OWN FAULT RED (#c25a3f, `.rz-key-sw-blocked-*` below),
+   NOT amber and NOT the dim ink. Amber is spent on WORK IS HAPPENING and that signal is the dock's
+   whole legibility mechanism; a stuck order painted amber would read as progress, which is the
+   sentence this row exists to stop telling. It also drops `waiting`'s italic, so the two states do
+   not look like variants of each other.
+   ⛔ AND IT DOES NOT TOUCH `font-weight`, WHICH THE FIRST DRAFT DID. The cell's budget is 26
+   characters because the advance is exactly 5.542px, and `NO WAY TO STAND NEXT TO IT` is exactly 26
+   — a synthesized bold that widens the advance by any amount at all clips the last word of the
+   longest sentence that currently fits. The hue is the signal; the metric is not spare. */
+.ov-crewtask.blocked{color:#c25a3f;font-style:normal}
 .ov-empty{color:var(--ink-mute,#8c8377);font-size:10px}
 .ov-guide{color:var(--ink-mute,#8c8377);font-size:10px;margin-top:4px}
 
@@ -1040,6 +1054,14 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
 .ov-traits{display:flex;gap:6px;flex-wrap:wrap}
 .ov-trait{border:1px solid #3a332a;border-radius:3px;padding:2px 7px;font-size:9.5px;color:var(--ink-body,#b3aa9c)}
 .ov-task{border-top:1px dashed #2b241c;padding-top:9px;color:var(--ink-bright,#e8dcc9)}
+/* ⭐⭐ D5 OVERVIEW — the stuck order's sentence, whole, under the task line. WRAPS (no `nowrap`, no
+   ellipsis): this box is 264px wide and the longest sentence the channel emits is 45 characters, so
+   this is the one surface on the Overview that can hold it without shortening. Same fault red as the
+   dock row above — one colour for one fact across the two islands.
+   ⚠️ 264 IS THIS ELEMENT; 298 IS `.ov-readout`, THE ISLAND ABOVE — this comment said 298 until the
+   element was walked in Chrome (`overview-dock-badge-shot.mjs`, which measures `.ov-roblocked` and
+   `.ov-task` at clientWidth 264 apiece). Do not re-derive it from the island's width. */
+.ov-roblocked{color:#c25a3f;font-size:10px;letter-spacing:.04em;line-height:1.35}
 .ov-atmos{border:1px solid #2b241c;border-radius:8px;padding:9px;background:rgba(16,13,10,.6);
   display:flex;flex-direction:column;gap:5px}
 .ov-atmos-lbl{font-size:9px;letter-spacing:.14em;color:var(--ink-faint,#57503f)}

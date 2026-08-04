@@ -637,12 +637,12 @@ namespace Perilune.Tests
         /// <summary>The cached <c>blocked</c> payload's tuples, taken from the SNAPSHOT a
         /// reconnecting client is caught up from — BlockedChannelTests' reader, restated so this
         /// file parses the wire rather than a builder's return value.</summary>
-        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail)> Rows(GameSession gs)
+        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail, int Cid)> Rows(GameSession gs)
         {
             gs.RenderForTest();
             string json = gs.Snapshot().FirstOrDefault(s => s.Contains("\"type\":\"blocked\""));
             Assert.IsNotNull(json, "the blocked channel must be cached for Snapshot catch-up");
-            var rows = new List<(int, int, int, int, int, int)>();
+            var rows = new List<(int, int, int, int, int, int, int)>();
             int at = json.IndexOf("[[", System.StringComparison.Ordinal);
             if (at < 0) return rows;
             foreach (var part in json.Substring(at + 1).Split('['))
@@ -654,19 +654,20 @@ namespace Perilune.Tests
                 // from the wire, which is the positional array's whole hazard measured from the
                 // reading end. (`< 5` here until M3-13; the tolerance was for a tuple that could not
                 // yet grow.)
-                Assert.That(f.Length, Is.EqualTo(6),
-                    "a blocked tuple is six elements since M3-13, saw: [" + string.Join(",", f) + "]");
+                Assert.That(f.Length, Is.EqualTo(7),
+                    "a blocked tuple is seven elements since D5 OVERVIEW, saw: [" + string.Join(",", f) + "]");
                 rows.Add((int.Parse(f[0], System.Globalization.CultureInfo.InvariantCulture),
                           int.Parse(f[1], System.Globalization.CultureInfo.InvariantCulture),
                           int.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture),
                           int.Parse(f[3], System.Globalization.CultureInfo.InvariantCulture),
                           int.Parse(f[4], System.Globalization.CultureInfo.InvariantCulture),
-                          int.Parse(f[5], System.Globalization.CultureInfo.InvariantCulture)));
+                          int.Parse(f[5], System.Globalization.CultureInfo.InvariantCulture),
+                          int.Parse(f[6], System.Globalization.CultureInfo.InvariantCulture)));
             }
             return rows;
         }
 
-        private static (int X, int Y, int Deck, int Order, int Reason, int Detail)? RepairRowAt(GameSession gs, Int3 p)
+        private static (int X, int Y, int Deck, int Order, int Reason, int Detail, int Cid)? RepairRowAt(GameSession gs, Int3 p)
         {
             foreach (var t in Rows(gs))
                 if (t.Order == WireFormat.OrderRepair && t.X == p.X && t.Y == p.Y && t.Deck == p.Z) return t;
@@ -848,13 +849,13 @@ namespace Perilune.Tests
         public void MUTATION_1b_NON_VACUITY_CONTROL_ADetailOnlyChangeReallyDoesReSerialize()
         {
             var a = new[] { new WireFormat.BlockedCell(4, 7, 1, WireFormat.OrderRepair,
-                                                      WireFormat.ReasonNoConsumable, (int)ItemKind.Parts) };
+                                                      WireFormat.ReasonNoConsumable, (int)ItemKind.Parts, 3) };
             // ⚠️ `Seals`, NOT `ControllerModule`: both are legal bytes for a serializer test, but only
             // one of them is a REPAIR-ladder item, and a fixture that pairs OrderRepair with a
             // ControllerModule quietly restates the charter's false premise (a repair order never
             // wants one — see WireFormat.ReasonNoConsumable's remarks).
             var b = new[] { new WireFormat.BlockedCell(4, 7, 1, WireFormat.OrderRepair,
-                                                      WireFormat.ReasonNoConsumable, (int)ItemKind.Seals) };
+                                                      WireFormat.ReasonNoConsumable, (int)ItemKind.Seals, 3) };
             Assert.That(WireFormat.Blocked(a), Is.Not.EqualTo(WireFormat.Blocked(b)),
                 "two rows differing ONLY in Detail serialize identically, so `Send`'s whole-string " +
                 "dedupe would swallow the change and the badge would keep naming the old item " +
