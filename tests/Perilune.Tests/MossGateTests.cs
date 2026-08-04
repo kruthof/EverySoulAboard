@@ -585,13 +585,19 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// ⛔⭐ <b>THE TAIL ANSWERS THE ASK — THE OWNER-REPORTED HALF.</b> Three asks, three tails,
+        /// ⛔⭐ <b>THE TAIL ANSWERS THE ASK — THE OWNER-REPORTED HALF.</b> Every ask, its own tail,
         /// asserted together with blinded legs (the fifth trap shape) because the failure that
-        /// shipped was <b>one</b> tail answering all three.
+        /// shipped was <b>one</b> tail answering all of them.
         ///
         /// <para>The load-bearing leg is the third: a refusal to a <c>pods</c> ask MUST NOT say
         /// DOORS. Revert <see cref="MossGate.OfflineRefusal"/> to the old constant ⇒ that leg names
         /// the missing noun.</para>
+        ///
+        /// <para>⭐ <b>AND IT IS EXHAUSTIVE OVER THE ENUM, which it was not until the <c>vents</c>
+        /// noun landed.</b> It named three members by hand; a fourth was added beside them and this
+        /// test could not have seen a fourth that answered the third's noun — the NINTH shape (an
+        /// instrument that goes blind exactly where the next change lands). The pairwise leg now
+        /// walks <c>Enum.GetValues</c>, so a fifth member with a copied tail fails HERE.</para>
         /// </summary>
         [Test]
         public void TheTailAnswersTheVERBThatWasRefused_AndPodsNeverSaysDOORS()
@@ -602,6 +608,26 @@ namespace Perilune.Tests
             string pods = MossGate.OfflineRefusal(sim, MossGate.Ask.Pods);
             string doors = MossGate.OfflineRefusal(sim, MossGate.Ask.Doors);
             string ship = MossGate.OfflineRefusal(sim, MossGate.Ask.Ship);
+            string vents = MossGate.OfflineRefusal(sim, MossGate.Ask.Vents);
+
+            // ⭐ the owner-ratified second directory noun (2026-08-04). Its refusal must answer the
+            // VENTS and must not borrow the doors' clause — the reported defect, one costume along.
+            if (!vents.Contains("VENTS", StringComparison.Ordinal))
+                problems.Add("Ask.Vents does not mention the VENTS: " + vents);
+            if (vents.Contains("DOORS", StringComparison.Ordinal))
+                problems.Add("⛔ THE REPORTED DEFECT, ONE NOUN ALONG: a player who typed `vents` was "
+                             + "answered with a clause about DOORS: " + vents);
+
+            // EXHAUSTIVE PAIRWISE — every member against every other, so a member added later
+            // cannot ship a copied tail without failing here.
+            var asks = (MossGate.Ask[])System.Enum.GetValues(typeof(MossGate.Ask));
+            Assert.That(asks.Length, Is.GreaterThanOrEqualTo(4),
+                "the enum shrank — the walk below would be measuring less than the hand-written legs");
+            for (int i = 0; i < asks.Length; i++)
+                for (int j = i + 1; j < asks.Length; j++)
+                    if (MossGate.OfflineRefusal(sim, asks[i]) == MossGate.OfflineRefusal(sim, asks[j]))
+                        problems.Add("Ask." + asks[i] + " and Ask." + asks[j] + " produced the SAME "
+                                     + "sentence — the tail is not reading the ask");
 
             if (!pods.Contains("PODS", StringComparison.Ordinal))
                 problems.Add("Ask.Pods does not mention the PODS: " + pods);
@@ -610,12 +636,11 @@ namespace Perilune.Tests
                              + "them to — was answered with a clause about DOORS: " + pods);
             if (!doors.Contains("DOORS", StringComparison.Ordinal))
                 problems.Add("Ask.Doors does not mention the DOORS: " + doors);
-            if (ship.Contains("DOORS", StringComparison.Ordinal) || ship.Contains("PODS", StringComparison.Ordinal))
+            if (ship.Contains("DOORS", StringComparison.Ordinal) || ship.Contains("PODS", StringComparison.Ordinal)
+                || ship.Contains("VENTS", StringComparison.Ordinal))
                 problems.Add("the generic ask names a noun it cannot know is wanted: " + ship);
             if (!ship.Contains("MOSS ONLINE", StringComparison.Ordinal))
                 problems.Add("the generic ask says nothing about what a repair buys: " + ship);
-            if (pods == doors || pods == ship || doors == ship)
-                problems.Add("two asks produced the SAME sentence — the tail is not reading the ask");
 
             Assert.That(problems, Is.Empty, string.Join("\n", problems));
         }

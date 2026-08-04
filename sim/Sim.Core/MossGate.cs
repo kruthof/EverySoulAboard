@@ -184,19 +184,27 @@ namespace Perilune.Sim
         /// The owner's report was <i>"there is still no way to defreeze others"</i>. One vocabulary,
         /// but the tail must answer the ASK.</para>
         ///
-        /// <para><b>THREE VALUES AND NOT ONE PER OP, on purpose.</b> The console has eight ops and
-        /// three answers: the ones that are about ACTUATION (<see cref="Doors"/>, today only the
-        /// Room Zoom's operate handler), the ones that are about the CRYO BAY (<see cref="Pods"/> —
-        /// <c>pods</c> and <c>thaw</c>), and everything else, which is genuinely just <i>the computer
-        /// is off</i> (<see cref="Ship"/>). Splitting further would mean parsing the typed line to
-        /// guess what <c>exec</c> was about, which is a second grammar for no gain.</para>
+        /// <para><b>ONE VALUE PER NOUN THE PLAYER CAN TYPE, AND NOT ONE PER OP.</b> The console's
+        /// ops collapse onto the nouns a player asks ABOUT: the CRYO BAY (<see cref="Pods"/> —
+        /// <c>pods</c> and <c>thaw</c>), the DOORS (<see cref="Doors"/> — the <c>doors</c> directory
+        /// and the surviving operate handler), the VENTS (<see cref="Vents"/> — the <c>vents</c>
+        /// directory), and everything else, which is genuinely just <i>the computer is off</i>
+        /// (<see cref="Ship"/>). ⚠️ The older wording of this paragraph said <i>"three values, not
+        /// one per op"</i> and gave <i>"splitting further would mean parsing the typed line to guess
+        /// what <c>exec</c> was about"</i> as the reason. That reason is about <c>exec</c> and is
+        /// unchanged — <c>exec</c> still gets <see cref="Ship"/>, because the line it carries is
+        /// free text. It never applied to a DEDICATED TYPED NOUN: a <c>vents</c> op does not have to
+        /// guess what it is about, and answering it <i>TO REACH THE DOORS</i> would be precisely the
+        /// wrong-noun defect this enum exists to close, one costume along.</para>
         /// </summary>
         public enum Ask : byte
         {
             /// <summary>Reads and writes about the ship at large — <c>sys</c>, <c>exec</c>,
             /// <c>audit</c>, <c>open</c>/<c>set</c> (programs), <c>commission</c>.</summary>
             Ship = 0,
-            /// <summary>Remote actuation — the doors and vents OD-N put behind the server.
+            /// <summary>Remote actuation of the DOORS OD-N put behind the server. (⚠️ The vents OD-N
+            /// covers in the same breath now answer to <see cref="Vents"/>, which is a tail and not a
+            /// second rule — see that member.)
             ///
             /// <para>⭐ <b>REACHABLE FROM THE SHIPPING PROMPT SINCE THE <c>doors</c> VERB.</b> §13.47
             /// filed this member as words no player could see: its only caller was
@@ -209,6 +217,17 @@ namespace Perilune.Sim
             Doors = 1,
             /// <summary>The cryo bay — <c>pods</c> and <c>thaw</c>.</summary>
             Pods = 2,
+            /// <summary>⭐ The VENTS — the <c>vents</c> directory (owner-ratified second noun,
+            /// 2026-08-04). Reached from the shipping prompt, exactly as <see cref="Doors"/> is.
+            ///
+            /// <para>⛔ <b>IT IS NOT <see cref="Doors"/>, AND THE REASON IS THIS ENUM'S WHOLE
+            /// PURPOSE.</b> <see cref="Doors"/>' tail reads <i>TO REACH THE DOORS</i>. A player who
+            /// typed <c>vents</c> — on a dead deck, looking for the one machine that can give it
+            /// air — being answered with a clause about DOORS is the owner-reported defect
+            /// (<c>thaw</c> → <i>TYPE PODS</i> → a clause about DOORS) wearing a fourth costume. The
+            /// two members carry the same GATE and different NOUNS, which is the split this type
+            /// exists to make.</para></summary>
+            Vents = 3,
         }
 
         /// <summary>The tail clause for one <see cref="Ask"/>. Its own function so the mapping is one
@@ -219,6 +238,7 @@ namespace Perilune.Sim
             {
                 case Ask.Doors: return "TO REACH THE DOORS";
                 case Ask.Pods: return "TO REACH THE PODS";
+                case Ask.Vents: return "TO REACH THE VENTS";
                 default: return "TO BRING MOSS ONLINE";
             }
         }
@@ -380,13 +400,20 @@ namespace Perilune.Sim
         //     command later, to read directories" — is why a DIRECTORY is the recognisable shape,
         //     with `pods` as the exact in-repo precedent. It also gates OD-N (doors are MOSS's).
         //
-        // ⚠️ EXACTLY ONE VERB SHIPS, AND THE NEXT EXPANDER MUST READ THIS BEFORE ADDING A SECOND.
-        // There is deliberately NO `ls`, NO generic directory framework and NO second noun
-        // (`vents`, `machines`, `crew`) here — adding one WOULD be implementing from the row that
-        // forbids it. ⭐ THE SHAPE AWAITS THE OWNER'S RATIFICATION ON RETURN (carried on HANDOVER's
-        // owner list): is a typed `doors` right, and does the MOSS-OS expansion get chartered?
-        // If you are here to add a noun, take it to the owner first — do not generalise this
-        // function into a framework on your way past.
+        // ⭐⭐ THE OWNER RATIFIED THE SHAPE ON 2026-08-04, AND SANCTIONED EXACTLY ONE MORE NOUN.
+        // The paragraph that stood here said: "EXACTLY ONE VERB SHIPS… if you are here to add a
+        // noun, take it to the owner first". It was taken to the owner (HANDOVER's owner list,
+        // session H) and the ruling is: the typed `doors` shape is RIGHT, and **`vents` is the
+        // sanctioned second noun in the SAME shape**. `DescribeVents` below is that noun and
+        // nothing else.
+        //
+        // ⚠️ THE SELF-LIMIT SURVIVES THE RATIFICATION, ONE NOUN LARGER. Two nouns were ruled;
+        // `machines`, `crew`, `rooms`, an `ls`, and a generic directory FRAMEWORK were not — and
+        // OD-P's row still ends "NEVER IMPLEMENT FROM THIS ROW". So the two composers below are
+        // SIBLINGS, not instances: they share `PlaceWords` and `UnnamedRow` (one spelling of a
+        // place, one spelling of a nameless row) and nothing else, because their flag columns are
+        // about different predicates on different commands. If you are here to add a THIRD noun,
+        // take it to the owner first — and do not fold these two into a table on your way past.
 
         /// <summary>The listing's answer on a ship that carries no <see cref="DeviceKind.Door"/> at
         /// all. A directory that prints NOTHING is M3-13's defect (a screen that says nothing is a
@@ -395,11 +422,15 @@ namespace Perilune.Sim
         /// tick 40) — and driven on a fixture rather than asserted.</summary>
         public const string NoDoorsLine = "NO DOORS ABOARD";
 
-        /// <summary>What a door with no <c>Device.Name</c> prints in the id column. It cannot be
-        /// addressed by <c>open</c> at all (the DSL resolves by name), so the honest row says so
-        /// rather than fabricating a key the player would then type in vain — this listing exists
-        /// precisely to be typed back. No authored ship has one.</summary>
-        private const string UnnamedDoor = "(UNNAMED)";
+        /// <summary>What a device with no <c>Device.Name</c> prints in a directory's id column. It
+        /// cannot be addressed by <c>open</c> at all (the DSL resolves by name), so the honest row
+        /// says so rather than fabricating a key the player would then type in vain — these listings
+        /// exist precisely to be typed back. No authored ship has one.
+        ///
+        /// <para>⭐ ONE SPELLING, SHARED BY BOTH DIRECTORIES (<see cref="PlaceWords"/>'s rule): it was
+        /// <c>UnnamedDoor</c> until <c>vents</c> needed the identical column, and a second literal
+        /// that agrees today is how two vocabularies for one fact start.</para></summary>
+        private const string UnnamedRow = "(UNNAMED)";
 
         /// <summary>
         /// ⭐⭐ <b>EVERY DOOR THE SHIP KNOWS, ONE PER LINE, SO THE NAME <c>open</c> NEEDS IS LEARNABLE
@@ -460,10 +491,121 @@ namespace Perilune.Sim
             for (int i = 0; i < doors.Count; i++)
             {
                 var d = doors[i];
-                lines.Add((string.IsNullOrEmpty(d.Name) ? UnnamedDoor : d.Name.ToUpperInvariant())
+                lines.Add((string.IsNullOrEmpty(d.Name) ? UnnamedRow : d.Name.ToUpperInvariant())
                         + " · " + PlaceWords(d.Pos)
                         + " · " + (d.IsOpen ? "OPEN" : "SHUT")
                         + (d.IsLocked ? " · LOCKED" : ""));
+            }
+            return lines;
+        }
+
+        // ═══════════════════════════════════════ the `vents` directory verb (owner-ratified noun)
+        //
+        // ⭐⭐ THE OWNER'S RULING, 2026-08-04: the typed `doors` shape is RATIFIED and `vents` is the
+        // sanctioned SECOND NOUN in the same shape. This is owner-directed work — it is NOT a third
+        // reading of OD-P, whose row still says "never implement from this row".
+        //
+        // ⛔ WHAT IT IS FOR, AND IT IS NOT THE SAME STALL `doors` CLOSED. OD-N put the ship's vents
+        // behind MOSS in the same breath as its doors, and MOSS addresses a vent BY NAME. The wreck's
+        // upper deck has exactly one source of air — `vent_d1`, OD-O's dead-board puzzle — and the
+        // deck-0 life-support compartment has `vent_ls`, whose whole authored beat is "the player's
+        // first act in this compartment is to open it". Both are keys that had to be typed and could
+        // not be read. `pods` names the capsules; `doors` names the doors; nothing named a vent.
+
+        /// <summary>The listing's answer on a ship that carries no <see cref="DeviceKind.AirVent"/>
+        /// at all — <see cref="NoDoorsLine"/>'s rule, for its reason (M3-13: a screen that says
+        /// nothing is a broken verb). Reachable on shipped content in a way the door line is NOT: a
+        /// ship can plausibly carry no vent, and small test fixtures do.</summary>
+        public const string NoVentsLine = "NO VENTS ABOARD";
+
+        /// <summary>
+        /// ⭐ <b>THE DEAD-BOARD COLUMN — <see cref="DescribeDoors"/>' <c>LOCKED</c>, on the predicate
+        /// that actually decides a VENT.</b> <see cref="SetDeviceStateCommand.Execute"/> computes
+        /// <c>_open.HasValue &amp;&amp; !DeviceFault.BlocksActuation(device)</c>, the same shape as
+        /// the door command's <c>open &amp;&amp; !IsLocked</c>: a faulted vent answers the verb this
+        /// listing teaches by silently not moving.
+        ///
+        /// <para>⛔ <b>IT IS DELIBERATELY NOT <see cref="DeviceFault.Refusal"/>.</b> That sentence
+        /// (<i>CONTROLLER FAULT — BOARD UNRESPONSIVE</i>) belongs to the ACTUATION verb, is a member
+        /// of the pairwise-distinct console-sentence family, and is unchanged by this package. This
+        /// is a two-word COLUMN on a directory row — a listing is a READ, and a read must not
+        /// impersonate a refusal. It borrows the refusal's noun (the BOARD) so a player who meets
+        /// both recognises them as one fact.</para></summary>
+        public const string BoardFaultFlag = "BOARD FAULT";
+
+        /// <summary>
+        /// ⭐⭐ <b>EVERY VENT THE SHIP KNOWS, ONE PER LINE — <see cref="DescribeDoors"/>' shape, on
+        /// the noun the owner sanctioned second (2026-08-04).</b> A header stating the census, then
+        /// one row per vent:
+        /// <code>
+        /// VENTS — 3 ABOARD · 2 OPEN · 1 SHUT
+        /// VENT_CRYO · DECK 0 AT 10,1 · OPEN
+        /// VENT_LS · DECK 0 AT 35,6 · SHUT
+        /// VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT
+        /// </code>
+        /// (the shipping <c>--ship wreck</c>, measured on this tree and pinned verbatim by
+        /// <c>VentsVerbTests.TheWreckListingIsPinnedVERBATIM</c> — never transcribed from here)
+        ///
+        /// <para><b>EVERY STRUCTURAL DECISION IS <see cref="DescribeDoors"/>' AND IS NOT RE-ARGUED
+        /// HERE:</b> enumerated from LIVE <c>sim.Devices</c> state and never from the plan (OPEN/SHUT
+        /// is not a plan fact at all); <see cref="Device.Id"/> order taken explicitly
+        /// (<c>BuildPods</c>' rule — the order is what the player reads down); the census stated in a
+        /// header rather than left to be counted; <see cref="UnnamedRow"/> for a nameless row;
+        /// <see cref="NoVentsLine"/> for the degenerate arm; allocates, because it is a host reply to
+        /// a keystroke and never a tick path; InvariantCulture on every number, upper case on every
+        /// word.</para>
+        ///
+        /// <para>⭐ <b><see cref="DeviceKind.AirVent"/> ONLY — the noun the player typed.</b> A
+        /// <see cref="DeviceKind.Scrubber"/> shares this device adapter and shares
+        /// <c>ShipSystems</c>' <c>LifeSupportKinds</c> row, so "everything that moves air" was a
+        /// real option. It is refused: <c>vents</c> is a NOUN, a scrubber is not a vent, and a
+        /// directory that answers with a superset is the sixth trap shape (rows that are all
+        /// plausibly right and none of them asked for). Pinned by an exclusion leg.</para>
+        ///
+        /// <para>⛔ <b>NO POWER AND NO CONDITION COLUMN — the door listing's ruling, and here the
+        /// asymmetry it hides is stated out loud rather than left for a reader to trip over.</b>
+        /// <see cref="SetDeviceStateCommand"/> gates the shutter on the SHIP (<see cref="IsServerLive"/>)
+        /// and the BOARD (<see cref="DeviceFault"/>) and on nothing else, so <c>Powered</c> and
+        /// <c>Condition</c> change nothing about the verb this listing teaches — printing them would
+        /// invite the reader to conclude the opposite of the truth, exactly as on the doors.
+        /// ⚠️ <b>BUT A VENT IS NOT A DOOR ONCE IT IS OPEN:</b> <c>AtmosphereSystem</c> injects only
+        /// on <c>IsOpen &amp;&amp; Powered &amp;&amp; IsOperational</c> (and scaled by
+        /// <see cref="Device.EffectiveRate"/>), so <c>OPEN</c> here is an honest statement about the
+        /// SHUTTER and is not a promise of air. That gap is real, it is not this verb's to close (the
+        /// LEDGER and the room's own pressure are where air is answered), and it is FILED rather than
+        /// silently columned in.</para>
+        /// </summary>
+        public static System.Collections.Generic.List<string> DescribeVents(Simulation sim)
+        {
+            var lines = new System.Collections.Generic.List<string>(8);
+            var vents = new System.Collections.Generic.List<Device>(8);
+            var devices = sim?.Devices?.Items;
+            if (devices != null)
+                for (int i = 0; i < devices.Count; i++)
+                    if (devices[i].Kind == DeviceKind.AirVent) vents.Add(devices[i]);
+
+            if (vents.Count == 0) { lines.Add(NoVentsLine); return lines; }
+            vents.Sort((a, b) => a.Id.CompareTo(b.Id));
+
+            int open = 0;
+            for (int i = 0; i < vents.Count; i++) if (vents[i].IsOpen) open++;
+
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            lines.Add("VENTS — " + vents.Count.ToString(ic) + " ABOARD · "
+                    + open.ToString(ic) + " OPEN · "
+                    + (vents.Count - open).ToString(ic) + " SHUT");
+
+            for (int i = 0; i < vents.Count; i++)
+            {
+                var v = vents[i];
+                lines.Add((string.IsNullOrEmpty(v.Name) ? UnnamedRow : v.Name.ToUpperInvariant())
+                        + " · " + PlaceWords(v.Pos)
+                        + " · " + (v.IsOpen ? "OPEN" : "SHUT")
+                        // ⭐ THE FLAG IS ASKED OF THE COMMAND'S OWN PREDICATE, not of `v.Faulted`.
+                        // `DeviceFault.BlocksActuation` is what `SetDeviceStateCommand` calls; asking
+                        // the field here would be a second copy of the rule that agrees only until
+                        // the rule grows a term (M3-16's "refuse by predicate, report by predicate").
+                        + (DeviceFault.BlocksActuation(v) ? " · " + BoardFaultFlag : ""));
             }
             return lines;
         }
