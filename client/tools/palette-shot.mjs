@@ -83,6 +83,11 @@ const clickAt = async (x, y) => {
   for (const type of ['mousePressed', 'mouseReleased'])
     await call('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, buttons: type === 'mousePressed' ? 1 : 0 });
 };
+/** A real key press on the window — the Room Zoom binds `keydown` in the CAPTURE phase. */
+const key = async (k) => {
+  for (const type of ['keyDown', 'keyUp'])
+    await call('Input.dispatchKeyEvent', { type, key: k, code: k, windowsVirtualKeyCode: k === 'Escape' ? 27 : 0, nativeVirtualKeyCode: k === 'Escape' ? 27 : 0 });
+};
 
 async function png(name, clip) {
   const r = await call('Page.captureScreenshot', clip ? { format: 'png', clip: { ...clip, scale: 1 } } : { format: 'png' });
@@ -253,7 +258,111 @@ for (const tool of ['wall', 'stockpile']) {
   await sleep(800);
 }
 
-writeFileSync(join(OUT, PREFIX + 'measurements.json'), JSON.stringify(results, null, 2));
+// ───────────────────────────────────────────── THE ARMED LOOK: rest vs HOVER vs armed, photographed
+//
+// ⚠️ ADDED 2026-08-03 FOR THE OWNER'S "the palette reads as an INERT placeholder" NOTE, and the leg
+// that matters is the MIDDLE one. Arming was never broken and this tool already proved it — the legs
+// above read `aria-pressed="true"` off the live button. What no instrument here could see is that
+// `.rz-tool:hover` had borrowed `#cf7a33`, the ARMED border colour, so the button under the player's
+// own cursor was already wearing the armed edge BEFORE the click. Comparing armed against REST
+// answers a question no player ever asks: their pointer is on the button they just clicked, so the
+// honest comparison is armed against the same button HOVERED. Measured, on the shipped-before tree:
+//
+//     HOVER  bg rgba(26,22,17,.5)  color rgb(179,170,156)  border 1px rgb(207,122,51)  shadow none
+//     ARMED  bg rgb(58,42,18)      color rgb(242,181,99)   border 1px rgb(207,122,51)  shadow none
+//
+// The pointer is MOVED rather than teleported-by-click, because `:hover` is a real pointer state and
+// a CDP click alone does not reliably establish it.
+//
+// ⛔ WHAT THESE LEGS ACTUALLY ASSERT, stated exactly, because an earlier draft of this header
+// overstated it as "refuses to pass when hover and armed resolve alike" and that was measurably
+// false (see the headline leg below). They assert: (1) rest and hover really differ, so the rig is
+// not comparing one state with itself; (2) the click really armed the tool; (3) **armed OWNS the
+// shadow channel** — armed has a box-shadow and hover has none; (4) armed and hover are not
+// byte-identical; (5) arming does not re-measure the button's box; (6) ESC returns it to the hover
+// look. They do NOT — and cannot — assert that the armed state is LOUD ENOUGH to notice; no
+// automated check here judges contrast. That remains a human call on the four PNGs this writes.
+const STATE = (tool) => `(()=>{const b=document.querySelector('.rz-tool[data-rztool="${tool}"]');
+  if(!b)return null;const cs=getComputedStyle(b);const r=b.getBoundingClientRect();
+  return {cls:b.className,pressed:b.getAttribute('aria-pressed'),bg:cs.backgroundColor,color:cs.color,
+    border:cs.borderTopWidth+' '+cs.borderTopColor,shadow:cs.boxShadow,weight:cs.fontWeight,
+    w:Math.round(r.width*100)/100,h:Math.round(r.height*100)/100,
+    x:r.x,y:r.y,cx:r.x+r.width/2,cy:r.y+r.height/2};})()`;
+
+await setWidth(WIDTHS[0]);
+await sleep(600);
+const LOOK = 'wall';
+const seen = {};
+const away = await evalJson(`(()=>{const p=document.querySelector('.rz-palette').getBoundingClientRect();
+  return {x:p.x+p.width/2,y:Math.max(4,p.y-90)};})()`);
+const moveTo = async (x, y) => { await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await sleep(650); };
+
+await moveTo(away.x, away.y);                                   // pointer OFF the palette
+seen.rest = await evalJson(STATE(LOOK));
+if (!seen.rest) die(9, `no ${LOOK.toUpperCase()} button for the armed-look legs`);
+const zoom = { x: seen.rest.x - 7, y: seen.rest.y - 7, width: seen.rest.w + 14, height: seen.rest.h + 14 };
+await png('look-rest.png', zoom);
+
+await moveTo(seen.rest.cx, seen.rest.cy);                       // pointer ON it, still unarmed
+seen.hover = await evalJson(STATE(LOOK));
+await png('look-hover.png', zoom);
+
+await clickAt(seen.rest.cx, seen.rest.cy); await sleep(900);    // armed, pointer still on it
+await assertLinked('after arming for the look legs');
+seen.armed = await evalJson(STATE(LOOK));
+await png('look-armed.png', zoom);
+
+await key('Escape'); await sleep(900);                          // the disarm rung the owner names
+seen.escaped = await evalJson(STATE(LOOK));
+await png('look-rest-again.png', zoom);
+
+for (const [k, v] of Object.entries(seen))
+  log(`LOOK ${k.padEnd(8)} cls="${v.cls}" pressed=${v.pressed} bg=${v.bg} color=${v.color} ` +
+      `border=${v.border} shadow=${v.shadow === 'none' ? 'none' : 'yes'} box=${v.w}x${v.h}`);
+// ⚠️ NOT pushed into `results`. Every summary below filters that array on `r.clipped.length`, and a
+// row with no `clipped` field threw a TypeError there — a crash AFTER the measurement, which reads
+// as a failed run of the layout check that had in fact already passed (this repo's FALSE RED shape,
+// trap 3). The armed-look readings are a different measurement and are reported on their own.
+const armedLook = seen;
+
+// The assertions. NON-VACUITY FIRST: `rest` and `hover` must actually DIFFER, or the pointer never
+// landed and every comparison below is being made between two identical readings of one state — the
+// exact shape of a green run that measured nothing.
+const sameLook = (a, b) => a.bg === b.bg && a.color === b.color && a.border === b.border && a.shadow === b.shadow;
+const lookBad = [];
+if (sameLook(seen.rest, seen.hover))
+  lookBad.push('rest and HOVER are identical — the pointer never established :hover, so the armed-vs-' +
+    'hover comparison below is vacuous. Nothing here is evidence until this leg passes.');
+if (seen.armed.cls === seen.rest.cls || seen.armed.pressed !== 'true')
+  lookBad.push(`the click did not arm ${LOOK.toUpperCase()} (cls="${seen.armed.cls}" pressed=${seen.armed.pressed})`);
+// ⚠️ THE HEADLINE LEG, AND IT IS NOT A BYTE-COMPARISON — the first draft's was, and independent
+// review DROVE the hole rather than arguing it: run against the exact PRE-FIX css, `sameLook(armed,
+// hover)` came back FALSE and this rig exited 0 GREEN **on the very defect the package exists to
+// fix**. The two states did differ — on a dark-on-dark fill and a text hue — they just did not
+// differ anywhere a player could see, while matching on the border and on the (absent) shadow.
+// A difference an instrument can read is not a difference the PLAYER can read, and byte-identity is
+// the weakest possible reading of "looks the same". So the leg NAMES THE CHANNEL instead: hover must
+// carry no shadow and armed must carry one, which is the one signal that cannot be produced by the
+// pointer and cannot quietly converge as two colours drift toward each other. Verified red against
+// the historical CSS and green on the shipped tree.
+if (!(seen.armed.shadow !== 'none' && seen.hover.shadow === 'none'))
+  lookBad.push('the ARMED state does not OWN the shadow channel — armed must carry a box-shadow and ' +
+    'hover must not. Without an exclusive channel the two states are only ever a colour edit apart, ' +
+    'which is how the 2026-08-03 defect happened: armed and hovered differed on paper and not on ' +
+    `screen. (armed shadow: ${seen.armed.shadow} · hover shadow: ${seen.hover.shadow})`);
+if (sameLook(seen.armed, seen.hover))
+  lookBad.push('ARMED and HOVERED are byte-identical across every channel read here. The player\'s ' +
+    'cursor is on the button they just clicked, so this is what they actually see: a control that ' +
+    `does not answer. (bg ${seen.armed.bg} · color ${seen.armed.color} · border ${seen.armed.border})`);
+if (seen.armed.w !== seen.rest.w || seen.armed.h !== seen.rest.h)
+  lookBad.push(`arming RE-MEASURED the button (${seen.rest.w}x${seen.rest.h} → ${seen.armed.w}x` +
+    `${seen.armed.h}). The armed look must not reflow a wrapping row — that is this tool's own subject.`);
+if (!sameLook(seen.escaped, seen.hover))
+  lookBad.push('ESC did not return the button to its unarmed look — the state latched. ' +
+    `(escaped bg ${seen.escaped.bg} border ${seen.escaped.border} vs hover bg ${seen.hover.bg} ` +
+    `border ${seen.hover.border})`);
+
+writeFileSync(join(OUT, PREFIX + 'measurements.json'), JSON.stringify({ widths: results, armedLook }, null, 2));
 log('  wrote', join(OUT, PREFIX + 'measurements.json'));
 
 try { cdp.close(); } catch { /**/ }
@@ -278,5 +387,12 @@ if (ariaBad.length) {
     `missing=${b.ariaMissing} pressed=${JSON.stringify(b.pressed)}`);
   process.exit(1);
 }
-log('\nOK — every palette control is reachable at every measured width, and the armed tool says so');
+if (lookBad.length) {
+  console.error('\nFAIL: the ARMED LOOK does not read as armed:');
+  for (const m of lookBad) console.error('  ' + m);
+  console.error('  see ' + join(OUT, PREFIX + 'look-{rest,hover,armed,rest-again}.png'));
+  process.exit(1);
+}
+log('\nOK — every palette control is reachable at every measured width, the armed tool says so, ' +
+    'and an armed button does not look like a merely hovered one');
 process.exit(0);

@@ -2160,6 +2160,61 @@ test('arming a tool through its own button moves aria-pressed, and only ever ont
     'disarmed by its own button, yet a click still designated');
 });
 
+/**
+ * THE `.on` CLASS — the seam the ARMED LOOK hangs off, driven end to end.
+ *
+ * ⚠️ WHY THIS IS SEPARATE FROM THE `aria-pressed` TEST ABOVE, which drives the same click. They are
+ * read by different consumers and only one of them is on the screen: `aria-pressed` is what a screen
+ * reader announces, `.on` is the ONLY hook `styles.css` has for painting the armed button. The
+ * owner's 2026-08-03 live-play complaint was that the button "never changes state" — and the cause
+ * was in the stylesheet, not here (see the block comment over `.rz-tool` in `styles.css`). That fix
+ * is worth nothing the moment this class stops tracking `_armed`, and until now NOTHING asserted it:
+ * `paintPalette`'s `setCls(b, 'on', on)` could be deleted outright and every test in this file stayed
+ * green, because the aria test reads the attribute and the chrome tests read the label.
+ *
+ * Driven through the SHIPPED buttons and the SHIPPED delegated handler, and disarmed through the
+ * REAL ESC rung (`escStackRung` → 'disarm') rather than a second click — ESC is the path the owner's
+ * sentence names ("returns to rest on ESC"), and it reaches `paintPalette` by a different route.
+ *
+ * ⚠️ THE LEGS ARE BLINDED (trap shape 5): each check appends to `bad` instead of throwing, so a
+ * failure reports EVERY state that is wrong rather than only the first. A one-assert version of this
+ * test would have said "arming did not light the button" and never mentioned that ESC also left it
+ * lit — two different defects with one symptom each.
+ *
+ * MUTATION: delete `setCls(b, 'on', on)` from `paintPalette` ⇒ RED (nothing ever lights).
+ * MUTATION: `setCls(b, 'on', true)` ⇒ RED (all EIGHTEEN light, and rest/ESC never go dark).
+ * MUTATION: drop the `paintPalette()` call from `arm()` ⇒ RED (the class never moves at all).
+ */
+test('the ARMED LOOK tracks the armed tool: `.on` lands on one button and leaves it on ESC', () => {
+  const lit = () => rzPalette.querySelectorAll('.rz-tool')
+    .filter((b) => b.classList.contains('on')).map((b) => b.dataset.rztool);
+  const bad = [];
+  const expect = (where, got, want) => {
+    if (JSON.stringify(got) !== JSON.stringify(want))
+      bad.push(`${where}: .on is on [${got}], expected [${want}]`);
+  };
+
+  // Non-vacuity FIRST: an "exactly these buttons are lit" assertion over an empty scan is free.
+  assert.equal(rzPalette.querySelectorAll('.rz-tool').length, ROOM_TOOLS.length,
+    'the scanner found no palette buttons — every leg below would pass against nothing');
+
+  expect('at rest', lit(), []);
+
+  const wall = rzToolBtn('wall');
+  assert.ok(wall, 'no scanned WALL button — the rest of this test would be vacuous');
+  rzFire(wall, 'click', {});
+  expect('after arming WALL', lit(), ['wall']);
+
+  rzFire(rzToolBtn('demolish'), 'click', {});   // a different tool REPLACES, never stacks
+  expect('after switching to DEMOLISH', lit(), ['demolish']);
+
+  const esc = rzKey('Escape');                  // the real disarm rung, not a second click
+  if (!esc.defaultPrevented) bad.push('the Room Zoom did not swallow ESC — the rung never ran');
+  expect('after ESC', lit(), []);
+
+  assert.deepEqual(bad, [], 'the armed button does not look armed:\n  ' + bad.join('\n  '));
+});
+
 // D2 — THE SHARED HARNESS CAPABILITY ITSELF, and it is not navel-gazing. `removeAttribute` exists in
 // `dom-lite.js` for exactly one reason: so that `if (on) setAttribute(…) else removeAttribute(…)` —
 // the realistic form of the aria-pressed mistake — can be APPLIED as a mutation instead of dying on
