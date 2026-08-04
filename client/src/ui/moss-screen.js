@@ -250,6 +250,46 @@ function edges(el) {
   return r ? { top: px(r.top), bottom: px(r.bottom) } : { top: 0, bottom: 0 };
 }
 
+/**
+ * ⛔ THE SCROLLER'S OWN `padding-bottom`, AND THE REASON THIS FUNCTION EXISTS AT ALL — a REGRESSION
+ * THIS PACKAGE SHIPPED AND REVIEW CAUGHT (2026-08-04, fix-back).
+ *
+ * `.moss-console-wrap.has-more .moss-console{padding-bottom:1.75em}` is the clearance that keeps the
+ * last line out from under the sign. It is `padding` on the SCROLLER, so **the browser counts it in
+ * `scrollHeight`** — measured on the shipped pane by toggling the class: `padding-bottom` 0 →
+ * 23.52px, `scrollHeight` 326 → 350, `clientHeight` unchanged at 157.
+ *
+ * ⛔ AND `shouldFollowTail` IS ASKED IN `scrollHeight` UNITS, so feeding it the padded number
+ * silently REDEFINED `TAIL_SLACK_PX`. The arithmetic, from those measured numbers: the sign turns on
+ * once anything hangs >1px past the fold, and with it on the follow test becomes
+ * `d + 23.52 <= 24`, i.e. **d ≤ 0.48px — an effective slack of about ONE pixel where IX-M15 pins
+ * TWENTY-FOUR.** IX-M15's whole follow-within-slack arm was unreachable in the product whenever the
+ * sign was up. DRIVEN A/B in one Chrome session, the reviewer's cells re-measured on the shipped
+ * lane build: parked at d = 10.48 with `▾ 1 MORE` up, real output arrived and the view **HELD** at
+ * `scrollTop 355 of 454`; with the clearance neutralised (`padding-bottom:0 !important`, i.e. main's
+ * scroller geometry) the same gesture **FOLLOWED** to the tail.
+ *
+ * ⭐ SO THE CLEARANCE IS SUBTRACTED BEFORE THE QUESTION IS ASKED, and `shouldFollowTail`'s contract
+ * is restored EXACTLY rather than re-specified (the autoscroll lane's pin is merged; it is not this
+ * package's to move). The fix is here rather than in the stylesheet because it holds for ANY
+ * clearance a later lane chooses — the follow question is about CONTENT, and padding is not content.
+ *
+ * Degrades to 0: no window, no `getComputedStyle`, a non-numeric value. That is the right direction —
+ * 0 means "ask exactly what main asked", i.e. the pinned behaviour.
+ *
+ * @param {object} win  the window (`getComputedStyle` lives there; the node harness injects one)
+ * @param {object} el   the scroller
+ * @returns {number}    padding-bottom in CSS px, 0 when it cannot be read
+ */
+function padBottomPx(win, el) {
+  if (!el || !win || typeof win.getComputedStyle !== 'function') return 0;
+  let style = null;
+  try { style = win.getComputedStyle(el); } catch { return 0; }
+  // `parseFloat` is culture-free here BY THE SPEC, not by luck: a computed style is always a
+  // CSS `<length>` serialised with a `.` decimal separator, whatever the machine's locale.
+  return style ? px(parseFloat(style.paddingBottom)) : 0;
+}
+
 const SCREEN = MODEL.SCREEN;
 const OFFLINE = MODEL.STATE.OFFLINE;
 
@@ -1370,7 +1410,15 @@ export class MossScreen {
     // MEASURE FIRST — after the rebuild `scrollHeight` already counts the appended lines, so the
     // "was the player at the bottom?" question would answer no every time anything arrived.
     const wasTop = px(el.scrollTop);
-    const follow = shouldFollowTail(el.scrollTop, el.clientHeight, el.scrollHeight);
+    // ⛔ MINUS THE SIGN'S OWN CLEARANCE. `has-more` puts `padding-bottom` on THIS scroller, and the
+    // browser counts padding in `scrollHeight` — so passing the raw number would hand
+    // `shouldFollowTail` a distance inflated by 23.52px and cut the pinned 24px slack to ~1px. See
+    // `padBottomPx` for the driven A/B; this is the regression review caught, and the subtraction is
+    // the whole of the fix. (`scrollTop` below is still written with the PADDED height on purpose:
+    // the follow must land at the true bottom WITH the clearance showing, which is what puts the
+    // last line out from under the sign.)
+    const clearance = padBottomPx(this.win, el);
+    const follow = shouldFollowTail(el.scrollTop, el.clientHeight, px(el.scrollHeight) - clearance);
     el.replaceChildren(...list.map((l) => {
       // Tolerant of both the wire's [stream,text] shape and a bare string. The text is rendered
       // VERBATIM: the model already writes the `> ` on an echo line (stream 0), so prefixing one
@@ -1403,18 +1451,30 @@ export class MossScreen {
    * both). The `has-more` class on the wrapper is the CREW precedent's trick for keeping the last
    * line clear of the sign that sits over it — a padding, not a layout of its own.
    *
-   * ⚠️ `has-more` FEEDS BACK INTO THE PANE'S OWN METRICS, and the loop is asked and answered rather
-   * than assumed. `.moss-console-wrap.has-more .moss-console{padding-bottom:1.75em}` grows
-   * `scrollHeight`, which `shouldFollowTail` reads — MEASURED on the shipped wreck in Chrome at
-   * 1280×800 (2026-08-04) by toggling the class on the live pane: `padding-bottom` 0px → 23.52px
-   * (1.75em of the page's own 13.44px type), `scrollHeight` 326 → 350. It cannot oscillate, because
-   * BOTTOM PADDING MOVES NO ROW'S BOX: adding it leaves every `getBoundingClientRect` where it was,
-   * so the count that turned it on cannot be changed by it. The one place it does move anything is
-   * at maximum scroll, where dropping the padding clamps `scrollTop` down by the same ~24px and the
-   * last line lands flush with the fold — still 0 below, still stable. Driven: after a wheel back to
-   * the bottom the pane settles at `scrollTop 365 / maxScroll 365`, `belowFold 0`, sign hidden —
-   * once, not flickering. (The sign's own box is 24.33px against a 21.77px line box, which is why
-   * the half-line it covers reads as a fade and not as text showing through the label.)
+   * ⚠️ `has-more` FEEDS BACK INTO THE PANE'S OWN METRICS. `.moss-console-wrap.has-more
+   * .moss-console{padding-bottom:1.75em}` grows `scrollHeight` — MEASURED on the shipped wreck in
+   * Chrome at 1280×800 (2026-08-04) by toggling the class on the live pane: `padding-bottom` 0px →
+   * 23.52px (1.75em of the page's own 13.44px type), `scrollHeight` 326 → 350, `clientHeight`
+   * unchanged at 157.
+   *
+   * ⛔ AN EARLIER VERSION OF THIS PARAGRAPH SAID THE LOOP WAS HARMLESS — "it cannot oscillate … the
+   * one place it does move anything is at maximum scroll". **THE SECOND HALF WAS FALSE, AND IT HID A
+   * REGRESSION THIS PACKAGE SHIPPED** (found by review, 2026-08-04; retracted here rather than
+   * quietly deleted). The place it moved something was the FOLLOW DECISION: `_renderConsole` handed
+   * the padded `scrollHeight` to `shouldFollowTail`, which is asked in exactly those units, so the
+   * pinned 24px slack became ~1px whenever the sign was up. Driven A/B: parked at d = 10.48 with
+   * `▾ 1 MORE` up, the shipped build HELD at `scrollTop 355 of 454`; with the clearance neutralised
+   * it FOLLOWED. **Closed by subtracting the clearance at the seam** — see `padBottomPx` and the
+   * call site above.
+   *
+   * ⭐ WHAT SURVIVES OF THE OLD CLAIM, because it is still true and still load-bearing: the loop
+   * cannot oscillate the SIGN, since bottom padding MOVES NO ROW'S BOX — adding it leaves every
+   * `getBoundingClientRect` where it was, so the count that turned it on cannot be changed by it. At
+   * maximum scroll, dropping the padding re-clamps `scrollTop` by the same ~24px and the last line
+   * lands flush with the fold — still 0 below, still stable. Driven: after a wheel back to the
+   * bottom the pane settles at `scrollTop 365 / maxScroll 365`, `belowFold 0`, sign hidden, once.
+   * (The sign's own box is 24.33px against a 21.77px line box, which is why the half-line it covers
+   * reads as a fade and not as text showing through the label.)
    */
   _updateConsoleMore() {
     const el = this.consoleEl;
