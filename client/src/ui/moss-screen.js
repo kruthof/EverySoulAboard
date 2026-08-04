@@ -257,7 +257,17 @@ function edges(el) {
  * `.moss-console-wrap.has-more .moss-console{padding-bottom:1.75em}` is the clearance that keeps the
  * last line out from under the sign. It is `padding` on the SCROLLER, so **the browser counts it in
  * `scrollHeight`** — measured on the shipped pane by toggling the class: `padding-bottom` 0 →
- * 23.52px, `scrollHeight` 326 → 350, `clientHeight` unchanged at 157.
+ * 23.52px, `clientHeight` unchanged at 157, `scrollHeight` +23.52 (326 → 350 on the 15-row
+ * transcript that measurement used).
+ * ⚠️ THE ABSOLUTE HEIGHTS ARE THAT TRANSCRIPT'S, NOT A CONSTANT — do not try to reproduce 326.
+ * `HELP` grew a row at the TRAPS-8 merge (the `vents` lane; 14 lines now), so the same gesture
+ * MEASURED ON THE MERGED TREE reads **348 → 372** over a 16-row transcript, `padding-bottom` 0px →
+ * 23.52px, `clientHeight` 157 both ways. (⚠️ 372, not 371: `scrollHeight` is an integer, so the
+ * 23.52 lands as a 24. Writing 371 here was this comment's own first draft, and measuring it is
+ * what caught that — the same rounding is why the older reading was 326 → 350 and not 349.)
+ * **The 23.52px is the number that matters and it is CSS, not content**: 1.75em of the page's own
+ * 13.44px type. Corroborated a second way by `moss-scroll-shot.mjs` STEP 6, which prints both gaps
+ * for one parked reader — `rawGap 33` minus `contentGap 9.48` = 23.52, unchanged by the merge.
  *
  * ⛔ AND `shouldFollowTail` IS ASKED IN `scrollHeight` UNITS, so feeding it the padded number
  * silently REDEFINED `TAIL_SLACK_PX`. The arithmetic, from those measured numbers: the sign turns on
@@ -1454,8 +1464,9 @@ export class MossScreen {
    * ⚠️ `has-more` FEEDS BACK INTO THE PANE'S OWN METRICS. `.moss-console-wrap.has-more
    * .moss-console{padding-bottom:1.75em}` grows `scrollHeight` — MEASURED on the shipped wreck in
    * Chrome at 1280×800 (2026-08-04) by toggling the class on the live pane: `padding-bottom` 0px →
-   * 23.52px (1.75em of the page's own 13.44px type), `scrollHeight` 326 → 350, `clientHeight`
-   * unchanged at 157.
+   * 23.52px (1.75em of the page's own 13.44px type), `clientHeight` unchanged at 157, `scrollHeight`
+   * up by the same 23.52 (326 → 350 on the transcript that measurement used — an absolute that moved
+   * when `HELP` grew a row at the TRAPS-8 merge, re-measured there as 348 → 372; see `padBottomPx`).
    *
    * ⛔ AN EARLIER VERSION OF THIS PARAGRAPH SAID THE LOOP WAS HARMLESS — "it cannot oscillate … the
    * one place it does move anything is at maximum scroll". **THE SECOND HALF WAS FALSE, AND IT HID A
