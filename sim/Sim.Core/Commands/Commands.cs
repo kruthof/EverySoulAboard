@@ -19,10 +19,18 @@ namespace Perilune.Sim
     ///
     /// <para><b>The refusal is SILENT here, on purpose, and it is not invisible.</b> An
     /// <see cref="ISimCommand"/> has no return channel and inventing one would be a wire change for
-    /// three consumers who each already ask. <b>Refuse by predicate, report by predicate</b>: every
-    /// surface calls <see cref="MossGate.IsServerLive"/> itself and renders
-    /// <see cref="MossGate.OfflineRefusal"/> — see that constant's remarks for the three of
-    /// them.</para></summary>
+    /// consumers who each already ask. <b>Refuse by predicate, report by predicate</b>: every
+    /// surface calls <see cref="MossGate.IsServerLive"/> itself and composes
+    /// <see cref="MossGate.OfflineRefusal"/> — see that METHOD's remarks for who they are.
+    ///
+    /// ⚠️ <b>THIS PARAGRAPH USED TO SAY "that constant" AND "the three of them", AND BOTH WERE
+    /// WRONG</b> (corrected 2026-08-04, <c>MECHANICS.md</c> §13.47.5). <c>OfflineRefusal</c> is a
+    /// METHOD now — the <c>const</c> was justified by "it can reach a tick path", which THIS command
+    /// is the proof it never could: the line above renders no string at all. And the surfaces are
+    /// TWO, not three: <c>GameSession</c>'s MOSS ops and its <c>HandleOperate</c>. The third was
+    /// always the TUI, which asks <see cref="MossGate.IsServerLive"/> and then writes its own
+    /// lower-case status line (<c>hosts/tui/GameLoop.cs:274,310</c>) — a second vocabulary for one
+    /// fact, filed rather than fixed.</para></summary>
     public sealed class SetDoorStateCommand : ISimCommand
     {
         private readonly uint _deviceId;

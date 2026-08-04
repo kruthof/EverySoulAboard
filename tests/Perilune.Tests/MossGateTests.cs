@@ -445,14 +445,205 @@ namespace Perilune.Tests
         [Test]
         public void TheOfflineSentenceNamesTheSERVER_AndIsNotAControllerFault()
         {
-            StringAssert.Contains("MOSS", MossGate.OfflineRefusal);
-            StringAssert.Contains("TERMINAL", MossGate.OfflineRefusal);
-            StringAssert.Contains("REPAIR", MossGate.OfflineRefusal);
-            Assert.That(MossGate.OfflineRefusal.ToUpperInvariant(), Does.Not.Contain("CONTROLLER"),
+            string said = MossGate.OfflineRefusal(Wreck(), MossGate.Ask.Ship);
+            StringAssert.Contains("MOSS", said);
+            StringAssert.Contains("TERMINAL", said);
+            StringAssert.Contains("REPAIR", said);
+            Assert.That(said.ToUpperInvariant(), Does.Not.Contain("CONTROLLER"),
                 "the ship-gate refusal names a CONTROLLER — M3-16's target-side fault says exactly " +
                 "that, and the two must be distinguishable at a glance");
             StringAssert.Contains("CONTROLLER MODULE", MossGate.NotCommissionedRefusal(MossTerminal));
             StringAssert.Contains("TERM_MOSS", MossGate.NotCommissionedRefusal(MossTerminal));
+        }
+
+        // ══════════════════════════════════ THE OFFLINE SENTENCE NAMES THE NEXT STEP (2026-08-04)
+        //
+        // ⛔ THE OWNER'S REPORT, LIVE PLAY 2026-08-03: *"there is still no way to defreeze others."*
+        // The thaw arc works end to end; the TEACHING failed at this sentence. It used to read
+        //
+        //     MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS
+        //
+        // which names neither WHICH terminal nor WHERE — on a ship with TWO of them, one behind a
+        // pressure frontier on the dead deck — and whose tail says DOORS to a player who has just
+        // been told to type `pods`. The audit drove the whole loop: `thaw` → "TYPE PODS" → `pods` →
+        // this sentence → dead end.
+
+        /// <summary>
+        /// ⭐⭐ <b>THE SENTENCE NAMES THE TERMINAL AND WHERE IT SITS — on the SHIPPING wreck.</b> The
+        /// precedent was two hundred lines below it in the same file: <c>NotCommissionedRefusal</c>
+        /// has named its device since M3-4.
+        ///
+        /// <para>The place is asserted against the DEVICE's own <c>Pos</c> rather than against
+        /// <c>(1,3,0)</c> written down here: a re-authored cryo bay must move the sentence, not
+        /// redden this test. The NAME is asserted as a literal because a name is what the player
+        /// types and reads, and its drift IS the thing worth reporting.</para>
+        /// </summary>
+        [Test]
+        public void TheOfflineSentenceNamesTHISShipsTerminalAndItsDeckAndTile()
+        {
+            var sim = Wreck();
+            Assert.That(MossGate.IsServerLive(sim), Is.False, "precondition: the wreck boots dark");
+
+            var moss = Named(sim, MossTerminal);
+            string said = MossGate.OfflineRefusal(sim, MossGate.Ask.Pods);
+
+            StringAssert.Contains("TERM_MOSS", said,
+                "the refusal does not name the terminal the ship wants serviced. 'REPAIR ONE' on a " +
+                "ship with two terminals is not a next step — it is a search. Said: " + said);
+            StringAssert.Contains("DECK " + moss.Pos.Z, said,
+                "the refusal names no deck: Said: " + said);
+            StringAssert.Contains(moss.Pos.X + "," + moss.Pos.Y, said,
+                "the refusal names no tile, so the player cannot find the machine on the Overview. " +
+                "Said: " + said);
+            Assert.That(said, Does.Not.Contain("TERM_NAV"),
+                "the sentence sent the player to the OTHER terminal — term_nav is unpowered, on the " +
+                "dead deck, behind the pressure frontier. Said: " + said);
+        }
+
+        /// <summary>
+        /// ⛔⭐ <b>THE NO-HARD-CODE LEG. A DIFFERENT SHIP MUST GET A DIFFERENT NAME.</b> Without this,
+        /// a sentence with <c>"TERM_MOSS"</c> typed into it passes every leg above and lies on every
+        /// other ship — the authored-name coupling <c>Simulation.cs:553-555</c> warns about, and the
+        /// reason <see cref="MossGate"/> carries no name literal anywhere.
+        ///
+        /// <para>MUTATION: replace <c>RepairCandidate</c>'s scan with <c>"TERM_MOSS"</c> ⇒ red here,
+        /// green everywhere else in this file.</para>
+        /// </summary>
+        [Test]
+        public void TheNamedTerminalIsDERIVED_AShipWithADifferentConsoleGetsADifferentSentence()
+        {
+            var sim = BareShip();
+            var t = sim.AddDevice(DeviceKind.Terminal, new Int3(4, 2, 0), "bridge_console");
+            t.Powered = true;
+            t.Condition = 0.10f;   // below Terminal.maintain (0.20) — the ship is dark
+
+            Assert.That(MossGate.IsServerLive(sim), Is.False, "precondition: dark");
+            string said = MossGate.OfflineRefusal(sim, MossGate.Ask.Ship);
+
+            StringAssert.Contains("BRIDGE_CONSOLE", said,
+                "the sentence did not name THIS ship's terminal — it is reading a literal, not the " +
+                "ship. Said: " + said);
+            Assert.That(said, Does.Not.Contain("TERM_MOSS"),
+                "the sentence named the WRECK's terminal on a ship that has no such device. Said: " + said);
+            StringAssert.Contains("DECK 0", said);
+            StringAssert.Contains("4,2", said);
+        }
+
+        /// <summary>
+        /// ⭐ <b>WHICH TERMINAL, AND THE RULE IS ABOUT WHAT A REPAIR CAN FIX.</b> A repair moves
+        /// <c>Condition</c> and nothing else, so an UNPOWERED terminal is the wrong machine to send
+        /// anyone to however healthy it is. Driven as a 2×2 rather than asserted: the same two
+        /// devices, with the power flipped, must produce the OTHER name — otherwise "it preferred
+        /// the powered one" is indistinguishable from "it preferred the first one", or from "it
+        /// preferred the healthier one".
+        /// </summary>
+        [Test]
+        public void ThePOWEREDTerminalIsNamed_EvenWhenTheDarkOneIsHealthier()
+        {
+            var problems = new System.Collections.Generic.List<string>();
+
+            // Leg A — the healthier terminal is UNPOWERED. The powered one must win.
+            {
+                var sim = BareShip();
+                var dark = sim.AddDevice(DeviceKind.Terminal, new Int3(2, 1, 0), "dark_term");
+                dark.Powered = false; dark.Condition = 0.19f;     // healthier, and hopeless
+                var live = sim.AddDevice(DeviceKind.Terminal, new Int3(4, 2, 0), "live_term");
+                live.Powered = true; live.Condition = 0.05f;
+                string said = MossGate.OfflineRefusal(sim, MossGate.Ask.Ship);
+                if (!said.Contains("LIVE_TERM", StringComparison.Ordinal))
+                    problems.Add("A: the sentence sent the player to a terminal a repair cannot fix — "
+                                 + "its fault is the GRID. Said: " + said);
+            }
+
+            // Leg B — THE CONTROL. Same two devices, power flipped, and nothing else touched.
+            {
+                var sim = BareShip();
+                var a = sim.AddDevice(DeviceKind.Terminal, new Int3(2, 1, 0), "dark_term");
+                a.Powered = true; a.Condition = 0.19f;
+                var b = sim.AddDevice(DeviceKind.Terminal, new Int3(4, 2, 0), "live_term");
+                b.Powered = false; b.Condition = 0.05f;
+                string said = MossGate.OfflineRefusal(sim, MossGate.Ask.Ship);
+                if (!said.Contains("DARK_TERM", StringComparison.Ordinal))
+                    problems.Add("B: flipping the power did NOT move the answer, so leg A proves "
+                                 + "nothing about the Powered term. Said: " + said);
+            }
+
+            // Leg C — both powered: the CLOSEST to the threshold, i.e. the cheapest service.
+            {
+                var sim = BareShip();
+                var far = sim.AddDevice(DeviceKind.Terminal, new Int3(2, 1, 0), "far_term");
+                far.Powered = true; far.Condition = 0.02f;
+                var near = sim.AddDevice(DeviceKind.Terminal, new Int3(4, 2, 0), "near_term");
+                near.Powered = true; near.Condition = 0.18f;
+                string said = MossGate.OfflineRefusal(sim, MossGate.Ask.Ship);
+                if (!said.Contains("NEAR_TERM", StringComparison.Ordinal))
+                    problems.Add("C: with both powered the sentence must name the one closest to the "
+                                 + "maintain floor. Said: " + said);
+            }
+
+            Assert.That(problems, Is.Empty, string.Join("\n", problems));
+        }
+
+        /// <summary>
+        /// ⛔⭐ <b>THE TAIL ANSWERS THE ASK — THE OWNER-REPORTED HALF.</b> Three asks, three tails,
+        /// asserted together with blinded legs (the fifth trap shape) because the failure that
+        /// shipped was <b>one</b> tail answering all three.
+        ///
+        /// <para>The load-bearing leg is the third: a refusal to a <c>pods</c> ask MUST NOT say
+        /// DOORS. Revert <see cref="MossGate.OfflineRefusal"/> to the old constant ⇒ that leg names
+        /// the missing noun.</para>
+        /// </summary>
+        [Test]
+        public void TheTailAnswersTheVERBThatWasRefused_AndPodsNeverSaysDOORS()
+        {
+            var sim = Wreck();
+            var problems = new System.Collections.Generic.List<string>();
+
+            string pods = MossGate.OfflineRefusal(sim, MossGate.Ask.Pods);
+            string doors = MossGate.OfflineRefusal(sim, MossGate.Ask.Doors);
+            string ship = MossGate.OfflineRefusal(sim, MossGate.Ask.Ship);
+
+            if (!pods.Contains("PODS", StringComparison.Ordinal))
+                problems.Add("Ask.Pods does not mention the PODS: " + pods);
+            if (pods.Contains("DOORS", StringComparison.Ordinal))
+                problems.Add("⛔ THE REPORTED DEFECT: a player who typed `pods` — because `thaw` told "
+                             + "them to — was answered with a clause about DOORS: " + pods);
+            if (!doors.Contains("DOORS", StringComparison.Ordinal))
+                problems.Add("Ask.Doors does not mention the DOORS: " + doors);
+            if (ship.Contains("DOORS", StringComparison.Ordinal) || ship.Contains("PODS", StringComparison.Ordinal))
+                problems.Add("the generic ask names a noun it cannot know is wanted: " + ship);
+            if (!ship.Contains("MOSS ONLINE", StringComparison.Ordinal))
+                problems.Add("the generic ask says nothing about what a repair buys: " + ship);
+            if (pods == doors || pods == ship || doors == ship)
+                problems.Add("two asks produced the SAME sentence — the tail is not reading the ask");
+
+            Assert.That(problems, Is.Empty, string.Join("\n", problems));
+        }
+
+        /// <summary>The degenerate arm, and it is honest rather than clever: a ship carrying no
+        /// <c>Terminal</c> at all has nothing to name, so the sentence keeps M3-15's original
+        /// <i>REPAIR ONE</i> wording. Naming <c>THE TERMINAL</c> on a ship that has none would be a
+        /// fabricated noun — the defect this lane is closing, pointing the other way.</summary>
+        [Test]
+        public void AShipWithNoTerminalAboardNamesNothing_AndDoesNotInventOne()
+        {
+            var sim = BareShip();
+            Assert.That(MossGate.RepairCandidate(sim), Is.Null, "precondition: no Terminal aboard");
+
+            string said = MossGate.OfflineRefusal(sim, MossGate.Ask.Pods);
+            StringAssert.Contains(MossGate.OfflineLead, said);
+            StringAssert.Contains("REPAIR ONE", said);
+            StringAssert.Contains("PODS", said, "the tail still answers the ask");
+            Assert.That(said, Does.Not.Contain("DECK"),
+                "a ship with no terminal was given a place to go: " + said);
+        }
+
+        /// <summary>A four-walled room and nothing in it — the smallest ship on which the sentence's
+        /// derivation can be driven without the wreck's authored answers standing in for it.</summary>
+        private static Simulation BareShip()
+        {
+            string[] map = { "#######", "#.....#", "#.....#", "#######" };
+            return new Simulation(AsciiWorld.Build(map), 7, Stack());
         }
 
         /// <summary>⭐ THE TWO TIERS ARE DIFFERENT PREDICATES ABOUT THE SAME TERMINAL, and this
@@ -556,7 +747,7 @@ namespace Perilune.Tests
             string reply = Exec(gs, sink, "open " + door.Name);
 
             StringAssert.Contains("\"ok\":false", reply, "a refused line must not report success");
-            StringAssert.Contains(MossGate.OfflineRefusal, reply,
+            StringAssert.Contains(MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Ship), reply,
                 "the console refused WITHOUT SAYING WHY. The player is standing next to the terminal " +
                 "that would fix it; the sentence is the whole feature.");
             StringAssert.Contains("[2,", reply, "the refusal must ride the ERROR stream, not output");
@@ -623,7 +814,7 @@ namespace Perilune.Tests
                                     "NOTHING — the silent `return;` at Commands.cs:376 reached the player");
             StringAssert.Contains(MossGate.NotCommissionedRefusal(MossTerminal), reply,
                 "the refusal does not name the CONTROLLER MODULE the player has to go and make");
-            Assert.That(reply, Does.Not.Contain(MossGate.OfflineRefusal),
+            Assert.That(reply, Does.Not.Contain(MossGate.OfflineLead),
                 "a REPAIRED console reported MOSS OFFLINE — the two tiers are being confused, and " +
                 "the player would go and repair a terminal that is already fine");
             Assert.IsNull(sink.FirstOrDefault(m => m.Contains("\"ev\":\"diag\"")),
@@ -648,7 +839,7 @@ namespace Perilune.Tests
             gs.ApplyForTest(new WebCommand(CmdKind.Moss, op: "set", tid: MossTerminal, text: AnyProgram));
             string reply = sink.FirstOrDefault(m => m.Contains("\"ev\":\"exec\""));
             Assert.IsNotNull(reply, "silence again");
-            StringAssert.Contains(MossGate.OfflineRefusal, reply,
+            StringAssert.Contains(MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Ship), reply,
                 "the ship gate must be asked FIRST — worst-first, ship before target");
         }
 
@@ -667,12 +858,12 @@ namespace Perilune.Tests
 
             string exec = sink.FirstOrDefault(m => m.Contains("\"ev\":\"exec\""));
             Assert.IsNotNull(exec, "a refused `sys` said nothing at all");
-            StringAssert.Contains(MossGate.OfflineRefusal, exec);
+            StringAssert.Contains(MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Ship), exec);
 
             string sys = sink.FirstOrDefault(m => m.Contains("\"ev\":\"sys\""));
             Assert.IsNotNull(sys, "no `sys` reply came back, so the DETAIL screen sits on LOADING… " +
                                   "for ever beside a transcript line saying why — a contradiction");
-            StringAssert.Contains(MossGate.OfflineRefusal, sys,
+            StringAssert.Contains(MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Ship), sys,
                 "the empty detail must carry the reason as its derivation note");
         }
 
@@ -687,7 +878,7 @@ namespace Perilune.Tests
             gs.ApplyForTest(new WebCommand(CmdKind.Moss, op: "audit", tid: ConsoleTid));
             string reply = sink.FirstOrDefault(m => m.Contains("\"ev\":\"exec\""));
             Assert.IsNotNull(reply, "a refused `audit` said nothing at all");
-            StringAssert.Contains(MossGate.OfflineRefusal, reply);
+            StringAssert.Contains(MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Ship), reply);
             Assert.IsNull(sink.FirstOrDefault(m => m.Contains("\"ev\":\"audit\"")),
                 "the audit ring came back anyway");
         }
@@ -698,7 +889,7 @@ namespace Perilune.Tests
         {
             var (gs, host, sink) = Boot();
             string reply = Exec(gs, sink, "ship.power");
-            StringAssert.Contains(MossGate.OfflineRefusal, reply);
+            StringAssert.Contains(MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Ship), reply);
         }
 
         /// <summary>And once the server is up, the same read answers — the non-vacuity control for
@@ -710,7 +901,7 @@ namespace Perilune.Tests
             var (gs, host, sink) = Boot();
             Service(host.Sim);
             string reply = Exec(gs, sink, "ship.power");
-            Assert.That(reply, Does.Not.Contain(MossGate.OfflineRefusal),
+            Assert.That(reply, Does.Not.Contain(MossGate.OfflineLead),
                 "the console refuses reads even with the server up — every refusal leg in this " +
                 "class is measuring a console that says no to everything");
         }
@@ -733,7 +924,7 @@ namespace Perilune.Tests
             string reply = sink.LastOrDefault(m => m.Contains("\"type\":\"operate\""));
             Assert.IsNotNull(reply, "the operate verb emitted NO reply at all");
             StringAssert.Contains("\"ok\":0", reply, "it reported SUCCESS on a ship with no computer");
-            StringAssert.Contains(MossGate.OfflineRefusal, reply);
+            StringAssert.Contains(MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Doors), reply);
             host.Sim.Tick();
             Assert.That(door.IsOpen, Is.False);
         }

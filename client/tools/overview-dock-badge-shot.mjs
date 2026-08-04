@@ -64,7 +64,9 @@ const MACHINE_TILE = [24, 2, 0];
 // `MECHANICS` §13.25 b3 names `door_d0_s2` (27,7,0) as the one edit that restores the route, and this
 // tool tried it first. IT CANNOT BE DONE FROM A BOOTED WRECK: since OD-N doors are actuated through
 // MOSS only, and on `--ship wreck` the power is down at boot, so the host answers
-// `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS`. (The DOOR lever
+// `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; …` (the tail now names the terminal to repair
+// and answers the verb that was refused — re-worded 2026-08-04, §13.47; the FACT this comment
+// records, that the door cannot be actuated from a booted wreck, is unchanged). (The DOOR lever
 // is driven headlessly instead, by `DroppedOrderTests.TheDoorOpensAgain_TheBadgeAndTheRecordBothGo`.)
 // So the lever here is the OTHER world change the same live-re-ask rule governs, and it is a player
 // gesture rather than a debug hook: A NEW ORDER THE SHIP CAN ACTUALLY RUN. `HandlePrioritise` clears

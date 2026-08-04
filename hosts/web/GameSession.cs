@@ -590,9 +590,9 @@ namespace Perilune.Web
                     // that already exists for "how this table was computed".
                     if (!MossGate.IsServerLive(_sim))
                     {
-                        Refuse(tid, MossGate.OfflineRefusal);
-                        Emit(WireFormat.MossSys(tid, Array.Empty<ShipSystemDevice>(),
-                                                MossGate.OfflineRefusal));
+                        string off = MossGate.OfflineRefusal(_sim, MossGate.Ask.Ship);
+                        Refuse(tid, off);
+                        Emit(WireFormat.MossSys(tid, Array.Empty<ShipSystemDevice>(), off));
                         break;
                     }
                     Emit(WireFormat.MossSys(tid, ShipSystems.ComputeDetail(_sim, tid),
@@ -601,14 +601,14 @@ namespace Perilune.Web
                 }
                 case "exec":
                 {
-                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Ship)); break; }
                     var (ok, lines) = ExecConsole(cmd.Text);
                     Emit(WireFormat.MossExec(tid, ok, lines));
                     break;
                 }
                 case "open":
                 {
-                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Ship)); break; }
                     if (!MossGate.CanInstallProgram(_sim, tid))
                     { Refuse(tid, MossGate.NotCommissionedRefusal(tid)); break; }
                     string src = CurrentMossSource(tid);
@@ -618,7 +618,7 @@ namespace Perilune.Web
                 }
                 case "set":
                 {
-                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Ship)); break; }
                     // ⭐ THE SPLIT'S OWN LEG, AND THE ONE A REVIEWER SKIPS. A REPAIRED `term_moss`
                     // opens doors one line at a time; installing a PROGRAM on it still refuses until
                     // a ControllerModule is fitted.
@@ -642,7 +642,7 @@ namespace Perilune.Web
                 }
                 case "audit":
                 {
-                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Ship)); break; }
                     // The player's own prompt writes live in the host-side @console ring; every
                     // other terminal's live in the ScriptRuntime's per-program ring.
                     if (tid == ConsoleTid) Emit(WireFormat.MossAudit(tid, _consoleAudit));
@@ -665,7 +665,11 @@ namespace Perilune.Web
                     // ⛔ WORST-FIRST — THE SHIP GATE, THEN THE TARGET (M3-15's own ordering rule).
                     // A player on a dead-computer ship must be told MOSS IS OFFLINE, not sent
                     // across the pressure frontier to fit a module to a terminal that works.
-                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    //
+                    // ⭐ `Ask.Pods`, AND IT IS THE ONE THE OWNER'S REPORT WAS ABOUT. `thaw` answers
+                    // "TYPE PODS"; `pods` used to answer a clause about DOORS, on a ship where the
+                    // player had just been told to come here. The tail now answers the noun asked.
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Pods)); break; }
                     // ⭐ WHICH CONSOLE. The prompt addresses the `@console` pseudo-tid (§1.3), which
                     // has no device behind it, so the SIM resolves a commissioned terminal through
                     // its own predicate and the name travels on the reply — the client then sends
@@ -696,7 +700,7 @@ namespace Perilune.Web
                     // line the thaw op asked NO ship question, so a DARK ship answered target-side
                     // sentences (`NO SUCH POD`) from a computer that is off. Same ordering as
                     // `pods` above and as every other op in this switch: ship, then target.
-                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal); break; }
+                    if (!MossGate.IsServerLive(_sim)) { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Pods)); break; }
 
                     // ⛔ THE HOST DECIDES NOTHING. It calls the sim's own gate to RENDER the
                     // answer and enqueues the command REGARDLESS of what that answer was. Both
@@ -746,7 +750,7 @@ namespace Perilune.Web
                     if (verdict.Reason != MossGate.CommissionRefusal.NoServer)
                         _sim.EnqueueCommand(new CommissionDeviceCommand(verdict.Pos));
 
-                    string said = MossGate.DescribeCommission(verdict);
+                    string said = MossGate.DescribeCommission(_sim, verdict);
                     if (verdict.Allowed) Reply(tid, said); else Refuse(tid, said);
                     break;
                 }
@@ -1594,7 +1598,7 @@ namespace Perilune.Web
                 EmitOperate(new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
                                      Clamp(cmd.Y, 0, _sim.World.Height - 1),
                                      Clamp(cmd.I, 0, _sim.World.Levels.Length - 1)),
-                            WireFormat.OperateRefused, "-", MossGate.OfflineRefusal);
+                            WireFormat.OperateRefused, "-", MossGate.OfflineRefusal(_sim, MossGate.Ask.Doors));
                 _status = "moss offline";
                 return;
             }

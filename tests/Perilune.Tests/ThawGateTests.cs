@@ -1081,7 +1081,8 @@ namespace Perilune.Tests
 
             var family = new (string Label, string Text)[]
             {
-                ("MossGate.OfflineRefusal (the SHIP has no server)", MossGate.OfflineRefusal),
+                ("MossGate.OfflineRefusal (the SHIP has no server)",
+                 MossGate.OfflineRefusal(sim, MossGate.Ask.Ship)),
                 ("MossGate.NotCommissionedRefusal (a PROGRAM)", MossGate.NotCommissionedRefusal(Console)),
                 ("ThawGate NoConsole (a THAW)", thawNoConsole),
                 // ⭐ M3-16 SHIPPED, so this row now reads the CONSTANT the console actually renders
@@ -1099,10 +1100,10 @@ namespace Perilune.Tests
                 // `COMMISSIONING NEEDS n CONTROLLER…`. The third arm (NoServer) is not a fifth
                 // string — it IS MossGate.OfflineRefusal, already row 1.
                 ("M3-17 already commissioned (a CONSOLE that is done)",
-                 MossGate.DescribeCommission(new MossGate.CommissionVerdict(
+                 MossGate.DescribeCommission(sim, new MossGate.CommissionVerdict(
                      MossGate.CommissionRefusal.AlreadyCommissioned, Console, default, 1, 1))),
                 ("M3-17 nothing to fit (the SHIP's stock)",
-                 MossGate.DescribeCommission(new MossGate.CommissionVerdict(
+                 MossGate.DescribeCommission(sim, new MossGate.CommissionVerdict(
                      MossGate.CommissionRefusal.NoModule, Console, default, 1, 0))),
             };
 
