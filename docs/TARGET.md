@@ -29,20 +29,22 @@ that order.** (Third axis recorded 2026-08-04, OD-R.)
    to automate* stays a hard choice. Binding three-clause test for any automation feature:
    removes a chore never a decision · carries a specific soul's fingerprint · gated behind
    scarcity. (`docs/design/perilune-automation-and-souls.md` is the design authority.)
-3. **Always: people, not pawns — and This War of Mine is the register they live in**
-   (OD-R, 2026-08-04). Crew are persons — memory, relationships, a chronicle, a voice
-   (LLM-ready, never LLM-required). The survival TONE is This War of Mine's: scarcity that
-   cannot be fully relieved, choices about who to wake and who to risk, consequences
-   carried by named people and told by the Chronicle — endurance, not power fantasy. The
-   premise already carries it (everyone awake is dead · thaw triage · over-thaw punishes
-   itself · `NO AIR AT THE WORKSITE — SHE MAY DIE`). **Mechanism scope is UNCHARTERED**: it
-   lands where the roadmap already points — M4 THE PERSON (mood gating behaviour, Persona,
-   Chronicle reachable) and M5's ending — and every M4/M5 package charter names which of
-   the three registers it serves. RimWorld stays the mechanism authority; TWoM is the tonal
-   authority for how M4/M5 get charted. No new systems (moral-choice engine, mental-break
-   table, scavenge cycle) before the M4-1 charter; file ideas against M4-1/M5-1, never
-   implement from this paragraph. Ship playable fully offline; all crew interaction through
-   one Persona window.
+3. **Always: people, not pawns — and This War of Mine is the third GAMEPLAY PILLAR**
+   (OD-R, 2026-08-04, amended same day: *"more than a tone — an important part of
+   gameplay"*). Crew are persons — memory, relationships, a chronicle, a voice (LLM-ready,
+   never LLM-required) — and the survival game they live in is This War of Mine's:
+   scarcity that cannot be fully relieved, choices about who to wake and who to risk,
+   consequences carried by named people and told by the Chronicle — endurance, not power
+   fantasy. Three scoping clauses (OD-R): **triage is EMERGENT from real scarcity** — the
+   sim produces the can't-save-everyone moments (over-thaw's O2/CO2 punishment is the
+   seed), never scripted dilemmas, never dice; **psychological state gates BEHAVIOUR** —
+   deterministic mental breaks (refuse, stop, withdraw) from thresholds over the hashed
+   mood/memory state, T12's missing half, RW§4's mechanism worn with TWoM's tone; **it
+   lands inside M4 + M5** — M4-1's Persona charter grows a TWoM-gameplay section, M5-1's
+   ending carries the survivors-and-cost payoff. RimWorld stays the mechanism authority;
+   TWoM is the authority for what the mechanisms are FOR. Nothing is implementable before
+   the M4-1 charter; file ideas against M4-1/M5-1. Ship playable fully offline; all crew
+   interaction through one Persona window.
 
 **The premise** (`perilune-wreck-start.plan.md`): the MSV *Perilune* was raided under way;
 everyone awake is dead, the machines are shot, MOSS is dark. One pod cycles. The loop:
@@ -61,9 +63,10 @@ automation surface is the door to every remaining soul.
 - **No dice in outcomes.** A jam is a computed consequence of a hashed mood/skill state,
   never a runtime roll. The Director schedules; physics never changes with difficulty.
 - **No Sims micro-needs, no cosmetic operators** (a decorative −5% is worse than nothing).
-- **No misery meters.** This War of Mine is a register, not a mechanics import: mood stays
-  a computed consequence (T12's shape), never a bar the player feeds; sadness that changes
-  no decision is a decoration (the cosmetic-operator rule, applied to tone).
+- **No misery meters.** TWoM-as-gameplay (OD-R) still means COMPUTED consequences: breaks,
+  refusals and grief come from deterministic thresholds over hashed state — never a bar the
+  player feeds, never a runtime roll, never a scripted dilemma. Sadness that changes no
+  decision is a decoration (the cosmetic-operator rule, applied to tone).
 - **No planetfall colony game, no 3D, no multiplayer.**
 - **No new UI off the standard surface** (Overview + Room Zoom; test-enforced).
 
@@ -87,7 +90,7 @@ before building on it. RW§ = `docs/design/rimworld-reference.md` section.
 | T9 | Designations survive & are erasable (dig/strip/stockpile/erase) | §2.1 | DONE (marks channel + M1-C) |
 | T10 | Repair is a work type with visible effect — repair a wing, lights come back | OD-A/OD-K | DONE (M2-11 + M2-12, merged 07-30; driven live: 10.6 → 17.4 kW across three ordered repairs, lights stay on past h12 — the phase-1 exit gate). KNOWN LIMIT: no pin sees the generation term; GenerationWearTests' bands are the sole instrument |
 | T11 | Skills gate output, never whether (passions later) | §5 | DONE in mechanism, live on the wreck (M3-7 rate curve at six sites + M3-12 WORK-tab display + M3-8 authored spreads, all merged 08-02): a thawed sleeper works at her authored rate and her row differs from Rell's in numbers AND cells; skill never gates whether (7-leg pin). KNOWN LIMITS: no pin sees the rate term (`SkillConsumerTests` is the only instrument) · nothing levels (the spread is for the run) · quality/failure deliberately not modelled (no dice, TARGET §2) |
-| T12 | Needs/mood: rest, food; mood as consequence not meter | §4 | advanced by M3-9 (08-02): crew SLEEP — she finishes her job, walks to a bunk (or the deck, worse), sleeps ~8-10 sim-h, wakes, works; fatigue reaches mood → Director tension → machine wear (a consequence, no meter). Remaining: mood still gates no crew behaviour directly; eating loses to work (SustenanceSystem after JobSystem, filed); no mood freeze while asleep |
+| T12 | Needs/mood: rest, food; mood as consequence not meter | §4 | advanced by M3-9 (08-02): crew SLEEP — she finishes her job, walks to a bunk (or the deck, worse), sleeps ~8-10 sim-h, wakes, works; fatigue reaches mood → Director tension → machine wear (a consequence, no meter). Remaining: mood still gates no crew behaviour directly — **OD-R (08-04) DIRECTS this half: deterministic mental breaks (refuse/stop/withdraw) are chartered M4 scope, RW§4's mechanism with TWoM's tone**; eating loses to work (SustenanceSystem after JobSystem, filed); no mood freeze while asleep |
 | T13 | Thaw loop: earn & choose a second soul through MOSS | premise | **DONE (2026-08-02, witness run on `ba3008f`)**: the whole arc witnessed in the UNMODIFIED game — dark ship refuses `commission` with the ship sentence · `term_moss` repaired by a real right-click order · doors opened by typed console verbs · benches repaired · Regolith→Scrap→Parts→ControllerModule censused rise-by-rise at the wire · `COMMISSION ACCEPTED` at the real cost (ledger CM 1→0 at that moment; boot printed `defs 558a1c0a4985f5ea` = P5, so no overlay) · POD BAY 12 rows each with reason+number · `thaw 2` → Ozawa walks (crew 1→2). 5.47 sim-h end to end, shots `t13-*.png`. The commissioning verb itself is M3-17 (merged 08-02) — the demo's missing button |
 | T14 | Health: capacity-gated work (downed ≠ disabled) | §6.1 | missing (M4-4 decides real-or-delete) |
 | T15 | Schedules (sleep/work/rec blocks) | §3.5 | decided: deferred — RW§3.5 mechanism adopted in M3-9 (needs are a job-SELECTION filter between jobs, never an interrupt); the 24-slot grid is revisited after the week-9 gate (owner batch item 3, 2026-07-31) |
