@@ -75,10 +75,31 @@ export const U = 32;
  *  It is the first tool on this bar that is neither decor nor a designation but a piece of SHIP
  *  PLANT the player installs, and it is here for the reason the package exists: a heater the player
  *  cannot place is a def row. Its position keeps the build/place run contiguous — inserting it
- *  anywhere earlier would move every hotkey after it. */
+ *  anywhere earlier would move every hotkey after it.
+ *
+ *  ⭐⭐ GROWBED / MEDBED / TABLE (2026-08-04) — THE THREE VERBS THE SIM ALREADY HAD AND THE PLAYER
+ *  DID NOT. They are appended for HEATER's exact reason, one step further along: `TryFurnitureKind`
+ *  has switched on `"growbed"`, `"medbed"` and `"table"` since the Room Zoom's palette was first
+ *  wired (`hosts/web/GameSession.cs`, the three cases immediately ABOVE heater's), and
+ *  `PlaceDeviceCommand.IsPlaceableFurniture` has whitelisted `GrowBed`/`MedBed`/`Table` for as long
+ *  as it has whitelisted `Bed` — so the sim would accept all three from the first tick and NO
+ *  SURFACE COULD ASK. The host's own comment beside those cases named the gap out loud ("wire-
+ *  reachable but have no palette button… a verb only the wire can reach is a verb the player does
+ *  not have"). All three also have real art already in the registry (`hydroponics` / `med-bed` /
+ *  `dining-table`, `client/src/items/index.js`), so the placed device draws itself.
+ *
+ *  ⚠️ THEY GO AFTER HEATER, AT THE END OF THE FUNCTIONAL RUN, for the reason HEATER's paragraph
+ *  gives and for one more: every tool before them keeps its index, so no existing chip moves under
+ *  a player's muscle memory and no hotkey shifts. They carry NO hotkey of their own — neither does
+ *  HEATER, and inventing three letters for three new tools is a keymap decision, not a palette one.
+ *
+ *  ⛔ THIS IS THE BAR'S LARGEST SINGLE WIDENING (18 → 21) AND THE PALETTE WRAPS, so it is a LAYOUT
+ *  change as much as a vocabulary one. Measured, not assumed, by `client/tools/palette-shot.mjs` at
+ *  six widths before and after — see the package report; the row count grows and nothing clips,
+ *  which is exactly what `flex-wrap:wrap` + the un-capped wrapper were fixed to guarantee. */
 export const ROOM_TOOLS = Object.freeze([
   'wall', 'floor', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant',
-  'heater',
+  'heater', 'growbed', 'medbed', 'table',
   'dig', 'stockpile', 'strip', 'erase', 'move', 'demolish',
 ]);
 
@@ -88,6 +109,7 @@ export const ROOM_TOOLS = Object.freeze([
 export const TOOL_LABEL = Object.freeze({
   wall: 'WALL', floor: 'FLOOR', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR',
   locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT', heater: 'HEATER',
+  growbed: 'GROWBED', medbed: 'MEDBED', table: 'TABLE',
   dig: '⛏ DIG', stockpile: '▦ STOCKPILE', strip: '⚒ STRIP', erase: '↺ ERASE',
   move: '➤ MOVE', demolish: '⌫ DEMOLISH',
 });
@@ -112,6 +134,19 @@ const PALETTE_CMD = Object.freeze({
   // `deviceKind: 'Heater'` is the sim enum member the ghost/erase paths name; the two are different
   // vocabularies on purpose and every row here carries both.
   heater:{ cls: 'functional', verb: 'place',  kind: 'heater', deviceKind: 'Heater' },
+  // ⭐⭐ 2026-08-04 — the three the sim accepted and the palette never offered. Same TWO vocabularies
+  // as every row above: `kind` is the WIRE string `GameSession.TryFurnitureKind` switches on (its
+  // `case "growbed"` / `"medbed"` / `"table"`, verified against that switch by
+  // `prioritise-menu.test.js`'s derivation rather than transcribed here), and `deviceKind` is the sim
+  // enum member (`DeviceKind.GrowBed`/`MedBed`/`Table`, all three on
+  // `PlaceDeviceCommand.IsPlaceableFurniture`'s whitelist since it was written). `cls: 'functional'`
+  // is what earns them the whole palette-honesty affordance set for free — `build-cost-model.js`
+  // asks the CLASS, never a list of tool names, so the `3 PARTS` chip line, the `.cant` state, the
+  // armed cost row and the refusal toast all arrive with the row and none of them needed a table
+  // entry. (That is the design; it is pinned by a driven leg rather than assumed.)
+  growbed:{ cls: 'functional', verb: 'place', kind: 'growbed', deviceKind: 'GrowBed' },
+  medbed:{ cls: 'functional', verb: 'place',  kind: 'medbed', deviceKind: 'MedBed' },
+  table: { cls: 'functional', verb: 'place',  kind: 'table',  deviceKind: 'Table' },
   rug:   { cls: 'cosmetic',   verb: 'decor',  itemId: 'rug' },
   shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'bookshelf' },
   // ORDER class (console-retirement WP-4) — a DESIGNATION, not a build. It consumes no material and

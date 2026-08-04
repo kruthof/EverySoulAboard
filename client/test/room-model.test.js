@@ -116,7 +116,7 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the eighteen tools to a class + verb', () => {
+test('paletteCommand maps every one of the twenty-one tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
   // 15 → 16 with the OPERATE verb (2026-07-28): the door/vent OPEN⇄SHUT toggle, which existed in the
   // sim since M1 and was reachable ONLY through the deprecated console's invisible inspection cursor.
@@ -141,7 +141,24 @@ test('paletteCommand maps every one of the eighteen tools to a class + verb', ()
   // `place` row is crew furniture or a lamp), because a heater the player cannot place is a def row
   // and the compartment the ship freezes stays unworkable forever. It is the ONE tool this package
   // adds; nothing was removed and nothing moved position.
-  assert.equal(ROOM_TOOLS.length, 18);
+  // ⭐⭐ 18 → 21, 2026-08-04: GROWBED, MEDBED and TABLE. The decision, stated here because the pin
+  // demands it be stated somewhere a reader will find — and this one is a decision about a GAP
+  // rather than about a new mechanic. `GameSession.TryFurnitureKind` has switched on all three
+  // strings, and `PlaceDeviceCommand.IsPlaceableFurniture` has whitelisted all three DeviceKinds,
+  // since before HEATER existed; the host's own comment beside those cases says they are "wire-
+  // reachable but have no palette button", which is the same sentence as "the player does not have
+  // this verb". The registry has drawn all three since the warm set (`hydroponics`, `med-bed`,
+  // `dining-table`). So nothing below the client was built for this package: it is three rows.
+  // ⚠️ THE COUNT IS THE LAYOUT RISK, not the vocabulary risk. The palette WRAPS, and this is its
+  // largest single widening. `client/tools/palette-shot.mjs` measured 21/21 reachable, 0 clipped, at
+  // all six widths 1600→900 — that measurement, not this pin, is the evidence (no node test can see
+  // a layout engine; the file header of `palette-layout.test.js` argues why at length).
+  assert.equal(ROOM_TOOLS.length, 21);
+  for (const t of ['growbed', 'medbed', 'table'])
+    assert.ok(ROOM_TOOLS.includes(t),
+      `ROOM_TOOLS lost ${t.toUpperCase()}. The sim accepts it (IsPlaceableFurniture) and the host ` +
+      'parses it (TryFurnitureKind), so removing the button does not remove the verb — it only ' +
+      'takes it back off the player and returns it to the wire, which is where it was stuck.');
   assert.ok(ROOM_TOOLS.includes('heater'),
     'ROOM_TOOLS lost HEATER. It is the only way a player can place the one device in the game that '
     + 'raises a compartment above needs.def hypothermia_c — without it M3-10 ships authoring-only.');
@@ -151,7 +168,7 @@ test('paletteCommand maps every one of the eighteen tools to a class + verb', ()
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
-  for (const [t, dk] of [['bunk', 'Bed'], ['desk', 'Desk'], ['chair', 'Chair'], ['locker', 'Locker'], ['plant', 'PlantPot'], ['lamp', 'Light'], ['heater', 'Heater']]) {
+  for (const [t, dk] of [['bunk', 'Bed'], ['desk', 'Desk'], ['chair', 'Chair'], ['locker', 'Locker'], ['plant', 'PlantPot'], ['lamp', 'Light'], ['heater', 'Heater'], ['growbed', 'GrowBed'], ['medbed', 'MedBed'], ['table', 'Table']]) {
     assert.equal(byTool[t].cls, 'functional');
     assert.equal(byTool[t].verb, 'place');
     assert.equal(byTool[t].deviceKind, dk);
@@ -198,7 +215,8 @@ test('paletteCommand maps every one of the eighteen tools to a class + verb', ()
   assert.equal(isEraseTool('erase'), true);
   for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'operate', 'move', null, 'nope']) assert.equal(isEraseTool(t), false);
   for (const t of ['wall', 'floor', 'door', 'dig', 'stockpile', 'strip', 'erase']) assert.equal(isSweepTool(t), true);
-  for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', 'operate', 'move', null, 'nope']) {
+  for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'heater',
+    'growbed', 'medbed', 'table', 'demolish', 'operate', 'move', null, 'nope']) {
     assert.equal(isSweepTool(t), false);
   }
   // Every tool the palette renders has a label — a missing one paints an empty button.
