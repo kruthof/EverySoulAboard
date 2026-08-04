@@ -2,6 +2,12 @@
 // "THE MOSS CONSOLE BEHAVES LIKE A TERMINAL" — the scroll contract, driven in real Chrome against
 // the running game at the viewport the defect was measured at.
 //
+// ⭐ EXTENDED 2026-08-04 by `moss-scroll-affordance` — the SECOND half of the contract: the pane not
+// only follows its newest line (IX-M15), it SAYS when lines are below the fold ("▾ N MORE", IX-M16).
+// Both halves are checked in the SAME session on purpose: the affordance must not disturb the
+// follow, and the follow's own tail state is where the sign has to be silent. No new tool, because
+// there is one pane and one contract.
+//
 // ⛔ THE DEFECT (measured 2026-08-03, 1280×800, shipped wreck): typing `help` on the MOSS console
 // printed 14 lines into a `max-height:22vh` box and left it at the TOP —
 // `clientHeight 157 / scrollHeight 305 / scrollTop 0`. Seven lines visible; the hidden seven were
@@ -132,9 +138,19 @@ async function wheelOverConsole(deltaY, times = 1) {
 const PANE = `(()=>{const el=document.querySelector('.moss-console');if(!el)return null;
 const pr=el.getBoundingClientRect();
 const rows=[...el.querySelectorAll('.moss-cline')].map((e)=>{const r=e.getBoundingClientRect();
-  return {t:e.textContent, visible: r.top>=pr.top-0.5 && r.bottom<=pr.bottom+0.5};});
+  return {t:e.textContent, h:+r.height.toFixed(2),
+          visible: r.top>=pr.top-0.5 && r.bottom<=pr.bottom+0.5,
+          below: r.bottom > pr.bottom + 1};});
+const s=document.querySelector('.moss-more'); const sr=s?s.getBoundingClientRect():null;
+const cs=s?getComputedStyle(s):null;
 return {scrollTop:el.scrollTop, clientHeight:el.clientHeight, scrollHeight:el.scrollHeight,
-        maxScroll:Math.max(0,el.scrollHeight-el.clientHeight), rows};})()`;
+        maxScroll:Math.max(0,el.scrollHeight-el.clientHeight), rows,
+        belowFold: rows.filter((r)=>r.below).length,
+        hasMore: !!document.querySelector('.moss-console-wrap.has-more'),
+        sign: s?{text:s.textContent, hidden:!!s.hidden, bottom:sr.bottom, paneBottom:pr.bottom,
+                 painted: sr.width>0 && sr.height>0 && cs.display!=='none' && cs.visibility!=='hidden',
+                 pointerEvents:cs.pointerEvents, tabIndex:s.tabIndex,
+                 ariaHidden:s.getAttribute('aria-hidden')}:null};})()`;
 const pane = () => json(PANE);
 /** THE STEP-1 CHECK EXPRESSION, as one function so STEP 4 can plant a state and re-ask it. */
 const followsTail = (p) => !!p && p.scrollTop >= p.maxScroll - 1;
@@ -175,6 +191,13 @@ const hidden = verbs.filter((v) => {
 });
 check(hidden.length === 0, 'COMMISSION / PODS / THAW — the three verbs the thaw arc is reached '
   + 'through — are ON SCREEN' + (hidden.length ? ' (hidden: ' + hidden.join(', ') + ')' : ''));
+// ⭐ THE AFFORDANCE (2026-08-04), asked at the tail: a console that just followed its newest line
+// must not also claim there is more. `hidden` is not enough on its own — an element can be
+// `hidden` and still painted by a stylesheet — so the check is that it OCCUPIES NO PIXELS.
+check(!!p1.sign, '`.moss-more` exists in the shipped DOM (the affordance is present at all)');
+check(p1.belowFold === 0 && p1.sign.hidden && !p1.sign.painted,
+  'at the tail the "▾ N MORE" sign is down and paints nothing (belowFold ' + p1.belowFold + ')');
+check(p1.hasMore === false, 'and the wrapper drops `has-more`, so the pane keeps its full height');
 await png('01-help-follows-newest.png');
 
 // ───────────────────────────── STEP 2: scroll up; the reader's place is HELD
@@ -210,6 +233,28 @@ check(Math.abs(p3.scrollTop - p2b.scrollTop) <= 1,
 check(p3.rows.length > p2b.rows.length,
   'PRECONDITION: the output really did arrive (' + p2b.rows.length + ' → ' + p3.rows.length
   + ' lines) — a console that printed nothing would hold its place trivially');
+// ⭐ THE AFFORDANCE, at the state it exists for: parked above the fold. ⛔ ONLY THIS TOOL CAN SEE
+// THAT IT IS ACTUALLY PAINTED — the node tests pin the count and the hidden flag against a fake
+// layout, and "the flag is false" is not "the player can see it" (invisible feedback is functional).
+// The count is compared against an INDEPENDENT per-row `getBoundingClientRect` census computed in
+// the page, never against anything the module exports.
+check(!!p3.sign && p3.sign.painted, 'the "▾ N MORE" sign is PAINTED over the pane — a player sees it');
+check(p3.belowFold > 0, 'PRECONDITION: lines really are below the fold (' + p3.belowFold + ')');
+check(!!p3.sign && p3.sign.text === '\u25be ' + p3.belowFold + ' MORE',
+  'and it says exactly what the independent per-row census says: ' + JSON.stringify(p3.sign && p3.sign.text)
+  + ' vs \u25be ' + p3.belowFold + ' MORE');
+check(!!p3.sign && Math.abs(p3.sign.bottom - p3.sign.paneBottom) < 1.5,
+  'it sits on the pane\'s own bottom edge, not the page\'s');
+check(p3.hasMore === true, '`has-more` keeps the last line clear of the sign that covers it');
+// ⛔ OD-P: a SIGN, not a control. Every printable character belongs to the prompt, so the affordance
+// must add no way to navigate — it cannot be clicked, cannot be tabbed to, and is not read out.
+check(!!p3.sign && p3.sign.pointerEvents === 'none', 'OD-P: the sign takes no pointer');
+check(!!p3.sign && p3.sign.tabIndex <= 0 && p3.sign.ariaHidden === 'true',
+  'OD-P: the sign is not in the tab order and is aria-hidden');
+// ⭐ AND THE MEASUREMENT THAT DECIDED THE HELPER'S SHAPE: MOSS lines are NOT a uniform stride, so a
+// `console-model.moreBelow`-style division would be wrong on exactly the rows the count is about.
+const boxes = [...new Set(p3.rows.map((r) => r.h))].sort((a, b) => a - b);
+log('  line-box census (getBoundingClientRect heights):', JSON.stringify(boxes));
 await png('02-scrolled-up-holds.png');
 
 // ───────────────────────────── STEP 3: back to the bottom; the follow re-arms
@@ -224,6 +269,13 @@ check(p5.rows.length > p4.rows.length, 'PRECONDITION: `status` printed something
 check(followsTail(p5), 'the follow re-armed — output moves the view again (' + p5.scrollTop.toFixed(1)
   + ' of ' + p5.maxScroll.toFixed(1) + ')');
 check(p5.rows[p5.rows.length - 1].visible, 'and the NEWEST line is the one on screen');
+// ⚠️ THE ONE FEEDBACK LOOP IN THE AFFORDANCE, ASKED RATHER THAN ASSUMED: `has-more` adds
+// `padding-bottom` to the pane, which grows `scrollHeight`, which `shouldFollowTail` reads. It
+// cannot oscillate (bottom padding moves no row's box), and the settled state at the bottom is the
+// proof: the sign is down and STAYS down after the pane has re-clamped.
+check(p5.belowFold === 0 && p5.sign.hidden && !p5.sign.painted,
+  'back at the bottom the sign goes down again and settles (belowFold ' + p5.belowFold
+  + ', scrollTop ' + p5.scrollTop.toFixed(1) + ' of ' + p5.maxScroll.toFixed(1) + ')');
 await png('03-returned-to-bottom-follows.png');
 
 // ───────────────────────────── STEP 4: the non-vacuity control
@@ -245,6 +297,39 @@ const plantedHidden = verbs.filter((v) => {
 check(plantedHidden.length > 0,
   'and the verb check reads FAIL too — at the top of the transcript the thaw verbs really are '
   + 'below the fold (hidden: ' + plantedHidden.join(', ') + ')');
+// ⭐ AND THE AFFORDANCE'S OWN NON-VACUITY, on the same planted state: the STEP-1 check that the sign
+// is DOWN must read FAIL here. A sign that is always hidden would pass every check above.
+check(!!planted.sign && planted.sign.painted && planted.belowFold > 0,
+  'the sign SPEAKS UP on the defect\'s own state — "' + (planted.sign && planted.sign.text)
+  + '" over a pane parked at the top — so STEP 1\'s "it is down" was not free');
+
+// ───────────────────────────── STEP 5: the measurement that decided the count's SHAPE
+// ⭐ WHY "▾ N MORE" IS NOT `console-model.moreBelow`. That helper divides the overhang by ONE
+// UNIFORM ROW STRIDE, which is exact on the CREW table (every `.crew-trow` is the same height) and
+// WRONG here. `.moss-cline` is `white-space:pre-wrap` with a hanging indent, and the gate sentences
+// the 2026-08-04 lanes made deliberately explicit are long enough to wrap. This step makes the ship
+// print one and censuses the boxes: two distinct heights, one exactly twice the other, is the whole
+// argument — a stride read off the first row would count that sentence as TWO hidden lines.
+log('\nSTEP 5 — MOSS lines are not a uniform stride, and that is why the count is per-row');
+await evaluate("document.querySelector('.moss-console').scrollTop = 1e6");
+await prompt('commission');        // DARK MOSS ⇒ the long offline refusal, which wraps
+await wheelOverConsole(-100, 1);   // park ABOVE the fold, so the sign has something to count
+const p6 = await pane();
+const census = [...new Set(p6.rows.map((r) => r.h))].sort((a, b) => a - b);
+log('  line-box census (getBoundingClientRect heights):', JSON.stringify(census));
+check(census.length >= 2,
+  'the transcript really contains rows of DIFFERENT heights (' + JSON.stringify(census)
+  + ') — with one height this check is vacuous and the sibling helper would be unjustified');
+check(census.length >= 2 && Math.abs(census[census.length - 1] / census[0] - 2) < 0.05,
+  'the tall rows are exactly TWO line boxes, i.e. wrapped sentences — so a stride taken off a '
+  + 'one-line row would over-count every hidden refusal by one');
+check(p6.belowFold > 0 && !!p6.sign && p6.sign.painted,
+  'PRECONDITION: parked above the fold with wrapped rows on the pane, so the sign is up and counting ('
+  + p6.belowFold + ' below, scrollTop ' + p6.scrollTop.toFixed(1) + ')');
+check(!!p6.sign && p6.sign.text === '\u25be ' + p6.belowFold + ' MORE',
+  'and with wrapped rows present the sign STILL agrees with the per-row census ('
+  + (p6.sign ? p6.sign.text : 'no sign') + ' vs \u25be ' + p6.belowFold + ' MORE) — the reading a '
+  + 'stride-based count could not produce');
 
 log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 cdp.close(); chrome.kill('SIGKILL');

@@ -19,7 +19,7 @@ import { cssCodeOnly } from './code-only.js';
 import * as FAKE from './moss-model-fake.js';
 import {
   MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect,
-  isTextEntryTarget, SCROLL_KEYS, shouldFollowTail, TAIL_SLACK_PX,
+  isTextEntryTarget, SCROLL_KEYS, shouldFollowTail, TAIL_SLACK_PX, linesBelowFold, FOLD_SLACK_PX,
 } from '../src/ui/moss-screen.js';
 import { decode } from '../src/wire/messages.js';
 import { escapeTarget } from '../src/ui/console-model.js';
@@ -1995,4 +1995,237 @@ test('doors: typing `doors` sends the wire op through the real screen', () => {
   const text = s.root.byClass('moss-cline').map((el) => el.textContent).join('\n');
   assert.ok(/DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT/.test(text),
     'the listing never reached the console pane:\n' + text);
+});
+
+// ---------------- THE SCROLL AFFORDANCE — "▾ N MORE" (2026-08-04) ----------------
+//
+// ⛔ THE GAP, and it is the one the autoscroll lane left standing (HANDOVER open list, ★ 2026-08-04):
+// the console now FOLLOWS its newest line, but a reader who scrolled back — or one on a screen that
+// overflows the instant it prints, `HELP` being 13 lines in a ~7-line pane — gets NO signal that
+// anything is below the fold. `max-height:22vh; overflow-y:auto` shows no resting scrollbar on this
+// platform, so "there is more" was a fact the pane knew and never said.
+//
+// ⭐ THE FIX SHAPE IS THE CREW TAB'S, ported: a pure count from real geometry, an indicator refreshed
+// on scroll and on render, hidden at the tail. ⛔ THE HELPER IS A SIBLING OF `console-model.moreBelow`
+// AND NOT A CALL TO IT, for a measured reason: `moreBelow` divides the overhang by ONE UNIFORM ROW
+// STRIDE (every `.crew-trow` is the same height), and `.moss-cline` is `white-space:pre-wrap` with a
+// hanging indent, so a long refusal sentence occupies two or three line boxes while a `HELP` column
+// occupies one. `moss-scroll-shot.mjs`'s own `PANE` expression already refused a stride for exactly
+// this reason. `linesBelowFold` is that instrument's shape, made pure.
+//
+// ⛔ OD-P: THE SIGN IS PASSIVE. Every printable character belongs to the prompt, so the affordance may
+// never become a control — pinned below (no listener, `aria-hidden`, `pointer-events:none` in the
+// shipped sheet, and `SCROLL_KEYS` untouched).
+
+/**
+ * `fakeLayout`, extended with the ONE THING a stride cannot give: a real per-row box.
+ *
+ * ⚠️ THE PANE DOES NOT SIT AT VIEWPORT ORIGIN, ON PURPOSE. `PANE_TOP` is 200, so a count computed
+ * from a row's bottom alone (forgetting that the fold is an absolute edge, not a height) is wrong by
+ * every row — a fixture parked at 0 would let that mistake pass. Rects are in viewport coordinates,
+ * exactly as `getBoundingClientRect` reports them and exactly as `moss-scroll-shot.mjs` reads them
+ * from the real pane, and they are LAZY: each row's box is recomputed from the pane's live
+ * `scrollTop` at the moment it is asked, which is what a browser does.
+ */
+const PANE_TOP = 200;
+function fakeRects(el, clientHeight = CONSOLE_CLIENT_H, stride = CONSOLE_STRIDE) {
+  fakeLayout(el, clientHeight, stride);
+  el.getBoundingClientRect = () => ({
+    top: PANE_TOP, bottom: PANE_TOP + clientHeight, height: clientHeight, left: 0, right: 0, width: 0,
+  });
+  const install = () => {
+    el.childNodes.forEach((child, i) => {
+      child.getBoundingClientRect = () => ({
+        top: PANE_TOP + i * stride - el.scrollTop,
+        bottom: PANE_TOP + (i + 1) * stride - el.scrollTop,
+        height: stride, left: 0, right: 0, width: 0,
+      });
+    });
+  };
+  const inner = el.replaceChildren.bind(el);
+  el.replaceChildren = (...cs) => { inner(...cs); install(); };
+  install();
+  return el;
+}
+
+/** Open MOSS with a fully laid-out console pane (metrics AND per-row boxes) and the boot line on it. */
+function affordanceScreen() {
+  const s = openWithSystems();
+  fakeRects(s.screen.consoleEl);
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: [[1, 'MOSS REV 4.2.1 READY — TYPE HELP']] });
+  return s;
+}
+
+const moreEl = (s) => s.screen.consoleMoreEl;
+/** Park the pane at an offset the way a wheel does: set the offset, then let the browser's event
+ *  through. The listener is the shipped refresh path, so a test that skipped the event would be
+ *  pinning a method nobody calls. */
+function parkAt(s, top) {
+  s.screen.consoleEl.scrollTop = top;
+  fire(s.screen.consoleEl, 'scroll');
+}
+/**
+ * What the affordance OUGHT to say, computed from the fixture's own arithmetic and NOTHING the
+ * module exports — an independent second derivation, so the assertions below cannot agree with the
+ * implementation by construction. A row is below the fold when its bottom passes the pane's bottom
+ * by more than the 1px slack.
+ */
+function expectedMore(s) {
+  const el = s.screen.consoleEl;
+  const fold = PANE_TOP + CONSOLE_CLIENT_H;
+  let n = 0;
+  for (let i = 0; i < el.childNodes.length; i++) {
+    if (PANE_TOP + (i + 1) * CONSOLE_STRIDE - el.scrollTop > fold + 1) n += 1;
+  }
+  return n;
+}
+
+test('▾ N MORE: a reader parked above the fold is TOLD how many lines are below it, and the count '
+  + 'is derived from the pane\'s real geometry', () => {
+  const s = affordanceScreen();
+  const el = s.screen.consoleEl;
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+  assert.ok(el.scrollHeight > el.clientHeight, 'precondition: the transcript really overflows');
+
+  parkAt(s, 0);                                  // the defect's own state: the top of the answer
+  // 14 lines in a 157px pane at a 21.79px line box ⇒ 7 fully readable, 7 below. The number is the
+  // bug report's own: "the hidden seven were the BOTTOM seven".
+  assert.equal(expectedMore(s), 7, 'precondition: the fixture really hides seven lines');
+  // MUTATION 1 (driven): `linesBelowFold` clamped to `return 0` — the shipped silence, verbatim.
+  // MUTATION 2 (driven): the pane's own top edge dropped from the fold (`bottom` compared against a
+  //             height rather than an absolute edge) ⇒ every row counts ⇒ 14.
+  assert.equal(moreEl(s).hidden, false, 'the sign must be visible when lines sit below the fold');
+  assert.equal(moreEl(s).textContent, '▾ 7 MORE');
+  assert.equal(s.screen.consoleWrapEl.classList.contains('has-more'), true,
+    'the wrapper carries `has-more`, which is what keeps the last line clear of the sign');
+});
+
+test('▾ N MORE: the count MOVES with the overflow — a bigger transcript says a bigger number and a '
+  + 'shrunk one says a smaller one (the ratio-blind version of this test would pass on a constant)', () => {
+  const s = affordanceScreen();
+
+  // 1. a SHORT answer that still overflows: 10 lines ⇒ 3 below the fold.
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT.slice(0, 9) });
+  parkAt(s, 0);
+  assert.equal(s.screen.consoleEl.childNodes.length, 10, 'precondition: ten lines on the pane');
+  assert.equal(expectedMore(s), 3, 'precondition: the fixture hides exactly three of them');
+  assert.equal(moreEl(s).textContent, '▾ 3 MORE');
+
+  // 2. the SAME pane, more output: 22 lines ⇒ 15 below. A helper clamped to a constant, or one that
+  //    reported "some" rather than "how many", dies here and cannot die at a single size.
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+  parkAt(s, 0);
+  assert.equal(s.screen.consoleEl.childNodes.length, 22, 'precondition: twenty-two lines on the pane');
+  assert.equal(expectedMore(s), 15, 'precondition: the fixture hides exactly fifteen of them');
+  assert.equal(moreEl(s).textContent, '▾ 15 MORE');
+
+  // 3. and it SHRINKS when the reader scrolls down — same content, fewer lines still hidden.
+  parkAt(s, 5 * CONSOLE_STRIDE);
+  assert.equal(expectedMore(s), 10, 'precondition: five line boxes of scrolling recovers five lines');
+  assert.equal(moreEl(s).textContent, '▾ 10 MORE');
+});
+
+test('▾ N MORE: the sign is GONE at the tail — the console that just followed its newest line does '
+  + 'not claim there is more', () => {
+  const s = affordanceScreen();
+  const el = s.screen.consoleEl;
+
+  // a transcript that fits: nothing below the fold, nothing to say.
+  assert.equal(moreEl(s).hidden, true, 'one boot line does not overflow, so the sign stays down');
+
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+  // `_renderConsole` followed the tail; the affordance must describe THAT view, not the one before.
+  // MUTATION 3 (driven): `_updateConsoleMore()` called BEFORE the `el.scrollTop = …` write ⇒ the
+  //             sign describes the pre-follow offset and reads "▾ 7 MORE" over a pane at the bottom.
+  assert.ok(el.scrollTop >= el.scrollHeight - el.clientHeight - 1, 'precondition: the view followed');
+  assert.equal(expectedMore(s), 0, 'precondition: at the tail nothing is below the fold');
+  assert.equal(moreEl(s).hidden, true, 'the sign must hide at the tail');
+  assert.equal(s.screen.consoleWrapEl.classList.contains('has-more'), false);
+
+  // and it comes BACK the moment the reader scrolls up, through the shipped scroll listener.
+  // MUTATION 4 (driven): the `scroll` listener in `_build` deleted ⇒ the sign never reappears.
+  parkAt(s, 0);
+  assert.equal(moreEl(s).hidden, false, 'scrolling back up must bring the sign back');
+  assert.equal(moreEl(s).textContent, '▾ 7 MORE');
+});
+
+test('▾ N MORE: output arriving while the reader is parked GROWS the count — and does not move '
+  + 'them (the autoscroll contract is untouched)', () => {
+  const s = affordanceScreen();
+  const el = s.screen.consoleEl;
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+
+  const parked = Math.round((el.scrollHeight - el.clientHeight) / 2);
+  assert.ok(parked > 0, 'precondition: tall enough to park inside (' + parked + ')');
+  parkAt(s, parked);
+  const before = moreEl(s).textContent;
+  assert.equal(before, '▾ ' + expectedMore(s) + ' MORE');
+  assert.ok(expectedMore(s) > 0, 'precondition: something really is below the fold (' + before + ')');
+
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: [[1, 'QUEUED'], [1, 'QUEUED 2']] });
+  assert.equal(el.scrollTop, parked, 'the reader was moved — the autoscroll hold is the premise here');
+  assert.equal(moreEl(s).textContent, '▾ ' + (expectedMore(s)) + ' MORE');
+  assert.equal(moreEl(s).textContent, '▾ ' + (parseInt(before.slice(2), 10) + 2) + ' MORE',
+    'two lines arrived below the fold, so the sign must count two more');
+  assert.equal(moreEl(s).hidden, false);
+});
+
+test('OD-P: the affordance is a SIGN, not a control — nothing about it adds navigation the terminal '
+  + 'does not have', () => {
+  const s = affordanceScreen();
+  const more = moreEl(s);
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+  parkAt(s, 0);
+  assert.equal(more.hidden, false, 'precondition: the sign is up, so this test is asking about a live element');
+
+  // 1. it carries no listener of ANY type — a click/keydown handler here would be a second way to
+  //    move the view, which OD-P reserves to the wheel and `SCROLL_KEYS`.
+  assert.deepEqual(Object.keys(more.listeners || {}).filter((t) => (more.listeners[t] || []).length), [],
+    'the sign registered an event listener: ' + JSON.stringify(Object.keys(more.listeners || {})));
+  // 2. it is a plain div, not a button/anchor/input — nothing the browser makes focusable.
+  assert.equal(String(more.tagName).toLowerCase(), 'div');
+  assert.equal(more.attributes.tabindex, undefined, 'the sign must not be in the tab order');
+  assert.equal(more.attributes['aria-hidden'], 'true', 'it is decoration over text already present');
+  // 3. and the stylesheet takes the pointer away, so even a stray click lands on the pane behind it.
+  //    Read through the SHARED stripper with a non-vacuity precondition (trap 1): a commented-out
+  //    rule must not satisfy this.
+  const raw = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const RULE = /\.moss-more\{([^}]*)\}/;
+  const live = RULE.exec(cssCodeOnly(raw));
+  assert.ok(live, 'precondition: `.moss-more` is a real rule in the shipped sheet');
+  assert.ok(/pointer-events\s*:\s*none/.test(live[1]),
+    '`.moss-more` must be pointer-events:none — OD-P keeps every printable character on the prompt');
+  assert.ok(!RULE.exec(cssCodeOnly(raw.replace(RULE.exec(raw)[0], '/* ' + RULE.exec(raw)[0] + ' */'))),
+    'NEGATIVE CONTROL: a commented-out `.moss-more` rule must not satisfy the scan above');
+  // 4. the scroll keys keep exactly the semantics they had — the affordance replaced no gesture.
+  assert.deepEqual(SCROLL_KEYS, ['PageUp', 'PageDown', ' ', 'Spacebar']);
+});
+
+test('linesBelowFold: the pure count, at the boundaries that decide it', () => {
+  const F = linesBelowFold;
+  // a pane occupying [200,357] — the fold is an ABSOLUTE edge, which is why the fixture above does
+  // not sit at the origin.
+  assert.equal(F([220, 250, 300, 350], 200, 357), 0, 'everything inside ⇒ nothing below');
+  assert.equal(F([300, 350, 400, 500], 200, 357), 2, 'two rows hang past the fold');
+  assert.equal(F([], 200, 357), 0, 'an empty transcript has nothing below it');
+  // the slack: a row overhanging by ≤1px is READ, one overhanging by more is not. Without this the
+  // sign flickers "▾ 1 MORE" on and off at the tail as Chrome's sub-pixel rects move.
+  assert.equal(FOLD_SLACK_PX, 1, 'the default slack is one pixel — the boundaries below are it');
+  assert.equal(F([357 + FOLD_SLACK_PX], 200, 357), 0, 'a 1px overhang is still read');
+  assert.equal(F([357.5], 200, 357), 0, 'sub-pixel overhang is still read');
+  assert.equal(F([357 + FOLD_SLACK_PX + 1], 200, 357), 1, 'past the slack ⇒ it counts');
+  assert.equal(F([400], 200, 357, 100), 0, 'the slack is a parameter, not a constant');
+  // ⛔ THE DEGRADATION DIRECTION IS THE OPPOSITE OF `shouldFollowTail`'S, AND THAT IS THE DECISION:
+  // an unmeasurable pane prints NOTHING rather than a number that would be a lie. (Following wrongly
+  // costs a moved view; "▾ 12 MORE" over a pane with nothing below it is worse than silence.)
+  assert.equal(F([300, 400], 0, 0), 0, 'no laid-out pane ⇒ no count (an empty console is display:none)');
+  assert.equal(F([300, 400], undefined, undefined), 0, 'unmeasurable ⇒ silent');
+  assert.equal(F([300, 400], NaN, NaN), 0, 'unmeasurable ⇒ silent');
+  assert.equal(F([300, 400], 357, 200), 0, 'an inverted box is not a box');
+  assert.equal(F(null, 200, 357), 0, 'no rows ⇒ nothing below');
+  assert.equal(F([undefined, NaN, 'x', 400], 200, 357), 1, 'unreadable rows are not counted as hidden');
 });
