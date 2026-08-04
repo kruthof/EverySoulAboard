@@ -36,12 +36,17 @@
 //      took the same route for the same measured reason. The SIM plays everything after it.
 //
 // ⛔ AND ONE THING IS NOT FAKED AT ALL, WHICH IS THE POINT OF STEP 2. The ship is the shipping
-// wreck, with its authored 8 Parts + 10 Seals aboard (⚠️ it read "1 Parts + 10 Seals" until D7,
-// 2026-08-03, added the seven-crate `cabin stores` — see STEP 2's own note below, and re-measure
-// the wait budget before trusting this step). The state in which a repair order has NO
-// consumable is REACHED BY PLAYING: REPAIR is switched on in the WORK tab (a real player click) and
-// the maintenance board spends and carries the stock down — the behaviour M3-4 FILED, measured
-// twice. No defs overlay, no planted state, no item removed by this tool.
+// wreck, with its authored 8 Parts + 10 Seals aboard (it read "1 Parts + 10 Seals" until D7,
+// 2026-08-03, added the seven-crate `cabin stores`). REPAIR is switched on in the WORK tab (a real
+// player click) and the maintenance board spends and carries the stock down — the behaviour M3-4
+// FILED, measured twice. No defs overlay, no planted state, no item removed by this tool.
+// ⚠️ AND THE STATE IS NOT REACHED IN THE OPENING STATE, MEASURED 2026-08-04 RATHER THAN PREDICTED.
+// It is a CONJUNCTION of three things and no single one of them is a wall: the reserve stops the
+// UNORDERED drain at 4 loose units, every REACHABLE wrecked machine has been serviced by then, and
+// the machines that are left are behind the pressure frontier — so a direct order, which DOES spend
+// the reserve, has nowhere to spend it. Step 2a is therefore a PACING REPORT that says so with its
+// own numbers. Read STEP 2's own note before trusting or re-chasing it — the wait budget is not the
+// missing piece, and neither is the reserve.
 //
 // ⚠️ STEP 2 IS IN TWO HALVES, AND THEY CLAIM DIFFERENT THINGS.
 //   2a PLAYS toward the state (REPAIR on, the board spends the stock) and reports honestly whether
@@ -422,18 +427,54 @@ await escape();
 await sleep(1200);
 
 // ⛔ REACHED BY PLAYING. Switch REPAIR on in the WORK tab and let the maintenance board spend and
-// carry the wreck's stock down to nothing loose — the behaviour M3-4 filed and measured twice
-// ("6 of the wreck's 10 Seals + its only Parts in ~10 sim-h, and the pawn CARRIES the rest").
-// ⚠️⚠️ **D7 (2026-08-03) MADE THIS STEP TAKE LONGER AND THIS RIG HAS NOT BEEN RE-RUN.** The quoted
-// M3-4 measurement is against a ship holding ELEVEN consumable units; the `cabin stores` cache took
-// the wreck to EIGHTEEN, and Parts is the tier the board spends FIRST — so roughly seven more
-// services (~2 more sim-hours at the measured ~4 units/sim-hour) stand between boot and "nothing
-// loose". If this step starts reporting that it never reached the state, THAT is the reason and the
-// fix is the wait budget, not the badge. ⛔ Unverified: no Chrome available in D7's lane and nothing
-// gates `client/tools/*.mjs`, so no red would have told us.
+// carry the wreck's stock down — the behaviour M3-4 filed and measured twice ("6 of the wreck's 10
+// Seals + its only Parts in ~10 sim-h, and the pawn CARRIES the rest").
+//
+// ⭐⭐ **THE WAIT BUDGET WAS RE-MEASURED, 2026-08-04, AND THE ANSWER IS THAT NO BUDGET REACHES THE
+// STATE FROM THE OPENING POSITION.** The paragraph that stood here was D7's flagged PREDICTION —
+// "roughly seven more services (~2 more sim-hours) stand between boot and nothing loose … the fix
+// is the wait budget". It is FALSE, and it is replaced by numbers a run produced:
+//   1. ⛔ **THE UNORDERED DRAIN HAS A FLOOR OF FOUR LOOSE UNITS.** Driven on a fresh shipping wreck
+//      with REPAIR on and the clock at max: 18 loose units (8 Parts + 10 Seals) fall to **exactly
+//      4** inside ~10 s of wall clock, and then NOTHING moves for the next 290 s. That floor is
+//      `MaintenanceSystem.AutonomousRepairReserve = 4` (D3), applied in the first line of
+//      `FindNearestConsumable` when `forced` is false.
+//   2. ⛔⛔ **BUT THE RESERVE IS NOT THE WALL, AND SAYING IT WAS IS THE MISTAKE THIS PARAGRAPH USED
+//      TO MAKE.** A DIRECT ORDER SPENDS THE RESERVE BY DESIGN: `DriveWorker` takes
+//      `forced = worker.HeldByOrder` (`MachineWearSystem.cs:317`) straight to the funnel's skip
+//      (`:871`), so an ordered service sees the whole pile. MEASURED on a post-drain host: one
+//      ordered repair took loose **4 → 3**. "4 ≠ 0, forever" was wrong and is withdrawn.
+//   3. ⭐ **WHAT ACTUALLY STOPS THE SHIP IS A CONJUNCTION, AND ITS THIRD LEG IS THE GEOMETRY.** By
+//      the time the drain floors, the candidate list has already fallen 22 → 12: every REACHABLE
+//      wrecked machine has been serviced. Ordering each of the 12 survivors one at a time and
+//      reading its own `blocked` answer: **1 accepted (and its service spent a reserved unit,
+//      4 → 3), 11 `ReasonNoRoute`** — the pressure frontier. With that last one repaired there is
+//      no reachable sink left, and loose held at 3 for a further 120 s.
+//   4. ⇒ SO IT IS AN OPENING-STATE FACT, NOT A PERMANENT ONE. As the player opens the frontier the
+//      `no_route` machines become orderable, ordered repairs spend the last units, and the
+//      NO-CONSUMABLE badge becomes due. ⛔ NOTHING HERE IS AN ARGUMENT FOR MOVING THE D3 RESERVE:
+//      that is an owner decision, and moving it would not deliver this badge — leg 3 would still
+//      hold every remaining machine behind the frontier.
+//   5. ⛔ **AND THIS STEP'S OWN SWEEP USED TO FREEZE THE DRAIN COMPLETELY.** Re-issuing a
+//      `prioritise` at 22 machines every 120 ms PRE-EMPTS the one pawn before any 15-sim-minute
+//      service can finish. Measured as a pair on identical fresh hosts: sweeping continuously, the
+//      larder sat at 7 Parts + 10 Seals for 180 s and moved by ZERO; with a 5 s gap between passes
+//      it reached the floor of 4 in ~10 s. The old loop was outrunning the thing it was waiting for.
+//   6. So the shape below is DRAIN FIRST, UNSWEPT, THEN SWEEP — the drain phase is bounded at
+//      `DRAIN_BUDGET_S` (90 s, ~9× the measured ~10 s) and exits early on a stall, and only then do
+//      the orders go out, with a gap. D7's seven crates are NOT the cause of the miss: they change
+//      how many units fall in those first seconds and nothing else.
+// ⇒ THE OBSERVE LINE THEREFORE REPORTS THE FLOOR IT HIT **AND CENSUSES THE `no_route` ROWS**, so
+//   the conjunction's third leg is MEASURED on every run rather than quoted from this comment.
+//   Filed in MECHANICS §13.33.
 // Carried and reserved stacks are invisible to `FindNearest`, which is exactly what makes the order
 // unpayable while matter is still aboard.
-log('  loose repair consumables at boot:', looseConsumables());
+// ⚠️ NOT "AT BOOT" — steps 0 and 1 have already run, and step 0b's direct order at `term_moss` has
+// already eaten a unit. The true boot census is 18 (8 Parts + 10 Seals, read on a socket opened
+// against a fresh host); this line is what is left when step 2 begins, and mislabelling it as the
+// boot figure is how a reader concludes the ship authors 17.
+log('  loose repair consumables when STEP 2 begins (boot is 18; step 0b has already spent):',
+  looseConsumables());
 const workTab = await centre('[data-ov-tab="work"]');
 if (workTab) { await clickAt(workTab.x, workTab.y); await sleep(1500); }
 // The grid's cells carry `data-ov-work-cid` / `data-ov-work-type` (overview-view.js:onWorkCellClick),
@@ -450,14 +491,30 @@ if (repairCell) {
   ws.send(JSON.stringify({ cmd: 'workPriority', cid, work: 0, priority: 3 }));
 }
 await escape();
-const spd2 = await centre('[data-ov-speed-up]');
-for (let i = 0; i < 3; i++) { if (spd2) { await clickAt(spd2.x, spd2.y); await sleep(250); } }
+// ⛔ THE CLOCK IS VERIFIED, NOT SENT. `[data-ov-speed-up]` lives on the OVERVIEW toolbar, so a
+// click made while another tab or the Room Zoom owns the screen lands on nothing and the game
+// quietly stays at 1× — and a wait budget measured in sim-hours is worth nothing at 1×.
+// `heater-shot.mjs` learned this the expensive way (its whole heating phase ran at 1× and it
+// reported a dead heater). Re-read the button EVERY time, and fall back to the wire command the
+// button lowers to (`Cmd.speed(+1)`, session.js:60) rather than carrying on at an unknown speed.
+for (let i = 0; i < 3; i++) {
+  const b = await centre('[data-ov-speed-up]');
+  if (b && b.w && b.h) { await clickAt(b.x, b.y); } else { ws.send(JSON.stringify({ cmd: 'speed', delta: 1 })); }
+  await sleep(250);
+}
+log('  speed reads:', JSON.stringify(await evaluate(
+  `(()=>{const e=document.querySelector('.ov-speedval');return e?e.textContent:'(none)';})()`)));
 
 // ⚠️ THE CENSUS BELOW IS CONSERVATIVE, AND SAYING SO IS THE POINT. `GameSession.BuildItems` skips
 // CARRIED stacks but keeps RESERVED ones, while `MachineWearSystem.FindNearest` refuses both — so
-// this number is an OVER-count of what a repair could actually reach. It therefore reaches zero
-// LATER than the sim's own answer does, never earlier: when it says 0 the order is certainly
-// unpayable. It is a progress log; THE VERDICT IS THE ROW ITSELF.
+// against WHAT A REPAIR COULD REACH it is an OVER-count, and it therefore reaches zero LATER than
+// the sim's own answer does, never earlier: when it says 0 the order is certainly unpayable.
+// ⛔ BUT AGAINST WHAT THE SHIP IS HOLDING IT READS *UNDER*, AND THE TRANSIENT IS WHERE THAT BITES —
+// a stack in a pawn's hands has left the channel entirely. Measured on the drain below: the run
+// dips to 2 for one poll while two units are carried, then settles back to 4 when they are set
+// down. ⇒ NO SINGLE READING ESTABLISHES THE FLOOR. What establishes it is the STALL DETECTOR —
+// five consecutive identical polls — which is why the loop watches for one instead of trusting the
+// smallest number it saw. It is a progress log; THE VERDICT IS THE ROW ITSELF.
 //
 // ⭐ AND THE ORDER IS RE-ISSUED ON EVERY POLL, which is what a player does and what the channel
 // requires: `BuildBlocked`'s retire rule drops an order the sim can currently service, so an order
@@ -479,19 +536,52 @@ log('  ' + candidates.length + ' wrecked serviceable machines on deck 0 to try')
 const rowFor = (c) => blockedRows().find((r) => r[0] === c[0] && r[1] === c[1]
   && (r[2] | 0) === 0 && (r[3] | 0) === ORDER_REPAIR && (r[4] | 0) === REASON_NO_CONSUMABLE);
 
-// ⭐ THE ORDER IS RE-ISSUED ON EVERY PASS, which is what a player does and what the channel
-// requires: `BuildBlocked`'s retire rule drops an order the sim can currently service, so an order
-// given while a Seals stack is still loose is gone by the next render.
+// ── (i) THE DRAIN PHASE, UNSWEPT. No orders go out while this runs: measurement 2 in the block
+// above says the sweep's own re-issue pre-empts the pawn before any service can finish, so the
+// orders are what USED to stop the drain. Bounded at DRAIN_BUDGET_S and exits early on a stall,
+// because the measured drain takes ~10 s and then never moves again.
+const DRAIN_BUDGET_S = 90;
+const drainT0 = Date.now();
+let looseStart = looseConsumables(), stalledFor = 0, looseNow = looseStart;
+while ((Date.now() - drainT0) / 1000 < DRAIN_BUDGET_S && looseNow > 0) {
+  await sleep(5000);
+  const n = looseConsumables();
+  stalledFor = (n === looseNow) ? stalledFor + 5 : 0;
+  looseNow = n;
+  log(`    drain t+${Math.round((Date.now() - drainT0) / 1000)}s  loose(ground stacks; carried units are invisible here) = ${looseNow}`);
+  if (stalledFor >= 25) break;   // five identical polls: the larder has found its floor
+}
+log(`  the larder went ${looseStart} -> ${looseNow} loose units and then held for ${stalledFor}s`);
+
+// ── (ii) THE SWEEP. ⭐ THE ORDER IS RE-ISSUED ON EVERY PASS, which is what a player does and what
+// the channel requires: `BuildBlocked`'s retire rule drops an order the sim can currently service,
+// so an order given while a Seals stack is still loose is gone by the next render. ⛔ WITH A GAP
+// BETWEEN PASSES, measured: back-to-back passes pre-empt the one pawn continuously and the ship
+// stops spending altogether.
+// ⭐⭐ THE REASON CENSUS IS A UNION OVER THE WHOLE SWEEP, AND ATTRIBUTION COMES FROM THE ROW'S OWN
+// COORDINATES — never from "the candidate we just ordered". ⛔ MEASURED, because the first cut of
+// this census got it wrong and printed 1 where the truth is 11: the `blocked` channel carries rows
+// only for orders that are PENDING, and one pawn holds one order, so a point-in-time read at the
+// end of a sweep sees exactly the LAST machine ordered. Worse, at a 120 ms dwell against a 10 Hz
+// sim the row visible after ordering candidate N is as likely to be candidate N−1's — so pairing
+// our loop position with whatever row happens to be up would MIS-ATTRIBUTE a reason to a machine.
+// Unioning by `r[0],r[1]` is lag-immune: a row seen at a candidate's tile is that tile's own answer,
+// whenever it arrived.
+const seenReason = new Map();
+const noteRows = () => { for (const r of blockedRows()) seenReason.set(`${r[0]},${r[1]}`, r[4] | 0); };
 let row = null, target = null;
-for (let pass = 0; pass < 18 && !row; pass++) {
+for (let pass = 0; pass < 6 && !row; pass++) {
   for (const c of candidates) {
     ws.send(JSON.stringify({ cmd: 'prioritise', cid, x: c[0], y: c[1], deck: 0 }));
     await sleep(120);
+    noteRows();
     const r = rowFor(c);
     if (r) { row = r; target = c; break; }
   }
-  if (pass % 5 === 4) log('    …', pass + 1, 'passes, loose(over-count) =', looseConsumables(),
-    '· blocked rows =', blockedRows().length);
+  if (!row) await sleep(5000);   // let a pre-empted service actually finish before re-ordering
+  noteRows();
+  log('    …', pass + 1, 'passes, loose(ground stacks) =', looseConsumables(),
+    '· blocked rows now =', blockedRows().length, '· candidates that have answered =', seenReason.size);
 }
 // ⚠️⚠️ AN OBSERVATION AND NOT A CHECK, AND THE REASON IS WHICH CLAIM IT CARRIES.
 // THAT THE HOST EMITS THE DETAILED ROW is proven on a real session over the shipping wreck by
@@ -499,21 +589,38 @@ for (let pass = 0; pass < 18 && !row; pass++) {
 // RED under the charter's mutation 3. This leg's only extra content is *"…and a player can get
 // there by playing, in about this long"*, which is a PACING fact about the ship, not a fact about
 // the package. Failing the run on it would let a content wobble redden a correct implementation.
-// MEASURED on the shipping wreck (2026-08-01, REPAIR on, top speed, 18 passes over 22 candidates):
-// the larder falls from 10 loose consumable units to 2 in the first minute and then STOPS — two
-// units stay loose, so `IsUnfixableWreck` is false everywhere and no row is due. That is a real
-// observation about the wreck's pacing and it is FILED in MECHANICS §13.33, not fixed here.
+// MEASURED on the shipping wreck (2026-08-04, REPAIR on, clock at max, drain-then-sweep): the
+// larder falls from 18 loose consumable units to EXACTLY 4 in ~10 s and then holds; a DIRECT order
+// spends past that (4 → 3, one ordered repair), and what stops the ship is that the survivors are
+// behind the pressure frontier — 11 of 12 answer `no_route`. That is a real observation about the
+// wreck's OPENING pacing and it is FILED in MECHANICS §13.33, not fixed here. (2026-08-01,
+// pre-D3-reserve and pre-D7-crates, the same leg read 10 → 2 and stopped.)
+//
+// ⭐ THE `no_route` CENSUS IS TAKEN FROM THE ROWS THIS RUN ACTUALLY RECEIVED, so the conjunction's
+// third leg is a number from THIS ship rather than a sentence quoted out of the block above. It is
+// counted over the candidates the sweep ordered, which is exactly the set the claim is about.
+const REASON_NO_ROUTE = 5;
+const answered = candidates.filter((c) => seenReason.has(`${c[0]},${c[1]}`));
+const noRouteSeen = answered.filter((c) => seenReason.get(`${c[0]},${c[1]}`) === REASON_NO_ROUTE).length;
+log(`  reason census over the sweep: ${answered.length} of ${candidates.length} candidates raised a `
+  + `row, ${noRouteSeen} of them NO WAY TO WALK TO IT`);
 const drained = observe(!!row,
   drained_msg(row, target, candidates.length));
 function drained_msg(r, t, n) {
   return r
     ? `the ship PLAYED its way to a repair order it cannot pay for, at (${t[0]},${t[1]},0) `
       + '— nothing was removed by this tool'
-    : `no NO-CONSUMABLE row on any of the ${n} candidates inside the budget (loose units still `
-      + `aboard: ${looseConsumables()}). THE EMISSION IS NOT IN DOUBT — it is owned by `
-      + '`PrioritiseOrderTests.TheNoConsumableRow_NamesTheItemTheOrderIsWaitingFor`, which drives a '
-      + 'real session and reddens under the ladder mutation. What this line reports is PACING: how '
-      + 'long the wreck takes to reach the state. Filed in MECHANICS §13.33.';
+    : `no NO-CONSUMABLE row on any of the ${n} candidates. THE LARDER drained ${looseStart} -> `
+      + `${looseNow} loose units and held there, and ${noRouteSeen} of the ${answered.length} `
+      + 'candidates that answered at all said NO WAY TO WALK TO IT. ⛔ THAT CONJUNCTION IS THE '
+      + 'REASON, NOT THE D3 RESERVE ON '
+      + 'ITS OWN: a direct order DOES spend the reserve (`DriveWorker`\'s `forced` = '
+      + '`worker.HeldByOrder`, measured 4 -> 3), so what is missing is a REACHABLE machine to spend '
+      + 'it on — the survivors are behind the pressure frontier, and this is an OPENING-STATE fact '
+      + 'that the player dissolves by opening the ship. THE EMISSION IS NOT IN DOUBT — it is owned '
+      + 'by `PrioritiseOrderTests.TheNoConsumableRow_NamesTheItemTheOrderIsWaitingFor`, which '
+      + 'drives a real session and reddens under the ladder mutation. What this line reports is '
+      + 'PACING. Filed in MECHANICS §13.33.';
 }
 
 if (drained) {
