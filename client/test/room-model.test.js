@@ -2215,6 +2215,122 @@ test('the ARMED LOOK tracks the armed tool: `.on` lands on one button and leaves
   assert.deepEqual(bad, [], 'the armed button does not look armed:\n  ' + bad.join('\n  '));
 });
 
+// ── the same seam on the TWO OPTION ROWS under the palette ──────────────────────────────────────
+// A `data-rzmat` driver, built exactly like `rzAccept` above and for the same reason: `dom-lite`
+// parses no markup, so the chips `paintMatStrip` writes as one `innerHTML` string are not clickable
+// nodes here. The click goes through the SHIPPED delegated `closest('[data-rzmat]')` handler, so what
+// is driven is the real resolution path; that the strip really EMITS those nodes is read back off the
+// markup the painter wrote.
+const rzMatChips = new Map();
+function rzMat(mat) {
+  let b = rzMatChips.get(mat);
+  if (!b) {
+    b = new RzEl(rzDoc, 'button');
+    b.dataset.rzmat = String(mat);
+    b.setAttribute('data-rzmat', String(mat));
+    rzRoot.appendChild(b);
+    rzMatChips.set(mat, b);
+  }
+  rzFire(b, 'click', {});
+}
+
+/**
+ * Which chips in `containerId` are wearing `.on`, and which exist at all — read out of the markup the
+ * painter emitted. OBSERVATION, NOT A MIRROR, for `rzShownMask`'s reason: the test never records what
+ * it believes it selected, so a click that lights the WRONG chip cannot be hidden by a bookkeeping
+ * variable that moved the same wrong way.
+ */
+function rzChipState(containerId, cls, attr) {
+  const html = rzDoc.getElementById(containerId).innerHTML;
+  const all = [], lit = [];
+  for (const m of html.matchAll(new RegExp(`class="${cls}([^"]*)"[^>]*data-${attr}="([^"]*)"`, 'g'))) {
+    all.push(m[2]);
+    if (/(?:^|\s)on(?:\s|$)/.test(m[1])) lit.push(m[2]);
+  }
+  return { all, lit };
+}
+
+/**
+ * THE `.on` CLASS ON THE OPTION ROWS — the seam the chips' armed look hangs off, driven end to end.
+ *
+ * ⭐ THE SAME TEST AS ITS SIBLING ABOVE, EXTENDED TO THE CLASS RATHER THAN WRITTEN FOR ONE MEMBER.
+ * The palette lane pinned `.on` on `.rz-tool` and fixed the colour collision there; its reviewer then
+ * found the identical collision one row down, on chips whose `.on` seam NOTHING drove. The CSS fix
+ * for `.rz-mat-chip` and `.rz-acc-chip` is worth exactly nothing the moment the class stops tracking
+ * the state the player is choosing, and this is the half a browserless gate can keep.
+ *
+ * ⚠️ NO NEW STATE WAS ADDED FOR THE ARMED LOOK, AND THAT IS THE PROPERTY DRIVEN HERE. Both rows
+ * already wrote `.on` off the SAME state that drives the selection — `activeMaterial(_materials,
+ * tool)` for the swatches (roomzoom-view.js:1125), `stockKindAccepted(mask, kind)` for the ACCEPTS
+ * chips (accepts-row.js:95) — so the fix is CSS only. The two rows differ in ARITY and both shapes
+ * are checked: the swatches are a RADIO group (exactly one lit, always), the ACCEPTS chips are TEN
+ * independent toggles (all lit at rest, since an untouched stockpile accepts everything). ⚠️ TEN
+ * MEASURED TWICE TODAY — `STOCK_KINDS.length` is 10 and `palette-shot.mjs` printed `10 chips, 10 lit
+ * at boot` off the live DOM. An earlier draft of both this sentence and the one below said "seven",
+ * which is stale by three ItemKinds; the leg itself never read a literal (it compares against
+ * `STOCK_KINDS.length`), so the prose was wrong while the test was right. The same stale "seven"
+ * survives in `accepts-row.js:28`, `accepts-row.test.js:39`/`:141` and `surface-boundary.test.js`
+ * :679/:715/:748 — pre-existing, FILED rather than swept from here.
+ *
+ * ⚠️ THE LEGS ARE BLINDED (trap shape 5): every check appends to `bad`, so a failure names each row
+ * that has drifted instead of only the first.
+ *
+ * MUTATION: emit the material chips without the `(m.mat === active ? ' on' : '')` clause ⇒ RED
+ *           (nothing in the strip ever lights, at any selection).
+ * MUTATION: emit them with a constant `' on'` ⇒ RED (all six light; the radio-arity leg names it).
+ * MUTATION: drop `paintMatStrip()` from `arm()` ⇒ RED (the strip never appears).
+ * MUTATION: invert `accepts-row.js`'s `(on ? ' on' : '')` ⇒ RED (the chips the player kept OUT are
+ *           the lit ones — a defect `aria-pressed` alone cannot see, because that stays correct).
+ */
+test('the ARMED LOOK tracks the option rows too: `.on` follows the material and the accept-mask', () => {
+  const bad = [];
+  const expect = (where, got, want) => {
+    if (JSON.stringify(got) !== JSON.stringify(want))
+      bad.push(`${where}: .on is on [${got}], expected [${want}]`);
+  };
+
+  // ── the material swatches: a RADIO group, exactly one lit ──────────────────────────────────
+  rzArm('wall');                                   // the strip is populated on arm, not before
+  const mats = rzChipState('rz-matstrip', 'rz-mat-chip', 'rzmat');
+  // Non-vacuity FIRST, and it is the whole risk: "exactly these chips are lit" is free over an
+  // empty scan, and this row is emitted as an innerHTML string that could be '' without a word.
+  assert.ok(mats.all.length >= 2, `the material strip painted ${mats.all.length} chips — every leg ` +
+    'below would pass against nothing');
+  expect('the armed WALL strip', mats.lit.length, 1);
+  const other = mats.all.find((m) => m !== mats.lit[0]);
+  assert.ok(other !== undefined, 'every material chip carries the same `data-rzmat` — the switch leg ' +
+    'below could not tell a moved selection from a stuck one');
+  rzMat(other);                                    // the player picks a different material
+  expect('after picking another material', rzChipState('rz-matstrip', 'rz-mat-chip', 'rzmat').lit,
+    [other]);                                      // it MOVED — a radio group never stacks
+  rzMat(mats.lit[0]);                              // put it back, so the surface is left as found
+  expect('after picking the first one back', rzChipState('rz-matstrip', 'rz-mat-chip', 'rzmat').lit,
+    [mats.lit[0]]);
+  rzArm('wall');                                   // disarm — afterEach normalises, but not silently
+
+  // ── the ACCEPTS chips: TEN INDEPENDENT toggles, all lit at rest (count from STOCK_KINDS, never
+  //    a literal — see the header; "seven" was three ItemKinds stale) ─────────────────────────
+  rzArm('stockpile');
+  const acc = rzChipState('rz-accepts', 'rz-acc-chip', 'rzaccept');
+  assert.equal(acc.all.length, STOCK_KINDS.length,
+    `the ACCEPTS row painted ${acc.all.length} chips, not ${STOCK_KINDS.length} — the legs below ` +
+    'would be reading a row that is not there');
+  expect('an untouched stockpile', acc.lit.length, acc.all.length);
+  const kind = String(STOCK_KINDS[1].kind);
+  rzAccept(kind);                                  // keep ONE kind out
+  const off = rzChipState('rz-accepts', 'rz-acc-chip', 'rzaccept');
+  expect('after keeping one kind out', off.lit.length, acc.all.length - 1);
+  if (off.lit.includes(kind))
+    bad.push(`kind ${kind} was toggled OUT and its chip is still lit — the armed look is painting ` +
+      'the opposite of the filter, which every `aria-pressed` assertion in this file would miss');
+  rzAccept(kind);                                  // and back, so the mask is left as found
+  expect('after letting it back in', rzChipState('rz-accepts', 'rz-acc-chip', 'rzaccept').lit.length,
+    acc.all.length);
+  rzArm('stockpile');
+
+  assert.deepEqual(bad, [], 'the option rows do not look armed:\n  ' + bad.join('\n  '));
+});
+
 // D2 — THE SHARED HARNESS CAPABILITY ITSELF, and it is not navel-gazing. `removeAttribute` exists in
 // `dom-lite.js` for exactly one reason: so that `if (on) setAttribute(…) else removeAttribute(…)` —
 // the realistic form of the aria-pressed mistake — can be APPLIED as a mutation instead of dying on
