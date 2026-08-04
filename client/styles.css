@@ -1569,13 +1569,49 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-matstrip[hidden]{display:none}
 .rz-mat-label{font-size:9px;letter-spacing:.14em;color:var(--ink-faint,#57503f);flex:none;
   padding-right:2px;white-space:nowrap}
+/* ⚠️ THE SAME COLLISION THE TOOL BUTTONS HAD, ON THE ROW DIRECTLY UNDER THEM — see the `.rz-tool`
+   block comment above for the whole argument, which is not repeated here. Filed by the palette
+   lane's own reviewer on 2026-08-03 and re-measured before this fix: the chips carried
+
+       .rz-mat-chip:hover{border-color:#cf7a33}
+       .rz-mat-chip.on   {background:#3a2a12;border-color:#f2b563}
+
+   a NEAR-collision (hover wore `#cf7a33`, the colour the tool's armed border used to wear and the
+   one the whole palette reads as "lit"), while `.rz-acc-chip` below had the IDENTICAL defect —
+   `:hover` and `.on` both `#cf7a33` on the border, so the chip under the cursor was already wearing
+   the armed edge before the click. The player's pointer is always on the chip they just picked.
+
+   ⭐ FIXED AS A CLASS, NOT AS TWO RULES. `.rz-tool`, `.rz-mat-chip` and `.rz-acc-chip` are the three
+   Room Zoom controls that spell their armed state `.on` (`paintPalette`'s `setCls(b,'on',on)`,
+   `paintMatStrip`, `accepts-row.js`), and they now share one grammar: hover is a warm neutral that
+   says "clickable", `:active` is a darker press, and ARMED owns a channel neither can touch — an
+   inset shadow plus an outer ring — on top of the bright fill and lit border. `:hover`/`:active` are
+   repeated on the armed selector so the cursor that armed a chip can never wash the state back out.
+   `palette-layout.test.js` sweeps that set and pins its membership COUNT.
+
+   ⛔ AND THE SWEEP'S REACH IS NARROWER THAN "EVERY ARMABLE CONTROL" — say it here rather than let
+   the next reader assume it. Its predicate is literal: a rule whose SUBJECT compound carries both a
+   `.rz-` class and the class `.on`. A control that spells its chosen state anything else, or that
+   is not `.rz-`-prefixed, is INVISIBLE to it — both blind spots were driven, and both stayed green.
+   That is not hypothetical: `.rz-crew` at the top of this file spells selection `.sel`, and
+   `.rz-crew:hover` and `.rz-crew.sel` share `border-color:#cf7a33` with no shadow on either side —
+   the SAME collision, third instance, unswept and deliberately not fixed from here (FILED).
+
+   ⭐ THE RING IS A `box-shadow` FOR THE REASON THE TOOL ROW'S IS: shadows do not participate in
+   layout, and these two rows wrap under exactly the same clipping rule the palette does. The inset
+   is 1px/3px rather than the tool's 2px/4px — the same grammar at the chip's smaller size (a ~22px
+   chip cannot carry a 4px well without going muddy); it is depth, not a different signal. */
 .rz-mat-chip{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 7px 4px;
-  border-radius:8px;cursor:pointer;background:rgba(26,22,17,.5);border:1px solid #3a332a}
-.rz-mat-chip:hover{border-color:#cf7a33}
-.rz-mat-chip.on{background:#3a2a12;border-color:#f2b563}
+  border-radius:8px;cursor:pointer;background:rgba(26,22,17,.5);border:1px solid #3a332a;
+  transition:background-color .09s ease,border-color .09s ease,box-shadow .09s ease}
+/* "you can click this" — deliberately NOT the lit amber. */
+.rz-mat-chip:hover{border-color:#6b5c45;background:rgba(46,39,29,.62)}
+.rz-mat-chip:active{background:#241b11;border-color:#8a6c3f}
+.rz-mat-chip.on,.rz-mat-chip.on:hover,.rz-mat-chip.on:active{background:#5a3f14;border-color:#f2b563;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.6),0 0 0 2px rgba(207,122,51,.34)}
 .rz-mat-sw{display:block;border-radius:4px;overflow:hidden}
 .rz-mat-name{font-size:8px;letter-spacing:.03em;color:var(--ink-mute,#8c8377);white-space:nowrap}
-.rz-mat-chip.on .rz-mat-name{color:#f2b563}
+.rz-mat-chip.on .rz-mat-name{color:#ffd489}
 
 /* ACCEPTS chip row (WP-6) — shown when STOCKPILE is armed. A SIBLING of .rz-matstrip in the same
    wrapper and by the same rule: the options belonging to the armed tool. The two are mutually
@@ -1591,12 +1627,20 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-acc-label{font-size:9px;letter-spacing:.14em;color:var(--ink-faint,#57503f);flex:none;
   padding-right:2px;white-space:nowrap}
 /* Lit = accepted, dark = kept out. Same on/off vocabulary as .rz-tool and .rz-mat-chip, because a
-   filter toggle IS an on/off tool — the reason hud.js reused .tool for the console's own chips. */
+   filter toggle IS an on/off tool — the reason hud.js reused .tool for the console's own chips.
+
+   ⚠️ THIS ROW CARRIED THE PALETTE'S DEFECT EXACTLY, not a variant of it: `:hover` and `.on` BOTH set
+   `border-color:#cf7a33`, so a hovered-and-kept-out chip and an accepted one drew the same edge, and
+   the click a player makes lands under their own cursor. Fixed on the shared grammar — see the block
+   comment over `.rz-mat-chip` above. */
 .rz-acc-chip{flex:none;padding:5px 9px;border-radius:7px;font-size:9.5px;letter-spacing:.06em;
   cursor:pointer;background:rgba(26,22,17,.5);color:var(--ink-faint,#57503f);border:1px solid #3a332a;
-  white-space:nowrap}
-.rz-acc-chip:hover{color:#b3aa9c;border-color:#cf7a33}
-.rz-acc-chip.on{background:#3a2a12;color:#f2b563;border-color:#cf7a33}
+  white-space:nowrap;transition:background-color .09s ease,border-color .09s ease,color .09s ease,
+  box-shadow .09s ease}
+.rz-acc-chip:hover{color:#cdc3b2;border-color:#6b5c45;background:rgba(46,39,29,.62)}
+.rz-acc-chip:active{background:#241b11;border-color:#8a6c3f}
+.rz-acc-chip.on,.rz-acc-chip.on:hover,.rz-acc-chip.on:active{background:#5a3f14;color:#ffd489;
+  border-color:#f2b563;box-shadow:inset 0 1px 3px rgba(0,0,0,.6),0 0 0 2px rgba(207,122,51,.34)}
 .rz-acc-note{font-size:8.5px;letter-spacing:.08em;color:var(--ink-faint,#57503f);white-space:normal}
 /* The count of already-painted tiles that DISAGREE gets the alarm colour the back-off hatch uses:
    it is the one line in this row that is about the map rather than about the brush. */

@@ -20,11 +20,40 @@
 //
 // Exits non-zero on any failed check. NOT wired into ./ci.sh: it needs a browser and a running host,
 // and the gate stays browser-free (the same rule awaiting-shot.mjs / moss-shot.mjs state).
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ 2026-08-03 — THE START STATE THIS RIG NEEDS, SAID OUT LOUD (rig-hardening lane).
+//
+// ⛔ A WARM HOST IS NOT A CLEAN ONE, and this tool measures PER-STATE CELLS (lens off vs lens on,
+// deck 0 vs deck 1), so a leftover from the previous run is a wash it did not put there. `wire/
+// session.js` is explicit — *"single-session by design: deck/lens/speed/cursor/selection are shared
+// across tabs"* — and the FOCUSED ROOM is host state too. This rig therefore PROVES ITS RESET rather
+// than demanding a fresh host, and does it on its OWN socket / its own keystrokes, never by hoping:
+//   · LENS   → `{cmd:'lens',name:'none'}` below, then the CONTROL leg re-measures that nothing is
+//              washed (an INCLUSION bound: ≥ 4 compartments answered).
+//   · ROOM   → `leaveRoomZoom()` before the first read AND after the last. Section 7 ENTERS a room
+//              and the previous cut never left it, so run 2 of this tool booted straight into the
+//              Room Zoom, where there is no `.pl-room` to wash and the CONTROL read `{}`.
+//   · DECK   → driven and VERIFIED against `frame.deck` on this socket, not assumed from a pip click.
+//   · SELECT → re-established by `verifiedClick`, which re-clicks until the HOST says she is chosen.
+// The one thing it cannot reset is a PENDING ORDER (there is no cancel verb) — section 7 issues one,
+// so the OBSERVED task line there is a second-run-sensitive observation and is not a check.
+//
+// ⭐ AND THE RIG NOW WITNESSES WHAT ITS OWN CLICKS DID TO THE SHIP. `Cmd.click` reaches
+// `ContextAction`, which TOGGLES the device on the clicked tile when no citizen is standing there
+// (GameSession.cs:1936-1958 — gated by a LIVE MOSS server; the measured receipts are in the witness
+// section at the foot of this file). A rig that re-clicks a walking pawn can actuate the ship it
+// then photographs, so the `devices` channel is fingerprinted before the first gesture and compared
+// after the last — see the final check.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { dismissOnboarding, verifiedClick, die, deviceOpenState, actuationDiff } from './rig-lib.mjs';
+// The host's own answer to "who is selected", imported rather than restated: `frame.sel` is a TILE
+// and the join to a cid is `messages.js`'s, so the rig cannot drift from the client's reading.
+import { selectedCrewCid } from '../src/wire/messages.js';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8360');
@@ -38,10 +67,16 @@ const log = (...a) => console.log(...a);
 mkdirSync(OUT, { recursive: true });
 let failures = 0, checks = 0;
 // ⚠️ THE COUNT IS EMITTED, NOT CLAIMED. The first cut of this package quoted a check count in its
-// commit message that nobody could reproduce from the file (it said 14; the all-pass path runs 16).
+// commit message that nobody could reproduce from the file (it said 14; the all-pass path ran 16).
 // A hand-counted number in prose is exactly the "count you did not measure yourself" this repo keeps
 // getting caught by, so the run prints its own — and it counts CALLS, so a leg that never ran (the
 // `else check(false, …)` arms below only fire when a leg is skipped) shows up as a smaller number.
+//   ⛔ …AND THIS COMMENT WENT STALE ANYWAY, WHICH IS THE JOKE AND THE LESSON (2026-08-03, caught in
+//   review of the rig-hardening lane). The number above stayed at 16 after the actuation witness
+//   added a seventeenth check, so the paragraph warning against unmeasured counts was itself
+//   carrying one. The all-pass path is 17, RE-MEASURED off four runs of this tool on a fresh host
+//   (`17 checks, 0 failures` each) rather than counted by eye — and the standing instruction is: do
+//   not update this sentence from the diff, run the tool and read its own last line.
 const check = (ok, what) => { checks += 1; log((ok ? '  PASS  ' : '  FAIL  ') + what); if (!ok) failures += 1; };
 
 // The two washes, verbatim from `overview-model.js`'s GRADE_TINT — restated because this tool talks
@@ -63,6 +98,12 @@ await new Promise((res, rej) => {
 // already on. Reset it here, on this tool's own socket, before anything is read.
 ws.send(JSON.stringify({ cmd: 'lens', name: 'none' }));
 await sleep(2500);
+
+// ⭐ THE ACTUATION WITNESS'S BASELINE, taken before this tool has clicked anything at all. Compared
+// against the same reading at the end — the final check. Taken here rather than after Chrome starts
+// so that EVERY gesture this rig makes is inside the window.
+const devicesAtStart = deviceOpenState(latest);
+log(`devices channel at boot: ${Object.keys(devicesAtStart).length} tile-resident devices witnessed`);
 
 const rooms = latest.get('rooms')?.rooms || [];
 const airless = rooms.filter((r) => r[4] === 0);
@@ -106,7 +147,9 @@ const evaluate = async (expr) => (await call('Runtime.evaluate', { expression: e
 const json = async (expr) => { const s = await evaluate(`JSON.stringify(${expr})`); return (s && s !== 'null') ? JSON.parse(s) : null; };
 async function png(name) {
   const r = await call('Page.captureScreenshot', { format: 'png' });
-  if (!r.result?.data) { console.error('FAIL: captureScreenshot returned nothing for ' + name); process.exit(6); }
+  // Through the shared exit: this guard used to `process.exit` with the browser still running,
+  // which is the leaked-Chrome OOM this package is FOR (see `die`'s header).
+  if (!r.result?.data) die(chrome, 6, 'captureScreenshot returned nothing for ' + name);
   const p = join(OUT, PREFIX + name); writeFileSync(p, Buffer.from(r.result.data, 'base64')); log('  wrote', p);
 }
 async function clickAt(x, y) {
@@ -116,6 +159,29 @@ async function clickAt(x, y) {
 const centre = async (sel) => json(
   `(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;`
   + `const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:r.width,h:r.height};})()`);
+
+/** ⛔ IS A ROOM OPEN? ASK THE SURFACE'S STATE, NEVER "does `.rz-canvas` exist". MEASURED THE HARD WAY
+ *  (2026-08-03): the node is in the DOM while the Room Zoom is SHUT, so `centre('.rz-canvas')`
+ *  answers a ZERO-SIZE RECT — an object, and objects are truthy. A retry that settled on it reported
+ *  the room "already open", never clicked, and three legs below then swept a 0x0 box and failed as
+ *  if the PRIORITISE menu were broken. `body.roomzoom-open` is the class the view itself sets, and
+ *  the `w > 0` term makes the answer a fact about layout rather than about markup. */
+const roomIsOpen = async () => (await evaluate(
+  `(()=>{const c=document.querySelector('.rz-canvas');const r=c&&c.getBoundingClientRect();`
+  + `return (document.body.classList.contains('roomzoom-open')&&r&&r.width>0)?1:0;})()`)) === 1;
+
+/** ⚠️ BACK OUT OF ANY OPEN ROOM — the focused room is HOST state (`wire/session.js`), so section 7
+ *  leaving one open boots the NEXT run straight into the Room Zoom, where there is no `.pl-room` to
+ *  wash and the CONTROL leg reads `{}`. Called before the first read and after the last, so a
+ *  poisoned session cannot cross runs in either direction. (why-line-shot.mjs's `leaveRoomZoom`.) */
+async function leaveRoomZoom() {
+  for (let i = 0; i < 4; i++) {
+    if (!(await roomIsOpen())) return;
+    for (const type of ['keyDown', 'keyUp'])
+      await call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(1200);
+  }
+}
 
 /** Every lens wash rect, keyed by the compartment it covers — joined on the SVG geometry, so this is
  *  the fill the player's eye actually receives over that anchor, never a re-derivation. */
@@ -134,12 +200,12 @@ await call('Page.enable'); await call('Runtime.enable');
 await call('Page.navigate', { url: `http://localhost:${CLIENT_PORT}/?port=${HOST_PORT}` });
 await sleep(6000);
 
-// The onboarding card is a one-shot over everything; dismiss it before touching the lens rail.
-for (let i = 0; i < 20; i++) {
-  const onb = await centre('[data-onb-begin]');
-  if (onb) { await clickAt(onb.x, onb.y); await sleep(1500); break; }
-  await sleep(1000);
-}
+// THE ONBOARDING CARD, DISMISSED AND VERIFIED GONE (shared helper, 2026-08-03). The one-shot
+// this replaces could SILENTLY SKIP a card that had not painted yet, and every click below
+// then landed on a full-screen modal instead of the ship.
+await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
+// …and hand this run an OVERVIEW, whatever the last one left focused (see the START STATE header).
+await leaveRoomZoom();
 
 // ───────────────────────── 3. THE CONTROL: lens OFF. No wash anywhere.
 log('\nCONTROL — no lens selected');
@@ -162,8 +228,18 @@ await png('01-no-lens.png');
 log('\nOUTCOME — the PRESSURE lens');
 const lensBtn = await centre('[data-ov-lens="pressure"]');
 check(!!lensBtn, 'the PRESSURE lens button is on the rail');
-await clickAt(lensBtn.x, lensBtn.y);
-await sleep(1500);
+// ⭐ VERIFIED, NOT FIRED. The lens is HOST state and it comes back on `frame.lens` — this tool's own
+// socket, not the page it is testing. A single click + `sleep(1500)` that missed (or that landed
+// while the rail was still being reconciled) produced NO wash, and every leg below then reported the
+// LENS as broken: a red for the wrong reason, on an instrument nothing gates.
+await verifiedClick({
+  what: 'the HOST switched to the PRESSURE lens (frame.lens)',
+  target: () => centre('[data-ov-lens="pressure"]'),
+  settled: async () => latest.get('frame')?.lens === 'pressure',
+  clickAt, log, chrome, timeoutMs: 20000, code: 7,
+  diagnose: async () => ({ lens: latest.get('frame')?.lens }),
+});
+await sleep(800);                                    // one repaint after the host agreed
 const on = await washByAnchor();
 log('  wash by anchor:', JSON.stringify(on));
 const wireDeck0 = new Map(rooms.filter((r) => r[1] === 0).map((r) => [r[0], r[4]]));
@@ -186,7 +262,17 @@ await png('02-pressure-lens-deck0.png');
 log('\nDECK 1 — the dead deck');
 const pip1 = await centre('[data-ov-deck="1"]');
 if (pip1) {
-  await clickAt(pip1.x, pip1.y); await sleep(2000);
+  // VERIFIED against `frame.deck` on this tool's own socket. A pip click that did not land leaves
+  // DECK 0 on screen, whose compartments are mostly pressurised — so the leg below would count 1-2
+  // reds and report the DEAD DECK as broken, when what actually failed was the rig's own gesture.
+  await verifiedClick({
+    what: 'the HOST switched to deck 1 (frame.deck)',
+    target: () => centre('[data-ov-deck="1"]'),
+    settled: async () => (latest.get('frame')?.deck | 0) === 1,
+    clickAt, log, chrome, timeoutMs: 20000, code: 7,
+    diagnose: async () => ({ deck: latest.get('frame')?.deck }),
+  });
+  await sleep(1200);
   const d1 = await washByAnchor();
   const reds = Object.values(d1 || {}).filter((f) => f === BAD).length;
   check(reds >= 4, `deck 1 reads as vacuum across the board (${reds} red compartments) — OD-E's dead deck `
@@ -197,9 +283,32 @@ if (pip1) {
 // ───────────────────────── 6. THE READOUT carries a kPa reading.
 log('\nREADOUT — the atmosphere box');
 const pip0 = await centre('[data-ov-deck="0"]');
-if (pip0) { await clickAt(pip0.x, pip0.y); await sleep(1500); }
-const crew = await centre('.ov-crew');
-if (crew) { await clickAt(crew.x, crew.y); await sleep(1500); }
+if (pip0) {
+  await verifiedClick({
+    what: 'the HOST switched back to deck 0 (frame.deck)',
+    target: () => centre('[data-ov-deck="0"]'),
+    settled: async () => (latest.get('frame')?.deck | 0) === 0,
+    clickAt, log, chrome, timeoutMs: 20000, code: 7,
+    diagnose: async () => ({ deck: latest.get('frame')?.deck }),
+  });
+  await sleep(1000);
+}
+// ⭐⭐ THE FILED DEFECT (HANDOVER "Tooling", 2026-08-03): this was ONE fire-and-forget click at
+// `.ov-crew` followed by `sleep(1500)`, and it is the same shape the why-line rig's STEP-2 flake
+// turned out to be. Selection is HOST state and the gesture is not latched client-side:
+// `crewRowClick` (hud.js:940) reads the pawn's tile out of the LAST FRAME IT RECEIVED
+// (`crewClickTarget`, console-model.js:166) and sends `Cmd.click(x,y)`; the host selects whoever
+// stands there WHEN THE COMMAND LANDS. She WANDERS on this ship (deck-confined idle wander), so one
+// frame of staleness and the click selects NOBODY — the atmosphere box then stays `hidden` through
+// the 30 s poll below and THREE checks red, blaming D4's readout for a gesture the rig fumbled.
+// Waiting longer could never fix it: a click that already landed on empty floor does not un-miss.
+await verifiedClick({
+  what: 'the HOST reports a crew member selected (frame.sel lands on a crew tile)',
+  target: () => centre('.ov-crew'),
+  settled: async () => selectedCrewCid(latest.get('frame')) != null,
+  clickAt, log, chrome, timeoutMs: 30000, code: 9,
+  diagnose: async () => ({ sel: latest.get('frame')?.sel, crew: latest.get('frame')?.crew }),
+});
 // ⚠️ POLLED: she WANDERS (deck-confined idle wander), and the readout's CURRENT ROOM join is null
 // while she stands on a spine tile belonging to no bound compartment. A fixed sleep here reads
 // whichever tile she happened to be on, which is a coin flip rather than a measurement.
@@ -227,8 +336,17 @@ const hall = await centre('.pl-room[data-anchor="hall_d0_s2"]');
 if (!hall) {
   check(false, 'the airless frontier hall is not on screen — the order leg cannot run');
 } else {
-  await clickAt(hall.x, hall.y);
-  await sleep(3500);
+  // VERIFIED, and it removes a CRASH-red as well as a false one: the old cut clicked once, slept
+  // 3500 ms and then read `centre('.rz-canvas')`, whose null was dereferenced two lines later
+  // (`canvas.x`) — a TypeError, which reads as a broken tool rather than as a room that would not
+  // open (TRAPS 3: a crash is not the semantic red).
+  await verifiedClick({
+    what: 'the Room Zoom opened on the airless frontier hall (body.roomzoom-open + a laid-out canvas)',
+    target: () => centre('.pl-room[data-anchor="hall_d0_s2"]'),
+    settled: roomIsOpen,
+    clickAt, log, chrome, timeoutMs: 25000, code: 10,
+  });
+  await sleep(1200);
   // ⚠️ THE RIGHT-CLICK IS DISPATCHED AS A DOM `contextmenu` EVENT, not as CDP's right mouse button.
   // `Input.dispatchMouseEvent` with `button:'right'` presses and releases the button; it does NOT
   // synthesize the `contextmenu` event `.rz-canvas` listens for (measured — the first version of
@@ -293,6 +411,31 @@ if (!hall) {
     await png('06-after-the-order.png');
   } else check(false, 'the menu row was not clickable — the order leg could not run');
 }
+await leaveRoomZoom();   // the focused room is HOST state — hand the session back on the Overview
+
+// ═════════════════ 8. ⭐⭐ THE ACTUATION WITNESS — what did this rig's own clicks DO to the ship?
+//
+// ⛔ THE HAZARD IS NOT HYPOTHETICAL AND IT IS THE PRICE OF EVERY RETRY LOOP ABOVE. `Cmd.click(x,y)`
+// runs `GameSession.ContextAction` (GameSession.cs:475): a citizen on the tile SELECTS, and
+// otherwise a device on that tile is TOGGLED (:1936-1958) — whenever the MOSS server is LIVE, which
+// is the gate BOTH commands open with (Commands.cs:84; ContextAction's `actuates` flag only picks
+// the status line). ⭐ MEASURED, not assumed: one click at each of the 49 deck-0 device tiles on the
+// SHIPPED WRECK moved NOTHING (MOSS boots dark there), while the same sweep on a MOSS-LIVE ship
+// (`--ship grid`) SHUT EIGHT DOORS — `kind 0 at 5,7,0: open 1 → 0` and seven more. The wreck reaches
+// that state the moment the player repairs `term_moss`, which is the game's own ladder. The crew-row
+// gesture aims at the pawn's LAST-FRAME tile, so a rig that re-clicks a walker can flip a device and
+// then photograph a ship it changed itself — a GREEN run that is evidence about the wrong world.
+//
+// ⚠️ NON-VACUITY IS THE `witnessed > 0` TERM, and it is an INCLUSION bound (4th shape): an empty
+// `devices` channel diffs empty and would pass for ever. Only tiles present in BOTH snapshots are
+// compared — the channel is fog-gated, so an arriving row is new sight, not a toggle.
+const witnessed = Object.keys(devicesAtStart).length;
+const actuated = actuationDiff(devicesAtStart, deviceOpenState(latest));
+check(witnessed > 0 && actuated.length === 0,
+  `THE RIG DID NOT ACTUATE THE SHIP IT PHOTOGRAPHED — ${witnessed} devices witnessed across the run, `
+  + `${actuated.length} changed state${actuated.length ? ': ' + actuated.join(' · ') : ''}. A stale `
+  + 'click that lands on a device tile toggles it through ContextAction, so a green run with a moved '
+  + 'device is a run whose screenshots are of the rig\'s own doing');
 
 chrome.kill('SIGKILL');
 log(failures ? `\n${checks} checks run, ${failures} FAILED` : `\nall checks passed — ${checks} checks, 0 failures`);
