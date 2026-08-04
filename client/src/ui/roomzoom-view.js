@@ -48,7 +48,7 @@ import {
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   roomBlockedTiles,
-  demolishTarget, addDecor, removeDecor, escStackRung,
+  demolishTarget, removeDecor, escStackRung,
   eraseTarget, tileOrders, roomMarkNameAt, roomTileZoned,
   shipCrewRows,
   // THE THREE CHROME SENTENCES, keyed on whether a tool is armed — see `zoomChrome`'s header for
@@ -66,7 +66,18 @@ import { taskTag, surnameOf, watchTask, RZ_DOCK_TASK_CHARS } from './console-mod
 import { makeNudge } from './paused-nudge.js';
 import {
   materialsForTool, materialItemId, activeMaterial, setMaterial, toolHasMaterial, defaultMaterials,
+  materialLabel, allTilesAlreadyMaterial,
 } from './build-material-model.js';
+// ⭐⭐ THE PALETTE'S HONESTY — price, stock, and the two refusals that were silent. See that file's
+// header for the owner complaint ("I cannot build anything except the walls"), the measured cause
+// (3 PARTS a wreck holding 1 cannot pay) and why the price is a pinned mirror rather than a wire read.
+import {
+  chipCostText, chipTitleText, paletteCostRow, placeRefusalText, decorRefusalText,
+} from './build-cost-model.js';
+// PARTS ABOARD, read from the SAME derivation the Overview's LEDGER island prints, so the palette
+// and the ledger cannot count one ship two ways. `Hud.getLedger` is already on `SHIP_STATE_REACH`
+// (client/test/surface-boundary.test.js) — this adds no symbol to that pinned list.
+import { partsUnits } from './ledger-model.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -102,6 +113,12 @@ let _wasPaused = false;   // previous run state — the edge that dismisses the 
 let _open = false;
 let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomType, displayName, rx,ry,rw,rh}
 let _armed = null;        // the ONE Level-2 input slot (17 tools + null)
+// ⛔ THE SESSION-LOCAL DECOR ARRAY, KEPT EMPTY ON PURPOSE. Nothing writes it any more (the
+// SHELF/RUG click that used to `addDecor` into it now says what it actually is — see
+// `onCanvasClick`'s cosmetic branch). It is not deleted because M4-6's wire-or-remove ruling is
+// the OWNER'S and still open: leaving the slot and its `removeDecor` path in place is what makes
+// tonight's change a one-line revert. `allDecor` still concatenates it, so the layer's shape is
+// unchanged for the day a real source lands.
 let _decor = [];          // session-local cosmetic decor (never hashed, never wired)
 let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
@@ -144,6 +161,7 @@ let _ctx = null;
 // stock-filter-model.js. A player who never touches the chips gets exactly E0-3 behaviour.
 let _stockFilter = defaultStockFilter();
 let _accSig = '';         // last-rendered ACCEPTS row signature (mask + mismatch count), or 'off'
+let _costSig = '';        // last-rendered COST row signature (tool + level + sentence), or 'off'
 
 // ── keyed in-place reconciliation state (ROOM-ZOOM stability fix) ─────────────────────────────
 // The chrome (palette buttons, breadcrumb links, minimap, caption) used to rebuild wholesale
@@ -230,6 +248,12 @@ function buildSkeleton() {
       //      zone key's own words, so a player who never opens the row still reads back what they
       //      painted. A hidden control whose EFFECT is visible is not a hidden decision.
       '<div class="hud rz-accepts" id="rz-accepts" hidden></div>' +
+      // ⭐ THE COST ROW — the THIRD sibling in this wrapper, on exactly the ACCEPTS row's argument
+      // above and mutually exclusive with both of the others (materials are WALL/FLOOR, accepts is
+      // STOCKPILE, this is the seven furniture tools plus the two cosmetic ones), so the reveal
+      // still costs zero net height on a palette that wraps. It says the price and the stock BEFORE
+      // the click — `build-cost-model.js`'s `paletteCostRow`.
+      '<div class="hud rz-cost" id="rz-cost" hidden></div>' +
       '<div class="hud rz-palette" id="rz-palette"></div>' +
       // AN `id` AS WELL AS THE CLASS, and it is not decoration: the hint is the one chrome text
       // this file did not own a node reference for — it was a literal baked into this markup string
@@ -324,14 +348,22 @@ function buildChrome() {
   let btns = '<span class="rz-place-label"></span>';
   for (const tool of ROOM_TOOLS) {
     const demo = tool === 'demolish' ? ' demo' : '';
-    btns += '<button type="button" class="rz-tool' + demo + '" data-rztool="' + tool +
-      '" aria-pressed="false">' + esc(TOOL_LABEL[tool]) + '</button>';
+    // ⭐ THE COST LINE ON THE CHIP ITSELF. Built HERE, in the once-only pass, because the palette's
+    // buttons are deliberately never rebuilt (a node torn down between mousedown and mouseup eats
+    // the click — HANDOVER §4h). The line's TEXT is a constant per tool (`3 PARTS` / `NOT YET`), so
+    // nothing in it needs a repaint; the LIVE half — can the ship pay right now — is a class toggle
+    // and a `title`, both written in place by `paintPalette`.
+    const cost = chipCostText(tool);
+    btns += '<button type="button" class="rz-tool' + (cost ? ' costed' : '') + demo + '" data-rztool="' + tool +
+      '" aria-pressed="false"><span class="rz-tool-name">' + esc(TOOL_LABEL[tool]) + '</span>' +
+      (cost ? '<span class="rz-tool-cost">' + esc(cost) + '</span>' : '') + '</button>';
   }
   pal.innerHTML = btns;
   _el.placeLabel = pal.querySelector('.rz-place-label');
   _el.toolBtns = Array.from(pal.querySelectorAll('.rz-tool'));
   _el.matStrip = $('rz-matstrip'); // material swatch row — populated on arm(wall|floor)
   _el.accepts = $('rz-accepts');   // ACCEPTS chip row — populated on arm(stockpile)
+  _el.cost = $('rz-cost');         // PRICE + STOCK row — populated on arm(furniture|decor)
 
   // crew dock — a FIXED header plus a list container whose rows are keyed by cid (see `_crewRows`).
   // Built with real nodes rather than one `innerHTML` string so the row under the pointer survives
@@ -365,6 +397,7 @@ function buildChrome() {
 
   _matSig = '';
   _accSig = '';
+  _costSig = '';
   _crewSig = '';
   _crewRows.clear();
   _miniSig = ''; // force the first minimap paint to render
@@ -546,6 +579,7 @@ function repaint() {
   // the chips, so it has to be recomputed whenever the `zones` channel moves — a hauler filling the
   // last free tile, or the player painting more of the room, both change it without touching a chip.
   paintAccepts();
+  paintCostRow();
 }
 
 // ── the framed floor (VS-Z-06..09) ──
@@ -1085,11 +1119,31 @@ function paintMinimap() {
   if (html !== _miniSig) { $('rz-minimap').innerHTML = html; _miniSig = html; }
 }
 
+/** ⭐ PARTS ABOARD, from the SAME reader the Overview's LEDGER island uses (`partsUnits`) over the
+ *  SAME cached `ledger` message. One derivation, so the palette and the ledger can never count one
+ *  ship two ways — the `surnameOf`/`watchTask` rule applied to a number instead of a word.
+ *  0 before the first ledger arrives, which is what a sparse census with no Parts row means. */
+function partsAboard() {
+  return partsUnits(Hud.getLedger());
+}
+
 // The BUTTONS only — the group label moved to `paintChrome`, which owns all three chrome sentences.
 function paintPalette() {
+  const parts = partsAboard();
   for (const b of _el.toolBtns) {
-    const on = _armed === b.dataset.rztool;
+    const tool = b.dataset.rztool;
+    const on = _armed === tool;
     setCls(b, 'on', on);
+    // ⭐ THE LIVE HALF OF THE PRICE. The chip's `3 PARTS` line is a constant written once by
+    // `buildChrome`; what changes tick to tick is whether the ship can PAY it, and that is a class
+    // toggle plus a `title` — never a re-render, because rebuilding a palette button detaches the
+    // node under the player's press and eats the click (HANDOVER §4h). `.cant` is a paint-only
+    // state for the same reason the armed ring is a shadow: it must not re-measure a wrapping row.
+    // ⚠️ THE DECOR TOOLS ARE PERMANENTLY `.cant` and that is not an affordability claim — SHELF and
+    // RUG reach no sim at all, so "the ship cannot do this" is simply true of them until M4-6 rules.
+    const row = paletteCostRow(tool, parts);
+    setCls(b, 'cant', !!(row && row.level === 'fault'));
+    setAttr(b, 'title', chipTitleText(tool, parts));
     // The armed state, said in words as well as in colour. One exclusive slot, so exactly one button
     // may read `true` — which is why this writes 'false' rather than removing the attribute: an
     // absent `aria-pressed` turns a toggle back into a plain button, and sixteen plain buttons
@@ -1143,6 +1197,34 @@ function paintMatStrip() {
  * between mousedown and mouseup, so Chrome fired no `click` at all. A chip you have to click twice is
  * that bug wearing a filter.
  */
+/**
+ * ⭐⭐ THE COST ROW: the price and the stock of the tool in hand, BEFORE the click.
+ *
+ * Shown only while a furniture or a decor tool is armed — a sibling of `#rz-matstrip` and
+ * `#rz-accepts` in the same wrapper, on the same reveal-on-arm rule, and mutually exclusive with
+ * both (materials are WALL/FLOOR, accepts is STOCKPILE, this is the seven place tools plus the two
+ * cosmetic ones), so it costs the wrapping palette zero net height.
+ *
+ * Re-rendered only when its (tool, text, level) signature changes — the ACCEPTS row's rule, and for
+ * the same reason: this surface repaints at the wire's 10 Hz and a node rebuilt under a press eats
+ * the click. The PARTS count moves at ≤1 Hz (the host's ledger cadence), so in practice this writes
+ * on arm and on the rare tick where the balance actually changed.
+ */
+function paintCostRow() {
+  if (!_el.cost) return;
+  const row = paletteCostRow(_armed, partsAboard());
+  if (!row) {
+    if (_costSig !== 'off') { _el.cost.hidden = true; _el.cost.innerHTML = ''; _costSig = 'off'; }
+    return;
+  }
+  const sig = _armed + ':' + row.level + ':' + row.text;
+  if (sig === _costSig) return;
+  _el.cost.innerHTML = '<span class="rz-cost-line' + (row.level ? ' fault' : '') + '">' +
+    esc(row.text) + '</span>';
+  _el.cost.hidden = false;
+  _costSig = sig;
+}
+
 function paintAccepts() {
   if (!_el.accepts) return;
   if (_armed !== 'stockpile') {
@@ -1173,6 +1255,7 @@ function arm(tool) {
   paintPalette();
   paintMatStrip();
   paintAccepts();
+  paintCostRow();
   paintCanvas();
   if (_armed != null) nudgeOnIntent(); // arming (not disarming) is the intent worth nudging about
 }
@@ -1344,12 +1427,34 @@ function onCanvasClick(e) {
     // problem: with the shipped `bunk` tool armed, two clicks on clear floor of the wreck's reactor
     // bay left the room's device census byte-identical. Now pinned by derivation off
     // `GameSession.cs`'s own switch in `prioritise-menu.test.js`.
-    if (typeof Cmd.place === 'function') { _send(Cmd.place(pc.kind, tile.x, tile.y, deck)); pulse(tile, false); nudgeOnIntent(); }
-    else { toast(TOOL_LABEL[_armed] + ' — PLACEMENT LANDS WITH THE SIM BUILD PASS'); pulse(tile, false); }
+    if (typeof Cmd.place === 'function') {
+      // ⭐⭐ THE COMMAND STILL GOES, ALWAYS, AND THE SENTENCE IS SAID BESIDE IT — never instead of it.
+      // The host is the only authority on whether a placement happens; this surface only answers for
+      // what it can prove. `placeRefusalText` is '' unless the ledger's census (an UPPER BOUND on the
+      // spendable Parts — `build-cost-model.js`'s header has the inequality) is already short of the
+      // 3-Parts price, in which case `PlaceDeviceCommand.TryPay` cannot possibly succeed and the
+      // silence the owner hit ("I cannot build anything except the walls") is now a sentence.
+      // ⛔ IT DOES NOT GATE THE SEND, and that is deliberate: the ledger refreshes at ≤1 Hz, so a
+      // census one second stale that WITHHELD the command would refuse a legal placement — the same
+      // silent no-op, re-created from the other side.
+      _send(Cmd.place(pc.kind, tile.x, tile.y, deck));
+      const refused = placeRefusalText(_armed, partsAboard());
+      if (refused) toast(refused); else nudgeOnIntent();
+      pulse(tile, false);
+    } else { toast(TOOL_LABEL[_armed] + ' — PLACEMENT LANDS WITH THE SIM BUILD PASS'); pulse(tile, false); }
   } else if (pc.cls === 'cosmetic') {
-    _decor = addDecor(_decor, deck, tile.x, tile.y, pc.itemId); // IX-Z-23 view-only, local
+    // ⛔⭐ SHELF AND RUG STOP LYING. They used to write a piece into the module-local `_decor` array
+    // and draw it — art for furniture the ship does not have: `Cmd.decor` does not exist, no command
+    // is sent, and the host's `BuildDecor()` returns a permanently empty static list
+    // (`hosts/web/GameSession.cs`). So the piece vanished on reload, was invisible to every other
+    // surface, and could never be worked at, walked round or saved. A button that draws a
+    // convincing lie is strictly worse than a dead one — it spends the player's trust as well as
+    // their click.
+    // ⚠️ THE SMALLEST REVERSIBLE INTERIM, AND NOT THE DECISION. M4-6's "wire it or remove it" is the
+    // OWNER'S call and is still open, so the buttons stay exactly where they are and keep their
+    // place in the hotkey order; only the lie goes. Restoring the old behaviour is one line.
+    toast(decorRefusalText(_armed));
     pulse(tile, false);
-    repaint();
   } else if (pc.cls === 'move') {
     doMove(tile, deck);
   } else if (pc.cls === 'demolish') {
@@ -1779,6 +1884,21 @@ function onCanvasUp(e) {
       for (const o of erasePayloads(target, t.x, t.y)) _send(o);
     }
   } else for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material));
+  // ⭐⭐ THE FLOOR TOOL'S DEFAULT DRAG, AND WHY IT PAINTED NOTHING. The material picker pre-selects
+  // byte 0 (`defaultMaterials`), byte 0 IS the material the ship's floors are authored in, and
+  // `BuildSystem.CanDesignate` refuses an identity re-floor — so the very first thing a player does
+  // with FLOOR on an untouched deck is a guaranteed, silent no-op. Driven, 2026-08-03: the default
+  // drag designated nothing; the same drag with WOOD selected painted five tiles.
+  //
+  // ⛔ THE FIX IS A SENTENCE, NOT A NEW DEFAULT — argued in `build-material-model.js`'s
+  // `defaultMaterials` header: pre-selecting a material the player never chose would make their
+  // first floor the game's decision rather than theirs (OD-G's shape), and a room already floored in
+  // that material would no-op identically, so it would only move the coin-flip. This is the exact
+  // sibling of the `ERASE ▸ NOTHING TO ERASE HERE` toast six lines below — a sweep that legitimately
+  // committed nothing, reported instead of swallowed — and it lands in the same function for the
+  // same reason. All-or-nothing: a MIXED sweep really does build something and stays quiet.
+  const floorNoOp = pc.kind === 'floor' &&
+    allTilesAlreadyMaterial(res.tiles, decodeMaterials(Hud.getMaterials()), _focus.deck, material);
   if (res.tiles.length) {
     pulse(res.tiles[res.tiles.length - 1], false);
     // STOCKPILE's caption names the mask it just painted. The reason recorded here — "because nothing
@@ -1796,12 +1916,20 @@ function onCanvasUp(e) {
     if (pc.cls === 'erase') {
       toast(TOOL_LABEL[drag.tool] + ' ▸ ' + (erased ? erased + ' ORDER' + (erased === 1 ? '' : 'S') +
         ' TAKEN BACK' : 'NOTHING TO ERASE HERE'));
+    } else if (floorNoOp) {
+      // The material is NAMED, from the picker's own label table, so the player can see which swatch
+      // to move off — "pick another material" over an unnamed one is half an answer.
+      toast(TOOL_LABEL[drag.tool] + ' ▸ ALREADY ' + materialLabel(drag.tool, material) +
+        ' — PICK ANOTHER MATERIAL');
     } else toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res) + accepts);
     // The nudge applies to ERASE TOO, and that is not symmetry for its own sake: a command only
     // reaches the sim on a TICK, so on a paused ship the mark the player just cancelled stays on the
     // floor until they start it again — the same "nothing happened" the nudge exists for. An erase
     // that found nothing to take back sent nothing, so it nudges about nothing.
-    if (pc.cls !== 'erase' || erased) nudgeOnIntent();
+    // A PROVEN NO-OP NUDGES ABOUT NOTHING, and the floor case joins erase's rule for exactly that
+    // reason: "the ship is on HOLD" over a drag that the sim would have refused running or stopped
+    // is a second wrong answer stacked on the first.
+    if ((pc.cls !== 'erase' || erased) && !floorNoOp) nudgeOnIntent();
   }
   scheduleRepaint();
 }
