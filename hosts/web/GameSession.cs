@@ -1794,9 +1794,17 @@ namespace Perilune.Web
                 case "growbed": kind = DeviceKind.GrowBed; return true;
                 case "medbed": kind = DeviceKind.MedBed; return true;
                 case "table": kind = DeviceKind.Table; return true;
-                // M3-10 — the palette's HEATER tool. Unlike growbed/medbed/table above (which are
-                // wire-reachable but have no palette button), this one IS on ROOM_TOOLS, because a
-                // verb only the wire can reach is a verb the player does not have.
+                // M3-10 — the palette's HEATER tool, added because a verb only the wire can reach is
+                // a verb the player does not have.
+                // ⚠️ THE SENTENCE THAT STOOD HERE IS NOW FALSE, AND IT IS KEPT AS THE RECORD BECAUSE
+                // IT IS QUOTED. It read: "Unlike growbed/medbed/table above (which are wire-reachable
+                // but have no palette button), this one IS on ROOM_TOOLS, because a verb only the
+                // wire can reach is a verb the player does not have." On 2026-08-04 GROWBED, MEDBED
+                // and TABLE joined the Room Zoom palette for exactly the reason that sentence gives,
+                // so EVERY case in this switch is now reachable from a palette button and no
+                // wire-only furniture verb is left. `client/src/ui/room-model.js`'s ROOM_TOOLS doc
+                // quotes the old wording as the gap's own statement of itself — hence the verbatim
+                // copy above rather than a deletion.
                 case "heater": kind = DeviceKind.Heater; return true;
                 default: kind = default; return false;
             }

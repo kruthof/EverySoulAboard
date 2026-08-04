@@ -297,7 +297,13 @@ test('SHELF and RUG say what they are, and no other tool borrows the sentence', 
       'reach the sim or say that it does not; M4-6 owns the wire-or-remove ruling.');
   }
   const place = ROOM_TOOLS.filter(isPlaceTool);
-  if (place.join(',') !== 'bunk,desk,chair,locker,lamp,plant,heater') {
+  // ⭐ 7 → 10, 2026-08-04: GROWBED, MEDBED and TABLE joined the palette (`room-model.js`'s ROOM_TOOLS
+  // pin carries the decision). They are here rather than in a list of their own BECAUSE this census
+  // is derived — the whole point of the derivation is that a lane which adds a place tool without
+  // pricing it is caught, and the loop two lines down is what does the catching. The three arrive
+  // priced for free: `build-cost-model.js` asks `paletteCommand(tool).cls === 'functional'`, never a
+  // table of names, so a `functional` row IS a priced row by construction.
+  if (place.join(',') !== 'bunk,desk,chair,locker,lamp,plant,heater,growbed,medbed,table') {
     fails.push(`the priced class is now [${place}] — re-derive, and check the new member is priced`);
   }
   for (const t of place) if (toolPlaceCost(t) !== DEVICE_PLACE_COST_PARTS) fails.push(`${t} is priced at ${toolPlaceCost(t)}`);
@@ -619,6 +625,111 @@ test('DRIVEN: a placement the ship cannot pay for SAYS SO — and the command st
   if (!sent.some((o) => o && o.cmd === 'place')) fails.push('an affordable placement sent no command');
 
   armViaButton('bunk');                          // disarm
+  assert.deepEqual(fails, [], fails.join('\n'));
+});
+
+// ⭐⭐ THE OUTCOME LEG FOR THE THREE TOOLS ADDED 2026-08-04 — GROWBED, MEDBED and TABLE, driven
+// through the SHIPPED palette button on the SHIPPED controller, from arming to the wire.
+//
+// ⚠️ WHY IT IS NOT ENOUGH THAT `build-cost-model.js` ASKS THE CLASS. That is the DESIGN — a
+// `functional` row is a priced row by construction, no table of names anywhere — and it is exactly
+// the kind of claim that reads as obviously true and ships broken: the chip's price line is written
+// ONCE by `buildChrome` and never repainted, the `.cant` state and the `title` are written by
+// `paintPalette`, and the armed row by `paintCostRow` — three different code paths, none of which
+// this package touched. A row that reached the palette table and none of those three would be a
+// button that arms, prices nothing, and refuses silently: the owner's original complaint, wearing a
+// new tool. So the affordances are MEASURED on the new rows rather than inherited on paper.
+//
+// ⚠️ AND THE PAYLOAD IS RECORDED AT THE SEAM (trap 4). The wire string is the one thing about these
+// three rows that CANNOT be verified from inside the client — `prioritise-menu.test.js` derives the
+// accepted vocabulary from `GameSession.TryFurnitureKind`'s own switch and pins every functional row
+// against it; this leg's job is that the click actually EMITS the row's `kind`, unchanged, once.
+//
+// MUTATION: give any of the three `cls: 'cosmetic'` in room-model.js ⇒ RED (the chip reads NOT YET,
+//           the click toasts the decor sentence, and no place command goes).
+// MUTATION: hand-write `kind: 'GrowBed'` (the enum member) on the growbed row ⇒ RED here on the
+//           payload leg, and RED in prioritise-menu.test.js's host derivation. That is M3-10's
+//           shipped bug reproduced on a new tool.
+// MUTATION: drop any of the three from ROOM_TOOLS ⇒ RED at `armViaButton` (no such button).
+/**
+ * The `.rz-tool-cost` text inside ONE tool's button, sliced out of the palette's own markup string,
+ * or null when that button carries no cost line. See the ⚠️ at leg 1 for why the node cannot answer.
+ */
+function chipFragment(tool) {
+  const html = palette.innerHTML;
+  const i = html.indexOf(`data-rztool="${tool}"`);
+  if (i < 0) return null;
+  const end = html.indexOf('</button>', i);
+  const m = /<span class="rz-tool-cost">([^<]*)<\/span>/.exec(html.slice(i, end < 0 ? undefined : end));
+  return m ? m[1] : null;
+}
+
+// NON-VACUITY FOR THE SLICER, and it is not a formality: `chipFragment` returns null both when a
+// button has no price AND when the slice missed the button entirely, and the leg above reports both
+// as "ABSENT". An unpriced tool must read null and a priced one must read the price, or the leg is
+// asserting that a lookup which finds nothing found nothing.
+test('the palette-markup slicer attributes a price to the RIGHT chip', () => {
+  assert.equal(chipFragment('bunk'), '3 PARTS', 'the slicer cannot find the price on a tool that has had one since the honesty package');
+  assert.equal(chipFragment('dig'), null, 'DIG has no cost line and the slicer invented one — it is reading past the button');
+  assert.equal(chipFragment('shelf'), DECOR_CHIP_TEXT, 'the slicer does not see the decor chip line');
+  assert.equal(chipFragment('no-such-tool'), null);
+});
+
+test('DRIVEN: GROWBED, MEDBED and TABLE arm, price, refuse honestly, and send their own kind', async () => {
+  const fails = [];
+  const tiles = floorTiles(3);
+
+  await setParts(1);                                   // the state the owner played
+  for (const [i, tool] of ['growbed', 'medbed', 'table'].entries()) {
+    const label = TOOL_LABEL[tool];
+    const want = `${label} ▸ NEEDS 3 PARTS — SHIP HAS 1`;
+    const btn = armViaButton(tool);
+
+    // 1. the chip itself — the constant price line, built once by `buildChrome`.
+    // ⚠️ READ OFF THE PALETTE'S OWN MARKUP STRING, NOT OFF THE BUTTON NODE. `dom-lite`'s scanner
+    // lifts START TAGS and keeps no children, so `btn.innerHTML` is undefined for every one of the
+    // twenty-one buttons — an assertion on it reports ABSENT against a palette that prints the price
+    // correctly (measured: all three legs fired on the shipped tree). The sibling markup test above
+    // regexes `palette.innerHTML` for the same reason; this slices ONE button's fragment out of it so
+    // the price is attributed to the right chip rather than merely present somewhere on the bar.
+    if (chipFragment(tool) !== '3 PARTS') {
+      fails.push(`${label}: the chip's own cost line is ${chipFragment(tool) === null ? 'ABSENT' : '"' + chipFragment(tool) + '"'}, not "3 PARTS"`);
+    }
+    // 2. the live half — `paintPalette`'s `.cant` class and hover sentence
+    if (!btn.classList.contains('cant')) fails.push(`${label}: the chip does not wear the cannot-pay state at 1 Part`);
+    if (btn.getAttribute('title') !== want) fails.push(`${label}: the chip hover reads "${btn.getAttribute('title')}"`);
+    // 3. the armed row — `paintCostRow`, the answer BEFORE the click
+    if (costText() !== want) fails.push(`${label}: the armed cost row reads "${costText()}"`);
+
+    // 4. the click: one command, carrying THIS row's wire kind, and a toast that names the tool
+    const tile = tiles[i];
+    sent.length = 0;
+    toastEl.textContent = '';
+    fire(canvas, 'click', { target: canvas, ...at(tile[0], tile[1]) });
+    if (toastText() !== want) fails.push(`${label}: the refused click said "${toastText()}"`);
+    const places = sent.filter((o) => o && o.cmd === 'place');
+    if (places.length !== 1) fails.push(`${label}: ${places.length} place commands were sent, expected 1`);
+    else if (places[0].kind !== paletteCommand(tool).kind) {
+      fails.push(`${label}: the command carried kind "${places[0].kind}", not "${paletteCommand(tool).kind}"`);
+    } else if (places[0].x !== tile[0] || places[0].y !== tile[1]) {
+      fails.push(`${label}: the command landed at ${places[0].x},${places[0].y} not ${tile[0]},${tile[1]}`);
+    }
+
+    // 5. …and it FOLLOWS the ship's balance rather than latching
+    await setParts(9);
+    if (costText() !== `${label} ▸ 3 PARTS · 9 ABOARD`) {
+      fails.push(`${label}: after a resupply the row reads "${costText()}"`);
+    }
+    if (btn.classList.contains('cant')) fails.push(`${label}: the chip still reads unaffordable at 9 Parts`);
+    await setParts(1);
+    armViaButton(tool);                                // disarm
+  }
+
+  // NON-VACUITY BY INCLUSION: the three sentences must actually DIFFER from one another. Three
+  // identical strings would mean the row is printing a constant and every leg above is free.
+  const rows = ['growbed', 'medbed', 'table'].map((t) => paletteCostRow(t, 1).text);
+  if (new Set(rows).size !== 3) fails.push(`the three tools produce ${new Set(rows).size} distinct sentences: ${JSON.stringify(rows)}`);
+
   assert.deepEqual(fails, [], fails.join('\n'));
 });
 

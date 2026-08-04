@@ -5493,7 +5493,8 @@ all start working again in this commit.**
 
 **ACCEPTANCE, DRIVEN IN REAL CHROME** (`client/tools/heater-shot.mjs`, shots
 `docs/design/shots/heater-*.png`). Fast-forward with the game's own speed stepper until the reactor
-bay is the coldest pressurised compartment at **5.78 °C** → palette shows **18 tools**, HEATER among
+bay is the coldest pressurised compartment at **5.78 °C** → palette shows **21 tools** (**18** when
+this run was taken; GROWBED/MEDBED/TABLE joined `ROOM_TOOLS` on 2026-08-04), HEATER among
 them, none clipped → one click places it (`0 -> 1` on the `devices` channel, read from an
 INDEPENDENT socket) → it draws as the real `space-heater` piece, not a dashed `E` chip → 60 s at
 100× takes the bay to **14.62 °C** while the control compartment moves 1.74 °C (a 5.1× ratio).

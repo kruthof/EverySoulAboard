@@ -619,6 +619,11 @@ test('the TryFurnitureKind parse is NON-VACUOUS — it finds the whole switch', 
     `parsed only ${Object.keys(k).length} furniture tool strings — the regex is matching a fragment`);
   assert.equal(k.bunk, 'Bed', 'the oldest row must still parse');
   assert.equal(k.heater, 'Heater', 'and the newest (M3-10) must too');
+  // The three that were host-side-only until 2026-08-04, named explicitly because the palette rows
+  // added that day mirror these exact strings and a silent rename here is what would un-wire them.
+  assert.equal(k.growbed, 'GrowBed');
+  assert.equal(k.medbed, 'MedBed');
+  assert.equal(k.table, 'Table');
 });
 
 test('every FUNCTIONAL palette row sends a `kind` the host actually switches on', () => {
@@ -642,7 +647,12 @@ test('every FUNCTIONAL palette row sends a `kind` the host actually switches on'
 test('a click with a FUNCTIONAL tool armed sends the palette tool string, not the enum name', () => {
   prime([ADA], null);
   const accepted = parseFurnitureKinds(GAMESESSION_CS);
-  for (const tool of ['lamp', 'bunk', 'heater']) {
+  // ⭐ GROWBED / MEDBED / TABLE joined the list on 2026-08-04 — the three kinds `TryFurnitureKind`
+  // has accepted since before HEATER existed and no palette button could ask for. They are driven
+  // HERE, through the shipped controller, rather than only asserted in the table sweep above,
+  // because "the row exists" and "a click on the canvas emits it" are different facts and this
+  // package's whole subject is the second one.
+  for (const tool of ['lamp', 'bunk', 'heater', 'growbed', 'medbed', 'table']) {
     arm(tool);
     sent.length = 0;
     fire(canvas(), 'click', atTile(WING));
