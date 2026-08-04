@@ -6,6 +6,35 @@ to M3 and what `docs/design/perilune-roadmap-q3.packages.md` §5 is to M2: the s
 the mutation tables, the conflict matrix. **`docs/ROADMAP.md` stays the status authority; this file
 is never the status of anything.***
 
+> ### ⛔ REVISION 2 (2026-08-04, same day) — SEND BACK FROM INDEPENDENT REVIEW: FIVE MAJOR, ELEVEN MINOR, AND THE MAJORS HAVE ONE SHAPE
+>
+> Revision 1 was reviewed by an agent that saw none of its reasoning. ⚠️ **All sixteen are fixed in
+> this revision; nothing was filed out of a document that was being edited.**
+>
+> ⭐ **THE UNIFYING LESSON, AND IT IS THE SAME ONE M3's FILE RECORDED IN A DIFFERENT COSTUME: EVERY
+> MAJOR WAS A CLAIM I REASONED ABOUT RATHER THAN COSTED.** Not one was a mistake about design intent.
+> They were: *"one hashed field"* (the per-person tunable RW§4 requires had **no home at all** — a
+> literal is global, so revision 1 adopted *"one per-pawn stat"* and then priced it out of existence,
+> which also made §13.5's own mitigation false → now **DESIGN QUESTION (g)**); *"the dwell counter IS
+> the rate limiter"* (**RimWorld rate-limits the INPUT**, which stabilises the comparison; a dwell
+> counter rate-limits the OUTPUT and stabilises nothing — and against the **sawtooth**
+> `MECHANICS.md` §13.4 measures, a hard reset means the break may **never fire** → now **DESIGN
+> QUESTION (h)**, and §13.5 names **both** failure directions); *"`P` is free"* (`controls.js:282`
+> binds it to `toggleSprites()`, **two lines above the `T` binding the same paragraph cites**);
+> *"the ten `WireFormat*.cs` partials"* (**twelve**, plus `WireFormat.cs`); and an A/B/C label
+> inversion in §3/§4 against §10's own lettering.
+>
+> ⇒ ⛔ **THE RULE THIS DOCUMENT NOW ASSERTS ABOUT ITSELF, BESIDE M3's *"OPEN EVERY SEAM YOU CHARTER
+> AGAINST"*: PRICE EVERY MECHANISM YOU ADOPT, IN FIELDS.** *"We adopt RimWorld's shape"* is not a
+> design decision until the hashed state it requires has a named home and a field count — and a
+> charter that adopts a per-person mechanism while recommending a global literal has refused the
+> adoption without noticing.
+>
+> ⚠️ **AND ONE MINOR IS WORTH PROMOTING IN THE READER'S MIND:** revision 1's *"M3-8 ruled that Rell
+> gets a sheet"* was a **mis-attribution — M3-8 REFUSED and FILED it** (`MECHANICS.md:5884-5896`).
+> The call is this charter's, it **reverses** M3-8, and it **reddens `SleeperPersonaTests.cs:493` by
+> construction**. Now said in all four places it appears.
+
 > ### ⛔ THE LANE-SELECTION GATE (`docs/PROCESS.md` §2, owner-directed 2026-08-04) — ANSWERED FIRST
 >
 > 1. **Which `TARGET.md` §3 row / `ROADMAP.md` gate, or which VERBATIM owner sentence?**
@@ -67,7 +96,7 @@ later real comment** — apply to every package here and are not restated per ch
 (`…q3.packages.md` §1, `…m3.packages.md` preamble).
 
 **VOCABULARY DISCIPLINE — binding on every charter, commit message, test name and UI string this
-milestone produces** (`console-retirement.plan.md:260-262`, verbatim): *"**'LLM ready', 'opt-in
+milestone produces** (`console-retirement.plan.md:253-255`, verbatim): *"**'LLM ready', 'opt-in
 integration', 'character simulation'. Never 'LLM-powered', never 'talk to your crew' as a shipped
 promise.**"* The Persona window is a **standard-surface artifact reachable from the Overview** (the
 MOSS-takeover precedent, `…m3.packages.md:2705`) — **not terminal-styled, not a MOSS noun** unless a
@@ -151,7 +180,7 @@ P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. Last mover **M3-9** (`pin/m3-c`,
 | # | lane | package | expected to move | why | rollback point |
 |---|---|---|---|---|---|
 | **M4-a** | `lane/m4-4-health` | **M4-4** | ⛔ **DEPENDS ENTIRELY ON §10 ITEM 2, AND EVERY NON-TRIVIAL ANSWER MOVES PINS.** Under (A) real: **P1 P2 P3** (a written `Citizen.Health` changes hashed state on every ship from tick 1) **+ P4 P5** if the floor lands as a def scalar. Under (B) delete: **P1 P2 P3** — ⭐ **removing** a hashed field moves the fold exactly as adding one does, plus a CITZ v9→v10 branch. Under (C) keep-and-retire-the-display: **NONE.** | `Citizen.Health` (`:32`), `Morale` (`:35`) and `Archetype` (`:38`) are all folded today. ⭐ **The charter's own finding: there is NO zero-pin option that changes anything, and §10 item 2 must be answered knowing that.** | ⭐ **tag `pin/m4-a`**, all five values recorded in the tag's own commit |
-| **M4-b** | `lane/breaks` | ⭐ **the first break** (§10 item 1 decides its id — M4-9, inside M4-4, or M5) | ⛔ **P1 P2 P3**, and **P4 P5 too** unless every scalar is a literal | **A new hashed per-citizen field is unavoidable**: the dwell counter is the deterministic replacement for RimWorld's stochastic mean-time-to-break (§5 M4-1's ⭐ TWoM section) and it must survive a save, so it folds. RW§8.9 (`:1887-1899`) prices this exactly: *"the ritual for one new hashed field is a single commit carrying default + parser key + save version branch + checksum fold + round-trip test + a re-measured pin"*. ⚠️ **P4/P5 hold only if the tier thresholds ship as LITERALS** — M2-1's rule-not-tunable precedent, which M3-7 and M3-2 both used. **The charter RECOMMENDS literals** (a break threshold is a rule, not a dial) and says so in §5. | ⭐ **tag `pin/m4-b`** |
+| **M4-b** | `lane/breaks` | ⭐ **the first break** (§10 item 1's answer decides its id — **A** = M4-9, **B** = inside M4-4, **C** = no row) | ⛔ **P1 P2 P3**, and **P4 P5 too** unless every scalar is a literal | ⛔ **NEW HASHED PER-CITIZEN STATE IS UNAVOIDABLE — AND IT IS NOT ONE FIELD.** ⭐ **REPRICED; the first draft said "one".** **Field 1, the DWELL COUNTER** (always) — the deterministic replacement for RimWorld's stochastic mean-time-to-break. **Field 2, the PER-PERSON THRESHOLD** — exists under **DESIGN QUESTION (g)(ii)**, the recommendation; under **(g)(i)** (a global literal) it does not, **and §13.5's sharpness mitigation is withdrawn with it**. **Field 3, the CATHARSIS EXPIRY** (`BreakReprieveUntilTick`, under (c) option 2, the recommendation). ⇒ ⛔ **1–3 hashed fields, and RW§8.9's ritual is PER FIELD** (*"default + parser key + save version branch + checksum fold + round-trip test + a re-measured pin"*, `:1887-1899`) — **one commit, one CITZ bump, one re-pin, up to three round-trip legs.** ⚠️ **P4/P5 hold only if the DERIVATION CONSTANTS (4/7, 1/7, the clamp, `dwell_ticks[T]`) ship as LITERALS** — M2-1's rule-not-tunable precedent, used by M3-7 and M3-2. **The charter recommends literals for the DERIVATION and hashed STATE for the per-person BASE**; §5 splits the two explicitly, because the first draft collapsed them into "literals" and thereby deleted the per-person tunable by accident. | ⭐ **tag `pin/m4-b`** |
 | **M4-c** | `lane/social-ignition` | ⭐ **only if §10 item 4 = yes** | **P1 P2 P3** | Seeding SOCL bonds at thaw writes **hashed sim state from inside `CryoSystem`** — M3-8's competence half is the precedent and the reason the persona half was deliberately kept host-side (`MECHANICS.md:5786-5793`). ⛔ **If item 4 is refused this row does not exist.** | ⭐ **tag `pin/m4-c`** |
 
 ### ⭐ EXPECTED PIN-NEUTRAL, AND WHY EACH ONE IS NEUTRAL FOR A DIFFERENT REASON
@@ -160,7 +189,7 @@ P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. Last mover **M3-9** (`pin/m3-c`,
 |---|---|---|
 | **M4-1** | writes no code | nothing |
 | **M4-2** | client-only; the window reads channels that already ship (`roster`, `citizen`, `workcaps`, `relations`, `blocked`) | a new WIRE channel is still pin-neutral (hosts are outside the fold) — but a **sim** read it needs and does not have is not |
-| **M4-3** | the fabricated sections are replaced from **host-owned, unhashed** state (`PersonaSheet`, `CitizenMind`) — `sim/Sim.Core/Citizens/PersonaSheet.cs` is not in any save chapter | authoring Rell a SKILL SPREAD would be hashed. **M3-8 measured both options pin-neutral and decided on design** — do not re-open it as a pin question (§11) |
+| **M4-3** | the fabricated sections are replaced from **host-owned, unhashed** state (`PersonaSheet`, `CitizenMind`) — `sim/Sim.Core/Citizens/PersonaSheet.cs` is not in any save chapter | authoring Rell a SKILL SPREAD would be hashed. **M3-8 measured both options pin-neutral and decided on design** — do not re-open it as a pin question (§11). ⚠️ **Her SHEET is a different matter: pin-neutral, but it REDDENS `SleeperPersonaTests.cs:493` and the pin moves in M4-3's commit** |
 | **M4-5** | client copy | — |
 | **M4-6** | ⛔ **NOT DECIDABLE HERE — OD-Q(iii) rules at M4-6.** "Wire" is a sim change; "remove" is client-only | the wire-or-remove answer itself |
 | **M4-7** | `chron` is host-rendered on demand from an existing ring; the cid carry (DESIGN QUESTION (f)) adds **host** fields only | rendering the Chronicle on a **tick** path would be an allocation change, not a fold change — still not a pin, but it breaks `Chronicle.cs:52-53`'s stated allocation contract |
@@ -227,8 +256,8 @@ split specification — and M4-8 moves the whole list at once.** No package wait
 | 1 | `lane/m4-1-persona-design` | **M4-1** | **THIS DOCUMENT.** INFRASTRUCTURE (design). No pin impact, no code. Merges before the playtest; **amended in place by the playtest's findings** (§1). |
 | 2 | `lane/persona-window` | **M4-2** | ⭐ **THE MILESTONE.** Runs after the playtest. Moves **three** equality-pinned censuses in ONE commit (`CREW_INTERACTION` shrinks to one, `SHIP_STATE_REACH` gains a name, `FORBIDDEN_REACH` is re-checked for non-vacuity) — §9's sharpest matrix row. Also inherits the `escapeTarget` rung and the `T`/Enter third door. |
 | 3 | `lane/dossier-truth` | **M4-3** | ⚠️ **Same file as 2** (`panels.js` dies or is gutted by 2; 3 decides which). **After 2.** Its content is the wire-widening the `◇ SAMPLE` clause of the exit gate needs. |
-| **4** | **`lane/m4-4-health`** | **M4-4** | ⛔ **PIN ROW (`pin/m4-a`) IFF §10 item 2 ≠ (C).** RUNS ALONE. Also the natural home for the break mechanism if §10 item 1 = (a). |
-| **4b** | **`lane/breaks`** | ⭐ **the first break** | ⛔ **PIN ROW (`pin/m4-b`). RUNS ALONE, and never concurrently with 4.** Exists only under §10 item 1 = (a) or (b). **If (b) — a ninth package — its id is M4-9** (§4's numbering rule). |
+| **4** | **`lane/m4-4-health`** | **M4-4** | ⛔ **PIN ROW (`pin/m4-a`) IFF §10 item 2 ≠ **C**.** RUNS ALONE. ⭐ **Under §10 item 1 = B it ALSO carries the break mechanism** — and then rows 4 and 4b are the same lane and the same re-pin commit. |
+| **4b** | **`lane/breaks`** | ⭐ **the first break** | ⛔ **PIN ROW (`pin/m4-b`). RUNS ALONE, never concurrently with 4.** ⭐ **THIS ROW EXISTS ONLY UNDER §10 ITEM 1 = A**, where the package is the ninth id **M4-9** (§4's numbering rule). **Under B there is NO row 4b** — the mechanism rides inside row 4 and `pin/m4-b` is folded into `pin/m4-a`. **Under C the row does not exist at all** and the mechanism is M5's. ⚠️ *§10's labels are A / B / C and this table uses them verbatim; the first draft used a lowercase (a)/(b) that inverted two of them.* |
 | **4c** | **`lane/social-ignition`** | ⭐ **bonds at thaw** | ⛔ **PIN ROW (`pin/m4-c`). Exists only under §10 item 4 = yes.** Serialize against 4 and 4b; three pin rows in one milestone is already the outer limit of the chain rule. |
 | 5 | `lane/onboarding-rewrite` | **M4-5** | ⚠️ **After 2**, because the card must teach the affordance that ships, not the one that was chartered. ⛔ **Must not restore what M2-20 added** (`…q3.packages.md:3825`) and must not re-lead with TALK (`onboarding.js:225-227` pins VERBS[0] and the no-second-headline-TALK rule). |
 | 6 | `lane/chronicle-reachable` | **M4-7** | Blocked by §10 item 5 (the severity tie) only for its headline behaviour; the reachability half is unblocked. ⛔ **`INERT_TABS` is itself pinned** (`overview-model.js:342`, and `:352-356` warns about it) — the removal and the pin move in one commit. |
@@ -268,7 +297,7 @@ before its milestone stopped growing.
 | milestone | packages | PLAYER | INFRASTRUCTURE | cap (⌊n/5⌋) | headroom |
 |---|---:|---:|---:|---:|---|
 | **M4** *(chartered here)* | **8** | **7** | **1** (M4-1) | **1** | ⛔ **0 — AT CAP** |
-| **M4** *(if §10 item 1 = (b))* | **9** | **8** | **1** | **1** | ⛔ **0 — still AT CAP** |
+| **M4** *(if §10 item 1 = **A**, the ninth package)* | **9** | **8** | **1** | **1** | ⛔ **0 — still AT CAP** |
 
 **M4 = 8** — M4-1…M4-8 exactly as `ROADMAP.md:95-97` lists them. **No package is added by this
 document**; the ninth, if it exists, is created by an owner answer (§10 item 1) and not by a charter.
@@ -304,9 +333,11 @@ document**; the ninth, if it exists, is created by an owner answer (§10 item 1)
   sentence, or is INFRA and says so.
 - **A re-pin commit is not a package** — M4-4 and the break row each carry one as a ritual tail and
   count once.
-- ⭐ **The break mechanism does NOT get a free id from this document.** Where it builds is §10 item 1,
-  and if the answer is (b) the id is **M4-9** — the next free number in the M4 range. `…q3.packages.md`
-  §11's rule stands: **published ids are stable and gaps are never reused.**
+- ⭐ **The break mechanism does NOT get a free id from this document.** Where it builds is **§10 item
+  1**, in §10's own labels: **A** ⇒ a ninth package, id **M4-9**, the next free number in the M4 range
+  (`…q3.packages.md` §11's rule stands: **published ids are stable and gaps are never reused**);
+  **B** ⇒ no new id, it rides inside M4-4; **C** ⇒ no id in M4 at all. ⚠️ **Only A changes the count
+  row above.**
 
 ---
 
@@ -343,11 +374,26 @@ citation), a ⛔ **DESIGN QUESTION** (a fork the docs do not decide, priced with
 | 6 | the `controls.js` **T-key / Enter third door**'s fate | `controls.js:174,284,331` | ⛔ **DESIGN QUESTION (b)** |
 | 7 | the **mount** (`#panels` visibility vs a body-level sibling like MOSS) | `console-retirement.plan.md:585-589` | ⛔ **DESIGN QUESTION (c)** |
 | 8 | does **Room Zoom grow a readout**, or does the window answer there? | `ROADMAP.md:55`, `MECHANICS.md:3151` | **RULED — the window answers** (§11) |
-| 9 | **Rell's unauthored identity** | `MECHANICS.md:5884-5894`, `SleeperAptitudes.cs:69-73` | **RULED** — M4-3 authors her SHEET; her spread stays 0 (§11) |
+| 9 | **Rell's unauthored identity** | `MECHANICS.md:5884-5896`, `SleeperAptitudes.cs:66-76` | ⭐ **RULED HERE — a NEW call that REVERSES M3-8's refusal** (which FILED it to M4-2/M4-3): M4-3 authors her SHEET and **moves the pin at `SleeperPersonaTests.cs:493` in the same commit**. Her SKILL SPREAD stays 0 — *that* half is settled (§11) |
 | 10 | what **RELATIONSHIPS** shows when the graph is empty | `…m3.packages.md:240`, `MECHANICS.md:5818-5824` | ⛔ **DESIGN QUESTION (d)** + **§10 item 4** |
 | 11 | the **"Incapable Of"** surface | `MECHANICS.md:5771` | **RULED — the window carries it**, no wire change (§11) |
 | 12 | **per-person history** without a cid on a Chronicle line | `Chronicle.cs`, `HistorySystem.cs:62-66` | ⛔ **DESIGN QUESTION (f)** |
 | 13 | how **"how she is"** gets an honest data source | measured: `Citizen.Mood` reaches no client | ⛔ **DESIGN QUESTION (e)** — and it is the one the ⭐ TWoM section answers |
+
+> ### ⛔ HOW TO READ THE THREE DISPOSITIONS — because a RECOMMENDED is not the same kind of thing as a batch item
+>
+> - **RULED** — settleable from an existing OD or from the analogue. §11 carries the citation. **Not
+>   open; a lane that re-opens one is re-litigating a decision.**
+> - ⛔ **DESIGN QUESTION (a)…(h)** — ⭐ **THE CHARTER'S OWN CALL.** Each is answered with a
+>   RECOMMENDED option and priced REFUSALs, so an implementer has something to build. **It is
+>   amendable by the 2026-08-07 playtest (§1) and by the owner review that answers §10 — but the owner
+>   is NOT being asked about it, and it does not consume a batch slot.** ⚠️ **A lane that disagrees
+>   with one files the disagreement; it does not silently take a REFUSED option.**
+> - **OWNER BATCH ITEM** — ⛔ **§10, asked explicitly, with a silence default.** Five of them, and
+>   nothing else in this document is a question put to the owner.
+>
+> ⭐ **The distinction is the point of the table above: a reader should be able to say, for any of the
+> thirteen, whether the owner is being asked.**
 
 ---
 
@@ -426,9 +472,32 @@ charter found by opening files.
 
 | # | option | cost / verdict |
 |---|---|---|
-| 1 | ⭐ **Retarget `T` and Enter to OPEN THE PERSONA WINDOW; `Cmd.talk` leaves the client entirely** | ⭐ **RECOMMENDED.** The keys keep working, the destination becomes the one door, and the host-side `talk`/`say`/`bye` parse plus the `chat` channel **stay defined and unreferenced-by-the-client** exactly as `console-retirement.plan.md:255` requires. ⚠️ **`T` for "Persona" is a bad mnemonic** — OD-P forbids letter hotkeys *inside MOSS* only, so a rebind is legal here; **`P` is free and `T` should be retired with the verb.** Names the onboarding coupling (§9). |
+| 1 | ⭐ **Retarget `T` and Enter to OPEN THE PERSONA WINDOW; `Cmd.talk` leaves the client entirely** | ⭐ **RECOMMENDED.** The keys keep working, the destination becomes the one door, and the host-side `talk`/`say`/`bye` parse plus the `chat` channel **stay defined and unreferenced-by-the-client** exactly as `console-retirement.plan.md:249` requires. ⚠️ **`T` for "Persona" is a bad mnemonic** — OD-P forbids letter hotkeys *inside MOSS* only, so a rebind is legal here, and `T` should be retired with the verb. ⛔ **BUT `P` IS NOT FREE — MEASURED, AND THE FIRST DRAFT SAID IT WAS.** `controls.js:282` binds `P`/`p` to `toggleSprites()`, **two lines above the `T` binding this paragraph cites**. See the census below. Names the onboarding coupling (§9). |
 | 2 | Delete `T`/Enter and leave the button | ⛔ **REFUSED.** Enter-on-a-selected-thing is a keyboard contract the whole surface uses; deleting only this arm makes Enter mean "click the tile under the cursor" for crew and something else for everything else. |
 | 3 | Leave it | ⛔ **REFUSED.** It ships a third door into a milestone whose entire premise is one door, and the shipped test would stay green while it happened. |
+
+> ### ⛔ ⭐ THE KEYMAP CENSUS, MEASURED — because the first draft asserted a free key without reading the file
+>
+> **Every binding in `client/src/input/controls.js`'s Overview handler, read on `2e4ce40`:**
+> `Escape` `:273,283` · ⭐ **`P` → `toggleSprites()` `:282`** · `T` → `talkSelected()` `:284` ·
+> `W/A/S/D` pan `:285-288` · arrows + `k/j/h/l` cursor `:289-292` · `R/F/>/<` deck `:293-294` ·
+> digits `1`–`7` lens `:295` · `Space` pause `:298-299` · `+/=/-/_` speed `:300-301` · `M` move
+> `:302` · `B` build `:304` · `X` cancel `:305` · `G` dig `:309` · `Z` stockpile `:310` · `V` strip
+> `:314` · `C` erase `:321` · `Enter` `:324-332`.
+>
+> ⇒ **BOUND LETTERS: A B C D F G H J K L M P R S T V W X Z. FREE LETTERS: E · I · N · O · Q · U · Y** —
+> and two of the seven carry warnings the file writes itself:
+>
+> | key | verdict |
+> |---|---|
+> | ⭐ **`E`** | ⭐ **RECOMMENDED — "p*E*rsona".** Free, no history, no guard, adjacent to nothing it could be confused with. |
+> | `I` | ⚠️ **discouraged by the file itself** — `controls.js:312-313` calls it *"vim-adjacent"* while explaining why STRIP is `V`. |
+> | `O` | ⚠️ **free only because M3-15 DELETED it.** `O` was the OPERATE verb, and `surface-boundary.test.js:1083-1140` is an **anti-resurrection guard** that reddens on the deleted identifiers. Re-binding the key is legal (the guard names identifiers, not keystrokes) but it re-uses a keystroke that meant something else four days ago. **Do not.** |
+> | `N` `Q` `U` `Y` | free, no mnemonic. |
+> | `P` | ⛔ **TAKEN.** Taking it means **re-homing `toggleSprites`** — a live view toggle wired through `main.js:72,193,364` and `controls.js:102,112`, with three test doubles (`input.test.js:182,217`, `zoom-pawn.test.js:719`). **Five files plus three fixtures for a mnemonic. REFUSED unless the owner asks.** |
+>
+> ⚠️ **And re-derive this census on the tree you are on** — it is a measurement, and the first draft's
+> one-word version of it (*"`P` is free"*) was wrong.
 
 ⛔ **AND THE GUARD MUST BE WIDENED IN THE SAME COMMIT, OR THE DOOR GROWS BACK INVISIBLY.**
 `CREW_INTERACTION`'s scan must additionally see **direct `Cmd.<crew-verb>(…)` sends from any
@@ -475,7 +544,7 @@ in between, and neither state is a relationship a player can care about.**
 
 | # | option | cost / verdict |
 |---|---|---|
-| 1 | ⭐ **TWO clearly labelled sources: authored prose bonds from `PersonaSheet` (host-owned, unhashed) + live SOCL edges from the `relations` channel — and an HONEST EMPTY STATE when both are empty** | ⭐ **RECOMMENDED for v1, and it costs nothing hashed.** The prose is already authored and already shipped (`AuthoredShips.cs` `WreckSleepers()`); the `relations` channel already carries directed edges `[fromCid,toCid,opinion,tier,note,secret]` (`messages.js:161-169`). ⛔ **The empty state is written, never hidden**: *"No one aboard knows her yet."* — hiding an empty band is the *invisible-feedback-is-functional* failure, and the dossier's own RELATIONSHIPS section already ships a note for exactly this case (`panels.js:385`). |
+| 1 | ⭐ **TWO clearly labelled sources: authored prose bonds from `PersonaSheet` (host-owned, unhashed) + live SOCL edges from the `relations` channel — and an HONEST EMPTY STATE when both are empty** | ⭐ **RECOMMENDED for v1, and it costs nothing hashed.** The prose is already authored and already shipped (`AuthoredShips.cs` `WreckSleepers()`); the `relations` channel already carries directed edges `[fromCid,toCid,opinion,tier,note,secret]` (`messages.js:161-169`). ⛔ **The empty state is written, never hidden**: *"No one aboard knows her yet."* — hiding an empty band is the *invisible-feedback-is-functional* failure, and the dossier's own RELATIONSHIPS section already ships a note for exactly this case — `panels.js:401`, *"No strong bonds recorded yet."* |
 | 2 | Seed real SOCL bonds at thaw | ⛔ **NOT THIS CHARTER'S CALL — §10 ITEM 4.** It is hashed sim state written from `CryoSystem` (a pin row, `pin/m4-c`), it is `perilune-character-simulation.plan.md` §12.2 wearing the wreck's costume, **and it is the only honest route to closing D-3 and to making grief legible** (see the ⭐ TWoM section). |
 | 3 | Show the saturated graph as-is | ⛔ **REFUSED.** §13.7 measures it saturating in a day; a band that says the same thing about everyone says nothing about anyone. If item 4 is refused, option 1 plus a **tier filter** (show only non-Acquaintance edges) is the fallback. |
 
@@ -501,7 +570,7 @@ in between, and neither state is a relationship a player can care about.**
 
 | # | option | cost / verdict |
 |---|---|---|
-| 1 | Put `Citizen.Mood` on the wire as a **number** and draw a bar | ⛔ **REFUSED TWICE OVER.** (a) `TARGET.md:67-69` — ***"No misery meters … never a bar the player feeds"***; (b) `dossier-honesty.test.js:138`'s equality-pinned meter census reddens by construction, and `panels.js:224-247`'s own ledger comment says why in advance: *"Do not add a field to this REAL list on the strength of it being on the wire; ask whether the sim moves it."* |
+| 1 | Put `Citizen.Mood` on the wire as a **number** and draw a bar | ⛔ **REFUSED TWICE OVER.** (a) `TARGET.md:66-69` — ***"No misery meters. TWoM-as-gameplay (OD-R) still means COMPUTED consequences … never a bar the player feeds"***; (b) `dossier-honesty.test.js:138`'s equality-pinned meter census reddens by construction, and `panels.js:224-247`'s own ledger comment says why in advance: *"Do not add a field to this REAL list on the strength of it being on the wire; ask whether the sim moves it."* |
 | 2 | ⭐ **A computed STATE LINE, in words, plus WHAT IT MEANS SHE WILL REFUSE** | ⭐ **RECOMMENDED, and it is TARGET §2's own instruction applied literally.** The host composes one sentence from the same scalars the sim already holds and ships it as a string — the `perilune-character-simulation.plan.md` §8.1 shape (*prediction chips* on `roster.traits`, *"the numbers never cross the wire"*). Example, and the second clause is the whole point: **"Exhausted and hungry. She will not take a job in vacuum."** |
 | 3 | Both | ⛔ **REFUSED** — option 1's two objections are unaffected by adding option 2 beside it. |
 
@@ -511,7 +580,7 @@ in between, and neither state is a relationship a player can care about.**
 > second clause is not** — today **mood gates no crew behaviour whatsoever** except the argument roll,
 > so there is nothing she will refuse and the sentence would have to stop after the adjective.
 >
-> ⛔ **A state line that stops after the adjective is a COSMETIC OPERATOR** — `TARGET.md:66` bans
+> ⛔ **A state line that stops after the adjective is a COSMETIC OPERATOR** — `TARGET.md:65` bans
 > *"a decorative −5%"* and `:69` extends it to tone: *"Sadness that changes no decision is a
 > decoration."* **Shipping the band with only its first clause is shipping the thing OD-R's amendment
 > exists to forbid.**
@@ -539,7 +608,7 @@ renderer forgets it.**
 |---|---|---|
 | 1 | Client-side **text-name join** | ⛔ **REFUSED.** `MECHANICS.md` §13.43.3 records exactly this regression class (`ShipSystems.cs:1139-1155`), and the client's own `surnameOf` collides by construction on a crew with shared surnames. **A join on prose is a bug with a schedule.** |
 | 2 | ⭐ **`Chronicle.Render` carries `SubjectA`/`SubjectB` out beside each line; the `chron` wire gains two ints per line** | ⭐ **RECOMMENDED.** Additive, **host-side only, no hashed state, NO PIN**, and it costs one field on a struct the sim already fills. The Persona window then filters *her* lines with an integer compare. ⚠️ **It belongs to M4-7 (Chronicle reachable), not M4-2** — one lane owns the channel, and `MECHANICS.md:1708` already reserves a Chronicle-ring seam as *"M4-7's, not to be re-homed opportunistically."* |
-| 3 | Surface `CitizenMemory.Episodic` instead | ⛔ **NOT v1, but it is the better long answer and is FILED.** It is genuinely per-person, importance-scored and capped at 120 (`CitizenMemory.cs:29-46`), it is **hashed** (`'MEMS'`), and `console-retirement.plan.md:247` names it *"load-bearing for the Persona window"*. **But it is on no wire**, so it is a new channel plus a consumer — a package, not a clause. |
+| 3 | Surface `CitizenMemory.Episodic` instead | ⛔ **NOT v1, but it is the better long answer and is FILED.** It is genuinely per-person, importance-scored and capped at 120 (`CitizenMemory.cs:29-46`), it is **hashed** (`'MEMS'`), and `console-retirement.plan.md:247-248` puts it and `PersonaSheet`/`Eulogy` on the keep-list — *"the character simulation the Persona window will surface"* (`:248`). **But it is on no wire**, so it is a new channel plus a consumer — a package, not a clause. |
 
 ---
 
@@ -607,9 +676,19 @@ renderer forgets it.**
 > low fires never. Both look like a shipped mechanism.**
 >
 > ⇒ **The break package's FIRST measurement, before a line of mechanism, is the post-M3-9 mood
-> envelope on `--ship wreck` across at least three sim-days with a real crew — day-means AND
-> per-citizen min/max — and the thresholds are set against THAT.** The envelope goes into
-> `MECHANICS.md` §13.4 in the same commit, replacing the struck numbers.
+> envelope on `--ship wreck` across at least three sim-days with a real crew.** ⛔ **FOUR required
+> outputs, not one — and the last two decide DESIGN QUESTION (h):**
+>
+> | # | required output | what it decides |
+> |---|---|---|
+> | 1 | **day-means** | whether the ship's mood sits where the ladder can reach it at all |
+> | 2 | **per-citizen min/max** (the envelope) | the tier thresholds' band |
+> | 3 | ⭐ **the SAWTOOTH's AMPLITUDE**, per citizen | whether a threshold inside the swing is crossed every meal ⇒ whether a hard reset can ever accumulate |
+> | 4 | ⭐ **the SAWTOOTH's PERIOD** (eat/drink cadence in ticks) | how it compares to `dwell_ticks[T]` — **if the period is shorter than the dwell, option 1 in (h) cannot fire at all** |
+>
+> The envelope goes into `MECHANICS.md` §13.4 in the same commit, replacing the struck numbers.
+> ⚠️ **§13.4 already states the sawtooth qualitatively** (`:2049-2050`) **and nobody has ever measured
+> its amplitude or period** — the numbers above do not exist anywhere in the repo today.
 
 ##### (a) The break ROSTER — RW§4 names TIERS, not behaviours, and OD-R names the behaviours
 
@@ -623,7 +702,7 @@ orders · stop working · withdraw* — which is the only source with standing.
 
 | tier | derived from the tunable | the behaviour | the seam that ALREADY EXISTS |
 |---|---|---|---|
-| **MINOR** | the tunable itself | ⭐ **SHE REFUSES THE DANGEROUS ORDER.** She still works; she will not cross the pressure frontier | ⭐ **M3-14's rung 2, run backwards.** A held order today bypasses `WorksiteSafety.CanStageWorkerAt` (`SafetySystem.cs:125-128`) because `Citizen.HeldByOrder` is set; a minor break **withdraws that bypass for that person**. One predicate, one existing field, no new job state |
+| **MINOR** | the tunable itself | ⭐ **SHE REFUSES THE DANGEROUS ORDER.** She still works; she will not cross the pressure frontier | ⭐ **M3-14's rung 2, run backwards.** A held order today bypasses `WorksiteSafety.CanStageWorkerAt` (the rule is `SafetySystem.cs:125-128`; ⭐ **who may pass the override is `:129-133` — *"Only a caller that can see the ORDER: a `Citizen.HeldByOrder` worker … or `PrioritiseJobCommand`"***) because `Citizen.HeldByOrder` is set; a minor break **withdraws that bypass for that person**. One predicate, one existing field, no new job state |
 | **MAJOR** | **4/7** of the tunable | **SHE STOPS WORKING.** Every work claim declines; needs (eat/drink/sleep) and flee still run | the job-claim gate. ⛔ **NOT `IsRecruitableForWork`** — M2-2's standing refusal (*"`IsRecruitableForWork` MUST NOT absorb the work grid"*, `…m3.packages.md:2377`) is about the grid, and a break is not the grid, **but the lesson is the same one**: a second meaning stuffed into one predicate is how the M2-0 spike repeated. **A break is its own named gate, asked beside the grid's** |
 | **EXTREME** | **1/7** of the tunable | **SHE WITHDRAWS.** She abandons the job, walks somewhere and stays: refuses work AND refuses orders | the idle-movement channel + the `HoldPosition` precedent (`Citizen.cs:21`). M3-9's `RestSystem` is the shipped model for *a system that takes a citizen between jobs without being a work type* |
 
@@ -650,28 +729,96 @@ tier T's threshold for dwell_ticks[T]     — a hard time, where RimWorld has a 
 ```
 
 - **It is a threshold over hashed state**, which is OD-R's own words for what the mechanism must be.
-- **It preserves RimWorld's ORDERING and its shape**: deeper tier ⇒ shorter dwell, so the ladder
-  still says *"the worse it is, the faster it comes"*, and a brief dip still costs nothing —
-  which is precisely what RimWorld's rate limiter bought (`:984-985`: *"a fixed cause does not
-  produce an instant effect; the player gets time to react"*). ⭐ **Perilune has no mood BAR to
-  rate-limit, so the dwell counter IS the rate limiter** — the same protection, in the only place
-  this architecture has room for it.
-- ⛔ **IT COSTS ONE HASHED PER-CITIZEN FIELD**, and that is the pin row (`pin/m4-b`, §2). RW§8.9
-  (`:1887-1899`) prices it: default + parser key + save-version branch + checksum fold + round-trip
-  test + a re-measured pin, in ONE commit.
+- **It preserves RimWorld's ORDERING**: deeper tier ⇒ shorter dwell, so the ladder still says
+  *"the worse it is, the faster it comes"*.
+- ⛔ **IT COSTS HASHED PER-CITIZEN STATE**, and that is the pin row (`pin/m4-b`, §2) — **how much is
+  DESIGN QUESTION (g)'s answer, not one field.** RW§8.9 (`:1887-1899`) prices each one: default +
+  parser key + save-version branch + checksum fold + round-trip test + a re-measured pin, in ONE
+  commit.
 
-**Two sub-decisions the charter takes, with its reasoning, because neither is a fork worth an owner's
-time:**
+> ### ⛔ ⚠️ AND CORRECT THE ARGUMENT THAT FIRST DRAFT MADE FOR IT, BECAUSE IT INVERTED RIMWORLD'S DESIGN
+>
+> ~~*"Perilune has no mood BAR to rate-limit, so the dwell counter IS the rate limiter — the same
+> protection, in the only place this architecture has room for it."*~~ ⛔ **WITHDRAWN. It is not the
+> same protection and it is not in the same place.**
+>
+> **RimWorld rate-limits the INPUT.** The bar chases the target at +12/−8 per in-game hour
+> (`rimworld-reference.md:982-985`), so **the quantity that gets compared against the thresholds is
+> already smoothed** before any comparison happens. A dwell counter rate-limits the **OUTPUT** — it
+> delays the consequence of a comparison and does nothing whatever to stabilise a jittery input.
+>
+> ⇒ **They are not substitutes, and the difference is what DESIGN QUESTION (h) is about.** A
+> low-passed input plus an instantaneous trigger (RimWorld) and a raw input plus a delayed trigger
+> (the first draft) behave identically only when the input is monotone. **Perilune's is not** —
+> see (h).
 
-1. **The counter RESETS HARD on crossing back above the threshold** (it does not decay). RimWorld's
-   rate model has no memory of how long you were low — the probability is the same on minute one and
-   minute nine. A hard reset is the closest analogue and the cheapest state. ⚠️ **A decaying counter
-   is the alternative and it is strictly more punishing**; if the playtest says breaks never fire, the
-   fix is the threshold, not the reset rule.
-2. **The tier thresholds and dwell periods ship as LITERALS, not def fields** — M2-1's
-   *rule-not-tunable* precedent, used again by M3-7 (the rate curve) and M3-2 (`ThawSecondsPerCycle`).
-   **A break threshold is a rule about what this game is, not a dial.** ⭐ **And it is what keeps P4/P5
-   out of `pin/m4-b`.**
+**One sub-decision the charter takes, and TWO it does not.**
+
+1. ⭐ **THE TIER DERIVATION CONSTANTS ARE LITERALS; THE PER-PERSON BASE IS NOT A CONSTANT AT ALL — AND
+   THE FIRST DRAFT COLLAPSED THE TWO.** ⛔ **The correction matters because "one tunable, three derived
+   tiers" (RW§4's adopted item 1) is a statement about STATE, and a literal is global.** Split them:
+   - **The DERIVATION** — the ×**4/7** and ×**1/7** factors, the clamp band, and the three
+     `dwell_ticks[T]` periods — are **LITERALS, not def fields**: M2-1's *rule-not-tunable* precedent,
+     used again by M3-7 (the rate curve) and M3-2 (`ThawSecondsPerCycle`). *A break ladder's shape is
+     a rule about what this game is, not a dial.* ⭐ **This is what keeps P4/P5 out of `pin/m4-b`.**
+   - **The PER-PERSON BASE THRESHOLD** is the *"one per-pawn stat"* RW§4 exposes. **It is state, and
+     where it lives is ⛔ DESIGN QUESTION (g).**
+2. **The counter's reset rule** — ⛔ **NOT a sub-decision. DESIGN QUESTION (h)**, because the first
+   draft's hard-reset-by-default is defeated by a sawtooth this charter's own cited row measures.
+
+---
+
+#### ⛔ DESIGN QUESTION (g) — WHERE THE PER-PERSON TUNABLE LIVES *(and whether there is one at all)*
+
+⛔ **THE COLLISION, AND IT IS THIS CHARTER'S OWN:** RW§4 adopted item 1 says *"ONE per-person
+tunable"*; the first draft then priced **one** hashed field (the dwell counter) and recommended
+**literal** thresholds. **A literal is global. Under the first draft there was no per-person tunable
+anywhere**, which also makes §13.5's *"two people at the same mood are NOT at the same tier"*
+mitigation false.
+
+⛔ **AND THE OBVIOUS SOURCE IS FORBIDDEN.** RimWorld sets the per-pawn threshold from **traits**
+(`:1020-1032` — Iron-willed −18 %, Volatile +15 %, …). **Perilune's traits live on `PersonaSheet`,
+which is HOST-OWNED AND UNHASHED** (`MECHANICS.md:5786-5793`'s table: the person half is **NO** to
+hashed) — and the TUI host attaches no personas at all (M3-8's FILED list). ⇒ ⛔ **A HASHED BREAK
+DECISION MAY NOT READ A TRAIT. Two hosts would compute two different break ladders from the same
+save, which is a determinism violation, not a display bug.**
+
+| # | option | hashed cost | verdict |
+|---|---|---|---|
+| **(i)** | **GLOBAL LITERAL** — one threshold band for everyone; no per-person tunable in v1 | **1 field** (dwell) **+1** if catharsis needs a reprieve tick ⇒ **1–2** | **Cheapest, and it is a STATED DEVIATION from RW§4's "one per-pawn stat", not an adoption.** ⛔ **Taking it means WITHDRAWING §13.5's mitigation**: every person at the same mood then breaks at the same second, and the sharpness risk is **unabsorbed**. **Say that in the commit; do not quietly keep the mitigation sentence.** |
+| **(ii)** | ⭐ **A HASHED PER-CITIZEN THRESHOLD BYTE**, set at generation/thaw, from an **authored** source | **2 fields** (threshold + dwell) **+1** for catharsis option 2's expiry ⇒ **2–3** | ⭐ **RECOMMENDED — it is what the analogue says**, and `PROCESS.md` §2 makes RimWorld's shape the decision for mechanisms. ⭐ **The source is already precedented: `SleeperAptitudes` authors per-person literals applied INSIDE `CryoSystem` at the thaw and they are HASHED (CITZ v9) — M3-8's competence half exactly.** A temperament column is one more column in a table that already has six, and Rell keeps a default. **No `PersonaSheet` read, no determinism hole.** |
+| (iii) | Derive it from `Citizen.Archetype` (`:38`) — the only *existing* hashed per-citizen identity byte | 1 field (dwell) | ⚠️ **Elegant and it would give a dead field a reader** — ⛔ **but it COLLIDES WITH §10 ITEM 2 OPTION B, WHICH DELETES `Archetype`.** ⇒ **Do not take (iii) without answering item 2 first**, and if item 2 = B, (iii) is off the table. *Recorded so the two items are not answered independently.* |
+
+⛔ **CROSS-ITEM DEPENDENCY, STATED SO THE BATCH IS ANSWERED AS A SET:** **§10 item 2 = B (delete
+`Archetype`) forecloses option (iii).** (i) and (ii) survive every answer to item 2.
+
+---
+
+#### ⛔ DESIGN QUESTION (h) — THE RESET RULE, AGAINST A SAWTOOTH THIS CHARTER ALREADY CITES
+
+⛔ **THE FIRST DRAFT'S HARD RESET IS DEFEATED BY THE MOOD SAWTOOTH ITS OWN SOURCE MEASURES.**
+`MECHANICS.md` §13.4 (`:2049-2052`), the row this charter already quotes for the envelope, says what
+that envelope IS: *"It is not a flat line: it **sawtooths**, because the hunger/thirst terms ramp and
+then drop each time a citizen eats or drinks."* The measured per-citizen envelope over days 1–3 is
+**[−39.8, −10.5]** — ⚠️ **a swing of ~29 mood points, pre-M3-9 and not re-taken.**
+
+⇒ ⛔ **ANY THRESHOLD INSIDE THAT BAND IS CROSSED IN BOTH DIRECTIONS EVERY MEAL. A hard reset zeroes
+the dwell counter each time she eats, so the counter may never reach `dwell_ticks[T]` and THE BREAK
+NEVER FIRES.** ⭐ **That is the D-3 shape this charter warns about two sub-sections earlier, arrived at
+from the other side: a term that is never true reads as a shipped mechanism exactly as a term that is
+always true does.**
+
+| # | option | cost | verdict |
+|---|---|---|---|
+| 1 | **HARD RESET** (the first draft's default) | none | ⛔ **NO LONGER THE DEFAULT.** Its stated justification — *"RimWorld's rate model has no memory of how long you were low"* — is **true and irrelevant**: RimWorld does not need that memory **because its input is already smoothed** (see the withdrawn-argument box above). **Keep only if the re-measured sawtooth turns out to sit entirely on one side of the chosen threshold.** |
+| 2 | ⭐ **DECAYING COUNTER** — the counter falls while above the threshold instead of zeroing | one literal (the decay rate); **no extra field** | ⭐ **RECOMMENDED.** A leaky integrator **is a low-pass filter**, so it puts the smoothing back on the *input side* where RimWorld has it — the thing option 1 does not do. ⚠️ **The first draft called this *"strictly more punishing"*; that was the wrong axis** — it is more *stable*, and whether it is more punishing is the threshold's job. |
+| 3 | **HYSTERESIS** — arm below `T_break`, re-arm only above `T_rearm > T_break` | one literal per tier | ⚠️ **Standard, cheap, composes with 2** — and **insufficient alone** if the sawtooth's amplitude exceeds the band, which at ~29 points it may well. **Take it WITH 2, not instead of.** |
+
+⛔ **AND THE HONEST CLOSING: THIS FORK IS DECIDED BY A MEASUREMENT THIS CHARTER DID NOT TAKE.** The
+sawtooth's **amplitude** and **period** decide whether any of the three works. ⇒ **They are added to
+the MUST RE-MEASURE box above as required outputs of the break package's first measurement, and the
+recommendation here is overturnable by that measurement without an owner decision** — it is a
+mechanism detail, not a design fork the owner is being asked about.
 
 ##### ⭐ Where the STATEFUL INPUT comes from — and the honest v1 answer
 
@@ -706,7 +853,7 @@ offset** — putting one there breaks the memoryless contract the whole architec
 | # | option | cost / verdict |
 |---|---|---|
 | 1 | ⭐ **A break-recovery MARK with its own decay, contributing a POSITIVE `MoodPressure` term** | ⭐ **RECOMMENDED as the long answer, and it is architecture-consistent by construction** — it is exactly the marks engine's own shape, and `perilune-character-simulation.plan.md` §3.2 already reserves un-written kinds. ⛔ **Not buildable in M4** (no marks array). |
-| 2 | ⭐ **A bounded THRESHOLD reprieve: after a break ends, that person's tunable moves so she is harder to break, for a fixed period** | ⭐ **RECOMMENDED FOR v1.** It uses RW§4's **second axis** (`:1034-1037` — threshold offsets are a different thing from mood offsets) instead of inventing a mood slot, and it costs **one more hashed field on a citizen who already gained one** — the dwell counter's own commit, no second pin row. ⚠️ **It is a real deviation from RimWorld, which puts catharsis on the mood axis, and the deviation must be written into the commit rather than glossed.** |
+| 2 | ⭐ **A bounded REPRIEVE on the THRESHOLD axis: after a break ends she is harder to break, for a fixed period** | ⭐ **RECOMMENDED FOR v1.** It uses RW§4's **second axis** (`:1034-1037` — threshold offsets are a different thing from mood offsets) instead of inventing a mood slot. ⛔ **REPRICED (it was under-priced in the first draft, which said "one more hashed field"): it needs an EXPIRY, so it is `+1 hashed field` (`BreakReprieveUntilTick`) ON TOP of DESIGN QUESTION (g)'s answer ⇒ 2 fields under (g)(i), 3 under (g)(ii).** ⚠️ **And its SHAPE depends on (g): under (g)(ii) the reprieve shifts a per-person threshold byte; under (g)(i) there is no per-person threshold to shift, so it must suppress the ladder outright for the window — the same field, a blunter rule.** ⚠️ **Either way it is a real deviation from RimWorld, which puts catharsis on the mood axis, and the deviation must be written into the commit rather than glossed.** |
 | 3 | No catharsis at all | ⛔ **REFUSED, and the refusal is the whole reason this sub-section exists.** RimWorld calls catharsis *"an explicit anti-death-spiral device"* (`:1016`). Without it, a crew member who breaks is more likely to break again immediately — a spiral with a person's name on it. ⭐ **In a TWoM register that is not tension, it is the game giving up on someone, which is the exact failure OD-R's *"endurance, not power fantasy"* is pointed away from.** |
 
 ##### (d) The AWAKE-AND-ABLE precondition, and ⭐ the sleep-freeze gap it closes for free
@@ -721,7 +868,7 @@ RimWorld: *"To break at all, a pawn must be awake and able to move"* (`:1017-101
   **The break ladder asks the same predicate.**
 - **ABLE TO MOVE — has no analogue today**, and it is `TARGET.md:95`'s **T14** exactly (*"Health:
   capacity-gated work (downed ≠ disabled) — missing (M4-4 decides real-or-delete)"*). ⇒ **The able
-  half is gated on §10 item 2.** If item 2 answers (C) keep-and-retire-the-display, the precondition
+  half is gated on §10 item 2.** If item 2 answers **C** (keep-and-retire-the-display), the precondition
   ships as *awake* only and the charter says so out loud rather than implying a capacity model exists.
 
 > ### ⭐ AND THIS CLOSES ONE OF T12's THREE NAMED REMAINDERS AS A SIDE EFFECT — SAY IT, BECAUSE IT IS FREE
@@ -746,7 +893,7 @@ unscheduled; **file with M4**."*** This is where it lands, because `SocialSystem
 behavioural consumer today** and a break design that gates behaviour on mood cannot leave the
 existing gate unexamined.
 
-**MEASURED ON THIS TREE — `sim/Sim.Core/Social/SocialSystem.cs:144-152`:**
+**MEASURED ON THIS TREE — `sim/Sim.Core/Social/SocialSystem.cs:144-152` — the roll itself is `:150`:**
 
 ```csharp
 float lowMood = a.Mood < b.Mood ? a.Mood : b.Mood;
@@ -762,7 +909,7 @@ with `ArgumentMoodThreshold = 0f` (`SimDefs.cs:942`, and the parser key at `Defs
    was *"mood is permanently ≤ −5"*, which was true **before M3-9 gave `Fatigue` a reducer**. Crew who
    sleep may now cross 0. ⇒ **D-3 may be partly self-healing and nobody has looked.** The break
    package's envelope measurement answers it in passing — **file the answer, do not assume it.**
-2. ⭐ **`_roll.NextFloat()` IS A RUNTIME ROLL, and `TARGET.md:63-65` forbids exactly that** in
+2. ⭐ **`_roll.NextFloat()` (`SocialSystem.cs:150`) IS A RUNTIME ROLL, and `TARGET.md:63-64` forbids exactly that** in
    outcomes. It is *deterministic in the replay sense* (a forked `SimRng`, so the hash reproduces) and
    *a die in the design sense* (the same world state produces different behaviour). ⛔ **THIS IS NOT
    THIS CHARTER'S TO RULE — the argument mechanic predates the anti-goal and re-litigating a shipped
@@ -846,7 +993,7 @@ afford, but WHO you would be waking.** The POD BAY says the cost; the Persona wi
 > ⇒ **On the shipping wreck, every Bereavement mark would form at the "other" tier — weight 0.15 —
 > and the grief register would be a rounding error on the one ship players actually play.** Against
 > §3.4's own default (`mood_weight_bereavement = 25`, *"comparable to starving, which is the intended
-> register"*), 0.15 × 25 ≈ **3.75 mood**: a cosmetic operator by `TARGET.md:66`'s own definition.
+> register"*), 0.15 × 25 ≈ **3.75 mood**: a cosmetic operator by `TARGET.md:65`'s own definition.
 >
 > ⇒ ⛔ **THE GRIEF REGISTER IS NOT BUILDABLE ON THE SHIPPING SHIP UNTIL SOMETHING SEEDS BONDS — WHICH
 > IS §10 ITEM 4, AND IT IS THE SAME ITEM THAT DECIDES D-3, FEUD'S EXISTENCE, AND WHETHER
@@ -879,7 +1026,7 @@ window. The band is designed to receive it and is not built around it.**
 | **never a bar the player feeds** | there is no mood input anywhere. Mood is a closed-form function of four needs; the player changes the world, not the person |
 | **never a runtime roll** | **dwell time, not mean time.** One behaviour per tier, no weighted roster. ⭐ **And the one existing roll — the argument gate's `_roll.NextFloat()` — is FILED, named, and explicitly NOT copied** |
 | **never a scripted dilemma** | triage is a state the sim reaches (the POD BAY's own headroom arithmetic), never an event the Director schedules |
-| *(and `:66`, the cosmetic-operator rule)* | ⭐ **the HOW SHE IS band's sequencing rule**: it ships with, or after, the first behaviour it can describe. **An adjective that changes no decision does not ship** |
+| *(and `:65`, the cosmetic-operator rule)* | ⭐ **the HOW SHE IS band's sequencing rule**: it ships with, or after, the first behaviour it can describe. **An adjective that changes no decision does not ship** |
 
 ---
 
@@ -903,7 +1050,7 @@ is `'openBioForSelected','selectCrewByCid','selectTab','talkSelectedCrew','toolU
 **The person's state:** `sim/Sim.Core/Entities/Citizen.cs:32` (`Health`), `:35` (`Morale`), `:38`
 (`Archetype`), `:71` (`Fatigue`), `:72` (`Mood`), `:153` (`WorkIncapable`), `:193` (`SkillsRaw`);
 `sim/Sim.Core/Citizens/PersonaSheet.cs` and `Citizens/CitizenMemory.cs:29-46`, `:108-109`, `:127`.
-**The Chronicle:** `sim/Sim.Core/Memory/Chronicle.cs:15-26`, `:105-175` (the severity switch),
+**The Chronicle:** `sim/Sim.Core/Memory/Chronicle.cs:15-26`, `:105-186` (the severity switch),
 `sim/Sim.Core/Systems/HistorySystem.cs:54-78`, `:111` (`MaxEntries = 200`).
 
 **PIN IMPACT: NONE — it writes no code.** ⛔ **But it CONSTRAINS `pin/m4-a`, `pin/m4-b` and
@@ -1019,6 +1166,12 @@ M4-6) · `panels.js` (with M4-3) · `surface-boundary.test.js` (three censuses, 
 > fifth is half invented — each wearing a `◇ SAMPLE` badge that is honest and useless. **AFTER THIS**
 > every section is the simulation, or it is not there.
 
+**SEAM.** `client/src/ui/panels.js` (the census below is the seam, section by section) ·
+`client/src/ui/hud.js:207-256` `enrichCitizen` (the join that would carry the widened payload) ·
+`hosts/web/GameSession.cs:2420-2436` (the `citizen` message) + a **new** `WireFormat.*.cs` partial ·
+`sim/Sim.Core/Citizens/PersonaSheet.cs` and `Citizens/CitizenMemory.cs:29-46,108-109` (the host-owned
+state the fabricated sections correspond to) · `client/test/dossier-honesty.test.js:138,216-286`.
+
 **MEASURED CENSUS, on this tree** (`client/src/ui/panels.js`; the source-of-truth ledger comment is
 `:224-247` and it is worth reading whole — it records that `morale` *"USED TO BE LISTED HERE AND IT WAS
 WRONG"*):
@@ -1049,7 +1202,7 @@ widening is **host-side, from unhashed mind state**, so it is pin-neutral (§2).
 
 | section | disposition |
 |---|---|
-| **NEEDS** | ⛔ **DELETE THE METERS.** `TARGET.md:67-69` forbids the bar; M4-1 DESIGN QUESTION (e) replaces them with the computed state line. ⚠️ **`Health` is `◇ SAMPLE` here for a REASON — it is never written** (§13.4); it lives or dies with §10 item 2 |
+| **NEEDS** | ⛔ **DELETE THE METERS.** `TARGET.md:66-69` forbids the bar; M4-1 DESIGN QUESTION (e) replaces them with the computed state line. ⚠️ **`Health` is `◇ SAMPLE` here for a REASON — it is never written** (§13.4); it lives or dies with §10 item 2 |
 | **YOUR STANDING** | **REAL, from `CitizenMind.AffinityToPlayer`/`TrustToPlayer`** (`CitizenMemory.cs:108-109`). ⚠️ **§13.9 measures `TrustToPlayer` as DECORATIVE — `SetDisposition` writes it and nothing reads it.** ⇒ **Show it only if it changes something, or do not show it.** Recommend: **cut in v1**, filed with the marks engine |
 | **PERSONALITY** (values/fears/speech) | **REAL, from `PersonaSheet`** — the seven authored sheets carry 2 Values, 2 Fears and a `SpeechStyle` each (`AuthoredShips.cs` `WreckSleepers()`) |
 | **BACKSTORY** | **REAL, from `PersonaSheet.RaidBackstory`** — 2–5 authored sentences per sleeper |
@@ -1061,12 +1214,35 @@ persona (`GameSession.cs:175-185` `GeneratePersonas`; pools at `PersonaSheet.cs:
 defaults to `"general crew"`). ⇒ ⛔ **THE FIRST PERSON THE PLAYER MEETS HAS THE THINNEST WRITTEN
 IDENTITY, AND THE PERSONA WINDOW MAKES THAT MAXIMALLY VISIBLE.** Filed for M4-2/M4-3 at
 `MECHANICS.md:5884-5894` and **pinned by assertion**, so authoring her later reddens a named test.
-⇒ **RULED (§11): M4-3 authors Rell a sheet at parity with the seven — traits, values, fears, speech,
-a backstory. Her SKILL SPREAD stays 0.** M3-8 measured both spread options **pin-neutral** and decided
-on design; **the sheet is host state and moves nothing.** Do not re-open the skill question here.
+> ⛔ ⭐ **RULED HERE, AND IT IS A NEW CALL THAT REVERSES M3-8 — NOT A ROW SETTLED BY AN EXISTING OD.**
+> **M4-3 authors Rell a sheet at parity with the seven** — traits, values, fears, speech, a backstory.
+> **Her SKILL SPREAD stays 0.**
+>
+> ⚠️ **Say plainly what M3-8 actually did, because the first draft mis-attributed it:** M3-8
+> **REFUSED** to author her and **FILED the question to M4-2/M4-3** (`MECHANICS.md:5884-5896`, three
+> reasons: every route touches a shared boot seam; the exit-gate sentence did not need it; and it is
+> *"VISIBLE, NOT INVISIBLE"*). ⇒ **This charter is taking the decision M3-8 handed forward, not
+> quoting one it already made.** What M3-8 genuinely settled — and this charter does not re-open — is
+> the **SKILL SPREAD**: both options measured **pin-neutral**, decided on design (§13.39.4).
+>
+> ⛔ ⭐ **AND IT REDDENS A NAMED, DELIBERATE PIN. `tests/Perilune.Tests/SleeperPersonaTests.cs:493-494`
+> asserts Rell's roster row still contains `"role":"general crew"`, with the message
+> *"Rell has been authored — that is a design change (MECHANICS §13.39), not a fix"*.** An authored
+> sheet publishes `RoleNow` through `GameSession.cs:2486` and turns that assertion red **by
+> construction**. ⇒ **The pin moves in M4-3's own commit with a STATED REPLACEMENT assertion** (that
+> her row now carries her authored role and is not the procedural default), and the test's header
+> paragraph (`:458`) is rewritten to record which claim changed — **a red test handed to the next lane
+> is the package failing** (M3-10's rule, applied to somebody else's test). ⚠️ **This is exactly what
+> the assertion was built to force, and it is working as designed.**
 
 **PIN IMPACT: NONE.** `PersonaSheet`/`CitizenMind` are host-owned and unhashed
 (`MECHANICS.md:5786-5793`'s table: the person half is **NO** to hashed).
+
+**SPINE? ⚠️ YES, for the wire half.** This package is a **wire widening**, and §9 marks
+`hosts/web/GameSession.cs` + `hosts/web/WireFormat*.cs` ⛔ **SPINE — integrator lane.** The client half
+is not. ⛔ **New channels go in a NEW `partial` file and `WireFormat.cs` keeps a zero diff** (M3-4 /
+M3-7's precedent); widening an existing tuple is the dangerous shape and needs struct + serializer +
+delta-gate field list + client decoder in ONE commit (M3-13's precedent, `…m3.packages.md:2380`).
 
 **MUTATIONS.**
 
@@ -1074,7 +1250,8 @@ on design; **the sheet is host state and moves nothing.** Do not re-open the ski
 |---|---|---|
 | 1 | leave a `SAMPLE_*` pool in the file | driven DOM census: **zero `◇ SAMPLE` badges** in the shipped window, plus a source-scan (shipped `codeOnly` stripper + negative control) that no `SAMPLE_*` identifier survives |
 | 2 | wire a section to a field the sim never writes | ⚠️ **this is the whole class of bug the package exists to end**, and `panels.js:236-241` already says the rule: *"Do not add a field to this REAL list on the strength of it being on the wire; **ask whether the sim moves it**."* ⇒ **each newly-REAL section needs a DRIVEN leg proving the value CHANGES in a run** |
-| 3 | author Rell a skill spread | the M3-8 assertion at `MECHANICS.md:5884-5894`'s pinned site, by construction |
+| 3 | author Rell a skill spread | ⛔ **REFUSED in review** — M3-8 settled it (both options pin-neutral, decided on design). This package authors her **sheet**, never her spread |
+| 4 | ⭐ **author Rell's sheet and leave `SleeperPersonaTests.cs:493` standing** | ⛔ **IT GOES RED BY CONSTRUCTION** — `Does.Contain("\"role\":\"general crew\"")` against a roster row that now carries her authored `RoleNow` (`GameSession.cs:2486`). **The pin MOVES in this commit** with a replacement assertion and a rewritten header at `:458`. ⚠️ **Named here because the first draft's mutation table did not name it, and a package that reddens a deliberate pin without naming it is indistinguishable from one that broke something** |
 | 4 | update the REAL/SAMPLE ledger comment without changing the code (or vice versa) | `dossier-honesty.test.js:216-286` pins that the prose ledger and the drawing code **agree**, with planted-violation controls both ways |
 
 **ACCEPTANCE.** Open the window on **Rell** and on a **thawed sleeper**; every band is populated from
@@ -1093,6 +1270,13 @@ the sim; **no `◇ SAMPLE` badge exists anywhere in the client** (this is the ex
 > system has ever written either — while a third field is saved and hashed with no reader anywhere.
 > **AFTER THIS** a person's condition either **changes what she can do**, or it stops being displayed.
 
+**SEAM.** `sim/Sim.Core/Entities/Citizen.cs:32` (`Health`), `:35` (`Morale`), `:38` (`Archetype`) ·
+`sim/Sim.Core/Simulation.cs` + `Save/SaveWriter.cs` + `Save/SaveReader.cs` (the CITZ fold and chapter)
+· `sim/Sim.Core/Systems/NeedsSystem.cs` (the only system positioned to write `Health` from hypoxia) ·
+`sim/Sim.Core/Jobs/` claim sites (where a floor would gate) · `client/src/ui/hud.js` (the dying morale
+bar) · `hosts/tui/Ui/InspectorModel.cs:83-84` (the other display) ·
+`docs/design/rimworld-reference.md:1346-1418` (the analogue).
+
 **MEASURED** (`MECHANICS.md` §13.4, `:2059-2073`; fields at `Citizen.cs:32,35,38`):
 
 - **`Citizen.Health`** — *"Damaged by hypoxia, cold and struggle"* per its own doc comment, and
@@ -1110,7 +1294,7 @@ pricing, because the batch cannot be answered without it:
 
 | # | option | what it costs | what T14 becomes |
 |---|---|---|---|
-| **A** | **Health becomes REAL** at RW§6.1's *shape*: written by hypoxia/cold, and gating work through **ONE low numeric floor** — *"a safety net under the curve, not a competence bar"* (`rimworld-reference.md:1401-1412`) | ⛔ **`pin/m4-a`: P1 P2 P3** (hashed state changes from tick 1 on every ship) **+ P4 P5 if the floor is a def field** — recommend a **literal**. Plus a live job-fail condition (RW's `CapableOf` ends a running job when a capacity drops, `:1413-1416`) | **T14 DONE**, minus the body-part tree |
+| **A** | **Health becomes REAL** at RW§6.1's *shape*: written by hypoxia/cold, and gating work through **ONE low numeric floor** — *"a safety net under the curve, not a competence bar"* (`rimworld-reference.md:1409-1412`) | ⛔ **`pin/m4-a`: P1 P2 P3** (hashed state changes from tick 1 on every ship) **+ P4 P5 if the floor is a def field** — recommend a **literal**. Plus a live job-fail condition (RW's `CapableOf` ends a running job the moment a capacity drops, `:1396-1399`) | **T14 DONE**, minus the body-part tree |
 | **B** | **DELETE** Health + Morale + Archetype from the citizen fold | ⛔ **ALSO `pin/m4-a`: P1 P2 P3.** ⭐ **Removing a hashed field moves the fold exactly as adding one does**, plus a CITZ v9→v10 branch and a migration leg | **T14 stays missing, permanently and on purpose** |
 | **C** | **KEEP the fields, retire only the DISPLAY** | ⭐ **PIN-NEUTRAL — the only zero-pin option.** The morale bar already dies with M4-8; this just says so deliberately | **T14 stays missing**; the fields stay dead weight in the hash |
 
@@ -1132,7 +1316,7 @@ from."*
 |---|---|---|
 | 1 | write `Health` but never read it | ⛔ **the exact defect this package exists to end.** A driven leg: damage a citizen and assert a job she could take before is refused after |
 | 2 | make the floor a competence bar (set it high) | a driven leg pinning that a **degraded but above-floor** citizen still takes the job — RW§6.1's *safety-net-not-competence-bar* shape, asserted, not commented |
-| 3 | gate at `>=` instead of `>` | `rimworld-reference.md:1370-1374`: **strict `>`**, so a capacity exactly at the floor is NOT capable. One leg at the exact boundary |
+| 3 | gate at `>=` instead of `>` | `rimworld-reference.md:1383-1385`: **strict `>`**, so a capacity exactly at the floor is NOT capable. One leg at the exact boundary |
 | 4 | the pin-neutrality claim is argued, not measured | the 2×2 in §2: floor out of reach ⇒ P1 returns to its old value exactly |
 
 **ACCEPTANCE** (under A). Drive a crew member into hypoxia in the running game; her Persona window's
@@ -1199,12 +1383,18 @@ the honest refusal until M4-6 — buttons stay on the palette, refusing with the
 ASKED. It is deliberately absent from §10** and a batch item for it would be a direct contradiction of
 a ruling taken four days earlier.
 
-**MEASURED SEAM.** `client/src/ui/roomzoom-view.js:122` — `let _decor = [];` with the comment *"session-local
+**SEAM (measured).** `client/src/ui/roomzoom-view.js:122` — `let _decor = [];` with the comment *"session-local
 cosmetic decor (**never hashed, never wired**)"*; merged into the drawn set at `:491`
 (`return wire.concat(_decor)`); removal at `:1682`. The honest refusal is at `:1142-1143`: *"⚠️ THE
 DECOR TOOLS ARE PERMANENTLY `.cant` and that is not an affordability claim — SHELF and RUG reach no
 sim at all, so 'the ship cannot do this' is simply true of them **until M4-6 rules**."* And `:1446`
 records the moment they stopped lying.
+
+**SPINE? ⛔ DEPENDS ON THE ANSWER, and that is part of what makes the call an owner's.** Under
+**remove**: no — client only. Under **wire**: ⚠️ **YES** — a furniture kind touches
+`sim/Sim.Core/Entities/Device.cs` + `MachineDefs.cs` + `Defs/SimDefs.cs` + `content/core/SimDefs/machines.def`
+(three hand transcriptions plus the def file, one commit, plus a behavioural consumer test), which §9
+serializes against every pin row.
 
 **PIN IMPACT.** ⛔ **Not decidable here.** "Wire" is a new furniture kind ⇒ a `machines.def` row or a
 furniture enum member ⇒ **P4/P5 at minimum**, and hashed placement ⇒ P1/P2/P3. "Remove" is client-only
@@ -1233,10 +1423,18 @@ place one, reload, it is still there.
 > the game's stated emotional payload, emitted and unreachable. **AFTER THIS** the tab opens and the
 > run has a story you can read.
 
+**SEAM.** `client/src/ui/overview-model.js:342` (`INERT_TABS`) + `:346` (`tabIsInert`) ·
+`client/src/ui/overview-view.js:87` (`OV_TABS`) + `:1645` (the refusal site) ·
+`client/src/wire/messages.js:157-158` (the `chron` typedef) ·
+`hosts/web/WireFormat.cs:696-710` (the emitter) + `hosts/web/GameSession.cs:2185`, `:5079` (its two
+send sites) · `sim/Sim.Core/Memory/Chronicle.cs:51-52,54-64,84,105-186` ·
+`sim/Sim.Core/Systems/HistorySystem.cs:54-78` (`SubjectA` `:63` / `SubjectB` `:66`), `:111`
+(`MaxEntries = 200`) · ⛔ **NOT `client/src/ui/hud.js:1203-1228`** (`renderChronBlock` is console DOM).
+
 **MEASURED.**
 - **The tab exists and is inert.** `client/src/ui/overview-model.js:342`
   `export const INERT_TABS = Object.freeze(['chron']);`, consulted by `tabIsInert` at `:346`;
-  `overview-view.js:85` calls it *"the one still-inert slot"*. ⚠️ **`overview-model.js:352-356` is a
+  `overview-view.js:19` calls it *"the one still-inert slot"*. ⚠️ **`overview-model.js:352-356` is a
   standing warning about that array** (*"`'work'` MUST NEVER JOIN `INERT_TABS`"*) and the array is
   pinned by `overview-model.test.js` — **the removal and the pin move in one commit.**
 - **The channel is complete.** `{type:'chron', days:[{day, headline, lines[]}]}` —
@@ -1261,12 +1459,13 @@ state, no pin**, and it is what lets the Persona window's `TIES & HISTORY` band 
 opportunistically"** — this package owns it; no other may.
 
 **§10 ITEM 5 — THE SEVERITY TIE, measured precisely so the owner is not asked a vague question.**
-`Chronicle.cs:105-175` is the ladder: `RunEnded 12 > EmergencyThaw 11 > Eulogy 9 > Death 8 > Thaw 7 >
-Construction/Deconstruct/Repair/Commission 6 > **Brownout 5 = OrderDropped 5** > …`, and **ties resolve
-to the EARLIEST entry** via the strict `>` in `Render` (`:84`). ⇒ ⭐ **The reported symptom — *"a
-brownout usually out-headlines ORDER DROPPED"* (`HANDOVER.md:62`) — is not a severity bug: they are
-DELIBERATELY EQUAL and the brownout simply happens first.** The code argues its own tie at length
-(`:154-166`) and the crew-tier precedence above it is **owner-ruled** (`:167-170`, pinned by
+`Chronicle.cs:105-186` is the ladder: `RunEnded 12` (`:132`) `> EmergencyThaw 11` (`:133`)
+`> Eulogy 9` (`:138`) `> Death 8 > Thaw 7 > Construction/Deconstruct/Repair/Commission 6 >`
+**`Brownout 5`** (`:157`) **`= OrderDropped 5`** (`:179`) `> …`, and **ties resolve to the EARLIEST
+entry** via the strict `>` in `Render` (`:84`). ⇒ ⭐ **The reported symptom — *"a brownout usually
+out-headlines ORDER DROPPED"* (`HANDOVER.md:62`) — is not a severity bug: they are DELIBERATELY EQUAL
+and the brownout simply happens first.** The code argues its own tie at length (`:158-173`) and the
+crew-tier precedence above it is **owner-ruled** (`:166-169`, pinned by
 `DroppedOrderChronicleTests.ADeathAndAThawStillOutrankADroppedOrder`). ⇒ **The batch item is therefore
 narrow and honest: keep the tie (earliest wins), or break it toward the dropped order.**
 
@@ -1301,6 +1500,14 @@ renderer) · `Chronicle.cs`/`HistorySystem.cs` · `WireFormat*.cs`. See §9.
 first — **no agent can be that human**."* And `ROADMAP.md:153`: *"Console retirement WP-9: scheduled
 inside M4-8, **not before the Persona re-home**."* ⇒ **It is last in §3 by construction.**
 *"Schedule it here; let it slip without guilt."*
+
+**SEAM.** `client/index.html:11` (`<div class="app">`, running to ~`:126`) and `:144` (`#panels`) ·
+`client/src/ui/hud.js` **entire** (1364 lines; the split target is `SHIP_STATE_REACH`) ·
+`client/src/main.js` · a new `client/src/ui/ship-state.js` (already named in `CONSOLE_OWNERS`,
+`client/test/surface-boundary.test.js:232`) · `client/src/ui/overview-view.js:87,1443,1645,1652` (the
+three MOSS reaches) · `hosts/web/GameSession.cs`'s `HandleOperate` + `CmdKind.Operate` +
+`hosts/web/WireFormat.Operate.cs` + `tests/Perilune.Tests/OperateVerbTests.cs` (the dead handlers) ·
+`client/test/surface-boundary.test.js:232,584,604,707-709,833-908`.
 
 **MEASURED PINNED STATE.**
 - `CONSOLE_SHELL_ID_CEILING = 43` (`surface-boundary.test.js:584`), asserted `:604`. ⭐ **The test
@@ -1455,7 +1662,7 @@ or it states in its own charter why it cannot.**
 | row | today | after M4 |
 |---|---|---|
 | **T16** Persona window (ONE door to a person) | `queued (M4-1/M4-2)` | **DONE** (M4-2 + M4-3) — the exit gate's own sentence |
-| **T12** needs/mood: mood as consequence, not meter | `partial` — rest DONE, *"mood still gates no crew behaviour directly"* | ⭐ **depends entirely on §10 item 1.** Under (a)/(b): **the sleep-pause clause lands and the first break behaviour ships ⇒ T12's headline remainder CLOSES.** Under (c): **T12 does not move**, and the row should say *"designed, deferred to M5"* rather than staying silent |
+| **T12** needs/mood: mood as consequence, not meter | `partial` — rest DONE, *"mood still gates no crew behaviour directly"* | ⭐ **depends entirely on §10 item 1, in §10's own labels.** Under **A** (a ninth package) or **B** (inside M4-4): **the sleep-pause clause lands and the first break behaviour ships ⇒ T12's headline remainder CLOSES.** Under **C** (deferred to M5): **T12 does not move**, and the row should then say *"designed, deferred to M5"* rather than staying silent |
 | **T14** Health: capacity-gated work | `missing (M4-4 decides real-or-delete)` | ⭐ **the row's own sentence is satisfied EITHER WAY — it says "decides".** Under A: **DONE** minus the body-part tree. Under B: **struck**, permanently, on purpose. Under C: **still missing, by decision** |
 | **T8** a refused order says WHY | `partial` | ⭐ **partial →** the Persona window is the first surface that answers *why* **for a person** rather than for a tile; and a break refusal is a new refusal that must carry a sentence from day one |
 | **T11** skills gate output, never whether | DONE | **reaches further** — the CAN & CANNOT band is the *"Incapable Of"* surface `MECHANICS.md:5771` filed as missing |
@@ -1484,7 +1691,8 @@ plus M4-3's.
       → no ◇ SAMPLE badge anywhere; a work type she can never do is NAMED, with its source.
 3. Esc.  Enter Room Zoom.  Click a crew member in the dock.
       → THE SAME WINDOW.  ⭐ this is the step that closes ROADMAP.md:55.
-4. Thaw a sleeper (POD BAY, as T13's witness run did).  Open her.
+4. Thaw a sleeper: TYPE `pods`, then TYPE `thaw <n>` (OD-P — type the command, never a
+      letter hotkey), as T13's witness run did.  Open her.
       → a DIFFERENT PERSON: different traits, different backstory, a different CAN & CANNOT.
 5. Open CHRONICLE on the Overview.
       → the run's days, with headlines.  Open her window again → HER lines are in TIES & HISTORY.
@@ -1527,7 +1735,7 @@ M4-1 DESIGN QUESTION (e)'s sequencing rule.
 | # | pair | the shared thing | what it costs if ignored |
 |---|---|---|---|
 | ⭐ **1** | **M4-2 ↔ M4-8** | ⭐ **`openPersonaForSelected`'s HOME — and this is the milestone's one ordering circle** | `console-retirement.plan.md:224-229` puts the seam in **`ship-state.js`**, which does not exist until M4-8 splits `hud.js`; M4-8 must not run before the Persona re-home (`ROADMAP.md:153`). ⛔ **THE CUT, CHARTERED: M4-2 lands the seam IN `hud.js`, ON `SHIP_STATE_REACH` — the list whose own header says it IS the split specification (*"everything on this list moves to ship-state.js"*) — and M4-8 moves the whole list at once.** Neither package waits. ⚠️ **If M4-2 instead creates `ship-state.js` early, `CONSOLE_OWNERS` (`:232`) already names it and several tests short-circuit on `readOrNull('src/ui/hud.js')` returning null — a half-split tree is the worst of both.** |
-| ⭐ **2** | **M4-2 ↔ the break row** | ⭐ **the HOW SHE IS band** | **No shared file.** M4-2 ships the band's frame; the break row ships the only thing that can honestly fill its second clause. ⛔ **If they land out of order the band is an adjective that changes nothing — a cosmetic operator, banned by `TARGET.md:66` and by OD-R's own amendment.** ⇒ **§10 item 1's answer sets the order, and M4-2's charter carries the four-band fallback.** |
+| ⭐ **2** | **M4-2 ↔ the break row** | ⭐ **the HOW SHE IS band** | **No shared file.** M4-2 ships the band's frame; the break row ships the only thing that can honestly fill its second clause. ⛔ **If they land out of order the band is an adjective that changes nothing — a cosmetic operator, banned by `TARGET.md:65`'s cosmetic-operator rule and by OD-R's own amendment.** ⇒ **§10 item 1's answer sets the order, and M4-2's charter carries the four-band fallback.** |
 | ⭐ **3** | **the break row ↔ M4-4** | ⭐ **the "able to move" precondition** | RW§4 requires *awake **and able to move***. The awake half is free (M3-9's `JobKind` gate); **the able half exists only if M4-4 answers (A).** ⇒ **Under (B) or (C) the break package ships the precondition as *awake only* and SAYS SO** — a half-quoted analogue is how a rule becomes folklore. |
 | ⭐ **4** | **the break row ↔ M3-14 (landed)** | ⭐ **`Citizen.HeldByOrder` — the SAME FIELD, read in OPPOSITE directions** | M3-14's rung 2 says *a held order bypasses `CanStageWorkerAt`*; the minor-tier break says *not for her, not now*. **Two readers of one flag with no compiler between them.** ⚠️ **M2-19 measured that the hold's whole bite is the pre-emption path and that neither read point is individually pinned — the PROPERTY is** (`…m3.packages.md:2400`). ⇒ **The break package adds a read point and must re-pin the property from the new site.** ⭐ **And §10 item 3 is exactly this coupling asked as a design question.** |
 | ⭐ **5** | **the break row ↔ D-3 / `SocialSystem`** | ⭐ **`Citizen.Mood` as a BEHAVIOUR GATE — the second one ever** | Today mood gates exactly one behaviour and **its gate is saturated and rolled**. A second gate on the same scalar, built correctly beside a first one built wrongly, invites a later lane to "make them consistent" in the wrong direction. ⇒ **The break package states in its own header that it does NOT copy the argument gate, and why.** |
@@ -1626,6 +1834,17 @@ put the player's word above the grid.
 |---|---|---|
 | **A** | ⭐ **A GRADUATED OVERRIDE: an order still lands at MINOR (she refuses only the dangerous class), is REFUSED at MAJOR, and is IMPOSSIBLE at EXTREME** | ⭐ **RECOMMENDED.** It keeps the direct-order game intact for the common case, makes the ladder *mean* something (each tier takes one more thing away from you), and gives the refusal a sentence the player can act on. **It is a deviation from RimWorld and would be stated as one in the package's commit.** |
 | **B** | **RimWorld's answer: no override at any tier** | the analogue, unmodified. ⛔ **SILENCE DEFAULT** — for mechanisms, RimWorld's shape IS the decision, and absent a ruling the analogue wins. ⚠️ **Cost: the first time a break fires, the player's only verb stops working with no ladder and no warning** |
+
+> ### ⛔ RECONCILING B WITH §11's *"THREE TIERS, NOT RE-LITIGABLE"* — SAID HERE SO THE TWO ARE NOT READ AS A CONTRADICTION
+>
+> §11 records **"THREE, DERIVED FROM ONE TUNABLE — ⛔ not re-litigable"**, and that stands under every
+> answer to this item: ⭐ **the three THRESHOLDS are RW§4's derivation and they survive B intact.**
+> What B collapses is only the minor tier's **BEHAVIOUR**: *"she refuses the dangerous order"* is not
+> a distinguishable behaviour on a ship where no order lands anyway, so under B the ladder ships
+> **three thresholds with two distinguishable consequences** (minor and major become the same
+> observable), and the charter's roster table is re-cut to say so. ⛔ **Nobody may read B as
+> permission to drop a tier from the derivation** — that would re-litigate the analogue, which this
+> item does not ask about.
 | **C** | **Always overridable** | ⛔ **Then the break gates nothing and OD-R clause (ii) is not implemented.** Listed to be refused |
 
 ⚠️ **The roster mapping rides on this item**: minor = *refuse dangerous orders* · major = *stop
@@ -1665,12 +1884,12 @@ answer; the grief register does.**
 **ITEM 5 — THE CHRONICLE SEVERITY TIE**
 *(binds M4-7; carried from `HANDOVER.md:62`)*
 
-**Measured, and the question is narrower than the filing suggested.** `Chronicle.cs:105-175`:
-`Brownout` and `OrderDropped` are **both severity 5**, and `Render`'s strict `>` (`:84`) resolves a tie
-to the **earliest** entry. ⇒ ⭐ **The reported symptom — *"a brownout usually out-headlines ORDER
-DROPPED"* — is not a mis-ranking; they are deliberately equal and the brownout simply happens first.**
-The code argues the tie at length (`:154-166`) and the crew-tier precedence above it is already
-**owner-ruled and pinned** (`:167-170`).
+**Measured, and the question is narrower than the filing suggested.** `Chronicle.cs:105-186`:
+**`Brownout` (`:157`) and `OrderDropped` (`:179`) are both severity 5**, and `Render`'s strict `>`
+(`:84`) resolves a tie to the **earliest** entry. ⇒ ⭐ **The reported symptom — *"a brownout usually
+out-headlines ORDER DROPPED"* — is not a mis-ranking; they are deliberately equal and the brownout
+simply happens first.** The code argues the tie at length (`:158-173`) and the crew-tier precedence
+above it is already **owner-ruled and pinned** (`:166-169`).
 
 | # | option | verdict |
 |---|---|---|
@@ -1700,19 +1919,19 @@ pinned by name.
 
 | question | settled by | answer |
 |---|---|---|
-| **How many doors from the map to a person?** | `CLAUDE.md:84-85` (binding) + `surface-boundary.test.js:1005-1014`'s failure text | **ONE.** *"The Persona window **replaces** these; it does not join them"* — the census **shrinking to one** is the whole point |
+| **How many doors from the map to a person?** | `CLAUDE.md:84-85` (binding) + `surface-boundary.test.js:915` — the census's own header comment | **ONE.** *"The Persona window replaces these; it does not join them"* (`:915`). The failure text at **`:1005-1014`** spells out the two legitimate exits, of which the first is *"the census shrinking to one is the whole point"* |
 | **Does the window host ORDERS?** | **the analogue.** RimWorld's Bio tab hosts none; orders are the map's right-click (RW§2.2) and the Work tab (RW§1.7) — both of which Perilune already ships (M2-9, M2-3) | ⭐ **NO in v1.** A second arbitration entry point is *priority-cannot-live-in-the-dispatcher* in UI clothing. ⚠️ **Laid out so char-sim §12.5's assignment verb could land later without a re-layout** |
-| **Does it surface a TRANSCRIPT?** | `TARGET.md:46-47` (*"Ship playable fully offline"*) + `console-retirement.plan.md:260-262`'s vocabulary discipline | **NOT IN v1.** `chat.js` stays retained-unwired as *"the natural substrate if the Persona window ever surfaces an opted-in transcript"*. **Never *"talk to your crew"* as a shipped promise** |
+| **Does it surface a TRANSCRIPT?** | `TARGET.md:46-47` (*"Ship playable fully offline"*) + `console-retirement.plan.md:253-255`'s vocabulary discipline | **NOT IN v1.** `chat.js` stays retained-unwired as *"the natural substrate if the Persona window ever surfaces an opted-in transcript"*. **Never *"talk to your crew"* as a shipped promise** |
 | **How are traits / relationships / needs / history ARRANGED?** | **the analogue.** RimWorld groups Bio (identity + backstory + *Incapable Of*) / Health (capacities) / Needs (mood + thresholds) / Social (relations) | **The same grouping**, as five bands in the exit gate's own order. ⛔ **Only tabs-vs-scroll is left open** (DESIGN QUESTION (a)) |
 | **Does Room Zoom grow its own readout?** | `CLAUDE.md:84-85` + `TARGET.md:71` (*"No new UI off the standard surface"*) + M2-6's lesson (two surfaces, one sentence, drift) | ⭐ **NO — the Persona window answers there.** This closes `ROADMAP.md:55`'s filing, and the crew dock stays the selector (`zoom-pawn.test.js:795-796`: *"SELECTING is not interacting"*) |
 | **Does the window carry "Incapable Of"?** | **the analogue** — RW§1.6 + §6.1, and `MECHANICS.md:5771` names RimWorld's Bio tab as the surface we lack | ⭐ **YES**, and **no wire change is needed**: `workcaps` already carries `[cid, s0..s5, incapableMask]`. ⚠️ **The WORK tab's second hint line STAYS** (`overview-view.js:590-597`) — one fact, two surfaces, and the grid is where the absence is *seen* |
 | **Is the Persona window terminal-styled / a MOSS noun?** | `CLAUDE.md:75-83` (the standard surface) + OD-P (nouns are reserved; *"never implement from this row"*) + `…m3.packages.md:2705` (the MOSS-takeover precedent) | **NO to both.** It is a standard-surface artifact reachable from the Overview. **If it is ever a MOSS noun, that is a TYPED verb with its own charter row** |
-| **Does a MORALE meter come back?** | `TARGET.md:67-69` + `dossier-honesty.test.js:138` (equality-pinned) + `panels.js:231-241` (the ledger's own correction) | ⛔ **NO.** *"Do not add a field to this REAL list on the strength of it being on the wire; ask whether the sim moves it"* |
+| **Does a MORALE meter come back?** | `TARGET.md:66-69` + `dossier-honesty.test.js:138` (equality-pinned) + `panels.js:231-241` (the ledger's own correction) | ⛔ **NO.** *"Do not add a field to this REAL list on the strength of it being on the wire; ask whether the sim moves it"* |
 | **How many break TIERS, and how are they derived?** | **RW§4.2 (`:1007-1012`), binding** | ⭐ **THREE, DERIVED FROM ONE TUNABLE**: major = 4/7, extreme = 1/7, minor clamped. *"Copy the **derivation**, not three numbers."* ⛔ **Not re-litigable — it is the mechanism and RimWorld's shape IS the decision** |
 | **Are trait mood-offsets and trait threshold-offsets the same axis?** | **RW§4.2 (`:1034-1037`)** | **NO — two independent axes**, and it *"reads backwards from the trait names"* |
 | **Do breaks fire while asleep?** | **RW§4.2 (`:986`, `:1017-1018`)** + M3-9's shipped `JobKind.Sleep` gate | ⛔ **NO.** The dwell counter **pauses** while `JobKind == Sleep` — the honest analogue of RimWorld's frozen bar, on a predicate already saved and hashed. ⭐ **This closes T12's *"no mood freeze while asleep"* remainder** |
 | **Does the break selection roll?** | `TARGET.md:63-65` + OD-R (*"never rolls"*) | ⛔ **NO. Dwell time, not mean time; one behaviour per tier, no weighted roster.** RimWorld's rate is the one thing in RW§4 that is deliberately NOT adopted, and the deviation is named |
-| **Does Rell get an authored persona sheet?** | **M3-8's own ruling** — both spread options measured **pin-neutral** and decided on design (`MECHANICS.md:5884-5894`, pinned by assertion) | **YES for the SHEET** (host state, unhashed, pin-neutral) in M4-3. ⛔ **NO for the skill spread** — that question was answered and is not re-opened |
+| **Does Rell get an authored SKILL SPREAD?** | **M3-8's own ruling** — both options measured **pin-neutral** and decided on design (`MECHANICS.md:5884-5896`, §13.39.4) | ⛔ **NO, and it is not re-opened.** ⚠️ **The SHEET is a DIFFERENT question and it is NOT settled here — M3-8 REFUSED it and FILED it to M4-2/M4-3, and this charter RULES it in M4-3's own section (a new call, and it moves `SleeperPersonaTests.cs:493`).** *Split out because the first draft filed both halves in this table and only one of them belongs in it.* |
 | **Where does per-person history come from?** | measured: `HistoryEntry.SubjectA/SubjectB` exist and are hashed; `Chronicle.Render` drops them | **Carry them out on the `chron` wire** — additive, host-side, **no pin**. ⛔ **Never a text-name join** (§13.43.3's recorded regression class) |
 | **Is `Chronicle.Render` allowed on a tick path?** | `Chronicle.cs:52-53`, its own allocation contract | **NO.** *"called ON DEMAND … never on a tick path"* |
 | **May `hud.js`'s chronicle renderer be reached from the standard surface?** | `surface-boundary.test.js:232` (`CONSOLE_OWNERS`) | **NO.** The standard surface gets its own renderer |
@@ -1772,9 +1991,10 @@ scout brief, or in a filed line, that is **false or stale on this tree**.*
     −37.7/−26.4/−29.5 and [−39.8, −10.5], `rimworld-reference.md:1816`'s *"≤ −5 forever"*, and
     `perilune-character-simulation.plan.md` §8.2's [−60, 0] display band. **All three descend from the
     same measurement, taken before the reducer existed.** ⇒ **MUST RE-MEASURE, marked in §5.**
-13. ⭐ **A SECOND DEFECT ON D-3's LINE, NOT IN ITS FILING:** `SocialSystem.cs:149`'s third conjunct is
-    `_roll.NextFloat() < defs.ArgumentChancePerPass` — **a runtime roll**, which is the shape
-    `TARGET.md:63-65` forbids in outcomes. Deterministic in the replay sense; a die in the design
+13. ⭐ **A SECOND DEFECT ON D-3's LINE, NOT IN ITS FILING:** the `if`'s third conjunct — **`:150`**,
+    the second line of the two-line condition opened at `:149` — is
+    `_roll.NextFloat() < defs.ArgumentChancePerPass`, **a runtime roll**, which is the shape
+    `TARGET.md:63-64` forbids in outcomes. Deterministic in the replay sense; a die in the design
     sense. ⛔ **FILED, not ruled** — re-litigating a shipped system is outside a design package.
 14. **`console-retirement.plan.md:224`'s seam line is stale.** It cites `overview-view.js:234` as the
     readout's primary action button; **measured, the action row is `:437-443`** and the buttons are
@@ -1812,11 +2032,24 @@ statement about WHEN it was true, never a reason to trust it now.***
   `room-model.js:680` · `overview-model.js:342,346,352` · `console-model.js:756` ·
   `console-model.test.js:650-657` · `dossier-honesty.test.js:138` · `panels.js:224-247,251-284,291,
   315,325,343,353,363,367,385,404,409,418` · `styles.css:428,874,1326,1808` · `onboarding.js:225-227`.
+- ⭐ **READ IN REVISION 2 (the send-back's own subjects, each re-measured before the fix):**
+  `client/src/input/controls.js:273-335` **in full — the complete keymap census** (§5's (b) box) ·
+  `client/src/main.js:72,192-200,364` (`toggleSprites`) · `client/test/input.test.js:182,217` +
+  `client/test/zoom-pawn.test.js:719` (its doubles) ·
+  `tests/Perilune.Tests/SleeperPersonaTests.cs:458,485-495` (the Rell pin and its message) ·
+  `sim/Sim.Core/SleeperAptitudes.cs:66-76,98-120,164` · `MECHANICS.md:5818-5824,5884-5896,2049-2052` ·
+  `sim/Sim.Core/Memory/Chronicle.cs:51,124-186` (every severity arm) ·
+  `docs/design/rimworld-reference.md:1380-1400,1401-1412` ·
+  `docs/design/perilune-console-retirement.plan.md:244-255` · `docs/TARGET.md:63-70` ·
+  `client/src/ui/panels.js:395-405` · `client/src/ui/overview-view.js:19,87,436-444,1443,1645,1652` ·
+  `client/test/surface-boundary.test.js:913-918,1083-1140` · `hosts/web/WireFormat*.cs` **counted**.
 - `Citizen.cs:32,35,38,71,72,153,193` · `NeedsSystem.cs:190-205` · `ShipMetrics.cs:13,86` ·
   `SocialSystem.cs:144-152` · `SimDefs.cs:565,942,1228` · `DefsParser.cs:378` ·
-  `CitizenMemory.cs:29-46,108-109,127` · `Chronicle.cs:15-26,38-52,54-64,84,105-175` ·
-  `HistorySystem.cs:54-78,111` · `GameSession.cs:2103,2426,2471,2483,2492` · the ten
-  `hosts/web/WireFormat*.cs` partials **including `WireFormat.Ending.cs`, confirmed present**.
+  `CitizenMemory.cs:29-46,108-109,127` · `Chronicle.cs:15-26,38-52,51-52,54-64,84,105-186` ·
+  `HistorySystem.cs:54-78,111` · `GameSession.cs:2103,2426,2471,2483,2492` · ⭐ **the `hosts/web/WireFormat*.cs` family — MEASURED 13 files:
+  `WireFormat.cs` plus TWELVE partials** (`Alerts` `Blocked` `Devices` `Ending` `Items` `Ledger`
+  `Marks` `Operate` `Pods` `Work` `WorkCaps` `Zones`), **including `WireFormat.Ending.cs`, confirmed
+  present.** ⚠️ *The first draft said "ten" and had not counted.*
 - `rimworld-reference.md` §4 **in full** (`:953-1116`) · §6.1 (`:1346-1418`) · §8.6 (`:1811-1844`) ·
   §8.8 (`:1868-1885`) · §8.9 (`:1887-1899`).
 - `ROADMAP.md:20-30,90-100,115-160` (OD-K…OD-R **verbatim**) · `TARGET.md:1-100` · `PROCESS.md:45-95`
@@ -1832,6 +2065,12 @@ limitation, not a virtue**, and `…q3.packages.md:3800-3803` names it: *"**Befo
 package, ask its question of the running sim.**"* ⇒ **The one question this charter could not ask
 without driving the sim is the post-M3-9 mood envelope, and it is handed to the break package as its
 FIRST measurement rather than guessed at here.** Every threshold in §5 is a shape, never a value.
+⭐ **REVISION 2 WIDENED THAT HANDOFF RATHER THAN CLOSING IT:** the first measurement now owes **four**
+outputs, not two — day-means, the per-citizen envelope, and ⭐ **the sawtooth's AMPLITUDE and PERIOD**,
+because DESIGN QUESTION (h)'s answer depends on them and **neither number exists anywhere in the repo
+today.** ⚠️ *The review's sharpest catch was a consequence of a row this document already quoted; a
+citation read for one fact and not for the sentence beside it is the same defect as not opening the
+file.*
 
 ### 13.3 TAKEN ON FAITH (inherited, not re-opened) — and what it would cost if wrong
 
@@ -1843,7 +2082,7 @@ FIRST measurement rather than guessed at here.** Every threshold in §5 is a sha
 | `TrustToPlayer`/`RevealDifficulty` are **decorative** | `MECHANICS.md` §13.9 | M4-3's *cut YOUR STANDING* recommendation weakens |
 | `.rz-crewtask` 118 px ≈ 22 chars vs `.ov-task` 264 px | `MECHANICS.md:3151` | the *"the window is where the whole sentence fits"* argument weakens; **`ROADMAP.md:55`'s filing stands on its own** |
 | the 200-entry ring's turnover **horizon ~4.2 d / past a sim-week** | `HistorySystem.cs:429-434`'s own comment | M4-7's per-person history could be thinner than assumed. **Filed, not resolved** |
-| M3-8 measured Rell's spread options **pin-neutral both ways** | `…m3.packages.md:240`, `MECHANICS.md` §13.39 | §11's *"do not re-open the skill question"* row weakens; **the SHEET half is host state and is safe regardless** |
+| M3-8 measured Rell's spread options **pin-neutral both ways** | `…m3.packages.md:240`, `MECHANICS.md` §13.39.4 | §11's *"do not re-open the skill question"* row weakens. ⚠️ **The SHEET half is not on faith at all — `SleeperPersonaTests.cs:493-494` and `MECHANICS.md:5884-5896` were both read on this tree** |
 | every `…q3.packages.md` §7 line number | July | ⭐ **assumed WRONG by default and re-measured — §12 lists sixteen corrections, and re-derive that COUNT from the headings rather than quoting this cell** |
 
 ### 13.4 WHAT THIS DOCUMENT DELIBERATELY DID **NOT** VERIFY
@@ -1860,12 +2099,32 @@ FIRST measurement rather than guessed at here.** Every threshold in §5 is a sha
 ### 13.5 ⭐ THE ONE THING THIS CHARTER WOULD MOST LIKE A REVIEWER TO ATTACK
 
 **The dwell counter.** It is this document's only genuine invention — RW§4 gives a *rate*, TARGET §2
-forbids rolling one, and *"a hard time instead of a mean time"* is the charter's own bridge. It is
-defensible (it is a threshold over hashed state, it preserves RimWorld's ordering, and it puts the
-rate limiter back where a bar-less architecture has room for it) **and nobody has driven it.**
-⚠️ **If it is wrong, it is wrong in the direction of being TOO SHARP**: RimWorld's rate means two
-identical pawns break at different times, which reads as *people*, while a dwell counter means every
-person at the same mood breaks at the same second, which can read as *machinery*. ⭐ **The mitigation
-is already in the design and is worth checking: the per-person tunable (RW§4's second axis) means two
-people at the same mood are NOT at the same tier** — so the sharpness is absorbed by the thing
-RimWorld also uses. **Check that argument before checking anything else in §5.**
+forbids rolling one, and *"a hard time instead of a mean time"* is the charter's own bridge. It is a
+threshold over hashed state and it preserves RimWorld's ordering — **and nobody has driven it.**
+⛔ **IT CAN FAIL IN BOTH DIRECTIONS AND THE FIRST DRAFT NAMED ONLY ONE. Both are stated here, and the
+second is the likelier.**
+
+**FAILURE A — TOO BLUNT (the break never fires). ⭐ The likelier one, and it comes from the charter's
+own cited row.** `MECHANICS.md` §13.4 (`:2049-2052`) measures mood as a **sawtooth** — the
+hunger/thirst terms ramp and drop at every meal — across a per-citizen envelope of **[−39.8, −10.5]**,
+a swing of ~29 points. **A threshold inside that swing is crossed in both directions every meal**, and
+under a hard reset the dwell counter zeroes each time. ⇒ **The counter may never reach `dwell_ticks[T]`
+and the ladder becomes a mechanism that ships, folds a hashed field, moves three pins and never once
+changes a behaviour.** ⭐ **That is the D-3 shape from the other side** — always-false reads exactly
+like always-true. **Mitigation: DESIGN QUESTION (h) (decaying counter, optionally with hysteresis) plus
+the sawtooth amplitude and period as required outputs of the first measurement.** ⚠️ **Attack (h)
+first.**
+
+**FAILURE B — TOO SHARP (everyone breaks at once).** RimWorld's rate means two identical pawns break
+at different times, which reads as *people*; a dwell counter means every person at the same mood
+breaks at the same second, which reads as *machinery*. ⛔ **AND THE MITIGATION IS CONDITIONAL, WHICH
+THE FIRST DRAFT DID NOT SAY:** it is *"the per-person tunable means two people at the same mood are
+NOT at the same tier"* — **which is only true under DESIGN QUESTION (g) option (ii).** ⇒ ⛔ **Under
+(g)(i) — a global literal — there is no per-person tunable and THIS MITIGATION DOES NOT EXIST.** A
+reviewer checking §13.5 must check (g)'s answer first; a lane that takes (i) for cost reasons is
+taking failure B unabsorbed, and that trade has to be made deliberately rather than inherited from a
+sentence in this section.
+
+⭐ **The two failures pull the same lever in opposite directions** — a lower threshold or a longer
+dwell buys against B and worsens A. **That is why the envelope, the amplitude and the period are the
+break package's first act and not its last.**
