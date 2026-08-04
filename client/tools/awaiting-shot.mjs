@@ -28,6 +28,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { dismissOnboarding } from './rig-lib.mjs';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8348');
@@ -128,8 +129,10 @@ for (let i = 0; i < 20 && cardText === '(no card)'; i++) {
 check(/WORK/.test(cardText), 'the first screen names the WORK tab');
 check(/put her to work/i.test(cardText), 'and says what it is for');
 await png('01-card.png');
-const onb = await centre('[data-onb-begin]');
-if (onb) { await clickAt(onb.x, onb.y); await sleep(2500); }
+// THE ONBOARDING CARD, DISMISSED AND VERIFIED GONE (shared helper, 2026-08-03). The one-shot
+// this replaces could SILENTLY SKIP a card that had not painted yet, and every click below
+// then landed on a full-screen modal instead of the ship.
+await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
 
 // ── STEPS 1+2: touch nothing. Her row says she is waiting, and she is visibly alive.
 log('\nSTEPS 1-2 — touch nothing: the row says WAITING, and she moves');
