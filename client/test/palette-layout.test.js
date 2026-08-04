@@ -449,11 +449,13 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
  *
  * ⚠️ LEG 4 IS NOT DECORATION. It is why the armed ring is a `box-shadow` rather than a thicker
  * border or a bolder weight: shadows do not participate in layout, and anything that re-measures the
- * button on arm reflows the EIGHTEEN-tool wrapping row — which is the clipping defect this entire
+ * button on arm reflows the TWENTY-ONE-tool wrapping row — which is the clipping defect this entire
  * file exists for. The obvious way to make the armed look "louder" is the one that re-opens it.
- * (EIGHTEEN measured today, twice — `ROOM_TOOLS.length` and `palette-shot.mjs`'s live `18/18`. Note
- * that this file's own header and four comments in `room-model.test.js` still say "seventeen"; those
- * are stale and are FILED rather than edited from here.)
+ * (TWENTY-ONE measured 2026-08-04, twice — `ROOM_TOOLS.length` and `palette-shot.mjs`'s live `21/21`
+ * at all six widths, rows 3/3/3/4/4/5 across 1600→900. It read EIGHTEEN the day before, and
+ * SEVENTEEN before that. Note that this file's own header and several comments in
+ * `room-model.test.js` still say "seventeen"; those are stale and are FILED rather than edited from
+ * here — the only counts kept live are the ones something MEASURES.)
  *
  * Legs are blinded (trap shape 5): one `assert` at the end, so a regression names every state that
  * has drifted rather than only the first.

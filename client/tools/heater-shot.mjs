@@ -266,7 +266,10 @@ await sleep(3000);
 
 const clipped = await evalJson(`(()=>{const p=document.getElementById('rz-palette');const pr=p.getBoundingClientRect();const out=[];for(const b of p.querySelectorAll('.rz-tool')){const r=b.getBoundingClientRect();if(r.right>pr.right+0.5||r.left<pr.left-0.5||r.bottom>pr.bottom+0.5||r.top<pr.top-0.5||r.width===0)out.push(b.dataset.rztool);}return out;})()`);
 check(Array.isArray(clipped) && clipped.length === 0, `every palette button is inside the palette box (clipped: ${JSON.stringify(clipped)})`);
-check((await evaluate(`document.querySelectorAll('#rz-palette .rz-tool').length`)) === 18, 'the palette paints 18 tools (17 + HEATER)');
+// 18 -> 21 (2026-08-04): GROWBED, MEDBED and TABLE joined the palette. Moved in the same commit as
+// the tools, for the reason `erase-shot.mjs`'s twin of this line gives — neither harness is in
+// `./ci.sh`, so a stale literal here dies as a red on the NEXT person's unrelated run.
+check((await evaluate(`document.querySelectorAll('#rz-palette .rz-tool').length`)) === 21, 'the palette paints 21 tools (HEATER among them)');
 const heaterBtn = await centre('[data-rztool="heater"]');
 check(!!heaterBtn, 'the palette carries a HEATER button — without it the verb is unreachable');
 const palCrop = await evalJson(`(()=>{const e=document.getElementById('rz-palette');const r=e.getBoundingClientRect();const pad=8;return {x:Math.max(0,r.x-pad),y:Math.max(0,r.y-pad),width:r.width+pad*2,height:r.height+pad*2};})()`);
