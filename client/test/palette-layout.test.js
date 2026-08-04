@@ -408,6 +408,22 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
 /**
  * ARMED MUST NOT LOOK LIKE HOVERED — the 2026-08-03 owner defect, pinned where its cause lived.
  *
+ * ⭐ SWEPT OVER THE **CLASS** OF ARMABLE ROOM-ZOOM CONTROLS, NOT OVER A LIST OF RULES SOMEONE PICKED.
+ * This test shipped on 2026-08-03 covering `.rz-tool` alone, and the palette lane's own reviewer
+ * immediately found the same collision one row down: `.rz-acc-chip` had it IDENTICALLY (`:hover` and
+ * `.on` both `border-color:#cf7a33`) and `.rz-mat-chip` had it in near-form. Two rules were fixed and
+ * a third one would have been missed the same way, so the membership is now DISCOVERED from the
+ * stylesheet (`discoverArmable`, and the test above this one pins the discovered set against
+ * `ARMABLE`) and every member is swept by the same legs — the owner's "sweep the class, not the
+ * list" applied to the guard rather than only to the fix.
+ *
+ * ⛔ AND THE CLASS IS THE ONE `discoverArmable` CAN NAME, WHICH IS NARROWER THAN "EVERY ARMABLE
+ * CONTROL". An earlier draft of this paragraph said a fourth armable control "fails the membership
+ * pin until it is either listed or given a real armed look", and independent review DROVE that and
+ * found it false twice over. Read `discoverArmable`'s own ⛔ block for the two measured blind spots
+ * and the live counterexample on this surface today. What is true is the weaker sentence: a control
+ * that spells its armed state `.on` on a `.rz-` class cannot be added without this file noticing.
+ *
  * ⚠️ THE CAUSE WAS NOT IN THE MODEL. `paintPalette` has always toggled `.on` off `_armed`, and
  * `room-model.test.js` now drives that end to end. Measured in real Chrome on the shipped tree, the
  * click landed correctly — `cls="rz-tool on"`, `aria-pressed="true"` — and the owner still reported
@@ -451,10 +467,25 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
  * missing one.** That is trap shape 4 — a guard whose scope cannot catch its subject — reproduced
  * inside the guard written to close a different one. Each rule now answers for itself.
  *
+ * ⚠️ `:active` IS SWEPT TOO, AND FOR THE SAME REASON `:hover` IS. It is the other state the pointer
+ * can put a control into without the player having chosen anything, and it is the one a "make the
+ * press feel solid" edit reaches for first — copying the armed fill into `:active` re-opens exactly
+ * this defect, one frame at a time, on a control the player is touching. Both pointer states are held
+ * off the armed channel, and the armed rule must repeat `:hover`/`:active` in its OWN selector list so
+ * the cursor that armed a control can never wash the state back out by simply not moving.
+ *
  * MUTATION: give `:hover` the armed border colour (`border-color:#f2b563`) — the defect in its exact
  *           historical shape, hover borrowing the armed edge ⇒ RED on the border leg, BOTH rules.
  * MUTATION: drop `box-shadow` from `.rz-tool.on` ONLY, leaving DEMOLISH's ⇒ RED (this is the one
  *           that was green before the per-rule fix).
+ * MUTATION: restore the pre-2026-08-03 `.rz-acc-chip` pair (`:hover` and `.on` both `#cf7a33`,
+ *           no shadow) ⇒ RED on the border leg AND the shadow leg — the SHIPPED defect this package
+ *           closes, driven as its own control rather than described.
+ * MUTATION: give `.rz-mat-chip:active` the armed `background:#5a3f14` ⇒ RED on the `:active` leg.
+ * MUTATION: drop `.rz-acc-chip` (or `.rz-mat-chip`) from `ARMABLE` ⇒ RED on the membership test
+ *           above, which is the "the sweep quietly stopped covering a member" shape.
+ * MUTATION: delete the `.rz-mat-chip.on` rule from `styles.css` ⇒ RED on the membership test AND on
+ *           that member's rule-count pin.
  * MUTATION: add `font-weight:700` to the `.rz-tool.on` rule ⇒ RED on the box leg.
  * MUTATION: `border:3px solid #f2b563` on `.rz-tool.on` — the SHORTHAND, which is how anyone would
  *           actually write "make the armed edge thicker" ⇒ RED on the box leg. This one was GREEN
@@ -467,14 +498,14 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
  * `border-color:#cf7a33` is green here — measured, not assumed — and correctly so: against today's
  * `#f2b563` armed edge the two really are distinguishable. A pair of colours that differ by one
  * hex digit would also pass. "Can a player see it" is a question for `palette-shot.mjs`, which
- * photographs the same button in all three states; this file only keeps the two from COLLIDING,
+ * photographs the same control in all three states; this file only keeps the two from COLLIDING,
  * which is the specific way the state went invisible on 2026-08-03.
  */
 
-/** Every rule whose SUBJECT compound satisfies `pred`, as `{ sel, decls }`. */
+/** Every rule whose SUBJECT compound satisfies `pred`, as `{ sel, sels, decls }`. */
 function rulesWhere(pred) {
   return RULES.filter((r) => r.sels.some((s) => !isPseudoElement(s) && pred(simples(subject(s)))))
-    .map((r) => ({ sel: r.sels[0], decls: r.decls }));
+    .map((r) => ({ sel: r.sels[0], sels: r.sels, decls: r.decls }));
 }
 /** Declarations merged, in source order, from every rule whose SUBJECT compound satisfies `pred`. */
 function declsWhere(pred) {
@@ -513,57 +544,159 @@ function reMeasures(prop) {
   return /^(?:border|padding|margin|font|letter-spacing|word-spacing|(?:min-|max-)?(?:width|height)|inline-size|block-size)/
     .test(prop);
 }
-const TOOL = (sx) => sx.includes('.rz-tool');
-const ARMED = (sx) => TOOL(sx) && sx.includes('.on');
-const HOVER = (sx) => TOOL(sx) && !sx.includes('.on') && sx.includes(':hover');
+/**
+ * THE CLASS OF ARMABLE ROOM-ZOOM CONTROLS — every element this surface writes `.on` onto, and the
+ * number of armed rules each one is expected to carry.
+ *
+ * All three are written by the same three lines of shipped code: `paintPalette`'s
+ * `setCls(b, 'on', on)` (roomzoom-view.js), `paintMatStrip`'s `'rz-mat-chip' + (… ? ' on' : '')`
+ * (roomzoom-view.js:1125) and `acceptsRowHtml`'s `'rz-acc-chip' + (on ? ' on' : '')`
+ * (accepts-row.js:95). `.rz-tool` carries TWO armed rules because DEMOLISH overrides the other
+ * seventeen (`.rz-tool.demo.on`); the two chips carry one each. If a member's count changes, that is
+ * a real edit and the number must be RE-DERIVED — but a count that fell to zero means the legs for
+ * that member are reading nothing, which is how this whole shape passes over a broken control.
+ */
+const ARMABLE = { '.rz-tool': 2, '.rz-mat-chip': 1, '.rz-acc-chip': 1 };
 
-test('the ARMED tool button carries a signal `:hover` cannot produce', () => {
-  const armedRules = rulesWhere(ARMED);
-  const hover = declsWhere(HOVER);
-  // Non-vacuity, and it is the whole risk here: every leg below is a comparison or an absence, and
-  // both are free over an empty rule set. The COUNT is pinned as well as the presence — the merged
-  // form of this test could not see a deleted rule while a sibling survived.
-  assert.equal(armedRules.length, 2,
-    `${armedRules.length} armed rules parsed out of styles.css, expected 2 (\`.rz-tool.on\` and ` +
-    '`.rz-tool.demo.on`). If a rule was deliberately added or removed, re-derive this number — but ' +
-    'if it dropped to 0 or 1, the legs below are reading nothing and would pass on a broken palette');
-  assert.ok(/border-color/.test(hover),
-    'no `.rz-tool:hover` rule was parsed out of styles.css — the comparison has no other half');
-
-  const bad = [];
-  // EACH armed rule answers for itself: `.rz-tool.on` paints sixteen tools and `.rz-tool.demo.on`
-  // paints DEMOLISH, and either can regress alone.
-  for (const { sel, decls } of armedRules) {
-    for (const prop of ['border-color', 'background', 'background-color']) {
-      const a = valueOf(decls, prop), h = valueOf(hover, prop);
-      if (a !== null && h !== null && a === h)
-        bad.push(`${sel} — ${prop} is '${a}' on BOTH armed and hover. That is the owner's defect ` +
-          'exactly: the cursor that arms a tool has already painted it, so the click changes ' +
-          'nothing under the pointer.');
+/**
+ * The same class DISCOVERED from the stylesheet: every `.rz-*` element that has an armed (`.on`) rule.
+ *
+ * ⚠️ THIS IS THE ANSWER TO "SWEEP THE CLASS, NOT THE LIST", AND IT IS THE LEG THAT WOULD HAVE CAUGHT
+ * TODAY'S DEFECT ON 2026-08-03. The version of this file that shipped that morning hand-named
+ * `.rz-tool`, so the identical `#cf7a33` collision on `.rz-acc-chip` — six lines further down the
+ * same stylesheet — was invisible to it. A list finds what someone thought of; discovery answers for
+ * everything the sheet declares IN THE SHAPE IT KNOWS HOW TO READ.
+ *
+ * ⛔ AND THAT SHAPE IS THE WHOLE LIMIT, STATED HERE BECAUSE IT WAS OVERSTATED FIRST AND THE
+ * OVERSTATEMENT WAS DRIVEN DOWN BY INDEPENDENT REVIEW. The predicate is literal on TWO counts, and
+ * either one alone is a blind spot. Both were applied to `styles.css` and both exited GREEN:
+ *
+ *     .rz-newthing2.sel{border-color:#cf7a33}   ← armed spelled `.sel`, `.rz-` present → GREEN
+ *     .zoomchip.on     {border-color:#cf7a33}   ← armed spelled `.on`, no `.rz-`      → GREEN
+ *     .rz-newthing3.on {border-color:#cf7a33}   ← CONTROL, both conditions met        → RED
+ *
+ * So this discovers "controls that spell armed `.on` on a `.rz-` class", NEVER "every armable
+ * control on this surface". ⭐ THE COUNTEREXAMPLE IS ALREADY IN THE FILE IT SCANS: the crew dock's
+ * rows are `.rz-crew`, they spell selection `.sel`, and `.rz-crew:hover` and `.rz-crew.sel`
+ * (styles.css:1402-1403) BOTH set `border-color:#cf7a33` with no shadow on either side — a hovered
+ * row and the selected row draw the same edge. That is this package's defect in its third instance,
+ * it is invisible to everything below, and it is FILED rather than chased (PROCESS §2): widening the
+ * predicate to `.sel` is a different package with a different subject.
+ *
+ * Subject-compound only, so `.rz-mat-chip.on .rz-mat-name` (whose subject is the NAME span, not the
+ * chip) is correctly not a member: it is armed PAINT on a child, not an armable control.
+ */
+function discoverArmable() {
+  const found = new Set();
+  for (const r of RULES)
+    for (const s of r.sels) {
+      if (isPseudoElement(s)) continue;
+      const sx = simples(subject(s));
+      if (!sx.includes('.on')) continue;
+      for (const c of sx) if (c.startsWith('.rz-')) found.add(c);
     }
-    // A channel hover does not touch AT ALL, so the two cannot converge by a colour edit alone.
-    if (!/box-shadow/.test(decls))
-      bad.push(`${sel} declares no \`box-shadow\` — the ring/depth was the one armed signal that did ` +
-        'not depend on two colours staying different, and it is gone from this rule.');
-    // The armed look must not RE-MEASURE the button (see `reMeasures` and the block comment above).
-    // An INCLUSION test over every property the rule declares — never a list of names to hunt for.
-    const declared = propsOf(decls);
-    if (!declared.length)
-      bad.push(`${sel} parsed to ZERO declared properties — the box-reflow leg below is vacuous ` +
-        'for this rule, which is exactly how it would pass over a rule it cannot read.');
-    for (const p of declared)
-      if (reMeasures(p))
-        bad.push(`${sel} sets \`${p}\`, which changes the button's BOX. Arming would reflow the ` +
-          'eighteen-tool wrapping row and can push the last tools out of reach — the clipping ' +
-          'defect this file guards. Use a `box-shadow` ring; shadows do not participate in layout.');
-  }
-  if (/box-shadow/.test(hover))
-    bad.push('`:hover` has acquired a `box-shadow` — it is now claiming the armed state\'s ' +
-      'exclusive channel, which is how the border colour was lost the first time');
+  return [...found].sort();
+}
 
-  assert.deepEqual(bad, [], 'the armed tool button is not distinguishable from a hovered one:\n  ' +
-    bad.join('\n  '));
+// MUTATION: drop a member from `ARMABLE` ⇒ RED naming it as unswept.
+// MUTATION: delete `.rz-mat-chip.on` from styles.css ⇒ RED naming it as no longer armable at all.
+// MUTATION: add `.rz-newthing.on{…}` to styles.css ⇒ RED — a control in the shape this scan reads
+//           cannot enter the surface without the legs below being pointed at it.
+// ⛔ NEGATIVE RESULT, DRIVEN, NOT A MISSING MUTATION: `.rz-newthing2.sel{…}` and `.zoomchip.on{…}`
+//           are both GREEN. See `discoverArmable`'s ⛔ block — that is the predicate's reach, and
+//           the assertion below must not be read as covering more.
+test('the ARMABLE class is DISCOVERED from the stylesheet, and the sweep covers all of it', () => {
+  const found = discoverArmable();
+  assert.ok(found.length >= 3, `only ${found.length} armable \`.rz-*\` controls discovered in ` +
+    'styles.css — the discovery itself has stopped working, and a sweep over nothing is free');
+  assert.deepEqual(found, Object.keys(ARMABLE).sort(),
+    'the set of `.rz-` controls whose SUBJECT compound carries `.on` no longer matches the set this ' +
+    'file sweeps. Every one of them is a control the player ARMS, and each is one `border-color` ' +
+    'edit away from the 2026-08-03 defect (hover wearing the armed colour). Add it to `ARMABLE` — ' +
+    'or, if a rule was deliberately deleted, say so here and re-derive the counts. (This says ' +
+    'nothing about controls that spell armed some other way, e.g. `.rz-crew.sel` — see the ⛔ block ' +
+    'over `discoverArmable`.)');
 });
+
+const memberOf = (m) => (sx) => sx.includes(m);
+const ARMED = (m) => (sx) => memberOf(m)(sx) && sx.includes('.on');
+const POINTER = (m, pseudo) => (sx) => memberOf(m)(sx) && !sx.includes('.on') && sx.includes(pseudo);
+
+for (const [member, ruleCount] of Object.entries(ARMABLE)) {
+  test(`the ARMED \`${member}\` carries a signal \`:hover\`/\`:active\` cannot produce`, () => {
+    const armedRules = rulesWhere(ARMED(member));
+    const pointer = { ':hover': declsWhere(POINTER(member, ':hover')),
+      ':active': declsWhere(POINTER(member, ':active')) };
+    // Non-vacuity, and it is the whole risk here: every leg below is a comparison or an absence, and
+    // both are free over an empty rule set. The COUNT is pinned as well as the presence — the merged
+    // form of this test could not see a deleted rule while a sibling survived.
+    assert.equal(armedRules.length, ruleCount,
+      `${armedRules.length} armed rules parsed out of styles.css for ${member}, expected ` +
+      `${ruleCount}. If a rule was deliberately added or removed, re-derive this number — but if it ` +
+      'dropped, the legs below are reading less than they claim and would pass on a broken control');
+
+    const bad = [];
+    // ⚠️ BOTH POINTER STATES MUST EXIST, AND THIS IS BLINDED RATHER THAN ASSERTED — trap shape 5,
+    // caught by driving this test's own named mutations. Written as a hard `assert.ok` it THREW, so
+    // restoring the exact pre-fix `.rz-acc-chip` pair went red naming only the absent `:active` rule
+    // and NEVER MENTIONED the `#cf7a33` border collision, which is the defect this whole package is
+    // about. A red that names the wrong thing is a red someone closes the wrong way. It is a real
+    // requirement in its own right (a control with no press state reads dead under the finger, one
+    // with no hover state cannot be told from a label) AND the non-vacuity guard for that pointer
+    // state's comparison legs — an empty blob makes every `valueOf` below null, so vacuity here can
+    // only ever be reported, never silent. The armed-rule COUNT above stays a hard assert: nothing
+    // downstream can report on a rule set that was never read.
+    for (const pseudo of [':hover', ':active'])
+      if (!propsOf(pointer[pseudo]).length)
+        bad.push(`no \`${member}${pseudo}\` rule was parsed out of styles.css — that half of the ` +
+          'comparison does not exist, so this pointer state\'s collision legs read nothing.');
+    // EACH armed rule answers for itself: `.rz-tool.on` paints seventeen tools and `.rz-tool.demo.on`
+    // paints DEMOLISH, and either can regress alone.
+    for (const { sel, sels, decls } of armedRules) {
+      for (const pseudo of [':hover', ':active'])
+        for (const prop of ['border-color', 'background', 'background-color', 'color']) {
+          const a = valueOf(decls, prop), h = valueOf(pointer[pseudo], prop);
+          if (a !== null && h !== null && a === h)
+            bad.push(`${sel} — ${prop} is '${a}' on BOTH armed and ${pseudo}. That is the owner's ` +
+              'defect exactly: the cursor that arms a control has already painted it, so the click ' +
+              'changes nothing under the pointer.');
+        }
+      // A channel the pointer states do not touch AT ALL, so the two cannot converge by a colour edit.
+      if (!/box-shadow/.test(decls))
+        bad.push(`${sel} declares no \`box-shadow\` — the ring/depth was the one armed signal that did ` +
+          'not depend on two colours staying different, and it is gone from this rule.');
+      // ⚠️ AND THE ARMED RULE MUST OUTRANK THE POINTER ON ITS OWN CONTROL. `.rz-tool.on` and
+      // `.rz-tool:hover` have the SAME specificity, so today the armed look survives only because it
+      // is written later in the file — a property that moving one rule silently destroys. Repeating
+      // `:hover`/`:active` on the armed selector states it instead of relying on source order, which
+      // is what "an armed control cannot be washed out by not moving the mouse" actually needs.
+      for (const pseudo of [':hover', ':active'])
+        if (!sels.some((s) => subject(s).includes('.on') && subject(s).includes(pseudo)))
+          bad.push(`${sel} is not also written for \`.on${pseudo}\`. Its armed look then depends on ` +
+            `source order to beat the equal-specificity \`${member}${pseudo}\` rule — reorder the ` +
+            'file and the state the player just chose disappears under their own cursor.');
+      // The armed look must not RE-MEASURE the control (see `reMeasures` and the block comment above).
+      // An INCLUSION test over every property the rule declares — never a list of names to hunt for.
+      const declared = propsOf(decls);
+      if (!declared.length)
+        bad.push(`${sel} parsed to ZERO declared properties — the box-reflow leg below is vacuous ` +
+          'for this rule, which is exactly how it would pass over a rule it cannot read.');
+      for (const p of declared)
+        if (reMeasures(p))
+          bad.push(`${sel} sets \`${p}\`, which changes the control's BOX. Arming would reflow a ` +
+            'WRAPPING row and can push the last controls out of reach — the clipping defect this ' +
+            'file guards, and all three of these rows wrap. Use a `box-shadow` ring; shadows do not ' +
+            'participate in layout.');
+    }
+    for (const pseudo of [':hover', ':active'])
+      if (/box-shadow/.test(pointer[pseudo]))
+        bad.push(`\`${member}${pseudo}\` has acquired a \`box-shadow\` — it is now claiming the armed ` +
+          'state\'s exclusive channel, which is how the border colour was lost the first time');
+
+    assert.deepEqual(bad, [], `the armed ${member} is not distinguishable from a hovered or pressed ` +
+      'one:\n  ' + bad.join('\n  '));
+  });
+}
 
 // …and the same property demonstrated ON THE REAL FILE rather than on synthetic input, which is the
 // gap the two controls above cannot close by themselves. `styles.css` genuinely contains the
