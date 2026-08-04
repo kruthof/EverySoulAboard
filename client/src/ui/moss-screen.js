@@ -78,6 +78,14 @@ export const POD_HEAD_LINE =
  */
 export const POD_REFRESH_MS = 1000;
 
+/**
+ * ⛔ WHAT THE BAY SAYS WHEN ITS POLL HAS GONE QUIET — see `refreshPods`. Rendered on the bay itself,
+ * not on the transcript: the transcript is what this package is protecting, and a per-second status
+ * note there would be the very defect wearing a politer sentence. It names the recovery verb because
+ * `pods` is how the player restarts the poll, and *invisible feedback is functional*.
+ */
+export const POD_POLL_STALE = 'LIVE REFRESH PAUSED — MOSS DID NOT ANSWER · TYPE PODS TO RETRY';
+
 /** IX-M13's headline. The MODEL is the authority (`ledgerView().notice`); this is the fallback for
  *  a model old enough not to carry one, and the constant this file's own tests read. */
 export const NO_TELEMETRY = 'NO TELEMETRY — LINK DOWN';
@@ -278,6 +286,12 @@ export class MossScreen {
     this._log = null;       // last `log` message tail
     this._terminals = [];   // the PROGRAM directory, from the `terminals` channel
     this._programTid = null;
+    // The POD BAY's 1 Hz poll and its two-flag quiet rule (see `refreshPods`). Declared here so the
+    // state a reader has to hold is in one place, and so `_reflectPodPoll`'s `!!this._podTimer`
+    // reads a field rather than an absence.
+    this._podTimer = null;
+    this._podPollAwaiting = false;   // a poll went out and no `ev:pods` has come back since
+    this._podPollQuiet = false;      // …and a whole period passed, so the poll has stood down
     this._onKey = (e) => this.handleKey(e);
     this._build();
     // The PROGRAM screen's embedded IDE (a VIEW of `model.program`). Constructed here so the
@@ -413,6 +427,15 @@ export class MossScreen {
    *  `derivation` string is the MODEL's to keep — this layer just hands the message over. */
   onMossEvent(msg) {
     if (!this.opened) return;
+    // ⭐ THE POLL'S ONE ANSWER, AND THE ONLY THING THAT CLEARS IT. `ev:'pods'` is the reply a `moss
+    // pods` request earns when the ship is live AND commissioned; every other outcome — the
+    // `IsServerLive` refusal, the NotCommissioned refusal — comes back as `ev:'exec' ok:false`,
+    // which is INDISTINGUISHABLE on the wire from a refused TYPED command (both are
+    // `WireFormat.MossExec`, and neither carries the op that produced it). So this seam does NOT
+    // try to attribute a refusal; it watches for the ANSWER and lets `refreshPods` draw the
+    // conclusion from its absence. Cleared for a reply that arrived LATE, too, which is what makes
+    // a poll suspended by a slow link heal itself without the player doing anything.
+    if (msg && msg.ev === 'pods') { this._podPollAwaiting = false; this._podPollQuiet = false; }
     this.model = this.M.reduceMossEvent(this.model, msg);
     this.render();
   }
@@ -663,14 +686,76 @@ export class MossScreen {
       return;
     }
     if (!this.win || typeof this.win.setInterval !== 'function') return;
+    // A FRESH ENTRY GETS A FRESH POLL. Re-opening the bay is the player acting, and a bay that only
+    // opens on an `ev:pods` reply has just been told the ship answers — so any stand-down from a
+    // previous visit is spent.
+    // ⚠️ DEFENCE-IN-DEPTH, AND MEASURED AS SUCH RATHER THAN ASSUMED (the same honesty the scroll
+    // lane's `: wasTop` arm was held to). Delete these two lines and the suite stays GREEN: today
+    // the ONLY route back to PODBAY is an `ev:pods` reply, and `onMossEvent` has already cleared
+    // both flags by the time this runs. They are kept because that route is the model's rule, not
+    // this class's, and a screen that ever reaches the bay another way must not inherit a stand-down
+    // from a visit the player has left. Nothing here may be cited as pinned behaviour.
+    this._podPollAwaiting = false;
+    this._podPollQuiet = false;
     this._podTimer = this.win.setInterval(() => this.refreshPods(), POD_REFRESH_MS);
   }
 
-  /** Ask the ship for the bay again. Sends the wire op WITHOUT setting the model's `podsAsked`
-   *  handshake: a refresh must never be able to re-open a screen the player has already left. */
+  /**
+   * Ask the ship for the bay again. Sends the wire op WITHOUT setting the model's `podsAsked`
+   * handshake: a refresh must never be able to re-open a screen the player has already left.
+   *
+   * ⛔ THE DEFECT THIS CLOSES (found by review, 2026-08-03; measured against the shipped host). The
+   * bay is on screen, and then MOSS stops being live — a brownout drops `Device.Powered`, or wear
+   * takes the console under `MaintainBelow`. `GameSession.HandleMoss`'s `pods` arm now answers every
+   * poll with `Refuse(...)` → `MossExec(ok:false, [(2, sentence)])`, `reduceMossEvent`'s `exec` arm
+   * `pushConsole`s it, and the player gets ONE UNBIDDEN TRANSCRIPT LINE PER SECOND from a screen
+   * they are only reading. `CONSOLE_CAP` is 200, so ~3.3 minutes of that erases everything they had
+   * — on the exact screen the thaw arc is run from. The same holds for the NotCommissioned arm.
+   *
+   * ⭐ THE RULE, AND WHY IT IS ON THE SEND SIDE. The poll stands down after ONE unanswered period:
+   *   · `_podPollAwaiting` is set when a poll goes out and cleared ONLY by an `ev:pods` reply;
+   *   · the NEXT period finding it still set concludes the ship is not answering and goes quiet.
+   * So the ship gets to say the refusal ONCE — the first line is the one that tells the player MOSS
+   * is offline and names the terminal to repair — and then the transcript is theirs again.
+   *
+   * ⛔ IT DOES NOT FILTER THE TRANSCRIPT, AND THAT IS THE WHOLE POINT. Suppressing "poll refusals"
+   * at the print site would need to tell a poll's `ev:exec` from a TYPED command's, and the wire
+   * cannot: `MossExec` carries `tid`/`ok`/`lines` and never the op that produced it, so any such
+   * filter would be a guess that eventually eats a sentence the player asked for. Nothing here
+   * touches `pushConsole`, so **a typed `pods` refusal still prints, by construction rather than by
+   * a predicate** — which is what the gate-sentences lane made valuable (it names the terminal).
+   *
+   * ⚠️ RESUME IS THE PLAYER'S ACT, DELIBERATELY — AND THE REASON IS ONE MISSING TERM, NOT TWO.
+   * `MossGate.IsServerLive` is `Kind == Terminal && Powered && Condition >= MaintainBelow`.
+   *   · `Condition` DOES reach this client, on the `devices` channel — `DeviceCell` carries a `Cond`
+   *     byte per device and `Kind` with it, so a terminal's wear is readable here. (Measured on the
+   *     shipped wreck at boot: two `Kind == Terminal` rows, `Cond` 36 and 8, i.e. 0.141 and 0.031
+   *     against a `maint` of 0.20 — `machines.def:31`.)
+   *   · `Powered` DOES NOT, and is refused BY NAME rather than merely absent: `WireFormat.Devices.cs`
+   *     lists it in the deliberate omissions because `PowerSystem.Balance` re-stamps it on every
+   *     drawing device once a second, which would make this dirty-gated payload differ on nearly
+   *     every render. The tuple is ten elements and none of them is power.
+   * ⛔ SO THE HALF THAT IS MISSING IS THE DECIDING HALF, AND THAT IS THE WHOLE ARGUMENT. A client
+   * that resumed on `Cond >= 0.20` alone would call MOSS live on a REPAIRED terminal under a DARK
+   * GRID — which is precisely the brownout this package exists for — and would resume polling
+   * straight back into the refusals it just stopped. Guessing the gate would reinstate the spam.
+   * So the poll restarts on the one unambiguous fact: an `ev:pods` reply landed (a typed `pods` that
+   * succeeded, or a late answer to the poll itself), or the bay was entered afresh. The bay SAYS it
+   * has stood down — `POD_POLL_STALE` — so a frozen census is never mistaken for a live one.
+   */
   refreshPods() {
     if (!this.opened) return;
     if (this._screen() !== SCREEN.PODBAY) return;
+    if (this._podPollQuiet) return;
+    if (this._podPollAwaiting) {
+      // A whole period with no `ev:pods`: stand down, and REPAINT so the bay says so.
+      this._podPollQuiet = true;
+      this.render();
+      return;
+    }
+    // Set before the send so a SYNCHRONOUS reply can clear it. Ordering is not pinned: over a real
+    // socket the reply is always a later task, and swapping these two lines leaves the suite green.
+    this._podPollAwaiting = true;
     this.send(wireForEffect({ k: 'moss', op: 'pods' }));
   }
 
@@ -939,6 +1024,11 @@ export class MossScreen {
       wrap.appendChild(list);
     }
     if (S(v.note)) wrap.appendChild(mk(doc, 'div', 'moss-note', S(v.note)));
+    // ⛔ THE STAND-DOWN, SAID ON THE SCREEN THAT WENT STALE. The rows above are now a photograph:
+    // without this line a frozen census and a live one are the same picture, which is the failure
+    // mode `POD_REFRESH_MS`'s own comment exists to prevent. It is a SCREEN fact, not a model one —
+    // the poll belongs to this class — so it is appended here rather than folded into `podBayView`.
+    if (this._podPollQuiet) wrap.appendChild(mk(doc, 'div', 'moss-note moss-stale', POD_POLL_STALE));
     this.bodyEl.replaceChildren(wrap);
     this.advisoryEl.replaceChildren();
   }
@@ -1133,10 +1223,14 @@ export class MossScreen {
    *   is on screen, which sends `moss pods` WITH NO KEYSTROKE; `GameSession.HandleMoss`'s `pods` arm
    *   refuses a ship whose MOSS is not live or not commissioned (`Refuse` → `MossExec(ok:false,
    *   [(2, sentence)])`), and `reduceMossEvent`'s `exec` arm `pushConsole`s that sentence. So a bay
-   *   left open while the ship browns out writes ONE TRANSCRIPT LINE PER SECOND, unbidden. (Filed as
-   *   its own lane — with `CONSOLE_CAP` at 200 that erases the player's whole transcript in ~3.3
-   *   minutes. This package does not touch the poll.) Every OTHER `pushConsole` is downstream of a
-   *   client request: a submitted prompt line, or the `ev:exec`/`ev:thaw` reply to one.
+   *   left open while the ship browns out wrote ONE TRANSCRIPT LINE PER SECOND, unbidden — with
+   *   `CONSOLE_CAP` at 200 that erased the player's whole transcript in ~3.3 minutes. ⭐ CLOSED on
+   *   the SEND side, 2026-08-04: `refreshPods` stands the poll down after one unanswered period, so
+   *   the bound is ONE unbidden line per stand-down and the fix never touches this print path (read
+   *   its comment for why filtering here is impossible). The bound is a bound, not a zero: that one
+   *   line is the ship answering, and it is the sentence that names the terminal to repair.
+   *   Every OTHER `pushConsole` is downstream of a client request: a submitted prompt line, or the
+   *   `ev:exec`/`ev:thaw` reply to one.
    *   ⛔ AND RENDERS ARRIVE UNBIDDEN FAR MORE OFTEN THAN LINES DO: `onSystems` on every pushed
    *   `systems` message, `onChron` on every day rollover, `onLog` on every log tail, `setTerminals`,
    *   and that same 1 Hz poll. Each calls `render()` → this method. A naive "always jump to the

@@ -1415,7 +1415,7 @@ test('applyTakeover is total and degenerate-safe', () => {
 // PROGRAM phase set this precedent for exactly the same reason.
 
 import * as REAL from '../src/ui/moss-model.js';
-import { POD_COLS, POD_HEAD_LINE, POD_REFRESH_MS } from '../src/ui/moss-screen.js';
+import { POD_COLS, POD_HEAD_LINE, POD_REFRESH_MS, POD_POLL_STALE } from '../src/ui/moss-screen.js';
 
 // ⚠️ `pod_ozawa`'s occupant is `Ozawa-Reyes` ON PURPOSE — see the same note over `PODS_MSG` in
 // moss-model.test.js. The click path's message assertion below is the one that has to bite when a
@@ -1588,6 +1588,193 @@ test('M3-4: the DOM fixture can see the forbidden derivation too (the click path
   assert.ok(offered.some((r) => compose(r[2]) !== r[1]),
     'every offered BAY row round-trips occupant → key, so composing the key from the display ' +
     'name is indistinguishable from reading it, and the click-path message assertion cannot bite');
+});
+
+// ═══════════════════════════ THE POD BAY POLL MUST NOT EAT THE TRANSCRIPT (2026-08-04)
+//
+// ⛔ THE DEFECT, found by review on the moss-autoscroll merge and driven against the shipped host.
+// The bay polls at 1 Hz (`POD_REFRESH_MS`) while it is on screen. When MOSS stops being live —
+// `Device.Powered` drops in a brownout, or wear takes the console under `MaintainBelow` —
+// `GameSession.HandleMoss`'s `pods` arm answers EVERY poll with `Refuse(...)` →
+// `MossExec(ok:false,[(2,sentence)])`, and `reduceMossEvent`'s `exec` arm pushes it onto the
+// transcript. One unbidden line per second; `CONSOLE_CAP` is 200, so ~3.3 minutes of a bay left
+// open erases everything the player had — on the screen the thaw arc is run from.
+//
+// ⚠️ THE REFUSAL SENTENCE BELOW IS A SAMPLE OF THE SHAPE, NOT A PIN ON THE WORDING — and it is
+// written that way because the wording moved UNDER THIS PACKAGE. Probed 2026-08-04 over a plain
+// socket against `hosts/web --ship wreck`, a boot-state `{"type":"moss","op":"pods","tid":"@console"}`
+// came back `ev:exec ok:false` with `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO
+// REACH THE DOORS`; re-probed on the merged tree an hour later, the SAME request answered `…; REPAIR
+// TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE PODS` — the gate-sentences lane had landed on `main` in
+// between and now DERIVES the tail per call site. So nothing here asserts the words. What is pinned
+// is the SHAPE `MossGate` refuses in (`ev:exec`, `ok:false`, one stream-2 line) and the COUNTS, and
+// the sentence is only ever compared against itself.
+// ⛔ THAT PROBE ALSO CORRECTS A PREMISE WORTH RECORDING: on the BOOT wreck the bay cannot be opened
+// at all (the ask is refused, and `reducePods` is the only thing that moves the screen to PODBAY),
+// so the defect's window is a bay opened while the ship was live that then goes dark under the
+// player — not a cold boot.
+//
+// ⭐ WHAT IS PINNED HERE, and what deliberately is not. The fix is on the SEND side: after one
+// unanswered period the poll stands down. So the assertions are about the two counts that matter —
+// how many requests leave, and how many lines land — plus the leg that says a TYPED refusal is
+// untouched. There is no assertion that "poll refusals are filtered", because they are not: the
+// wire's `ev:exec` carries no op, a poll's refusal and a typed command's are the same message, and
+// any filter would eventually eat a sentence the player asked for.
+
+const OFFLINE_REFUSAL =
+  'MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE PODS';
+const REFUSED = { type: 'moss', ev: 'exec', tid: '@console', ok: false, lines: [[2, OFFLINE_REFUSAL]] };
+
+/**
+ * A bay screen wearing the REAL model behind a HOST DOUBLE that answers `moss pods` the way
+ * `GameSession` does: `ev:pods` while the ship is live, `Refuse` → `ev:exec ok:false` once it is
+ * not. `defer` holds the answer back so a LATE reply can be delivered by hand — the case that
+ * decides whether a poll suspended by a slow link ever heals.
+ */
+function bayHost() {
+  const doc = new DocumentLite();
+  const root = doc.createElement('div');
+  root.hidden = true;
+  doc.register('moss-view', root);
+  doc.body.appendChild(root);
+  const win = makeWindow();
+  const sent = [];
+  const state = { live: true, defer: false, held: [] };
+  const screen = new MossScreen({
+    root, document: doc, window: win, model: REAL,
+    send: (o) => {
+      sent.push(o);
+      if (!o || o.op !== 'pods') return;
+      const reply = state.live ? BAY : REFUSED;
+      if (state.defer) state.held.push(reply); else screen.onMossEvent(reply);
+    },
+  });
+  screen.open();
+  const s = {
+    doc, root, win, sent, screen, state,
+    lines: () => root.byClass('moss-cline').map((e) => e.textContent),
+    polls: () => sent.filter((o) => o.op === 'pods').length,
+    deliverHeld: () => { const h = state.held.splice(0); for (const m of h) screen.onMossEvent(m); },
+  };
+  typeCmd(s, 'pods');                     // the ask; the double answers and the bay opens
+  assert.equal(root.dataset.screen, 'podbay', 'precondition: the bay is up');
+  assert.equal(win.timers.size, 1, 'precondition: the poll is running');
+  return s;
+}
+
+test('POD POLL: a bay left open on a ship that went dark writes ONE line, not one per second', () => {
+  const s = bayHost();
+  // ⭐ BLINDED LEGS (trap, 5th shape): `assert` throws, so a multi-leg test reports only its first
+  // failure. Every leg records, and the whole table is asserted at the end.
+  const legs = [];
+  const leg = (name, got, want) => legs.push([name, got, want]);
+
+  const before = s.lines().length;
+  s.sent.length = 0;
+  s.state.live = false;                   // the brownout: MOSS is no longer in service
+
+  for (let i = 0; i < 10; i++) s.win.tickTimers();   // ten seconds of a player just reading
+
+  leg('requests that left the client', s.polls(), 1);
+  leg('unbidden transcript lines gained', s.lines().length - before, 1);
+  leg('and that one line is the ship\'s own sentence',
+    s.lines()[s.lines().length - 1], OFFLINE_REFUSAL);
+  // The stand-down is VISIBLE. A frozen census that still looks live is the failure mode the
+  // poll exists to prevent, so the fix may not be silent.
+  leg('the bay says its refresh has stopped',
+    s.root.byClass('moss-stale').map((e) => e.textContent).join('|'), POD_POLL_STALE);
+
+  // ⛔ THE LEG THAT KEEPS THE FIX HONEST. The gate-sentences lane made this refusal valuable — it
+  // names the terminal to repair — so a TYPED `pods` must still print it, in full, every time.
+  const typedBefore = s.lines().length;
+  typeCmd(s, 'pods');
+  leg('a typed pods still reaches the ship', s.polls(), 2);
+  leg('…and its refusal still prints', s.lines().length - typedBefore, 2);   // the `> pods` echo + the refusal
+  leg('…as the ship\'s own words', s.lines()[s.lines().length - 1], OFFLINE_REFUSAL);
+  typeCmd(s, 'pods');
+  leg('and it prints EVERY time it is asked for',
+    s.lines().filter((t) => t === OFFLINE_REFUSAL).length, 3);
+  leg('while the poll itself stays quiet', s.polls(), 3);   // 3 = 1 poll + 2 typed, no new polls
+
+  // ⭐ RESUME. The ship comes back; the player types `pods`; the answer lands and the poll lives.
+  s.state.live = true;
+  typeCmd(s, 'pods');
+  const atResume = s.polls();
+  s.win.tickTimers();
+  leg('an `ev:pods` answer restarts the poll', s.polls() - atResume, 1);
+  leg('and the bay stops saying it is stale', s.root.byClass('moss-stale').length, 0);
+
+  const bad = legs.filter(([, got, want]) => !Object.is(got, want));
+  assert.deepEqual(bad, [], 'legs that failed: ' + JSON.stringify(bad));
+});
+
+test('POD POLL: on a HEALTHY ship the poll keeps asking, and the stand-down never fires', () => {
+  // ⛔ THE BLIND SPOT THIS CLOSES (9th shape — an instrument narrowed goes blind; found by review).
+  // Every other leg here drives the ship DARK and asserts the poll goes QUIET. Not one of them could
+  // see the stand-down OVERSHOOTING: a rule that fired on a ship that IS answering would freeze a
+  // LIVE bay and hang the amber marker over it, and the whole suite stayed GREEN. The bound this
+  // package added is only half a contract; this is the other half — on a ship that answers, the poll
+  // must ask EVERY period and the marker must never appear.
+  const s = bayHost();                    // live: the double answers every `pods` with the bay
+  const legs = [];
+  const leg = (name, got, want) => legs.push([name, got, want]);
+
+  s.sent.length = 0;
+  const N = 6;
+  let markerEverShown = 0;
+  for (let i = 0; i < N; i++) {
+    s.win.tickTimers();
+    // ⚠️ ASKED EVERY PERIOD, not merely at the end: a marker that flickers up and clears itself is
+    // still a frozen-looking bay in the player's face, and an end-state check cannot see it.
+    if (s.root.byClass('moss-stale').length) markerEverShown += 1;
+  }
+
+  leg('a poll left the client on every period', s.polls(), N);
+  leg('the stale marker never appeared, on any period', markerEverShown, 0);
+  leg('and the bay is still live at the end', s.root.dataset.screen, 'podbay');
+  // The transcript is the other half of "healthy": an answering ship writes NOTHING to it, because
+  // `ev:pods` is a screen reply and never a console line.
+  leg('a healthy poll writes nothing to the transcript', s.lines().filter((t) => /MOSS IS OFFLINE/.test(t)).length, 0);
+
+  const bad = legs.filter(([, got, want]) => !Object.is(got, want));
+  assert.deepEqual(bad, [], 'legs that failed: ' + JSON.stringify(bad));
+});
+
+test('POD POLL: a LATE answer heals the stand-down without the player doing anything', () => {
+  // ⚠️ WHY THIS LEG EXISTS. "One unanswered period ⇒ stand down" would be a defect of its own on a
+  // slow link: a reply that arrives at 1.2 s is a LIVE ship, and a bay that froze itself over
+  // latency would be this package trading one silent failure for another. `onMossEvent` clears both
+  // flags on any `ev:pods`, whenever it lands — so the recovery needs no keystroke.
+  const s = bayHost();
+  s.state.defer = true;
+  s.sent.length = 0;
+
+  s.win.tickTimers();                     // poll 1 goes out; the answer is held in flight
+  s.win.tickTimers();                     // period 2 finds it unanswered ⇒ stand down
+  assert.equal(s.polls(), 1, 'precondition: the poll stood down');
+  assert.equal(s.root.byClass('moss-stale').length, 1, 'precondition: and said so');
+
+  s.state.defer = false;
+  s.deliverHeld();                        // the slow reply finally lands
+  assert.equal(s.root.byClass('moss-stale').length, 0, 'a live answer clears the stale marker');
+  s.win.tickTimers();
+  assert.equal(s.polls(), 2, 'and the poll is asking again, with no player action at all');
+});
+
+test('POD POLL: re-entering the bay gives the poll a fresh start', () => {
+  const s = bayHost();
+  s.state.live = false;
+  s.win.tickTimers(); s.win.tickTimers();          // stand down
+  assert.equal(s.root.byClass('moss-stale').length, 1, 'precondition: quiet');
+
+  s.screen.escape();                                // leave the bay — the timer dies with it
+  assert.equal(s.win.timers.size, 0, 'precondition: the poll died with the screen');
+  s.state.live = true;
+  typeCmd(s, 'pods');                               // and come back
+  assert.equal(s.root.dataset.screen, 'podbay');
+  const at = s.polls();
+  s.win.tickTimers();
+  assert.equal(s.polls() - at, 1, 'a re-entered bay polls again');
 });
 
 // ---------------- THE TERMINAL SCROLL CONTRACT (2026-08-04) ----------------
