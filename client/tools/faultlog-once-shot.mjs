@@ -32,6 +32,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { dismissOnboarding } from './rig-lib.mjs';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8371');
@@ -149,11 +150,10 @@ async function type(line) { for (const ch of line) { await key(ch); await sleep(
 await call('Page.enable'); await call('Runtime.enable');
 await call('Page.navigate', { url: `http://localhost:${CLIENT_PORT}/?port=${HOST_PORT}` });
 await sleep(6000);
-for (let i = 0; i < 15; i++) {                       // dismiss the onboarding card if it mounted
-  const onb = await centre('[data-onb-begin]');
-  if (onb) { await clickAt(onb.x, onb.y); await sleep(1500); break; }
-  await sleep(1000);
-}
+// THE ONBOARDING CARD, DISMISSED AND VERIFIED GONE (shared helper, 2026-08-03). The one-shot
+// this replaces could SILENTLY SKIP a card that had not painted yet, and every click below
+// then landed on a full-screen modal instead of the ship.
+await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
 
 // ───────────────────────────── 3. the FAULT LOG, typed at the real prompt
 log('\nSTEP 1 — open MOSS and type `log`');
