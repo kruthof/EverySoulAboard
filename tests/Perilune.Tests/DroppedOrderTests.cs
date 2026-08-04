@@ -27,11 +27,24 @@ namespace Perilune.Tests
     /// <c>(25,2,0)</c>, and that tile is <b>walkable and (forced) survivable but NOT REACHABLE</b>:
     /// <c>door_d0_s2</c> at <c>(27,7,0)</c> boots SHUT, and since OD-N doors are actuated through
     /// MOSS only. <c>TryFindStagingTile</c> asks walkable + survivable and <b>never asks
-    /// reachable</b>, so the order is ACCEPTED. She then walks 17 sim-seconds to the ship's one Parts
-    /// stack at <c>(7,14,0)</c>, and the instant she stands on it <c>DriveWorker</c>'s pickup branch
-    /// re-asks <c>FindPath(worker → staging)</c>, gets false, and calls <c>Abandon</c> — which clears
+    /// reachable</b>, so the order is ACCEPTED. She then walks to the NEAREST Parts stack, and the
+    /// instant she stands on it <c>DriveWorker</c>'s pickup branch re-asks
+    /// <c>FindPath(worker → staging)</c>, gets false, and calls <c>Abandon</c> — which clears
     /// <c>JobKind</c>, which clears <c>HeldByOrder</c>, which IS the order. Measured on the shipped
-    /// wreck, unmodified: taken at tick 1, dropped at <b>tick 171</b>, at <c>(7,14,0)</c>.</para>
+    /// wreck, unmodified: taken at tick 1, dropped at <b>tick 51</b>, at <c>(3,6,0)</c>.</para>
+    ///
+    /// <para>⚠️ <b>D7 (2026-08-03) MOVED THOSE TWO NUMBERS AND THEY ARE RE-MEASURED, NOT ADJUSTED.</b>
+    /// This paragraph read <i>"walks 17 sim-seconds to the ship's ONE Parts stack at (7,14,0) …
+    /// dropped at tick 171"</i>, which was true while the reactor bay held the only Parts aboard.
+    /// The <c>cabin stores</c> cache (<c>AuthoredShips.PeriluneWreck</c>) puts seven one-unit Parts
+    /// crates in the cryo bay at <c>(2..8, 6, 0)</c> — she wakes at <c>(3,1,0)</c>, so the nearest
+    /// Parts is now FIVE tiles away instead of seventeen, and <c>FindNearestConsumable</c> is tier
+    /// before distance with distance breaking the tie. DRIVEN AS A 2×2 on this tree, the cache the
+    /// only difference: <b>with it, dropped tick 51 at (3,6,0); with the crates removed, dropped
+    /// tick 171 at (7,14,0) — the old trace reproduced to the digit.</b> The DIAGNOSIS is untouched
+    /// (it is reachability, and the pickup branch is still the arm that kills the order); only the
+    /// route shortened. ⛔ No assertion in this file pinned either number — they lived in prose, so
+    /// a green gate could not see them move. Found by re-measuring, not by a red test.</para>
     ///
     /// <para>⛔ <b>IT IS NOT "GEOMETRY-SPECIFIC" AND IT IS NOT FLAKY — IT IS REACHABILITY, AND IT IS
     /// DETERMINISTIC.</b> D5 fires exactly when the ordered machine's staging tile is in a different
@@ -56,7 +69,9 @@ namespace Perilune.Tests
     /// shut AT ISSUE TIME</b>: order the same machine with <c>door_d0_s2</c> OPEN and shut it
     /// mid-order and the job died at the identical arm with <b>nothing on any surface</b> — taken
     /// tick 1, the first render RETIRES the pending record (arm (1) — the held job is the order from
-    /// then on), door shut tick 41, dropped tick 171, channel <c>cells:[]</c>. Structural, not a
+    /// then on), door shut tick 41, dropped tick 171, channel <c>cells:[]</c> — ⚠️ that 171 is the
+    /// PRE-D7 route and is left as the record of the sighting; the shipped ship drops at 51 (see the
+    /// 2×2 above), and this leg's subject is the empty channel, not the tick. Structural, not a
     /// missing predicate. The follow-on takes the ruled shape: <b>the SIM publishes
     /// <c>OrderDroppedEvent</c> from <c>MaintenanceSystem.Abandon</c></b> — the one funnel all NINE
     /// abandon arms go through — and <c>GameSession</c> re-asks the sim's own killing question, live,
@@ -245,7 +260,8 @@ namespace Perilune.Tests
         /// <para>⛔ THIS IS THE LEG THE OBVIOUS IMPLEMENTATION FAILS. <c>_prioritised</c> retires an
         /// entry the moment the sim turns it into a held job ("the held job IS the order from then
         /// on") — so a badge that rode only on the pending record would have vanished at tick 1 and
-        /// been gone long before the drop at tick 171.</para>
+        /// been gone long before the drop (tick 51 on the shipped ship since D7, 171 before it —
+        /// the leg waits for the drop rather than pinning the tick).</para>
         /// </summary>
         [Test]
         public void TheBadgeSurvivesTheDrop_TheOrderDoesNotJustEvaporate()
@@ -361,7 +377,7 @@ namespace Perilune.Tests
                 if (her.Pos == staging) reachedTheWorksite = true;
             }
             Assert.That(reachedTheWorksite, Is.True,
-                "and the identical order that died at tick 171 now walks the crew member to the " +
+                "and the identical order that died on the pickup branch now walks the crew member to the " +
                 "worksite — the door is the whole difference");
         }
 

@@ -22,11 +22,17 @@
 // ⚠️⚠️ TWO THINGS ARE DRIVEN AND NOT PLAYED, AND BOTH ARE SAID OUT LOUD (the pod-bay-shot.mjs /
 // board-fault-shot.mjs precedent, verbatim in technique and in disclosure).
 //
-// (A) THE PRICE. `build.def device_place_cost = 3` PARTS and `--ship wreck` authors ONE Parts on
-//     the ground — and MaintenanceSystem spends it unattended inside the first sim-day. MEASURED by
+// (A) THE PRICE. ⚠️⚠️ **D7 (2026-08-03) INVERTED THIS PREMISE AND THIS RIG HAS NOT BEEN RE-RUN.**
+//     AS WRITTEN: `build.def device_place_cost = 3` PARTS and `--ship wreck` authored ONE Parts on
+//     the ground — and MaintenanceSystem spent it unattended inside the first sim-day. MEASURED by
 //     this harness's own first run: the placement was refused SILENTLY (`0 -> 0` heaters on the
 //     devices channel) because the ship could not pay, which is `PlaceDeviceCommand`'s documented
-//     all-or-nothing behaviour and not a bug in this package. Three Parts is 6 Regolith through the
+//     all-or-nothing behaviour and not a bug in that package.
+//     ⇒ TODAY the wreck authors EIGHT Parts (D7's `cabin stores`, `AuthoredShips.PeriluneWreck`),
+//     so the ship CAN pay and this placement should now SUCCEED — `0 -> 1` on the devices channel.
+//     ⛔ THAT IS A PREDICTION, NOT A MEASUREMENT: D7 could not drive this rig (no Chrome), and
+//     nothing gates `client/tools/*.mjs`, so no red told us either. The next run must re-derive
+//     this paragraph from what it actually sees and must not trust either figure above. Three Parts is 6 Regolith through the
 //     Regolith → Scrap → Parts ladder, three benches deep, behind two doors, across the pressure
 //     frontier — the OPENING OF THE GAME, not a five-minute acceptance run. So `--prep` writes a
 //     TEMPORARY defs overlay in which `device_place_cost = 0` and NOTHING else changes, and the

@@ -81,15 +81,28 @@
 //         `Currency = ItemKind.Parts` (`Commands/Commands.cs:332`), `DevicePlaceCost = 3`
 //         (`SimDefs.cs:884`).
 //
-// ⛔ FOUND DEFECT, REPORTED NOT FIXED — "FURNITURE-SILENT-BROKE" (out of this package's scope).
-// The wreck boots with **1** Parts (`AuthoredShips.cs:1888`, `Count = 1`) against a cost of **3**.
+// ⛔ FOUND DEFECT, "FURNITURE-SILENT-BROKE" — ⭐ **HALF OF IT IS NOW CLOSED; THE OTHER HALF STANDS.**
+// AS WRITTEN (pre-D7): the wreck booted with **1** Parts against a cost of **3**.
 // `PlaceDeviceCommand.Execute` charges LAST and simply `return`s when it cannot pay, and its own
 // header calls a refusal "the same silent no-op every other rejection is". So every bunk, locker
-// and lamp a new player places on the shipping game **does nothing, silently, forever** — no toast,
+// and lamp a new player placed on the shipping game did nothing, silently, forever — no toast,
 // no ghost, no reason. The card previously pointed them straight at it by naming the one resource
-// the top bar shows plenty of. It now names PARTS, which at least makes the scarcity legible, but
-// THE VERB IS STILL MUTE. This is `MECHANICS.md` §13.17's expensive-and-visible → CHEAP-AND-INVISIBLE
-// shape, live on the standard surface.
+// the top bar shows plenty of. It now names PARTS, which at least makes the scarcity legible.
+//
+// ⚠️ **THE AFFORDABILITY HALF IS CLOSED BY D7 (2026-08-03) AND THIS NOTE'S CENSUS IS STALE** — the
+// two lanes crossed: this block was written against a `main` where the wreck held ONE Parts, and
+// D7's `cabin stores` (`AuthoredShips.PeriluneWreck`, seven one-unit crates at (2..8,6,0)) landed in
+// parallel. The wreck now boots with **8** Parts, and the bunk LANDS — driven on the live shipped
+// host: device count +1 and `Affordable(Parts)` 8 → 5, exactly `DevicePlaceCost`. TRAPS 8's shape
+// exactly (a merged file's truth is a number neither lane could compute); re-derived here on the
+// merged tree, which is why the "1 Parts" figure and "does nothing forever" are struck rather than
+// left to rot.
+//
+// ⛔ **THE VERB IS STILL MUTE, AND THAT IS THE HALF D7 DOES NOT TOUCH.** A refusal is still a silent
+// no-op — so the moment the player spends past the cache (2 pieces, or ~h2 of granted Repair, which
+// D7 measured), the third click is exactly as unexplained as the first one used to be. This remains
+// `MECHANICS.md` §13.17's expensive-and-visible → CHEAP-AND-INVISIBLE shape, live on the standard
+// surface, and it is the palette-honesty lane's subject rather than this file's.
 //
 // ⚠️ DISCLOSED, NOT FIXED — ARMING AN ORDER ON THE SHIP MAP BLOCKS ROOM ENTRY. `G`/`Z`/`V` are
 // GLOBAL (`controls.js:262` → `Hud.armFromKey`), and `overviewClickAction` returns `{type:'order'}`

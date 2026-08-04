@@ -1531,11 +1531,20 @@ namespace Perilune.Gen
         //     boot, wings 0.31 / 0.18 / 0.06         10.65 kW   Industry + Comfort shed
         //     the ship's one Parts overhauls wing_c  13.47 kW   the benches run
         //     both Seals into the other two wings    17.40 kW   the lights come back on
-        //   ⛔ 18.00 kW IS OUT OF REACH **ON BOOT STOCK, WITHOUT CRAFTING** — and that qualifier is
+        //   ⚠️⚠️ D7 (2026-08-03) MOVED THIS, AND THE PARAGRAPH BELOW IS NOW HISTORY — READ THE NOTE
+        //   FIRST. The `cabin stores` block further down authors SEVEN more Parts, so the ship holds
+        //   EIGHT, and three Parts overhauls put all three wings at 1.00 ⇒ **18.00 kW IS REACHABLE
+        //   ON BOOT STOCK NOW.** It is not free: those are the same units furniture is bought with
+        //   (`build.device_place_cost` = 3), so the ceiling and the first bunk compete for one pile
+        //   — a real choice rather than a wall, and the reason D7 could not avoid this. ANY Parts
+        //   cache does it: even one extra unit puts a second wing at 1.00. The 10.65 / 13.47 / 17.40
+        //   figures below are still exactly right as points on the curve — they are the arithmetic
+        //   `GenerationWearTests` pins with hand-set conditions — but 17.40 is no longer the CEILING.
+        //   ⛔ 18.00 kW WAS OUT OF REACH **ON BOOT STOCK, WITHOUT CRAFTING** — and that qualifier is
         //   load-bearing, an earlier draft of this block said "exactly one wing can EVER reach
         //   1.00" and that is FALSE. The repair ladder is Parts → 1.00, Seals → 0.90,
-        //   Swarf → 0.45, and this ship carries exactly ONE Parts, so on the stock in the hold
-        //   exactly one wing reaches 1.00 and 17.40 kW is the ceiling. But PARTS ARE PRODUCIBLE:
+        //   Swarf → 0.45, and this ship carried exactly ONE Parts until D7, so on the stock in the
+        //   hold exactly one wing reached 1.00 and 17.40 kW was the ceiling. PARTS ARE ALSO PRODUCIBLE:
         //   `recipes.def:21` is Fabricator, 2 Scrap → 1 Parts, and `deconstruct.def:19-21` pays
         //   floor(2 × Condition) Parts for a strip, i.e. 2 Parts from anything at 0.50 or better.
         //   The Regolith → Scrap → Parts ladder is spelled out in this file's own WINNABILITY
@@ -1612,15 +1621,24 @@ namespace Perilune.Gen
         //     A Swarf service restores to 0.45, which clears every bench's `maint` (0.40) and every
         //     `fail` (0.10), so ONE service per bench is enough. ⇒ 3 consumables.
         //   * THE MOSS TERMINAL boots at 0.14 and needs one more. ⇒ 4 consumables total.
-        //   * BOOT STOCK, DRIVEN OFF THE BUILT SHIP (M2-12 re-measured it): 12 Regolith, 3 Scrap,
-        //     1 Parts and 10 SEALS — 2 in the reactor bay with the rest of the stock, plus the 8
-        //     of M1-I's damage-control locker in the cryo bay (`:2210`). All of it in air.
-        //     ⇒ ELEVEN consumable services from Parts+Seals before any salvage is needed, and 12
+        //   * BOOT STOCK, DRIVEN OFF THE BUILT SHIP (D7 re-measured it): 12 Regolith, 3 Scrap,
+        //     8 PARTS and 10 SEALS — 1 Parts + 2 Seals in the reactor bay with the rest of the
+        //     stock, plus the 8 of M1-I's damage-control locker and the 7 one-unit crates of D7's
+        //     `cabin stores`, both in the cryo bay (see the `cabin stores` block below). All in air.
+        //     ⇒ EIGHTEEN consumable services from Parts+Seals before any salvage is needed, and 12
         //     Regolith is already 1.5× the 8 the module wants.
-        //     ⚠️ THIS LINE READ "1 Parts, 2 Seals … ⇒ 3 free services" UNTIL 2026-07-30 AND HAD
-        //     BEEN FALSE SINCE M1-I ADDED THE LOCKER. The arithmetic under it was sized against
-        //     the smaller pile, so it UNDERSTATED the ship's slack — read every "⇒ N consumables"
-        //     figure above as a floor the ship clears by more than it says.
+        //     ⚠️⚠️ THIS LINE HAS NOW GONE STALE TWICE, WHICH IS WHY THE WARNING IS A HISTORY AND
+        //     NOT A ONE-OFF:
+        //       1. It read "1 Parts, 2 Seals … ⇒ 3 free services" UNTIL 2026-07-30 and had been
+        //          FALSE since M1-I added the 8-Seal locker.
+        //       2. It read "1 Parts and 10 SEALS … ⇒ ELEVEN" UNTIL 2026-08-03 and had been FALSE
+        //          since D7 added the 7-crate `cabin stores`. Caught at review, not by the author:
+        //          the same quantity was moved 11 → 18 in `WreckShipTests` in that very commit and
+        //          this copy was left behind.
+        //     ⇒ THE STANDING LESSON: the arithmetic under this bullet is sized against whatever
+        //     pile the line names, so a stale line UNDERSTATES the ship's slack. Read every
+        //     "⇒ N consumables" figure above as a floor the ship clears by more than it says — and
+        //     when you change the authored stock, grep this block BEFORE you change the tests.
         //   * SWARF: every strip of a device below Condition 0.5 pays 1 Swarf. ⚠️ THESE NUMBERS ARE
         //     RE-COUNTED OFF `WreckShipTests.PrintTheBootCensus` DRIVING THE REAL SHIP, NEVER
         //     recomputed from a previous draft's arithmetic — the first version of this paragraph
@@ -2493,6 +2511,181 @@ namespace Perilune.Gen
             //     measured 0.959 / 0.901 at h24 on the merged tree. The CONCLUSION is identical
             //     either way and rests on "clear of the floor and fixable", never on the figures —
             //     which is why no test pins them.
+
+            // ------------------------------------------------------ the cabin stores (D7, 2026-08-03)
+            // ⭐ SEVEN PARTS, AND THEY EXIST SO THE PLAYER CAN BUILD SOMETHING THAT IS NOT A WALL.
+            // Owner, live play 2026-08-03: "I cannot build anything except the walls." Same shape as
+            // M1-I directly above and for the same reason — the answer to a soft-lock on this ship is
+            // AUTHORED CONSUMABLES, not a softened floor. `build.device_place_cost` is NOT touched;
+            // neither is `deconstruct.def`, `LooseMatter.TryPay`, nor the maintenance spend rule.
+            //
+            // ⛔ THE DEFECT, DRIVEN ON THIS TREE BEFORE THE FIX (ShipPlanBuilder.Build + the default
+            // stack, no player input, one full sim-day = 864 000 ticks):
+            //   * `build.device_place_cost` is 3 PARTS per furniture piece and the ship authored
+            //     exactly ONE. Affordable(Parts) = 1 < 3 AT TICK 0 ⇒ every tool on the Room Zoom
+            //     palette — Bed, Desk, Chair, Locker, PlantPot, Light, GrowBed, MedBed, Table,
+            //     Heater — refuses on the very first click, for the whole game. Nothing is wired
+            //     wrong; the ship simply cannot pay. The one in-game Parts source is
+            //     Regolith → Scrap → Parts, three benches deep BEHIND the pressure frontier.
+            //   * And the one Parts does not even survive: grant Repair on the WORK tab and
+            //     `MaintenanceSystem` fetches TIER BEFORE DISTANCE (`RepairConsumableTier(0)` is
+            //     Parts), so it goes into `wing_c` at tick 9211 — h0.256, fifteen sim-minutes after
+            //     the player's first work grant — and Parts is 0 for ever after.
+            //
+            // ⭐ THE DERIVATION OF 7 — A FLOOR OF TWO PIECES AND A CEILING THE SHIP'S OWN DISCLOSED
+            // ECONOMY SETS. Neither end is a taste:
+            //   FLOOR — `device_place_cost` is 3, so six Parts is exactly two furniture pieces: the
+            //   bunk, and the locker beside it. `RoomDresser.Dress` is deliberately NOT called on
+            //   this ship (see the header — "a raided ship has no bunks left"), so these are the
+            //   only cabin fittings aboard and the raiders' one oversight.
+            //   CEILING — SEVEN is the largest cache that leaves M1-I's KNOWN LIMIT 1 below exactly
+            //   as M1-I measured it, and the cliff was BISECTED rather than estimated. With a big
+            //   enough pile the boot backlog runs dry before the D3 reserve does, so units are still
+            //   on the deck when `tank_reserve` joins the board at ~h10 and the ship silently
+            //   repairs its own water tank. Driven to h12 with all work granted, one leg per size:
+            //     crates  total units   tank_reserve at h12   min Affordable(Parts), h0..h1
+            //       0         11          0.195  unfixable              0
+            //       3         14          0.195  unfixable              0
+            //       6         17          0.195  unfixable              3
+            //       7         18          0.195  unfixable              4   ← SHIPPED (the last one)
+            //       8         19          0.895  FIXED — LIMIT GONE     5
+            //       9         20          0.895  FIXED — LIMIT GONE     —
+            //      12         23          0.895  FIXED — LIMIT GONE     —
+            // The obvious bigger number is TWELVE — `RoomDresser.DressQuarters`
+            // (`RoomDresser.cs:63-76`) is this repo's own declaration of a furnished crew cabin
+            // (Bed + Chair + Locker + Desk, four pieces × 3) — and it is two units past the cliff.
+            // Whether the wreck should self-repair its water tank is a CONTENT DECISION and it is
+            // the owner's: `WreckRepairEconomyTests.KnownLimit_TankReserve_IsStillStrandedAndThatIsDeliberate`
+            // exists to force exactly that deliberation ("if this ever goes green, either the stock
+            // grew or a def moved — both are decisions someone must take deliberately"). So this
+            // package stops ON the cliff and changes nothing about the repair economy M1-I
+            // measured; a full-cabin budget is FILED for the owner, not taken here.
+            // ⚠️ SEVEN IS THE LAST SAFE VALUE, so ONE more consumable unit authored ANYWHERE on this
+            // ship flips that limit. That is deliberate and it is guarded loudly rather than left to
+            // margin: the M1-I test above goes red and names the tank.
+            //
+            // ⛔⛔ READ THIS BEFORE MERGING, RE-SIZING OR COPYING THIS BLOCK — **PARTS IS THIS
+            // SHIP'S UNIVERSAL CURRENCY, SO AUTHORING PARTS FOR FURNITURE RE-PRICES THE WHOLE
+            // OPENING.** Four systems spend the same pile and none of them can tell the piles apart:
+            //   1. `MaintenanceSystem` — Parts is `RepairConsumableTier(0)`, fetched FIRST;
+            //   2. `ThawGate` rungs 3 and 4 (1 and 2 Parts) — priced through `LooseMatter.Affordable`;
+            //   3. `PlaceDeviceCommand` — `build.device_place_cost`, the same lens;
+            //   4. MOSS commissioning, via ControllerModule (2 Parts at the MachineShop).
+            // ⇒ THE CONSEQUENCE LADDER, DRIVEN, ONE SIM-DAY PER ROW, ALL WORK GRANTED AT TICK 0
+            // (`extra` = crates authored here; `Parts aboard` includes the reactor bay's 1 `spares`):
+            //   extra  Parts   brownout entries   wing_b     one piece    ≥1 piece buyable  tank at
+            //          aboard  in a sim-day       at h24     buyable?     all through h1    h12
+            //     0      1            9            0.100        no             no          0.183
+            //     1      2            9            0.100        no             no          0.183
+            //     2      3            0            0.802       yes             no          0.183
+            //     3      4            0            0.802       yes             no          0.183
+            //     4      5            0            0.802       yes             no          0.182
+            //     5      6            0            0.802       yes             no          0.183
+            //     6      7            0            0.802       yes            yes (3)      0.183
+            //     7      8            0            0.802       yes            yes (4)      0.182  ← SHIPPED
+            //     8      9            0            0.802       yes            yes (5)      0.895
+            // ⛔ **THE TWO BANDS DO NOT OVERLAP, AND THAT IS THE HEADLINE.** One furniture piece
+            // needs THREE Parts aboard; the wreck stops browning out at THREE Parts aboard. There is
+            // NO cache size that lets the player place a bunk and leaves the ship's power crisis
+            // standing — because the second and third spare Parts are exactly what autonomy needs to
+            // lift `wing_b` (0.18, stranded below the wreck floor under D3's reserve), and a lifted
+            // wing closes the deficit that IS the brownout.
+            // ⛔ AND THE THAW LADDER MOVES AT THE FIRST EXTRA UNIT: rung 4 (Mbeki) costs 2 Parts, so
+            // ONE spare Part takes his capsule out from behind the crafting ladder. No placement
+            // avoids it — `ThawGate` reads `LooseMatter.Affordable`, which has no position term.
+            // ⇒ FILED FOR THE OWNER, NOT SETTLED HERE (and the affected fixtures say so at their own
+            // sites: `ChronicleSignalTests.WreckInPowerDeficit` now strips this cache by name to get
+            // a browning-out ship, and `WebPodBayTests` re-derived its rung count from 4 to 3).
+            // The one lever this package did NOT pull, recorded so the next lane does not have to
+            // rediscover it: `MaintenanceSystem.FindNearest` refuses a stack whose tile fails
+            // `WorksiteSafety.CanStageWorkerAt`, while `LooseMatter.TryPay` has NO position term at
+            // all — so a cache on an UNSTAGEABLE tile is invisible to maintenance and still
+            // spendable by the player, which would preserve rows 1 and 2 above (brownouts, wing_b,
+            // tank) and only the thaw rung would move. It is not taken because it builds content on
+            // a simplification `PlaceDeviceCommand`'s own class doc marks as temporary ("the
+            // material teleports … the LOGISTICS are not modelled"), and because the integrator's
+            // ruling for this package named the boot-air rooms.
+            // ⭐ THE SECOND ALTERNATIVE, FILED HERE SO BOTH LIVE AT ONE SITE — and it is the only
+            // combination MEASURED that delivers the owner's sentence with the power crisis intact:
+            // RE-PRICE instead of stocking. `build.device_place_cost` 3 → 2 with
+            // `deconstruct.device_parts` 2 → 1 (the pair is forced: `DefsDefaultTests`.
+            // `Build_DevicePlaceCost_StrictlyExceedsTheBestPossibleStripYield` wants cost > yield AND
+            // a 50-70 % recovery band, which 2/1 satisfies at exactly 50 %), plus a cache of ONE
+            // crate ⇒ 2 Parts aboard buys a piece, and the ladder above says 2 Parts aboard still
+            // writes NINE brownout episodes with `wing_b` at 0.100. ⛔ It is route (b), so it MOVES
+            // P4 AND P5 and re-prices every strip in the game — the owner's call, which is why this
+            // package did not take it. ⚠️ And route (b) ALONE cannot work: cost must reach 1 for the
+            // pre-D7 ship's single Parts to buy anything, and at cost 1 the yield must be 0, which
+            // puts recovery outside the band. Stocking and re-pricing are complements here, not
+            // rivals.
+            //
+            // ⭐ SEVEN ONE-UNIT CRATES AND NOT ONE STACK OF SEVEN — the shape is load-bearing, and the
+            // reason is `MaintenanceSystem`'s documented carried-stack blackout
+            // (`MachineWearSystem.HasAutonomouslySpendableStock`'s last paragraph): `DriveWorker`
+            // picks up the WHOLE stack for a ONE-UNIT service, and `LooseMatter.Affordable` skips
+            // `CarriedBy != 0`, so while a servicer walks, a single pooled stack is worth NOTHING to
+            // the build palette. Measured on the one-stack draft, all work granted, at the one-hour
+            // mark: 4 Parts aboard but `Affordable` = 1 — three of them in a crew member's hands.
+            // Split into units, at most ONE can ever be in transit. Same authoring shape as the
+            // three `hull spoil` stacks above.
+            //
+            // ⚠️ THE DRAIN IS REAL, IT IS MEASURED, AND IT IS NOT CLOSED HERE — read this before
+            // quoting "7 Parts" as a standing budget. Driven, one sim-day per leg:
+            //   LEG A — the OD-H boot state (every work type OFF, no player input), measured on the
+            //           PRE-FIX ship: Parts 1 → 1, Seals 10 → 10 at h24. ⇒ NOTHING IS SPENT AT ALL
+            //           until the player grants work. Re-confirmed on the SHIPPED ship: with no work
+            //           granted `Affordable(Parts)` is a flat 7 at every tick to h3. On the state the
+            //           game actually boots in, this cache is PERMANENT — which is why the audit's
+            //           "the ship is at 0 before a player finds the palette" is true only AFTER a
+            //           Repair grant, and is corrected here.
+            //   LEG B — all six work types granted at tick 0, and LEG C — Repair alone: byte-for-byte
+            //           the same curve, so the whole drain is the Repair grant. Parts at h0.256, then
+            //           Seals one per ~0.25 h at h0.508 / 0.759 / 1.015 / 1.268 / 1.522 / 1.773, and
+            //           then IT STOPS: 4 units left at h1.773 and still 4 at h24.
+            //   ⇒ D3's reserve DOES hold a floor, and the floor is TOTAL LOOSE CONSUMABLE UNITS
+            //     (`MachineWearSystem.HasAutonomouslySpendableStock`, `:1006`), summed across all
+            //     three rungs. ⛔ SO IT PROTECTS SEALS AND CAN NEVER PROTECT PARTS: Parts are tier 0
+            //     and are always spent first, so with ten Seals aboard the drain reaches four units
+            //     only after every Part is gone. No authored quantity changes that — it changes only
+            //     HOW LONG, at ~4 units per sim-hour with one servicer (three of them Parts inside the
+            //     first hour). The shipped eight Parts with Repair on from tick 0 leave FIVE aboard at
+            //     the one-hour mark and are gone at about h2.
+            //   ⇒ OWNER QUESTION, FILED not answered: should autonomous maintenance be allowed to
+            //     eat the player's furnishing budget at all? A per-kind reserve, or a Parts rung the
+            //     standing rule may not touch, is a SIM-CORE rule change and is not this package's.
+            //   ⇒ WHAT THE PLAYER GETS, STATED PLAINLY: 3 Parts = ONE furniture piece, every extra
+            //     piece 3 more. On the shipped OD-H boot state the ship holds EIGHT loose Parts (the
+            //     reactor bay's 1 `spares` + these 7) and holds them for ever ⇒ TWO pieces with two
+            //     units over, which are two maintenance services. Grant Repair and the budget decays
+            //     at ~3 Parts per sim-hour; `Affordable(Parts)` never drops below 4 at ANY tick of
+            //     the first sim-hour (driven), so a piece is always buyable in that window, and the
+            //     Parts are gone at about h2.
+            //
+            // ⭐ WHY THE CRYO BAY, AND IT IS M1-I'S OWN MEASUREMENT SPEAKING TO THIS LANE BY NAME.
+            // The block above ends with: "Kept because a future lane that authors a cache meant to
+            // sit unspent must know about it." This IS that cache — under OD-H it sits unspent for
+            // ever — so it goes on the one site M1-I proved durable rather than beside the reactor
+            // bay's spares:
+            //   * PRESSURE: opening two frontier compartments at once takes the reactor bay's stock
+            //     tiles un-stageable (measured there: N from h0.028); the cryo bay never goes
+            //     un-stageable in any leg.
+            //   * THERMAL: the cryo bay is FLAT at 10.0 °C to sim-day 12 (`radiator_cryo`
+            //     thermostats it) while the spine crosses `hypothermia_c` near day 16. An
+            //     un-stageable tile is invisible to `FindNearest` — and to nothing else: the player
+            //     can always spend it, because `LooseMatter.TryPay` has no position term at all.
+            //   * FICTION: it is where the player wakes up. The crates stand along the bay's bottom
+            //     row, inboard of M1-I's damage-control locker at (9,6,0) and diagonally opposite
+            //     Rell's open capsule — the cabin fittings the raiders did not think worth taking,
+            //     stowed with the people they were for.
+            // (2..8, 6, 0) probed on the built ship: walkable, no wall, no device, no other item,
+            // stageable and breathable. (1,6,0) is `battery_cryo` and (9,6,0) is M1-I's locker, so
+            // the row is bounded on both sides and fills the span exactly.
+            for (int i = 0; i < 7; i++)
+                plan.Items.Add(new ItemSpec
+                {
+                    Kind = ItemKind.Parts, Count = 1,
+                    Pos = new Int3(cryo.X0 + 1 + i, cryo.Y1, 0), Label = "cabin stores",
+                });
 
             // --------------------------------------------------------------- starting air
             // THE WHOLE PRESSURISED SET, and it is three names long. Everything omitted here boots
