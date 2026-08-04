@@ -43,14 +43,14 @@
 // code, ageing at four different rates — the `B`-row shape, four times over.
 // ⛔ FOUND DEFECT, REPORTED NOT FIXED — "MOSS-HELP-BELOW-THE-FOLD" (outside this package: it is
 // `ui/moss-screen.js` + `styles.css`, and this card owns neither). The row above sends the player to
-// `HELP`, and `HELP` answers with THIRTEEN lines into `.moss-console` (TWELVE when the numbers
-// below were taken; the `doors` verb added the thirteenth), which is
+// `HELP`, and `HELP` answers with FOURTEEN lines into `.moss-console` (TWELVE when the numbers
+// below were taken; the `doors` verb added the thirteenth and `vents` the fourteenth), which is
 // `max-height:22vh;overflow-y:auto` and **does not scroll to its own newest output**. DRIVEN on the
 // shipping game at 1280×800 (`onbthw-mossrow`, 2026-08-04, BEFORE that line existed):
 // `clientHeight 157 / scrollHeight 305 / scrollTop 0`,
 // **7 of 14 lines visible**, and the three the arc needs — COMMISSION, PODS, THAW —
 // are all in the hidden half. The card's promise still holds (the screen's own permanent footer
-// reads `TYPE: LOG, PROG, DOORS, PODS, COMMISSION, HELP`, so two of the three are on screen
+// reads `TYPE: LOG, PROG, DOORS, VENTS, PODS, COMMISSION, HELP`, so two of the three are on screen
 // unconditionally and `pods` reaches the third), which is why this is FILED rather than treated as a blocker — but
 // it is the palette-overflow shape, on the surface the thaw arc runs through, four days before a
 // playtest. It is also the reason this row says `type HELP` rather than spelling the chain: when
