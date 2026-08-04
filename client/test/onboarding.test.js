@@ -556,7 +556,11 @@ test('the card hands over HELP, and MOSS HELP really lists the rest of the thaw 
   const block = mossHelpBlock();
   assert.ok(block.length > 200, 'HELP_LINES was not found in ui/moss-model.js — this join is vacuous');
   assert.ok(block.includes("'HELP  "), 'the extracted block is not the help list (no HELP row)');
-  for (const verb of ['COMMISSION', 'PODS', 'THAW'])
+  // ⭐ DOORS joined this list with the `doors` directory verb, and it belongs here rather than beside
+  // it: the fabrication chain the commission's ControllerModule comes from sits behind two named
+  // doors on the shipping wreck, so a player who cannot learn a door name never reaches COMMISSION
+  // at all. It is the FIRST rung of the chain this card delegates to HELP.
+  for (const verb of ['DOORS', 'COMMISSION', 'PODS', 'THAW'])
     assert.ok(block.includes(verb),
       `MOSS HELP no longer lists ${verb}, and the card sends the player there to find it`);
   // INCLUSION: the matcher must be able to say no, or the three lines above prove nothing.

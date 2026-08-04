@@ -528,6 +528,8 @@ namespace Perilune.Web
         ///   audit → reply the terminal's audit ring (tid "@console" ⇒ the player's own prompt ring)
         ///   sys   → reply one MOSS-ledger row's per-device breakdown + its derivation note
         ///   exec  → run ONE prompt line through the DSL's own device adapters (see ExecConsole)
+        ///   doors → ⭐ the DOOR DIRECTORY — one line per Door (id · place · OPEN/SHUT), so the
+        ///           name `open` needs is learnable in the game. A READ; rides the `exec` reply.
         ///   pods  → ⭐ M3-4: the POD BAY census — one row per CryoPod, each carrying the gate's own
         ///           verdict (state, refusal ordinal, sentence, and whether it may cycle). A READ.
         ///   thaw  → ⭐ M3-3: ask the ship to wake the capsule named in `text`, through the console
@@ -541,7 +543,7 @@ namespace Perilune.Web
         /// could open the MOSS tab and type <c>open door_d0_s1</c> and the door opened. The console
         /// was the wider hole, not the Room Zoom's click.</para>
         /// <list type="table">
-        ///   <item><term><c>sys</c> · <c>audit</c> · <c>exec</c></term><description><b>REPAIRED
+        ///   <item><term><c>sys</c> · <c>audit</c> · <c>exec</c> · <c>doors</c></term><description><b>REPAIRED
         ///   tier</b> — <see cref="MossGate.IsServerLive"/>. Reading the ship, or writing one device
         ///   one line at a time, needs a working computer. This covers the DEVICE verbs
         ///   (<c>open</c>/<c>close</c>/<c>lock</c>/<c>unlock</c>), <c>set &lt;dev&gt;.rate</c> and
@@ -651,6 +653,50 @@ namespace Perilune.Web
                         _host.Moss.GetAuditLog(tid, _mossAuditBuf);
                         Emit(WireFormat.MossAudit(tid, _mossAuditBuf));
                     }
+                    break;
+                }
+                // ⭐⭐ THE `doors` DIRECTORY (a defect closure in OD-P's typed-only style; OD-P's own
+                // row forbids implementing from it, so the SHAPE awaits ratification — see
+                // MossGate.DescribeDoors' header). Every door the ship knows, one per line, so the
+                // NAME `open` needs is learnable in the game. Until this op, OD-N had made the doors
+                // MOSS-only and NO SURFACE ANYWHERE NAMED ONE — and the fabrication chain that the
+                // whole thaw arc is built on sits behind two of them on the shipping wreck. A READ:
+                // it enqueues nothing and changes nothing.
+                case "doors":
+                {
+                    // ⛔ THE **REPAIRED** TIER, AND IT IS THE TIER THE VERB IT SERVES SITS AT.
+                    // `doors` is the directory for `open`/`close`/`lock`/`unlock`, which reach the
+                    // sim through `exec` at this tier (the table in MECHANICS §13.31). Putting the
+                    // listing one tier UP, behind COMMISSIONED, would mean a player whose console is
+                    // repaired could actuate a door but not learn its name — this package's own
+                    // stall, moved rather than closed. Putting it BELOW the gate, ungated, would let
+                    // a dead computer enumerate the ship: `pods`'s own words, that a dark ship
+                    // answering about a capsule is "a computer that is off giving an opinion".
+                    // A directory the actuation tier cannot see is useless; a directory a tier
+                    // LOWER can see is a computer talking with its power off.
+                    //
+                    // ⭐ `Ask.Doors` — and this op is the FIRST shipping-surface caller of it.
+                    // §13.47 filed that member as unreachable in the shipping client (M3-15 deleted
+                    // the Room Zoom's OPERATE affordance, its only other caller). On a dark ship
+                    // `doors` now answers `…REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE DOORS`,
+                    // which is the right noun for the ask.
+                    if (!MossGate.IsServerLive(_sim))
+                    { Refuse(tid, MossGate.OfflineRefusal(_sim, MossGate.Ask.Doors)); break; }
+                    // ⛔ NO NEW WIRE SHAPE. The listing rides `MossExec`'s existing lines array on
+                    // stream 1 (output), which is the channel every typed line already answers on
+                    // and which `reduceMossEvent` already folds into the transcript. A `ev:"doors"`
+                    // reply would be a new client reducer and a new renderer for a plain block of
+                    // text the console can already print — WireFormat.cs stays at a ZERO diff.
+                    //
+                    // ⛔ AND NOT ONE OF THESE WORDS IS THE HOST'S (`WireFormat.Pods.cs`'s rule).
+                    // `MossGate.DescribeDoors` composes them in Sim.Core, beside the gate that owns
+                    // the doors and beside the ONE spelling of a place (`MossGate.PlaceWords`, which
+                    // the offline sentence uses too). A second composer here would be a second
+                    // vocabulary for one fact.
+                    var doorLines = MossGate.DescribeDoors(_sim);
+                    var outLines = new List<(int Stream, string Text)>(doorLines.Count);
+                    for (int i = 0; i < doorLines.Count; i++) outLines.Add((1, doorLines[i]));
+                    Emit(WireFormat.MossExec(tid, true, outLines));
                     break;
                 }
                 // ⭐⭐ M3-3 — THE THAW. A MOSS *SCREEN* verb: a distinct op, sent by the POD BAY
@@ -4877,7 +4923,7 @@ namespace Perilune.Web
         /// {"cmd":"deck","dz":1} / {"cmd":"lens","name":"power"} / {"cmd":"speed","delta":-1} /
         /// {"cmd":"pause"}), and the dialogue/MOSS commands keyed by "type"
         /// ({"type":"talk","cid":N} / {"type":"say","sid":N,"text":".."} / {"type":"bye","sid":N} /
-        /// {"type":"moss","op":"open|set|audit|sys|exec|pods|thaw|commission","tid":"..","text"?}). For `thaw`,
+        /// {"type":"moss","op":"open|set|audit|sys|exec|doors|pods|thaw|commission","tid":"..","text"?}). For `thaw`,
         /// `text` is the capsule's Device.Name (M3-3). Unknown/garbage ⇒
         /// Kind.Unknown (ignored by the session).</summary>
         public static WebCommand Parse(string json)

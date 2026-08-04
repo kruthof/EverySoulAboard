@@ -111,6 +111,7 @@ const HELP_LINES = [
   'OPEN <system>         system detail (also: ENTER on a row)',
   'LOG [system]          fault log, optionally filtered',
   'PROG [terminal]       the MOSS program directory / editor',
+  'DOORS                 every door aboard — its id, where it is, open or shut',
   'COMMISSION            fit a controller module to this console — opens programs and PODS',
   'PODS                  the cryo bay — who is aboard, and what each capsule needs',
   'THAW <n|name>         begin that capsule\'s cycle (also: ENTER on a POD BAY row)',
@@ -812,8 +813,10 @@ export function parseCommand(text) {
     // ⭐ M3-17 — `commission` is a WIRE op wearing a nav verb, exactly like `pods`: the client
     // resolves nothing (which terminal, whether a module is aboard, what it costs are three facts
     // that have never crossed the wire) and the ship answers on the transcript.
+    // ⭐ OD-P — `doors` is the third of that shape. It is deliberately NOT a `device` line: it names
+    // no device, and the whole reason it exists is that the player does not yet KNOW a device name.
     case 'help': case 'status': case 'log': case 'prog': case 'clear': case 'exit':
-    case 'pods': case 'thaw': case 'commission':
+    case 'doors': case 'pods': case 'thaw': case 'commission':
       return { verb, args, raw, kind: 'nav' };
     case 'open': {
       const navish = args.length !== 1 || SYSTEM_IDS.indexOf(normalizeSystemId(args[0])) >= 0;
@@ -911,6 +914,26 @@ function navCommand(m, cmd, argText) {
       const tid = argText ? argText.split(/\s+/)[0] : null;
       const out = openProgram(m, tid);
       return { model: out.model, effects: out.effects };
+    }
+    case 'doors': {
+      // ⭐⭐ OD-P — THE DOOR DIRECTORY. Since OD-N the ship's doors answer only to MOSS, MOSS
+      // addresses a door by NAME, and until this verb no surface anywhere named one: `open` alone
+      // answered UNKNOWN SYSTEM '', `open door` answered NO SUCH DEVICE 'DOOR', and only the exact
+      // `open door_d0_s1` worked — a key the player had no way to learn. The fabrication chain the
+      // whole opening is built on sits behind two of those doors.
+      //
+      // ⛔ NO SCREEN AND NO LOCAL LIST, for `commission`'s reason and one more of its own: this
+      // client has never been told a door exists. The `devices` channel carries wear for the
+      // ledger, not a door census with OPEN/SHUT, so a client-side listing would be a second
+      // authority derived from a channel that does not carry the fact. The SHIP answers, on the
+      // transcript, in its own words — and the reply rides the ordinary `exec` lines, so nothing
+      // new had to be added to the wire or to `reduceMossEvent` to render it.
+      //
+      // ⚠️ ARGUMENTS ARE IGNORED, exactly as `pods` ignores them. `doors` is one noun; `doors
+      // deck 1` is a filter, a filter is a grammar, and this lane self-limits to ONE verb — OD-P's
+      // row is the SHAPE precedent, not a charter ("never implement from this row"), so a second
+      // noun waits on the owner's ratification.
+      return { model: m, effects: [{ k: 'moss', op: 'doors' }] };
     }
     case 'pods': {
       // ⛔ NO SCREEN CHANGE HERE. The ask goes out; `reducePods` opens the bay when the ship
@@ -1107,7 +1130,11 @@ export function footerHints(model) {
       // ⭐ M3-17 — COMMISSION joins the LEDGER's signpost, and that is not decoration. The whole
       // reason the commissioning verb was missing for a milestone is that nothing on any surface
       // named it; a verb only `HELP` knows about is one the player has to already know to find.
-      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', 'TYPE: LOG, PROG, PODS, COMMISSION, HELP',
+      // ⭐ OD-P — DOORS joins it for THAT SENTENCE, applied to a worse stall: the door names are
+      // what the fabrication chain (and therefore the whole opening) is locked behind, and the
+      // player has no other way to learn one. It is listed FIRST of the three, in arc order.
+      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL',
+        'TYPE: LOG, PROG, DOORS, PODS, COMMISSION, HELP',
         '[ESC] BACK TO SHIP'];
   }
 }

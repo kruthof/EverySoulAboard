@@ -4566,6 +4566,7 @@ Two tiers, two predicates, two files, named so the split reads in the code.
 |---|---|---|---|
 | `sys` (`GameSession.cs:452`) · `audit` (`:506`) · `exec` (`:465`) | **REPAIRED** | `MossGate.IsServerLive` | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO BRING MOSS ONLINE` (`Ask.Ship`; the name and the place are DERIVED — §13.47) |
 | `exec` → `open`/`close`/`lock`/`unlock`, `set <dev>.rate`, bare `<dev>.<prop>` reads | **REPAIRED** | (inside `exec`) | same |
+| ⭐ `doors` (OD-P, 2026-08-04) | **REPAIRED** — *the directory for the verbs on the two rows above, so it can only sit at their tier* | `MossGate.IsServerLive` | the OFFLINE sentence, tailed `…TO REACH THE DOORS` (`Ask.Doors`, and this op is its FIRST shipping-surface caller — §13.48) |
 | `open` (program source, `:472`) · `set` (program install, `:495`) | **COMMISSIONED** | `MossGate.CanInstallProgram` (`MossGate.cs:146`) | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO TERM_MOSS` |
 | `thaw` (M3-3, `:571`) · `pods` (M3-4, `:530`) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **and since M3-4 the SHIP gate is asked FIRST on both** | ship: the OFFLINE sentence, tailed `…TO REACH THE PODS` (`Ask.Pods`, §13.47) · target: `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL` (`pods` answers `MossGate.NotCommissionedRefusal` instead, because it refuses before it names a capsule) |
 | ⭐ `commission` (M3-17, `GameSession.cs:663`) | **REPAIRED** — *the act that crosses the split, so it can only sit on this side of it* | `MossGate.EvaluateCommission` (`MossGate.cs:290`), whose term 1 IS the ship gate | ship: the OFFLINE sentence · target: `ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON TERM_MOSS` · price: `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0; A MACHINE SHOP MAKES THEM FROM 2 PARTS` (the source clause is derived from `recipes.def` — §13.47). Accepted: `COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN` (**stream 1**, via `Reply` — §13.41) |
@@ -7489,16 +7490,282 @@ new member of the pinned console family and a package of its own. A filter inste
 would be worse: it would return `null` and drop the ship back to `REPAIR ONE`, deleting the only
 noun the player has.
 
-⚠️ **AND `Ask.Doors` IS CURRENTLY UNREACHABLE IN THE SHIPPING CLIENT — SAID OUT LOUD.**
+~~⚠️ **AND `Ask.Doors` IS CURRENTLY UNREACHABLE IN THE SHIPPING CLIENT — SAID OUT LOUD.**
 `GameSession.HandleOperate` is its only caller, and M3-15 deleted the Room Zoom's OPERATE
 affordance: nothing emits `Cmd.operate` any more (`client/src/wire/session.js:96`). The arm is kept
 because that handler survives until M4-8 and answering the wrong noun there would be this lane's own
-defect — but nobody should read "the DOORS tail ships" off the enum.
+defect — but nobody should read "the DOORS tail ships" off the enum.~~ ✅ **CLOSED 2026-08-04 by the
+`doors` verb — §13.48.** The directory op is a SECOND caller and it IS a shipping surface: typing
+`doors` on the boot wreck answers `…REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE DOORS`, witnessed
+in real Chrome. `HandleOperate` still survives until M4-8 and still uses the same arm.
 
-⛔ **FILED, NOT FIXED — THE DOORS-DIRECTORY GAP (stall #2, another lane's subject).** MOSS has a
+~~⛔ **FILED, NOT FIXED — THE DOORS-DIRECTORY GAP (stall #2, another lane's subject).** MOSS has a
 `PODS` verb that lists the cryo bay, and **no verb at all that lists the ship's doors**. `HELP` offers
 `open|close|lock|unlock <device>`, which requires the player to already know a device NAME
 (`door_d0_s1`) — and since OD-N the doors are MOSS-only, so a player who cannot name one cannot open
 one. `parseCommand`'s vocabulary (`moss-model.js:815-816`) is `help · status · log · prog · clear ·
 exit · pods · thaw · commission`; there is no `doors`. The offline sentence now sends the player to
-the right terminal; **what happens after they repair it is the gap this lane does not close.**
+the right terminal; **what happens after they repair it is the gap this lane does not close.**~~
+✅ **CLOSED 2026-08-04 — §13.48.**
+
+### 13.48 ⭐⭐ Typing `doors` lists every door the ship knows — the name `open` needs, learnable in the game (playtest-blocking defect, 2026-08-04)
+
+**THE PLAYER SENTENCE.** *Typing `doors` on the MOSS console lists every door aboard — id, deck and
+tile, open or shut — so the name `open` needs is learnable in the game, and the fabrication chain's
+doors stop being secret.*
+
+⛔ **THE STALL, MEASURED IN LIVE PLAY (thaw-path audit 2026-08-03, stall #2 — the biggest).**
+Since OD-N (§13.31) the ship's doors answer **only** to MOSS, MOSS addresses a door **by name**, and
+**no surface anywhere named one.** Driven at the shipping prompt:
+
+```
+open              → UNKNOWN SYSTEM ''
+open door         → NO SUCH DEVICE 'DOOR'
+open door_d0_s1   → QUEUED OPEN(DOOR_D0_S1)
+```
+
+Every piece worked and the player had no way in. On `--ship wreck` the whole
+Regolith → Scrap → Parts → ControllerModule chain — the thaw arc's spine, and therefore the opening
+of the game — sits behind `door_d0_s1` and `door_d0_s2`. MOSS had a `PODS` directory verb; it had no
+`doors`.
+
+⛔ **WHAT AUTHORISES THIS PACKAGE IS THE DEFECT, NOT OD-P — AND AN EARLIER DRAFT GOT THAT BACKWARDS.**
+OD-P's row (`ROADMAP.md` §5) ends in its own words: *"Future MOSS-OS expansion (`ls`, directories) is
+**VISION, not chartered scope** — file ideas against M3-15/M3-4, **never implement from this row**."*
+So this is **not** an owner mandate being discharged. It is the closure of a **playtest-blocking
+defect** — the thaw-path audit's stall #2, four days before a named playtest — and OD-P is cited as
+the **DESIGN PRECEDENT for the SHAPE** of the fix, which is a different claim:
+
+- OD-P's ruling *"every printable character belongs to the PROMPT; screens are reached by TYPED
+  COMMANDS only"* is why this is a **typed verb** and not a key, a button or a panel.
+- OD-P's standing vision — *"MOSS should be the OS of the ship"*, *"part might be an 'ls' command
+  later, to read directories"* — is why a **directory** is the recognisable shape for it, with `pods`
+  as the exact in-repo precedent.
+
+⚠️ **AND THE SELF-LIMIT IS THE OTHER HALF OF READING THAT ROW HONESTLY: EXACTLY ONE VERB.** No `ls`,
+no generic directory framework, no second noun (`vents`, `machines`, `crew`) — those would be
+implementing from the row, which the row forbids. **AWAITING THE OWNER'S RATIFICATION ON RETURN**
+(the integrator carries the question to HANDOVER's owner list): *is a typed `doors` the right shape,
+and does the MOSS-OS expansion get chartered?* The same note is in the code where the next expander
+will look (`MossGate.cs`, above `DescribeDoors`).
+
+#### 13.48.1 The seam — one op, one composer, no new wire shape
+
+| where | what |
+|---|---|
+| `sim/Sim.Core/MossGate.cs` `PlaceWords(Int3)` | ⭐ **the ONE spelling of a place**, `DECK 0 AT 16,7`, extracted out of `OfflineRefusal` when this listing needed the same phrase. §13.47.3's no-room-word ruling stands unchanged and is not re-argued |
+| `MossGate.DescribeDoors(sim)` | the listing: a census header, then one row per `DeviceKind.Door` in `Device.Id` order. PURE — reads live state, mutates nothing, draws no RNG |
+| `MossGate.NoDoorsLine` | the degenerate arm, in words |
+| `hosts/web/GameSession.cs` the `case "doors":` arm | the ship gate (`Ask.Doors`), then `WireFormat.MossExec(tid, true, lines)` — the **existing** reply channel |
+| `client/src/ui/moss-model.js` `parseCommand` · `navCommand` · `HELP_LINES` · `footerHints` | `doors` joins the nav vocabulary (`pods`/`commission`'s shape exactly), HELP names it, and the LEDGER footer names it |
+
+⛔ **NO NEW WIRE SHAPE, AND THAT WAS A CHOICE.** The listing rides `MossExec`'s existing `lines`
+array on **stream 1**, the channel every typed line already answers on and which `reduceMossEvent`
+already folds into the transcript. **`WireFormat.cs` takes a ZERO diff**, no `WireFormat.Doors.cs`
+partial exists, and the client needed no new reducer arm — an `ev:"doors"` reply would have been a
+new renderer for a block of text the console can already print. Asserted at the wire by
+`TheReplyRidesTheExecChannel_AndAddsNoWireShape` (one message, `ev:"exec"`, `ok:true`, every line
+stream 1).
+
+⛔ **AND NOT ONE WORD OF IT IS THE HOST'S** — `WireFormat.Pods.cs`'s rule. The sentences are composed
+in `Sim.Core`, beside the gate that owns the doors and beside the one spelling of a place. A composer
+in `hosts/web` would be a second vocabulary for one fact, and mutation 7 is what says so: dropping
+`PlaceWords`' Y term reddens **both** this listing's row test **and** §13.47's two offline-sentence
+tests, which is the shape of a single source.
+
+#### 13.48.2 ⛔ THE TIER IS THE **REPAIRED** TIER — THE TIER OF THE VERB IT SERVES
+
+`doors` is the directory for `open`/`close`/`lock`/`unlock`, which reach the sim through `exec` at
+the REPAIRED tier (the table in §13.31). The argument, both ways round:
+
+- **One tier UP (COMMISSIONED, where `pods` sits) is wrong**: a player whose console is repaired
+  could actuate a door and still not learn its name — *this package's own stall, moved rather than
+  closed*. `pods` sits there because the BAY is commission-gated; nothing about a door is.
+- **Ungated is wrong**: a dark computer enumerating the ship is `pods`'s own words — *"a computer
+  that is off giving an opinion about a capsule"*.
+
+Pinned as a **CONTRAST** rather than an assertion, M3-17's construction
+(`TheVerbSitsAtTheREPAIREDTier_TheTierOfTheVerbItServes`): in **one** fixture state — repaired,
+un-commissioned — `doors` answers with the full listing and `pods` refuses `MOSS IS NOT
+COMMISSIONED`, in the same session, so the two tiers are demonstrably distinguishable at that point.
+
+⭐ **AND THIS OP IS THE FIRST SHIPPING-SURFACE CALLER OF `MossGate.Ask.Doors`.** §13.47 filed that
+enum member as words no player could see (M3-15 deleted the Room Zoom's OPERATE affordance, its only
+other caller). On the boot wreck `doors` now answers
+`MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE DOORS`.
+
+#### 13.48.3 The listing, as shipped, and the wreck's census
+
+Driven on `--ship wreck` with `term_moss` serviced — **17 lines, the ship's own count**:
+
+```
+DOORS — 16 ABOARD · 2 OPEN · 14 SHUT
+DOOR_D0_S0 · DECK 0 AT 5,7 · OPEN
+DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT      ← the recycler + machine shop are behind this one
+DOOR_D0_S2 · DECK 0 AT 27,7 · SHUT      ← the fabricator is behind this one
+DOOR_D0_S3 · DECK 0 AT 38,7 · SHUT
+DOOR_D0_S4 · DECK 0 AT 5,10 · OPEN
+DOOR_D0_S5..S7 · DECK 0 · SHUT
+DOOR_D1_S0..S7 · DECK 1 · SHUT
+```
+
+Door censuses at tick 40, measured on all four authored ships: **wreck 16 · grid 64 · slice 19 ·
+perilune 19**. Only the wreck is a shipping ship; a 64-row listing on `--ship grid` is a fixture's
+problem and the console pane gained honest scroll-to-tail on 08-04 (§13.46), measured below.
+
+- **The order is `Device.Id`**, taken explicitly rather than off store order — `BuildPods`' rule, for
+  its reason: it is what the player reads down and it must not shuffle because a store compacted.
+- **The state is read LIVE**, never from the plan. `TheStateWordIsLIVE_NotAuthored` moves a door with
+  the sim's own `SetDoorStateCommand` and requires the row AND the header split to follow.
+- ⭐ **THE LOCK IS A COLUMN** (` · LOCKED`, appended). `SetDoorStateCommand.Execute` computes
+  `open && !IsLocked`, so a locked door answers the verb this listing teaches by silently staying
+  shut — *invisible feedback is functional*, exactly. No authored ship locks a door, so it is driven
+  on a fixture.
+- ⛔ **NO POWER COLUMN, and that is measured rather than trimmed.** `SetDoorStateCommand` carries no
+  power gate — a door on a dark deck still opens — so `Powered` would be a column that changes
+  nothing about the verb this listing serves, on a ship where **eight of sixteen** doors are
+  unpowered. Printing it would invite the reader to conclude the opposite of the truth.
+- **An unnamed door prints `(UNNAMED)`**, because it cannot be addressed by `open` at all and this
+  listing exists to be typed back. No authored ship has one.
+- **A ship with no door answers `NO DOORS ABOARD`** — not an empty table (M3-13: a screen that says
+  nothing is a broken verb).
+
+⛔ **THE REFUSAL FAMILY DID NOT GROW.** `doors` adds no new refusal string: its only one is
+`MossGate.OfflineRefusal(sim, Ask.Doors)`, which `ThawGateTests.TheConsoleSentences_ArePairwiseDistinct`
+already holds. Six sentences, fifteen pairs, unchanged.
+
+#### 13.48.4 ⭐⭐⭐ THE OUTCOME TEST IS THE WRECK CHAIN, AND THIS REPO HAD NEVER DRIVEN IT
+
+`DoorsVerbTests.TheChainRunsOnTheShippedWreck_ThroughTheDoorsTheListingNamed` — every step below is a
+**player action** on the shipping `--ship wreck`, through the real `GameSession`, with no fixture
+reaching past a command. **THE RECIPE (it doubles as the playtest script):**
+
+| # | the player does | measured |
+|---|---|---|
+| 1 | types `doors` on the boot ship | `MOSS IS OFFLINE — … TO REACH THE DOORS` |
+| 2 | turns REPAIR + HAUL on in the WORK tab (OD-H boots every type OFF) and runs | MOSS lights at tick **64 011** — `term_moss` 0.14 → 1.00 |
+| 3 | types `doors` | 17 lines; the two ids are **read off the reply** |
+| 4 | types `open door_d0_s1`, `open door_d0_s2` — the strings the listing printed | both open; the core's air floods the halls, **3.2 → 101.3 kPa** |
+| 5 | turns CRAFT on | the crew crosses the frontier and services `recycler_1` / `machineshop_1` / `fabricator_1` (0.09/0.10/0.10 → ~0.89) by tick **121 221** |
+| 6 | turns REPAIR back OFF | a repair spends the same `Parts` the chain makes; which of the two the crew does is the player's call |
+| 7 | runs | Regolith 12 → Scrap → Parts → **ControllerModule at tick 241 751** (≈6.7 sim-hours) |
+| 8 | types `commission`, then `pods` | `COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED`, and the bay answers |
+
+⭐ **STEP 8 DOES NOT CLOSE §13.41.6's FILED ITEM, AND AN EARLIER DRAFT OF THIS PARAGRAPH SAID IT
+DID.** That item is titled *NOT WITNESSED IN THE BROWSER*, and it already records the accepted
+branch being driven at the wire (`TypingCommission_CommissionsTheConsole_AndTheseTwoUnlock`). **The
+browser beat is still owed and it is still T13's own unmodified-game run** — §13.41.6 is
+deliberately left un-struck.
+
+What step 8 adds is narrower and it is new: the accept is driven **on the shipping `--ship wreck`**,
+at the real `commission_cost = 1`, **off a `ControllerModule` this run's own crew fabricated** —
+no defs overlay, no hand-set `Scriptable`, no seeded item. §13.41.6's stated reason for stopping
+short was that *"the only honest way to get one is to play the whole Regolith → Scrap → Parts →
+ControllerModule chain"*; this test plays it. That is a headless proof of the ARC, not of the
+picture.
+
+⚠️ **WHICH DOORS MATTER IS DERIVED FROM THE SHIP, NEVER WRITTEN DOWN.** `ChainDoors` walks each shut
+door's four orthogonal neighbours and keeps the ones whose compartment holds a crafting bench; the
+**id is then taken out of the listing's own text and typed back VERBATIM** — not case-folded, so the
+pinned path types exactly the string a player reads. (An earlier draft lower-cased it, which meant
+the discipline was claimed and not driven; the prompt's own case tolerance is now pinned by that line
+instead of assumed by it.) A literal `door_d0_s1` in the test would survive a listing that printed
+the wrong name, which is half of what this test exists to catch.
+
+⚠️ **AND THE MUTATION THAT SAYS SO REDDENS SIX TESTS, NOT ONE — THE FIRST DRAFT OF THIS PARAGRAPH
+CLAIMED "AND NOTHING ELSE" AND HAD NOT MEASURED IT.** Appending `X` to every printed id (mutation 8),
+run against the **FULL** dotnet suite on this tree: **6 failed, 1870 passed, 1876 total** —
+`TheChainRunsOnTheShippedWreck_ThroughTheDoorsTheListingNamed`, `TheListingIsTheShipsOwnDoorCensus`,
+`TheListingNamesNOTHINGThatIsNotADoor`, `EveryRowsPlaceAndStateAreTheDEVICES`,
+`TheStateWordIsLIVE_NotAuthored`, `ALockedDoorSaysSoOnItsOwnRow`. That is the correct and expected
+shape: a wrong id breaks the ROW'S IDENTITY, and every test that joins a row back to the `Device` it
+claims to be about must die with it. What the mutation *does* prove about the chain test specifically
+is that it dies **at the parse of the reply** — it cannot find the door the chain is behind — rather
+than at any later assertion, which is the read-it-back discipline being real. Nothing outside
+`DoorsVerbTests` moves.
+
+⚠️ **THE TEST COSTS ~6 s AND THE CAPS CARRY MARGIN** (150 000 / 250 000 / 450 000 ticks against
+64 011 / 121 221 / 241 751 measured). It asserts no exact tick count — the numbers above are printed,
+not pinned, because any lane touching wear, rest or job dispatch moves them legitimately.
+
+#### 13.48.5 Pins — surveyed, not assumed
+
+**PIN-NEUTRAL.** P1 `7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52` · P3 `43a1a5c25713faec` ·
+P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`, all UNMOVED under the full `./ci.sh`. Three reasons,
+each checked rather than inherited:
+
+1. **No pinned fixture types anything.** `HandleMoss` is reached only from `GameSession.Apply`, i.e.
+   only from a `{"type":"moss"}` websocket message; `hosts/scenario` (which IS P1) has no MOSS op
+   surface at all, and P2/P3 are `ShipPlan` goldens with no host. §13.41.7's reason, unchanged.
+2. **The text is not hashed anywhere** — `Emit` → the websocket sink. It touches no `HistorySystem`
+   entry, no save chapter, no `StateHash` fold (§13.47.6, re-cited rather than re-derived).
+3. **`DescribeDoors` and `PlaceWords` are pure reads** of `Device.Kind/Pos/Name/IsOpen/IsLocked`,
+   fields already saved and already hashed. `MossGate` still holds no instance and no mutable static
+   state — `MossGateTests.TheGateAddsNoHashedState` is unchanged and green. A twin drives the claim
+   at the ship level: `TheDirectoryIsAREAD_ItMovesNoShipState` runs two identical wreck sessions, asks
+   ONE of them for the directory, and requires the two `StateHash()`es to stay equal.
+
+⛔ **NO DEF FIELD, NO NEW `DeviceKind`, NO SAVE CHAPTER, NO SPINE FILE.** `StateVersion` unchanged;
+`WireFormat.cs`, `Commands.cs`, `Simulation.cs` and `SystemStack` all at a zero diff. The one wire
+change is a doc comment listing the accepted `op` values — `WebCommand.Parse` passes `op` through as
+free text and always has.
+
+#### 13.48.6 Witnessed in real Chrome, on the shipping `--ship wreck`
+
+`client/tools/doors-shot.mjs` (new; `gate-sentences-shot.mjs`'s harness shape — CDP, trusted
+keystrokes, the sim's truth read off an **independent** socket, never the page, and `rig-lib.mjs`'s
+`dismissOnboarding`). Run against `./play.sh --host-port 8430 --client-port 8431 --no-open`,
+**ALL CHECKS PASSED**:
+
+1. The LEDGER footer reads `TYPE: LOG, PROG, DOORS, PODS, COMMISSION, HELP` — the verb is on screen
+   unconditionally, not only in a HELP list a player must know to ask for. `HELP` lists it too.
+2. On the boot ship `doors` answers the offline sentence with `TO REACH THE DOORS`, naming
+   `TERM_MOSS`, `DECK 0` and `1,3` — and prints **no listing at all**.
+3. A **REAL repair**: REPAIR turned on in the WORK tab, the crew servicing `term_moss` from
+   `cond 36/255` to **255/255** (the `maintain` floor is 51), watched on the `devices` channel.
+4. ⭐ `doors` answers **17 lines**, header `DOORS — 16 ABOARD · 2 OPEN · 14 SHUT`, and the pane has
+   FOLLOWED its newest line (`clientHeight 201 / scrollHeight 517 / scrollTop 316` — the tail is on
+   screen, which it would not have been before §13.46 landed the same day).
+5. ⭐⭐ **THE LOOP CLOSED.** The tool reads `DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT` off the DOM the way a
+   player reads it, confirms on the **independent socket** that the sim agrees that door is shut,
+   types `open door_d0_s1`, and the `devices` channel flips that tile's open bit to 1. A re-typed
+   `doors` then prints that row as `OPEN`.
+
+⭐ **THE HARNESS HAS ITS OWN NON-VACUITY CONTROL, RUN.** With the `case "doors":` arm renamed so the
+op rejoins `default: break;` (the silent swallow) and the host rebuilt, the tool reports **7 FAILED**
+— every host-side sentence and the whole listing — while **STEP 1 stays GREEN**, which is the right
+split: the footer and HELP are CLIENT facts and the listing is the HOST's. ⚠️ Three checks pass
+**vacuously** under that mutation and are labelled: the two negative ones (*"a dark computer must not
+also enumerate"*, *"a REPAIRED console is not refused"*) and the pane-follow metric, which measures
+the pane rather than its content.
+
+⚠️ **THE FOOTER'S EXTRA TOKEN DOES NOT COST A LINE — MEASURED, NOT ASSUMED.** `.moss-foot` wraps to
+three rendered rows at 1600×1000 and at 1280×800, and it does so **identically with and without the
+`DOORS, ` token** (75.55 px both ways at 1600×1000; 60.66 px both ways at 1280×800; `scrollWidth ==
+clientWidth`, so nothing clips). The wrap predates this lane.
+
+⛔ **AND THE RIG FOUND A DEFECT IN ITS OWN INHERITED SCAFFOLDING — SAID OUT LOUD BECAUSE IT NEARLY
+SHIPPED AS A GREEN LIE.** `gate-sentences-shot.mjs`'s `prompt()` returns the answer to a command by
+diffing the `.moss-cline` element COUNT, which is exact for a one-line refusal. On the first live run
+this tool read **2 of the 17** listing lines that way, and five checks reported on a listing it had
+simply failed to read — while the listing on screen, and in the screenshot beside it, was complete.
+The fix is to anchor on the ECHO (`> doors`, `class="moss-cline echo"`, written by `submitCommand`)
+and take everything after the LAST one; the count is the fallback, not the rule. **Filed for the
+sibling rigs: `gate-sentences-shot.mjs` and `commission-shot.mjs` carry the same helper, and it is
+safe there only because their answers are one or two lines. The next multi-line reply reintroduces
+this.**
+
+#### 13.48.7 What this package deliberately does NOT do
+
+- **No `ls`, no directory framework, no second noun.** OD-P's row says expansion is VISION and
+  *"never implement from this row"*; exactly one verb ships, as a defect closure, and the shape
+  awaits the owner's ratification. The note is in `MossGate.cs` where the next expander will look.
+- **No argument.** `doors deck 1` is a filter, a filter is a grammar, and a second grammar is a
+  second package. Arguments are ignored, `pods`' rule.
+- **No screen.** The listing is transcript text, not a `SCREEN.DOORBAY`. A screen would need a
+  reducer, a renderer, a key map and a footer — and the thing the player needs is a name they can
+  read and re-type, which the transcript already gives them.
+- **No vents.** OD-N gates `open`/`close` on vents through `SetDeviceStateCommand` too, and `vent_ls`
+  is the wreck's opening move. It is the obvious second noun and it is exactly the thing the one-verb
+  self-limit forbids this lane from taking. **FILED for the owner's ratification pass.**
+- **No TUI sender.** `hosts/tui` has no MOSS op surface at all; nothing was narrowed.
