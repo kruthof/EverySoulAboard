@@ -98,6 +98,77 @@ export const NO_TELEMETRY = 'NO TELEMETRY — LINK DOWN';
  */
 export const SCROLL_KEYS = ['PageUp', 'PageDown', ' ', 'Spacebar'];
 
+/**
+ * How far from the bottom of `.moss-console` still counts as "the player is at the bottom",
+ * in CSS pixels.
+ *
+ * ⭐ SIZED AGAINST THE SHIPPED LINE BOX, MEASURED IN CHROME BY `moss-scroll-shot.mjs` (2026-08-04,
+ * the wreck at 1280×800): the pane's `clientHeight` is 157 and `help`'s 14 lines make `scrollHeight`
+ * 305 — a **21.79px** line box, so the pane holds ~7 lines. (Do not re-derive this from `22vh` and
+ * `--moss-fs`; both were tried on paper and both came out wrong. The rig prints `lineBox` on every
+ * run — take it from there.) So the slack is a little over ONE line box:
+ *   · big enough that a FRACTIONAL scroll metric or a half-visible last line still reads as the
+ *     bottom (Chrome reports `scrollTop`/`clientHeight` as fractions, and an exact
+ *     `scrollHeight - clientHeight` comparison then flickers off by <1px);
+ *   · far smaller than a deliberate scroll — one wheel notch in Chrome moves ~100px, nearly five
+ *     line boxes, so a player who scrolled up to read history is never mistaken for one who did not.
+ * It is deliberately not TIGHTER than a line: a reader who nudged the wheel a single trackpad detent
+ * would be dragged back to the bottom on the next append, which is the defect wearing a smaller hat.
+ */
+export const TAIL_SLACK_PX = 24;
+
+/**
+ * ⭐ THE TERMINAL CONTRACT, AS ONE PURE DECISION (OD-P: the MOSS console is a real terminal).
+ *
+ * Given the console pane's scroll metrics **as they were BEFORE new output was appended**, should
+ * the view follow the newest line? The standard "pinned to bottom" idiom, and the whole of the
+ * package's behaviour lives here so it can be driven in node without a layout engine:
+ *
+ *   · at (or within `slack` of) the bottom  ⇒ TRUE  — output arrives, the view follows it.
+ *   · scrolled up into the history          ⇒ FALSE — the player is reading; hold their place.
+ *   · nothing overflows the box             ⇒ TRUE  — `scrollHeight <= clientHeight` means there is
+ *     no history to be reading, so the next append must be followed. (This is also the FIRST-PAINT
+ *     case: an empty `.moss-console` is `display:none`, so every metric reads 0.)
+ *
+ * ⛔ WHY THIS IS A "BEFORE" QUESTION AND NOT AN "AFTER" ONE — and the reason is the APPEND, not any
+ * browser quirk. `_renderConsole` rebuilds the transcript from the model's whole line list, so after
+ * the rebuild `scrollHeight` already includes the new lines. Ask the question then and a player who
+ * WAS at the bottom measures as `height - client - top` = exactly the height of what just arrived,
+ * i.e. "not at the bottom" — so the console would never follow anything again. That is not a
+ * hypothesis: moving these three reads below `replaceChildren` is a named mutation, and it reds with
+ * `scrollTop 0.0 of a possible 148.0`.
+ *
+ * ⚠️ AN EARLIER DRAFT OF THIS COMMENT BLAMED A CLAMP, AND THE CLAMP IS NOT REAL — corrected 2026-08-04
+ * after review, MEASURED on the shipped pane in Chrome rather than reasoned about. Parked at
+ * `scrollTop 357` of a 714 maximum, the exact `_renderConsole` call shape (one synchronous
+ * `replaceChildren`, nothing read while the box is empty) leaves `scrollTop` at **357**; even forcing
+ * a layout read while the box IS empty — `scrollHeight` really does read 0 and `scrollTop` really
+ * does read 0 in that instant — ends at **357** once the children are back, because Chrome restores
+ * the offset within the same task; and six real 1 Hz wire-driven rebuilds left a parked pane at 357
+ * all six times. So nothing was resetting the pane. It sat at 0 because it had never been anywhere
+ * else and every new line appended BELOW the fold: the FOLLOW arm is the whole of the fix.
+ *
+ * Metrics are coerced rather than trusted: a detached or `display:none` element reports 0, and the
+ * node harness's elements report `undefined` until a test gives them a layout.
+ *
+ * @param {number} scrollTop     the pane's scroll offset before the append
+ * @param {number} clientHeight  the pane's visible height before the append
+ * @param {number} scrollHeight  the pane's content height before the append
+ * @param {number} [slack]       px of overhang that still counts as the bottom (TAIL_SLACK_PX)
+ * @returns {boolean}
+ */
+export function shouldFollowTail(scrollTop, clientHeight, scrollHeight, slack) {
+  const top = px(scrollTop);
+  const client = px(clientHeight);
+  const height = px(scrollHeight);
+  const give = typeof slack === 'number' && isFinite(slack) && slack >= 0 ? slack : TAIL_SLACK_PX;
+  if (height <= client) return true;          // nothing overflows ⇒ there is no history to read
+  return height - client - top <= give;       // ≤ slack from the bottom ⇒ still pinned
+}
+
+/** A layout metric as a finite number. Anything else (undefined, NaN, a string) is 0. */
+function px(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
+
 const SCREEN = MODEL.SCREEN;
 const OFFLINE = MODEL.STATE.OFFLINE;
 
@@ -1036,11 +1107,68 @@ export class MossScreen {
     this.send(Cmd.moss('audit', this._programTid));
   }
 
+  /**
+   * The `>` transcript, and — since 2026-08-04 — the TERMINAL SCROLL CONTRACT that makes it one.
+   *
+   * ⛔ THE DEFECT THIS CLOSES (measured at 1280×800 on the shipped wreck, 2026-08-03): typing `help`
+   * printed 14 lines into a `max-height:22vh` box — `clientHeight 157 / scrollHeight 305 /
+   * scrollTop 0`. Seven lines were visible and the hidden seven were the BOTTOM seven, which is
+   * where COMMISSION, PODS and THAW live: the three verbs the whole thaw arc is reached through.
+   * The player's own answer to their own question was off screen and nothing on the pane said so.
+   *
+   * ⭐ THE CAUSE IS PLAIN, AND AN EARLIER DRAFT OF THIS COMMENT GOT IT WRONG (corrected 2026-08-04
+   * after review). It blamed `replaceChildren` for clamping `scrollTop` to 0 on every render. IT
+   * DOES NOT — measured on this very pane in Chrome, three ways: parked at 357 of a 714 maximum, the
+   * exact call shape below leaves it at 357; forcing a layout read while the box is empty (which
+   * really does report `scrollHeight 0` / `scrollTop 0` for that instant) still ends at 357 once the
+   * children are back; and six real 1 Hz wire-driven rebuilds left a parked pane at 357 every time.
+   * ⛔ THE REAL CAUSE IS THE ABSENCE OF A FOLLOW, nothing more: the pane sat at `scrollTop 0` because
+   * nobody had ever scrolled it anywhere, and each new line was appended BELOW the fold. **The FOLLOW
+   * arm is the whole of the fix.** Do not re-derive a browser fact from this file; the measurement
+   * lives in `shouldFollowTail`'s comment and in `client/tools/moss-scroll-shot.mjs`.
+   *
+   *   ⭐ WHAT APPENDS WITHOUT A KEYSTROKE — AND THE FIRST ANSWER TO THIS WAS ALSO WRONG. This comment
+   *   used to claim "no transcript LINE appears unbidden today". ⛔ FALSE, and the counter-example is
+   *   a live product hazard: `_reflectPodPoll` runs `refreshPods` on a 1 Hz timer while the POD BAY
+   *   is on screen, which sends `moss pods` WITH NO KEYSTROKE; `GameSession.HandleMoss`'s `pods` arm
+   *   refuses a ship whose MOSS is not live or not commissioned (`Refuse` → `MossExec(ok:false,
+   *   [(2, sentence)])`), and `reduceMossEvent`'s `exec` arm `pushConsole`s that sentence. So a bay
+   *   left open while the ship browns out writes ONE TRANSCRIPT LINE PER SECOND, unbidden. (Filed as
+   *   its own lane — with `CONSOLE_CAP` at 200 that erases the player's whole transcript in ~3.3
+   *   minutes. This package does not touch the poll.) Every OTHER `pushConsole` is downstream of a
+   *   client request: a submitted prompt line, or the `ev:exec`/`ev:thaw` reply to one.
+   *   ⛔ AND RENDERS ARRIVE UNBIDDEN FAR MORE OFTEN THAN LINES DO: `onSystems` on every pushed
+   *   `systems` message, `onChron` on every day rollover, `onLog` on every log tail, `setTerminals`,
+   *   and that same 1 Hz poll. Each calls `render()` → this method. A naive "always jump to the
+   *   bottom" would therefore yank a player who had scrolled back through a long `LOG` result down to
+   *   the newest line roughly once a second, with no output to justify it — a new defect in place of
+   *   the old one. That is why this is the pinned-to-bottom idiom and not a jump.
+   *
+   * The decision is `shouldFollowTail`, asked BEFORE the rebuild (see its comment: afterwards
+   * `scrollHeight` already counts the new lines, so "was the player at the bottom?" answers no
+   * whenever anything arrived, and the console would never follow again). This method holds no rule
+   * of its own — it measures, rebuilds, applies the pure verdict.
+   *
+   * ⚠️ THE `: wasTop` ARM IS DEFENCE-IN-DEPTH, AND IT IS WORTH SAYING SO PLAINLY RATHER THAN LETTING
+   * IT LOOK LOAD-BEARING. On Chrome, today, it is a no-op: the offset survives the rebuild on its
+   * own (measured above), and where the transcript SHRINKS — `clear`, or `CONSOLE_CAP` evicting from
+   * the top — assigning `wasTop` back is clamped to the new maximum, which is what the browser would
+   * have done anyway. It is kept (integrator ruling, 2026-08-04) because it makes the intent explicit
+   * at the seam — "a render we did not follow must not move the view" — and because it holds on an
+   * engine that does not restore the offset, which is a guarantee no spec gives us. It is pinned by
+   * one hold assertion at a NON-ZERO scroll position; every assertion parked at 0 is blind to it,
+   * since restoring 0 and losing the position to 0 are the same picture.
+   */
   _renderConsole() {
     const doc = this.doc;
     const lines = this.M.consoleLines(this.model);
     const list = Array.isArray(lines) ? lines : [];
-    this.consoleEl.replaceChildren(...list.map((l) => {
+    const el = this.consoleEl;
+    // MEASURE FIRST — after the rebuild `scrollHeight` already counts the appended lines, so the
+    // "was the player at the bottom?" question would answer no every time anything arrived.
+    const wasTop = px(el.scrollTop);
+    const follow = shouldFollowTail(el.scrollTop, el.clientHeight, el.scrollHeight);
+    el.replaceChildren(...list.map((l) => {
       // Tolerant of both the wire's [stream,text] shape and a bare string. The text is rendered
       // VERBATIM: the model already writes the `> ` on an echo line (stream 0), so prefixing one
       // here would print it twice.
@@ -1049,6 +1177,10 @@ export class MossScreen {
       const cls = stream === 0 ? 'echo' : stream === 2 ? 'err' : 'out';
       return mk(doc, 'div', 'moss-cline ' + cls, text);
     }));
+    // …then apply the verdict. `scrollHeight` is read AFTER the rebuild on purpose: it is the new
+    // content height, which is what "the newest line" means. The `: wasTop` arm is the explicit
+    // no-move (see the note above — defence-in-depth, not a repair of anything Chrome does).
+    el.scrollTop = follow ? px(el.scrollHeight) : wasTop;
   }
 
   /** Mirror the model's prompt buffer into the visible echo + the transparent input. */

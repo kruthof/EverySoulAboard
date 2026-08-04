@@ -220,8 +220,9 @@ namespace Perilune.Tests
                     problems.Add("not-repaired: fixture failed — MOSS is live at boot");
                 SendCommission(gs);
                 host.Sim.Tick();
-                if (!Said(sent, 2, MossGate.OfflineRefusal))
-                    problems.Add("not-repaired: expected '" + MossGate.OfflineRefusal + "', saw: "
+                string offline = MossGate.OfflineRefusal(host.Sim, MossGate.Ask.Ship);
+                if (!Said(sent, 2, offline))
+                    problems.Add("not-repaired: expected '" + offline + "', saw: "
                                  + string.Join(" | ", Transcript(sent).Select(l => l.Stream + ":" + l.Text)));
                 if (term.Scriptable) problems.Add("not-repaired: a DARK terminal was commissioned anyway");
                 if (CommissionDeviceCommand.Affordable(host.Sim) != 1)
@@ -239,7 +240,12 @@ namespace Perilune.Tests
                     problems.Add("no-module: fixture failed — a module is aboard");
                 SendCommission(gs);
                 host.Sim.Tick();
-                const string expect = "COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0";
+                // ⭐ THE SOURCE CLAUSE IS PART OF THE PIN (2026-08-04). Without it the sentence
+                //    states a shortfall and answers nothing: the player is told the ship has 0
+                //    and never told where a 1 comes from. `Said` is EXACT equality, so this
+                //    literal is the shipped sentence, whole.
+                const string expect = "COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0"
+                                    + "; A MACHINE SHOP MAKES THEM FROM 2 PARTS";
                 if (!Said(sent, 2, expect))
                     problems.Add("no-module: expected '" + expect + "', saw: "
                                  + string.Join(" | ", Transcript(sent).Select(l => l.Stream + ":" + l.Text)));
@@ -362,7 +368,8 @@ namespace Perilune.Tests
             var term = Dev(sim, Console);
 
             SendCommission(gs);                       // the host renders: nothing to fit
-            Assert.That(Said(sent, 2, "COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0"), Is.True,
+            Assert.That(Said(sent, 2, "COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0"
+                                    + "; A MACHINE SHOP MAKES THEM FROM 2 PARTS"), Is.True,
                 "PRECONDITION: this ask must be the no-module refusal, or the window below is not "
                 + "the one being measured");
             Assert.That(term.Scriptable, Is.False, "PRECONDITION: nothing has drained yet");
@@ -461,6 +468,115 @@ namespace Perilune.Tests
                 "the commissioning verb refused in the one state it exists for — a repaired, "
                 + "un-commissioned console. Saw: "
                 + string.Join(" | ", Transcript(sent).Select(l => l.Stream + ":" + l.Text)));
+        }
+
+        // ════════════════════════════ THE REFUSAL SAYS WHERE A MODULE COMES FROM (2026-08-04)
+        //
+        // ⛔ THE OWNER'S REPORT, LIVE PLAY 2026-08-03: *"there is still no way to defreeze others."*
+        // `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` is a complete statement of a
+        // shortfall and a complete non-answer to the only question it raises. The fact is ONE SCREEN
+        // AWAY — MOSS's own `sys` lists a FABRICATION system with the machine shop in it — and a
+        // player who does not already know the crafting chain has no route from one to the other.
+
+        /// <summary>
+        /// ⭐⭐ <b>THE APPENDED CLAUSE IS PINNED AGAINST THE RECIPE DEF, NOT AGAINST ITS OWN WORDS.</b>
+        /// <c>recipes.def</c> is the authority — <c>MachineShop Parts 2 ControllerModule 1</c> — and
+        /// the sentence is asserted to agree with it FIELD BY FIELD. A test that only read back the
+        /// literal would go green the day content re-prices the module and the sentence started
+        /// lying, which is the <c>BLOCKED_ORDER_NAMES</c> defect exactly (a hand-kept mirror, right
+        /// when written, silently wrong four packages later).
+        /// </summary>
+        [Test]
+        public void TheNoModuleRefusalSaysWhereAModuleCOMESFrom_AndAgreesWithTheRecipeDef()
+        {
+            var gs = WreckSession(out var host, out var sent);
+            var sim = host.Sim;
+            RepairConsole(sim);
+
+            // The def this sentence has to agree with, read from the SHIPPED table.
+            var recipe = sim.Defs.Recipes[(int)DeviceKind.MachineShop];
+            Assert.That(recipe.Defined, Is.True, "recipes.def no longer gives the MachineShop a row");
+            Assert.That(recipe.Output, Is.EqualTo(ItemKind.ControllerModule),
+                "the MachineShop no longer makes the module — re-point this test at whatever does, "
+                + "and check the sentence moved with it");
+
+            SendCommission(gs);
+            string said = Transcript(sent).Where(l => l.Stream == 2).Select(l => l.Text)
+                                          .FirstOrDefault(t => t.StartsWith("COMMISSIONING NEEDS", StringComparison.Ordinal));
+            Assert.That(said, Is.Not.Null, "no price refusal came back at all: "
+                + string.Join(" | ", Transcript(sent).Select(l => l.Stream + ":" + l.Text)));
+
+            StringAssert.Contains("MACHINE SHOP", said,
+                "the refusal never names the machine that makes the thing it is refusing over. The "
+                + "player is told the ship has 0 and left to find out where a 1 comes from. Said: " + said);
+            StringAssert.Contains(recipe.InputCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                  + " " + ThawGate.ItemWords(recipe.Input), said,
+                "the clause does not state the recipe's own input — a player pricing the detour "
+                + "cannot. Said: " + said);
+        }
+
+        /// <summary>
+        /// ⛔⭐ <b>THE NO-HARD-CODE LEG: RE-POINT THE RECIPE AND THE SENTENCE MUST FOLLOW.</b> A
+        /// clause with <c>"MACHINE SHOP"</c> typed into it passes the test above on the shipped defs
+        /// and lies the moment content moves the recipe. Driven by handing the session's own gate a
+        /// defs table in which the <c>Fabricator</c> makes the module, and requiring the sentence to
+        /// name the FABRICATOR and NOT the machine shop.
+        ///
+        /// <para>Driven on <see cref="MossGate.DescribeCommission"/> directly rather than through the
+        /// wire, because a <see cref="GameSession"/> cannot be handed a second defs table without
+        /// rebuilding the ship — and the seam under test is the composer, which is where a literal
+        /// would have to live.</para>
+        /// </summary>
+        [Test]
+        public void TheSourceClauseIsDERIVED_MovingTheRecipeMovesTheSentence()
+        {
+            var defs = SimDefs.CreateDefault();
+            // Move the module's production to another station, and leave nothing behind: two
+            // producers would make "first match wins" the thing under test instead of the search.
+            defs.Recipes[(int)DeviceKind.MachineShop] = default;
+            defs.Recipes[(int)DeviceKind.Fabricator] =
+                new RecipeDef(ItemKind.Scrap, 7, ItemKind.ControllerModule, 1, 900);
+
+            string[] map = { "#######", "#.....#", "#.....#", "#######" };
+            var sim = new Simulation(AsciiWorld.Build(map), 7,
+                                     SystemStack.CreateDefault(new Perilune.Dsl.ScriptRuntime(new Perilune.Dsl.DeviceRegistry())),
+                                     defs);
+
+            string said = MossGate.DescribeCommission(sim,
+                new MossGate.CommissionVerdict(MossGate.CommissionRefusal.NoModule, Console, default, 1, 0));
+
+            StringAssert.Contains("FABRICATOR", said,
+                "the clause is a LITERAL, not a derivation — it named a station this ship's recipe "
+                + "table does not use. Said: " + said);
+            Assert.That(said, Does.Not.Contain("MACHINE SHOP"),
+                "the clause still names the machine shop on a ship where the machine shop makes "
+                + "nothing. Said: " + said);
+            StringAssert.Contains("7 SCRAP", said,
+                "the input count and item are literals too. Said: " + said);
+        }
+
+        /// <summary>The other end of the same derivation: a defs table in which NOTHING produces the
+        /// module must append NO clause at all. A composer that fell back to a default sentence would
+        /// point the player at a machine their ship cannot use — the fabricated-noun defect that the
+        /// offline sentence's own degenerate arm refuses for the same reason.</summary>
+        [Test]
+        public void NoProducerAboardMeansNoClause_RatherThanAFabricatedOne()
+        {
+            var defs = SimDefs.CreateDefault();
+            for (int i = 0; i < defs.Recipes.Length; i++)
+                if (defs.Recipes[i].Defined && defs.Recipes[i].Output == ItemKind.ControllerModule)
+                    defs.Recipes[i] = default;
+
+            string[] map = { "#######", "#.....#", "#.....#", "#######" };
+            var sim = new Simulation(AsciiWorld.Build(map), 7,
+                                     SystemStack.CreateDefault(new Perilune.Dsl.ScriptRuntime(new Perilune.Dsl.DeviceRegistry())),
+                                     defs);
+
+            string said = MossGate.DescribeCommission(sim,
+                new MossGate.CommissionVerdict(MossGate.CommissionRefusal.NoModule, Console, default, 1, 0));
+
+            Assert.That(said, Is.EqualTo("COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0"),
+                "a ship whose defs make the module NOWHERE was still told where to make it: " + said);
         }
     }
 }

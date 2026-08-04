@@ -292,7 +292,7 @@ namespace Perilune.Tests
                 "the console reported the line as QUEUED. An adapter that answers true and enqueues " +
                 "nothing is the invisible-feedback defect with a green hat: the player is told the " +
                 "shutter moved and it did not.");
-            Assert.That(reply, Does.Not.Contain(MossGate.OfflineRefusal),
+            Assert.That(reply, Does.Not.Contain(MossGate.OfflineLead),
                 "the SHIP gate answered instead of the board. MOSS is repaired here; sending the player " +
                 "to fix a terminal that is already fine is the wrong machine on the wrong deck.");
         }

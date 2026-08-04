@@ -19,7 +19,7 @@ import { cssCodeOnly } from './code-only.js';
 import * as FAKE from './moss-model-fake.js';
 import {
   MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect,
-  isTextEntryTarget, SCROLL_KEYS,
+  isTextEntryTarget, SCROLL_KEYS, shouldFollowTail, TAIL_SLACK_PX,
 } from '../src/ui/moss-screen.js';
 import { decode } from '../src/wire/messages.js';
 import { escapeTarget } from '../src/ui/console-model.js';
@@ -1588,4 +1588,200 @@ test('M3-4: the DOM fixture can see the forbidden derivation too (the click path
   assert.ok(offered.some((r) => compose(r[2]) !== r[1]),
     'every offered BAY row round-trips occupant → key, so composing the key from the display ' +
     'name is indistinguishable from reading it, and the click-path message assertion cannot bite');
+});
+
+// ---------------- THE TERMINAL SCROLL CONTRACT (2026-08-04) ----------------
+//
+// ⛔ THE DEFECT, measured at 1280×800 on the shipped wreck (2026-08-03): typing `help` on the MOSS
+// console printed 14 lines into a `max-height:22vh` box and left it at the TOP —
+// `clientHeight 157 / scrollHeight 305 / scrollTop 0`. Seven lines visible, and the hidden seven
+// were the BOTTOM seven: COMMISSION, PODS and THAW, the three verbs the thaw arc is reached
+// through. The player's own answer to their own question was off screen.
+//
+// ⛔ THE CAUSE IS THE ABSENCE OF A FOLLOW, AND NOTHING ELSE. (An earlier version of this header said
+// `replaceChildren` clamped `scrollTop` to 0 on every render. Retracted 2026-08-04 after review and
+// MEASURED in Chrome on the shipped pane: parked at 357 of a 714 maximum it reads 357 after the
+// rebuild, still 357 when a layout read is forced while the box is empty, and 357 across six real
+// 1 Hz wire-driven rebuilds. The pane sat at 0 because nothing had ever scrolled it and every new
+// line appended below the fold.) So the FOLLOW arm is the whole of the fix; the no-move arm is
+// deliberate defence-in-depth, and the last test below is the one assertion that can see it.
+
+/**
+ * A LAYOUT for one dom-lite element — the smallest thing that can ask the scroll question at all.
+ * dom-lite has no layout engine, so `.moss-console` reports `undefined` for every metric and a
+ * scroll test written straight against it would be vacuous in both directions.
+ *
+ * ⚠️ THIS FIXTURE IS DELIBERATELY STRICTER THAN CHROME, AND THAT IS A CHOICE, NOT A MODEL OF IT.
+ * It DROPS the scroll offset inside `replaceChildren` (empty ⇒ maximum 0 ⇒ the stored offset is
+ * clamped away and refilling does not give it back). ⛔ Chrome does NOT do this — measured, see the
+ * header above; nothing in this file may be cited as evidence about a browser. It is written this
+ * way on purpose: it models the WEAKER guarantee, the engine that does not restore the offset, so
+ * `_renderConsole` is pinned to work without leaning on a behaviour no specification promises — and
+ * so the `: wasTop` arm, which exists for exactly that contingency, has something that can see it.
+ * A fixture that restored the offset like Chrome would leave that arm unpinnable, because in Chrome
+ * it genuinely is a no-op.
+ *
+ * The numbers are the defect's own: `clientHeight` 157, and `help`'s 14 lines made `scrollHeight`
+ * 305, i.e. a 305/14 = 21.79px line box.
+ */
+const CONSOLE_CLIENT_H = 157;
+const CONSOLE_STRIDE = 305 / 14;
+function fakeLayout(el, clientHeight = CONSOLE_CLIENT_H, stride = CONSOLE_STRIDE) {
+  let top = 0;
+  const height = () => el.childNodes.length * stride;
+  const clamp = () => { top = Math.min(Math.max(0, top), Math.max(0, height() - clientHeight)); };
+  Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => clientHeight });
+  Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => height() });
+  Object.defineProperty(el, 'scrollTop', {
+    configurable: true,
+    get: () => top,
+    set: (v) => { top = typeof v === 'number' && isFinite(v) ? v : 0; clamp(); },
+  });
+  const inner = Object.getPrototypeOf(el).replaceChildren.bind(el);
+  el.replaceChildren = (...cs) => { inner(); clamp(); inner(...cs); clamp(); };
+  return el;
+}
+
+/** `help`'s twelve lines, at the length and count the shipped model prints them. */
+const HELP_OUTPUT = [
+  'HELP                  this list',
+  'STATUS                every row, load and state, as one block',
+  'OPEN <system>         system detail (also: ENTER on a row)',
+  'LOG [system]          fault log, optionally filtered',
+  'PROG [terminal]       the MOSS program directory / editor',
+  'COMMISSION            fit a controller module to this console',
+  'PODS                  the cryo bay — who is aboard',
+  'THAW <n|name>         begin that capsule\'s cycle',
+  'CLEAR                 empty this transcript',
+  'EXIT                  leave MOSS',
+  'open|close|lock|unlock <device>',
+  '<device>.<property>   read one value',
+].map((t) => [1, t]);
+
+/** Open MOSS with a laid-out console pane and the boot line already on it. */
+function consoleScreen() {
+  const s = openWithSystems();
+  fakeLayout(s.screen.consoleEl);
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: [[1, 'MOSS REV 4.2.1 READY — TYPE HELP']] });
+  return s;
+}
+
+const atBottom = (el) => el.scrollTop >= el.scrollHeight - el.clientHeight - 1;
+const consoleTexts = (s) => s.root.byClass('moss-cline').map((e) => e.textContent);
+
+test('the console follows its newest line: HELP\'s bottom half is IN VIEW, not below the fold', () => {
+  const s = consoleScreen();
+  const el = s.screen.consoleEl;
+  assert.equal(el.scrollTop, 0, 'precondition: one boot line does not overflow the pane');
+
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+
+  const texts = consoleTexts(s);
+  assert.ok(texts.length > 10, 'precondition: the transcript really overflows (' + texts.length + ' lines)');
+  assert.ok(el.scrollHeight > el.clientHeight, 'precondition: the pane really scrolls');
+  // MUTATION 1: `shouldFollowTail` hard-wired to false — the shipped defect, verbatim.
+  // MUTATION 2: the `el.scrollTop = …` write deleted — the shipped code, verbatim.
+  // MUTATION 3: the metrics read AFTER `replaceChildren` instead of before — the clamp makes the
+  //             answer "not at the bottom" forever and the console never follows anything again.
+  assert.ok(atBottom(el),
+    'the view must have followed the newest line (scrollTop ' + el.scrollTop.toFixed(1)
+    + ' of a possible ' + (el.scrollHeight - el.clientHeight).toFixed(1) + ')');
+
+  // …and the payload of the fix: THAW is in the visible window, which is what the defect hid.
+  const firstVisible = Math.floor(el.scrollTop / CONSOLE_STRIDE);
+  const visible = texts.slice(firstVisible);
+  for (const verb of ['COMMISSION', 'PODS', 'THAW']) {
+    assert.ok(visible.some((t) => t.startsWith(verb)),
+      verb + ' — a verb the thaw arc is reached through — is below the fold');
+  }
+});
+
+test('a player who scrolled up to read history KEEPS their place, through output and through the '
+  + 'renders the wire drives on its own', () => {
+  const s = consoleScreen();
+  const el = s.screen.consoleEl;
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+
+  el.scrollTop = 0;                       // the player scrolls back to the top of the answer
+  assert.equal(el.scrollTop, 0, 'precondition: the pane can be scrolled up at all');
+
+  // 1. an UNBIDDEN render — no new line, just the `systems` push that lands every second or so.
+  //    ⚠️ THIS LEG PARKS AT 0 AND THEREFORE CANNOT SEE THE `: wasTop` ARM: restoring 0 and losing
+  //    the position to 0 are the same picture (the 4th shape). What it DOES pin is that the FOLLOW
+  //    arm stays off — see the non-zero test below for the arm itself.
+  s.screen.onSystems(msgOf('systems'));
+  // MUTATION 4: `shouldFollowTail` hard-wired to true — the naive always-jump, which drags a
+  //             reader to the newest line roughly once a second with no output to justify it.
+  assert.equal(el.scrollTop, 0, 'a render with NO new output must not move the player\'s view');
+
+  // 2. and real output while they are still reading: it appends, it does not yank.
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: [[1, 'QUEUED']] });
+  assert.equal(el.scrollTop, 0, 'output arriving while the player reads history must not yank them down');
+  assert.ok(consoleTexts(s).some((t) => t === 'QUEUED'), 'the line did arrive — it is simply below the fold');
+});
+
+test('…and when they scroll back to the bottom, the console follows again', () => {
+  const s = consoleScreen();
+  const el = s.screen.consoleEl;
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+  el.scrollTop = 0;
+  s.screen.onSystems(msgOf('systems'));
+  assert.equal(el.scrollTop, 0, 'precondition: held');
+
+  el.scrollTop = el.scrollHeight;         // back to the bottom, the way a wheel does it
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: [[1, 'QUEUED']] });
+  assert.ok(atBottom(el), 'returning to the bottom re-arms the follow — that is the whole idiom');
+  assert.equal(consoleTexts(s)[consoleTexts(s).length - 1], 'QUEUED');
+});
+
+test('a reader parked MID-transcript keeps that exact offset — the one assertion that can see the '
+  + 'no-move arm', () => {
+  // ⛔ WHY THIS TEST EXISTS SEPARATELY (review, 2026-08-04). Every other hold assertion parks the
+  // pane at 0, and at 0 "the code restored the position" and "the position was lost to 0" produce
+  // the identical reading — a guard that cannot catch its own subject, the 4th shape. Parking
+  // mid-transcript is the only place the `: wasTop` arm is distinguishable from doing nothing, and
+  // it is the mutation target below.
+  const s = consoleScreen();
+  const el = s.screen.consoleEl;
+  typeCmd(s, 'help');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: HELP_OUTPUT });
+
+  const parked = Math.round((el.scrollHeight - el.clientHeight) / 2);
+  assert.ok(parked > 0, 'precondition: the transcript is tall enough to park inside (' + parked + ')');
+  el.scrollTop = parked;
+  assert.equal(el.scrollTop, parked, 'precondition: the pane accepted a mid-transcript offset');
+
+  // an unbidden render, then real output — neither may move a reader who is neither at the top nor
+  // at the bottom. MUTATION 5: `el.scrollTop = follow ? … : wasTop` reduced to `if (follow) …`,
+  // i.e. the no-move arm deleted — under this fixture's (deliberately strict) rebuild the offset is
+  // then lost and this reads 0.
+  s.screen.onSystems(msgOf('systems'));
+  assert.equal(el.scrollTop, parked, 'an unbidden render moved a MID-transcript reader');
+  s.screen.onMossEvent({ type: 'moss', ev: 'exec', tid: '@console', ok: true, lines: [[1, 'QUEUED']] });
+  assert.equal(el.scrollTop, parked, 'new output moved a MID-transcript reader');
+  assert.ok(consoleTexts(s).some((t) => t === 'QUEUED'), 'the line did arrive — it is simply below the fold');
+});
+
+test('shouldFollowTail: the pure decision, at the boundaries that decide it', () => {
+  const S_ = shouldFollowTail;
+  // exactly at the bottom, and one slack short of it
+  assert.equal(S_(148, 157, 305), true, 'at the bottom ⇒ follow');
+  assert.equal(S_(148 - TAIL_SLACK_PX, 157, 305), true, 'within the slack ⇒ still the bottom');
+  assert.equal(S_(148 - TAIL_SLACK_PX - 1, 157, 305), false, 'one px past the slack ⇒ the player is reading');
+  // the shipped defect's own numbers: a pane sitting at the top of an overflowing transcript is
+  // NOT at the bottom, and that is the only reading that makes the else-branch hold a place.
+  assert.equal(S_(0, 157, 305), false, 'the defect\'s metrics ⇒ do not follow (the player is at the top)');
+  // nothing overflows ⇒ there is no history to be reading
+  assert.equal(S_(0, 157, 100), true, 'content shorter than the box ⇒ follow');
+  assert.equal(S_(0, 157, 157), true, 'content exactly the box ⇒ follow');
+  // first paint: an empty `.moss-console` is display:none, so every metric is 0
+  assert.equal(S_(0, 0, 0), true, 'first paint ⇒ follow');
+  // ⚠️ degradation direction is a decision, not an accident: an unmeasurable pane FOLLOWS. The
+  // failure mode of following wrongly is a moved view; the failure mode of not following is hidden
+  // output, which is the defect.
+  assert.equal(S_(undefined, undefined, undefined), true, 'unmeasurable ⇒ follow, never hide output');
+  assert.equal(S_(NaN, NaN, NaN), true, 'unmeasurable ⇒ follow, never hide output');
 });
