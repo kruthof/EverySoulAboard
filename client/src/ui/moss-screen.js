@@ -177,6 +177,129 @@ export function shouldFollowTail(scrollTop, clientHeight, scrollHeight, slack) {
 /** A layout metric as a finite number. Anything else (undefined, NaN, a string) is 0. */
 function px(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
 
+/**
+ * How much of a transcript line may hang past the bottom edge of `.moss-console` and still count as
+ * read. One pixel, the same tolerance `console-model.moreBelow` uses on the CREW table and the same
+ * one `client/tools/moss-scroll-shot.mjs` uses (0.5) when it asks whether a row is inside the pane:
+ * Chrome reports these rects as fractions, so an exact `>` comparison flickers a phantom "▾ 1 MORE"
+ * on and off at the tail as the pane's own sub-pixel rounding moves.
+ */
+export const FOLD_SLACK_PX = 1;
+
+/**
+ * ⭐ THE SCROLL AFFORDANCE'S ONE DECISION: how many transcript lines sit below the visible fold of
+ * `.moss-console`, for the "▾ N MORE" indicator. PURE — the caller hands it geometry it read off
+ * the DOM, nothing here touches an element.
+ *
+ * ⛔ WHY THIS IS A SIBLING OF `console-model.moreBelow` AND NOT A CALL TO IT. The CREW-tab
+ * affordance this package copies divides the overhang by ONE UNIFORM ROW STRIDE
+ * (`hud.js:updateCrewMore` reads it off the first `.crew-trow`, and every crew row is the same
+ * height by construction — a fixed grid of single-line cells). **MOSS transcript lines are not
+ * uniform, and that is MEASURED, not argued.** `.moss-cline` is `white-space:pre-wrap` with a
+ * hanging indent (`text-indent:-2ch`), and on the shipped wreck in Chrome at 1280×800 (2026-08-04,
+ * every `.moss-cline`'s own `getBoundingClientRect().height`):
+ *
+ *     21.77  HELP                  this list          ← and all fourteen HELP columns
+ *     21.77  > commission
+ *     43.53  MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE …   ⇐ EXACTLY TWO LINE BOXES
+ *     21.77  NO POD BAY ON THIS LINK — TYPE PODS
+ *     43.53  MOSS IS OFFLINE — …                                   ⇐ two again (the `doors` refusal)
+ *
+ * The gate sentences the 2026-08-04 lanes made deliberately explicit are the ones that wrap — and
+ * they are exactly the lines a player scrolls back to re-read. A stride would therefore be a SECOND
+ * AUTHORITY on the layout, and wrong on precisely the rows the count is about: read off the first
+ * row it is 21.77, so a pane hiding four of those refusals would divide 8 line boxes by 21.77 and
+ * announce "▾ 8 MORE" for 4 lines. (This is not a new finding — `moss-scroll-shot.mjs`'s `PANE`
+ * expression already refuses a stride for the same reason and asks `getBoundingClientRect` per row.
+ * This helper is that instrument's shape, made pure.) So the count is taken from EACH LINE'S OWN
+ * BOX, and it means what it says: N more lines you have not fully read.
+ *
+ * A line counts as below the fold when its bottom edge falls past the pane's bottom edge — i.e. a
+ * half-visible last line COUNTS, because half a sentence is not a line you have read. That is the
+ * same predicate the browser rig calls `visible`.
+ *
+ * ⛔ THE DEGRADATION DIRECTION IS THE OPPOSITE OF `shouldFollowTail`'S, AND DELIBERATELY SO. An
+ * unmeasurable pane (`foldBottom - foldTop <= 0`: detached, `display:none`, or a node harness with
+ * no layout engine — and an EMPTY `.moss-console` really is `display:none`) returns 0, i.e. the
+ * indicator hides. Following wrongly costs a moved view; counting wrongly PRINTS A NUMBER THAT IS A
+ * LIE, and "▾ 12 MORE" over a pane with nothing below it is worse than the silence we shipped
+ * before.
+ *
+ * @param {number[]} rowBottoms  each transcript line's bottom edge, in the same coordinate space as
+ *                               the fold (viewport coordinates, i.e. `getBoundingClientRect`)
+ * @param {number} foldTop       the pane's top edge
+ * @param {number} foldBottom    the pane's bottom edge — the fold
+ * @param {number} [slack]       px of overhang that still counts as read (FOLD_SLACK_PX)
+ * @returns {number}
+ */
+export function linesBelowFold(rowBottoms, foldTop, foldBottom, slack) {
+  const top = px(foldTop);
+  const bottom = px(foldBottom);
+  if (!(bottom - top > 0)) return 0;          // no laid-out pane ⇒ no honest count ⇒ no indicator
+  const give = typeof slack === 'number' && isFinite(slack) && slack >= 0 ? slack : FOLD_SLACK_PX;
+  const rows = Array.isArray(rowBottoms) ? rowBottoms : [];
+  let n = 0;
+  for (const b of rows) if (px(b) > bottom + give) n += 1;
+  return n;
+}
+
+/** A live element's bottom/top edges as finite numbers. Anything without a rect reads {0,0}, which
+ *  `linesBelowFold` treats as "unmeasurable" rather than as a real zero-height box. */
+function edges(el) {
+  const r = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+  return r ? { top: px(r.top), bottom: px(r.bottom) } : { top: 0, bottom: 0 };
+}
+
+/**
+ * ⛔ THE SCROLLER'S OWN `padding-bottom`, AND THE REASON THIS FUNCTION EXISTS AT ALL — a REGRESSION
+ * THIS PACKAGE SHIPPED AND REVIEW CAUGHT (2026-08-04, fix-back).
+ *
+ * `.moss-console-wrap.has-more .moss-console{padding-bottom:1.75em}` is the clearance that keeps the
+ * last line out from under the sign. It is `padding` on the SCROLLER, so **the browser counts it in
+ * `scrollHeight`** — measured on the shipped pane by toggling the class: `padding-bottom` 0 →
+ * 23.52px, `clientHeight` unchanged at 157, `scrollHeight` +23.52 (326 → 350 on the 15-row
+ * transcript that measurement used).
+ * ⚠️ THE ABSOLUTE HEIGHTS ARE THAT TRANSCRIPT'S, NOT A CONSTANT — do not try to reproduce 326.
+ * `HELP` grew a row at the TRAPS-8 merge (the `vents` lane; 14 lines now), so the same gesture
+ * MEASURED ON THE MERGED TREE reads **348 → 372** over a 16-row transcript, `padding-bottom` 0px →
+ * 23.52px, `clientHeight` 157 both ways. (⚠️ 372, not 371: `scrollHeight` is an integer, so the
+ * 23.52 lands as a 24. Writing 371 here was this comment's own first draft, and measuring it is
+ * what caught that — the same rounding is why the older reading was 326 → 350 and not 349.)
+ * **The 23.52px is the number that matters and it is CSS, not content**: 1.75em of the page's own
+ * 13.44px type. Corroborated a second way by `moss-scroll-shot.mjs` STEP 6, which prints both gaps
+ * for one parked reader — `rawGap 33` minus `contentGap 9.48` = 23.52, unchanged by the merge.
+ *
+ * ⛔ AND `shouldFollowTail` IS ASKED IN `scrollHeight` UNITS, so feeding it the padded number
+ * silently REDEFINED `TAIL_SLACK_PX`. The arithmetic, from those measured numbers: the sign turns on
+ * once anything hangs >1px past the fold, and with it on the follow test becomes
+ * `d + 23.52 <= 24`, i.e. **d ≤ 0.48px — an effective slack of about ONE pixel where IX-M15 pins
+ * TWENTY-FOUR.** IX-M15's whole follow-within-slack arm was unreachable in the product whenever the
+ * sign was up. DRIVEN A/B in one Chrome session, the reviewer's cells re-measured on the shipped
+ * lane build: parked at d = 10.48 with `▾ 1 MORE` up, real output arrived and the view **HELD** at
+ * `scrollTop 355 of 454`; with the clearance neutralised (`padding-bottom:0 !important`, i.e. main's
+ * scroller geometry) the same gesture **FOLLOWED** to the tail.
+ *
+ * ⭐ SO THE CLEARANCE IS SUBTRACTED BEFORE THE QUESTION IS ASKED, and `shouldFollowTail`'s contract
+ * is restored EXACTLY rather than re-specified (the autoscroll lane's pin is merged; it is not this
+ * package's to move). The fix is here rather than in the stylesheet because it holds for ANY
+ * clearance a later lane chooses — the follow question is about CONTENT, and padding is not content.
+ *
+ * Degrades to 0: no window, no `getComputedStyle`, a non-numeric value. That is the right direction —
+ * 0 means "ask exactly what main asked", i.e. the pinned behaviour.
+ *
+ * @param {object} win  the window (`getComputedStyle` lives there; the node harness injects one)
+ * @param {object} el   the scroller
+ * @returns {number}    padding-bottom in CSS px, 0 when it cannot be read
+ */
+function padBottomPx(win, el) {
+  if (!el || !win || typeof win.getComputedStyle !== 'function') return 0;
+  let style = null;
+  try { style = win.getComputedStyle(el); } catch { return 0; }
+  // `parseFloat` is culture-free here BY THE SPEC, not by luck: a computed style is always a
+  // CSS `<length>` serialised with a `.` decimal separator, whatever the machine's locale.
+  return style ? px(parseFloat(style.paddingBottom)) : 0;
+}
+
 const SCREEN = MODEL.SCREEN;
 const OFFLINE = MODEL.STATE.OFFLINE;
 
@@ -318,6 +441,42 @@ export class MossScreen {
     this.advisoryEl = mk(doc, 'div', 'moss-advisory');
     this.consoleEl = mk(doc, 'div', 'moss-console');
 
+    /**
+     * ⭐ THE SCROLL AFFORDANCE (2026-08-04) — "▾ N MORE" over the transcript's bottom edge, the
+     * CREW-tab affordance (`hud.js:updateCrewMore` + `.crew-more`) worn by the terminal.
+     *
+     * ⛔ THE GAP IT CLOSES, and it is what the autoscroll lane's fix left standing: the console now
+     * FOLLOWS its newest line, but a reader who scrolled back — or one on a screen that overflows
+     * on arrival, `HELP` being 14 lines in a ~7-line pane — has no signal at all that anything is
+     * below the fold. `max-height:22vh; overflow-y:auto` renders no visible scrollbar on this
+     * platform (`--hide-scrollbars` in the rigs, and macOS overlay scrollbars fade out at rest), so
+     * "there is more" was a fact the pane knew and never said. `HELP`'s own footer mitigates one
+     * screen; nothing mitigated a long `LOG`.
+     *
+     * ⛔ IT IS A SIGN, NOT A CONTROL — OD-P, binding. Every printable character belongs to the
+     * prompt, so this may never become a thing to click or tab to: it is `pointer-events:none` in
+     * the stylesheet, `aria-hidden`, carries no listener, and is not focusable. A player who wants
+     * to reach the hidden lines uses the wheel or the scroll keys (`SCROLL_KEYS`) they already
+     * have, and those keep exactly the semantics they had.
+     *
+     * The wrapper exists only so the sign can be positioned against the pane's own bottom edge
+     * (`position:relative`), the same reason `#crew-more` lives inside `.crew-tab-wrap`. It adds no
+     * height of its own: when the transcript is empty `.moss-console:empty` is `display:none` and
+     * the sign is hidden, so the wrapper collapses to 0 exactly as the bare pane used to.
+     */
+    this.consoleWrapEl = mk(doc, 'div', 'moss-console-wrap');
+    this.consoleMoreEl = mk(doc, 'div', 'moss-more', '');
+    this.consoleMoreEl.hidden = true;
+    this.consoleMoreEl.setAttribute('aria-hidden', 'true');
+    this.consoleWrapEl.appendChild(this.consoleEl);
+    this.consoleWrapEl.appendChild(this.consoleMoreEl);
+    // The count is only true for the offset the pane is AT, so it is recomputed on every scroll as
+    // well as on every render. (`_renderConsole` calls the same method after it has applied the
+    // follow verdict — the affordance must describe the view the player ends up looking at.)
+    if (this.consoleEl.addEventListener) {
+      this.consoleEl.addEventListener('scroll', () => this._updateConsoleMore());
+    }
+
     // The `>` prompt. The visible caret is a TEXT block cursor (VS-M10 makes it steady under
     // reduced motion); the real <input> sits transparent over the row so typing anywhere on the
     // LEDGER lands in the buffer without a click (IX-M8) and the browser still owns text editing.
@@ -343,7 +502,7 @@ export class MossScreen {
     page.appendChild(this.bodyEl);
     page.appendChild(mk(doc, 'div', 'moss-rule'));
     page.appendChild(this.advisoryEl);
-    page.appendChild(this.consoleEl);
+    page.appendChild(this.consoleWrapEl);
     page.appendChild(prompt);
     page.appendChild(this.footEl);
 
@@ -1261,7 +1420,15 @@ export class MossScreen {
     // MEASURE FIRST — after the rebuild `scrollHeight` already counts the appended lines, so the
     // "was the player at the bottom?" question would answer no every time anything arrived.
     const wasTop = px(el.scrollTop);
-    const follow = shouldFollowTail(el.scrollTop, el.clientHeight, el.scrollHeight);
+    // ⛔ MINUS THE SIGN'S OWN CLEARANCE. `has-more` puts `padding-bottom` on THIS scroller, and the
+    // browser counts padding in `scrollHeight` — so passing the raw number would hand
+    // `shouldFollowTail` a distance inflated by 23.52px and cut the pinned 24px slack to ~1px. See
+    // `padBottomPx` for the driven A/B; this is the regression review caught, and the subtraction is
+    // the whole of the fix. (`scrollTop` below is still written with the PADDED height on purpose:
+    // the follow must land at the true bottom WITH the clearance showing, which is what puts the
+    // last line out from under the sign.)
+    const clearance = padBottomPx(this.win, el);
+    const follow = shouldFollowTail(el.scrollTop, el.clientHeight, px(el.scrollHeight) - clearance);
     el.replaceChildren(...list.map((l) => {
       // Tolerant of both the wire's [stream,text] shape and a bare string. The text is rendered
       // VERBATIM: the model already writes the `> ` on an echo line (stream 0), so prefixing one
@@ -1275,6 +1442,64 @@ export class MossScreen {
     // content height, which is what "the newest line" means. The `: wasTop` arm is the explicit
     // no-move (see the note above — defence-in-depth, not a repair of anything Chrome does).
     el.scrollTop = follow ? px(el.scrollHeight) : wasTop;
+    // …and only NOW ask what is still below the fold. Order is load-bearing: asked before the
+    // scroll write, the affordance would describe the view the player had a moment ago and would
+    // read "▾ N MORE" on a pane that had just followed its own newest line.
+    this._updateConsoleMore();
+  }
+
+  /**
+   * Refresh the "▾ N MORE" sign from the pane's REAL geometry (pure `linesBelowFold`; this method
+   * is thin glue and holds no rule).
+   *
+   * Every line's own box is measured rather than a stride multiplied out — see `linesBelowFold`'s
+   * comment for why a stride is wrong here and right on the CREW table. The children are walked
+   * directly instead of by selector because `.moss-console` contains nothing but `.moss-cline`
+   * divs, this file built them, and the node harness has no `querySelectorAll`.
+   *
+   * Hidden at the tail, hidden on an empty or unlaid-out pane (`linesBelowFold` returns 0 for
+   * both). The `has-more` class on the wrapper is the CREW precedent's trick for keeping the last
+   * line clear of the sign that sits over it — a padding, not a layout of its own.
+   *
+   * ⚠️ `has-more` FEEDS BACK INTO THE PANE'S OWN METRICS. `.moss-console-wrap.has-more
+   * .moss-console{padding-bottom:1.75em}` grows `scrollHeight` — MEASURED on the shipped wreck in
+   * Chrome at 1280×800 (2026-08-04) by toggling the class on the live pane: `padding-bottom` 0px →
+   * 23.52px (1.75em of the page's own 13.44px type), `clientHeight` unchanged at 157, `scrollHeight`
+   * up by the same 23.52 (326 → 350 on the transcript that measurement used — an absolute that moved
+   * when `HELP` grew a row at the TRAPS-8 merge, re-measured there as 348 → 372; see `padBottomPx`).
+   *
+   * ⛔ AN EARLIER VERSION OF THIS PARAGRAPH SAID THE LOOP WAS HARMLESS — "it cannot oscillate … the
+   * one place it does move anything is at maximum scroll". **THE SECOND HALF WAS FALSE, AND IT HID A
+   * REGRESSION THIS PACKAGE SHIPPED** (found by review, 2026-08-04; retracted here rather than
+   * quietly deleted). The place it moved something was the FOLLOW DECISION: `_renderConsole` handed
+   * the padded `scrollHeight` to `shouldFollowTail`, which is asked in exactly those units, so the
+   * pinned 24px slack became ~1px whenever the sign was up. Driven A/B: parked at d = 10.48 with
+   * `▾ 1 MORE` up, the shipped build HELD at `scrollTop 355 of 454`; with the clearance neutralised
+   * it FOLLOWED. **Closed by subtracting the clearance at the seam** — see `padBottomPx` and the
+   * call site above.
+   *
+   * ⭐ WHAT SURVIVES OF THE OLD CLAIM, because it is still true and still load-bearing: the loop
+   * cannot oscillate the SIGN, since bottom padding MOVES NO ROW'S BOX — adding it leaves every
+   * `getBoundingClientRect` where it was, so the count that turned it on cannot be changed by it. At
+   * maximum scroll, dropping the padding re-clamps `scrollTop` by the same ~24px and the last line
+   * lands flush with the fold — still 0 below, still stable. Driven: after a wheel back to the
+   * bottom the pane settles at `scrollTop 365 / maxScroll 365`, `belowFold 0`, sign hidden, once.
+   * (The sign's own box is 24.33px against a 21.77px line box, which is why the half-line it covers
+   * reads as a fade and not as text showing through the label.)
+   */
+  _updateConsoleMore() {
+    const el = this.consoleEl;
+    const more = this.consoleMoreEl;
+    if (!el || !more) return;
+    const fold = edges(el);
+    const bottoms = [];
+    for (const child of el.childNodes || []) bottoms.push(edges(child).bottom);
+    const n = linesBelowFold(bottoms, fold.top, fold.bottom);
+    more.hidden = n <= 0;
+    more.textContent = '▾ ' + n + ' MORE';
+    if (this.consoleWrapEl && this.consoleWrapEl.classList) {
+      this.consoleWrapEl.classList.toggle('has-more', n > 0);
+    }
   }
 
   /** Mirror the model's prompt buffer into the visible echo + the transparent input. */

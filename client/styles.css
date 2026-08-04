@@ -794,8 +794,29 @@ canvas{
 }
 .moss-prog-audit:empty::before{content:'— no audit lines —';color:var(--moss-faint)}
 /* the `>` transcript above the prompt (echo / output / error) */
+/* The wrapper exists ONLY to give the "▾ N MORE" sign something to sit against — the same reason
+   `#crew-more` lives inside `.crew-tab-wrap`. It takes the pane's old `flex:none` so the column
+   above the prompt is laid out exactly as before; it adds no height of its own (an empty transcript
+   is `display:none` below and the sign is `hidden`, so the wrapper collapses to 0). */
+.moss-console-wrap{position:relative;flex:none;min-height:0}
 .moss-console{flex:none;max-height:22vh;overflow-y:auto;overflow-x:hidden;margin-top:.5em}
 .moss-console:empty{display:none}
+/* "▾ N MORE" + the bottom fade: the CREW-tab affordance (`.crew-more`) in the terminal's palette,
+   because a pane with `overflow-y:auto` and no visible scrollbar otherwise keeps its own overflow
+   secret. PASSIVE BY CONTRACT (OD-P): `pointer-events:none` — every printable character belongs to
+   the prompt, so this is a sign and never a control. The fade is a gradient to the page colour, so
+   the clipped line reads as CONTINUING rather than as the end of the transcript. */
+.moss-more{
+  position:absolute;left:0;right:0;bottom:0;z-index:2;pointer-events:none;text-align:center;
+  font-size:10.5px;letter-spacing:.14em;color:var(--moss-amber);
+  /* TALL ENOUGH TO COVER A WHOLE LINE BOX, measured rather than guessed: the shipped line box is
+     21.77px at 1280×800, and at .55em/.15em the sign is ~25px, so the half-line it sits over reads
+     as a FADE rather than as clipped text showing through the label. */
+  padding:.55em 0 .15em;
+  background:linear-gradient(to top,var(--moss-bg) 62%,rgba(16,12,6,0));
+}
+/* keep the last line clear of the sign that sits over it (the CREW precedent's trick) */
+.moss-console-wrap.has-more .moss-console{padding-bottom:1.75em}
 .moss-cline{white-space:pre-wrap;padding-left:2ch;text-indent:-2ch}
 .moss-cline.echo{color:var(--moss-dim)}
 .moss-cline.out{color:var(--moss-amber)}
