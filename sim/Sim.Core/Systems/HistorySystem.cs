@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Perilune.Sim
@@ -83,9 +84,10 @@ namespace Perilune.Sim
     /// never the free text — so rewording an entry never perturbs determinism, but adding
     /// one, or changing its kind/subjects, does.
     ///
-    /// ⭐ ONE ENTRY IS REWRITTEN IN PLACE RATHER THAN ONLY APPENDED: see
+    /// ⭐ TWO ENTRY KINDS ARE REWRITTEN IN PLACE RATHER THAN ONLY APPENDED: see
     /// <see cref="RecordBrownout"/>, whose episode coalescer bumps an existing entry's
-    /// <see cref="HistoryEntry.SubjectB"/> edge count. That is a hashed change, deliberately —
+    /// <see cref="HistoryEntry.SubjectB"/> edge count, and <see cref="RecordAlarm"/>, which does
+    /// the same for a REPEATING alarm's firing count. That is a hashed change, deliberately —
     /// the alternative was unsaved state deciding what gets written.
     /// </summary>
     public sealed class HistorySystem : ISimSystem, IStatefulSystem
@@ -109,7 +111,7 @@ namespace Perilune.Sim
             long tick = sim.TickCount;
 
             foreach (var alarm in sim.Events.Read<AlarmRaisedEvent>())
-                Add(tick, $"{alarm.SourceId}: {alarm.Message}", HistoryKind.Alarm);
+                RecordAlarm(tick, $"{alarm.SourceId}: {alarm.Message}");
 
             // Keep the CitizenId (previously discarded) and name the crew member. NeedsSystem.Kill
             // removes the citizen from the store the same tick it publishes CitizenDiedEvent, and
@@ -157,6 +159,213 @@ namespace Perilune.Sim
 
             foreach (var fitted in sim.Events.Read<DeviceCommissionedEvent>())
                 Add(tick, CommissionText(fitted), HistoryKind.DeviceCommissioned, fitted.DeviceId);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // ⭐⭐ RING SATURATION — THE ALARM COALESCER. A standing klaxon is one line, not the ring.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// How long one ALARM RUN lasts as far as the log is concerned: a repeat of an alarm whose
+        /// identical line is still the newest of its kind in the ring, and whose run OPENED within
+        /// this many ticks, folds into that entry instead of appending. 36 000 ticks = one sim-hour
+        /// at 10 Hz, the same window <see cref="BrownoutQuietTicks"/> uses for the same reason.
+        ///
+        /// <para><b>A CODE CONSTANT, NOT A DEF FIELD</b> — M2-1's rule-not-tunable precedent, and
+        /// <see cref="BrownoutQuietTicks"/>' precedent directly: a def scalar would move P4/P5 for
+        /// a number nobody tunes, and a def field pinned only by a checksum is not pinned at all.
+        /// It is a SEPARATE constant from the brownout window on purpose — the two mechanisms are
+        /// unrelated and either may be retuned without dragging the other with it.</para>
+        ///
+        /// <para>⭐ <b>THE WINDOW IS MEASURED FROM THE RUN'S FIRST FIRING, NOT ITS LAST, AND THAT
+        /// IS A DELIBERATE CHOICE AGAINST A LONGER-LIVED ENTRY.</b> Measuring from the last firing
+        /// would give a permanently-sounding alarm exactly ONE entry for the whole run — which
+        /// sounds better and is worse: the MOSS fault log renders the ring's LAST 14 ENTRIES
+        /// POSITIONALLY (<c>GameSession.BuildLog</c>), so an entry frozen at its old ring position
+        /// scrolls out of the tail as the ship's story grows and a still-sounding alarm becomes
+        /// INVISIBLE. Re-announcing once per sim-hour keeps a standing fault readable in the tail
+        /// and in every day of the Chronicle, at ≤ 25 entries per sim-day against a 200 ring.</para>
+        /// </summary>
+        public const long AlarmQuietTicks = 36000;
+
+        /// <summary>
+        /// <b>THE DEFECT (measured on the shipped wreck, unmodified, before this method existed;
+        /// <c>--ship wreck</c> is what <c>./play.sh</c> boots, and no pin covers it).</b> The one
+        /// shipped MOSS rule <c>content/core/SimDefs/rules/overheat_guard.moss</c> fires
+        /// <c>alarm("THERMAL LOAD HIGH — check radiators")</c> every 60 s while <c>ship.heat</c> is
+        /// under 0.5, and on the wreck the ship never warms back up (MECHANICS §13.2). Driven
+        /// unattended: the first firing lands at tick <b>1 085 400</b> (day 1.26) and one arrives
+        /// every 600 ticks after it, so the 200-entry ring is FULL OF ONE SENTENCE by roughly tick
+        /// 1 205 400 — day 1.4. At three sim-days the ring held <b>197 identical alarm lines</b>
+        /// plus 3 brownout episodes and NOTHING ELSE: the four boot lines, every repair, every
+        /// machine-failure alarm and every thaw had been evicted, and the whole surviving window
+        /// spanned 117 600 ticks (3.3 sim-hours) of a three-day run. Both consumers read this one
+        /// ring — the Chronicle and the MOSS fault log — so both drowned at once.
+        ///
+        /// <para><b>THE MECHANISM IS D6's, AND D6's IS RIMWORLD's.</b> See
+        /// <see cref="RecordBrownout"/>: <c>docs/design/rimworld-reference.md</c> §11.1 separates
+        /// the <b>alert stack</b> (a DERIVED condition that exists exactly while it holds) from
+        /// <b>letters</b> (fired once by an EVENT, and persisting). A klaxon that repeats every
+        /// 60 s because a ship is cold is a CONDITION, and RimWorld would never fire a letter per
+        /// tick of one. This ring is the letter channel, so the log keeps ONE line per run.</para>
+        ///
+        /// <para><b>IDENTITY IS THE RENDERED LINE, and it is exact rather than fuzzy.</b> An alarm
+        /// carries no ids — <c>AlarmRaisedEvent</c> is two strings — so there is no structural key
+        /// to match on, and inventing one (a hash of the text in <see cref="HistoryEntry.SubjectA"/>)
+        /// would put a collision risk into a HASHED field. Instead a candidate entry matches iff its
+        /// stored text is EXACTLY what <see cref="AlarmLine"/> would have produced for the incoming
+        /// alarm at that entry's own repeat count — i.e. iff this writer could have written it. That
+        /// is "same rule id + same message" and nothing else, since the line is
+        /// <c>"{SourceId}: {Message}"</c>. ⛔ It is deliberately NOT a text-dedupe of the ring: two
+        /// runs of the same alarm separated by a quiet hour are two entries, and an unrelated line
+        /// that merely repeats a word is never touched.</para>
+        ///
+        /// <para>⭐⭐ <b>A FIRST FIRING IS BIT-IDENTICAL TO THE PRE-COALESCING WRITER, ON PURPOSE.</b>
+        /// <see cref="AlarmRepeatWord"/> encodes one firing as <b>0</b>, so an alarm that fires once
+        /// stores <c>(tick, Alarm, 0, 0)</c> exactly as <c>Add</c> did before this package and folds
+        /// into <see cref="StateChecksum"/> identically. Only the SECOND firing of the same line
+        /// moves a hash — which is the defect's own case and nothing else. Every alarm on every
+        /// pinned fixture was measured to be a single firing or absent (see the package's pin
+        /// survey), so the pins hold for that reason rather than by luck.</para>
+        ///
+        /// <para><b>NO NEW SAVED STATE, AND THAT IS THE WHOLE REASON FOR THIS SHAPE</b> — D6's
+        /// argument, unchanged. The throttle is derived from the ring, which is already a save
+        /// chapter and already hashed, so a save taken mid-run restores mid-run and the next firing
+        /// folds exactly as it would have in an uninterrupted run. <see cref="StateVersion"/> stays
+        /// at <b>2</b>: <see cref="HistoryEntry.SubjectB"/> was already written by
+        /// <see cref="CaptureState"/> and already folded by <see cref="StateChecksum"/>.</para>
+        ///
+        /// <para>⚠️ <b>WHY THERE IS NO IDEMPOTENCY RULE HERE, unlike <see cref="RecordBrownout"/> —
+        /// AND THE HALF THAT RULE COULD NOT HAVE FIXED ANYWAY.</b> Events cross a save boundary in
+        /// TWO directions and this survey must name both, because an earlier draft named only the
+        /// first and was therefore CLAUDE.md's fourth shape: a survey whose scope excludes the
+        /// violation.</para>
+        ///
+        /// <para><b>DIRECTION 1 — an event RE-PUBLISHED after a reload.</b> This is what broke D6:
+        /// <c>PowerSystem</c> is NOT <see cref="IStatefulSystem"/>, so it re-publishes a brownout
+        /// edge a live twin never sent (§13.43.2 — a determinism REGRESSION coalescing created).
+        /// Every publisher of <c>AlarmRaisedEvent</c> was checked against that shape:
+        /// <c>DesignerRuleSystem</c> IS stateful and saves its <c>every</c> timers, latches and halt
+        /// flags (SYSS blob v1), <c>ScriptRuntime</c> likewise; <c>MachineWearSystem</c> fires on a
+        /// <c>Device.Condition</c> crossing and condition is saved; <c>NeedsSystem</c> fires once per
+        /// death. None can re-publish an alarm a live twin did not, so there is no duplicate to drop
+        /// — and a drop rule invented anyway would silently swallow the SECOND real firing of an
+        /// alarm that legitimately repeats.</para>
+        ///
+        /// <para>⛔⛔ <b>DIRECTION 2 — an event DROPPED IN FLIGHT, WHICH IS REAL, REACHABLE ON THE
+        /// SHIPPED WRECK, AND MADE PERMANENT BY THIS COALESCER. FILED RESIDUAL, see MECHANICS
+        /// §13.44.5.</b> The event bus is NOT a save chapter. An <c>AlarmRaisedEvent</c> published on
+        /// the very tick a save is taken is never written, so the loaded sim publishes one FEWER
+        /// firing than its twin — the mirror image of direction 1, and no idempotency rule can close
+        /// it (dropping duplicates cannot RECONSTRUCT an event that was lost). Driven on the shipped
+        /// wreck, 200 000 ticks of run-on: a save on the run's OPENING firing tick 1 085 400 leaves
+        /// live <c>1085400/b60</c> against loaded <c>1086000/b60</c> — the whole run stamped 600 ticks
+        /// late — and EVERY subsequent run inherits the offset (1121400→1122000, 1157400→1158000, …)
+        /// with the trailing counts 34 against 33. A save on a LATER firing tick (1 086 000) diverges
+        /// on the count alone. A save on a non-firing tick (1 085 700) is clean on both the alarm
+        /// entries and the whole <see cref="Simulation.StateHash"/>. Width: <b>1 tick in 600</b>
+        /// (0.17 %) for as long as the klaxon sounds — continuously, on the shipped wreck, from tick
+        /// 1 085 400 to end of run.</para>
+        ///
+        /// <para>⚠️ <b>AND COALESCING IS WHAT MAKES IT PERMANENT — §13.8.1's D6 sentence verbatim,
+        /// measured here as a control.</b> With this coalescer reverted to the pre-fix
+        /// <c>Add</c>, the same leg reads <c>ALARMS_EQUAL=True HASH_EQUAL=True</c>: each firing was
+        /// its own entry and the mis-stamped one evicted. Folding them into an entry that survives
+        /// the whole run turns a self-healing perturbation into a compounding one. The closer is the
+        /// same family as D6's residual 2 — save-boundary event delivery, not a consumer-side rule.
+        /// <b>FILED, not chased</b> (PROCESS §2 "SHIP IT FILED").</para>
+        ///
+        /// <para>⛔ <b>WHAT THIS DOES NOT FIX:</b> the wreck still gets cold and the rule still fires
+        /// 2 512 times in three sim-days (MECHANICS §13.2). The log stops recording each one; the
+        /// ship still does them. That is D6's residual in the same words, and closing it is a
+        /// content/thermal decision, not a log one.</para>
+        /// </summary>
+        private void RecordAlarm(long tick, string line)
+        {
+            for (int i = Entries.Count - 1; i >= 0; i--)
+            {
+                var prior = Entries[i];
+                if (prior.Kind != (byte)HistoryKind.Alarm) continue;
+
+                // THE WINDOW TEST COMES FIRST, and that is both cheaper and exactly equivalent.
+                // Entries sit in ASCENDING tick order — appends carry the current tick and both
+                // coalescers rewrite in place keeping the entry's ORIGINAL tick — so once a
+                // candidate is older than the window, every candidate further back is older still
+                // and a match among them would have failed this same test. Testing it before
+                // rendering saves building a string for a candidate that cannot be folded into.
+                if (tick - prior.Tick >= AlarmQuietTicks) break; // the run timed out — a new line
+
+                // THE IDENTITY TEST: would this writer have produced that entry, for THIS alarm, at
+                // that entry's own repeat count? Only then is it the same alarm. The SubjectB == 0
+                // arm is the overwhelmingly common one (every alarm that has fired once) and it
+                // compares against the base line with NO allocation — AlarmLine(line, 0) returns
+                // `line` itself, so the two arms are the same question asked without the garbage.
+                bool sameAlarm = prior.SubjectB == 0u
+                    ? string.Equals(prior.Text, line, StringComparison.Ordinal)
+                    : string.Equals(prior.Text, AlarmLine(line, prior.SubjectB), StringComparison.Ordinal);
+                if (!sameAlarm) continue;
+
+                uint word = AlarmRepeatWord(AlarmFirings(prior.SubjectB) + 1);
+                Entries[i] = new HistoryEntry(prior.Tick, AlarmLine(line, word),
+                                              (byte)HistoryKind.Alarm, prior.SubjectA, word);
+                return;
+            }
+
+            // ⭐ THE FIRST FIRING'S ZERO COMES FROM AlarmRepeatWord, EXPLICITLY, rather than from
+            // Add's default parameter. It is the same value either way — but routing it through the
+            // encoder is what makes the bit-identity claim below a property OF THE ENCODER and not a
+            // coincidence of two defaults agreeing. With the argument left implicit, a mutation of
+            // AlarmRepeatWord's one-firing arm was an EQUIVALENT MUTANT: nothing observed it.
+            Add(tick, line, HistoryKind.Alarm, 0, AlarmRepeatWord(1));
+        }
+
+        // ─────────────────────────────── the repeat word (HistoryEntry.SubjectB on an Alarm entry)
+
+        /// <summary>
+        /// An <see cref="HistoryKind.Alarm"/> entry's <see cref="HistoryEntry.SubjectB"/> is its
+        /// FIRING COUNT, with <b>0 meaning one firing</b> — so the first entry of a run is
+        /// bit-identical to what the pre-coalescing writer stored, and so a v1/v2 save restored
+        /// from before this package reads back as the single firing it was.
+        ///
+        /// <para>⚠️ <b>THE ONE-FIRING ARM IS ON THE SHIPPED PATH, and it has to be deliberately.</b>
+        /// <see cref="RecordAlarm"/> passes <c>AlarmRepeatWord(1)</c> to <c>Add</c> explicitly rather
+        /// than letting the parameter default to 0. Both produce 0; the difference is that this
+        /// method is then the thing that DELIVERS the bit-identity the pin survey rests on, so
+        /// breaking this arm is observable. While the argument was implicit it was not: a mutation
+        /// of this expression changed no behaviour at all — an equivalent mutant, found by review.
+        /// The folding call site can only ever pass ≥ 2 (<see cref="AlarmFirings"/> returns ≥ 1).</para>
+        /// </summary>
+        public static uint AlarmRepeatWord(uint firings) => firings <= 1u ? 0u : firings;
+
+        /// <summary>Firings folded into an alarm entry (≥ 1). Inverse of <see cref="AlarmRepeatWord"/>.</summary>
+        public static uint AlarmFirings(uint repeatWord) => repeatWord == 0u ? 1u : repeatWord;
+
+        /// <summary>
+        /// The rendered line for an alarm entry, from its base line and structural word alone — one
+        /// firing or a thousand.
+        ///
+        /// <para>⚠️ <b>THE BASE LINE IS A PREFIX, AND THAT IS LOAD-BEARING.</b>
+        /// <c>ShipSystems.Fault</c> attributes the MOSS ledger's LAST FAULT column by searching an
+        /// entry's text for a device NAME (<c>ShipSystems.cs:1101</c>), and <c>Summarize</c>
+        /// truncates it to 56 characters. Appending the count leaves both untouched: the name is
+        /// still in the text and still in the first 56 characters wherever it was before. Prefixing
+        /// a count — "(×60) scrub_a: FLOW FAULT" — would have pushed the name past the truncation on
+        /// the longer lines, which is the same class of silent-column failure §13.43.3 records.</para>
+        ///
+        /// <para>PRIVATE, unlike <see cref="BrownoutEpisodeLine"/>. That sibling is public for a
+        /// stated reason — a test authors a realistic episode entry with it — and this one was
+        /// given the same sentence by copy, which was false: nothing outside this class calls it.
+        /// <c>RingSaturationTests</c> asserts the rendered lines as LITERALS, because here the text
+        /// itself is the thing under test and re-deriving it with the code's own expression would
+        /// assert nothing. Make it public again when a caller exists, not before.</para>
+        /// </summary>
+        private static string AlarmLine(string baseLine, uint repeatWord)
+        {
+            uint firings = AlarmFirings(repeatWord);
+            return firings <= 1u
+                ? baseLine
+                : baseLine + "; " + firings.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                           + " times within the hour.";
         }
 
         // ═══════════════════════════════════════════════════════════════════════════════════════
