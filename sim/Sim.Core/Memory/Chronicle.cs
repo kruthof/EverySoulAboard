@@ -155,6 +155,28 @@ namespace Perilune.Sim
             // flap is the one thing this ladder already out-ranks by design.
             HistoryKind.DeviceCommissioned => 6,
             HistoryKind.Brownout => 5,
+            // ⭐⭐ b3-R — A DROPPED ORDER TIES WITH A BROWNOUT, AND THE TIE IS ARGUED RATHER THAN
+            // convenient. It must not sink BELOW the power flap, by D1's own reasoning one tier up:
+            // the order that died is usually the repair the brownout was FOR, and a day remembered
+            // as "the power flapped" when what actually happened is "the fix you ordered never
+            // arrived" tells the player the symptom instead of the cause. It must not RISE to the
+            // work tier either: tier 6 means "the ship's capability changed and a person made it
+            // happen", and here nothing changed at all — that is the whole complaint.
+            //
+            // ⛔ IT STAYS BELOW THE CREW TIER, AND THAT IS OWNER-RULED, NOT A JUDGEMENT CALL: a
+            // death (8) and a thaw (7) still headline a day that also holds a dropped order (ruled
+            // 2026-08-02 for the thaw, restated 2026-08-03 — DEATH FIRST STANDS). Pinned by
+            // `DroppedOrderChronicleTests.ADeathAndAThawStillOutrankADroppedOrder`.
+            //
+            // ⚠️ THE TIE IS RESOLVED BY THE STRICT '>' IN Render — the EARLIEST entry keeps the
+            // headline — so a drop and a brownout on one day are ordered by when they happened,
+            // which is the same tie-break Construction/Deconstruct have used since E0-5.
+            //
+            // (`rimworld-reference.md` §11.1 would put an interrupted forced job in the TRANSIENT
+            // message channel rather than the letter stack — Perilune has no transient channel, and
+            // the owner ruled the log line because the alternative here is permanent silence. That
+            // classing is the reason it sits low on this ladder rather than beside the work tier.)
+            HistoryKind.OrderDropped => 5,
             HistoryKind.Argument => 4,
             HistoryKind.Bond => 4,
             HistoryKind.RelationshipChanged => 3,
@@ -189,6 +211,10 @@ namespace Perilune.Sim
             HistoryKind.Thaw => "Thaw",
             HistoryKind.RepairCompleted => "Repair",
             HistoryKind.DeviceCommissioned => "Commission",
+            // b3-R. "Order" and not "Dropped": the tag names the SUBJECT, as every other row here
+            // does (Repair, Commission, Salvage), and the line's own first two words say what
+            // became of it.
+            HistoryKind.OrderDropped => "Order",
             HistoryKind.Generic => "Note",
             _ => "Note",
         };
