@@ -260,7 +260,7 @@ test('IX-M8: the KEY_ROUTE export is the table the router actually uses', () => 
   }
 });
 
-test('OD-P: KEY_ROUTE contains NO printable character — the whole class, not just L and P', () => {
+test('doors: KEY_ROUTE contains NO printable character — the whole class, not just L and P', () => {
   // ⚠️ WRITTEN OVER THE CLASS ON PURPOSE. A test naming only `l` and `p` would pass the day someone
   // adds `s` for STATUS or `h` for HELP, which is the same defect the owner ruled on: *"we need to
   // expand the MOSS OS and part might be 'ls' command later, to read directories.. but as soon as
@@ -280,7 +280,7 @@ test('OD-P: KEY_ROUTE contains NO printable character — the whole class, not j
   assert.ok(Object.keys(KEY_ROUTE).length >= 8, 'the navigation rows are still there');
 });
 
-test('OD-P: every printable ASCII routes `pass` THROUGH routeKey, in both buffer states', () => {
+test('doors: every printable ASCII routes `pass` THROUGH routeKey, in both buffer states', () => {
   // The guard above reads the TABLE. This one reads the FUNCTION, and they are not the same claim:
   // `routeKey` has branches of its own (the modifier check, the PROGRAM branch, the off-LEDGER
   // branch, the buffer-state pick), so a character special-cased inside it — `if (k === 's') return
@@ -344,7 +344,7 @@ test('IX-M8 empty buffer: the nav keys actually navigate', () => {
   assert.deepEqual(detailView(ent.model).devices, []);
 });
 
-test('OD-P: `l` and `p` on an EMPTY buffer are TYPED — they open nothing', () => {
+test('doors: `l` and `p` on an EMPTY buffer are TYPED — they open nothing', () => {
   // The owner's own words: *"as soon as we press l, the log opens"* — the defect. MOSS is the ship's
   // OS, so a printable character always belongs to the command line. Both halves are asserted: the
   // model declines the key (so the DOM lets the browser type it) AND no screen moved.
@@ -363,7 +363,7 @@ test('OD-P: `l` and `p` on an EMPTY buffer are TYPED — they open nothing', () 
   assert.equal(typed.screen, SCREEN.LEDGER);
 });
 
-test('OD-P: `log` and `prog` are the typed replacements, end to end from the prompt', () => {
+test('doors: `log` and `prog` are the typed replacements, end to end from the prompt', () => {
   // The acceptance is deliberately driven through the PROMPT — editPrompt then Enter — and not by
   // calling submitCommand directly: the routing table is what OD-P changed, so a test that skipped
   // it would still pass with Enter mis-routed.
@@ -393,7 +393,7 @@ test('OD-P: `log` and `prog` are the typed replacements, end to end from the pro
   assert.ok(consoleLines(bad.model).some((l) => l.stream === 2 && l.text.indexOf('UNKNOWN SYSTEM') === 0));
 });
 
-test('OD-P: a bare `log` typed on DETAIL inherits that system — the whole of what `L` did', () => {
+test('doors: a bare `log` typed on DETAIL inherits that system — the whole of what `L` did', () => {
   // `L` from DETAIL opened the log FILTERED to that system (IX-M5). If the typed command dropped
   // the filter, the replacement would be strictly weaker than the key it replaced and the FILTERED
   // log would be reachable only by naming the system a second time.
@@ -1546,4 +1546,83 @@ test('M3-17: BOTH signposts name the verb — a command nobody can discover is o
   const hints = footerHints(openMoss()).join(' · ');
   assert.ok(/COMMISSION/.test(hints),
     'the LEDGER footer does not name COMMISSION beside PODS: ' + hints);
+});
+
+// ═══════════════════════════════════════════════════════ the `doors` DIRECTORY verb
+//
+// ⛔ THE STALL, MEASURED IN LIVE PLAY (thaw-path audit, 2026-08-03). Since OD-N the ship's doors
+// answer ONLY to MOSS, MOSS addresses a door BY NAME, and no surface anywhere named one: `open`
+// answered UNKNOWN SYSTEM '', `open door` answered NO SUCH DEVICE 'DOOR', and only the exact
+// `open door_d0_s1` worked — a key the player had no way to learn. The Regolith → Scrap → Parts →
+// ControllerModule chain sits behind two of those doors on the shipping wreck.
+//
+// ⚠️ EXACTLY ONE VERB SHIPS, and OD-P is the SHAPE precedent rather than the authority: its row
+// says MOSS-OS expansion is VISION and "never implement from this row". This is a defect closure
+// wearing OD-P's typed-only style. No `ls`, no second noun; the shape awaits the owner's
+// ratification on return.
+
+test('doors: `doors` parses as a NAV verb — not a device write, not UNKNOWN', () => {
+  const cmd = parseCommand('doors');
+  assert.equal(cmd.kind, 'nav',
+    'it names no device — and the entire reason it exists is that the player does not yet KNOW ' +
+    'a device name, so it cannot be a device line');
+  assert.equal(cmd.verb, 'doors');
+  assert.deepEqual(cmd.args, []);
+});
+
+test('doors: typing `doors` sends the wire op and NOTHING else', () => {
+  const before = openMoss();
+  const out = submitCommand(before, 'doors');
+  assert.deepEqual(out.effects, [{ k: 'moss', op: 'doors' }],
+    'the ONLY effect is the ask — this client has never been told a door exists, so any local ' +
+    'listing would be a second authority derived from a channel that does not carry the fact');
+  assert.equal(out.model.screen, SCREEN.LEDGER, 'it opens no screen');
+  const added = out.model.console.slice(before.console.length);
+  assert.deepEqual(added.map((l) => l.stream), [0],
+    'the client answered for the ship instead of asking it. Added: ' + JSON.stringify(added));
+});
+
+test('doors: case, spacing and stray-argument tolerance, like every other nav verb', () => {
+  for (const raw of ['DOORS', '  Doors  ', 'doors deck 1']) {
+    assert.deepEqual(submitCommand(openMoss(), raw).effects, [{ k: 'moss', op: 'doors' }],
+      '`doors` is ONE noun — a filter would be a grammar, and this lane self-limits to one verb. ' +
+      'Failed for: ' + JSON.stringify(raw));
+  }
+});
+
+test('doors: the ship\'s listing reaches the transcript verbatim, on the exec channel', () => {
+  // ⭐ NO NEW WIRE SHAPE — the listing rides `MossExec`'s existing stream-1 lines, which
+  // `reduceMossEvent` already folds. This test is what says the client needs no new arm.
+  const asked = submitCommand(openMoss(), 'doors');
+  const shown = reduceMossEvent(asked.model, {
+    ev: 'exec', tid: '@console', ok: true,
+    lines: [
+      [1, 'DOORS — 16 ABOARD · 2 OPEN · 14 SHUT'],
+      [1, 'DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT'],
+    ],
+  });
+  const out = shown.console.slice(asked.model.console.length)
+    .filter((l) => l.stream === 1).map((l) => l.text);
+  assert.deepEqual(out, ['DOORS — 16 ABOARD · 2 OPEN · 14 SHUT', 'DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT'],
+    'the ship\'s own words must arrive unedited, un-re-cased and un-re-ordered');
+
+  const dark = reduceMossEvent(asked.model, {
+    ev: 'exec', tid: '@console', ok: false,
+    lines: [[2, 'MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE DOORS']],
+  });
+  assert.ok(dark.console.some((l) => l.stream === 2 && /TO REACH THE DOORS$/.test(l.text)),
+    'the dark-ship refusal must land on the error stream with its tail intact');
+});
+
+test('doors: BOTH signposts name the verb — a command nobody can discover is one nobody sends', () => {
+  const helped = submitCommand(openMoss(), 'help');
+  const lines = helped.model.console.filter((l) => l.stream === 1).map((l) => l.text);
+  assert.ok(lines.some((l) => l.startsWith('DOORS')),
+    'HELP does not list DOORS, and the onboarding card hands the player to HELP. Saw:\n' +
+    lines.join('\n'));
+  // …and the screen the player is ON. M3-17's own argument, applied to a worse stall: the door
+  // names are what the whole opening is locked behind.
+  const hints = footerHints(openMoss()).join(' · ');
+  assert.ok(/DOORS/.test(hints),
+    'the LEDGER footer does not name DOORS beside PODS and COMMISSION: ' + hints);
 });

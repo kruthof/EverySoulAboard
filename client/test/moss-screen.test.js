@@ -1972,3 +1972,27 @@ test('shouldFollowTail: the pure decision, at the boundaries that decide it', ()
   assert.equal(S_(undefined, undefined, undefined), true, 'unmeasurable ⇒ follow, never hide output');
   assert.equal(S_(NaN, NaN, NaN), true, 'unmeasurable ⇒ follow, never hide output');
 });
+
+// ═══════════════════════════════════════════════════════ the `doors` DIRECTORY verb
+//
+// Trap 4: the seam is the MESSAGE the screen sends, recorded at the send, never a text scan of the
+// module. A client that answered locally would send nothing, and this assertion is what would then
+// have nothing to see.
+
+test('doors: typing `doors` sends the wire op through the real screen', () => {
+  const s = bayScreen(null);
+  typeCmd(s, 'doors');
+  assert.deepEqual(s.sent.slice(-1), [{ type: 'moss', op: 'doors', tid: '@console' }],
+    'the directory must be ASKED for — the client holds no door census to print');
+  assert.equal(s.root.dataset.screen, 'ledger',
+    'and it opens no screen: the ship answers on the transcript the player is already looking at');
+
+  // ⭐ NO NEW WIRE SHAPE — the reply is an ordinary `exec` block and the transcript renders it.
+  s.screen.onMossEvent({
+    type: 'moss', ev: 'exec', tid: '@console', ok: true,
+    lines: [[1, 'DOORS — 16 ABOARD · 2 OPEN · 14 SHUT'], [1, 'DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT']],
+  });
+  const text = s.root.byClass('moss-cline').map((el) => el.textContent).join('\n');
+  assert.ok(/DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT/.test(text),
+    'the listing never reached the console pane:\n' + text);
+});

@@ -198,15 +198,14 @@ namespace Perilune.Sim
             Ship = 0,
             /// <summary>Remote actuation — the doors and vents OD-N put behind the server.
             ///
-            /// <para>⚠️ <b>REACHABLE FROM EXACTLY ONE HANDLER, AND NOTHING SENDS TO IT TODAY.</b>
-            /// <c>GameSession.HandleOperate</c> is the only caller, and M3-15 deleted the Room Zoom's
-            /// OPERATE affordance — no shipping client emits <c>Cmd.operate</c> any more
-            /// (<c>client/src/wire/session.js:96</c>). So this arm's words are currently seen only by
-            /// <c>MossGateTests.TheOperateReplyNamesTheOfflineServerInsteadOfClaimingSuccess</c>,
-            /// which drives the wire command directly. It is kept rather than folded into
-            /// <see cref="Ship"/> because the handler survives until M4-8 and a handler that answers
-            /// the wrong noun is the defect this enum exists to close — but a reader must not read
-            /// "the DOORS tail ships" off this member. It does not.</para></summary>
+            /// <para>⭐ <b>REACHABLE FROM THE SHIPPING PROMPT SINCE THE <c>doors</c> VERB.</b> §13.47
+            /// filed this member as words no player could see: its only caller was
+            /// <c>GameSession.HandleOperate</c>, and M3-15 had deleted the Room Zoom's OPERATE
+            /// affordance, so no shipping client emitted <c>Cmd.operate</c> any more
+            /// (<c>client/src/wire/session.js:96</c>). The <c>doors</c> directory op is a SECOND
+            /// caller and it IS on the shipping surface: typing <c>doors</c> on a dark ship now
+            /// answers <i>…TO REACH THE DOORS</i>, which is the right noun for the ask. The
+            /// <c>operate</c> handler still survives until M4-8 and still uses this member.</para></summary>
             Doors = 1,
             /// <summary>The cryo bay — <c>pods</c> and <c>thaw</c>.</summary>
             Pods = 2,
@@ -334,11 +333,139 @@ namespace Perilune.Sim
             if (d == null || string.IsNullOrEmpty(d.Name))
                 return OfflineLead + "; REPAIR ONE " + tail;
 
-            var ic = System.Globalization.CultureInfo.InvariantCulture;
             return OfflineLead + "; REPAIR " + d.Name.ToUpperInvariant()
-                 + " ON DECK " + d.Pos.Z.ToString(ic)
-                 + " AT " + d.Pos.X.ToString(ic) + "," + d.Pos.Y.ToString(ic)
-                 + " " + tail;
+                 + " ON " + PlaceWords(d.Pos) + " " + tail;
+        }
+
+        /// <summary>
+        /// ⭐ <b>WHERE A THING IS, IN THE CONSOLE'S OWN LOCATION VOCABULARY — <c>DECK 0 AT 16,7</c>.</b>
+        /// Extracted from <see cref="OfflineRefusal"/> when the <c>doors</c> directory needed the same
+        /// phrase, so that there is exactly ONE spelling of a place in <c>Sim.Core</c> rather than a
+        /// second one that agrees today. (<see cref="OfflineRefusal"/> prefixes the preposition —
+        /// <c>… ON DECK 0 AT 1,3 …</c> — because a directory ROW wants the phrase bare.)
+        ///
+        /// <para>§13.47.3's ruling stands unchanged and is not re-argued here: no ROOM WORD, because
+        /// the player-facing room name does not exist at this seam and mirroring
+        /// <c>decks-model.js</c>'s <c>displayName</c> into <c>Sim.Core</c> would be a FOURTH spelling
+        /// of a vocabulary the repo already pins in three places.</para>
+        ///
+        /// <para>InvariantCulture on all three coordinates — the dev machine is de-DE.</para>
+        /// </summary>
+        public static string PlaceWords(Int3 pos)
+        {
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            return "DECK " + pos.Z.ToString(ic)
+                 + " AT " + pos.X.ToString(ic) + "," + pos.Y.ToString(ic);
+        }
+
+        // ═══════════════════════════════════════════════ OD-P — the `doors` directory verb
+        //
+        // ⛔⛔ THE STALL THIS CLOSES, MEASURED IN LIVE PLAY (thaw-path audit, 2026-08-03).
+        // Since OD-N the ship's doors answer ONLY to MOSS, and MOSS addresses a door BY NAME —
+        // but NO SURFACE ANYWHERE NAMED ONE. Driven at the shipping prompt: `open` answers
+        // UNKNOWN SYSTEM '', `open door` answers NO SUCH DEVICE 'DOOR', and `open door_d0_s1`
+        // answers QUEUED OPEN(DOOR_D0_S1). The whole Regolith → Scrap → Parts → ControllerModule
+        // chain — the thaw arc's spine, and therefore the opening of the game — sits behind
+        // `door_d0_s1` and `door_d0_s2` on the shipping wreck. A player who cannot LEARN a door's
+        // name cannot open the game. MOSS had a `pods` directory; it had no `doors`.
+        //
+        // ⛔ WHAT AUTHORISES THIS IS THE DEFECT, NOT OD-P. Read that row before citing it: it ends
+        // "Future MOSS-OS expansion (`ls`, directories) is VISION, not chartered scope — file ideas
+        // against M3-15/M3-4, NEVER IMPLEMENT FROM THIS ROW" (docs/ROADMAP.md §5). So this is not an
+        // owner mandate being discharged; it is a PLAYTEST-BLOCKING DEFECT being closed, and OD-P is
+        // the DESIGN PRECEDENT for the SHAPE of the closure — which is a different, smaller claim:
+        //   * OD-P's ruling that "every printable character belongs to the PROMPT; screens are
+        //     reached by TYPED COMMANDS only" is why this is a typed verb and not a key or a panel.
+        //   * OD-P's standing vision — "MOSS should be the OS of the ship", "part might be an 'ls'
+        //     command later, to read directories" — is why a DIRECTORY is the recognisable shape,
+        //     with `pods` as the exact in-repo precedent. It also gates OD-N (doors are MOSS's).
+        //
+        // ⚠️ EXACTLY ONE VERB SHIPS, AND THE NEXT EXPANDER MUST READ THIS BEFORE ADDING A SECOND.
+        // There is deliberately NO `ls`, NO generic directory framework and NO second noun
+        // (`vents`, `machines`, `crew`) here — adding one WOULD be implementing from the row that
+        // forbids it. ⭐ THE SHAPE AWAITS THE OWNER'S RATIFICATION ON RETURN (carried on HANDOVER's
+        // owner list): is a typed `doors` right, and does the MOSS-OS expansion get chartered?
+        // If you are here to add a noun, take it to the owner first — do not generalise this
+        // function into a framework on your way past.
+
+        /// <summary>The listing's answer on a ship that carries no <see cref="DeviceKind.Door"/> at
+        /// all. A directory that prints NOTHING is M3-13's defect (a screen that says nothing is a
+        /// broken verb), so the empty case answers in words. Unreachable on shipped content — all
+        /// four authored ships carry doors (wreck 16, grid 64, slice 19, perilune 19, censused at
+        /// tick 40) — and driven on a fixture rather than asserted.</summary>
+        public const string NoDoorsLine = "NO DOORS ABOARD";
+
+        /// <summary>What a door with no <c>Device.Name</c> prints in the id column. It cannot be
+        /// addressed by <c>open</c> at all (the DSL resolves by name), so the honest row says so
+        /// rather than fabricating a key the player would then type in vain — this listing exists
+        /// precisely to be typed back. No authored ship has one.</summary>
+        private const string UnnamedDoor = "(UNNAMED)";
+
+        /// <summary>
+        /// ⭐⭐ <b>EVERY DOOR THE SHIP KNOWS, ONE PER LINE, SO THE NAME <c>open</c> NEEDS IS LEARNABLE
+        /// IN THE GAME.</b> A header stating the census, then one row per door:
+        /// <code>
+        /// DOORS — 16 ABOARD · 2 OPEN · 14 SHUT
+        /// DOOR_D0_S0 · DECK 0 AT 5,7 · OPEN
+        /// DOOR_D0_S1 · DECK 0 AT 16,7 · SHUT
+        /// </code>
+        ///
+        /// <para><b>ENUMERATED FROM LIVE DEVICE STATE, NEVER FROM THE PLAN.</b> The rows are
+        /// <c>sim.Devices.Items</c> filtered by <see cref="DeviceKind.Door"/>. A read of
+        /// <c>SlotGridPlanner</c>'s authoring (which is where these names are written) would be right
+        /// at boot and wrong the moment a door is built, removed or restored from a save — and
+        /// OPEN/SHUT is not a plan fact at all.</para>
+        ///
+        /// <para><b><see cref="Device.Id"/> ORDER, TAKEN EXPLICITLY.</b> <c>WireFormat.BuildPods</c>'s
+        /// rule, for its reason: the order is what the player reads down, and it must not shuffle
+        /// because a store compacted.</para>
+        ///
+        /// <para>⭐ <b>THE LOCK IS A COLUMN, NOT A SECOND VERB.</b>
+        /// <see cref="SetDoorStateCommand.Execute"/> computes <c>open &amp;&amp; !IsLocked</c>, so a
+        /// LOCKED door answers <c>open</c> by silently staying shut — the <i>invisible feedback is
+        /// functional</i> defect exactly. A listing that showed OPEN/SHUT and hid the one flag that
+        /// decides whether the verb it teaches will work would be teaching a dead key. (No authored
+        /// ship locks a door today; the column is driven on a fixture.)</para>
+        ///
+        /// <para>⛔ <b>NO POWER COLUMN, and that is measured rather than trimmed.</b>
+        /// <see cref="SetDoorStateCommand"/> carries no power gate — a door on a dark deck still
+        /// opens — so <c>Powered</c> would be a column that changes nothing about the verb this
+        /// listing serves, on a ship where eight of sixteen doors are unpowered. Printing it would
+        /// invite the reader to conclude the opposite of the truth.</para>
+        ///
+        /// <para>ALLOCATES — a host reply to a player keystroke, never a tick path
+        /// (<see cref="DescribeCommission"/>'s rule). Every number InvariantCulture; every word
+        /// upper case, the console's voice.</para>
+        /// </summary>
+        public static System.Collections.Generic.List<string> DescribeDoors(Simulation sim)
+        {
+            var lines = new System.Collections.Generic.List<string>(24);
+            var doors = new System.Collections.Generic.List<Device>(24);
+            var devices = sim?.Devices?.Items;
+            if (devices != null)
+                for (int i = 0; i < devices.Count; i++)
+                    if (devices[i].Kind == DeviceKind.Door) doors.Add(devices[i]);
+
+            if (doors.Count == 0) { lines.Add(NoDoorsLine); return lines; }
+            doors.Sort((a, b) => a.Id.CompareTo(b.Id));
+
+            int open = 0;
+            for (int i = 0; i < doors.Count; i++) if (doors[i].IsOpen) open++;
+
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            lines.Add("DOORS — " + doors.Count.ToString(ic) + " ABOARD · "
+                    + open.ToString(ic) + " OPEN · "
+                    + (doors.Count - open).ToString(ic) + " SHUT");
+
+            for (int i = 0; i < doors.Count; i++)
+            {
+                var d = doors[i];
+                lines.Add((string.IsNullOrEmpty(d.Name) ? UnnamedDoor : d.Name.ToUpperInvariant())
+                        + " · " + PlaceWords(d.Pos)
+                        + " · " + (d.IsOpen ? "OPEN" : "SHUT")
+                        + (d.IsLocked ? " · LOCKED" : ""));
+            }
+            return lines;
         }
 
         /// <summary>
