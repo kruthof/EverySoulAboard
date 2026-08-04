@@ -1399,11 +1399,49 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-crewhdr{flex:none;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
   color:var(--ink-faint,#57503f)}
 .rz-crewlist{display:contents} /* rows join the dock's flex column directly (the ov-crewlist idiom) */
+/* ⚠️ THE PALETTE'S COLLISION, THIRD INSTANCE — fixed 2026-08-04 on the same grammar
+   `.rz-tool`/`.rz-mat-chip`/`.rz-acc-chip` carry (see the block comment over `.rz-mat-chip` for the
+   whole argument, which is not repeated here). It was FILED by the chip lane rather than chased, and
+   re-measured in real Chrome on `--ship grid` before this edit. The rows carried
+
+       .rz-crew:hover{border-color:#cf7a33}
+       .rz-crew.sel  {border-color:#cf7a33;background:rgba(34,27,18,.8)}
+
+   — the IDENTICAL border on both. Read off a live EIGHT-ROW dock by `zoom-pawn-shot.mjs` §5b (rest
+   and hover are one unselected row with the pointer off it and on it; selected is the row beside it,
+   in the same session):
+
+       rest      bg rgba(18,15,11,.55)  border 1px rgb(46,40,32)/.6  shadow none
+       hover     bg rgba(18,15,11,.55)  border 1px rgb(207,122,51)   shadow none   ← the selected edge
+       selected  bg rgba(34,27,18,.8)   border 1px rgb(207,122,51)   shadow none
+
+   ⛔ AND THIS CONTROL IS THE WORST MEMBER OF THE CLASS TO HAVE IT ON, not merely another one. A chip
+   is armed by the click already under the pointer, so its collision costs one control; a crew dock is
+   a LIST the player runs their cursor down to read, so every row they touched drew the selected row's
+   edge and the dock answered "who is selected" wrongly for as long as the mouse was near it. The
+   readings above are why the fix is not a colour tweak: the only channel that separated the two was a
+   dark-on-dark fill over a blurred glass island — a difference the instrument could read and the
+   player could not (`sameLook(hover, selected)` was FALSE on the defect, so a byte-comparison would
+   have passed it).
+
+   Shipped: hover is a warm neutral that says "clickable", `:active` is a darker press (this row had
+   NO press state at all), and SELECTED owns a channel neither pointer state touches — an inset depth
+   plus an outer ring — on top of the lit border and fill. `:hover`/`:active` are repeated on the
+   `.sel` selector so the cursor that follows a click can never wash the state back out; that is not
+   theoretical here, because selecting a crew member MOVES THE CAMERA to her and the pointer stays on
+   her row. The ring is a `box-shadow` for the palette's reason and one of this dock's own: shadows do
+   not participate in layout, and these rows are a scrolling flex column under a `max-height` — a
+   thicker border would shove every row below it while the player is reading them.
+   Swept by `palette-layout.test.js` (`ARMABLE`, discovered from this file). */
 .rz-crew{display:flex;gap:8px;align-items:center;padding:5px 6px;border:1px solid rgba(46,40,32,.6);
   border-radius:8px;background:rgba(18,15,11,.55);color:inherit;font:inherit;text-align:left;
-  cursor:pointer;flex:none}
-.rz-crew:hover{border-color:#cf7a33}
-.rz-crew.sel{border-color:#cf7a33;background:rgba(34,27,18,.8)}
+  cursor:pointer;flex:none;
+  transition:background-color .09s ease,border-color .09s ease,box-shadow .09s ease}
+/* "you can click this row" — deliberately NOT the lit amber. */
+.rz-crew:hover{border-color:#6b5c45;background:rgba(46,39,29,.62)}
+.rz-crew:active{background:#241b11;border-color:#8a6c3f}
+.rz-crew.sel,.rz-crew.sel:hover,.rz-crew.sel:active{border-color:#f2b563;background:rgba(58,42,18,.86);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.6),0 0 0 2px rgba(207,122,51,.34)}
 .rz-bust{width:28px;height:28px;border-radius:5px;overflow:hidden;flex:none;
   background:rgba(10,8,6,.6);display:block}
 .rz-bust svg{width:100%;height:100%;display:block}
@@ -1634,11 +1672,12 @@ body.moss-open #roomzoom-view{display:none !important}
 
    ⛔ AND THE SWEEP'S REACH IS NARROWER THAN "EVERY ARMABLE CONTROL" — say it here rather than let
    the next reader assume it. Its predicate is literal: a rule whose SUBJECT compound carries both a
-   `.rz-` class and the class `.on`. A control that spells its chosen state anything else, or that
-   is not `.rz-`-prefixed, is INVISIBLE to it — both blind spots were driven, and both stayed green.
-   That is not hypothetical: `.rz-crew` at the top of this file spells selection `.sel`, and
-   `.rz-crew:hover` and `.rz-crew.sel` share `border-color:#cf7a33` with no shadow on either side —
-   the SAME collision, third instance, unswept and deliberately not fixed from here (FILED).
+   `.rz-` class and a CHOSEN-STATE class it knows the spelling of. A control that spells its state
+   anything else, or that is not `.rz-`-prefixed, is INVISIBLE to it — the blind spots are driven,
+   and they stay green. ⭐ THE SPELLINGS IT KNOWS ARE NOW TWO, `.on` AND `.sel`, because the third
+   instance this comment used to FILE has been fixed (2026-08-04): `.rz-crew` at the top of this file
+   spells selection `.sel`, and `.rz-crew:hover` and `.rz-crew.sel` shared `border-color:#cf7a33`
+   with no shadow on either side. It is a swept member now — see its own block comment.
 
    ⭐ THE RING IS A `box-shadow` FOR THE REASON THE TOOL ROW'S IS: shadows do not participate in
    layout, and these two rows wrap under exactly the same clipping rule the palette does. The inset

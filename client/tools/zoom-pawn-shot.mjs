@@ -398,6 +398,123 @@ const screenOf = (tx, ty) => ({
     { x: Math.max(0, p.x - pad), y: Math.max(0, p.y - pad * 1.4), width: pad * 2, height: pad * 2.4 });
 }
 
+// ══════ 5b. ⭐ THE SELECTED ROW'S LOOK: rest vs HOVER vs SELECTED vs SELECTED+HOVER (2026-08-04)
+//
+// ⛔ THE DEFECT THIS MEASURES, AND IT IS THE THIRD INSTANCE OF ONE CLASS. The palette lane fixed
+// `.rz-tool` on 2026-08-03 (hover had borrowed the ARMED border colour, so the button under the
+// player's own cursor already wore the lit edge); the chip lane fixed `.rz-mat-chip`/`.rz-acc-chip`
+// the same night and FILED the third instance rather than chasing it — `.rz-crew:hover` and
+// `.rz-crew.sel` BOTH SET `border-color:#cf7a33`, with no shadow on either side. On a dock the
+// player is running their cursor down, EVERY ROW they touched drew the selected row's edge, so "who
+// is selected" was a question the dock answered wrongly while the mouse was anywhere near it. These
+// legs are what MEASURED that (the readings are in the crew-dock block comment in `styles.css`) and
+// what now holds the fix; they are written to be run on either side of it.
+//
+// ⚠️ THIS CONTROL HAS FOUR STATES, NOT THREE, and the fourth is the one a chip does not have. A
+// palette chip is armed by the click that is already under the pointer, so `armed` and
+// `armed+hover` are the same reading. A crew row is different: the player selects Ada and then
+// moves the cursor DOWN THE LIST to read the other rows, so the dock is normally showing one
+// `.sel` row with the pointer on a DIFFERENT one. Both halves are measured:
+//   · hovered-but-unselected must not look like selected  (the defect)
+//   · selected+hovered must still look selected           (the wash-out, the chips' `.on:hover` leg)
+//
+// ⛔ IT NEEDS TWO ROWS AND THE SHIPPED WRECK HAS ONE. `--ship wreck` boots with a single soul
+// aboard (Rell), and section 5 has just selected her — so "an unselected row" does not exist there
+// and the legs would compare the selected state with itself. Reported as UNREACHABLE, never
+// skipped silently. It is reachable IN THE GAME (every thaw adds a row, which is the wreck's own
+// ladder) and it runs here on `--ship grid --multi --deck 1`, which has eight.
+log('\n=== CREW DOCK LOOK: a hovered row must not wear the SELECTED row\'s edge ===');
+const ROWSTATE = (cid) => `(()=>{const b=document.querySelector('[data-rzcrew="${cid}"]');
+  if(!b)return null;const cs=getComputedStyle(b);const r=b.getBoundingClientRect();
+  return {cls:b.className,pressed:b.getAttribute('aria-pressed'),bg:cs.backgroundColor,
+    border:cs.borderTopWidth+' '+cs.borderTopColor,shadow:cs.boxShadow,
+    w:Math.round(r.width*100)/100,h:Math.round(r.height*100)/100,
+    x:r.x,y:r.y,cx:r.x+r.width/2,cy:r.y+r.height/2};})()`;
+const sameLook = (a, b) => a.bg === b.bg && a.border === b.border && a.shadow === b.shadow;
+const moveTo = async (x, y) => { await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await sleep(500); };
+/** Read a row's paint once it has STOPPED MOVING — palette-shot.mjs's `readSettled`, same reason:
+ *  these rules carry a `transition`, and a mid-transition colour belongs to neither state. */
+async function rowSettled(cid) {
+  let prev = await evalJson(ROWSTATE(cid));
+  for (let i = 0; i < 8 && prev; i++) {
+    await sleep(280);
+    const now = await evalJson(ROWSTATE(cid));
+    if (now && sameLook(prev, now)) return now;
+    prev = now;
+  }
+  return prev;
+}
+{
+  const cids = await evalJson(`[...document.querySelectorAll('.rz-crew')].map(b=>`
+    + `({cid:b.getAttribute('data-rzcrew'),sel:b.classList.contains('sel')}))`) || [];
+  const selRow = cids.find((r) => r.sel);
+  const offRow = cids.find((r) => !r.sel);
+  if (!selRow || !offRow) {
+    note(`UNREACHABLE ON THIS SHIP: the dock has ${cids.length} row(s), ${cids.filter((r) => r.sel).length}`
+      + ' selected. These legs need ONE selected row and ONE that is not, so that "hovered" and'
+      + ' "selected" are read off two different rows in one screenshot. Run with `--multi` against'
+      + ' `--ship grid` (8 crew). NOT routed around, NOT counted.');
+  } else {
+    // The pointer parks at the page corner: above the breadcrumb (left:32 top:24), clear of the dock,
+    // and NO click is ever sent here — a `mouseMoved` cannot reach `ContextAction`.
+    const seen = {};
+    const shot = async (file, s) => png(file,
+      { x: Math.max(0, s.x - 8), y: Math.max(0, s.y - 8), width: s.w + 16, height: s.h + 16 });
+    await moveTo(4, 4);
+    seen.rest = await rowSettled(offRow.cid);
+    seen.selected = await rowSettled(selRow.cid);
+    if (!seen.rest || !seen.selected) die(chrome, 12, 'a dock row vanished mid-measurement');
+    await shot('05b-crewlook-rest.png', seen.rest);
+    await shot('05b-crewlook-selected.png', seen.selected);
+    await moveTo(seen.rest.cx, seen.rest.cy);
+    seen.hover = await rowSettled(offRow.cid);
+    await shot('05b-crewlook-hover.png', seen.hover);
+    await moveTo(seen.selected.cx, seen.selected.cy);
+    seen.selHover = await rowSettled(selRow.cid);
+    await shot('05b-crewlook-selected-hover.png', seen.selHover);
+    await moveTo(4, 4);
+    for (const [k, v] of Object.entries(seen))
+      log(`LOOK crew ${k.padEnd(11)} cls="${v.cls}" pressed=${v.pressed} bg=${v.bg} `
+        + `border=${v.border} shadow=${v.shadow === 'none' ? 'none' : v.shadow} box=${v.w}x${v.h}`);
+    // NON-VACUITY FIRST: the pointer must really have established `:hover` on the unselected row, or
+    // every comparison below is one state read twice.
+    check(!sameLook(seen.rest, seen.hover),
+      'REST and HOVER differ on an unselected row — the pointer really established `:hover`, so the '
+      + 'legs below are comparing two states rather than one state with itself');
+    check(seen.selected.cls.split(/\s+/).includes('sel') && seen.selected.pressed === 'true',
+      'the selected row carries `.sel` and says `aria-pressed="true"` — the class the stylesheet '
+      + 'paints off is really on the node these readings came from');
+    // ⭐ THE HEADLINE, AND IT NAMES A CHANNEL RATHER THAN ASKING FOR BYTE-DIFFERENCE. The chip lane
+    // measured why: run against its own pre-fix CSS, a byte-comparison came back "they differ" and
+    // exited GREEN on the very defect it existed to close — the two states differed on a dark-on-dark
+    // fill while matching on the border and on the (absent) shadow. A difference an instrument can
+    // read is not a difference a player can read.
+    check(seen.selected.shadow !== 'none' && seen.hover.shadow === 'none' && seen.rest.shadow === 'none',
+      'the SELECTED row OWNS the shadow channel — it carries a box-shadow and neither a resting nor a '
+      + `hovered row does (selected: ${seen.selected.shadow} · hover: ${seen.hover.shadow} · rest: `
+      + `${seen.rest.shadow}). Without an exclusive channel the two states are one colour edit apart, `
+      + 'which is exactly how `#cf7a33` ended up on both.');
+    check(!sameLook(seen.hover, seen.selected),
+      'a HOVERED row and the SELECTED row are not the same paint — the player runs the cursor down '
+      + `this list to read it (hover border ${seen.hover.border} vs selected ${seen.selected.border})`);
+    // The other half, and it is the state a crew row spends most of its life in: the cursor sitting on
+    // the row the player just picked must not wash the selection back out.
+    check(sameLook(seen.selHover, seen.selected),
+      'the SELECTED row still reads as selected with the pointer on it — `:hover` has not overridden '
+      + `the state the player chose (sel+hover border ${seen.selHover.border} shadow `
+      + `${seen.selHover.shadow} vs selected border ${seen.selected.border} shadow ${seen.selected.shadow})`);
+    // Selection must not RE-MEASURE the row: the dock is a scrolling flex column with a max-height,
+    // and a row that grows on selection pushes its neighbours (the palette's clipping lesson, applied
+    // to a list). This is why the ring is a `box-shadow` and not a thicker border.
+    check(seen.selected.w === seen.rest.w && seen.selected.h === seen.rest.h,
+      `selecting a row did not resize it (${seen.rest.w}x${seen.rest.h} → ${seen.selected.w}x`
+      + `${seen.selected.h}) — shadows do not participate in layout; a wider border would push the `
+      + 'dock\'s other rows around under the player');
+    writeFileSync(join(OUT, PREFIX + 'crewlook.json'), JSON.stringify(seen, null, 2));
+    log('  wrote', join(OUT, PREFIX + 'crewlook.json'));
+  }
+}
+
 // ─────────────────────────────────────── 6. THE MOVE ORDER — and she must actually WALK
 log('\n=== MOVE [M]: give her an order from inside the room ===');
 const palMove = await centre('[data-rztool="move"]');
