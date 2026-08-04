@@ -147,12 +147,16 @@ namespace Perilune.Sim
         /// silently and a door that is broken are the same picture.
         ///
         /// <para><b>REFUSE BY PREDICATE, REPORT BY PREDICATE.</b> The command is the authority; every
-        /// surface that wants to say WHY calls <see cref="IsServerLive"/> and renders THIS constant,
-        /// and none of them re-derives the rule. Three surfaces do so today: the MOSS <c>exec</c>
-        /// reply's stream-2 error line, the <c>operate</c> reply's reason, and the TUI status line.
+        /// surface that wants to say WHY calls <see cref="IsServerLive"/> and renders THIS sentence,
+        /// and none of them re-derives the rule. Two surfaces do so today: the MOSS <c>exec</c>
+        /// reply's stream-2 error line and the <c>operate</c> reply's reason. (⚠️ The TUI status line
+        /// is NOT one of them and the older wording of this paragraph was wrong about it:
+        /// <c>hosts/tui/GameLoop.cs:274,310</c> asks <see cref="IsServerLive"/> and then writes its
+        /// own lower-case <i>"moss offline — repair a terminal"</i>. It is a second vocabulary for
+        /// one fact and it is FILED, not fixed here — the TUI is not a shipping surface.)
         /// An event on the bus was considered and refused — <c>DoorStateChangedEvent</c> is published
         /// after a SUCCESSFUL write, and a refusal event would be a new event type consumed by one
-        /// host while this constant is consumed by three.</para>
+        /// host while this one is consumed by two.</para>
         ///
         /// <para>⚠️ <b>IT MUST NOT READ LIKE M3-16's SENTENCE.</b> OD-O gives one vent a dead
         /// controller board, and its refusal (<i>CONTROLLER FAULT — BOARD UNRESPONSIVE</i>) comes
@@ -160,11 +164,182 @@ namespace Perilune.Sim
         /// that one of the TARGET. A player who cannot tell them apart is sent to repair the wrong
         /// machine, on the wrong deck. <b>One vocabulary, two facts.</b></para>
         ///
-        /// <para>A <c>const string</c> and not a composed one: it carries no number, so it needs no
-        /// formatter and reaches a tick path without allocating.</para>
+        /// <para>⭐ <b>THE LEAD IS STILL A <c>const</c>, AND IT IS THE HALF THAT NEVER VARIES.</b> The
+        /// SHIP fact — <i>no terminal aboard is in service</i> — is the same on every ship, so it is
+        /// a literal; the NEXT STEP is not, so it is composed by <see cref="OfflineRefusal"/> below.
+        /// This constant is also the family's LEAD for
+        /// <c>ThawGateTests.TheConsoleSentences_ArePairwiseDistinct</c>: pairwise distinctness is a
+        /// property of the first four words, and those four words live HERE.</para>
         /// </summary>
-        public const string OfflineRefusal =
-            "MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS";
+        public const string OfflineLead = "MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE";
+
+        /// <summary>
+        /// ⭐⭐ <b>WHAT THE PLAYER WAS ASKING FOR WHEN THE SHIP SAID NO — so the refusal can answer
+        /// THAT NOUN and not a different one.</b>
+        ///
+        /// <para>⛔ <b>THE DEFECT THIS EXISTS TO CLOSE, measured live 2026-08-03.</b> The sentence
+        /// used to end <c>…REPAIR ONE TO REACH THE DOORS</c> <b>unconditionally</b>. A player who
+        /// typed <c>thaw</c> was told <i>TYPE PODS</i>, typed <c>pods</c>, and was answered with a
+        /// clause about DOORS — the wrong noun, at the exact moment they were doing the right thing.
+        /// The owner's report was <i>"there is still no way to defreeze others"</i>. One vocabulary,
+        /// but the tail must answer the ASK.</para>
+        ///
+        /// <para><b>THREE VALUES AND NOT ONE PER OP, on purpose.</b> The console has eight ops and
+        /// three answers: the ones that are about ACTUATION (<see cref="Doors"/>, today only the
+        /// Room Zoom's operate handler), the ones that are about the CRYO BAY (<see cref="Pods"/> —
+        /// <c>pods</c> and <c>thaw</c>), and everything else, which is genuinely just <i>the computer
+        /// is off</i> (<see cref="Ship"/>). Splitting further would mean parsing the typed line to
+        /// guess what <c>exec</c> was about, which is a second grammar for no gain.</para>
+        /// </summary>
+        public enum Ask : byte
+        {
+            /// <summary>Reads and writes about the ship at large — <c>sys</c>, <c>exec</c>,
+            /// <c>audit</c>, <c>open</c>/<c>set</c> (programs), <c>commission</c>.</summary>
+            Ship = 0,
+            /// <summary>Remote actuation — the doors and vents OD-N put behind the server.
+            ///
+            /// <para>⚠️ <b>REACHABLE FROM EXACTLY ONE HANDLER, AND NOTHING SENDS TO IT TODAY.</b>
+            /// <c>GameSession.HandleOperate</c> is the only caller, and M3-15 deleted the Room Zoom's
+            /// OPERATE affordance — no shipping client emits <c>Cmd.operate</c> any more
+            /// (<c>client/src/wire/session.js:96</c>). So this arm's words are currently seen only by
+            /// <c>MossGateTests.TheOperateReplyNamesTheOfflineServerInsteadOfClaimingSuccess</c>,
+            /// which drives the wire command directly. It is kept rather than folded into
+            /// <see cref="Ship"/> because the handler survives until M4-8 and a handler that answers
+            /// the wrong noun is the defect this enum exists to close — but a reader must not read
+            /// "the DOORS tail ships" off this member. It does not.</para></summary>
+            Doors = 1,
+            /// <summary>The cryo bay — <c>pods</c> and <c>thaw</c>.</summary>
+            Pods = 2,
+        }
+
+        /// <summary>The tail clause for one <see cref="Ask"/>. Its own function so the mapping is one
+        /// table a test can walk, rather than three literals scattered through a composer.</summary>
+        private static string AskWords(Ask ask)
+        {
+            switch (ask)
+            {
+                case Ask.Doors: return "TO REACH THE DOORS";
+                case Ask.Pods: return "TO REACH THE PODS";
+                default: return "TO BRING MOSS ONLINE";
+            }
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>WHICH TERMINAL THE SHIP WANTS SERVICED — the noun the offline sentence was missing.</b>
+        /// Returns the <see cref="Device"/> a repair would bring into service, or <c>null</c> when the
+        /// ship carries no <c>Terminal</c> at all.
+        ///
+        /// <para><b>THE RULE, AND EVERY TERM OF IT IS A FACT ABOUT WHAT A REPAIR CAN FIX.</b>
+        /// <see cref="IsLiveTerminal"/> has two terms — <c>Powered</c> and <c>Condition</c> — and a
+        /// REPAIR moves exactly one of them. So:</para>
+        /// <list type="number">
+        ///   <item><b>Powered first.</b> A powered terminal below <c>maintain</c> is one service away
+        ///   from being a server. An unpowered one is not: telling the player to REPAIR it would send
+        ///   them to fix a machine whose fault is the grid. Preferring powered is the difference
+        ///   between a next step and a wrong step.</item>
+        ///   <item><b>Then the highest <c>Condition</c></b> — the one closest to the threshold, i.e.
+        ///   the cheapest service. (<c>wear.def</c> tiers a repair by the consumable spent, so
+        ///   "closest" is also "most likely to clear the bar in one go".)</item>
+        ///   <item><b>Then the lowest <c>Device.Id</c></b> — the tie-break
+        ///   <see cref="LiveServer"/> and <see cref="ThawGate.CommissionedConsoleName"/> already use.
+        ///   Inherited, not re-decided.</item>
+        /// </list>
+        ///
+        /// <para>⛔ <b><c>Powered</c> ORDERS THE CANDIDATES; IT DOES NOT FILTER THEM — and on a ship
+        /// where EVERY terminal is dark that comparison is vacuous, so this names a machine whose
+        /// fault is the grid.</b> FILED, not fixed (<c>MECHANICS.md</c> §13.47.8): unreachable on
+        /// shipped content (the wreck's <c>term_moss</c> is powered at boot; the three fixture ships
+        /// all carry a powered <c>term_hydro</c>), and the honest fix is a SECOND sentence — a new
+        /// member of the pinned console family, which is a package. A FILTER would be worse: it
+        /// returns <c>null</c>, drops the ship back to <i>REPAIR ONE</i>, and deletes the only noun
+        /// the player has.</para>
+        ///
+        /// <para>⛔ <b>NO NAME LITERAL, for the reason the type header gives.</b> A
+        /// <c>Name == "term_moss"</c> here would make the sentence lie on every other ship, which is
+        /// the authored-name coupling <c>Simulation.cs:553-555</c> warns about. Pinned as a
+        /// derivation, not as the wreck's answer.</para>
+        ///
+        /// <para>⚠️ <b>ON THE WRECK IT IS THE <c>Condition</c> TERM THAT DECIDES, AND THAT IS
+        /// MEASURED.</b> <see cref="Device.Powered"/> is <c>true</c> by FIELD DEFAULT
+        /// (<c>Device.cs:107</c>) and only <c>PowerSystem</c> ever clears it — so at plan-build time,
+        /// before the first tick, <c>term_nav</c> reads <c>Powered = true</c> despite being off the
+        /// flood network, and the two terminals are separated by 0.14 vs 0.03 alone. Once the sim has
+        /// ticked, <c>term_nav</c> goes dark and BOTH terms agree. Either way the answer is
+        /// <c>term_moss</c> — which is exactly why the <c>Powered</c> term is driven on a FIXTURE
+        /// (<c>MossGateTests.ThePOWEREDTerminalIsNamed_EvenWhenTheDarkOneIsHealthier</c>, a flipped
+        /// 2×2) and not on this ship: on this ship it is vacuous at tick 0.</para>
+        ///
+        /// <para>PURE: reads live sim state, mutates nothing, draws no RNG, allocates nothing. It is
+        /// never called from a tick path — the refusal is composed on a host thread.</para>
+        /// </summary>
+        public static Device RepairCandidate(Simulation sim)
+        {
+            if (sim == null) return null;
+            Device best = null;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.Terminal) continue;
+                if (best == null) { best = d; continue; }
+                if (d.Powered != best.Powered) { if (d.Powered) best = d; continue; }
+                if (d.Condition != best.Condition) { if (d.Condition > best.Condition) best = d; continue; }
+                if (d.Id < best.Id) best = d;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// ⛔ <b>THE REFUSAL, IN WORDS, AND IT NOW NAMES THE NEXT STEP.</b> The old sentence named
+        /// neither WHICH terminal nor WHERE — <i>"REPAIR ONE"</i>, on a ship with two of them, one of
+        /// which is on the dead deck behind a pressure frontier. The precedent was two hundred lines
+        /// below in this same file: <see cref="NotCommissionedRefusal"/> has named its device since
+        /// M3-4.
+        ///
+        /// <para><b>THE SHAPE:</b> <c>&lt;lead&gt;; REPAIR &lt;NAME&gt; ON DECK &lt;z&gt; AT
+        /// &lt;x&gt;,&lt;y&gt; &lt;tail&gt;</c>. Every noun is derived —
+        /// <see cref="RepairCandidate"/> for the name, <see cref="Device.Pos"/> for the place,
+        /// <paramref name="ask"/> for the tail. Nothing here is authored, so nothing here can go
+        /// stale when content moves a terminal.</para>
+        ///
+        /// <para>⭐ <b>WHY <c>DECK n AT x,y</c> AND NOT A ROOM WORD.</b> Measured, not preferred:
+        /// the player-facing ROOM NAME does not exist at this seam. <c>RoomAnchor</c> carries an
+        /// internal id (<c>cryobay</c>) and a <see cref="RoomType"/>; the rule that turns those into
+        /// a name a player reads (CRYO BAY / ROOM B0) is <c>client/src/ui/decks-model.js</c>'s
+        /// <c>displayName</c>, and <see cref="RoomType"/>'s own remarks record that printing the
+        /// anchor id at a player is a DEFECT. Mirroring that rule into <c>Sim.Core</c> would be a
+        /// FOURTH spelling of a vocabulary the repo already pins in three places — M2-18's
+        /// <i>"one player confusion, two surfaces, and they must agree"</i> pointing the wrong way.
+        /// <c>DECK n · x,y</c> is instead the MOSS pane's OWN location vocabulary
+        /// (<c>client/src/ui/moss-model.js:1166</c>, the <c>sys</c> detail's <c>place</c> column) and
+        /// the Overview's readback (<c>overview-model.js:179</c>), it needs no lookup at all, and it
+        /// is exact.</para>
+        ///
+        /// <para>⚠️ <b>THE DEGENERATE ARM KEEPS THE OLD WORDS ON PURPOSE.</b> A ship with no
+        /// <c>Terminal</c> aboard has nothing to name, so the sentence falls back to
+        /// <i>REPAIR ONE</i> rather than inventing a device. Naming nothing is honest; naming
+        /// <c>THE TERMINAL</c> on a ship that has none is not.</para>
+        ///
+        /// <para>⚠️ <b>ALLOCATES, AND THAT IS NEWLY TRUE OF THIS SENTENCE.</b> It was a <c>const</c>
+        /// on the argument that it could reach a tick path. It cannot and never could:
+        /// <see cref="SetDoorStateCommand.Execute"/> refuses with a bare <c>return;</c> and renders
+        /// no string (its own remarks say so — <i>refuse by predicate, report by predicate</i>). Every
+        /// caller is a host surface. <see cref="OfflineLead"/> stays a <c>const</c> for the family
+        /// test, which needs a literal.</para>
+        /// </summary>
+        public static string OfflineRefusal(Simulation sim, Ask ask)
+        {
+            string tail = AskWords(ask);
+            var d = RepairCandidate(sim);
+            if (d == null || string.IsNullOrEmpty(d.Name))
+                return OfflineLead + "; REPAIR ONE " + tail;
+
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            return OfflineLead + "; REPAIR " + d.Name.ToUpperInvariant()
+                 + " ON DECK " + d.Pos.Z.ToString(ic)
+                 + " AT " + d.Pos.X.ToString(ic) + "," + d.Pos.Y.ToString(ic)
+                 + " " + tail;
+        }
 
         /// <summary>
         /// ⭐ <b>THE COMMISSIONED TIER FOR A PROGRAM — AND IT IS <see cref="SetScriptCommand"/>'s OWN
@@ -345,10 +520,17 @@ namespace Perilune.Sim
         /// Naming the ACT (<c>COMMISSIONING NEEDS …</c>) is what keeps two different asks about the
         /// same item from arriving as one message.</para>
         ///
+        /// <para>⭐ <b>IT TAKES THE <see cref="Simulation"/> NOW, AND BOTH REFUSAL ARMS NEED IT.</b>
+        /// <see cref="CommissionRefusal.NoServer"/> renders <see cref="OfflineRefusal"/>, which
+        /// resolves a terminal off the ship; <see cref="CommissionRefusal.NoModule"/> appends the
+        /// SOURCE clause, which reads the recipe table off <see cref="SimDefs"/>. The verdict stays
+        /// <b>numbers, never prose</b> (<see cref="ThawVerdict"/>'s rule) — the sentence is still
+        /// composed exactly once, here.</para>
+        ///
         /// <para>ALLOCATES — host and test only, never a tick path (the <see cref="ThawGate.Describe"/>
-        /// rule, which is why <see cref="OfflineRefusal"/> stays a <c>const</c>).</para>
+        /// rule, which is why <see cref="OfflineLead"/> stays a <c>const</c>).</para>
         /// </summary>
-        public static string DescribeCommission(in CommissionVerdict v)
+        public static string DescribeCommission(Simulation sim, in CommissionVerdict v)
         {
             var ic = System.Globalization.CultureInfo.InvariantCulture;
             string who = string.IsNullOrEmpty(v.TerminalName)
@@ -362,13 +544,89 @@ namespace Perilune.Sim
                 case CommissionRefusal.AlreadyCommissioned:
                     return "ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON " + who;
                 case CommissionRefusal.NoModule:
+                    // ⭐ THE CLAUSE THAT JOINS THE TWO SCREENS. Before it, this sentence stated a
+                    // shortfall and stopped: "SHIP HAS 0" with no hint that the answer is one screen
+                    // away in MOSS's own FABRICATION row. See `SourceClause`.
                     return "COMMISSIONING NEEDS " + v.Cost.ToString(ic) + " " + item
-                         + " — SHIP HAS " + v.UnitsAboard.ToString(ic);
+                         + " — SHIP HAS " + v.UnitsAboard.ToString(ic)
+                         + SourceClause(sim, CommissionDeviceCommand.Currency);
                 case CommissionRefusal.NoServer:
                 default:
                     // The SHIP's own sentence, not a second one. The one thing a refusal may never
                     // be is silent, so the default arm answers rather than returning "".
-                    return OfflineRefusal;
+                    // Ask.Ship: the player typed `commission`, and what a repair buys them here is
+                    // the computer itself — not a door and not the bay.
+                    return OfflineRefusal(sim, Ask.Ship);
+            }
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>WHERE THE THING THE SHIP HASN'T GOT COMES FROM — derived from the recipe table, not
+        /// written down.</b> Returns <c>"; A MACHINE SHOP MAKES THEM FROM 2 PARTS"</c> on the shipped
+        /// defs, or <c>""</c> when nothing aboard's recipe produces <paramref name="item"/>.
+        ///
+        /// <para>⛔ <b>THE DEFECT, measured live 2026-08-03.</b>
+        /// <c>COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0</c> is a complete statement of a
+        /// shortfall and a complete non-answer to the only question it raises. The fact is ONE SCREEN
+        /// AWAY — MOSS's own <c>sys</c> lists a FABRICATION system and the machine shop in it — and a
+        /// player who does not already know the crafting chain has no route from the refusal to the
+        /// screen. One appended clause joins them.</para>
+        ///
+        /// <para><b>DERIVED, AND THE DERIVATION IS THE POINT.</b> <c>SimDefs.Recipes</c> is indexed by
+        /// <c>(int)DeviceKind</c> (<c>SimDefs.cs:997</c>), so the maker of an item is a SEARCH over
+        /// that array, not a literal: re-point <c>ControllerModule</c> at a different station in
+        /// <c>content/core/SimDefs/recipes.def</c> and this clause names the new one. That is what
+        /// keeps it from becoming the <c>BLOCKED_ORDER_NAMES</c> defect — a hand-maintained mirror
+        /// that was right when it was written and silently wrong four packages later.</para>
+        ///
+        /// <para><b>FIRST MATCH WINS, in <c>DeviceKind</c> order.</b> The shipped table has exactly one
+        /// producer per item and there is no second-source concept in the sim; if content ever authors
+        /// two, this names the lower-<c>DeviceKind</c> one — the same inherited tie-break shape as
+        /// <see cref="LiveServer"/>, and stated so a later reader does not read determinism into an
+        /// accident.</para>
+        ///
+        /// <para>⚠️ <b>NO PLURALISATION AND NO OUTPUT COUNT — <c>MAKES THEM</c>.</b>
+        /// <see cref="ThawGate.ItemWords"/>'s rule is that this game does not pluralise, and a clause
+        /// carrying <c>OutputCount</c> would have to ("MAKES 1 CONTROLLER MODULE"). The input count IS
+        /// carried, because a player pricing the detour needs it and it is the number the recipe row
+        /// actually states.</para>
+        /// </summary>
+        private static string SourceClause(Simulation sim, ItemKind item)
+        {
+            var defs = sim?.Defs;
+            var recipes = defs?.Recipes;
+            if (recipes == null) return "";
+            for (int i = 0; i < recipes.Length; i++)
+            {
+                var r = recipes[i];
+                if (!r.Defined || r.Output != item) continue;
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                return "; A " + MachineWords((DeviceKind)i) + " MAKES THEM FROM "
+                     + r.InputCount.ToString(ic) + " " + ThawGate.ItemWords(r.Input);
+            }
+            return "";
+        }
+
+        /// <summary>
+        /// A workstation's <see cref="DeviceKind"/> in the words a refusal sentence uses.
+        /// <see cref="ThawGate.ItemWords"/>'s shape one enum over — an explicit arm per member the
+        /// shipped recipe table can reach, and a total fallback so a content-authored station still
+        /// gets a word rather than an empty one.
+        ///
+        /// <para>⚠️ <b>IT HAS NO CLIENT MIRROR AND MUST NOT GROW ONE.</b> <c>ItemWords</c> is pinned
+        /// against <c>ITEM_WORDS</c> in <c>client/src/wire/messages.js</c> because the wire carries an
+        /// <c>ItemKind</c> BYTE and the client spells it. Nothing on the wire carries a
+        /// <see cref="DeviceKind"/> that needs spelling in prose — this text crosses as a finished
+        /// sentence — so there is exactly one spelling and no seam to pin.</para>
+        /// </summary>
+        private static string MachineWords(DeviceKind kind)
+        {
+            switch (kind)
+            {
+                case DeviceKind.MachineShop: return "MACHINE SHOP";
+                case DeviceKind.SalvageRecycler: return "SALVAGE RECYCLER";
+                case DeviceKind.Fabricator: return "FABRICATOR";
+                default: return kind.ToString().ToUpperInvariant();
             }
         }
     }

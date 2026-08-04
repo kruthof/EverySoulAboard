@@ -4541,11 +4541,11 @@ Two tiers, two predicates, two files, named so the split reads in the code.
 
 | `HandleMoss` op | tier | predicate | the refusal |
 |---|---|---|---|
-| `sys` (`GameSession.cs:452`) · `audit` (`:506`) · `exec` (`:465`) | **REPAIRED** | `MossGate.IsServerLive` | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS` |
+| `sys` (`GameSession.cs:452`) · `audit` (`:506`) · `exec` (`:465`) | **REPAIRED** | `MossGate.IsServerLive` | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO BRING MOSS ONLINE` (`Ask.Ship`; the name and the place are DERIVED — §13.47) |
 | `exec` → `open`/`close`/`lock`/`unlock`, `set <dev>.rate`, bare `<dev>.<prop>` reads | **REPAIRED** | (inside `exec`) | same |
 | `open` (program source, `:472`) · `set` (program install, `:495`) | **COMMISSIONED** | `MossGate.CanInstallProgram` (`MossGate.cs:146`) | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO TERM_MOSS` |
-| `thaw` (M3-3, `:571`) · `pods` (M3-4, `:530`) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **and since M3-4 the SHIP gate is asked FIRST on both** | ship: the OFFLINE sentence · target: `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL` (`pods` answers `MossGate.NotCommissionedRefusal` instead, because it refuses before it names a capsule) |
-| ⭐ `commission` (M3-17, `GameSession.cs:663`) | **REPAIRED** — *the act that crosses the split, so it can only sit on this side of it* | `MossGate.EvaluateCommission` (`MossGate.cs:290`), whose term 1 IS the ship gate | ship: the OFFLINE sentence · target: `ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON TERM_MOSS` · price: `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0`. Accepted: `COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN` (**stream 1**, via `Reply` — §13.41) |
+| `thaw` (M3-3, `:571`) · `pods` (M3-4, `:530`) | **COMMISSIONED** | `ThawGate.IsCommissionedConsole` — **and since M3-4 the SHIP gate is asked FIRST on both** | ship: the OFFLINE sentence, tailed `…TO REACH THE PODS` (`Ask.Pods`, §13.47) · target: `NO COMMISSIONED CONSOLE — FIT A CONTROLLER MODULE TO A WORKING TERMINAL` (`pods` answers `MossGate.NotCommissionedRefusal` instead, because it refuses before it names a capsule) |
+| ⭐ `commission` (M3-17, `GameSession.cs:663`) | **REPAIRED** — *the act that crosses the split, so it can only sit on this side of it* | `MossGate.EvaluateCommission` (`MossGate.cs:290`), whose term 1 IS the ship gate | ship: the OFFLINE sentence · target: `ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON TERM_MOSS` · price: `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0; A MACHINE SHOP MAKES THEM FROM 2 PARTS` (the source clause is derived from `recipes.def` — §13.47). Accepted: `COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN` (**stream 1**, via `Reply` — §13.41) |
 
 ⚠️ **THE COMMISSIONED TIER IS TWO DIFFERENT PREDICATES AND THAT IS DELIBERATE.**
 `ThawGate.IsCommissionedConsole` additionally requires the named terminal to EXIST, be `Powered` and
@@ -4764,7 +4764,7 @@ The bay is COMMISSION-gated (M3-3 term 2, unchanged). The op asks **the ship gat
 
 | ship | console | what the player gets |
 |---|---|---|
-| no live server | — | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS` |
+| no live server | — | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE PODS` (§13.47 — the tail answers the ASK, and this ask is the bay) |
 | live | not commissioned | `MOSS IS NOT COMMISSIONED — FIT A CONTROLLER MODULE TO THE TERMINAL` |
 | live | commissioned | the bay, headed `term_moss · COMMISSIONED` |
 
@@ -6222,8 +6222,8 @@ from being read as "accepted blind".
 ```
 COMMISSION ACCEPTED — TERM_MOSS — 1 CONTROLLER MODULE FITTED; PROGRAMS AND THE POD BAY ARE OPEN
 ALREADY COMMISSIONED — PROGRAMS AND THE POD BAY ARE OPEN ON TERM_MOSS
-COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0
-MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS   ← not a new one
+COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0; A MACHINE SHOP MAKES THEM FROM 2 PARTS   ← clause added 08-04, §13.47
+MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO BRING MOSS ONLINE   ← not a new one; re-worded 08-04, §13.47
 ```
 
 The two new refusals join M3-4's pinned family in
@@ -6253,11 +6253,14 @@ keystrokes, the sim's truth read off an **independent** socket, never the page).
 
 1. `HELP` lists `COMMISSION` — and so does the LEDGER footer, beside `PODS`.
 2. On the boot ship the console is DARK and `commission` answers
-   `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS`; the typed line
+   `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS` (⚠️ the wording
+   OF THAT RUN — re-worded 2026-08-04, §13.47; the tool's own check is the regex `/MOSS IS OFFLINE/`
+   and still passes); the typed line
    is echoed and the client never answers `UNKNOWN COMMAND`.
 3. **A REAL repair** — REPAIR turned on in the WORK tab, the crew servicing `term_moss` from
    `cond 36/255` to **229/255** (the `maintain` floor is 51), watched on the `devices` channel.
-4. ⭐ The same line now reads `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` and **no longer
+4. ⭐ The same line now reads `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` (since 08-04:
+   `…; A MACHINE SHOP MAKES THEM FROM 2 PARTS`) and **no longer
    says OFFLINE** — the tier is right, at the real `commission_cost = 1`.
 5. `prog term_moss` on the same live console still refuses in M3-15's words, so the split stands.
 
@@ -6293,9 +6296,10 @@ and `CommissionDeviceCommand` was already in the sim before this package.
 - **No `commission <device>` argument.** The verb commissions the console the player is speaking
   through. Commissioning arbitrary devices is E0-6's general sink and has no surface; opening one
   here would be a second feature.
-- **The ship-gate sentence still ends `…TO REACH THE DOORS`**, which is about actuation rather than
+- ~~**The ship-gate sentence still ends `…TO REACH THE DOORS`**, which is about actuation rather than
   about programs. It is the one constant three surfaces render and it was not re-worded for one new
-  caller. FILED.
+  caller. FILED.~~ ✅ **CLOSED 2026-08-04 — §13.47.** The tail now answers the ASK (`MossGate.Ask`),
+  and the sentence names the terminal and its tile.
 - **No TUI sender.** `hosts/tui` has no MOSS op surface at all; nothing was narrowed.
 
 ### 13.42 ⭐⭐ The thaw ladder decays in DAYS, and the ship says so before the price rises (D2, 2026-08-02)
@@ -7054,3 +7058,210 @@ would pin a defect this package cannot fix.
 - **No alerts-bar row and no toast.** RimWorld's split (§11.1) puts a standing condition on the alert
   stack and a fired event in the letter channel; this ring is the letter channel. M5-2 owns the other
   half.
+
+---
+
+### 13.47 ⭐⭐ When MOSS refuses, the refusal names the next step (gate sentences, 2026-08-04)
+
+*(Numbered 13.47 and not 13.46: this lane was written against §13.46 and merged SECOND — the
+brownout-cadence lane took that number the same day. Every internal and inbound cross-reference was
+swept with it; the census is in the merge commit.)*
+
+**THE PLAYER SENTENCE.** *When MOSS refuses me, the refusal names my next step — the offline line
+names the console terminal and where it sits; the commission line says the machine shop makes the
+module.*
+
+⛔ **THE OWNER'S REPORT, LIVE PLAY 2026-08-03: *"there is still no way to defreeze others."*** The
+thaw arc works end to end (driven the same night, 119/119 arc tests). What failed was the TEACHING,
+and it failed at two sentences — both of them arriving at the exact moment the player was doing the
+right thing.
+
+#### 13.47.1 The two defects, as measured
+
+| # | seam | the sentence, before | what it does not say |
+|---|---|---|---|
+| 1 | `MossGate.cs:166-167` | `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR ONE TO REACH THE DOORS` | WHICH terminal (the wreck has two, one of them unpowered on the dead deck behind the pressure frontier), WHERE it is — **and its tail says DOORS to a player who just typed `pods`** |
+| 2 | `MossGate.cs:365-366` | `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` | where a `ControllerModule` comes from. The fact is ONE SCREEN AWAY — MOSS's own `sys` lists a FABRICATION system with the machine shop in it |
+
+The audit drove the loop defect 1 produces: `thaw` → *TYPE PODS* → `pods` → a clause about DOORS →
+dead end. **The precedent for the fix was two hundred lines below defect 1 in the same file**:
+`MossGate.NotCommissionedRefusal` has named its device (`FIT A CONTROLLER MODULE TO TERM_MOSS`)
+since M3-4.
+
+#### 13.47.2 The sentences, as shipped (on `--ship wreck`, driven)
+
+```
+MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO BRING MOSS ONLINE
+MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE DOORS
+MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE PODS
+COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0; A MACHINE SHOP MAKES THEM FROM 2 PARTS
+```
+
+#### 13.47.3 The seam — every noun is DERIVED, and that is the claim under test
+
+| where | what |
+|---|---|
+| `sim/Sim.Core/MossGate.cs` `OfflineLead` | the SHIP fact, still a `const` — the half that never varies, and the family's LEAD for `ThawGateTests.TheConsoleSentences_ArePairwiseDistinct` |
+| `MossGate.Ask` (`Ship` · `Doors` · `Pods`) | what the player was asking for when the ship said no. **Three values, not one per op**: actuation, the cryo bay, and everything else |
+| `MossGate.RepairCandidate(sim)` | WHICH terminal — a scan over `sim.Devices.Items`, **`Powered` first, then the highest `Condition`, then the lowest `Device.Id`** |
+| `MossGate.OfflineRefusal(sim, ask)` | the composed sentence. `<lead>; REPAIR <NAME> ON DECK <z> AT <x>,<y> <tail>` |
+| `MossGate.SourceClause(sim, item)` | the appended `; A <STATION> MAKES THEM FROM <n> <ITEM>`, found by **searching `SimDefs.Recipes` for the row whose `Output` is the item** |
+| `MossGate.DescribeCommission(sim, in v)` | now takes the sim: **both** refusal arms need it (`NoServer` resolves a terminal, `NoModule` reads the recipe table) |
+| `hosts/web/GameSession.cs` | **eight** call sites, each naming its own `Ask` (`:593` `:604` `:611` `:621` `:645` `:672` `:703` `:1601`, re-counted on the committed tree) — `pods`/`thaw` ⇒ `Pods`, `HandleOperate` ⇒ `Doors`, the other six ⇒ `Ship`. ⚠️ The `sys` arm composes ONCE into a local and renders it twice (transcript + the empty detail's derivation note), so "call sites" and "rendered refusals" are not the same number |
+
+⭐ **`RepairCandidate`'s RULE IS ABOUT WHAT A REPAIR CAN FIX, and every term of it is.**
+`IsLiveTerminal` has two terms — `Powered` and `Condition` — and a repair moves exactly one of them.
+So a POWERED terminal below `maintain` is one service away from being a server and an unpowered one
+is not: sending the player to REPAIR a machine whose fault is the grid is a wrong step, not a next
+step. Among powered candidates the highest `Condition` is the cheapest service. The `Device.Id`
+tie-break is **inherited from `LiveServer` / `ThawGate.CommissionedConsoleName`, not re-decided.**
+
+⚠️ **AND THE `Powered` TERM IS VACUOUS ON THE WRECK AT TICK 0 — SAID OUT LOUD BECAUSE IT WOULD
+OTHERWISE READ AS COVERED.** `Device.Powered` is `true` by FIELD DEFAULT (`Device.cs:107`) and only
+`PowerSystem` clears it, so at plan-build time `term_nav` reads `Powered = true` despite being off
+the flood network; the two terminals are separated by **0.14 vs 0.03 alone**. After a tick they are
+separated by both terms. Either way the answer is `term_moss`, which is precisely why the `Powered`
+term is driven on a FIXTURE and not on this ship.
+
+⛔ **NO NAME LITERAL ANYWHERE, and it is driven rather than promised.**
+`TheNamedTerminalIsDERIVED_AShipWithADifferentConsoleGetsADifferentSentence` builds a bare ship whose
+only terminal is `bridge_console` at (4,2,0) and requires the sentence to name THAT. Hard-coding
+`"term_moss"` in `RepairCandidate` reddens it and nothing else (mutation 3, run). The `Powered` term
+is driven as a **2×2**: the same two devices with the power flipped must produce the OTHER name, or
+"it preferred the powered one" is indistinguishable from "it preferred the first one" (mutation 4,
+run — dropping the `Powered` comparison reddens exactly that test).
+
+⭐ **WHY `DECK n AT x,y` AND NOT A ROOM WORD — MEASURED, NOT PREFERRED.** The player-facing ROOM NAME
+does not exist at this seam. `RoomAnchor` carries an internal id (`cryobay`) and a `RoomType`; the
+rule that turns those into words a player reads (CRYO BAY / ROOM B0) is `decks-model.js`'s
+`displayName`, and `RoomType`'s own remarks record that printing an anchor id at a player **is a
+defect**. Mirroring that rule into `Sim.Core` would be a FOURTH spelling of a vocabulary the repo
+already pins in three places. `DECK n · x,y` is instead the MOSS pane's OWN location vocabulary
+(`moss-model.js:1166`, the `sys` detail's `place` column) and the Overview's readback
+(`overview-model.js:179`); it needs no lookup and it is exact.
+
+⚠️ **THE DEGENERATE ARMS ARE HONEST RATHER THAN CLEVER, on both sentences.** A ship with no
+`Terminal` aboard keeps M3-15's original *REPAIR ONE* wording (naming `THE TERMINAL` on a ship that
+has none is a fabricated noun — this lane's own defect pointing the other way), and a defs table in
+which nothing produces the module appends **no clause at all**. Both are driven.
+
+#### 13.47.4 The source clause is pinned AGAINST THE DEF, never against its own words
+
+`recipes.def:22` is the authority — `MachineShop  Parts  2  ControllerModule  1  1800` — and
+`TheNoModuleRefusalSaysWhereAModuleCOMESFrom_AndAgreesWithTheRecipeDef` asserts the sentence field by
+field against `sim.Defs.Recipes[(int)DeviceKind.MachineShop]`. The `BLOCKED_ORDER_NAMES` precedent is
+the reason: a hand-kept mirror is right when it is written and silently wrong four packages later.
+`TheSourceClauseIsDERIVED_MovingTheRecipeMovesTheSentence` hands the composer a defs table in which
+the **Fabricator** makes the module from 7 Scrap and requires `FABRICATOR` / `7 SCRAP` and NOT
+`MACHINE SHOP` (mutation 5, run).
+
+⚠️ **NO PLURALISATION AND NO OUTPUT COUNT — `MAKES THEM`.** `ThawGate.ItemWords`' standing rule is
+that this game does not pluralise, and a clause carrying `OutputCount` would have to. The INPUT count
+is carried, because a player pricing the detour needs it.
+
+⚠️ **`MachineWords` HAS NO CLIENT MIRROR AND MUST NOT GROW ONE.** `ItemWords` is pinned against
+`ITEM_WORDS` in `client/src/wire/messages.js` because the wire carries an `ItemKind` **byte** and the
+client spells it. Nothing on the wire carries a `DeviceKind` needing prose — this text crosses as a
+finished sentence — so there is one spelling and no seam to pin.
+
+#### 13.47.5 `OfflineRefusal` stopped being a `const`, and the argument for it was never true
+
+It was a `const string` on the stated grounds that it *"reaches a tick path without allocating"*. It
+does not and never could: `SetDoorStateCommand.Execute` refuses with a bare `return;` and renders no
+string at all — *refuse by predicate, report by predicate*, its own remarks say so. **Every caller is
+a host surface.** Making it a method also makes the compiler the guard: no surface can render a
+location-less sentence any more, because there is no location-less sentence to render.
+
+⚠️ **THE OLD DOC PARAGRAPH CLAIMED THREE SURFACES AND THERE ARE TWO.** `hosts/tui/GameLoop.cs:274,310`
+asks `MossGate.IsServerLive` and then writes its own lower-case `"moss offline — repair a terminal"`.
+It is a second vocabulary for one fact. **FILED, not fixed** — the TUI is not a shipping surface.
+
+#### 13.47.6 Pins — and where the reply text actually goes
+
+**PIN-NEUTRAL, and surveyed rather than assumed.** P1 `7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52` ·
+P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`, all UNMOVED under the full
+`./ci.sh`. Three independent reasons, each checked:
+
+1. **No pinned fixture can receive one of these sentences.** Every caller of `OfflineRefusal` /
+   `DescribeCommission` is in `hosts/web/GameSession.cs` (`HandleMoss`, `HandleOperate`) or in tests
+   — swept by grep over `--include=*.cs`. `hosts/scenario`, which IS P1, never calls either; P2/P3
+   are `ShipPlan` goldens with no host at all.
+2. **The text is not hashed anywhere.** `Refuse` → `Emit(WireFormat.MossExec(...))` →
+   `Emit(string json) => _broadcast(json)` (`GameSession.cs:2325`), the websocket sink. It touches no
+   `HistorySystem` entry, no save chapter and no `StateHash` fold. The `sys` arm's copy rides
+   `WireFormat.MossSys`'s derivation NOTE, the same wire.
+3. **The new reads are pure.** `RepairCandidate` and `SourceClause` read `Device` and `SimDefs`
+   fields that are already saved and already hashed, mutate nothing, draw no RNG.
+   `MossGateTests.TheGateAddsNoHashedState` still holds `MossGate` to no instance and no mutable
+   static state — `Ask` is an enum, `OfflineLead` a literal.
+
+⛔ **NO DEF FIELD, so P4/P5 cannot move**: the recipe row the clause reads is the SHIPPED one and the
+clause is code, not a tunable (M2-1's rule-not-tunable precedent). `StateVersion` unchanged.
+
+#### 13.47.7 Witnessed in real Chrome, on the shipping `--ship wreck`
+
+`client/tools/gate-sentences-shot.mjs` (new; the `commission-shot.mjs` harness shape — CDP, trusted
+keystrokes, the sim's truth read off an **independent** socket, never the page). Run against
+`./play.sh --host-port 8420 --client-port 8421 --no-open`, **ALL CHECKS PASSED**:
+
+1. `thaw` on the boot ship answers `NO POD BAY ON THIS LINK — TYPE PODS`. Not this lane's code — it
+   is the reason the next ask is `pods` and not something the tool chose.
+2. ⭐ `pods` answers
+   `MOSS IS OFFLINE — NO SHIP TERMINAL IS IN SERVICE; REPAIR TERM_MOSS ON DECK 0 AT 1,3 TO REACH THE PODS`
+   — the name, the deck, the tile, the right noun, and **no DOORS**.
+3. A **REAL repair**: REPAIR turned on in the WORK tab, the crew servicing `term_moss` from
+   `cond 36/255` to **229/255** (the `maintain` floor is 51), watched on the `devices` channel.
+4. ⭐ `commission` on the now-live console answers
+   `COMMISSIONING NEEDS 1 CONTROLLER MODULE — SHIP HAS 0; A MACHINE SHOP MAKES THEM FROM 2 PARTS`
+   — and the FABRICATION row of the same screen is showing `MACHINESHOP_1: MACHINE FAILURE`, which
+   is the join the clause exists to make.
+
+⭐ **THE HARNESS HAS ITS OWN NON-VACUITY CONTROL, RUN.** With `OfflineRefusal` reverted to the
+pre-fix constant and the host rebuilt, step 2 reports **5 FAILED** (name · deck · tile · PODS tail ·
+not-DOORS) while step 1 stays GREEN — the right split, because step 1 is a CLIENT fact and the
+sentence is the HOST's.
+
+⚠️ **WRAPPING WAS MEASURED, NOT ASSUMED.** `.moss-cline` is `white-space:pre-wrap` with a 2ch
+hanging indent (`styles.css:796`), so the longer sentence WRAPS rather than clipping: at 1600×1000
+the offline line runs one full line plus the word `PODS`, fully visible, and the commission line
+fits on one. (The filed fault-log right-edge clip is a different element and is untouched.)
+
+#### 13.47.8 What this package deliberately does NOT do
+
+- **No room word.** See §13.47.3 — it would be a fourth mirror of `ROOM_LABEL_BY_ID`. If a later lane
+  wants CRYO BAY in these sentences, the honest package is *one* sim-side naming rule the client's
+  `displayName` then consumes, not a copy of it.
+- **No TUI re-wording.** `hosts/tui`'s own lower-case status line is filed above.
+- **No clause on `ThawGate.Describe`'s rung sentence**, which composes
+  `NEEDS 1 CONTROLLER MODULE — SHIP HAS 0` for a thaw whose rung is a module — the same item, a
+  different ask. It would benefit from the same clause. FILED, not chased: it is a different sentence
+  family with its own pins, and naming the ACT is what keeps the two apart today.
+- **No `pods`-specific tail for `exec`.** Deciding whether a typed `exec` line was about a door would
+  mean parsing the line — a second grammar for no gain. `exec` gets the generic tail.
+
+⛔ **FILED — AN ALL-UNPOWERED SHIP GETS A WRONG STEP, AND IT IS NOT REACHABLE ON SHIPPED CONTENT.**
+`RepairCandidate`'s first term is `Powered`, which orders the candidates but does not FILTER them: on
+a ship where EVERY terminal is unpowered the comparison is vacuous, the rule falls through to the
+condition tie-break, and the sentence says `REPAIR <name>` about a machine whose fault is the grid.
+Not fixed here, for two reasons stated rather than assumed: (i) it is unreachable on shipped content
+— **measured on all four authored ships at tick 40**: the wreck carries `term_moss` powered at 0.140
+(and `term_nav`, which PowerSystem darkens by tick 40, at 0.030), and `perilune` / `slice` / `grid`
+each carry exactly one `term_hydro`, powered at 1.000, on which the gate is open and this sentence
+never composes at all; (ii) the honest fix is a SECOND sentence (*"…AND IT HAS NO POWER"*), which is a
+new member of the pinned console family and a package of its own. A filter instead of an ordering
+would be worse: it would return `null` and drop the ship back to `REPAIR ONE`, deleting the only
+noun the player has.
+
+⚠️ **AND `Ask.Doors` IS CURRENTLY UNREACHABLE IN THE SHIPPING CLIENT — SAID OUT LOUD.**
+`GameSession.HandleOperate` is its only caller, and M3-15 deleted the Room Zoom's OPERATE
+affordance: nothing emits `Cmd.operate` any more (`client/src/wire/session.js:96`). The arm is kept
+because that handler survives until M4-8 and answering the wrong noun there would be this lane's own
+defect — but nobody should read "the DOORS tail ships" off the enum.
+
+⛔ **FILED, NOT FIXED — THE DOORS-DIRECTORY GAP (stall #2, another lane's subject).** MOSS has a
+`PODS` verb that lists the cryo bay, and **no verb at all that lists the ship's doors**. `HELP` offers
+`open|close|lock|unlock <device>`, which requires the player to already know a device NAME
+(`door_d0_s1`) — and since OD-N the doors are MOSS-only, so a player who cannot name one cannot open
+one. `parseCommand`'s vocabulary (`moss-model.js:815-816`) is `help · status · log · prog · clear ·
+exit · pods · thaw · commission`; there is no `doors`. The offline sentence now sends the player to
+the right terminal; **what happens after they repair it is the gap this lane does not close.**
