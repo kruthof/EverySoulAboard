@@ -25,12 +25,40 @@
 //   • its fiction was the pre-wreck one ("a drifting ship, a skeleton crew"). `hosts/web` boots
 //     `--ship wreck` (`hosts/web/Program.cs:61`).
 //
-// ⚠️ WHAT THE CARD DELIBERATELY DOES *NOT* PROMISE. The premise ends "…and the rest thaw one at a
-// time through MOSS". THE PODS STILL DO NOTHING THE PLAYER CAN ASK FOR — M3-2 added `CryoSystem`
-// (a pod cycles, opens and produces a person), but there is still no thaw command and no MOSS thaw
-// op (both M3-3), so nothing in play starts a cycle (`sim/Sim.Gen/AuthoredShips.cs`, the
-// PeriluneWreck header). So the card states the seven sleepers as a FACT and never as a verb.
-// When M3-3/M3-4 land, that is the sentence to add.
+// ✅ DISCHARGED 2026-08-04 — THE THAW SENTENCE IS ON THE CARD. This note used to read: *"⚠️ WHAT
+// THE CARD DELIBERATELY DOES NOT PROMISE. The premise ends '…and the rest thaw one at a time
+// through MOSS'. THE PODS STILL DO NOTHING THE PLAYER CAN ASK FOR … So the card states the seven
+// sleepers as a FACT and never as a verb. When M3-3/M3-4 land, that is the sentence to add."*
+// M3-3 (the `thaw` command) and M3-4 (`pods`/`thaw` on the console) landed 2026-08-01 and M3-17's
+// `commission` on 08-02 — AND THE SENTENCE WAS NEVER ADDED. The owner found the hole in live play
+// on 08-03: *"there is still no way to defreeze others."* The arc itself works — a driven audit the
+// same night walked repair → commission → pods → thaw on the shipped game — so what was missing was
+// never the verb. It was the TEACHING, on the one surface whose whole job is teaching.
+// So: the LEDE now says the verb and names the place — "Seven sleep on, and MOSS thaws them one at
+// a time" — and the controls list carries a MOSS row that hands over the DISCOVERY verb rather than
+// the chain: `type HELP`, whose own list is COMMISSION / PODS / THAW (`ui/moss-model.js`
+// HELP_LINES, joined in `onboarding.test.js`). That division is deliberate and is this card's whole
+// theory of itself: THE CARD TEACHES DOORS, THE THING BEHIND THE DOOR TEACHES ITS OWN VERBS. A card
+// that spelled repair → commission → pods → thaw would be four claims about four other people's
+// code, ageing at four different rates — the `B`-row shape, four times over.
+// ⛔ FOUND DEFECT, REPORTED NOT FIXED — "MOSS-HELP-BELOW-THE-FOLD" (outside this package: it is
+// `ui/moss-screen.js` + `styles.css`, and this card owns neither). The row above sends the player to
+// `HELP`, and `HELP` answers with TWELVE lines into `.moss-console`, which is
+// `max-height:22vh;overflow-y:auto` and **does not scroll to its own newest output**. DRIVEN on the
+// shipping game at 1280×800 (`onbthw-mossrow`, 2026-08-04): `clientHeight 157 / scrollHeight 305 /
+// scrollTop 0`, **7 of 14 lines visible**, and the three the arc needs — COMMISSION, PODS, THAW —
+// are all in the hidden half. The card's promise still holds (the screen's own permanent footer
+// reads `TYPE: LOG, PROG, PODS, COMMISSION, HELP`, so two of the three are on screen unconditionally
+// and `pods` reaches the third), which is why this is FILED rather than treated as a blocker — but
+// it is the palette-overflow shape, on the surface the thaw arc runs through, four days before a
+// playtest. It is also the reason this row says `type HELP` rather than spelling the chain: when
+// that pane is fixed, the card needs no edit.
+//
+// ⚠️ AND THE THIRD ADDITION IS THE ONE A PLAYER CANNOT DISCOVER: under OD-H every work type boots
+// OFF, so the CRAFT the commissioning module needs (`SimDefs.cs:1007` — the MachineShop recipe that
+// makes a `ControllerModule`) never runs until the player switches it on, and the WORK tab is the
+// only surface anywhere that can (`ui/overview-model.js:353`). The ◈ ORDER block says so. It is a
+// FACT, not an apology: work is opt-in by design.
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // ⚠️ THE SEND-BACK: THE PASS THAT DELETED FALSE SENTENCES SHIPPED TWO NEW ONES. Recorded in full,
@@ -125,6 +153,32 @@
 // key the ship teaches in situ — see the note at its former place), and the card measures 653px
 // again at all three viewports. **The rule is a ledger, not a warning: adding a ninth row means
 // removing one, and the row you remove has to be the one the game already teaches elsewhere.**
+//
+// ⭐ THE THAW PASS (2026-08-04) PAID THAT PRICE IN WORDS RATHER THAN IN A ROW, and the arithmetic is
+// recorded because it is the first time the ledger was settled that way. The MOSS row is the EIGHTH
+// row, and the two key grids are 2-column, so it takes group 1 from four rows to five — from two
+// grid rows to THREE. MEASURED at 1280×800 (`.onb-card` caps at `92vh` = 655px there; innerHeight is
+// 713px in a 1280×800 headless window, not 800):
+//     a third grid row in group 1        +29px     (`.onb-kgrid` 51 → 80px: 22px row + 7px gap)
+//     the LEDE, 250 chars → 187          −21.6px   (`.onb-lede` 86 → 65px; four rendered line boxes
+//                                                   → three, at 13.5px × 1.6)
+//     BOTH verb bodies to three lines    −17.25px  (`.onb-verbs` 120 → 103px, at 11.5px × 1.5; the
+//                                                   block is `max(ORDER, BUILD)`, so ONE of them
+//                                                   shrinking buys NOTHING — which is why the BUILD
+//                                                   copy moved in a package that is not about BUILD)
+//     ⇒ content 653px → 643px in a 645px card. ⚠️ THE CARD IS 645px AND THE CAP IS 655px — they are
+//       different numbers and an earlier draft of this table ran them together. `max-height:92vh`
+//       is the CEILING (655px at innerHeight 713); the card is `height:auto` and sits 10px under it,
+//       so the 2px that used to look like the whole budget was the card's own border, not headroom.
+//     ⚠️ THE THREE DELTAS ARE FRACTIONAL AND THE ROUNDED ONES DO NOT SUM — read them as line boxes,
+//       not as pixels: 29 − 21.6 − 17.25 = −9.85 lands on 643, while the rounded element heights
+//       (+29 − 21 − 17) say 644. Every figure here is a `getBoundingClientRect` on the shipped card.
+//     BEGIN in view and no scrolling at 1600×1000 / 1440×900 / 1280×800 — 643/645 at all three.
+// ⚠️ EVERY WORD CUT IS A FACT THE GAME TEACHES IN SITU, which is the same test the `Space` and `1–7`
+// rows were removed by: the capsule census ("of twelve capsules four are cracked … one opened —
+// that person is your crew") is what the MOSS `pods` screen IS, row by row, with each capsule's own
+// condition; the TITLE ("One capsule opened.") and the EYEBROW ("ONE CREW AWAKE") already say the
+// player has exactly one person. Nothing that was only on this card was cut.
 
 const SEEN_KEY = 'perilune.introSeen.v1';
 let _seenThisSession = false; // fallback when localStorage is unavailable (private mode)
@@ -165,13 +219,29 @@ export const ORDER_VERBS = Object.freeze(['DIG', 'STOCKPILE', 'STRIP']);
 export const VERBS = Object.freeze([
   {
     head: '◈ ORDER',
-    body: 'Step into a room, take <b>DIG</b>, <b>STOCKPILE</b> or <b>STRIP</b> and drag over the ' +
-      'tiles you mean.',
+    // ⭐ THE SECOND SENTENCE IS OD-H MADE VISIBLE (2026-08-04) — and it is a FACT, not an apology.
+    // Every work type boots OFF for every crew member (owner batch 2026-07-29, OD-H: *work is
+    // opt-in*), so an order can be legal, reachable and affordable and still never start. CRAFT is
+    // named because it is the one the OPENING ARC dead-ends on: commissioning the console costs a
+    // `ControllerModule`, which is a MachineShop recipe (`sim/Sim.Core/Defs/SimDefs.cs:1007`) and
+    // therefore `WorkType.Craft` (`Entities/Citizen.cs:609`) — and `ui/overview-model.js:353` says
+    // the WORK tab is "the ONLY surface anywhere that can switch one on". A player who never finds
+    // that cell watches a correct order sit there forever.
+    // ⚠️ "Step into a room" CAME OFF to keep this block at three lines (see the header's ledger):
+    // the `Click` row two inches below says "a room — step inside it", so the card was saying it
+    // twice, and a duplicated sentence is the cheapest 17px on this surface.
+    body: 'Take <b>DIG</b>, <b>STOCKPILE</b> or <b>STRIP</b>, drag the tiles. Work types boot ' +
+      'OFF — switch <b>CRAFT</b> on in WORK.',
   },
   {
+    // ⚠️ TRIMMED BY A PACKAGE THAT IS NOT ABOUT BUILD, and that is the grid's doing rather than a
+    // second opinion about this copy: `.onb-verbs` stretches both boxes to `max(ORDER, BUILD)`, so
+    // ORDER dropping to three lines buys nothing unless BUILD does too. EVERY FACT SURVIVED — both
+    // currencies, the sweep, the single click — only ", other end" and one "spends" came off. The
+    // send-back's three corrections are all still here (see the module header).
     head: '▣ BUILD',
-    body: 'Same palette, other end. <b>WALL</b>, <b>FLOOR</b>, <b>DOOR</b> sweep a run and spend ' +
-      '<b>REGOLITH</b>. Furniture is one click, spends <b>PARTS</b>.',
+    body: 'Same palette. <b>WALL</b>, <b>FLOOR</b>, <b>DOOR</b> sweep a run and spend ' +
+      '<b>REGOLITH</b>; furniture is one click, <b>PARTS</b>.',
   },
 ]);
 
@@ -246,6 +316,20 @@ export const CONTROL_GROUPS = Object.freeze([
       // assumed a verb the player had not been given.
       { key: 'T', text: 'talk to a name in CREW WATCH', bind: [
         { file: CTL, cond: "k === 't'", call: 'talkSelected' }] },
+      // ⭐ THE MOSS ROW — the door the whole thaw arc is behind, and the card had no word for it
+      // (2026-08-04). The tab has existed since the console retirement (`OV_TABS` in
+      // `ui/overview-view.js` spells it `MOSS`, and this row uses THAT spelling, not a prettier
+      // one), but a first screen that lists WORK, Click, R/F and T and stops was telling a new
+      // player that the ship's computer is not part of the game.
+      // ⚠️ THE TEXT HANDS OVER A VERB, NOT A CHAIN. `type HELP` is the whole instruction because
+      // MOSS's own `help` is the rest of the lesson — `HELP_LINES` in `ui/moss-model.js` lists
+      // COMMISSION, PODS and THAW with a line each. DRIVEN: `help` is routed by `parseCommand` to
+      // `kind:'nav'` and `navCommand`'s `help` arm returns those lines with NO `m.linked` check, so
+      // it answers on a dead console — which is exactly the console a new player meets.
+      // ⚠️ 25 CHARACTERS, for the same reason the WORK row is 21: a wrapped cell makes BOTH cells in
+      // its grid row taller.
+      { key: 'MOSS', text: 'tab — a prompt; type HELP', bind: [
+        { file: OV, cond: 'd.ovTab != null', call: 'Hud.selectTab' }] },
     ],
   },
   {
@@ -273,17 +357,25 @@ export const TITLE = 'One capsule opened.';
  * asserted by `WreckShipTests.ExactlyThreeSpacesBootBreathable_AndTheRestIsVacuum`), and the boot
  * census prints `deck 0: 9 anchored spaces, 3 breathable`. Joined to the C# in `onboarding.test.js`.
  *
- * ⚠️ IT IS ALSO 250 CHARACTERS BECAUSE OF THE HEIGHT BUDGET, NOT BECAUSE OF TASTE. Measured in
- * Chrome at 1280×800: 251+ chars wraps to FIVE lines (108px) and 250 fits in FOUR (86px), and those
- * 22px are the difference between BEGIN being reachable and the card silently scrolling. "cryo",
- * "still" and "whole" were cut for exactly that reason — every FACT survives ("everyone awake is
- * dead or gone" was kept over "cryo" deliberately: it is why the player is alone). If you add a
- * word here, re-run `client/tools/onboarding-shot.mjs` at 1280×800 before you commit it.
+ * ⭐ AND THE VERB IS HERE NOW (2026-08-04). "Seven sleep on" was a FACT with nothing to do about it
+ * for as long as this card has existed — the module header's discharged note is the receipt. It now
+ * carries the ask and the place to ask it, in the premise's own words, and stops there: the card
+ * does not spell repair → commission → pods → thaw, because the MOSS row hands over `HELP` and
+ * `HELP` spells it. ⚠️ SEVEN IS A COUNT OF REAL ROWS, not a round number: `WreckPods`
+ * (`sim/Sim.Gen/AuthoredShips.cs:1925`) is twelve capsules, one `Open`, four `Dead` ⇒ seven asleep.
+ * Joined to that table in `onboarding.test.js`, because a census in prose goes stale silently.
+ *
+ * ⚠️ IT IS 187 CHARACTERS BECAUSE OF THE HEIGHT BUDGET, NOT BECAUSE OF TASTE — and it USED to be
+ * 250 for the same reason. Measured in Chrome at 1280×800: 251+ chars wraps to FIVE lines, 250 fits
+ * in FOUR (86px), and 187 fits in THREE (65px). That fourth line is 21.6px of the 29px the MOSS row
+ * costs (the header's ledger has the rest), so the capsule census was spent on it — the thing the
+ * MOSS `pods` screen already is, capsule by capsule. Char count is a proxy and the WRAP is the
+ * truth: 191 chars also measured FOUR lines, so if you add a word here, re-run
+ * `client/tools/onboarding-shot.mjs` at 1280×800 before you commit it.
  */
 export const LEDE =
-  'Raiders took this ship; everyone awake is dead or gone. Of twelve capsules four are cracked, ' +
-  'seven under, one opened — that person is your crew. Only the bay, spine and reactor hold air; ' +
-  'the rest is vacuum, and nobody works where they cannot breathe.';
+  'Raiders took this ship; everyone awake is dead or gone. Seven sleep on, and MOSS thaws them ' +
+  'one at a time. The bay, spine and reactor hold air; the rest is vacuum, and nobody works there.';
 
 /** The card's markup. Exported because the guards assert on the RENDERED STRING: a claim sitting in
  *  a comment cannot reach it, which is `CLAUDE.md` trap 1 removed rather than hardened against. */
