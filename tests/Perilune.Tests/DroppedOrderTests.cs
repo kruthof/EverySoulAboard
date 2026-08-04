@@ -108,30 +108,31 @@ namespace Perilune.Tests
         /// <summary>The cached <c>blocked</c> payload's tuples, off the SNAPSHOT a reconnecting
         /// client is caught up from (BlockedChannelTests' reader). Positional on purpose — the tuple
         /// IS the contract.</summary>
-        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail)> Rows(GameSession gs)
+        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail, int Cid)> Rows(GameSession gs)
         {
             gs.RenderForTest();
             string json = gs.Snapshot().FirstOrDefault(s => s.Contains("\"type\":\"blocked\""));
             Assert.IsNotNull(json, "the blocked channel must be cached for Snapshot catch-up");
-            var rows = new List<(int, int, int, int, int, int)>();
+            var rows = new List<(int, int, int, int, int, int, int)>();
             int at = json.IndexOf("[[", System.StringComparison.Ordinal);
             if (at < 0) return rows;
             foreach (var part in json.Substring(at + 1).Split('['))
             {
                 if (part.Length == 0 || !char.IsDigit(part[0])) continue;
                 var f = part.Substring(0, part.IndexOf(']')).Split(',');
-                Assert.That(f.Length, Is.EqualTo(6), "a blocked tuple is six elements since M3-13");
+                Assert.That(f.Length, Is.EqualTo(7), "a blocked tuple is seven elements since D5 OVERVIEW");
                 rows.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                           int.Parse(f[1], CultureInfo.InvariantCulture),
                           int.Parse(f[2], CultureInfo.InvariantCulture),
                           int.Parse(f[3], CultureInfo.InvariantCulture),
                           int.Parse(f[4], CultureInfo.InvariantCulture),
-                          int.Parse(f[5], CultureInfo.InvariantCulture)));
+                          int.Parse(f[5], CultureInfo.InvariantCulture),
+                          int.Parse(f[6], CultureInfo.InvariantCulture)));
             }
             return rows;
         }
 
-        private static (int X, int Y, int Deck, int Order, int Reason, int Detail)? RepairRowAt(GameSession gs, Int3 p)
+        private static (int X, int Y, int Deck, int Order, int Reason, int Detail, int Cid)? RepairRowAt(GameSession gs, Int3 p)
         {
             foreach (var t in Rows(gs))
                 if (t.Order == WireFormat.OrderRepair && t.X == p.X && t.Y == p.Y && t.Deck == p.Z) return t;
@@ -265,6 +266,57 @@ namespace Perilune.Tests
                 "⛔ she is back to 'Awaiting orders' and the machine she was ordered to fix wears " +
                 "nothing. THIS IS THE SIGHTING, and it is what D5 is.");
             Assert.That(row.Value.Reason, Is.EqualTo(WireFormat.ReasonNoRoute));
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>D5 OVERVIEW — THE ROW NAMES THE PERSON, so the screen the player is actually looking
+        /// at can say it.</b> The badge closed the silence on the machine's TILE, in the Room Zoom. On
+        /// the Level-1 Overview the ordered crew member went straight back to <i>"Awaiting orders"</i>
+        /// and nothing pointed anywhere — the D5 family's last playtest-facing residue (HANDOVER:
+        /// <i>"badge Room-Zoom-only (Overview dock bare)"</i>). The Overview's crew dock is keyed by
+        /// CREW and this channel by TILE, so the join needs the owner ON the row.
+        ///
+        /// <para><b>DRIVEN ON BOTH SIDES OF THE DROP</b>, because both are states a player sits in and
+        /// they are served by two different host walks: the PENDING walk while she is still walking
+        /// (tick 1) and the DROPPED walk after the sim has let go (tick 600). A cid that only survived
+        /// one of them would put the sentence on the dock and then take it away again while the badge
+        /// stayed up — two surfaces disagreeing about one order, which is the whole thing the shared
+        /// row prevents.</para>
+        ///
+        /// <para>⛔ <b>IT ASSERTS HER ID, NOT MERELY "NOT THE SENTINEL".</b> An emitter that hard-coded
+        /// <c>0</c>, or that passed the DEVICE's id, or that filled the element from the wrong loop
+        /// variable, would pass a not-equal-to-−1 check and would put a fault sentence on the wrong
+        /// crew member's dock row — a lie about a person, which is worse than the silence it replaced.</para>
+        ///
+        /// <para>MUTATION: pass <c>WireFormat.CidNone</c> instead of <c>c.Id</c> in
+        /// <c>GameSession.AddNoRouteRow</c>'s two call sites ⇒ RED on both halves.</para>
+        /// </summary>
+        [Test]
+        public void TheRowNamesTheORDEREDCrewMember_SoTheOverviewsDockCanSayIt()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var machine = ByName(sim, TheMachine);
+            var her = sim.Citizens.Items[0];
+
+            OrderOverTheWire(gs, her, machine);
+            sim.Tick();
+
+            var pending = RepairRowAt(gs, machine.Pos);
+            Assert.That(pending, Is.Not.Null, "premise: the issue-time badge is up (see the leg above)");
+            Assert.That(pending.Value.Cid, Is.EqualTo((int)her.Id),
+                "⛔ the row does not name the crew member the player ordered, so the Overview's crew " +
+                "dock has nothing to join on and she is back to reading 'Awaiting orders' while the " +
+                "machine wears the reason one screen away. THAT IS THE DEFECT.");
+
+            for (int t = 0; t < 600; t++) sim.Tick();
+
+            Assert.That(her.JobKind, Is.EqualTo(JobKind.None), "premise: the sim has dropped the job");
+            var dropped = RepairRowAt(gs, machine.Pos);
+            Assert.That(dropped, Is.Not.Null, "premise: the badge survives the drop (see the leg above)");
+            Assert.That(dropped.Value.Cid, Is.EqualTo((int)her.Id),
+                "the DROPPED walk lost the owner the PENDING walk carried — the dock sentence would " +
+                "appear while she walks and vanish at the exact moment she has nothing left to do");
         }
 
         /// <summary>

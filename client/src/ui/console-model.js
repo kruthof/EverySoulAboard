@@ -7,7 +7,7 @@
 // Invariants honored: InvariantCulture-safe (no locale APIs — padStart + ASCII toUpperCase only),
 // nothing here fabricates data the wire doesn't carry, and everything is deterministic.
 
-import { selectedCrewCid } from '../wire/messages.js';
+import { selectedCrewCid, blockedReasonSentence, BLOCKED_CID_NONE } from '../wire/messages.js';
 
 // ---- clock (IX-81) ----
 
@@ -472,6 +472,21 @@ export function taskWhat(task) {
  * ON PURPOSE (see `GameSession.cs:4019-4030` — spelt with an em dash it would be cut by `taskWhat`
  * in exactly the case that matters most). Splitting it off and dropping it from the docks is the one
  * change this constant exists to make impossible.
+ *
+ * ⛔⛔ AND ONE SURFACE DOES DROP IT — NAMED HERE RATHER THAN LEFT FOR SOMEBODY TO FIND (D5 OVERVIEW,
+ * 2026-08-03, found by independent review). The Overview's crew dock REPLACES the task label with the
+ * `blocked` channel's reason when the direct order that crew member was given is stuck
+ * (`crewBlockedOrder` below, rendered at `overview-view.js`'s `paintCrewWatch`) — and a replacement
+ * discards whatever the label was carrying, INCLUDING this clause. MEASURED, not reasoned: a host
+ * label of `"Servicing fabricator_1 · NO AIR"` renders in that dock as `"NO WAY TO WALK TO IT"`.
+ * ⚠️ WHAT IS AND IS NOT CLAIMED. The two states CO-OCCURRING was NOT demonstrated reachable — review
+ * probed the shipped wreck for 900 ticks and measured `coexist=0`, which is unsurprising, since this
+ * clause is gated on `HeldByOrder` and a stuck order is one the sim could not run. So it is
+ * STRUCTURALLY POSSIBLE AND NOT SHOWN TO HAPPEN, which is the honest state of it, and it is written
+ * down because the paragraph above promises the opposite in absolute terms.
+ * ⚠️ THE HOVER STILL CARRIES IT: that dock's `title` is `reason + '\n' + t.text`, and `t.text` is the
+ * RAW wire label, clause and all. A tooltip is not a fix (binding: invisible feedback is functional)
+ * — it is the reason this is a NAMED COST and not a defect report.
  */
 export const AIR_WARNING_CLAUSE = ' · NO AIR';
 
@@ -542,6 +557,58 @@ export function dockTask(task, budget) {
   if (keep < 1) return what;                                  // the box cannot hold the warning at all
   const base = what.slice(0, what.length - AIR_WARNING_CLAUSE.length);
   return base.slice(0, keep).trimEnd() + '…' + AIR_WARNING_CLAUSE;
+}
+
+/**
+ * ⭐⭐ D5 OVERVIEW — THE SENTENCE THAT REPLACES A CREW MEMBER'S TASK LINE WHEN THE ORDER SHE WAS
+ * GIVEN IS STUCK, or `null` when nothing about her is stuck.
+ *
+ * <b>THE DEFECT, AS THE PLAYTEST WOULD HAVE MET IT.</b> D5 and its follow-on made the ship say WHY a
+ * direct repair order cannot land — but only on the machine's TILE, in the Room Zoom. On the Level-1
+ * Overview, the screen a first-hour player actually watches, the ordered crew member read a bare
+ * `"Awaiting orders"` (M2-20's honest word for a state that was no longer hers: the player HAD given
+ * her an order, and it died). The badge was one screen away and nothing pointed at it.
+ *
+ * ⛔ <b>IT IS A JOIN, NOT A DERIVATION — THIS FUNCTION DECIDES NOTHING ABOUT THE WORLD.</b> Whether an
+ * order is stuck, and why, is answered exactly once, host-side, by `GameSession.BuildBlocked`'s two
+ * repair walks, both of which re-ask the SIM'S OWN killing question on every render (MECHANICS §13.25
+ * b3′: *a dropped order is badged if and only if the host can re-ask the sim's own killing question,
+ * LIVE*). All this does is find the row that names `cid` and word it with the ONE entry point every
+ * other surface words a blocked row with. So the dock and the badge cannot disagree, and neither can
+ * be stale relative to the other: they are the same row of the same message.
+ *
+ * ⭐ <b>THEREFORE NOTHING HERE LATCHES, AND THAT IS THE WHOLE LIVENESS ARGUMENT.</b> Open the door and
+ * the host's next frame drops the row; this returns `null` on that frame and the dock goes back to the
+ * host's task label — the same frame the Room Zoom badge disappears, because the badge is drawn from
+ * the same decoded message out of the same `Hud` cache. ⛔ Do NOT add a cache, a last-seen memo or a
+ * fade here: a sentence that outlives its row is the latch the channel's live-re-ask rule exists to
+ * refuse.
+ *
+ * ⚠️ <b>THE FALLBACK SENTENCE IS `room-model.js`'s, VERBATIM, AND IT IS NOT A THIRD VOCABULARY.</b>
+ * A row whose reason code came from a newer host still means THIS ORDER IS STUCK — `decodeBlocked`
+ * keeps such a row on purpose — so the dock says the weaker true thing rather than falling silent.
+ *
+ * ⚠️ FIRST MATCH IN THE HOST'S EMISSION ORDER. A crew member has at most one direct order and the
+ * host's two repair walks are disjoint by construction (`_prioritised` and `_dropped` never hold the
+ * same crew member), so "the first row that names her" and "her row" are the same row; the loop is
+ * written as a scan rather than as a lookup because the wire is a list and a client-built index would
+ * be a second thing to keep in step.
+ *
+ * PURE. No DOM, no wire access, no state.
+ * @param {{cid:number,reasonName:string,detail:number}[]|null} blocked `decodeBlocked()` output
+ * @param {number} cid the roster row's crew id
+ * @returns {{reasonName:string, sentence:string}|null}
+ */
+export function crewBlockedOrder(blocked, cid) {
+  if (!Array.isArray(blocked) || !Number.isFinite(cid) || cid === BLOCKED_CID_NONE) return null;
+  for (const b of blocked) {
+    if (!b || (b.cid | 0) !== (cid | 0)) continue;
+    return {
+      reasonName: b.reasonName || '',
+      sentence: blockedReasonSentence(b.reasonName, b.detail) || 'STUCK — REASON UNKNOWN TO THIS CLIENT',
+    };
+  }
+  return null;
 }
 
 /** The CREW WATCH task cell for a roster entry: the label the host sent plus whether it counts as
