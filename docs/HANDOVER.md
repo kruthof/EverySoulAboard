@@ -5,103 +5,99 @@ ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Eve
 older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved) and
 `docs/history/HANDOVER-archive.md` (rolling).*
 
-## Current state (2026-08-03, session F CLOSED — three defect/infra lanes landed, playtest in 4 days)
+## Current state (2026-08-03, session G CLOSED — four lanes landed, playtest in 4 days)
 
-**Gate on `main` (`dbaff5f`): FULL `./ci.sh` exit 0 after all three merges — 1841 dotnet +
-1247 node, twin hashes MATCH at P1** (dotnet figure measured on the byte-identical lane
-tree `f50cd65`, tree-hash-verified equal; re-measure before quoting). **Pin table**
-(CLAUDE.md authoritative, UNCHANGED): P1 `7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52` ·
-P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. **NO PIN MOVED** —
-every lane pin-neutral, proven mechanically (0-line diffs on Golden/ci.sh/content).
+**Gate on `main` (`025e529`): FULL `./ci.sh` exit 0 — 1850 dotnet + 1257 node, twin hashes
+MATCH at P1** (final gate ran on the byte-identical b3-R lane tree, tree-hash-verified
+equal; re-measure before quoting). **Pin table (CLAUDE.md authoritative, UNCHANGED):** P1
+`7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52` · P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87`
+· P5 `558a1c0a4985f5ea`. **NO PIN MOVED ×4 lanes** — every hold measured; the two sim-side
+lanes' holds are VACUOUS and say why (no pinned fixture fires an alarm twice or holds an
+order — only `PrioritiseJobCommand` sets `HeldByOrder`, proven by sweep).
 
-**THREE merges**, each one Opus implementer + one independent reviewer:
-- **faultlog-dedupe** (`29964ed`, APPROVE + 2 polish observations taken) — the MOSS fault
-  log lists each fault once. The cause was DOUBLE-SOURCING (one 200-ring feeding both the
-  `log` tail and the whole `chron`, plus the day headline as a third copy): 29 rows for a
-  14-entry ring. A text dedupe would have been WRONG, measured — live brownout episode
-  entries are rewritten in place, so tail and chron legitimately disagree word-for-word.
-  Stated cost: the open pane refreshes on retyped `log` + day rollover, no sub-day stream
-  (throttled chron re-request filed). New rig `faultlog-once-shot.mjs` (9 checks).
-- **whyline-shot-flake** (`c9e83f5`, APPROVE first pass) — INFRA: the rig's STEP-2 click
-  was fire-and-forget at the pawn's LAST-FRAME tile while she walks (selection is
-  host-side, never latched); and the flake was the smaller half — with nobody selected the
-  readout is hidden so STEP 4 passed VACUOUSLY (0 > 0). Now `ensureSelected` re-clicks
-  against frame-derived truth, 30s bound, loud exit; STEP 4 gained the `clientW > 0`
-  non-vacuity term (2×2-proven load-bearing). 28 legs, 5+2 fresh-host greens.
-- **d5-drop-reason** (`dbaff5f`, 1 send-back) — ⭐ **§13.25 b3 CLOSED from the ruled side:
-  the SIM says why it let go.** `Abandon` takes a no-default `JobDropReason` (the COMPILER
-  stops a tenth arm shipping mute) and publishes transient `OrderDroppedEvent` for held
-  jobs (NOT hashed — the chronicle-signal regression's shape deliberately avoided). Host
-  drains at the tick boundary; badge rule: a dropped order is badged iff the host can
-  re-ask the sim's own killing question, LIVE (3 of 6 reasons qualify). Mid-order
-  route-shut now reads NO WAY TO WALK TO IT; consumable-vanished names the ITEM. Also:
-  `BLOCKED_ORDER_NAMES[3]` — repair badges had read "ORDER BLOCKED" since M2-9; now a
-  derivation test parses the host's constants. Send-back: five stated mutation counts were
-  stale (measured 6, said 3/5 — both sides now agree) and "Displaced/CargoLost are
-  self-healing" was MEASURABLY FALSE under OD-H — retracted, residual **b3-R** named.
+**FOUR merges**, each one Opus implementer + one independent reviewer:
+- **overview-dock-badge** (`41bc3d0`, APPROVE + 3 observations taken) — first-hour risk
+  closed: a stuck order's reason shows on the OVERVIEW (crew dock row in fault red +
+  `ORDER STUCK — …` readout), rendered live from the SAME host row as the Room Zoom badge
+  (join = append-only 7th `blocked` element `Cid`; the one spine touch, M3-13's precedent).
+  Named costs (§13.25 b3″): per-tile dedupe outranks the owner (2 crew / 1 machine ⇒ the
+  second gets no dock line) · a co-occurring D4 `· NO AIR` clause is replaced by the
+  blocked sentence (structurally possible, not shown reachable; hover keeps it).
+- **ring-saturation** (`c316936`, 1 send-back) — the other first-hour risk closed: repeats
+  of one alarm coalesce into a single in-place-rewritten ring entry per sim-hour run
+  (§13.44, D6's shape, sim-side so Chronicle AND fault log fix at once). Unattended-wreck
+  ring 200/200-saturated → 49 at day 1.5; machine failures + boot lines SURVIVE. Horizon
+  day ~1.4 → ~4.2, NOT removed (brownout cadence ~24/day now dominates — filed). Send-back
+  closed: the save-on-a-firing-tick residual is FILED (§13.44.5 — 1 tick in 600 while a
+  klaxon sounds, PERMANENT; the reverted-coalescer control self-heals) instead of argued
+  impossible, and `AlarmQuietTicks`' VALUE is pinned with its sizing sentence.
+- **palette-armed-state** (`472721d`, 1 send-back; owner approved the lane same day) — the
+  palette stops reading INERT: armed OWNS the shadow channel + brighter fill/border. Root
+  cause measured: `:hover` had borrowed the ARMED border colour, and the cursor is always
+  on the just-clicked button. Send-back closed: the reflow guard is a predicate over the
+  rule's DECLARED properties (border-shorthand hole shut) and the rig goes RED against the
+  exact pre-fix CSS (byte-identity had passed it). Placement keeps the tool armed —
+  deliberate. Same collision filed: `.rz-acc-chip` (identical), `.rz-mat-chip` (near).
+- **b3r-dropped-order-chronicle** (`025e529`, APPROVE) — ⭐ owner-ruled same day: every
+  death of a player-held order writes `ORDER DROPPED — <crew> let go of <machine>: <the
+  sim's own reason>` into the ring (`HistoryKind.OrderDropped`, §13.45; severity 5, never
+  under LAST FAULT). **b3-R's silence is CLOSED for the LOG** — Displaced/CargoLost drops
+  leave a durable trace; the badge half stays refused (live-re-ask, by design); §13.25d
+  still owns re-issue.
 
 ## Open on the owner (playtest 2026-08-07 — FOUR DAYS OUT)
 
-- **Deep-capsule art** (from 08-03 E): 0.51–0.75 pods draw the ORDINARY intact capsule.
-  Want mid-band wear art, or is intact correct?
-- **Chronicle headline order**: a death AND a thaw headlines the death (RW's shape,
-  deliberate). One-line pin-free change if you want the thaw to win.
-- Carried from 08-02: ~4 sim-h bench wait (RULED: playtest measures it) · heater power
-  TIER + boot affordability · rung-1 pacing · rung 1 needs a named home ·
-  unsurvivable-vacuum services as a CLASS · playtest date confirm. Carried UI: Prioritise
-  names the TYPE · off-switch never pre-empts · "Awaiting orders" short form · onboarding
-  Space row · work-type▸reach inversion · BUILD label collision · ascending click cycle ·
-  door art · `'/'` glyph · Rell reads `general crew` · sleeping crew drawn standing.
-- ★ **Owner 08-03, live play: the tool palette reads as an INERT placeholder.** Arming
-  WORKS (rig-verified same day: WALL click → all three surfaces flip to BUILD, ESC back)
-  but the feedback is text-only — the BUTTON itself never changes state, so the row does
-  not feel clickable, and the build content is thin (only WALL/FLOOR have materials; the
-  rest place ghosts into art that isn't there yet). OWNER RULED: enrichment FOLLOWS THE
-  ROADMAP (M4-6 RUG/SHELF · M5-4 art pass · M5-6 removal · unskinned-glyph bug) — no lane
-  now. The cheap pre-playtest candidate, if any, is an armed/pressed state on the button.
+- RESOLVED TODAY (4): palette armed-state (ruled + SHIPPED) · b3-R shape = Chronicle line
+  (ruled + SHIPPED) · deep-capsule art — INTACT IS CORRECT (closed, no work) · headline —
+  DEATH FIRST STANDS (closed, no work).
+- Carried from 08-02: ~4 sim-h bench wait (RULED: playtest measures it) · heater power TIER
+  + boot affordability · rung-1 pacing · rung 1 needs a named home · unsurvivable-vacuum
+  services as a CLASS · playtest date confirm. Carried UI: Prioritise names the TYPE ·
+  off-switch never pre-empts · "Awaiting orders" short form · onboarding Space row ·
+  work-type▸reach inversion · BUILD label collision · ascending click cycle · door art ·
+  `'/'` glyph · Rell reads `general crew` · sleeping crew drawn standing.
 
 ## Open — unscheduled (the load-bearing subset; ★ = new this session)
 
-- ★ **b3-R (§13.25)**: a `Displaced`/`CargoLost` drop of a player-held order evaporates
-  permanently under OD-H (nothing re-recruits; per-worker transients, no standing fact to
-  re-ask — no honest badge under the live-re-ask rule; §13.25d owns the re-issue half).
-  Driven by both sides independently. The loudest D5 residue left.
-- ★ **Ring saturation**: 200 identical `overheat_guard: THERMAL LOAD HIGH` alarms fill the
-  ring in ~1 sim-day at speed — D6's brownout spam in a second costume; Chronicle AND
-  fault log both drown. Strongest playtest-facing candidate now the double-print is gone.
-- D5 family: order not re-issued when the route opens (§13.25d) · no-staging-tile silent
-  at issue time (b2) · badge Room-Zoom-only (Overview dock bare) · pre-click route clause
-  on the offer · tenth path (deconstruct mid-service, defensible) · neither repair walk
-  re-asks whether the machine still WANTS service · `OrderDroppedEvent` is trivially
-  Chronicle-consumable (one-package follow-on) · no player-moved-on badge retirement.
+- D5 family: order not re-issued when the route opens (§13.25d) · no-staging-tile silent at
+  issue time (b2) · pre-click route clause on the offer · tenth path (deconstruct
+  mid-service bypasses the funnel, publishes nothing — defensible) · neither repair walk
+  re-asks whether the machine still WANTS service · no player-moved-on badge retirement ·
+  ★ Overview dock dedupe: 2 crew on 1 machine ⇒ the second crew's dock line absent.
 - Chronicle residuals: stateful-PowerSystem package (moves P1/P2/P3) · episode-boundary
-  saves (control-pinned) · P1 ring 200/200 Bond · `IsWanting` sawtooth (22 562 edges/day)
-  · no pin covers `--ship wreck` · fault-log lines clip at right edge · throttled chron
-  re-request (or positional splice — reviewer's cheaper option) for sub-day liveness.
+  saves · ★ §13.44.5 + §13.45.5 save-tick event-loss SIBLINGS (one closer: save-boundary
+  event delivery) · ★ brownout cadence ~24/day is now the DOMINANT ring producer (ring
+  still saturates ~day 4.2 — D6's ledger) · P1 ring 200/200 Bond · `IsWanting` sawtooth ·
+  no pin covers `--ship wreck` · fault-log lines clip at right edge · throttled chron
+  re-request · ★ client FAULT LOG screen carries non-fault kinds (pre-existing since D1;
+  the guarded LAST-FAULT column ≠ a guarded screen) · ★ severity-5 tie: a brownout usually
+  holds the headline over ORDER DROPPED (nicety) · ★ the alarm text says the opposite of
+  the condition ("THERMAL LOAD HIGH" while the ship freezes — §13.2 standing) · ★ a MOSS
+  `alarm()` with an interpolated message never coalesces (latent — only a literal ships)
+  and `DslValue.ToString` is not culture-guarded.
 - spend-visible carryover: why-line price clause · D4 `air` element no MECHANICS section ·
   offer prices a machine the command refuses (pristine) · `NoService` silent ·
   carried-stack price flip · spend-through-fog rung question.
-- Tooling: same unverified-click shape in `vacuum-shot.mjs:201`,
-  `dropped-order-shot.mjs:170-172`, `zoom-pawn-shot.mjs:213-222` (★ that one is a
-  FALSE-RED risk — right instrument, no retry) · ★ ten tools one-shot the onboarding
-  dismissal unverified · ★ the rig retry loop can ACTUATE A DOOR via a stale click
-  (product hazard: ContextAction actuates devices — a green run may have mutated the
-  ship) · ★ warm-host selection SURVIVES between runs (2×2 cells need fresh hosts) ·
-  moss-gate-shot `zoomOpen` guard vacuous · rig-ordering hazard (no-add-room leaves
-  deck 1) · key-swatch distinctness · ★ M-PURITY scans raw text incl. comments (TRAPS-1
-  inverted) · ★ `moss.jsonl` fixture: days newest-first vs host ascending, no `[Kind]`
-  tags · NOTHING GATES `client/tools/*.mjs` (now 36 tools).
+- UI polish ★: `.rz-acc-chip` hover/armed colour collision (IDENTICAL to the palette
+  defect) · `.rz-mat-chip` near-collision · `:active` not collision-proofed · "seventeen"
+  stale repo-wide (`ROOM_TOOLS.length` is 18) · neither palette instrument judges CONTRAST
+  (declared human call on the PNGs).
+- Tooling: unverified-click shape in three rigs (vacuum / dropped-order / zoom-pawn) · ten
+  tools one-shot the onboarding dismissal · a rig retry can ACTUATE A DOOR · warm-host
+  selection survives between runs · ★ 6-element `blocked` backward-safety leg NOT taken
+  (single-tree deploy; integrator-ruled) · ★ `RecruitabilityTests` zero-alloc leg flaky
+  under CPU contention (green ×3 alone) · M-PURITY scans raw text · `moss.jsonl` fixture
+  drift · NOTHING GATES `client/tools/*.mjs` (now 39 tools, re-counted).
 
 ## Next
 
-1. **The playtest 2026-08-07.** The log tells each fault once; a dying order says why.
-   Remaining first-hour risks: ring saturation (★ above) and the Overview dock's bare
-   "Awaiting orders" while a badge sits in the Room Zoom.
-2. Owner triage: the two design calls above + the carried batch.
-3. M4 opens after the playtest gate (M4-1 Persona design first). Top unscheduled
-   candidates if another defect lane is wanted first: **ring saturation** (playtest-facing)
-   and **b3-R** (needs a design ruling — no live badge is honest, so the shape is likely a
-   Chronicle line off `OrderDroppedEvent`, which also happens to be the filed follow-on).
+1. **The playtest 2026-08-07.** Both named first-hour risks are CLOSED (the Overview says
+   why; the log survives a day at speed; a dying order is never silent — badge live where
+   honest, log line always). The board is as clean as it gets before the gate.
+2. Owner triage: the carried batch above.
+3. M4 opens after the playtest gate (M4-1 Persona design first). Cheap pre-playtest
+   candidate if one more lane is wanted: the `.rz-acc-chip` colour collision — the palette
+   defect's second instance, same fix shape, same rig.
 
 ## Session log (append one row per session; prune when > ~40 rows)
 
@@ -117,3 +113,4 @@ every lane pin-neutral, proven mechanically (0-line diffs on Golden/ci.sh/conten
 | 08-02 D | commission · repair-reserve · ladder-pacing · vacuum-visible | **⭐ THE PLAYTEST IS UNBLOCKED**: typed `commission` at the real cost · the grid no longer bankrupts the ship (reserve of 4) · the ladder decays in DAYS with a named-capsule warning bar · the vacuum is VISIBLE · **T13 DONE — the whole arc witnessed unmodified, 5.47 sim-h, Ozawa walks** | green ×4 post-merge + final gate on main (exit 0), pins UNMOVED, tests →1801/1218 |
 | 08-03 E | chronicle-signal · spend-visible · dock-labels · roomzoom-build · d5-dropped-orders | **the log tells the story (brownout ticker gone; repair/commission/thaw write lines) · the order names its price (`· SPENDS 1 PARTS`) · `· NO AIR` survives both docks (+hover) · a room opens as a ROOM (`TOOLS ▸`) · ⭐ D5 ROOT-CAUSED (reachability, deterministic) — an unreachable order says NO WAY TO WALK TO IT** | green ×5 post-merge + final gate on main, pins UNMOVED ×5 (chronicle holds part-vacuous, labelled), 83 rig checks on merged main, tests →1831/1240 |
 | 08-03 F | faultlog-dedupe · whyline-shot-flake · d5-drop-reason | **the fault log lists each fault ONCE (was ×2 + headline ×3 — double-sourced, not undeduped) · the why-line rig no longer coin-flips (and its STEP-4 check was VACUOUS — closed with a driven 2×2) · ⭐ the sim SAYS WHY it let go: a mid-order drop wears its reason (route/approach/named item), §13.25 b3 closed, b3-R named honestly** | green ×3 in-lane + final gate on main `dbaff5f` (exit 0, twin MATCH), pins UNMOVED ×5, tests →1841/1247 |
+| 08-03 G | overview-dock-badge · ring-saturation · palette-armed-state · b3r-dropped-order-chronicle | **the OVERVIEW says why an order is stuck (dock row + `ORDER STUCK` readout, live off the badge's own row) · a standing klaxon writes ONE line (ring 200/200→49; faults + boot lines survive; horizon ~1.4→~4.2 d) · the tool palette PRESSES (hover had borrowed the armed border colour) · ⭐ a dying order writes `ORDER DROPPED` to the LOG (b3-R silence closed, owner-ruled same day)**; 4 owner rulings in-session; 2 send-backs + 1 fix-back closed | green ×4 in-lane (each on its main-merged tree) + final gate on main `025e529` (exit 0, twin MATCH), pins UNMOVED ×5, tests →1850/1257 |

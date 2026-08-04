@@ -135,6 +135,26 @@ shared event object across capture/target/bubble).
   (48)`, or worse, a rig silently talks to the PREVIOUS, poisoned host. **SIGTERM + poll
   the port free before starting the next.**
 
+**Addendum (2026-08-03, session G — four parallel lanes, three more receipts):**
+
+- **A kill filter on the PROJECT name hits every sibling running the same project.** An
+  agent pruning its own duplicate `dotnet test` runs filtered by test-ASSEMBLY name and
+  killed a sibling lane's gate mid-run (it happened to restart; the failure would have read
+  as the sibling's flake). Every worktree runs the same assembly — **filter kills by
+  WORKTREE PATH, and only among PIDs you recorded.**
+- **A `head -N` in a mutation pipeline SIGPIPE-kills the RESTORE step.** `head` closing the
+  pipe killed the runner after the mutation was applied but before the in-memory restore
+  ran — the mutation was left LIVE on the tree and reddened a later gate run, reading as a
+  fresh regression. **Never pipe a mutation runner through `head`; write to a file and
+  slice the file.**
+- **Two agents, one scratchpad path, zero errors.** The session scratchpad is SHARED across
+  concurrent agents: one agent's `mutate.py` was silently overwritten mid-lane by a
+  sibling's (now aimed at the sibling's worktree), and two gates appending to one `ci.log`
+  produced a single file with two interleaved runs whose totals disagreed (1843 vs 1841 —
+  both true, of different trees). Nothing crashes; the numbers are just quietly someone
+  else's. **Namespace every scratch file and log by lane (`<lane>-*.log`), and treat any
+  log with duplicated phase markers as unquotable — re-run rather than read around it.**
+
 ---
 
 ## Part B — the trap SHAPES (cited as "the Nth trap shape")

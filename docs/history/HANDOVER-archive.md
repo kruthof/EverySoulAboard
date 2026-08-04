@@ -274,3 +274,16 @@ SPENDS 1 PARTS · NO AIR AT THE WORKSITE — SHE MAY DIE`). D1 witnessed driven 
    and the D5 follow-on (sim-published drop reason) are the top unscheduled candidates if
    a defect lane is wanted before it.
 
+
+---
+
+## Archived 2026-08-03 (session G ritual): session F's current-state block
+
+*(Verbatim from HANDOVER.md as session G found it; session F's log row stays in the live
+table. Gate then: main `dbaff5f`, 1841 dotnet + 1247 node, pins UNMOVED ×5. Session F's
+three merges: faultlog-dedupe `29964ed` · whyline-shot-flake `c9e83f5` · d5-drop-reason
+`dbaff5f`. The open items session G closed: ring saturation (merged `c316936`), the
+Overview-dock-bare badge (merged `41bc3d0`), b3-R's log silence (merged `025e529`,
+owner-ruled), the palette armed-state (merged `472721d`, owner-approved), deep-capsule art
+(owner: intact correct), headline order (owner: death first stands). All other open items
+were carried forward into session G's rewritten block.)*
