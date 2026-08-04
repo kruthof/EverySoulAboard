@@ -170,7 +170,19 @@ await key('t'); await sleep(3000);
 check(await talkPanels() > panels0, `[T] opens a channel (panels ${panels0} -> ${await talkPanels()})`);
 await key('Escape'); await sleep(800);
 
-// ── 3. the room: Click, then the six tool keys, then Esc ──
+// ── 3. the room: Click, then the FIVE tool keys the card documents, then Esc ──
+//
+// ⛔ THE `O` LEG WAS DELETED HERE ON 2026-08-04, AND IT HAD BEEN FAILING SINCE M3-15 (2026-07-31).
+// That package deleted the OPERATE verb outright — ring, plate, `O` key, click branch, palette row,
+// the onboarding row — because doors and vents are actuated from MOSS now (OD-N). This loop kept
+// pressing `o` and requiring `operate` to arm, so the tool has exited NON-ZERO on the shipping game
+// for four days. Nothing gates `client/tools/*.mjs`, so nothing said so.
+// ⚠️ THAT IS WORSE THAN A DEAD LEG AND IS WHY IT IS FIXED IN A PACKAGE ABOUT COPY: this file's own
+// header tells authors to run it before they commit, and `ui/onboarding.js`'s LEDE comment names it
+// as THE instrument for the card's height budget. A tool that is known-red is a tool whose next red
+// gets waved through — a real BEGIN-below-the-fold would have read exactly like this one.
+// The five that remain are exactly the keys the card's INSIDE A ROOM group documents (`G / Z / V`
+// and `B / X`); `roomzoom-view.js` has no `o` branch at all. Nothing else moved.
 log('\n[3] INSIDE A ROOM');
 const anchors = JSON.parse(await ev(`JSON.stringify(Array.from(document.querySelectorAll('.pl-room[data-anchor]')).map(e=>e.dataset.anchor))`) || '[]');
 check(anchors.length > 0, `the Overview offers rooms to click (${anchors.join(', ') || 'NONE'})`);
@@ -179,7 +191,7 @@ if (anchors.length) {
   await clickAt(rc.x, rc.y); await sleep(3500);
   check(/roomzoom-open/.test(await ev(`document.body.className`)), `[Click] a room steps inside it (${anchors[0]})`);
   const armed = async () => await ev(`(()=>{const a=document.querySelector('[data-rztool].on');return a?a.dataset.rztool:'(none)';})()`);
-  for (const [k, want] of [['g', 'dig'], ['z', 'stockpile'], ['v', 'strip'], ['o', 'operate'], ['b', 'wall'], ['x', 'demolish']]) {
+  for (const [k, want] of [['g', 'dig'], ['z', 'stockpile'], ['v', 'strip'], ['b', 'wall'], ['x', 'demolish']]) {
     await key(k);
     const got = await armed();
     check(got === want, `[${k.toUpperCase()}] arms ${want} (got ${got})`);

@@ -489,12 +489,97 @@ test('the LEDE agrees with the SHIP about where the air is (the R1 defect)', () 
   assert.match(LEDE, /reactor/i, 'the LEDE no longer names the REACTOR, which boots breathable');
 });
 
-test('the card does not promise a thaw — the player still cannot ask for one', () => {
-  // ⚠️ The premise ends "the rest thaw one at a time through MOSS", and the VERB is still NOT BUILT:
-  // M3-2 landed CryoSystem (a pod cycles and opens), but there is no thaw command and no MOSS thaw
-  // op, so nothing in play starts a cycle (AuthoredShips.cs's PeriluneWreck header says so in full).
-  // A first screen that told the player to wake somebody would be the same class of defect as the
-  // B row — a plausible sentence nobody drove.
-  assert.ok(!/\bthaw|\bwake (someone|somebody|the|another)/i.test(HTML),
-    'the card promises a thaw the game cannot deliver');
+// ─────────────────────────────────────────────── 5. the thaw: the verb, the door, and the opt-in
+//
+// ⚠️ THIS SECTION IS AN INVERTED CONTRACT AND THAT IS THE POINT. It used to be ONE test called
+// "the card does not promise a thaw — the player still cannot ask for one", which required
+// `!/\bthaw/i.test(HTML)`: correct while the verb did not exist (M3-2 had a `CryoSystem` and
+// nothing could start a cycle), and a LOCK on the card the moment M3-3/M3-4 built it. They landed
+// 2026-08-01 and the card did not move, so the owner met the shipped game on 08-03 and reported
+// *"there is still no way to defreeze others"* — of a ship where there demonstrably is. A guard
+// that pins an absence has to name the event that ends it, and the old one did (in the card's
+// header, not in itself). These three replace it by pinning the PRESENCE instead.
+
+test('the LEDE says the seven can be WOKEN, and names MOSS as the place to ask', () => {
+  // The owner's report was not "the thaw is broken" — the arc runs end to end. It was that nothing
+  // on screen SAYS SO. So this asserts on the premise itself, not merely on the rendered card: a
+  // thaw sentence hidden in a controls row would satisfy `HTML.includes('thaw')` and leave the
+  // first thing a player reads exactly as mute as it was.
+  assert.match(LEDE, /thaw/i, 'the LEDE states the sleepers as a FACT again, with no verb — the '
+    + 'exact defect the owner reported in live play on 2026-08-03');
+  assert.match(LEDE, /MOSS/, 'the LEDE promises a thaw without naming where to ask for it');
+  assert.ok(HTML.includes(LEDE), 'the LEDE never reaches the rendered card');
+});
+
+test('the card names MOSS in the CONTROLS, spelled the way the UI spells the tab', () => {
+  const row = ROWS.find((r) => /MOSS/.test(r.key));
+  assert.ok(row, 'the controls list has no MOSS row — the thaw arc is behind a door the card never '
+    + 'mentions (WORK, Click, R/F, T and nothing else was the shipped list)');
+  assert.ok(HTML.includes(row.text), `the MOSS row's text never reaches the card: ${JSON.stringify(row.text)}`);
+  // The KEY is the tab's own label. `OV_TABS` in overview-view.js spells it `MOSS`; a card that
+  // said "CONSOLE" or "COMPUTER" would send the player looking for a button that is not there.
+  assert.ok(codeOnly(src('ui/overview-view.js')).includes("['moss', 'MOSS']"),
+    'the Overview no longer spells the tab MOSS — this row now names a button nobody can find');
+  assert.ok(row.bind && row.bind.length, 'the MOSS row must carry a bind like every gesture row');
+  // Same one-line rule as the WORK row: a wrapped cell makes BOTH cells in its grid row taller, and
+  // this row is the one that pushed the grid to a third row in the first place.
+  assert.ok(row.text.length <= 28,
+    `the MOSS row's text is ${row.text.length} chars and will wrap the key grid — see the module header`);
+});
+
+test('the card teaches that work types boot OFF, and names CRAFT — the arc\'s own dead end', () => {
+  // OD-H is binding: every work type boots OFF for every crew member, and the fix is a TEACHING
+  // line, never a default change. CRAFT is the one named because commissioning the console costs a
+  // ControllerModule, which is a MachineShop recipe (WorkType.Craft) — so a player who never opens
+  // the WORK tab watches a correct, affordable, reachable order sit there forever.
+  const order = VERBS.find((v) => /ORDER/.test(v.head));
+  assert.ok(order, 'the ORDER headline block is gone');
+  assert.match(order.body, /work type/i, 'the ORDER block no longer says work types boot OFF');
+  assert.match(order.body, /OFF/, 'the ORDER block no longer says what they boot to');
+  assert.match(order.body, /CRAFT/, 'the ORDER block no longer names CRAFT');
+  assert.match(order.body, /WORK/, 'the ORDER block names CRAFT without naming the tab that has it');
+  assert.ok(HTML.includes('CRAFT'), 'the rendered card never says CRAFT');
+});
+
+/** The `HELP_LINES` array literal out of the MOSS model, comment-stripped. */
+function mossHelpBlock() {
+  const code = codeOnly(src('ui/moss-model.js'));
+  const i = code.indexOf('const HELP_LINES = [');
+  return i < 0 ? '' : code.slice(i, code.indexOf('];', i));
+}
+
+test('the card hands over HELP, and MOSS HELP really lists the rest of the thaw chain', () => {
+  // ⚠️ THE CARD DELIBERATELY DOES NOT SPELL repair → commission → pods → thaw; it says "type HELP"
+  // and lets MOSS teach its own verbs. That trade is only honest if HELP actually carries them, so
+  // the promise is joined to the list it delegates to. Without this, the card's shortest sentence
+  // would be its least checked one.
+  const block = mossHelpBlock();
+  assert.ok(block.length > 200, 'HELP_LINES was not found in ui/moss-model.js — this join is vacuous');
+  assert.ok(block.includes("'HELP  "), 'the extracted block is not the help list (no HELP row)');
+  for (const verb of ['COMMISSION', 'PODS', 'THAW'])
+    assert.ok(block.includes(verb),
+      `MOSS HELP no longer lists ${verb}, and the card sends the player there to find it`);
+  // INCLUSION: the matcher must be able to say no, or the three lines above prove nothing.
+  assert.equal(block.includes('DEFROST'), false,
+    'a verb MOSS has never had was found in HELP_LINES — the extraction is not what it claims');
+});
+
+/**
+ * The wreck's capsule census, read out of the C# the ship is authored in — the LEDE's "Seven".
+ *
+ * Same shape and the same caveat as `wreckPressurisedAnchors` above: a SUPPORTING join, not the
+ * authority. What it adds is the thing no C# test can see — whether the CARD agrees with the ship.
+ */
+test('the LEDE\'s SEVEN is the wreck\'s own pod table (twelve, one open, four dead)', () => {
+  const cs = codeOnly(readFileSync(join(here, '../../sim/Sim.Gen/AuthoredShips.cs'), 'utf8'));
+  const i = cs.indexOf('WreckPods =');
+  const table = cs.slice(i, cs.indexOf('};', i));
+  const pods = (table.match(/new PodSpec/g) || []).length;
+  const open = (table.match(/Open = true/g) || []).length;
+  const dead = (table.match(/Dead = true/g) || []).length;
+  assert.ok(pods >= 8, `only ${pods} PodSpec rows found — the scan broke and everything below is noise`);
+  assert.equal(pods - open - dead, 7,
+    `the wreck now has ${pods - open - dead} sleepers (${pods} pods, ${open} open, ${dead} dead) and the `
+    + 'LEDE still says seven — re-read the ship and re-write it');
+  assert.match(LEDE, /\bSeven\b/, 'the LEDE no longer names the count this test exists to check');
 });
