@@ -22,22 +22,27 @@
 // ⚠️⚠️ TWO THINGS ARE DRIVEN AND NOT PLAYED, AND BOTH ARE SAID OUT LOUD (the pod-bay-shot.mjs /
 // board-fault-shot.mjs precedent, verbatim in technique and in disclosure).
 //
-// (A) THE PRICE. ⚠️⚠️ **D7 (2026-08-03) INVERTED THIS PREMISE AND THIS RIG HAS NOT BEEN RE-RUN.**
-//     AS WRITTEN: `build.def device_place_cost = 3` PARTS and `--ship wreck` authored ONE Parts on
-//     the ground — and MaintenanceSystem spent it unattended inside the first sim-day. MEASURED by
-//     this harness's own first run: the placement was refused SILENTLY (`0 -> 0` heaters on the
-//     devices channel) because the ship could not pay, which is `PlaceDeviceCommand`'s documented
-//     all-or-nothing behaviour and not a bug in that package.
-//     ⇒ TODAY the wreck authors EIGHT Parts (D7's `cabin stores`, `AuthoredShips.PeriluneWreck`),
-//     so the ship CAN pay and this placement should now SUCCEED — `0 -> 1` on the devices channel.
-//     ⛔ THAT IS A PREDICTION, NOT A MEASUREMENT: D7 could not drive this rig (no Chrome), and
-//     nothing gates `client/tools/*.mjs`, so no red told us either. The next run must re-derive
-//     this paragraph from what it actually sees and must not trust either figure above. Three Parts is 6 Regolith through the
-//     Regolith → Scrap → Parts ladder, three benches deep, behind two doors, across the pressure
-//     frontier — the OPENING OF THE GAME, not a five-minute acceptance run. So `--prep` writes a
-//     TEMPORARY defs overlay in which `device_place_cost = 0` and NOTHING else changes, and the
-//     placement then goes through the ordinary `place` wire command the palette click sends.
-//     ⇒ FILED, not hidden: on the shipped wreck a heater is REACHABLE but not AFFORDABLE at boot.
+// (A) THE PRICE — ⭐ **SETTLED BY RUNNING, 2026-08-04, AND THE PREMISE HAS INVERTED.** The
+//     paragraph that stood here was a FLAGGED PREDICTION written by D7 without a browser; it is
+//     replaced by what a run actually saw, and nothing below is quoted from it.
+//     · WHAT WAS TRUE ONCE: `build.def device_place_cost = 3` PARTS, and `--ship wreck` authored
+//       ONE Parts unit on the ground. This harness's first run watched the placement be refused
+//       SILENTLY (`0 -> 0` heaters on the devices channel) because the ship could not pay —
+//       `PlaceDeviceCommand`'s documented all-or-nothing behaviour, not a bug. So the run needed a
+//       `device_place_cost = 0` defs overlay, and the file said so out loud.
+//     · ⭐ WHAT IS TRUE NOW, MEASURED ON A SHIPPING HOST WITH NO OVERLAY AT ALL (2026-08-04, this
+//       rig, `--ship wreck`, plain `content/core/SimDefs`): the wreck boots EIGHT loose Parts
+//       (D7's seven `cabin stores` crates + the original one, `AuthoredShips.PeriluneWreck`), the
+//       palette click placed the heater, and the devices channel went `0 -> 1`. THE SHIP CAN PAY.
+//     ⇒ SO THE RUN IS NOW THE UNMODIFIED SHIP AND THE UNMODIFIED PRICE, and the disclosure that
+//       used to live here is gone because the thing it disclosed is gone. `--prep` survives with a
+//       `--place-cost` argument, for the OTHER half of the premise: it is how a reviewer drives the
+//       REFUSAL deliberately (a cost the ship cannot meet), and it is this rig's own planted-failure
+//       control — see the LEDGER check below, which is what makes the price non-vacuous.
+//     ⛔ AND THE LEDGER IS CHECKED, NOT ASSUMED. "The heater appeared" and "the ship paid for it"
+//       are two claims: a placement that landed for free would look identical on the devices
+//       channel. The run therefore reads loose Parts off its own `items` socket either side of the
+//       click and requires the drop to be exactly `device_place_cost`.
 //
 // (B) THE COLD. The compartment must be COLD before a heater means anything, and
 // `--ship wreck` takes SIM-DAYS to get there (measured, unattended: the reactor bay reads 9.24 °C
@@ -50,10 +55,15 @@
 //   · A reviewer who wants the unmodified price plays the matter ladder first, then runs this
 //     against a plain `./play.sh`.
 //
-// USAGE
-//   1. node client/tools/heater-shot.mjs --prep          # writes the temp defs, prints the host cmd
-//   2. <the printed host command>                         # and, beside it: python3 client/serve.py 8461
-//   3. node client/tools/heater-shot.mjs --out docs/design/shots
+// USAGE — ⭐ NO PREP STEP ANY MORE (see (A)): the shipping ship pays the shipping price.
+//   1. ~/.dotnet/dotnet run --project hosts/web -- --port 8460 --ship wreck
+//      python3 client/serve.py 8461
+//   2. node client/tools/heater-shot.mjs --out docs/design/shots
+//
+// TO DRIVE THE REFUSAL INSTEAD (the planted-failure control for the price, and the state the ship
+// is in once its Parts are spent):
+//   1. node client/tools/heater-shot.mjs --prep --place-cost 99   # a price the wreck cannot meet
+//   2. <the printed host command>, then the same run — the placement and LEDGER checks go red.
 //
 // Exits non-zero on any failed check. NOT wired into ./ci.sh: it needs a browser and a running
 // host, and the gate stays browser-free (the moss-shot.mjs / board-fault-shot.mjs rule).
@@ -104,10 +114,16 @@ if (process.argv.includes('--prep')) {
   log(`copied ${copied} def files + ${rulesCopied} rules/*.moss`);
   const bd = join(dst, 'build.def');
   const before = readFileSync(bd, 'utf8');
-  const after = before.replace(/^device_place_cost\s*=\s*\d+/m, 'device_place_cost     = 0');
+  // ⭐ THE OVERLAY'S PRICE IS AN ARGUMENT NOW, and that is the whole of what changed here. It used
+  // to be hard-wired to 0 because the wreck could not afford 3; the wreck can (see (A)), so the
+  // overlay's remaining job is the OPPOSITE one — naming a price the ship CANNOT meet, which is how
+  // the refusal is driven on demand and how this rig's own planted-failure control is run.
+  const cost = arg('place-cost', '0');
+  if (!/^\d+$/.test(cost)) { console.error('FAIL: --place-cost must be a non-negative integer'); process.exit(2); }
+  const after = before.replace(/^device_place_cost\s*=\s*\d+/m, 'device_place_cost     = ' + cost);
   if (after === before) { console.error('FAIL: device_place_cost not found in build.def'); process.exit(2); }
   writeFileSync(bd, after);
-  log('wrote a defs overlay with device_place_cost = 0 (and NOTHING else changed):\n  ' + dst);
+  log(`wrote a defs overlay with device_place_cost = ${cost} (and NOTHING else changed):\n  ` + dst);
   log('\nstart the two halves with:');
   log(`  ~/.dotnet/dotnet run --project hosts/web -- --port ${HOST_PORT} --ship wreck --data ${dst}`);
   log(`  python3 client/serve.py ${CLIENT_PORT}`);
@@ -134,6 +150,27 @@ function roomsNow() {
   return out;
 }
 const tempC = (anchor) => { const r = roomsNow().get(anchor); return r ? r.tempK - 273.15 : NaN; };
+
+// ───────────────────────────── THE LEDGER SIDE OF THE PLACEMENT (2026-08-04, see header (A))
+// `items` cells are ground stacks: [x, y, deck, kind, count, …] (WireFormat's items channel), and
+// LOOSE is exactly what "ground stack" means — a carried or reserved unit is not on this channel.
+// ⚠️ THE KIND BYTE IS MIRRORED, NOT IMPORTED, like `thaw-blocked-shot.mjs`'s: this file is a tool,
+// and the claim below is about what the SHIP's larder does, not about a client module.
+const ITEM_PARTS = 5;
+const looseParts = () => (latest.get('items')?.cells || [])
+  .filter((c) => (c[3] | 0) === ITEM_PARTS).reduce((n, c) => n + (c[4] | 0), 0);
+// ⛔ THE PRICE COMES FROM THE DEFS THE HOST IS ACTUALLY RUNNING, never from a literal in this file.
+// Default: the shipped `build.def`. Under a `--prep` overlay the host's price is the one `--prep`
+// wrote, so the same `--place-cost` argument is passed to the run — a rig that priced the placement
+// from the repo while the host ran an overlay would report a false LEDGER failure.
+const PLACE_COST = (() => {
+  const override = arg('place-cost', null);
+  if (override !== null) return +override;
+  const src = readFileSync(join(REPO, 'content', 'core', 'SimDefs', 'build.def'), 'utf8');
+  const m = /^device_place_cost\s*=\s*(\d+)/m.exec(src);
+  if (!m) { console.error('FAIL: device_place_cost not found in content/core/SimDefs/build.def'); process.exit(2); }
+  return parseInt(m[1], 10);   // parseInt on a digits-only capture — no locale in the path (de-DE box)
+})();
 
 const decks = decodeDecks(latest.get('decks'));
 if (!decks) { console.error('FAIL: no `decks` message — is the host up on ' + HOST_PORT + '?'); process.exit(2); }
@@ -244,12 +281,19 @@ const speedLabel = await speed(+1, 4);   // 1x -> 1000x, through the player's ow
 log('  speed reads:', JSON.stringify(speedLabel));
 const t0 = Date.now();
 let ffOk = false;
+// ⭐ THE CONTROL'S PRE-HEATER DRIFT, RECORDED WHILE NO HEATER EXISTS. It is the evidence behind the
+// EXCESS threshold below: whatever the control does in the measurement phase, this says how much of
+// it the control was already doing before the heater was placed.
+let ctrlPrev = tempC(CTRL), ctrlDriftPre = 0;
 while ((Date.now() - t0) / 1000 < MAX_WAIT_S) {
   await sleep(5000);
-  const w = tempC(WORK);
-  log(`   t+${Math.round((Date.now() - t0) / 1000)}s  ${WORK} ${w.toFixed(2)} C  |  ${CTRL} ${tempC(CTRL).toFixed(2)} C`);
+  const w = tempC(WORK), c = tempC(CTRL);
+  ctrlDriftPre = c - ctrlPrev; ctrlPrev = c;
+  log(`   t+${Math.round((Date.now() - t0) / 1000)}s  ${WORK} ${w.toFixed(2)} C  |  ${CTRL} ${c.toFixed(2)} C`);
   if (w < TARGET_C) { ffOk = true; break; }
 }
+log(`  the control's LAST pre-heater interval: ${CTRL} moved ${ctrlDriftPre.toFixed(2)} C in 5 s at this speed `
+  + '— the ship\'s own weather, with no heater anywhere');
 await speed(-1, 4);   // back to 1x for the gestures
 await sleep(1500);
 const coldWork = tempC(WORK), coldCtrl = tempC(CTRL);
@@ -302,6 +346,8 @@ if (!target) { console.error('FAIL: no free tile in ' + WORK); process.exit(9); 
 log(`  placing on the free tile ${target.x},${target.y}`);
 
 const heatersBefore = devsIn().filter((d) => d.kind === HEATER_KIND).length;
+const partsBefore = looseParts();
+log(`  loose Parts before the placement: ${partsBefore} (the price is ${PLACE_COST})`);
 await clickAt(heaterBtn.x, heaterBtn.y);
 await sleep(900);
 await png('04-heater-armed.png');
@@ -319,9 +365,19 @@ await png('04-heater-armed.png');
 const toastLine = await evaluate(`(()=>{const t=document.getElementById('rz-toast');if(!t)return '(no toast)';return t.hidden?'(HIDDEN) '+t.textContent:t.textContent;})()`);
 log('  TOAST:', JSON.stringify(toastLine));
 const heatersAfter = devsIn().filter((d) => d.kind === HEATER_KIND).length;
+const partsAfter = looseParts();
 check(heatersAfter === heatersBefore + 1,
   `a HEATER landed in ${WORK} on the devices channel (${heatersBefore} -> ${heatersAfter}) — the `
   + 'sim confirmed the placement, not the client');
+// ⭐⭐ AND THE SHIP PAID FOR IT. Two claims, not one: a placement that landed FREE — a price seam
+// that stopped charging, or a def overlay left behind by a previous run — is byte-identical on the
+// devices channel to one that was paid for. This leg is what keeps the price non-vacuous now that
+// the wreck can afford it, and it is the leg that goes red under `--prep --place-cost 99` (the
+// refusal control), where NOTHING is placed and NOTHING is spent.
+check(partsBefore - partsAfter === PLACE_COST,
+  `THE SHIP PAID: loose Parts ${partsBefore} -> ${partsAfter} across the click, a drop of `
+  + `${partsBefore - partsAfter} against build.def's device_place_cost = ${PLACE_COST} — read off `
+  + 'this tool\'s own `items` socket, not off a client label');
 const placed = devsIn().find((d) => d.kind === HEATER_KIND);
 if (placed) log(`  placed heater: kind=${placed.kind} at ${placed.x},${placed.y} cond=${placed.cond} oper=${placed.oper}`);
 
@@ -357,11 +413,35 @@ check(warmWork > coldWork + 1.0,
 // because the spine is fed by conduction through the doors of compartments whose machines are still
 // running. A `warmCtrl < coldCtrl` assertion would therefore be a coin flip on the ship's own
 // weather, and a coin flip that happened to land right would look exactly like a working control.
-// What the control really has to rule out is "the whole ship warmed", and a ratio says that.
+// What the control really has to rule out is "the whole ship warmed".
+//
+// ⛔⛔ AND THE RATIO THAT USED TO SAY SO WENT RED ON A WORKING HEATER, 2026-08-04 — a FALSE RED
+// (TRAPS 3) manufactured by the D7 premise shift, measured by running it. The leg was
+// `workDelta > 5 × |ctrlDelta|`, i.e. a ratio whose DENOMINATOR was assumed to be ~0. It is not any
+// more: D7's seven `cabin stores` crates took the wreck to 3+ Parts, at which the ship STOPS
+// BROWNING OUT (that package's own filed, measured owner call) — machines run continuously, and
+// EVERY compartment now drifts WARM. Measured in the run that went red: reactor +8.81 °C with the
+// heater, cryobay +1.83 °C without one, ratio 4.8× — under a threshold of 5, while the heater was
+// working perfectly. ⭐ AND THE DRIFT IS THE SHIP'S, NOT THE HEATER'S, MEASURED INSIDE THAT SAME
+// RUN: the control was already climbing 10.00 → 11.31 °C in the last fast-forward interval BEFORE
+// the heater existed, at 1000× — 0.131 °C per 5 s once scaled to the 100× measurement phase, which
+// is the 0.15 °C per 5 s it went on doing afterwards. The control's rise is the ship's weather
+// continuing at its own rate; the heater did not cause it.
+// ⇒ THE DISCRIMINATOR IS NOW AN EXCESS, NOT A RATIO — how much MORE the working room gained than
+// the drifting ship — which is immune to a non-zero baseline in both directions. Two legs, not one
+// conjunction, so a failure names itself (the blinded-legs shape).
 const workDelta = warmWork - coldWork, ctrlDelta = warmCtrl - coldCtrl;
-check(workDelta > 5 * Math.abs(ctrlDelta),
+log(`  the ship's own drift this run: ${CTRL} moved ${ctrlDelta.toFixed(2)} C with no heater in it`);
+// THE FLOOR IS SET FROM THE MEASUREMENT, and it is stated: the excess measured on the shipping
+// wreck was 8.81 − 1.83 = 6.98 °C, so 4.0 leaves ~40 % headroom. A dead heater gives an excess of
+// ~0 (the working room drifts with everything else) and so does a ship-wide warming.
+check(workDelta - ctrlDelta > 4.0,
   `THE HEAT IS LOCAL, not the whole ship: ${WORK} moved ${workDelta.toFixed(2)} C while ${CTRL} `
-  + `moved ${ctrlDelta.toFixed(2)} C in the same run — a ${(workDelta / (Math.abs(ctrlDelta) || 1e-9)).toFixed(1)}x ratio.`);
+  + `moved ${ctrlDelta.toFixed(2)} C in the same run — an EXCESS of `
+  + `${(workDelta - ctrlDelta).toFixed(2)} C over the ship's own drift (floor 4.0).`);
+check(ctrlDelta < 0.5 * workDelta,
+  `…and the control did not merely follow it: ${CTRL} took ${(100 * ctrlDelta / (workDelta || 1e-9)).toFixed(0)}% `
+  + `of ${WORK}'s rise (must be under 50% — at ~100% the whole ship warmed and the heater proved nothing).`);
 check(warmWork < 45, `and it stayed below heat_stroke_c (${warmWork.toFixed(2)} C)`);
 await png('07-heated-overview.png');
 
