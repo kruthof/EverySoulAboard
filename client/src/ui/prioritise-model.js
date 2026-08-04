@@ -27,7 +27,7 @@ import { itemWords, SPEND_NOTHING } from '../wire/messages.js';
 /**
  * ⭐⭐ THE PRICE CLAUSE — *what will this order spend?*, in the player's words, or `''` for silence.
  *
- * THE FINDING IT CLOSES (T13, 2026-08-02): the shipped wreck boots with EXACTLY ONE `Parts` unit
+ * THE FINDING IT CLOSES (T13, 2026-08-02): the wreck THEN booted with EXACTLY ONE `Parts` unit
  * aboard, the player's first repair order eats it, and nothing on any surface says so. The
  * commissioning chain that needed that Part is then quietly unwinnable, and the player has no way to
  * know which of their orders did it. `invisible-feedback-is-FUNCTIONAL`.
