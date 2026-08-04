@@ -48,6 +48,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { dismissOnboarding } from './rig-lib.mjs';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8348');
@@ -164,9 +165,10 @@ await call('Runtime.enable');
 await call('Page.navigate', { url: `http://localhost:${CLIENT_PORT}/?port=${HOST_PORT}` });
 await sleep(6000);
 
-// The onboarding takeover swallows every click and every screenshot below it.
-const onb = await centre('[data-onb-begin]');
-if (onb) { log('dismissing the onboarding card'); await clickAt(onb.x, onb.y); await sleep(2500); }
+// THE ONBOARDING CARD, DISMISSED AND VERIFIED GONE (shared helper, 2026-08-03). The one-shot
+// this replaces could SILENTLY SKIP a card that had not painted yet, and every click below
+// then landed on a full-screen modal instead of the ship.
+await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
 
 // ── STEP 1: open the WORK tab ──
 log('\nSTEP 1 — open the WORK tab');
@@ -338,8 +340,10 @@ await png('02-repair-at-3.png');
 log('  reloading…');
 await call('Page.navigate', { url: `http://localhost:${CLIENT_PORT}/?port=${HOST_PORT}` });
 await sleep(6000);
-const onb2 = await centre('[data-onb-begin]');
-if (onb2) { await clickAt(onb2.x, onb2.y); await sleep(2500); }
+// After a reload the profile has seen the card (`perilune.introSeen.v1` is in this
+// profile's localStorage), so its ABSENCE is the expected answer — short grace, still
+// verified if one does appear.
+await dismissOnboarding({ centre, clickAt, evaluate, log, chrome, graceMs: 2000 });
 await openWorkTab();
 const reloaded = await cellsNow();
 log('  after the reload:', JSON.stringify(reloaded?.map((c) => c.text)));
