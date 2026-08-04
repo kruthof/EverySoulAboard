@@ -1558,6 +1558,46 @@ body.moss-open #roomzoom-view{display:none !important}
   box-shadow:inset 0 2px 4px rgba(0,0,0,.62),0 0 0 2px rgba(207,122,51,.34)}
 .rz-tool.demo.on,.rz-tool.demo.on:hover,.rz-tool.demo.on:active{background:#6a2410;color:#ffb59d;
   border-color:#e07a5f;box-shadow:inset 0 2px 4px rgba(0,0,0,.62),0 0 0 2px rgba(165,58,37,.4)}
+/* ⭐⭐ THE PRICE ON THE CHIP (palette-honesty, 2026-08-03). A furniture button carries a second line
+   — `3 PARTS`, or `NOT YET` for the two cosmetic tools — so the cost is on the surface before the
+   player arms anything. The button becomes a two-row column; nothing else about it moves.
+
+   ⚠️ THE COST LINE MUST NEVER BECOME AN ARMED-STATE RULE. `client/test/palette-layout.test.js`
+   censuses the rules whose selector contains `.rz-tool` AND `.on` and requires EXACTLY TWO
+   (`.rz-tool.on`, `.rz-tool.demo.on`); it then rejects any property in them that re-measures the
+   button, because arming must not reflow the eighteen-tool wrapping row. These rules deliberately
+   carry neither `.on` nor `:hover` in their selectors, so they join neither census: they change the
+   button's box ONCE, at build time, and never again.
+
+   ⛔ `.cant` IS PAINT-ONLY, for that same reason — colour and opacity, no border, no padding, no
+   font metric. It says "the ship cannot do this right now" (too few Parts) or, for SHELF/RUG,
+   "the ship cannot do this at all yet". It is deliberately NOT `disabled`: the button still arms,
+   still sends, and the sim still answers — see `build-cost-model.js` on why this client never gates
+   the wire off a ≤1 Hz census.
+
+   ⭐ THE COST LINE TAKES ITS COLOUR BY INHERITANCE (`currentColor` + `opacity`), NEVER BY AN ARMED
+   OVERRIDE, and that is the mechanism the census above forces rather than a stylistic choice: any
+   rule spelled `.rz-tool.on .rz-tool-cost` would land in the armed census as a THIRD armed rule and
+   redden it. Inheriting means the price tracks rest → hover → armed → demolish for free, in every
+   combination, with no selector that mentions `.on` at all. */
+.rz-tool.costed{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 9px 5px;
+  line-height:1.15}
+.rz-tool-name{display:block}
+.rz-tool-cost{display:block;font-size:8px;letter-spacing:.05em;opacity:.66}
+/* The one colour the price states for itself: a ship that cannot pay. Chosen to read against BOTH
+   the resting fill and the armed amber, because it must survive arming without an `.on` rule. */
+.rz-tool.cant .rz-tool-cost{color:#e8836a;opacity:1}
+.rz-tool.cant .rz-tool-name{opacity:.72}
+/* THE COST ROW — price + stock for the armed tool, third sibling of `.rz-matstrip`/`.rz-accepts` in
+   `.rz-palette-wrap` and mutually exclusive with both, so the reveal costs zero net height. */
+.rz-cost{display:flex;justify-content:center;align-items:center;padding:6px 11px;border-radius:11px;
+  width:max-content;max-width:100%}
+.rz-cost[hidden]{display:none}
+.rz-cost-line{font-size:9.5px;letter-spacing:.1em;color:var(--ink-mute,#8c8377);white-space:normal;
+  text-align:center}
+/* The refusal wears the fault colour the alerts bar and the blocked badge already use, so "the ship
+   cannot" reads the same everywhere it is said. */
+.rz-cost-line.fault{color:#e07a5f}
 .rz-hint{font-size:9.5px;letter-spacing:.06em;color:var(--ink-mute,#8c8377)}
 
 /* material picker strip (shown when WALL/FLOOR armed) — item-set swatches, active one lit.
