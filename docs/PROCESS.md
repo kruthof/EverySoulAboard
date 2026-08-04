@@ -40,7 +40,8 @@ the owner judges art from browser screenshots.
    ~120 lines. Move anything no longer current to `docs/history/HANDOVER-archive.md`
    (rolling; the frozen pre-restructure record is `docs/history/HANDOVER-2026-07.md`).
 2. Append ONE line to the HANDOVER session log table: date · lane · what a player can now
-   do that they couldn't · gate result.
+   do that they couldn't · gate result — **ending with `rows:` — the TARGET §3 rows /
+   ROADMAP gates the session moved, or the word `none`** (see §2, "drift is disclosed").
 3. Update `docs/TARGET.md` checklist rows and `docs/ROADMAP.md` package status that your
    merge changed. If a pin moved: `ci.sh` + `CLAUDE.md` pin table + `MECHANICS.md` + memory
    in the SAME commit (the hash-move ritual).
@@ -49,6 +50,23 @@ the owner judges art from browser screenshots.
 
 ## 2. Scope discipline (the anti-rabbit-hole rules)
 
+- **The lane-selection gate (2026-08-04 — owner-directed drift check).** Before a lane
+  starts, write three one-line answers into its charter or HANDOVER entry:
+  (1) which `TARGET.md` §3 row or `ROADMAP.md` gate it moves — or which VERBATIM owner
+  sentence directed it; (2) the player sentence (an INFRASTRUCTURE lane instead names the
+  row/gate it unblocks, by id); (3) whether the next milestone's human gate would notice.
+  A lane that answers none of the three is META-WORK — rig hardening, guards about guards,
+  DOM tests for shipped affordances, renames, harness witnesses are meta-work by default —
+  and meta-work never runs as its own lane: it rides inside a lane that does answer, or it
+  stays filed. Owner triage can override; nothing else can.
+- **Drift is disclosed, not discovered.** Every session-log row ends with `rows:` — the
+  TARGET §3 rows / ROADMAP gates moved, or `none`. A `none` session is legitimate only
+  when owner-directed (triage, playtest prep, a ruling batch). After TWO consecutive
+  `none` sessions, the next session MUST take the topmost unmerged ROADMAP row — no
+  candidate-lane shopping. The HANDOVER open lists are an ARCHIVE, not a queue: in the
+  handover ritual, a ★ finding neither owner-triaged nor promoted within three sessions
+  moves to `docs/history/`, and the "candidate small lanes" list may only contain lanes
+  that pass the three-question gate.
 - **A package delivers a player-visible outcome.** If you cannot write the outcome as one
   sentence a player would notice, the package is not ready to implement — take it back to
   the roadmap.

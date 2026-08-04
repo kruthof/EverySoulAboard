@@ -3,9 +3,13 @@
 > **Game title: Every Soul Aboard** (decided 2026-07-23). "Perilune" is the internal
 > **codename** — the repo, the `Perilune.*` namespaces, and the ship MSV *Perilune* keep it.
 
-**The game: RimWorld × Factorio on a wrecked ship — built in that order.** Phase 1 (NOW) is
-the RimWorld loop: order → pawn does it → the ship visibly changes. Phase 2 (later, owner-
-gated) is the automation game via MOSS — control-not-conveyance, operated by named souls.
+**The game: RimWorld × Factorio × This War of Mine on a wrecked ship — built in that
+order.** Phase 1 (NOW) is the RimWorld loop: order → pawn does it → the ship visibly
+changes. Phase 2 (later, owner-gated) is the automation game via MOSS —
+control-not-conveyance, operated by named souls. This War of Mine is the third REGISTER
+(OD-R, 2026-08-04): the survival tone — scarcity, who-to-wake triage, consequences carried
+by named people — it lands in the M4/M5 charters and **nothing is implementable from it
+today** (no moral-choice engine, no misery meters; TARGET §1.3/§2).
 **For every mechanism decision, RimWorld's implementation is the analogue**: cite
 `docs/design/rimworld-reference.md` (§1–§3, §6.1 are source-grade), do not re-derive from
 memory. Defaults may deliberately differ where the owner decided (work grid boots OFF, pawn
