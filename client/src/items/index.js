@@ -79,7 +79,14 @@
 
 import { scene } from './helpers.js';
 import * as O from './objects.js';
-import * as S from './structures.js';
+// — lane/paper-materials —
+// `./structures.js` IS GONE. It held the twelve warm wall/floor swatches and nothing else, and all
+// twelve are replaced below by `./paper-materials.js` — same ids, same class, same `material` tag,
+// new drawing. That is the shape VR-P2 used for the twenty-one furniture rows it replaced (it left
+// `objects.js` holding only the fourteen rows still drawn from it), and it is used here for the same
+// reason: a module nothing imports is the next reader's invitation to draw the old art back.
+import * as PM from './paper-materials.js';
+// — end lane/paper-materials —
 import * as F from './fixtures.js';
 import * as R from './resources.js';
 import * as C from './cryo.js';
@@ -136,21 +143,44 @@ export const ITEMS = Object.freeze({
   'cryopod':          { build: O.cryopod,         size: { w: 48, h: 82 }, ...cos('cryopod') },
   'fuel-drum':        { build: FT.fuelDrum,        size: FT.SIZES['fuel-drum'], ...cos('fuel_drum') },
 
+  // — lane/paper-materials — THE TWELVE MATERIALS, REDRAWN (see `./paper-materials.js`) ─────────
+  //
+  // ⚠️ REPLACED IN PLACE — same ids, same `kind: 'material'`, same `'#'`/`'.'` glyphs, new builders.
+  // The alternative (twelve NEW rows beside the old twelve) was measured and refused, and the
+  // evidence is `client/src/items/wrecked.js`: every one of these ids carries a WRECKED TWIN, and
+  // the twin set is joined POSITIONALLY to `docs/design/perilune-item-set.dc.html`'s own `brokenD`
+  // array as a BIJECTION over exactly seventy mock pieces (`client/test/wrecked.test.js`). Twelve
+  // new registry rows would each need a twin plus a `NON_MOCK_TWIN` ledger entry to stay out of that
+  // join, and twelve old rows would keep drawing warm art nothing reaches — 24 material rows, two
+  // ledgers touched, and a palette that has to choose. Replacing the `build` reference moves NO
+  // count anywhere: registry 80, class tally material 12, twin bijection 70, all unchanged.
+  //
+  // ⚠️ THE WRECKED TWINS STAY WARM, and that is the wave's own FILED inconsistency rather than an
+  // oversight — charter §3's P2b, the same state the twenty-one furniture rows VR-P2 replaced are
+  // in. It is invisible on the shipping surface here: `roomzoom-view.js materialLayerSvg` and
+  // `paintMatStrip` both call `buildItem`, never `buildTileItem`, so no material twin has ever been
+  // drawn by the Room Zoom (a material is a tile's SKIN — there is no `Device.Condition` for it to
+  // read). The twins reach a screen only through `client/tools/wrecked-gallery.mjs`.
+  //
+  // `size` is now DERIVED from each piece's centimetres (`paper-materials.SIZES`) instead of the
+  // mock's identical `106 × 94` card measurement — see that constant's own header.
+  //
   // ── WALLS (6) — MATERIAL ──
-  'steel-bulkhead':   { build: S.steelBulkhead,   size: { w: 106, h: 94 }, ...wall() },
-  'timber-lined-wall':{ build: S.timberLinedWall, size: { w: 106, h: 94 }, ...wall() },
-  'blast-wall':       { build: S.blastWall,       size: { w: 106, h: 94 }, ...wall() },
-  'glass-partition':  { build: S.glassPartition,  size: { w: 106, h: 94 }, ...wall() },
-  'insulated-wall':   { build: S.insulatedWall,   size: { w: 106, h: 94 }, ...wall() },
-  'hull-plating':     { build: S.hullPlating,     size: { w: 106, h: 94 }, ...wall() },
+  'steel-bulkhead':   { build: PM.steelBulkhead,   size: PM.SIZES['steel-bulkhead'], ...wall() },
+  'timber-lined-wall':{ build: PM.timberLinedWall, size: PM.SIZES['timber-lined-wall'], ...wall() },
+  'blast-wall':       { build: PM.blastWall,       size: PM.SIZES['blast-wall'], ...wall() },
+  'glass-partition':  { build: PM.glassPartition,  size: PM.SIZES['glass-partition'], ...wall() },
+  'insulated-wall':   { build: PM.insulatedWall,   size: PM.SIZES['insulated-wall'], ...wall() },
+  'hull-plating':     { build: PM.hullPlating,     size: PM.SIZES['hull-plating'], ...wall() },
 
   // ── FLOORS (6) — MATERIAL ──
-  'steel-tan-floor':  { build: S.steelTanFloor,   size: { w: 106, h: 94 }, ...floor() },
-  'wood-plank-floor': { build: S.woodPlankFloor,  size: { w: 106, h: 94 }, ...floor() },
-  'grow-matting':     { build: S.growMatting,     size: { w: 106, h: 94 }, ...floor() },
-  'cream-tile-floor': { build: S.creamTileFloor,  size: { w: 106, h: 94 }, ...floor() },
-  'metal-grating':    { build: S.metalGrating,    size: { w: 106, h: 94 }, ...floor() },
-  'carpet-floor':     { build: S.carpetFloor,     size: { w: 106, h: 94 }, ...floor() },
+  'steel-tan-floor':  { build: PM.steelTanFloor,   size: PM.SIZES['steel-tan-floor'], ...floor() },
+  'wood-plank-floor': { build: PM.woodPlankFloor,  size: PM.SIZES['wood-plank-floor'], ...floor() },
+  'grow-matting':     { build: PM.growMatting,     size: PM.SIZES['grow-matting'], ...floor() },
+  'cream-tile-floor': { build: PM.creamTileFloor,  size: PM.SIZES['cream-tile-floor'], ...floor() },
+  'metal-grating':    { build: PM.metalGrating,    size: PM.SIZES['metal-grating'], ...floor() },
+  'carpet-floor':     { build: PM.carpetFloor,     size: PM.SIZES['carpet-floor'], ...floor() },
+  // — end lane/paper-materials —
 
   // ── FIXTURES (18) ──
   // `'+'` is `Glyphs.DoorClosed`, i.e. `Glyphs.ForDevice(DeviceKind.Door)` — the rest glyph of the

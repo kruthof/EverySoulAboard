@@ -829,11 +829,29 @@ export function standItem(itemId, tx, ty, place, idPrefix, cond) {
  *   material" survives the change (ruling E4: nothing is dropped, everything is re-housed).
  *
  * A FLOOR material still LIES IN THE FLOOR PLANE, because that is what it is.
+ *
+ * — lane/paper-materials —
+ * 3 ⭐⭐ THE SKIN IS THE FRONT FACE NOW, NOT A BADGE STUCK ON IT, and that is a DIMENSIONAL fix
+ *   rather than a bigger picture. The slab is 1 m of wall run at the compartment's 2.4 m ceiling, so
+ *   its front face is `ROOM_SCALE·100 × ROOM_SCALE·240` px — and the material art used to be handed a
+ *   `ROOM_SCALE · 62` SQUARE, centred on the tile's foot and floated at 0.62 of the wall height. Two
+ *   things were wrong with that and only the second is about taste: the box was square, so a wall
+ *   material could not be drawn at its own 1 : 2.4 proportion at all; and 58.9 px stood for a metre
+ *   where the slab beside it draws a metre as 95, so every pattern on it was at 0.62 of the room's
+ *   own scale — a rivet pitch, a plank width and a hazard band that all disagreed with the drawing
+ *   they sat on. The skin is now placed on the front face exactly (`place.front` is that face's
+ *   bottom-left corner, which is where `obliqueBox` starts it), at the face's own w × h, and
+ *   `paper-materials.js` reads the BOX ASPECT to decide how many centimetres it is drawing.
+ *
+ * ⭐ EXPORTED so `client/tools/paper-materials-sheet.mjs` photographs THIS function rather than a
+ * copy of it — VR-P3's MINOR 6 verbatim: a sheet that re-derives the placement is a second authority
+ * on the exact thing the sheet exists to check, so the page could look right while the shipping
+ * surface drew something else.
  */
-function materialLayerSvg(tiles, place) {
+export function materialLayerSvg(tiles, place, focus = _focus) {
   const floors = [], walls = [];
-  const rx = _focus.rx | 0, ry = _focus.ry | 0;
-  const x1 = rx + (_focus.rw | 0) - 1, y1 = ry + (_focus.rh | 0) - 1;
+  const rx = focus.rx | 0, ry = focus.ry | 0;
+  const x1 = rx + (focus.rw | 0) - 1, y1 = ry + (focus.rh | 0) - 1;
   for (const t of tiles) {
     const id = materialItemId(t.kind, t.mat);
     if (!id) continue;
@@ -842,14 +860,16 @@ function materialLayerSvg(tiles, place) {
       if (t.tx === rx || t.tx === x1 || t.ty === ry || t.ty === y1) continue;   // the hull — see above
       const [px, py] = place.front(t.tx, t.ty);
       const cm = M_PER_TILE * 100;
-      const [cx, cy] = place.foot(t.tx, t.ty);
-      const sw = ROOM_SCALE * 62;
+      // The slab's FRONT FACE, in the px `obliqueBox` draws it at: one tile of run, one ceiling of
+      // height. `place.front` IS that face's bottom-left corner, so the skin's own top-left is one
+      // face-height above it. See this function's header for what this replaced and why.
+      const faceW = ROOM_SCALE * cm;
+      const faceH = ROOM_SCALE * ROOM_HEIGHT_M * 100;
       walls.push('<g class="rz-wall">'
         + obliqueBox(px, py, cm, ROOM_HEIGHT_M * 100, cm, ROOM_SCALE,
           { strokeWidth: 1.8, sideFill: 'hatch', hatch: fhRef(RZ_ID) })
-        + '<g transform="translate(' + (cx - sw / 2).toFixed(2) + ' '
-        + (cy - ROOM_SCALE * ROOM_HEIGHT_M * 100 * 0.62).toFixed(2) + ')">'
-        + buildItem(id, { w: sw, h: sw, idPrefix: idp }) + '</g></g>');
+        + '<g transform="translate(' + px.toFixed(2) + ' ' + (py - faceH).toFixed(2) + ')">'
+        + buildItem(id, { w: faceW, h: faceH, idPrefix: idp }) + '</g></g>');
     } else {
       const g = buildItem(id, { w: FLOOR_MAT_PX, h: FLOOR_MAT_PX, idPrefix: idp });
       floors.push('<g transform="' + place.cell(t.tx, t.ty) + '">' + g + '</g>');

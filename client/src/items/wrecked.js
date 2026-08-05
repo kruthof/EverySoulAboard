@@ -1,7 +1,7 @@
 // The 70 WRECKED builders — the POST-RAID twin of every static piece in the warm item set
 // (docs/design/perilune-item-set.dc.html, section "Wrecked — post-raid state", imported 2026-07-28).
 // Pure `(opts) -> string` SVG-`<g>`-fragment builders in the same centred mock-px space as
-// objects.js / structures.js / fixtures.js / resources.js / cryo.js; see helpers.js for the
+// objects.js / fixtures.js / resources.js / cryo.js; see helpers.js for the
 // coordinate model.
 //
 // The mock's own premise, verbatim: *"Day 1: the raid left every system dead. Every item above has a
