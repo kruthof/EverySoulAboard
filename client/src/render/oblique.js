@@ -259,28 +259,95 @@ export function box(x, y, wCm, hCm, dCm, s, opts = {}) {
  */
 export function roomFrame(wM, dM, hM, s, opts = {}) {
   const o = opts || {};
-  const wCm = (Number.isFinite(wM) ? wM : 0) * 100;
-  const dCm = (Number.isFinite(dM) ? dM : 0) * 100;
+  const wIn = (Number.isFinite(wM) ? wM : 0) * 100;
+  const dIn = (Number.isFinite(dM) ? dM : 0) * 100;
   const hCm = (Number.isFinite(hM) ? hM : 0) * 100;
   const k = Number.isFinite(s) ? s : 0;
   const x0 = o.x == null ? 58 : o.x;
   const y0 = o.y == null ? 452 : o.y;
+  // ⭐⭐ THE FACING — see `plan` below. `wCm`/`dCm` are the FACED footprint (what is actually drawn),
+  // so a caller that measures the frame measures the picture; `wIn`/`dIn` are the authored box the
+  // plan map turns inside.
+  const f = Number.isFinite(o.facing) ? ((o.facing | 0) & 3) : 0;
+  const swapped = (f & 1) === 1;
+  const wCm = swapped ? dIn : wIn;
+  const dCm = swapped ? wIn : dIn;
+  /**
+   * ⭐⭐ THE ONE PLACE A QUARTER-TURN HAPPENS — the whole of "rotate the thing" is this map.
+   *
+   * ⛔ IT IS IN THE FRAME AND NOT IN A BUILDER, AND THAT IS THE DESIGN. A fitting is authored once,
+   * in its own centimetres, inside `0..w / 0..d / 0..h` (`fittings.js`'s SPACE header). Rotation
+   * SWAPS AND MIRRORS THOSE CENTIMETRES BEFORE THEY ARE PROJECTED, so every builder — thirty of
+   * them, ~1200 lines of hand-placed cm points — turns without one of them knowing rotation exists.
+   * A per-builder `rotate` would be thirty chances to turn one leg the wrong way, and the design
+   * documents' own reason this module has no `rotate` (see the header) is preserved exactly: THE
+   * PROJECTION still has none. This is a change of the object's coordinates, not of the camera's.
+   *
+   * ⭐ AND THE ROUND-THINGS-LEVEL RULE SURVIVES BY CONSTRUCTION, not by being re-checked thirty
+   * times. A level ellipse is drawn axis-aligned in SCREEN space from `F.s * rCm`; only its CENTRE
+   * comes through here. So a barrel turned 90° is the same barrel in a different place, which is
+   * what "a round fitting has no heading and can be set down any way about" means.
+   *
+   * The map is a clockwise quarter-turn in PLAN (x right, y back into the picture):
+   *   0 → (x, y)          1 → (d − y, x)      2 → (w − x, d − y)      3 → (y, w − x)
+   * Facing 0 is the identity and returns its arguments untouched, so every existing caller and
+   * `oblique.test.js`'s pinned `room()` output are byte-identical.
+   */
+  const plan = (xCm, yCm) => {
+    const x = Number.isFinite(xCm) ? xCm : 0;
+    const y = Number.isFinite(yCm) ? yCm : 0;
+    if (f === 1) return [dIn - y, x];
+    if (f === 2) return [wIn - x, dIn - y];
+    if (f === 3) return [y, wIn - x];
+    return [x, y];
+  };
   const project = (xCm, yCm, zCm) => {
-    const [dx, dy] = depth(Number.isFinite(yCm) ? yCm : 0, k);
-    return [n(x0 + k * (Number.isFinite(xCm) ? xCm : 0) + dx),
-      n(y0 - k * (Number.isFinite(zCm) ? zCm : 0) + dy)];
+    const [px, py] = plan(xCm, yCm);
+    const [dx, dy] = depth(py, k);
+    return [n(x0 + k * px + dx), n(y0 - k * (Number.isFinite(zCm) ? zCm : 0) + dy)];
+  };
+  /**
+   * ⭐ THE FACED FOOTPRINT OF AN EXTRUDED BOX — the one thing `project` alone cannot carry.
+   *
+   * `oblique.box()` draws an AXIS-ALIGNED extrusion from a projected origin plus raw cm extents, so
+   * its `w`/`d` never pass through `plan` and a turned bench would keep its unturned footprint —
+   * the whole piece in the right place, drawn the wrong way round. This maps the box's plan RECT
+   * (all four corners, then the minimum) and swaps its extents on an odd facing, so the caller gets
+   * a projected origin and the extents to hand `box()`. ONE derivation, beside the map it depends on.
+   *
+   * @returns {{x:number, y:number, w:number, d:number}} px origin (front-bottom-left) + faced cm w/d
+   */
+  const boxAt = (xCm, yCm, zCm, bw, bd) => {
+    const w = Number.isFinite(bw) ? bw : 0;
+    const d = Number.isFinite(bd) ? bd : 0;
+    const a = plan(xCm, yCm);
+    const b = plan((Number.isFinite(xCm) ? xCm : 0) + w, (Number.isFinite(yCm) ? yCm : 0) + d);
+    const px = Math.min(a[0], b[0]);
+    const py = Math.min(a[1], b[1]);
+    const [ox, oy] = depth(py, k);
+    return {
+      x: n(x0 + k * px + ox),
+      y: n(y0 - k * (Number.isFinite(zCm) ? zCm : 0) + oy),
+      w: swapped ? d : w,
+      d: swapped ? w : d,
+    };
   };
   return Object.freeze({
-    s: k, wCm, dCm, hCm, x0, y0, project,
+    s: k, wCm, dCm, hCm, x0, y0, project, plan, boxAt, facing: f,
+    // ⚠️ THE CORNERS ARE THE **AUTHORED** BOX'S, PUT THROUGH `project` — `wIn`/`dIn`, never the
+    // faced `wCm`/`dCm`. Feeding the faced extents back into `project` would apply the plan map
+    // TWICE and put three of the four corners somewhere that is not a corner of anything. At
+    // facing 0 the two spellings are the same number, which is exactly why this is worth writing
+    // down: the wrong one is invisible on every existing caller.
     corners: Object.freeze({
       frontLeft:   project(0, 0, 0),
-      frontRight:  project(wCm, 0, 0),
-      backRight:   project(wCm, dCm, 0),
-      backLeft:    project(0, dCm, 0),
+      frontRight:  project(wIn, 0, 0),
+      backRight:   project(wIn, dIn, 0),
+      backLeft:    project(0, dIn, 0),
       frontLeftTop:  project(0, 0, hCm),
-      frontRightTop: project(wCm, 0, hCm),
-      backRightTop:  project(wCm, dCm, hCm),
-      backLeftTop:   project(0, dCm, hCm),
+      frontRightTop: project(wIn, 0, hCm),
+      backRightTop:  project(wIn, dIn, hCm),
+      backLeftTop:   project(0, dIn, hCm),
     }),
   });
 }

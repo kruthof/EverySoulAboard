@@ -174,6 +174,8 @@ const ghostState = () => evalJson(
   + "const e=g.querySelector('.rz-buildghost');"
   + "return {node:1,present:e?1:0,tile:e?e.getAttribute('data-ghost-tile'):null,"
   + "tool:e?e.getAttribute('data-ghost-tool'):null,refused:e?(e.getAttribute('class').indexOf('refused')>=0?1:0):0,"
+  + "facing:e?Number(e.getAttribute('data-ghost-facing')):null,"
+  + "ink:e?[...g.querySelectorAll('path')].map(n=>n.getAttribute('d')).join('|').length:0,"
   + "paths:g.querySelectorAll('path,ellipse,rect').length};})()");
 
 const g0 = await ghostState();
@@ -219,7 +221,7 @@ await sleep(400);
 check((await ghostState()).present === 0, 'DISARMING takes the ghost away without the pointer moving');
 await png(`0${++n}-ghost-gone-disarmed.png`);
 
-// ───────────────────────────────────────────────────────────── 6. THE PLACEMENT — the ghost's promise, kept
+// ───────────────────────────────────────────────────────────── 6. THE ROTATION — [E], four times
 await verifiedClick({
   what: `the ${TOOL.toUpperCase()} tool is armed again`,
   target: () => centre(`[data-rztool="${TOOL}"]`),
@@ -230,7 +232,38 @@ const tp = screenOf(TARGET.x, TARGET.y);
 await moveTo(tp.x, tp.y); await sleep(400);
 const shown = await ghostState();
 check(shown.present === 1 && shown.tile === `${TARGET.x},${TARGET.y}`, 'the ghost stands on the target tile');
-await png(`0${++n}-ghost-before-the-click.png`);
+check(shown.facing === 0, 'a freshly armed tool starts at facing 0');
+await png(`0${++n}-rot-0.png`);
+
+// ⭐⭐ FOUR QUARTER-TURNS, PHOTOGRAPHED. The DOM check is the evidence a machine can fail on: the
+// declared facing must step 1→2→3→0 AND the drawn ink must actually change, because a `_facing` that
+// incremented while the drawing ignored it would satisfy the first half alone.
+const inkAt = [shown.ink];
+const faceAt = [shown.facing];
+for (let r = 1; r <= 4; r++) {
+  await key('e');
+  await sleep(350);
+  const st = await ghostState();
+  faceAt.push(st.facing);
+  inkAt.push(st.ink);
+  check(st.present === 1, `after rotate ${r}: the ghost is still on screen`);
+  await png(`${n < 9 ? '0' : ''}${++n}-rot-${r % 4}.png`);
+}
+check(JSON.stringify(faceAt) === '[0,1,2,3,0]',
+  `[E] cycled the facing 0→1→2→3→0 (saw ${JSON.stringify(faceAt)})`);
+check(inkAt[1] !== inkAt[0] && inkAt[2] !== inkAt[1] && inkAt[3] !== inkAt[2],
+  'each quarter-turn actually REDREW the piece — a facing counter that the drawing ignores would '
+  + 'pass the cycle check above on its own');
+check(inkAt[4] === inkAt[0],
+  'four quarter-turns returned the drawing to exactly where it started (the "4×" in the owner\'s ask)');
+
+// ───────────────────────────────────────────────────────────── 7. THE PLACEMENT — turned, and it sticks
+// Turn to 1 and place there, so the facing that lands is NOT the default and a dropped field shows.
+await key('e');
+await sleep(350);
+const placing = await ghostState();
+check(placing.facing === 1, `placing at facing ${placing.facing}`);
+await png(`${n < 9 ? '0' : ''}${++n}-ghost-before-the-click.png`);
 
 const deviceKind = paletteCommand(TOOL).deviceKind;
 const before = devicesAt().length;
@@ -240,8 +273,18 @@ const after = devicesAt();
 const landed = after.length > before;
 if (parts >= 3) {
   check(landed, `the click PLACED a device at ${TARGET.x},${TARGET.y} (${before} → ${after.length} on this deck)`);
-  check(!!after.find((d) => d.x === TARGET.x && d.y === TARGET.y),
-    `…on the tile the ghost was standing on (kind for ${deviceKind})`);
+  const row = after.find((d) => d.x === TARGET.x && d.y === TARGET.y);
+  check(!!row, `…on the tile the ghost was standing on (kind for ${deviceKind})`);
+  // ⭐⭐ THE WHOLE CHAIN IN ONE ASSERTION: the facing the player was LOOKING AT came back off the
+  // sim, through the save-shaped field, through the wire's eleventh element. Read from the rig's own
+  // socket, never from the page — the page is the thing under test.
+  check(row && row.face === placing.facing,
+    `…AT THE FACING THE GHOST WAS SHOWING (ghost ${placing.facing}, wire reports ${row && row.face})`);
+  // …and the ghost is gone, because the tool is still armed but the piece is now REAL.
+  const post = await ghostState();
+  check(post.present === 1 && post.tile === `${TARGET.x},${TARGET.y}`,
+    'the ghost is still previewing (the tool stays armed after a placement — RimWorld\'s designator '
+    + 'does the same, and it is what lets a player lay a row)');
 } else {
   // Not a skip and not a pass: the SHIP cannot pay, which is a real and reported state, and the
   // ghost said so before the click. Naming it is the honest report; calling it a placement is not.

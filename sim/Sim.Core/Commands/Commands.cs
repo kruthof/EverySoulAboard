@@ -647,15 +647,30 @@ namespace Perilune.Sim
     {
         private readonly DeviceKind _kind;
         private readonly Int3 _pos;
+        /// <summary>Which way the placed device faces — 0..3, masked in the constructor so no other
+        /// reader has to. DRAWING-ONLY: see <see cref="Device.Facing"/>, which carries the whole
+        /// argument, including why RimWorld's interaction-cell coupling is deliberately absent.</summary>
+        private readonly byte _facing;
 
         /// <summary>What placing furniture is paid in. MUST equal
         /// <c>DeconstructSystem.DeviceSalvage</c> — the round trip is only provably lossy if the
         /// charge and the refund are the same currency (see the class doc).</summary>
         public const ItemKind Currency = ItemKind.Parts;
 
-        public PlaceDeviceCommand(DeviceKind kind, Int3 pos)
+        /// <summary>
+        /// ⭐ <paramref name="facing"/> IS OPTIONAL AND DEFAULTS TO 0, and that default is the
+        /// wire-compatibility contract as much as a convenience: every existing caller — the tests,
+        /// a host that has not learnt the argument — keeps constructing exactly the command it
+        /// constructed before, and a client that sends no <c>facing</c> key places a device facing 0,
+        /// which is what every device placed before 2026-08-05 faces.
+        /// <para>MASKED HERE, at the boundary, so the sim never holds a facing outside 0..3 — the
+        /// fold packs it into a shared word beside <c>NetworkId</c>, and this repo has shipped an
+        /// alias bug into a shared word once already (<c>RoomType.Cryo = 16</c>,
+        /// <c>Simulation.cs</c>).</para>
+        /// </summary>
+        public PlaceDeviceCommand(DeviceKind kind, Int3 pos, byte facing = 0)
         {
-            _kind = kind; _pos = pos;
+            _kind = kind; _pos = pos; _facing = (byte)(facing & 3);
         }
 
         /// <summary>The furniture whitelist: crew/decor pieces the player may place or remove at
@@ -712,6 +727,12 @@ namespace Perilune.Sim
             // spends one. Authored and generated devices keep Device.Scriptable's true default, so
             // no shipped ship, program or rule changes.
             placed.Scriptable = false;
+            // ⭐ THE FACING, set on the RETURNED device rather than threaded through `AddDevice` —
+            // exactly as `Scriptable` is one line up, and for the same reason: `AddDevice` is the
+            // single spawn door for every authored ship and every save restore, and widening its
+            // signature for a DRAWING-ONLY field would touch every one of those call sites just to
+            // say 0. Already masked in the constructor.
+            placed.Facing = _facing;
         }
 
         /// <summary>

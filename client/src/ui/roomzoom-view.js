@@ -212,7 +212,21 @@ let _stockFilter = defaultStockFilter();
 // pointer is off the room / off the canvas / nothing is armed. `_ghostSig` is what
 // `paintGhost` last wrote, so a mousemove that stays inside one tile mutates NOTHING.
 let _hoverTile = null;
-let _ghostSig = '';       // tool|tx,ty|refused|viewBox — the guard on the ghost root's innerHTML
+/**
+ * ⭐⭐ WHICH WAY THE ARMED TOOL WILL PUT THE PIECE DOWN — 0..3, one quarter-turn each, cycled by
+ * [E]. The owner, 2026-08-05: *"I want to be able to rotate it (4× rotation)"*.
+ *
+ * ⛔ IT IS RESET TO 0 BY `arm()`, AND THAT IS A DECISION RATHER THAN HOUSEKEEPING. RimWorld's
+ * designator REMEMBERS its rotation across placements, which is right there because facing is a
+ * MECHANIC (it moves the interaction cell) and a player turning a row of workbenches means it. Ours
+ * is drawing-only and there is no readout of it anywhere but the ghost itself, so a facing that
+ * survived a disarm would be an invisible mode: the player arms TABLE tomorrow and it lands sideways
+ * for a reason nothing on screen explains. Resetting on arm makes the state's whole lifetime
+ * something the player can see. ⚠️ IT DOES NOT RESET BETWEEN CLICKS — turn it once and place four
+ * benches the same way round, which is the gesture the owner's sentence describes.
+ */
+let _facing = 0;
+let _ghostSig = '';       // tool|tx,ty|refused|material|facing|viewBox — the ghost root's write guard
 let _accSig = '';         // last-rendered ACCEPTS row signature (mask + mismatch count), or 'off'
 let _costSig = '';        // last-rendered COST row signature (tool + level + sentence), or 'off'
 
@@ -902,7 +916,9 @@ function ghostPieceSvg(tool, tile, scene, place, refused) {
   } else {
     const itemId = ghostArtId(tool);
     if (!itemId) return '';
-    art = standItem(itemId, tile.x, tile.y, place, idp, undefined);
+    // ⭐ THE GHOST PREVIEWS THE FACING LIVE, through the same `standItem` the placed piece uses, so
+    // "what you see is what you get" holds for the rotation as well as for the piece.
+    art = standItem(itemId, tile.x, tile.y, place, idp, undefined, _facing);
   }
   // The REFUSAL mark: an ink cross over the tile's own floor quad, at the dotted `1 3` this surface
   // already uses for "this is being taken away" (`previewSvg`'s erase dash). It is drawn on the
@@ -921,8 +937,8 @@ function ghostPieceSvg(tool, tile, scene, place, refused) {
   // every stroke inside that does not set its own inherits it. `class` carries the state so a rig
   // and a DOM test can read which of the two the player is looking at.
   return '<g class="rz-buildghost' + (refused ? ' refused' : '') + '" data-ghost-tool="' + esc(tool) +
-    '" data-ghost-tile="' + (tile.x | 0) + ',' + (tile.y | 0) + '" pointer-events="none" opacity="' +
-    dim + '" stroke-dasharray="6 5">' + art + mark + '</g>';
+    '" data-ghost-tile="' + (tile.x | 0) + ',' + (tile.y | 0) + '" data-ghost-facing="' + (_facing & 3) +
+    '" pointer-events="none" opacity="' + dim + '" stroke-dasharray="6 5">' + art + mark + '</g>';
 }
 
 /** Take the ghost down and forget what was drawn. Idempotent; every clearing path calls it. */
@@ -951,7 +967,7 @@ function paintGhost() {
   // from steel to wood while hovering one tile must see the swatch change, and without this term the
   // guard would hold the old chip up (the tile, the tool and the refusal are all unchanged).
   const sig = _armed + '|' + _hoverTile.x + ',' + _hoverTile.y + '|' + (refused ? 1 : 0)
-    + '|' + activeMaterial(_materials, _armed) + '|' + scene.viewBoxAttr;
+    + '|' + activeMaterial(_materials, _armed) + '|' + _facing + '|' + scene.viewBoxAttr;
   if (sig === _ghostSig) return;
   const unit = scene.s * 100 * M_PER_TILE;
   const place = scenePlacement(scene, _focus, unit);
@@ -1020,17 +1036,26 @@ function decorSvg(list, place) {
  * look right while the shipping surface drew something else. It is pure of module state: `place` is
  * an argument and `ROOM_SCALE` is a shared constant.
  */
-export function standItem(itemId, tx, ty, place, idPrefix, cond) {
-  const rb = roomBox(itemId, ROOM_SCALE);
+export function standItem(itemId, tx, ty, place, idPrefix, cond, facing) {
+  // ⭐⭐ THE FACING GOES TO **BOTH** DERIVATIONS OR THE PIECE CHANGES SIZE WHEN IT TURNS. `roomBox`
+  // inverts the drawing scale to land the piece at `ROOM_SCALE` px/cm, and the builder draws at that
+  // scale — and both compute it from `fittings.facedSpec`. Hand the facing to one and not the other
+  // and a turned bench is drawn at a different metre, which no ratio assertion could see (CLAUDE.md's
+  // 7th trap shape). One argument, threaded to both, is the whole guard.
+  // ⚠️ A WARM-SET PIECE IGNORES IT, HONESTLY. Twenty-odd device rows keep their pre-redesign art and
+  // have no centimetre spec (`helpers.item` forwards `facing`; only the thirty fittings read it), so
+  // MEDBED, PLANT and LAMP carry a facing through sim, save and wire and draw the same picture at all
+  // four. That is P2b's boundary, already named in this function's fallback paragraph below. FILED.
+  const rb = roomBox(itemId, ROOM_SCALE, facing);
   const [px, py] = place.front(tx, ty);
   if (rb) {
-    const g = buildTileItem(itemId, { w: rb.side, h: rb.side, idPrefix }, cond);
+    const g = buildTileItem(itemId, { w: rb.side, h: rb.side, idPrefix, facing }, cond);
     return '<g transform="translate(' + (px + rb.dx).toFixed(2) + ' ' + (py + rb.dy).toFixed(2)
       + ')">' + g + '</g>';
   }
   const side = ROOM_SCALE * 100 * M_PER_TILE * 1.15;
   const [cx, cy] = place.foot(tx, ty);
-  const g = buildTileItem(itemId, { w: side, h: side, idPrefix }, cond);
+  const g = buildTileItem(itemId, { w: side, h: side, idPrefix, facing }, cond);
   return '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2)
     + ')">' + g + '</g>';
 }
@@ -1127,9 +1152,14 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
     if (plated.has(c.tx + ',' + c.ty)) continue;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
+      // ⭐⭐ THE FACING IS JOINED ON `(tx,ty)` FROM THE `devices` CHANNEL — the same row `cond`
+      // already comes from, and it has to be a join rather than a field on the cell: a fitting is
+      // chosen by the FRAME'S GLYPH BYTE (`roomCells` → `itemForGlyph`), and a glyph cell is one
+      // glyph plus one mark byte with no room for a device attribute. A tile with art but no device
+      // row (a ground stack, an authored prop) faces 0, which is what it drew before.
       const row = cond.get(c.tx + ',' + c.ty);
       out.push(fit(c.tx, c.ty, standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
-        row ? row.cond : undefined)));
+        row ? row.cond : undefined, row ? row.face : 0)));
     } else {
       // VS-Z-25's unknown chip, in the paper dialect: an INK `6 5` dashed plate — the charter's
       // UNBUILT/PLANNED spelling, which is the honest thing to say about a glyph with no art, and
@@ -1604,6 +1634,7 @@ function arm(tool) {
   // tool without also restoring a layer for it to reveal.
   _armed = nextRoomTool(_armed, { t: 'toggle', tool });
   _drag = null; // arming/disarming cancels any in-progress sweep
+  _facing = 0;  // …and so does the rotation — see `_facing`'s own header for why it is not sticky
   paintChrome();  // label + hint + caption all key on `_armed` — see paintChrome's header
   paintPalette();
   paintMatStrip();
@@ -1805,7 +1836,10 @@ function onCanvasClick(e) {
       // ⛔ IT DOES NOT GATE THE SEND, and that is deliberate: the ledger refreshes at ≤1 Hz, so a
       // census one second stale that WITHHELD the command would refuse a legal placement — the same
       // silent no-op, re-created from the other side.
-      _send(Cmd.place(pc.kind, tile.x, tile.y, deck));
+      // ⭐⭐ AND THE FACING GOES WITH IT — the ghost's own `_facing`, so the piece lands turned the
+      // way the player was looking at it. One variable feeds the preview and the command; a second
+      // "facing to send" would be the drift this whole surface's `tileAt` header is about.
+      _send(Cmd.place(pc.kind, tile.x, tile.y, deck, _facing));
       const refused = placeRefusalText(_armed, partsAboard());
       if (refused) toast(refused); else nudgeOnIntent();
       pulse(tile, false);
@@ -2421,6 +2455,31 @@ function onKey(e) {
     // obvious letter for "cancel", is DEMOLISH three lines up and the console's cancel-a-build
     // toggle; C is free on both keymaps.
     arm('erase'); e.stopPropagation(); e.preventDefault();
+  } else if (k === 'e' || k === 'E') {
+    // ⭐⭐ [E] — ROTATE THE ARMED PIECE, one quarter-turn per press, four presses back to where it
+    // started. The owner, 2026-08-05: *"I want to be able to rotate it (4× rotation)"*.
+    //
+    // ⛔ IT IS **E** AND NOT **R**, AND R WAS CHECKED FIRST RATHER THAN ASSUMED. `R` IS TAKEN:
+    // `input/controls.js:293` binds `r`/`R`/`>` to `Cmd.deck(+1)` — UP A DECK — and the onboarding
+    // help card TEACHES that binding (`onboarding.js:306-308`), with `onboarding.test.js` mechanically
+    // verifying that every card row's claimed key really exists in the file it names. Inside an open
+    // room the console keymap is stood down entirely (`isSuspended` → `roomZoom.isOpen()`, exempting
+    // only the clock keys), so claiming `R` here would WORK — and it would mean "up a deck" at Level 1
+    // and "rotate" at Level 2 while the help card taught only the first. This file's own `M` comment
+    // argues at length that shouting over a console binding with `stopPropagation` is the wrong fix
+    // SHAPE; a full census of the client's five keydown registrations put the free single letters at
+    // E, I, N, O, Q, U, Y, and E is the neutral one — bound nowhere, adjacent to nothing on either
+    // keymap. (`Y`/`N` are soft-reserved for a future confirm and `Q` is the conventional quit.)
+    //
+    // ⚠️ IT IS A NO-OP WITH NOTHING ARMED — there is no piece to turn, and silently mutating a hidden
+    // facing that `arm()` will reset anyway is an invisible state change. The key is still consumed
+    // (`stopPropagation`), because the surface underneath is the deprecated console and E reaches
+    // nothing there either.
+    if (_armed != null) {
+      _facing = (_facing + 1) & 3;
+      paintGhost();   // the ghost is the ONLY readout of the facing — see `_facing`'s header
+    }
+    e.stopPropagation(); e.preventDefault();
   } else if (k === 'm' || k === 'M') {         // M1-K: M toggles MOVE — the console's own letter
     // ⚠️ THIS KEY WAS NOT FREE — IT WAS WORSE THAN TAKEN, AND CLAIMING IT IS HALF OF A BUG FIX.
     // `input/controls.js:225` installs a BUBBLE-phase window keydown for the deprecated console at

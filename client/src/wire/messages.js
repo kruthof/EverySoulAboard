@@ -464,7 +464,7 @@ export function decodeItems(msg) {
  * would say PARTS on a Seals-only ship. ⚠️ IT IS A HINT, NOT A PROMISE: a repair is 9 000 ticks of
  * fetch-and-service and the funnel re-runs at the fetch, so stock can move underneath it. Nothing is
  * reserved.
- * @typedef {[number,number,number,number,number,number,number,number,number,number]} DeviceTuple
+ * @typedef {[number,number,number,number,number,number,number,number,number,number,number]} DeviceTuple
  * @typedef {{type:'devices', cells:DeviceTuple[]}} DevicesMsg
  */
 
@@ -540,6 +540,12 @@ export function decodeDevices(msg) {
       // existed the offer named no price. A default of 5 (`Parts`) would be a fabricated answer on
       // every short row.
       spend: t.length > 9 ? (t[9] | 0) : SPEND_UNKNOWN,
+      // ⭐⭐ `face` — which way the device is turned, 0..3 (`Device.Facing`, DEVC v7 / wire element
+      // 11). ABSENT MEANS 0, which is this channel's house rule applied exactly: the absent value
+      // must reproduce the pre-element behaviour, and before the element existed every device was
+      // drawn facing 0. MASKED `& 3` because a rotation index out of range would be handed to a
+      // lookup that assumes four cases.
+      face: t.length > 10 ? ((t[10] | 0) & 3) : 0,
     });
   }
   return out;

@@ -7980,3 +7980,40 @@ screen · no client-side census (the `devices` channel carries ledger wear and n
 no change to actuation, to the vent puzzle, or to any refusal text · no TUI sender · **no fix for
 HELP's overflow** — it is now 14 lines in a ~7-line pane, which is a FILED item and not this lane's
 (the permanent footer, which `pre-wrap`s rather than clipping, is the mitigation).
+
+---
+
+### 13.50 ⭐⭐ `Device.Facing` — WIRED END TO END, READ BY NOTHING IN `sim/` (2026-08-05)
+
+**THE OWNER'S SENTENCE.** *"when building a new item, e.g. a table, I want to see it before placing
+it and I want to be able to rotate it (4× rotation)"*. Two packages: the BUILD GHOST (the piece
+itself, in the charter's unbuilt dash dialect, on the hovered tile before the click) and this — the
+facing that ghost previews and the placed piece keeps.
+
+**⛔ IT BELONGS IN §13 BECAUSE IT IS EXACTLY WHAT §13 IS FOR: a field that is fully wired and
+connected to no mechanic.** The chain is complete — `[E]` → `_facing` → `Cmd.place(…, facing)` →
+`WebCommand.Facing` → `HandlePlace` → `PlaceDeviceCommand(kind, pos, facing)` → `Device.Facing` →
+DEVC v7 → `StateHash` bits 13–14 → the `devices` channel's ELEVENTH element → both SVG surfaces —
+and **nothing anywhere in `sim/` reads the field.**
+
+| what a facing does NOT change | why it is worth naming |
+|---|---|
+| the tiles a device occupies | there are no footprints at all: `PlaceDeviceCommand.Execute` writes `HasDevice` on exactly ONE tile, at every facing. A 200 cm cot is drawn spanning two tiles and OCCUPIES one. |
+| where a worker stands to use it | RimWorld's rotation moves the INTERACTION CELL, which is what makes facing a mechanic there. `docs/design/rimworld-reference.md` does not document that cell (§12 is the blueprint pipeline, not orientation), so its shape is deliberately NOT re-derived from memory — what is recorded is that ours has none. **FILED as the future coupling.** |
+| reachability, pathing, adjacency, rate, wear, power | asserted, not asserted-by-comment: `DeviceFacingTests.TurningADeviceChangesNoMECHANIC_OnlyTheHash` ticks two sims 500 times that differ ONLY in one device's facing and requires tile, flags, `Powered`, `Rate`, `Condition`, device count and item count all equal — with the hash INEQUALITY as the non-vacuity leg. **The day a work-spot mechanic lands, that is the test that must go red.** |
+
+**THE FOLD IS BITS 13–14, THE TWO FREE BITS between `Faulted`'s 12 and `NetworkId`'s 16, and the
+pin-neutrality claim is MEASURED rather than argued** — `TheFacingIsFoldNeutralAtZero_AndMovesTheHash
+WhenTurned` is the `Faulted` bit's own three-leg control (twins agree · setting a facing moves ONE
+hash · clearing it returns it to the digit), because *a term that was never folded at all would also
+leave the pins still*. `AllFourFacingsFoldDistinctly` is the second half: a one-bit fold would make
+0/2 and 1/3 indistinguishable and half of every rotation would be unsaveable. Every writer masks
+`& 3` (command, fold, save writer, save reader, wire) — the `RoomType.Cryo = 16` alias in
+`Simulation.cs` is this repo's own receipt for what an out-of-range value costs in a shared word.
+
+**⚠️ THE DRAWING HALF HAS A NAMED HOLE AND IT IS NOT A DEFECT IN THE FIELD.** The turn happens in the
+ENV FRAME (`oblique.roomFrame`'s `plan`: the piece's own centimetres are swapped and mirrored BEFORE
+projection), so all thirty catalogue fittings rotate without one builder knowing rotation exists. The
+~20 device rows still wearing PRE-REDESIGN WARM ART have no centimetre spec at all (charter §4, P2b
+FILED), so **MEDBED, PLANT and LAMP carry a facing through sim, save and wire and draw the same
+picture at all four.** That is P2b's boundary, not a new gap.

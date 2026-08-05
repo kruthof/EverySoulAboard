@@ -549,13 +549,13 @@ test('the ghost is the SAME BUILDER the placed piece uses — one drawing, resty
   const src = readFileSync(join(HERE, '../src/ui/roomzoom-view.js'), 'utf8');
   const fn = /function ghostPieceSvg\([\s\S]*?\n\}/.exec(src);
   assert.ok(fn, 'ghostPieceSvg exists');
-  assert.match(fn[0], /standItem\(itemId, tile\.x, tile\.y, place, idp, undefined\)/,
+  assert.match(fn[0], /standItem\(itemId, tile\.x, tile\.y, place, idp, undefined, _facing\)/,
     'the THING branch calls the shipped placement builder');
   // …and the proof it actually RAN: the built piece and the ghost, drawn for the same tile, share
   // the same geometry. Compare the ghost's paths to a `standItem` call made here directly.
   const scene = roomScene(HOLD);
   const place = scenePlacement(scene, HOLD, scene.s * 100);
-  const built = RoomZoom.standItem('dining-table', FLOOR.x, FLOOR.y, place, 'probe', undefined);
+  const built = RoomZoom.standItem('dining-table', FLOOR.x, FLOOR.y, place, 'probe', undefined, 0);
   const geo = (s) => (s.match(/ d="M[^"]{12,}"/g) || []).map((d) => d.replace(/^ d="|"$/g, ''));
   armTool('table');
   hover(FLOOR.x, FLOOR.y);

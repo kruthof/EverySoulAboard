@@ -157,6 +157,24 @@ export const SPECS = Object.freeze({
 export const FITTING_IDS = Object.freeze(Object.keys(SPECS));
 
 /**
+ * ⭐⭐ THE PIECE'S FOOTPRINT AT A FACING — `w` and `d` SWAPPED on an odd quarter-turn, and nothing
+ * else touched.
+ *
+ * ⛔ EVERYTHING DOWNSTREAM MUST TAKE THE SAME ANSWER OR THE PIECE CHANGES SIZE WHEN IT TURNS.
+ * `extents` decides how much room the drawing needs, `scaleOf` decides the px/cm that makes it fill
+ * `BOX`, and `roomBox` inverts that scale to put the piece on a surface at true centimetres. Feed
+ * two of the three the unturned spec and the third the turned one and a rotated bench is drawn at a
+ * different metre — which is `CLAUDE.md`'s 7th trap shape (a ratio suite cannot see a scale error)
+ * waiting to happen. So there is ONE function, and `frameFor` and `roomBox` both call it.
+ *
+ * `h` and `z0` never move: a quarter-turn in PLAN cannot change how tall a thing is.
+ */
+function facedSpec(spec, facing) {
+  const f = Number.isFinite(facing) ? ((facing | 0) & 3) : 0;
+  return (f & 1) ? { ...spec, w: spec.d, d: spec.w } : spec;
+}
+
+/**
  * A fitting's extents in centimetres: `[across, up]`, the oblique's own two ratios applied.
  *
  * ⚠️ `z0` IS NOT DECORATION, AND IT WAS ADDED AFTER LOOKING AT THE RENDER. A wall-hung piece's box
@@ -291,8 +309,15 @@ function quad(s, F, pts, o = {}) {
  * and are never re-derived here.
  */
 function bx(s, F, x, y, z, w, h, d, o = {}) {
-  const [px, py] = F.project(x, y, z);
-  s.raw(obox(px, py, w, h, d, F.s, {
+  // ⛔ THROUGH `F.boxAt`, NOT `F.project`, AND THIS IS THE ONE PLACE THE FACING COULD HAVE BEEN
+  // MISSED. `oblique.box()` draws an AXIS-ALIGNED extrusion from a projected origin plus RAW cm
+  // extents — the extents never pass through the plan map — so a projected-only origin would put a
+  // turned bench in exactly the right place with exactly the wrong footprint: the whole piece
+  // correct except that it still runs the old way. `boxAt` maps the box's plan rect and swaps its
+  // extents on an odd facing, and at facing 0 it returns `project`'s own answer to the digit.
+  const b = F.boxAt(x, y, z, w, d);
+  const px = b.x, py = b.y;
+  s.raw(obox(px, py, b.w, h, b.d, F.s, {
     strokeWidth: o.sw == null ? W.mid : o.sw,
     sideFill: o.sideFill || (o.hatch ? 'hatch' : 'flat'),
     hatch: o.hatch,
@@ -386,13 +411,18 @@ function wallStub(s, F, plane, at, a0, a1, b0, b1, hatch) {
  * to draw on a fitting: two derivations of one projection is how the Overview and the Room Zoom came
  * to skin the same glyph two different ways (`oblique.js`'s own header records that scar).
  */
-export function frameFor(id) {
+export function frameFor(id, facing) {
   const spec = SPECS[id];
   if (!spec) return undefined;
-  const [ex, ey] = extents(spec);
-  const k = scaleOf(spec);
+  // ⭐ THE CENTRING AND THE SCALE ARE THE **FACED** BOX'S — a bench turned end-on is 34 cm across
+  // and 260 cm deep, so it fills `BOX` differently and its origin sits somewhere else. THE PLAN MAP
+  // IS THE FRAME'S, so `roomFrame` is handed the AUTHORED `w`/`d` (it has to know the box the map
+  // turns inside) plus the facing, and every builder keeps writing its own unturned centimetres.
+  const fs = facedSpec(spec, facing);
+  const [ex, ey] = extents(fs);
+  const k = scaleOf(fs);
   return roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
-    { x: -(k * ex) / 2, y: k * (ey / 2 + (spec.z0 == null ? 0 : spec.z0)) });
+    { x: -(k * ex) / 2, y: k * (ey / 2 + (spec.z0 == null ? 0 : spec.z0)), facing });
 }
 
 /**
@@ -417,11 +447,15 @@ export function frameFor(id) {
  * @param {number} s  px per cm of the destination surface (PX_PER_CM.room for the cutaway)
  * @returns {{side:number, dx:number, dy:number, wCm:number, dCm:number, hCm:number}|undefined}
  */
-export function roomBox(id, s) {
+export function roomBox(id, s, facing) {
   const spec = SPECS[id];
   if (!spec || !(s > 0)) return undefined;
-  const [ex, ey] = extents(spec);
-  const k = scaleOf(spec);
+  // The SAME faced spec `frameFor` uses — see `facedSpec`. `side = TILE·s/k` inverts exactly the
+  // scale the builder will draw at, so the piece lands at `s` px per centimetre AT EVERY FACING:
+  // a 200 cm cot covers 2 tiles across at facing 0 and 2 tiles back at facing 1, never 1.4 of either.
+  const fs = facedSpec(spec, facing);
+  const [ex, ey] = extents(fs);
+  const k = scaleOf(fs);
   if (!(k > 0)) return undefined;
   const side = (TILE * s) / k;
   const z0 = spec.z0 == null ? 0 : spec.z0;
@@ -429,7 +463,9 @@ export function roomBox(id, s) {
     side,
     dx: -side / 2 + (s * ex) / 2,
     dy: -side / 2 - s * (ey / 2 + z0),
-    wCm: spec.w, dCm: spec.d, hCm: spec.h,
+    // The FACED footprint, because a caller asking "how much floor does this cover" is asking about
+    // the drawing it is about to place, not about the catalogue entry.
+    wCm: fs.w, dCm: fs.d, hCm: spec.h,
   };
 }
 
@@ -443,10 +479,10 @@ export function roomBox(id, s) {
  * call sites reading `{ F, hatch }`. ⛔ DO NOT SPREAD THIS OBJECT — a spread EVALUATES getters, which
  * would register the pattern for all thirty and quietly undo the whole point.
  */
-function envFor(s, id, state) {
+function envFor(s, id, state, facing) {
   let hp = null;
   return {
-    F: frameFor(id),
+    F: frameFor(id, facing),
     spec: SPECS[id],
     state,
     powered: state !== 'off' && state !== 'unpowered',
@@ -456,7 +492,10 @@ function envFor(s, id, state) {
 
 /** The harness: an item fragment whose painter draws in the fitting's own centimetres. */
 function fitting(id, opts, paint) {
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); });
+  // ⭐ `env.facing` reaches here from `helpers.item`, which reads `opts.facing` — so a caller says
+  // `buildItem(id, { w, h, facing })` and thirty builders turn without one of them mentioning
+  // rotation. A builder that has no cm frame at all (the warm set) simply never sees the option.
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

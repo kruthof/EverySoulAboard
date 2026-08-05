@@ -657,8 +657,16 @@ function miniContents(slot, frame, deck, deviceCond, marks, idPrefix) {
       // centre projects to, so a press on its footprint designates the tile it is drawn on.
       const [px, py] = floorToMini(u, v);
       const row = cond.get(tx + ',' + ty);
-      const g = buildTileItem(itemId, { w: MINI_ITEM, h: MINI_ITEM, idPrefix: `${idPrefix}-f${tx}-${ty}` },
-        row ? row.cond : undefined);
+      // ⭐⭐ THE FACING, JOINED OFF THE **SAME ROW** `cond` COMES FROM (2026-08-05). A miniature is
+      // chosen by the frame's GLYPH BYTE, exactly as the Room Zoom's is, so the `devices` channel's
+      // `face` is joined on `(tx,ty)` here as well — and it MUST be, or the plate would draw every
+      // device unturned while the room drew it turned, which is one machine wearing two pictures on
+      // two surfaces. That divergence is the one `wear-join.test.js`'s shape-parity leg exists for,
+      // and it is why `deckDeviceConditions` carries `face` even though this is its only reader.
+      // A tile with art but no device row faces 0 — what it drew before.
+      const g = buildTileItem(itemId, { w: MINI_ITEM, h: MINI_ITEM, idPrefix: `${idPrefix}-f${tx}-${ty}`,
+        facing: row ? row.face : 0 },
+      row ? row.cond : undefined);
       // ⛔ NEEDS-ATTENTION IS THE `marks` CHANNEL'S OWN WORD, NEVER A CONDITION COMPARED TO A NUMBER.
       // The first draft flipped the stroke when `row.cond` fell under a literal, and that is a SECOND
       // HOME FOR THE WEAR THRESHOLD — the exact defect `client/src/items/wear.js` exists to prevent
