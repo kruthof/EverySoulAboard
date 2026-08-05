@@ -522,12 +522,26 @@ export function workSkillLabel(skill) {
 // for them and never fabricates a reading.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** grade → the translucent floor wash (warm STATUS ramp; ~.22–.28 alpha to read as an overlay). */
+/**
+ * grade → the translucent wash laid over a compartment's TILE.
+ *
+ * ⭐ VR-P4 / ruling E3+E4 — FOUR HUES BECAME TWO INKS AT FOUR STRENGTHS. The warm ramp spent a green,
+ * an amber, a red and a blue on the four grades, and a colour-blind player read three of them the
+ * same; in the paper dialect there is ONE accent, so a wash either says "this is fine" (the faintest
+ * possible ink, so the miniature underneath still reads) or it says "attend to this" in oxblood, and
+ * the temperature-only `cold` band takes plain ink because a cold room is a FACT rather than a
+ * fault. The four keys are unchanged, so every caller and every test that names a grade still names
+ * the same grade.
+ *
+ * ⚠️ THE ALPHAS ARE LOW ON PURPOSE. These sit over a live miniature interior, not over a flat floor:
+ * at the warm ramp's .22–.30 the fittings inside the tile disappear, which would trade the plate's
+ * whole subject for its overlay.
+ */
 export const GRADE_TINT = Object.freeze({
-  good: 'rgba(90,167,127,.22)',
-  warn: 'rgba(207,122,51,.26)',
-  bad:  'rgba(194,90,63,.30)',
-  cold: 'rgba(90,159,212,.26)',
+  good: 'rgba(20,18,15,.05)',   //  nothing to see — the paper barely darkens
+  warn: 'rgba(123,44,34,.14)',  //  the one accent, quietly
+  bad:  'rgba(123,44,34,.26)',  //  the one accent, loudly
+  cold: 'rgba(20,18,15,.16)',   //  a fact, not a fault: plain ink
 });
 
 /**
@@ -748,4 +762,170 @@ export function fmtTemp(tempK) {
 /** The coarse per-room power state from the slot `active` flag (VS-O-63). PURE. */
 export function powerLabel(active) {
   return active ? 'ON' : 'OFF';
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐ VR-P4 — THE SHIP PLATE's four-column readout, its caption and its masthead.
+//
+// ⛔ RULING E11 GOVERNS EVERY STRING BELOW: **the client invents no narrative.** The design's
+// `compartments` column reads "Cooker unpowered; 60 units of potato remain" and its `aboard` column
+// reads "Rell laid the fifth bowl again" — sentences that need a per-room contents summary and a
+// per-day emotional chronicle, NEITHER OF WHICH IS ON THE WIRE. That data is package P7, gated on
+// M4's mood/Persona work. So where the design wants prose the code has none, these functions render
+// the HONEST TERSE LINE in the new type: the room's own name, the numbers its `rooms` row really
+// carries, and — where the `blocked` channel says so — the sentence the SIM wrote about why an order
+// cannot land. A blank is never filled with an adjective.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ONE COMPARTMENT'S LINE for the `compartments` column, for every slot on the shown deck. PURE.
+ *
+ * `blockedFor` is `(cid) => {sentence}|null` — the caller's bound `crewBlockedOrder` over the decoded
+ * `blocked` channel. It is passed as a FUNCTION rather than imported here because `console-model.js`
+ * imports from THIS module, so reaching the other way would close an import cycle; and it is passed
+ * at all rather than re-derived because the dock row, the selected readout and this column must be
+ * three renderings of ONE row.
+ *
+ * ⭐ `attention` IS WHAT DRAWS THE TILE'S OXBLOOD DASHED BORDER, so it is computed here, once, beside
+ * the sentence that explains it. That is D5's badge and the blocked-order scrim re-housed (ruling
+ * E4): the border finds the room, the sentence says what is wrong with it.
+ *
+ * @param {Array<{deck:number, slots:Array}>|null} decksView
+ * @param {number} deck
+ * @param {Array<{cid:*, deck:number, x:number, y:number}>|null} crew
+ * @param {(cid:*)=>({sentence?:string}|null)} [blockedFor]
+ * @returns {{anchorName:string, name:string, status:string, why:string, attention:boolean}[]}
+ */
+export function compartmentLines(decksView, deck, crew, blockedFor) {
+  const entry = (Array.isArray(decksView) ? decksView : []).find((d) => (d.deck | 0) === (deck | 0));
+  const slots = entry && Array.isArray(entry.slots) ? entry.slots : [];
+  const list = Array.isArray(crew) ? crew.filter((c) => c && (c.deck | 0) === (deck | 0)) : [];
+  const ask = typeof blockedFor === 'function' ? blockedFor : () => null;
+  return slots.map((s) => {
+    const inside = list.filter((c) => inRect(s.rect, c.x, c.y));
+    let why = '';
+    for (const c of inside) {
+      const b = ask(c.cid);
+      if (b && b.sentence) { why = 'ORDER STUCK — ' + b.sentence; break; }
+    }
+    const name = (s.displayName || s.anchorName || '') + '.';
+    const status = compartmentStatus(s, inside.length);
+    return {
+      anchorName: s.anchorName,
+      // The design's own punctuation: the room's name is a sentence opener, not a label.
+      name,
+      status,
+      why,
+      attention: !!why,
+      // ⚠️ THE WHOLE LINE AS ONE STRING, for the element's `aria-label` and for anything that reads
+      // the row as text. The name and the status are separate SPANS (they are set in different ink
+      // and the name never wraps), and a screen reader — or a `textContent` assertion — concatenates
+      // spans with NOTHING between them: "CRYO BAY.101.3 kPa · 19°C · ON". The gap on screen is a
+      // margin, which is not text. So the text form is written out once, here.
+      label: name + ' ' + status + (why ? ' — ' + why : ''),
+    };
+  });
+}
+
+/**
+ * THE HONEST TERSE STATUS of one compartment — the `rooms` row's own three numbers plus how many
+ * souls are standing in it. PURE.
+ *
+ * ⛔ `null` ATMOS IS SAID, NOT ZEROED. A compartment with no `rooms` row is one the host has no
+ * reading for, and printing `0.0 kPa · -273°C · OFF` for it would be four fabricated numbers that
+ * look exactly like a vented room. (A vented room is a DIFFERENT state and does arrive with real
+ * zeros — D4 made sure of it — which is precisely why the two must not render the same.)
+ */
+export function compartmentStatus(slot, souls) {
+  const parts = [];
+  const a = slot && slot.atmos;
+  if (a) {
+    parts.push(fmtPressure(a.pressureKPa));
+    parts.push(fmtTemp(a.tempK));
+    parts.push(powerLabel(slot.active));
+  } else {
+    parts.push('no reading');
+  }
+  const n = (souls | 0);
+  if (n > 0) parts.push(n === 1 ? '1 aboard' : n + ' aboard');
+  return parts.join(' · ');
+}
+
+/**
+ * The plate's caption sentence. PURE, and every term is a wire fact.
+ *
+ * ⚠️ THE DESIGN'S OWN CAPTION ENDS "Under way at 0.31 g, bow to starboard" AND THAT HALF IS NOT
+ * WRITTEN. There is no acceleration and no heading anywhere in `sim/`; the two prettiest words in
+ * the design's sentence are the two this ship cannot say.
+ *
+ * ⛔ AND NEITHER IS "looking down", WHICH THIS FUNCTION USED TO SAY. Review was right that it is a
+ * false claim about the drawing: the plate is not a floor plan seen from above — it is a GRID OF
+ * OBLIQUE CUTAWAYS whose cell ORDER is slot order, not ship geometry. "one to a cell" says exactly
+ * what the reader is looking at and claims nothing about where the compartment is on the hull.
+ *
+ * ⛔ AND THE DECK COUNT IS THE COUNT, NOT THE TOP INDEX. It printed `totalDecks − 1` and the wreck
+ * — which has TWO decks — read "deck 0 of 1". `decksView.length` is how many decks there are; the
+ * masthead below uses the same term for the same reason.
+ */
+export function deckCaptionLine(deck, totalDecks, rooms) {
+  const r = rooms | 0;
+  return 'Deck ' + (deck | 0) + ' of ' + Math.max(1, totalDecks | 0) + ' — '
+    + r + ' compartment' + (r === 1 ? '' : 's') + ', one to a cell.';
+}
+
+/** The masthead's right-hand stats, in two spans. PURE — the same deck wording the caption uses. */
+export function mastheadStats(deck, totalDecks, day, clock) {
+  return {
+    deck: 'deck ' + (deck | 0) + (totalDecks ? ' of ' + Math.max(1, totalDecks | 0) : ''),
+    clock: 'day ' + day + ' · ' + clock,
+  };
+}
+
+/**
+ * THE ENGRAVED GAUGE'S SCALE, and the three rows that have one.
+ *
+ * ⛔ THE LEDGER HAS NO PERCENTAGES. `MATTER` is a unit count with no ceiling and `PARTS` is a rate,
+ * so neither has a denominator a gauge could divide by — and a gauge with an invented denominator is
+ * exactly the M1-F failure (a bar painted to look like a reading). The three RUNWAY rows do have a
+ * natural, statable scale: ONE CELL IS ONE DAY. The column head prints that sentence, so the reading
+ * is interpretable without hovering anything.
+ */
+export const GAUGE_CELLS = 8;
+
+/** ledger row id → the ledger MESSAGE field whose value is that row's runway in days. */
+export const LEDGER_GAUGE_DAYS = Object.freeze({
+  days_of_water: 'daysOfWater',
+  days_of_food:  'daysOfFood',
+  o2_trend:      'o2TrendDays',
+});
+
+/**
+ * How many of the eight cells a day-runway fills, or `null` when there is no bounded reading. PURE.
+ *
+ * ⚠️ `null` AND ZERO ARE DIFFERENT ANSWERS, and the caller renders them differently: `null` draws NO
+ * STRIP AT ALL (we were told nothing), `{filled:0}` draws eight empty cells (we were told the runway
+ * is gone). A negative is the ledger model's STEADY sentinel — a stock that is not depleting has no
+ * runway — and it is `null` here rather than a full bar, because "full" would be a claim about a
+ * quantity nobody measured.
+ *
+ * ⚠️ A NON-ZERO RUNWAY UNDER HALF A DAY STILL LIGHTS ONE CELL. Rounding it to none would draw the
+ * same picture as "the water is gone", and those are the two states a player most needs told apart.
+ */
+export function runwayGauge(days) {
+  if (typeof days !== 'number' || !isFinite(days) || days < 0) return null;
+  if (days <= 0) return { filled: 0, total: GAUGE_CELLS };
+  return { filled: Math.min(GAUGE_CELLS, Math.max(1, Math.round(days))), total: GAUGE_CELLS };
+}
+
+/**
+ * The `outside` scope's two caption lines. PURE, and the second one is the package's plainest
+ * statement of ruling E11: **the wire carries no sensor contacts**, so the scope shows the ship it
+ * is mounted on and says so. The design's "one contact closing · 340 km" is a fact this game does
+ * not have, and inventing it would put a threat on screen that nothing in `sim/` could ever resolve.
+ */
+export function radarCaption() {
+  return {
+    sweep: 'sweep · 7 s · own ship',
+    contacts: 'no contact data on the wire',
+  };
 }

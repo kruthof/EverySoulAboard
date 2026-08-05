@@ -1,423 +1,500 @@
-/* LEVEL-1 OVERVIEW — the ship plate, its floating HUD islands, first-run onboarding, and the
-   shared `motion (VS-60)` keyframes. Moved VERBATIM out of the old single `client/styles.css` at
-   the VR-A split (2026-08-04); cascade position unchanged. The motion block is shared chrome
-   (`plnBlink` is used by the console, the Overview and the Room Zoom) but it LIVES here because
-   that is where it sat in the source order, and @keyframes are name-scoped, not order-scoped. */
+/* LEVEL-1 — THE SHIP PLATE, in paper and ink.
+   Authority: `design-import/Perilune Game.dc.html` Screen 01 + the visual-redesign charter §1/§2.
+   Every literal here was measured off that markup and the element it came from is named in the
+   comment beside it. Tokens come from `src/theme/paper.css`; the warm fallbacks are gone with the
+   void they described.
 
-/* ==== LEVEL-1 OVERVIEW (perilune-overview.visual-spec VS-O-*) ==== */
-/* Default-view switch: the Overview is a sibling takeover like MOSS. When shown it hides the console
-   `.app` (the parked canvas keeps running behind it); MOSS beats it (moss-open wins). */
+   THE PLATE'S BANDS, top to bottom — a FLEX COLUMN inside `#overview-view` (the design's own plate
+   is `padding: 34px 46px` inside a 1120×790 sheet, so 46 is the side margin everything shares):
+     masthead   fixed   mono 9.5/.24em — the ship ⟷ the context stats
+     the plate  GROWS   the ink starfield + the hull capsule + the compartment grid
+     lens row   fixed   the demoted LENS toggles (ruling E4: kept, quiet)
+     caption    fixed   serif italic ⟷ mono souls
+     columns    186px   compartments · aboard · the ship · outside, under a 1px ink rule
+     footer     fixed   the six tabs + the serif hint, under a hairline
+
+   This file also carries the first-run onboarding card, the paused-nudge chips for BOTH modern
+   surfaces, and the shared `motion` keyframes — all three sat here before the redesign and are
+   retinted rather than moved (a cascade-position change is a different package's risk). */
+
+/* ==== the surface switch, and THE PLATE'S OWN LAYOUT ====
+   ⚠️ THE BANDS ARE A FLEX COLUMN, NOT SIX ABSOLUTE OFFSETS, and that is a correction made from a
+   photograph rather than a preference. The first cut pinned each band to `top`/`bottom` with hard
+   pixel offsets; measured in headless Chrome at 1600×910 that left ~180 px of empty paper between
+   the plate and the caption AND overlapped the footer islands onto the readout columns, because the
+   plate's own height is a function of the viewport and the offsets were not. A flex column gives the
+   plate whatever is left after the fixed rows and cannot double-book a pixel.
+   The FLOATING islands (crew watch, selected readout, deck rail, WORK, toast, ending, nudge) stay
+   absolutely positioned against this box — they are meant to sit OVER the plate. */
 #overview-view{position:fixed;inset:0;display:none;z-index:10;
-  font-family:var(--font-mono);color:var(--ink-body,#b3aa9c);overflow:hidden}
+  background:var(--paper-ground);font-family:var(--font-mono);color:var(--ink);overflow:hidden}
 body.overview-open .app{display:none !important}
-body.overview-open #overview-view{display:block}
+body.overview-open #overview-view{display:flex;flex-direction:column;gap:12px;padding:26px 46px 20px;
+  box-sizing:border-box}
 body.moss-open #overview-view{display:none !important}
 
-/* the full-bleed space field (VS-O-05/06) */
-.ov-space{position:absolute;inset:0;background:var(--void-gradient);overflow:hidden}
-.ov-neb{position:absolute;border-radius:50%;pointer-events:none}
-.ov-neb1{left:-6%;top:8%;width:52%;height:90%;
-  background:radial-gradient(circle,rgba(90,70,150,.16),transparent 65%)}
-.ov-neb2{right:-8%;bottom:-24%;width:48%;height:80%;
-  background:radial-gradient(circle,rgba(40,120,130,.12),transparent 65%)}
-.ov-neb3{left:38%;top:-22%;width:44%;height:62%;
-  background:radial-gradient(circle,rgba(180,90,60,.09),transparent 65%)}
-/* the drifting parallax starfield (built once in the skeleton; above nebula, below the stage) */
+/* ==== the plate band: paper, the ink starfield, and the scene ==== */
+/* ⚠️ `.ov-space` IS NOT A VOID ANY MORE. The three nebula washes are deleted with it — one ink, one
+   paper, one accent (charter §1) — and what is left is the sheet the ship is drawn on. */
+.ov-space{position:relative;flex:1 1 auto;min-height:120px;
+  background:var(--paper-plate);border:1px solid var(--paper-border);box-shadow:var(--plate-shadow);
+  overflow:hidden}
 .ov-stars{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
-/* two identical star tiles are laid out at x=0 and x=VIEW_W (1300 user units); translating the
-   group by one full tile width (−1300px == −VIEW_W; 1px == 1 SVG user unit) loops seamlessly. */
-.ov-stars-drift{animation:plnStarDrift 120s linear infinite;will-change:transform}
+/* Three parallax layers of INK DOTS (the design's `starsInk`, `Perilune Game.dc.html:493-499`):
+   opacity .5/.34/.2 at dur × 1 / 1.8 / 3. Two identical tiles sit at x=0 and x=VIEW_W (1300 user
+   units); translating one full tile width loops seamlessly. */
+.ov-stars-drift{will-change:transform}
+.ov-stars-a{animation:plnStarDrift 40s linear infinite}
+.ov-stars-b{animation:plnStarDrift 72s linear infinite}
+.ov-stars-c{animation:plnStarDrift 120s linear infinite}
 @keyframes plnStarDrift{from{transform:translateX(0)}to{transform:translateX(-1300px)}}
-@media (prefers-reduced-motion:reduce){.ov-stars-drift{animation:none}}
-.ov-stage{position:absolute;inset:0;cursor:crosshair}
+@media (prefers-reduced-motion:reduce){.ov-stars-a,.ov-stars-b,.ov-stars-c{animation:none}}
+.ov-stage{position:absolute;inset:0;cursor:crosshair;z-index:2}
 .ov-stage svg.pl-overview{width:100%;height:100%;display:block}
 
-/* IX-103 on the standard surface — the pawn identity+WORK label, de-cluttered. Rows and leader lines
-   are geometry and live in overview-scene.js (layoutPawnLabels); the only thing CSS owns is the
-   last-resort case. A label the sweep could not fit anywhere is emitted `.pl-tag-crowded` —
-   transparent, so a packed compartment stays readable — and hovering its pawn brings it back, so
-   nothing is permanently lost. ONLY an idle label can ever be marked crowded: a work tag stacks or
-   overlaps but never hides, because a hidden work tag reads as "nobody is working here". */
+/* ⭐ THE MINIATURE INTERIORS' ONE STYLE RULE, AND IT IS LOAD-BEARING. Each compartment tile is a
+   nested <svg> whose 992-unit interior is scaled into a ~150 px cell — about 1/7 — so every stroke
+   inside it would render at a seventh of its width and the whole drawing would fade to nothing.
+   `vector-effect: non-scaling-stroke` is what the design's own tiles set on every single path
+   (`Perilune Game.dc.html:65`); setting it once in CSS is how the shared fitting builders (which
+   know nothing about plate scale) survive being drawn small. */
+.ov-mini path,.ov-mini rect,.ov-mini ellipse,.ov-mini circle,.ov-mini line,.ov-mini polygon{
+  vector-effect:non-scaling-stroke}
+
+/* IX-103 — the pawn identity + WORK label, de-cluttered. Rows and leader lines are geometry and live
+   in overview-scene.js (layoutPawnLabels); the only thing CSS owns is the last-resort case. A label
+   the sweep could not fit anywhere is emitted `.pl-tag-crowded` — transparent, so a packed
+   compartment stays readable — and hovering its pawn brings it back. ONLY an idle label can ever be
+   marked crowded: a work tag stacks or overlaps but never hides, because a hidden work tag reads as
+   "nobody is working here". */
 .pl-tag-crowded{opacity:0;transition:opacity .12s ease}
 .pl-pawn:hover .pl-tag-crowded{opacity:1}
 @media (prefers-reduced-motion:reduce){.pl-tag-crowded{transition:none}}
+/* the selected compartment's tile takes the design's 2.2px border in the SVG itself; this is the
+   hover affordance that says the whole grid is clickable */
+.pl-room{cursor:pointer}
+.pl-room:hover rect:first-child{fill:var(--paper-inset-3)}
 
-/* the `.hud` glass token — every floating island (VS-O-53) */
-#overview-view .hud{background:var(--hud-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  border:var(--hud-border);box-shadow:var(--hud-shadow)}
-.ov-hdr{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint,#57503f)}
+/* ==== the `.hud` island token — every floating paper card ==== */
+/* Glass is gone: an island is a sheet of paper with a hairline and the plate's own drop shadow. */
+#overview-view .hud{background:var(--paper-plate);border:1px solid var(--paper-border);
+  box-shadow:var(--plate-shadow)}
+.ov-hdr,.ov-colhdr{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-section)}
 
-/* top status bar (VS-O-54/55) */
-.ov-topbar{position:absolute;left:26px;right:26px;top:22px;display:flex;align-items:center;gap:14px;
-  padding:9px 16px;border-radius:11px;font-size:11px;letter-spacing:.08em}
-.ov-ship{color:var(--amber-deep,#cf7a33);font-weight:700}
-.ov-deckctx{color:var(--ink-mute,#8c8377)}
-.ov-clock{color:var(--ink-body,#b3aa9c)}
+/* ==== the masthead row (design `:47-50`) ==== */
+.ov-topbar{flex:none;display:flex;align-items:baseline;gap:14px;
+  font-size:9.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-micro);
+  background:none;border:0;box-shadow:none}
+#overview-view .ov-topbar{background:none;border:0;box-shadow:none}
+.ov-ship{color:var(--ink-micro)}
+.ov-deckctx,.ov-clock{color:var(--ink-micro)}
 .ov-spacer{flex:1}
-.ov-chip{padding:7px 12px;border-radius:9px;font-size:11px;background:var(--hud-bg);
-  border:1px solid var(--ink-inset-border,#3a332a);color:var(--ink-mute,#8c8377);font-family:inherit;
-  letter-spacing:inherit}
-button.ov-chip{cursor:pointer;transition:background .12s,color .12s,border-color .12s,box-shadow .12s}
-button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
-/* (1) PAUSE affordance — HOLD is quiet; RESUME is loud and unmistakably "press me" (soft glow + pulse). */
-.ov-pause{cursor:pointer;font-weight:700;min-width:96px;text-align:center}
-.ov-pause.paused{background:rgba(46,58,30,.85);color:var(--good,#5aa77f);
-  border-color:rgba(156,207,106,.55);box-shadow:0 0 0 1px rgba(156,207,106,.25),0 0 14px rgba(156,207,106,.28);
+/* The five interactive chips. They are the only clickable things in a row of statements, so they
+   carry a hairline box and the statements do not. */
+.ov-chip{padding:3px 8px;font-size:9px;letter-spacing:.14em;background:transparent;
+  border:1px solid var(--paper-border);color:var(--ink-micro);font-family:inherit}
+button.ov-chip{cursor:pointer;transition:color .12s,border-color .12s,background .12s}
+button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
+/* (1) PAUSE — HOLD is quiet; RESUME is the one accent, because a stopped ship is the state the
+   player most needs pulled out of. */
+.ov-pause{cursor:pointer;min-width:88px;text-align:center}
+.ov-pause.paused{color:var(--attend);border-color:var(--attend);
   animation:plnBreathe 1.9s ease-in-out infinite}
-@keyframes plnBreathe{0%,100%{box-shadow:0 0 0 1px rgba(156,207,106,.22),0 0 10px rgba(156,207,106,.22)}
-  50%{box-shadow:0 0 0 1px rgba(156,207,106,.4),0 0 18px rgba(156,207,106,.42)}}
-/* (2) SPEED stepper — « value » with a bright, glanceable current tier. */
-.ov-speedctl{display:inline-flex;align-items:center;gap:2px;padding:3px 4px;border-radius:9px;
-  background:var(--hud-bg);border:1px solid var(--ink-inset-border,#3a332a)}
+@keyframes plnBreathe{0%,100%{opacity:1}50%{opacity:.55}}
+/* (2) SPEED stepper — « value » ; the value IS the state. */
+.ov-speedctl{display:inline-flex;align-items:center;gap:2px;padding:1px 2px;
+  border:1px solid var(--paper-border)}
 .ov-speedctl.dim{opacity:.5}
-.ov-spdbtn{cursor:pointer;font:inherit;font-size:13px;line-height:1;width:20px;height:22px;border-radius:6px;
-  border:1px solid transparent;background:transparent;color:var(--ink-mute,#8c8377)}
-.ov-spdbtn:hover{background:rgba(255,196,128,.14);color:var(--amber-1,#e8934a);border-color:rgba(255,196,128,.3)}
-.ov-speedval{min-width:44px;text-align:center;font-weight:700;font-size:11.5px;color:var(--amber-1,#e8934a);
-  letter-spacing:.03em}
+.ov-spdbtn{cursor:pointer;font:inherit;font-size:11px;line-height:1;width:18px;height:18px;
+  border:0;background:transparent;color:var(--ink-micro)}
+.ov-spdbtn:hover{color:var(--ink)}
+.ov-speedval{min-width:38px;text-align:center;font-size:9px;color:var(--ink);letter-spacing:.1em}
 /* (3) CAUTION chip — clickable → MOSS. */
-.ov-caution{font-weight:700}
-.ov-caution.warn{background:rgba(58,42,18,.72);color:#e8934a;border-color:rgba(232,147,74,.4);
-  animation:plnBlink 1.6s infinite}
-.ov-caution.alert{background:rgba(58,20,14,.8);color:var(--bad-bright,#e07a5f);
-  border-color:var(--bad,#c25a3f);animation:plnBlink 1.2s infinite}
+.ov-caution.warn{color:var(--attend);border-color:var(--attend)}
+.ov-caution.alert{color:var(--attend);border-color:var(--attend);animation:plnBlink 1.2s infinite}
 /* (4) LLM chip — which mind voices the crew. */
-.ov-llm{font-weight:600;color:var(--amber-2,#e8934a);border-color:rgba(224,163,90,.3);cursor:default}
-.ov-llm.degraded{color:#e8934a;border-color:rgba(232,147,74,.45)}
+.ov-llm{cursor:default}
+.ov-llm.degraded{color:var(--attend);border-color:var(--attend)}
 /* STORES chip — loose regolith; the build currency. Empty is a live warning. */
-.ov-stores{font-weight:700;color:var(--ink-body,#b3aa9c);cursor:default;font-variant-numeric:tabular-nums}
-.ov-stores.empty{background:rgba(58,20,14,.8);color:var(--bad-bright,#e07a5f);
-  border-color:var(--bad,#c25a3f);animation:plnBlink 1.6s infinite}
+.ov-stores{cursor:default;font-variant-numeric:tabular-nums}
+.ov-stores.empty{color:var(--attend);border-color:var(--attend);animation:plnBlink 1.6s infinite}
 
-/* ==== first-run onboarding + `?` help ==== */
-.onb-layer{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
-  padding:24px;background:rgba(6,9,14,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-.onb-layer[hidden]{display:none}
-.onb-card{width:min(600px,94vw);max-height:92vh;overflow:auto;padding:30px 32px;border-radius:16px;
-  background:linear-gradient(180deg,rgba(26,21,16,.98),rgba(16,13,10,.98));
-  border:1px solid rgba(255,196,128,.42);box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.4);
-  animation:onbIn .28s ease}
-@keyframes onbIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.onb-card{animation:none}}
-.onb-eyebrow{font-size:9.5px;letter-spacing:.22em;font-weight:700;color:var(--amber-deep,#cf7a33)}
-.onb-title{margin:10px 0 0;font-size:30px;line-height:1.08;font-weight:700;color:var(--amber-1,#e8934a);
-  letter-spacing:.01em}
-.onb-lede{margin:12px 0 0;font-size:13.5px;line-height:1.6;color:var(--ink-body,#b3aa9c)}
-.onb-verbs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
-@media (max-width:480px){.onb-verbs{grid-template-columns:1fr}}
-.onb-verb{padding:13px 14px;border-radius:10px;background:rgba(255,196,128,.04);
-  border:1px solid rgba(255,196,128,.22)}
-.onb-verb-h{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--amber-2,#e8934a)}
-.onb-verb-b{margin-top:6px;font-size:11.5px;line-height:1.5;color:var(--ink-body,#b3aa9c)}
-.onb-verb-b b{color:var(--txt-hi,#e8dcc9)}
-.onb-controls{margin-top:20px;border-top:1px solid rgba(255,255,255,.08);padding-top:16px}
-.onb-controls-h{font-size:9.5px;letter-spacing:.16em;font-weight:700;color:var(--txt-dim,#8c8377)}
-.onb-kgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin-top:11px}
-@media (max-width:480px){.onb-kgrid{grid-template-columns:1fr}}
-.onb-krow{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink-body,#b3aa9c)}
-.onb-key{flex:none;min-width:20px;text-align:center;padding:2px 7px;border-radius:5px;
-  font-family:inherit;font-size:10.5px;font-weight:700;color:var(--amber-1,#e8934a);
-  background:rgba(0,0,0,.35);border:1px solid rgba(255,196,128,.32);box-shadow:0 1px 0 rgba(0,0,0,.5)}
-.onb-begin{margin-top:24px;width:100%;padding:13px;border-radius:10px;cursor:pointer;
-  font:inherit;font-size:13px;font-weight:700;letter-spacing:.14em;color:#1a130c;
-  background:linear-gradient(180deg,#f2b877,#e0994f);border:0;
-  box-shadow:0 6px 20px rgba(224,153,79,.35);transition:transform .1s,box-shadow .12s}
-.onb-begin:hover{box-shadow:0 8px 26px rgba(224,153,79,.5)}
-.onb-begin:active{transform:translateY(1px)}
-.onb-foot{margin-top:12px;text-align:center;font-size:10px;color:var(--txt-faint,#57503f)}
-.onb-help{position:fixed;right:30px;top:66px;z-index:120;width:32px;height:32px;border-radius:50%;
-  cursor:pointer;font:inherit;font-size:16px;font-weight:700;color:var(--amber-1,#e8934a);
-  background:rgba(20,16,12,.82);border:1px solid rgba(255,196,128,.34);
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 14px rgba(0,0,0,.4)}
-.onb-help:hover{color:#1a130c;background:var(--amber-1,#e8934a);border-color:var(--amber-1,#e8934a)}
+/* ==== the caption row (design `:99-102`) ==== */
+.ov-caption{flex:none;display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+.ov-capline{font-family:var(--font-serif);font-style:italic;font-size:17px;color:var(--ink)}
+.ov-capsouls{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-micro)}
 
-/* deck rail (VS-O-49/50) */
-.ov-deckrail{position:absolute;left:26px;top:50%;transform:translateY(-50%);display:flex;
-  flex-direction:column;gap:6px;padding:10px 8px;border-radius:12px;z-index:11}
-.ov-pip{width:34px;height:26px;border-radius:6px;font-size:11px;text-align:center;cursor:pointer;
-  background:rgba(26,22,17,.6);color:var(--ink-mute,#8c8377);border:1px solid #3a332a}
-.ov-pip:hover{color:var(--ink-body,#b3aa9c);border-color:#57503f}
-.ov-pip.on{background:#3a2a12;color:var(--amber-light,#f2b563);border-color:#cf7a33}
+/* ==== the four-column readout (design `:106`, grid 1fr 1.02fr 258px 150px) ==== */
+/* ⛔⛔ THE HEIGHT IS `auto`, AND THE FIXED 206px IT REPLACES DELETED TWO AFFORDANCES. Measured in
+   the running game by review: `#ov-alert` (D2's decaying-capsule warning) resolved 50px BELOW the
+   column's bottom edge — 0 px of it on screen, at every viewport — and `.ov-ledcaveat` (the one
+   always-visible limit on the whole island) was 40 of its 44px clipped. A fixed-height box with
+   `overflow:hidden` is exactly how a re-housing deletes the thing it re-housed, and it is the
+   `invisible-feedback-is-FUNCTIONAL` failure with a stylesheet as the cause.
+   So the band takes its CONTENT's height and the plate above it (the flex `1 1 auto` item) gives up
+   the difference; the cap stops a twenty-room census eating the drawing, and the ONE list that can
+   grow without bound scrolls inside itself (`.ov-cplist`). `overview-plate-shot.mjs` measures the
+   alert and the caveat against the viewport, because dom-lite cannot see this class of defect at
+   all. */
+.ov-columns{flex:none;height:auto;max-height:min(46vh,340px);
+  display:grid;grid-template-columns:1fr 1.02fr 258px 150px;column-gap:28px;
+  border-top:1px solid var(--ink);padding-top:14px}
+.ov-col{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;overflow:hidden}
+/* the hairline separators the design puts between the columns */
+.ov-columns .ov-col+.ov-col{border-left:1px solid var(--paper-hairline);padding-left:26px}
+.ov-columns .ov-radar{border-left:0;padding-left:0}
 
-/* left CREW WATCH dock (VS-O-56..60) */
-.ov-crewwatch{position:absolute;left:70px;top:96px;width:236px;max-height:calc(100vh - 220px);
-  overflow-y:auto;padding:12px;border-radius:14px;display:flex;flex-direction:column;gap:7px;z-index:11}
+/* `compartments` — one serif line per room, and the oxblood clause when an order is stuck */
+/* ⚠️ THE DESIGN SHOWS THREE ROOMS AND THE SHIP HAS EIGHT. Measured in headless Chrome at the
+   design's own 15.5px/9px-gap the eighth line falls 30px past the column and three compartments are
+   simply not on screen — which on a plate whose whole promise is "every compartment, at a glance" is
+   the worst place to lose three. So the type steps down one notch and the gap halves; the column
+   still scrolls for a ship with more rooms than this. */
+.ov-cplist{display:flex;flex-direction:column;gap:4px;overflow-y:auto;min-height:0}
+.ov-cpline{font-family:var(--font-serif);font-size:13.5px;line-height:1.25;color:var(--ink-serif)}
+.ov-cpname{color:var(--ink);white-space:nowrap;margin-right:8px}
+.ov-cpstat{color:var(--ink-serif)}
+/* ⭐⭐ D5 / ruling E4 — the WHY-LINE and the ORDER STUCK sentence, re-housed. Oxblood serif, on its
+   own line under the room it is about, and the tile for that room takes the oxblood dashed border in
+   the same repaint. It WRAPS: the longest sentence the `blocked` channel emits is 45 characters and
+   this column is wide enough to hold all of it without shortening, which is exactly why the
+   re-housing is an improvement on the 26-character dock cell rather than a move. */
+.ov-cpwhy{display:block;color:var(--attend);font-size:14px;font-style:italic;line-height:1.3}
+.ov-cpline.attend .ov-cpname{color:var(--attend)}
+
+/* `aboard` — the SENSOR LOG re-housed: a mono day-stamp gutter and a serif line */
+.ov-logline{display:flex;gap:9px;align-items:baseline;line-height:1.25}
+.ov-ts{flex:none;font-size:8.5px;letter-spacing:.1em;color:var(--ink-faintest);white-space:nowrap}
+.ov-ts.new{color:var(--ink-micro)}
+.ov-rest{font-family:var(--font-serif);font-size:14.5px;line-height:1.25;color:var(--ink-serif);
+  overflow:hidden;text-overflow:ellipsis}
+.ov-faint{color:var(--ink-faintest)}
+
+/* `the ship` — the LEDGER re-housed as five rows with engraved gauges.
+   ⚠️ ITS OWN GAP IS TIGHTER THAN THE COLUMN'S. Eleven stacked lines (head, scale, five rows, census,
+   caveat, alert) at the column's 6px gap is 60px of air; at 3px it is 30, which is what lets the
+   whole island — INCLUDING the two lines that must never be clipped — fit a band that also has to
+   hold eight compartment lines beside it. */
+.ov-ledger{gap:3px}
+.ov-ledscale{font-size:8px;letter-spacing:.14em;color:var(--ink-faintest)}
+.ov-ledrow{display:grid;grid-template-columns:56px auto 1fr auto;align-items:center;gap:8px;
+  font-size:9.5px;white-space:nowrap}
+.ov-ledlabel{letter-spacing:.1em;text-transform:uppercase;color:var(--ink-prose)}
+/* THE ENGRAVED CELL GAUGE (charter §1): a filled cell is solid ink; an empty one is a 1px inset ring
+   over a 45° micro-hatch. Eight cells, and the head says what a cell means. */
+.ov-ledcells{display:flex;gap:2.5px}
+.ov-ledcells i{width:7px;height:11px;display:block;
+  background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(20,18,15,.35) 3px 3.6px);
+  box-shadow:inset 0 0 0 1px var(--gauge-empty-ring)}
+.ov-ledcells i.on{background:var(--gauge-filled);background-image:none;box-shadow:none}
+.ov-ledval{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+.ov-ledsub{text-align:right;color:var(--ink-faintest);min-width:52px}
+.ov-ledrow.warn .ov-ledsub{color:var(--attend)}
+.ov-ledrow.crit .ov-ledsub{color:var(--attend);font-weight:700}
+.ov-ledcensus{font-size:8.5px;white-space:normal;overflow-wrap:anywhere}
+/* The always-visible caveat. Deliberately NOT `.ov-faint`: it is the one line on this column a
+   player who never hovers a row must still read, so it is legible rather than decorative. */
+/* ⛔ `flex:none` + `margin-top:auto` — the caveat and the alert under it are the LAST things in the
+   column and the first things a shrinking box would eat. `auto` pushes them to the bottom of the
+   column so they are pinned to a visible edge rather than pushed past one, and `flex:none` stops
+   the flexbox compressing them to nothing when the rows above are tall. This is the pair review
+   measured as 40-of-44px clipped and 0-px-on-screen respectively. */
+.ov-ledcaveat{flex:none;margin-top:auto;font-size:8.5px;line-height:1.45;white-space:normal;
+  color:var(--ink-micro);border-top:1px solid var(--paper-hairline);padding-top:5px}
+/* ⭐⭐ D2's ALERT, as the design's `leak` row (`:183-186`): an oxblood mono label and an oxblood
+   serif italic sentence under a hairline, beneath the numbers it is about. */
+.ov-alert{flex:none;display:flex;align-items:baseline;gap:8px;
+  border-top:1px solid rgba(20,18,15,.2);padding-top:5px;margin-top:2px}
+.ov-alertlbl{flex:none;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--attend)}
+.ov-alerttxt{font-family:var(--font-serif);font-style:italic;font-size:14px;line-height:1.25;
+  color:var(--attend)}
+
+/* `outside` — the radar. `currentColor` inside the SVG resolves to the column's ink. */
+.ov-radar{color:var(--ink)}
+.ov-radarsvg{display:block;background:var(--paper-plate)}
+.ov-sweep{transform-origin:75px 75px;animation:j4sweep 7s linear infinite}
+@keyframes j4sweep{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ov-sweep{animation:none}}
+.ov-radarcap{display:flex;flex-direction:column;gap:3px}
+.ov-radarcap1{font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-prose)}
+.ov-radarcap2{font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faintest)}
+
+/* ==== deck rail (ruling E4: KEPT, restyled) ==== */
+.ov-deckrail{position:absolute;left:264px;top:88px;display:flex;flex-direction:column;gap:4px;
+  padding:6px 5px;z-index:11}
+.ov-pip{width:26px;height:20px;font:inherit;font-size:9px;letter-spacing:.1em;text-align:center;
+  cursor:pointer;background:transparent;color:var(--ink-micro);border:1px solid var(--paper-border)}
+.ov-pip:hover{color:var(--ink);border-color:var(--ink)}
+.ov-pip.on{background:var(--ink);color:var(--paper-plate);border-color:var(--ink)}
+
+/* ==== left CREW WATCH dock (ruling E4: KEPT as an island, restyled) ==== */
+.ov-crewwatch{position:absolute;left:48px;top:78px;width:206px;max-height:calc(100vh - 430px);
+  overflow-y:auto;padding:11px;display:flex;flex-direction:column;gap:6px;z-index:11}
 .ov-crewlist{display:contents} /* keyed reconcile container; rows join the crewwatch flex directly */
-.ov-crew{display:flex;gap:9px;align-items:center;padding:7px;border:1px solid rgba(46,40,32,.6);
-  border-radius:8px;background:transparent;cursor:pointer;width:100%;text-align:left}
-.ov-crew.sel{border-color:#cf7a33;background:rgba(34,27,18,.8)}
-.ov-bust{width:40px;height:40px;border-radius:6px;overflow:hidden;flex:none;
-  background:radial-gradient(circle at 50% 30%,#2a2018,#12100d);box-shadow:inset 0 0 0 1px rgba(232,147,74,.18)}
+.ov-crew{display:flex;gap:9px;align-items:center;padding:6px;border:1px solid transparent;
+  background:transparent;cursor:pointer;width:100%;text-align:left;font-family:inherit}
+.ov-crew:hover{border-color:var(--paper-border)}
+.ov-crew.sel{border-color:var(--ink)}
+.ov-bust{width:36px;height:36px;overflow:hidden;flex:none;background:var(--paper-inset-3);
+  border:1px solid var(--paper-border)}
 .ov-bust svg,.ov-selbust svg{width:100%;height:100%;display:block}
-.ov-crewcol{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
-.ov-crewname{font-size:11px;color:var(--ink-bright,#e8dcc9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ov-crewrole{font-size:8.5px;color:var(--ink-mute,#8c8377);text-transform:uppercase;letter-spacing:.08em;
+.ov-crewcol{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+.ov-crewname{font-family:var(--font-serif);font-size:14px;color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* B5 — the CREW WATCH task line, ported off the console's `.crew-task` at WP-8. Dim by default so a
-   doing-nothing crew member never reads as activity; `.working` lifts it to the amber accent, which
-   makes "who is actually working" answerable by scanning the dock's colour alone.
+.ov-crewrole{font-size:8px;color:var(--ink-section);text-transform:uppercase;letter-spacing:.14em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* B5 — the CREW WATCH task line. Faint by default so a doing-nothing crew member never reads as
+   activity; `.working` lifts it to SOLID INK, which makes "who is actually working" answerable by
+   scanning the dock's weight alone.
+
+   ⚠️ THE THREE-WAY DISTINCTION IS THE SAME PROPERTY IT ALWAYS WAS; ONLY THE INKS CHANGED. The warm
+   skin spent amber on WORK and one step of grey on WAITING; the paper skin spends the darkest ink on
+   WORK and a middle ink plus an italic on WAITING, because there is one accent and it is not for
+   sale to an ordinary state. `awaiting-orders.test.js` pins all three against these tokens by
+   DIRECTION, not merely by difference, so a swap cannot pass.
 
    M1-F removed the two rules that used to follow `.ov-crewtask.working`: `.ov-morale` and
    `.ov-morale-fill`, the CREW WATCH's morale bar. It drew `Citizen.Morale`, a field the sim writes
-   once in its initialiser and never again — a constant painted to look like a reading. The console
-   shell's own `.morale-track` / `.morale-fill` / `.ro-morale` / `.tc-morale` further up are
-   DELIBERATELY untouched: that surface is deprecated and dies whole at M4-8/WP-9.
+   once in its initialiser and never again — a constant painted to look like a reading.
    ⚠️ This note lives HERE rather than where the rules were because `console-carryover.test.js`'s B2
    negative control blinds `.ov-crewtask.working` by opening a comment at it and closing it at the
    NEXT rule — a comment sitting in that gap would close the blinding early and quietly. */
-.ov-crewtask{font-size:8.5px;color:var(--ink-mute,#8c8377);letter-spacing:.04em;
+.ov-crewtask{font-size:8.5px;color:var(--ink-section);letter-spacing:.04em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* M2-20 — the THIRD state. Under OD-H every work type boots off, so "the player has enabled
-   nothing" and "she is enabled and has nothing reachable to do" are BOTH common, and a row that
-   drew them identically would tell the player the ship is stuck when it is waiting on them.
-   ⚠️ IT IS NOT AMBER, DELIBERATELY. Amber means WORK IS HAPPENING and that signal is the dock's
-   whole legibility mechanism (see the note above, and `overview-view.js`'s corrected comment):
-   spending it on a pawn doing nothing would make every new game open with a dock full of "work".
-   So *waiting* lifts one step out of the dim ink and takes an italic — two cues, neither of them
-   the work signal. ⛔ NOT `--cold` either: that hue is reserved for cryo/coolant (H-2).
-   Declared BEFORE `.working` so that if a crew member ever carried both, work wins. */
-.ov-crewtask.waiting{color:var(--ink-body,#b3aa9c);font-style:italic}
-.ov-crewtask.working{color:var(--amber-light,#f2b563)}
-/* ⭐⭐ D5 OVERVIEW — the FOURTH state, and it is a fault rather than an activity: the direct order
-   this crew member was given cannot land, and the `blocked` channel says why. LAST of the three, so
-   it wins the cascade if a row ever carried two (the view turns the other two off explicitly; this
-   rule is the belt to that braces).
-   ⚠️ THE COLOUR IS THE `blocked` CHANNEL'S OWN FAULT RED (#c25a3f, `.rz-key-sw-blocked-*` below),
-   NOT amber and NOT the dim ink. Amber is spent on WORK IS HAPPENING and that signal is the dock's
-   whole legibility mechanism; a stuck order painted amber would read as progress, which is the
-   sentence this row exists to stop telling. It also drops `waiting`'s italic, so the two states do
-   not look like variants of each other.
-   ⛔ AND IT DOES NOT TOUCH `font-weight`, WHICH THE FIRST DRAFT DID. The cell's budget is 26
+   nothing" and "she is enabled and has nothing reachable to do" are BOTH common, and a row that drew
+   them identically would tell the player the ship is stuck when it is waiting on them. TWO cues, and
+   neither of them is the accent. Declared BEFORE `.working` so work wins a row carrying both. */
+.ov-crewtask.waiting{color:var(--ink-prose);font-style:italic}
+.ov-crewtask.working{color:var(--ink)}
+/* ⭐⭐ D5 — the FOURTH state, and it is a fault rather than an activity: the direct order this crew
+   member was given cannot land, and the `blocked` channel says why. LAST, so it wins the cascade if
+   a row ever carried two. THE ONE ACCENT, which is what it is for.
+   ⛔ AND IT DOES NOT TOUCH `font-weight`, WHICH AN EARLIER DRAFT DID. The cell's budget is 26
    characters because the advance is exactly 5.542px, and `NO WAY TO STAND NEXT TO IT` is exactly 26
-   — a synthesized bold that widens the advance by any amount at all clips the last word of the
-   longest sentence that currently fits. The hue is the signal; the metric is not spare. */
-.ov-crewtask.blocked{color:#c25a3f;font-style:normal}
-.ov-empty{color:var(--ink-mute,#8c8377);font-size:10px}
-.ov-guide{color:var(--ink-mute,#8c8377);font-size:10px;margin-top:4px}
+   — a synthesized bold that widens the advance clips the last word of the longest sentence that
+   currently fits. The hue is the signal; the metric is not spare. */
+.ov-crewtask.blocked{color:var(--attend);font-style:normal}
+.ov-empty{color:var(--ink-faintest);font-size:9.5px}
+.ov-guide{color:var(--ink-faintest);font-size:9.5px;margin-top:2px}
 
-/* right SELECTED readout (VS-O-61..64) */
-.ov-readout{position:absolute;right:26px;top:96px;width:298px;max-height:calc(100vh - 220px);
-  overflow-y:auto;padding:16px;border-radius:14px;display:flex;flex-direction:column;gap:10px;
-  font-size:11px;z-index:11}
-.ov-selrow{display:flex;align-items:center;gap:12px}
-.ov-selbust{width:52px;height:52px;border-radius:8px;overflow:hidden;flex:none;
-  background:radial-gradient(circle at 50% 30%,#2a2018,#12100d)}
+/* ==== right SELECTED readout (ruling E4: KEPT — it is the ONE DOOR to a person until M4) ==== */
+.ov-readout{position:absolute;right:48px;top:78px;width:262px;max-height:calc(100vh - 430px);
+  overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;font-size:10px;z-index:11}
+.ov-selrow{display:flex;align-items:center;gap:11px}
+.ov-selbust{width:48px;height:48px;overflow:hidden;flex:none;background:var(--paper-inset-3);
+  border:1px solid var(--paper-border)}
 .ov-selname{display:flex;flex-direction:column;min-width:0}
-.ov-selN{color:var(--amber-light,#f2b563);font-size:14px;font-weight:700}
-.ov-selR{color:var(--ink-mute,#8c8377);text-transform:uppercase;letter-spacing:.08em;font-size:9.5px;margin-top:3px}
-.ov-traits{display:flex;gap:6px;flex-wrap:wrap}
-.ov-trait{border:1px solid #3a332a;border-radius:3px;padding:2px 7px;font-size:9.5px;color:var(--ink-body,#b3aa9c)}
-.ov-task{border-top:1px dashed #2b241c;padding-top:9px;color:var(--ink-bright,#e8dcc9)}
-/* ⭐⭐ D5 OVERVIEW — the stuck order's sentence, whole, under the task line. WRAPS (no `nowrap`, no
-   ellipsis): this box is 264px wide and the longest sentence the channel emits is 45 characters, so
-   this is the one surface on the Overview that can hold it without shortening. Same fault red as the
-   dock row above — one colour for one fact across the two islands.
-   ⚠️ 264 IS THIS ELEMENT; 298 IS `.ov-readout`, THE ISLAND ABOVE — this comment said 298 until the
-   element was walked in Chrome (`overview-dock-badge-shot.mjs`, which measures `.ov-roblocked` and
-   `.ov-task` at clientWidth 264 apiece). Do not re-derive it from the island's width. */
-.ov-roblocked{color:#c25a3f;font-size:10px;letter-spacing:.04em;line-height:1.35}
-.ov-atmos{border:1px solid #2b241c;border-radius:8px;padding:9px;background:rgba(16,13,10,.6);
-  display:flex;flex-direction:column;gap:5px}
-.ov-atmos-lbl{font-size:9px;letter-spacing:.14em;color:var(--ink-faint,#57503f)}
-.ov-atmos-row{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-mute,#8c8377)}
-.ov-atmos-v.good{color:#6fc09a}
-.ov-atmos-v.amber{color:var(--amber-light,#f2b563)}
-.ov-actions{display:flex;flex-direction:column;gap:6px}
-.ov-act-row{display:flex;gap:6px}
-.ov-act{border:1px solid #3a332a;text-align:center;padding:7px;border-radius:6px;
-  color:var(--ink-body,#b3aa9c);cursor:pointer;flex:1;font-size:11px}
-.ov-talk{border-color:#cf7a33;color:var(--amber-light,#f2b563)}
+.ov-selN{font-family:var(--font-serif);color:var(--ink);font-size:20px;line-height:1}
+.ov-selR{color:var(--ink-section);text-transform:uppercase;letter-spacing:.14em;font-size:8.5px;margin-top:4px}
+.ov-traits{display:flex;gap:5px;flex-wrap:wrap}
+.ov-trait{border:1px solid var(--paper-border);padding:2px 6px;font-size:8.5px;
+  letter-spacing:.08em;color:var(--ink-prose)}
+.ov-task{border-top:1px solid var(--paper-hairline);padding-top:8px;
+  font-family:var(--font-serif);font-size:14.5px;line-height:1.3;color:var(--ink-serif)}
+/* ⭐⭐ D5 — the stuck order's sentence, whole, under the task line. WRAPS (no `nowrap`, no ellipsis):
+   this box is ~234px wide and the longest sentence the channel emits is 45 characters.
+   ⛔ IT IS KEPT ALONGSIDE the `compartments` column's oxblood clause and is NOT a duplicate to tidy
+   away: this one answers "why is the person I selected not working", that one answers "which room on
+   this deck is in trouble", and the two questions are asked at different moments. */
+.ov-roblocked{color:var(--attend);font-family:var(--font-serif);font-style:italic;font-size:14px;
+  line-height:1.3}
+.ov-atmos{border:1px solid var(--paper-hairline);padding:8px;background:var(--paper-inset-3);
+  display:flex;flex-direction:column;gap:4px}
+.ov-atmos-lbl{font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-section)}
+.ov-atmos-row{display:flex;justify-content:space-between;gap:8px;font-size:9px;color:var(--ink-micro)}
+.ov-atmos-v.good{color:var(--ink)}
+.ov-atmos-v.amber{color:var(--ink)}
+.ov-actions{display:flex;flex-direction:column;gap:5px}
+.ov-act-row{display:flex;gap:5px}
+.ov-act{border:1px solid var(--paper-border);text-align:center;padding:6px;font:inherit;
+  font-size:9px;letter-spacing:.12em;background:transparent;color:var(--ink-prose);cursor:pointer;flex:1}
+.ov-act:hover{border-color:var(--ink);color:var(--ink)}
+.ov-talk{border-color:var(--ink);color:var(--ink)}
 .ov-act:disabled{opacity:.4;cursor:default;pointer-events:none}
 
-/* bottom-left LENS (VS-O-65/66) */
-.ov-lens{position:absolute;left:26px;bottom:24px;padding:10px 12px;border-radius:12px;z-index:11}
-.ov-lensrow{display:flex;gap:6px;margin-top:7px}
-.ov-lensbtn{min-width:42px;text-align:center;padding:7px 6px;border-radius:6px;font-size:10.5px;
-  cursor:pointer;background:rgba(26,22,17,.6);color:var(--ink-mute,#8c8377);border:1px solid #3a332a}
-.ov-lensbtn.on{background:#3a2a12;color:var(--amber-light,#f2b563);border-color:#cf7a33}
+/* ==== the LENS row (ruling E4: kept, DEMOTED to a quiet row of mono toggles) ==== */
+.ov-lens{flex:none;display:flex;align-items:baseline;gap:10px;
+  background:none;border:0;box-shadow:none}
+#overview-view .ov-lens{background:none;border:0;box-shadow:none}
+.ov-lensrow{display:flex;gap:10px}
+.ov-lensbtn{padding:0;font:inherit;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  cursor:pointer;background:transparent;color:var(--ink-faintest);border:0;border-bottom:2px solid transparent}
+.ov-lensbtn:hover{color:var(--ink-micro)}
+.ov-lensbtn.on{color:var(--ink);border-bottom-color:var(--ink)}
 
-/* bottom-centre command bar (VS-O-67..69) */
-.ov-cmd{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;
-  flex-direction:column;align-items:center;gap:8px;z-index:11}
-.ov-place{display:flex;gap:7px;align-items:center;padding:8px 12px;border-radius:11px}
-.ov-buildhint{font-size:9.5px;letter-spacing:.06em;color:var(--ink-mute,#8c8377);white-space:nowrap}
-.ov-tool{padding:7px 12px;border-radius:6px;font-size:10.5px;cursor:pointer;background:transparent;
-  color:var(--ink-mute,#8c8377);border:1px solid #2b241c}
-.ov-tool.on{background:#3a2a12;color:var(--amber-light,#f2b563);border-color:#cf7a33}
-.ov-tool.cancel.on{background:#3a1a10;color:#e07a5f;border-color:#a53a25}
-/* the deck-scoped ORDERS bar (console-retirement WP-5). Same shell as .ov-place — one bottom-bar
-   island idiom — and it reuses .ov-tool/.ov-tool.on wholesale, so an armed order reads exactly like
-   an armed console palette tool. The hint is .ov-buildhint's twin: a readback, not a control. */
-.ov-orders{display:flex;gap:7px;align-items:center;padding:8px 12px;border-radius:11px}
-/* the header and the three fixed labels never break mid-token ("[G] ⛏ / DIG" reads as damage). The
-   HINT is deliberately left wrappable: a restricted mask spells out up to seven kind names, and a
-   wrapped line is better than one that overflows the viewport. WP-6's chips re-lay-out this bar. */
+/* ==== the footer: ORDERS/BUILD islands and the six-tab nav (ruling E1) ==== */
+.ov-cmd{flex:none;display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.ov-place{display:flex;gap:9px;align-items:center;padding:6px 10px;font-size:9px;letter-spacing:.12em}
+.ov-buildhint{font-size:9px;letter-spacing:.12em;color:var(--ink-micro);white-space:nowrap}
+.ov-tool{padding:5px 10px;font:inherit;font-size:9px;letter-spacing:.12em;cursor:pointer;
+  background:transparent;color:var(--ink-micro);border:1px solid var(--paper-border)}
+.ov-tool:hover{color:var(--ink);border-color:var(--ink)}
+/* ARMED is the one accent — an armed tool owns the next click, which is the state a player most
+   needs to see they are in (charter §1: attention, faults, queued orders). */
+.ov-tool.on{color:var(--attend);border-color:var(--attend);border-style:dashed}
+.ov-tool.cancel.on{color:var(--attend);border-color:var(--attend)}
+/* the deck-scoped ORDERS bar. Same shell as .ov-place — one footer-island idiom — and it reuses
+   .ov-tool/.ov-tool.on wholesale, so an armed order reads exactly like an armed console palette
+   tool. The hint is .ov-buildhint's twin: a readback, not a control. */
+.ov-orders{display:flex;gap:9px;align-items:center;padding:6px 10px}
+/* the header and the fixed labels never break mid-token ("[G] ⛏ / DIG" reads as damage). The HINT is
+   deliberately left wrappable. */
 .ov-orders .ov-ordershdr,.ov-orders .ov-tool{white-space:nowrap}
-.ov-orderhint{font-size:9.5px;letter-spacing:.06em;color:var(--ink-mute,#8c8377)}
-.ov-tabs{display:flex;gap:6px;padding:9px 11px;border-radius:12px}
-.ov-tab{padding:9px 15px;border-radius:8px;font-size:11px;letter-spacing:.06em;cursor:pointer;
-  background:rgba(26,22,17,.5);color:var(--ink-mute,#8c8377);border:1px solid #3a332a}
-.ov-tab.on{background:#3a2a12;color:var(--amber-light,#f2b563);border-color:#cf7a33}
+.ov-orderhint{font-size:9px;letter-spacing:.12em;color:var(--ink-micro)}
+/* THE NAV. Mono 10/.16em uppercase, the active tab ink with a 2px ink underline and NO box — the
+   design's own footer (`Perilune Game.dc.html:217-224`). */
+.ov-tabs{display:flex;align-items:baseline;gap:22px;padding-top:12px;
+  border-top:1px solid var(--paper-border)}
+.ov-tab{padding:0 0 3px;font:inherit;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  cursor:pointer;background:transparent;color:var(--ink-micro);border:0;border-bottom:2px solid transparent}
+.ov-tab:hover{color:var(--ink)}
+.ov-tab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.ov-navhint{margin-left:auto;font-family:var(--font-serif);font-style:italic;font-size:15px;
+  color:var(--ink-micro)}
 
-/* bottom-right SENSOR LOG (VS-O-70/71) */
-.ov-sensor{position:absolute;right:26px;bottom:24px;width:340px;padding:12px 14px;border-radius:12px;
-  font-size:10px;line-height:1.7;color:var(--ink-mute,#8c8377);z-index:11}
-.ov-logline{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ov-ts{color:var(--ink-mute,#8c8377)}
-.ov-ts.new{color:#e8934a}
-.ov-faint{color:var(--ink-faint,#57503f)}
-
-/* bottom-left LEDGER (E0-8) — sits ABOVE the LENS island, which owns left:26px;bottom:24px. Same
-   left margin so the two read as one column; `bottom` clears the lens card's own height. */
-.ov-ledger{position:absolute;left:26px;bottom:104px;width:250px;padding:11px 13px;border-radius:12px;
-  font-size:10px;line-height:1.6;color:var(--ink-mute,#8c8377);z-index:11}
-.ov-ledrow{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
-.ov-ledlabel{flex:0 0 52px;letter-spacing:.08em;color:var(--ink-mute,#8c8377)}
-.ov-ledval{flex:1 1 auto;text-align:right;color:var(--amber-light,#f2b563)}
-.ov-ledsub{flex:0 0 84px;text-align:right;color:var(--ink-faint,#57503f)}
-.ov-ledrow.warn .ov-ledsub{color:#e8934a}
-.ov-ledrow.crit .ov-ledsub{color:#f2b563;font-weight:700}
-.ov-ledcensus{margin-top:6px;font-size:9.5px;white-space:normal;overflow-wrap:anywhere}
-/* The always-visible caveat. Deliberately NOT `.ov-faint`: it is the one line on this island a
-   player who never hovers a row must still read, so it is legible rather than decorative. */
-.ov-ledcaveat{margin-top:6px;font-size:9px;line-height:1.5;white-space:normal;
-  color:var(--ink-mute,#8c8377);border-top:1px solid rgba(58,51,42,.8);padding-top:5px}
-
-@media (max-width:1359px){
-  #overview-view .ov-ledger{display:none} /* same narrow-viewport drop as the sensor log */
-}
-
-/* ── the WORK grid (M2-3) ────────────────────────────────────────────────────────────────────
+/* ==== the WORK grid (M2-3) — ruling E4: KEPT, restyled ====
    The WORK tab's island: one row per crew member, six work-type columns in OD-J's order. Centred
-   over the schematic rather than docked to an edge, because unlike every other island it is not a
-   readout beside the ship — while it is open it IS what the player is doing. Above the HUD islands
-   (z 11) but below the toast (z 12's own users are transient). */
-.ov-work{position:absolute;left:50%;top:96px;transform:translateX(-50%);z-index:12;
-  max-width:min(760px,calc(100vw - 80px));max-height:calc(100vh - 230px);overflow:auto;
-  padding:14px 18px;border-radius:14px;display:flex;flex-direction:column;gap:8px}
-.ov-workhint{font-size:9px;letter-spacing:.06em;color:var(--ink-faint,#57503f);white-space:nowrap}
+   over the plate rather than docked to an edge, because unlike every other island it is not a
+   readout beside the ship — while it is open it IS what the player is doing. */
+.ov-work{position:absolute;left:50%;top:88px;transform:translateX(-50%);z-index:12;
+  max-width:min(760px,calc(100vw - 80px));max-height:calc(100vh - 440px);overflow:auto;
+  padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+.ov-workhint{font-size:8.5px;letter-spacing:.1em;color:var(--ink-faintest);white-space:nowrap}
 .ov-workrow{display:grid;grid-template-columns:132px repeat(6,58px);gap:6px;align-items:center}
-.ov-workname{font-size:11px;color:var(--ink-bright,#e8dcc9);
+.ov-workname{font-family:var(--font-serif);font-size:14px;color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ov-workhead{border-bottom:1px solid rgba(58,51,42,.8);padding-bottom:6px}
-.ov-workhead .ov-workname{color:var(--ink-faint,#57503f);font-size:9px;letter-spacing:.14em}
-.ov-workcolhdr{font-size:8.5px;letter-spacing:.06em;text-align:center;
-  color:var(--ink-mute,#8c8377);text-transform:uppercase}
-/* A CELL. Three states and they must be distinguishable at a glance, because the grid's whole job
-   is to answer "who does what" by scanning it:
-     `.set`  — an amber number, the same accent every armed/active control on this surface uses;
-     `.off`  — the word `off`, dim and hollow. ⛔ NEVER a "0": a zero in a grid of numbers reads as
-               a priority (the worst one, next to 4) when it means the opposite — not at all — and
-               under OD-H that is EVERY cell on screen at boot;
+.ov-workhead{border-bottom:1px solid var(--paper-border);padding-bottom:6px}
+.ov-workhead .ov-workname{font-family:var(--font-mono);color:var(--ink-section);font-size:8.5px;letter-spacing:.18em}
+.ov-workcolhdr{font-size:8px;letter-spacing:.1em;text-align:center;
+  color:var(--ink-micro);text-transform:uppercase}
+/* A CELL. Three states, distinguishable at a glance, because the grid's whole job is to answer
+   "who does what" by scanning it:
+     `.set`  — a solid-ink number on paper, the same weight every active control on this surface has;
+     `.off`  — the word `off`, faint and dashed. ⛔ NEVER a "0": a zero in a grid of numbers reads as
+               a priority (the worst one, next to 4) when it means the opposite — not at all;
      `.wait` — no payload yet, so we do not know. Refuses the click rather than guessing.
-   It stays a real button in all three: `off` is the state the player clicks OUT of, so styling it
-   with `pointer-events:none` would make the one gesture the tab exists for impossible. */
-.ov-workcell{padding:6px 0;border-radius:6px;font-size:11px;text-align:center;cursor:pointer;
-  position:relative;
-  background:rgba(26,22,17,.6);color:var(--ink-mute,#8c8377);border:1px solid #3a332a}
-.ov-workcell:hover{border-color:#57503f;color:var(--ink-body,#b3aa9c)}
+   It stays a real button in all three: `off` is the state the player clicks OUT of. */
+.ov-workcell{padding:5px 0;font:inherit;font-size:10px;text-align:center;cursor:pointer;position:relative;
+  background:transparent;color:var(--ink-micro);border:1px solid var(--paper-border)}
+.ov-workcell:hover{border-color:var(--ink);color:var(--ink)}
 /* ⭐ M3-12 — EACH CELL IS PLACED BY ITS WORK TYPE, NOT BY ITS TURN IN THE ROW, and this is the one
    rule that makes the ABSENT CELL safe. A work type the crew member is INCAPABLE of gets no button
-   at all (`rimworld-reference.md:335` — disabled renders blank, incapable renders as no cell), so
-   the row genuinely has fewer children than the header has columns. With auto-placement the
-   survivors would shuffle left and every one of them would sit under the WRONG header — HAUL drawn
-   under MINE, clicking HAUL, reading as MINE. The addressing would still be right, which is exactly
-   why the failure would be invisible to a click test. Keyed off `data-ov-work-type`, the same
-   attribute the click handler reads, so the drawn position and the addressed work type cannot
-   disagree: there is only one number. Column 1 is the name. */
+   at all (`rimworld-reference.md:335`), so the row genuinely has fewer children than the header has
+   columns. With auto-placement the survivors would shuffle left and every one would sit under the
+   WRONG header — HAUL drawn under MINE, clicking HAUL, reading as MINE. Keyed off
+   `data-ov-work-type`, the same attribute the click handler reads, so the drawn position and the
+   addressed work type cannot disagree. Column 1 is the name. */
 .ov-workrow .ov-workcell[data-ov-work-type="0"]{grid-column:2}
 .ov-workrow .ov-workcell[data-ov-work-type="1"]{grid-column:3}
 .ov-workrow .ov-workcell[data-ov-work-type="2"]{grid-column:4}
 .ov-workrow .ov-workcell[data-ov-work-type="3"]{grid-column:5}
 .ov-workrow .ov-workcell[data-ov-work-type="4"]{grid-column:6}
 .ov-workrow .ov-workcell[data-ov-work-type="5"]{grid-column:7}
-/* The priority glyph — the thing the click changes, and the reason the cell has a `.set`/`.off`/
-   `.wait` state at all. It inherits the cell's colour so the three state rules above keep working
-   unchanged. */
 .ov-workprio{display:block}
 /* ⭐ M3-12 — HER SKILL IN THIS WORK TYPE, 0–20, in the corner of the priority box (RimWorld's own
-   arrangement, reference §1.7). Small, dim and never amber: it must not compete with the priority
+   arrangement, reference §1.7). Small and never the accent: it must not compete with the priority
    number, because the priority is the control and the skill is the reason you would set it.
    ⛔ IT IS NEVER HIDDEN AT 0. Nothing in the sim writes a skill yet (MECHANICS §13.37.5), so today
-   this reads `0` on every cell of every row — and that is the honest picture of a ship whose only
-   waking soul is untrained at everything, not a display with nothing to show. */
-.ov-workskill{position:absolute;top:1px;right:3px;font-size:8px;line-height:1;font-weight:400;
-  letter-spacing:0;color:var(--ink-faint,#57503f);pointer-events:none}
+   this reads `0` on every cell — the honest picture of a ship whose only waking soul is untrained at
+   everything, not a display with nothing to show. */
+.ov-workskill{position:absolute;top:1px;right:3px;font-size:7.5px;line-height:1;font-weight:400;
+  letter-spacing:0;color:var(--ink-faintest);pointer-events:none}
 /* ⚠️ THE SKILL IS ALWAYS A DIFFERENT INK FROM THE PRIORITY IT SITS BESIDE, in BOTH cell states, and
    the browser harness measures exactly that — it caught them resolving to the SAME faint ink on the
-   boot grid, where `off` is 9 px faint and the skill 8 px faint, one pixel and no contrast apart, so
-   the cell read as the single token "off0".
-   The direction reverses between the states on purpose, and it is a hierarchy claim rather than a
-   decoration: on a `.set` cell the amber priority is the fact and the skill is the footnote, so the
-   skill stays mute; on an `.off` cell the priority is a deliberately dim NON-value — under OD-H that
-   is every cell on screen at boot — and the only informative thing in the box is her skill, so the
-   skill is the brighter of the two. */
-.ov-workcell.off .ov-workskill{color:var(--ink-mute,#8c8377)}
-.ov-workcell.set .ov-workskill{color:var(--ink-mute,#8c8377)}
+   boot grid, so the cell read as the single token "off0". The direction reverses between the states
+   on purpose: on a `.set` cell the ink priority is the fact and the skill is the footnote; on an
+   `.off` cell the priority is a deliberately faint NON-value and the only informative thing in the
+   box is her skill. */
+.ov-workcell.off .ov-workskill{color:var(--ink-prose)}
+.ov-workcell.set .ov-workskill{color:var(--ink-section)}
 .ov-workskill.wait{opacity:.5}
-.ov-workcell.off{color:var(--ink-faint,#57503f);background:transparent;border-style:dashed;
-  font-size:9px;letter-spacing:.06em}
-.ov-workcell.off:hover{color:var(--ink-mute,#8c8377);border-color:#57503f}
-.ov-workcell.set{background:#3a2a12;color:var(--amber-light,#f2b563);border-color:#cf7a33;font-weight:700}
-.ov-workcell.wait{color:var(--ink-faint,#57503f);background:transparent;border-color:#2b241c;
+.ov-workcell.off{color:var(--ink-faintest);background:transparent;border-style:dashed;
+  font-size:8.5px;letter-spacing:.08em}
+.ov-workcell.off:hover{color:var(--ink-micro);border-color:var(--ink-micro)}
+.ov-workcell.set{background:var(--ink);color:var(--paper-plate);border-color:var(--ink)}
+.ov-workcell.wait{color:var(--ink-faintest);background:transparent;border-color:var(--paper-hairline);
   cursor:default;opacity:.5}
 
-/* transient toast (add-room / room-zoom stubs) */
-.ov-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:12;
-  padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);
-  color:var(--amber-light,#f2b563);font-size:11px;letter-spacing:.06em;box-shadow:var(--hud-shadow)}
+/* ==== transient toast ==== */
+.ov-toast{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);z-index:12;
+  padding:7px 14px;background:var(--paper-plate);border:1px solid var(--ink);
+  color:var(--ink);font-size:9.5px;letter-spacing:.12em;box-shadow:var(--plate-shadow)}
 
-/* ⭐ M3-5 — THE ENDING BAR. One line, pinned across the top of the schematic, and NOT a toast: a
-   toast expires, and neither of the two facts this says ever stops being true. Amber while the ship
-   is waking one more soul by itself (the grace), red once the run is over. `z-index` sits above the
-   toast's 12 because when both could show, the ending outranks whatever the last click said. */
-.ov-ending{position:absolute;left:50%;top:64px;transform:translateX(-50%);z-index:14;
-  max-width:min(680px,86vw);text-align:center;
-  padding:9px 20px;border-radius:8px;background:var(--hud-bg);border:1px solid #cf7a33;
-  color:var(--amber-light,#f2b563);font-size:12px;font-weight:700;letter-spacing:.08em;
-  box-shadow:var(--hud-shadow)}
-.ov-ending.ov-endover{border-color:#b3412c;color:#e8836b}
+/* ⭐ M3-5 — THE ENDING BAR. One line across the top of the plate, and NOT a toast: a toast expires,
+   and neither of the two facts this says ever stops being true. Ink while the ship is waking one
+   more soul by itself (the grace), the ONE ACCENT once the run is over. */
+.ov-ending{position:absolute;left:50%;top:60px;transform:translateX(-50%);z-index:14;
+  max-width:min(680px,86vw);text-align:center;padding:8px 18px;
+  background:var(--paper-plate);border:1px solid var(--ink);color:var(--ink);
+  font-family:var(--font-serif);font-style:italic;font-size:15px;box-shadow:var(--plate-shadow)}
+.ov-ending.ov-endover{border-color:var(--attend);color:var(--attend)}
 
-/* ⭐⭐ D2 — THE ALERT BAR. The ending bar's sibling, one line lower so both can be true at once (a
-   ship whose crew is dying is exactly the ship whose capsules are decaying unattended). Dimmer and
-   cooler than the ending: this is a WARNING with days on the clock, not a fact about the run being
-   over, and it must not read as the same alarm. `z-index` sits just under `.ov-ending`'s 14 — when
-   both show, the ending outranks it. M5-2/T17 grows this slot into the alert stack. */
-.ov-alert{position:absolute;left:50%;top:104px;transform:translateX(-50%);z-index:13;
-  max-width:min(680px,86vw);text-align:center;
-  padding:7px 18px;border-radius:8px;background:var(--hud-bg);border:1px solid #8c6a2f;
-  color:#d9a05b;font-size:11px;font-weight:600;letter-spacing:.07em;
-  box-shadow:var(--hud-shadow)}
-
-/* B6 — the paused-ship nudge, ported off the console's `.nudge` at WP-8. Pinned under the top bar's
-   right end, directly beneath the HOLD/RESUME chip: the complaint and its fix read as one thing. The
-   `.rz-nudge` twin is the Room Zoom's, positioned for that surface's chrome — the Room Zoom is where
-   walls and devices are actually placed, so it is where the "nothing happened" moment mostly lands.
-   The blink is the console's own plnBlink and it is switched OFF under prefers-reduced-motion below:
-   an indefinite blinker is the worst kind of motion to leave running. */
-/* right:74px, NOT 26px: the `?` help button is `position:fixed;right:30px;top:66px;width:32px`
-   (`.onb-help` above) and a nudge at the bar's own right margin lands underneath it — measured in
-   headless Chrome, where the chip's last two characters disappeared behind the circle. 30+32+12. */
-/* Both are <button>s and both RESUME on click, which is the affordance's own escape hatch: the key it
-   names is yielded to whatever button the player just clicked (input/controls.js), so a chip that
+/* B6 — the paused-ship nudge, on both modern surfaces. Pinned under the masthead's right end,
+   directly beneath the HOLD/RESUME chip: the complaint and its fix read as one thing. The `.rz-nudge`
+   twin is the Room Zoom's, positioned for that surface's chrome.
+   right:74px, NOT 46px: the `?` help button is `position:fixed;right:30px;top:66px;width:32px`
+   (`.onb-help` below) and a nudge at the row's own right margin lands underneath it.
+   Both are <button>s and both RESUME on click, which is the affordance's own escape hatch: the key
+   it names is yielded to whatever button the player just clicked (input/controls.js), so a chip that
    only said "PRESS SPACE" was a dead end on the exact path that raises it. `font:inherit` +
-   `cursor:pointer` are load-bearing — a button inherits neither the console face nor the hand. */
-.ov-nudge{position:absolute;right:74px;top:66px;z-index:14;
-  padding:6px 14px;border-radius:8px;background:var(--hud-bg);border:1px solid #cf7a33;
-  color:var(--amber-light,#f2b563);font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.10em;
-  white-space:nowrap;cursor:pointer;box-shadow:var(--hud-shadow);animation:plnBlink 1.6s infinite}
+   `cursor:pointer` are load-bearing — a button inherits neither the page face nor the hand. */
+.ov-nudge{position:absolute;right:76px;top:60px;z-index:14;
+  padding:5px 12px;background:var(--paper-plate);border:1px solid var(--attend);
+  color:var(--attend);font-family:inherit;font-size:9px;letter-spacing:.14em;
+  white-space:nowrap;cursor:pointer;box-shadow:var(--plate-shadow);animation:plnBlink 1.6s infinite}
 /* TOP CENTRE, not top right: `.rz-minimap` is `right:32px;top:24px` and the Room Zoom's breadcrumb
-   owns the left, so the centre is the only free lane at the top of that surface — measured, after the
-   first version sat on top of the minimap card. */
+   owns the left, so the centre is the only free lane at the top of that surface. */
 .rz-nudge{position:absolute;left:50%;top:26px;transform:translateX(-50%);z-index:24;
-  padding:6px 14px;border-radius:8px;background:var(--hud-bg);border:1px solid #cf7a33;
-  color:var(--amber-light,#f2b563);font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.10em;
-  white-space:nowrap;cursor:pointer;box-shadow:var(--hud-shadow);animation:plnBlink 1.6s infinite}
-.ov-nudge:hover,.rz-nudge:hover{background:rgba(232,147,74,.22);border-color:#f2b563}
+  padding:5px 12px;background:var(--paper-plate);border:1px solid var(--attend);
+  color:var(--attend);font-family:inherit;font-size:9px;letter-spacing:.14em;
+  white-space:nowrap;cursor:pointer;box-shadow:var(--plate-shadow);animation:plnBlink 1.6s infinite}
+.ov-nudge:hover,.rz-nudge:hover{background:var(--paper-inset-3)}
 @media (prefers-reduced-motion:reduce){.ov-nudge,.rz-nudge{animation:none}}
 
+/* ==== first-run onboarding + `?` help ==== */
+.onb-layer{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(231,224,210,.86)}
+.onb-layer[hidden]{display:none}
+.onb-card{width:min(600px,94vw);max-height:92vh;overflow:auto;padding:30px 32px;
+  background:var(--paper-plate);border:1px solid var(--paper-border);box-shadow:var(--plate-shadow);
+  animation:onbIn .28s ease}
+@keyframes onbIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.onb-card{animation:none}}
+.onb-eyebrow{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-section)}
+.onb-title{margin:10px 0 0;font-family:var(--font-serif);font-size:38px;line-height:1.02;
+  color:var(--ink-display)}
+.onb-lede{margin:12px 0 0;font-family:var(--font-serif);font-size:16px;line-height:1.5;color:var(--ink-prose)}
+.onb-verbs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+@media (max-width:480px){.onb-verbs{grid-template-columns:1fr}}
+.onb-verb{padding:12px 13px;background:var(--paper-inset-3);border:1px solid var(--paper-border)}
+.onb-verb-h{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-micro)}
+.onb-verb-b{margin-top:6px;font-family:var(--font-serif);font-size:14.5px;line-height:1.35;color:var(--ink-serif)}
+.onb-verb-b b{color:var(--ink)}
+.onb-controls{margin-top:20px;border-top:1px solid var(--paper-hairline);padding-top:16px}
+.onb-controls-h{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-section)}
+.onb-kgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin-top:11px}
+@media (max-width:480px){.onb-kgrid{grid-template-columns:1fr}}
+.onb-krow{display:flex;align-items:center;gap:10px;font-size:10px;color:var(--ink-prose)}
+.onb-key{flex:none;min-width:20px;text-align:center;padding:2px 6px;font-family:inherit;
+  font-size:9.5px;color:var(--ink);background:var(--paper-inset-1);border:1px solid var(--paper-border)}
+.onb-begin{margin-top:24px;width:100%;padding:12px;cursor:pointer;font:inherit;font-size:10px;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--paper-plate);background:var(--ink);border:0}
+.onb-begin:hover{background:var(--attend)}
+/* ⛔ THE PRESS STATE IS NOT DECORATION — it is the `palette PRESSES` precedent (session G: the build
+   palette's hover had the armed border colour and a press said nothing, which read as a dead
+   button). A button whose only feedback is hover is a button a player cannot tell they clicked. */
+.onb-begin:active{background:var(--ink-annot);transform:translateY(1px)}
+.onb-foot{margin-top:12px;text-align:center;font-size:9px;color:var(--ink-faintest)}
+.onb-help{position:fixed;right:30px;top:66px;z-index:120;width:30px;height:30px;border-radius:50%;
+  cursor:pointer;font:inherit;font-size:14px;color:var(--ink);
+  background:var(--paper-plate);border:1px solid var(--paper-border);box-shadow:var(--plate-shadow)}
+.onb-help:hover{color:var(--paper-plate);background:var(--ink);border-color:var(--ink)}
+
+/* ==== narrow-viewport drops (unchanged behaviour, new homes) ==== */
 @media (max-width:1359px){
-  #overview-view .ov-sensor{display:none} /* match the console's narrow-viewport drop */
+  #overview-view .ov-columns{grid-template-columns:1fr 1fr 258px}
+  #overview-view .ov-radar{display:none}
 }
 
 /* ==== motion (VS-60 — restrained, instrumental) ==== */

@@ -262,11 +262,21 @@ function assertThreeWayDistinct(prefix, nextSelector) {
 
   // DIRECTION, not merely difference (the B2 shape in `console-carryover.test.js`): each side is
   // pinned to its own token, so a swap cannot pass.
-  assert.match(idle, /ink-mute|#?8c8377/i, `${prefix} is no longer the dim ink`);
-  assert.match(working, /amber-light|#?f2b563/i, `${prefix}.working is no longer the amber accent`);
-  assert.match(waiting, /ink-body|#?b3aa9c/i,
-    `${prefix}.waiting resolves to "${waiting}" — it should lift ONE step out of the dim ink. `
-    + '⛔ Not --cold either: that hue is reserved for cryo/coolant (H-2).');
+  // ⭐ VR-P4 — THE TOKENS MOVED FROM THE WARM RAMP TO THE PAPER ONE AND THE PROPERTY DID NOT. The
+  // Overview is ink on paper now, so "dim / one step out / the work signal" is a ladder of INKS
+  // rather than grey-grey-amber: `--ink-section` (faintest that still reads) → `--ink-prose` (one
+  // step out, plus the italic) → `--ink` (the darkest ink there is, which is what WORK now takes).
+  // ⛔ THE ACCENT IS STILL NOT FOR SALE — it went to the BLOCKED state, which is a fault; painting
+  // ordinary work in oxblood would spend the surface's only accent on its commonest state.
+  // The Room Zoom is P3's and is still on the warm ramp, so each side names its own tokens.
+  const T = prefix.startsWith('.ov-')
+    ? { idle: /ink-section|#?8A7F6C/i, working: /--ink\)|#?14120F/i, waiting: /ink-prose|#?4E463A/i }
+    : { idle: /ink-mute|#?8c8377/i, working: /amber-light|#?f2b563/i, waiting: /ink-body|#?b3aa9c/i };
+  assert.match(idle, T.idle, `${prefix} is no longer the faintest ink`);
+  assert.match(working, T.working, `${prefix}.working is no longer the work signal`);
+  assert.match(waiting, T.waiting,
+    `${prefix}.waiting resolves to "${waiting}" — it should lift ONE step out of the faint ink. `
+    + '⛔ Not the accent either: that is reserved for a FAULT (the blocked state).');
 
   // A SECOND CUE. A colour step alone is thin at 8px, and the row is the only thing on the first
   // screen saying why nothing is happening.

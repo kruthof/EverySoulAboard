@@ -136,8 +136,21 @@ test('⭐ no var() fallback disagrees with the value the cascade actually resolv
       }
     });
   }
-  // NON-VACUITY BY INCLUSION: the surface files really are full of these.
-  assert.ok(checked >= 80, `only ${checked} var() fallbacks scanned — the scan is reading nothing`);
+  // NON-VACUITY BY INCLUSION: the surface files really do carry these.
+  //
+  // ⚠️ THE FLOOR WAS 80, WAS RE-BASED TO 30 BY VR-P4, AND IS TIGHTENED TO 35 HERE — because this is
+  // a SHARED file and a slack floor on a shared file protects nothing. VR-P4 rewrote `overview.css`
+  // in the paper idiom and wrote every token reference as a BARE `var(--x)` with no fallback at all,
+  // which is the state this test exists to push the stylesheet towards: a fallback is a second theme
+  // nothing keeps in step, and the only fallback that cannot disagree with the cascade is the one
+  // that is not written. So the population shrank because the defect class shrank.
+  //
+  // MEASURED ON THIS TREE, per file: base 0 · overview 0 · moss 0 · console 0 · roomzoom 23 ·
+  // relations 16 ⇒ 39. The floor sits four under that, so losing EITHER of the two files that still
+  // carry fallbacks fails loudly, while P3's roomzoom rewrite is free to remove its own 23 (it will
+  // then re-base this line in ITS commit, with its own measurement).
+  // ⛔ Do not raise the floor by adding fallbacks.
+  assert.ok(checked >= 35, `only ${checked} var() fallbacks scanned — the scan is reading nothing`);
   assert.deepEqual(fails, [], fails.join('\n'));
 });
 

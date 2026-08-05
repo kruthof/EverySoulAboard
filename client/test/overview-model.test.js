@@ -9,19 +9,26 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
+import { decode, decodeDecks, decodeRooms,
+  BLOCKED_ORDER_REPAIR, BLOCKED_REASON_NO_ROUTE, BLOCKED_DETAIL_NONE } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { makeTransform } from '../src/ui/overview-scene.js';
+import { makeTransform, DECK } from '../src/ui/overview-scene.js';
 import {
   tileAt, overviewClickAction, lensGrade, lensSlotTint, GRADE_TINT, currentRoom,
   deckPips, deckDelta, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, isOrderTool, orderHintLine, orderPlacedLine,
   ERASE_TOOL, ERASE_LABEL, isEraseTool, markNameAt, erasePlacedLine,
+  // ⭐ VR-P4 — the ship plate's own pure derivations.
+  compartmentLines, compartmentStatus, deckCaptionLine, mastheadStats,
+  GAUGE_CELLS, LEDGER_GAUGE_DAYS, runwayGauge, radarCaption,
 } from '../src/ui/overview-model.js';
 // The un-designate precedence itself lives in `room-model.js` and is SHARED by both surfaces —
 // imported here so the Overview's expected payload is derived from the same table the controller
 // runs on, rather than from a second literal that could quietly agree with a broken one.
 import { eraseTarget, tileOrders } from '../src/ui/room-model.js';
+// `clockHHMM` is the console's own clock formatter, shared rather than re-forked — the masthead
+// leg compares against the very function the controller calls.
+import { clockHHMM } from '../src/ui/console-model.js';
 // ACCEPT_ALL + stockFilterLabel are used ONLY to prove this surface names NO accept-set any more:
 // `defaultStockFilter` went with the seam (see `room-model.test.js`, which now imports it).
 import { ACCEPT_ALL, stockFilterLabel } from '../src/ui/stock-filter-model.js';
@@ -353,6 +360,158 @@ test('the atmos formatters are InvariantCulture-safe', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐ VR-P4 — THE SHIP PLATE's pure half: the `compartments` prose, the caption, the masthead, the
+// engraved gauge's scale, and the radar's honesty.
+//
+// ⛔ EVERY ONE OF THESE IS A RULING-E11 TEST. The design's own columns read "Cooker unpowered; 60
+// units of potato remain" and "one contact closing · 340 km"; neither a per-room contents summary
+// nor a sensor-contact channel exists on this wire. So each function is pinned on TWO things: that
+// it renders the wire's real terms, and that it renders NOTHING where the wire is silent.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('E11: `compartments` names every room on the deck and states only what the wire carries', () => {
+  const lines = compartmentLines(view, 0, [], null);
+  assert.equal(lines.length, view[0].slots.length, 'a compartment on this deck has no line');
+  assert.equal(new Set(lines.map((l) => l.anchorName)).size, lines.length, 'two lines share an anchor');
+  // The NAME is the slot's own display name, with the design's sentence-opening full stop.
+  for (const s of view[0].slots) {
+    const l = lines.find((x) => x.anchorName === s.anchorName);
+    assert.equal(l.name, s.displayName + '.');
+  }
+  // The STATUS is the `rooms` row's own three numbers, and nothing that is not on it.
+  const withAtmos = view[0].slots.find((s) => s.atmos);
+  assert.ok(withAtmos, 'the fixture carries no atmosphere at all — every status leg would be vacuous');
+  const line = lines.find((l) => l.anchorName === withAtmos.anchorName);
+  assert.match(line.status, /kPa/);
+  assert.match(line.status, /°C/);
+  assert.match(line.status, /\bON\b|\bOFF\b/);
+  // …and NOTHING invented: no adjective, no narrative verb, no sentence the host did not write.
+  for (const l of lines) {
+    assert.ok(!/\b(cooker|remain|falling|bury|unpowered)\b/i.test(l.status),
+      `the compartments column invented prose: "${l.status}". Ruling E11: where the design wants a `
+      + 'sentence the wire has none, render the honest terse line — P7 owns the data.');
+  }
+});
+
+test('E11: a compartment with NO `rooms` row SAYS SO — it does not print a vacuum\'s zeros', () => {
+  // ⛔ THE TWO STATES MUST NOT RENDER THE SAME. "no reading" is a compartment the host sent nothing
+  // for; `0.0 kPa · -273°C · OFF` is a VENTED room, which D4 made sure arrives with real zeros. A
+  // column that printed zeros for the first would present a missing message as a hard vacuum.
+  assert.equal(compartmentStatus({ atmos: null, active: false }, 0), 'no reading');
+  assert.equal(compartmentStatus({ atmos: { pressureKPa: 0, tempK: 226, o2: 0, co2ppm: 0 }, active: false }, 0),
+    '0.0 kPa · -47°C · OFF');
+  // …and the souls standing in it are counted only when there are any.
+  assert.match(compartmentStatus({ atmos: null }, 1), /1 aboard$/);
+  assert.match(compartmentStatus({ atmos: null }, 3), /3 aboard$/);
+  assert.equal(compartmentStatus({ atmos: null }, 0), 'no reading');
+});
+
+test('⭐⭐ D5 RE-HOUSED: the stuck-order sentence lands on the ROOM the person is standing in', () => {
+  const s = view[0].slots[1];
+  const crew = [{ cid: 7, deck: 0, x: s.rect.x + 2, y: s.rect.y + 2 }];
+  const stuck = (cid) => (cid === 7 ? { sentence: 'NO WAY TO WALK TO IT' } : null);
+  const lines = compartmentLines(view, 0, crew, stuck);
+  const mine = lines.find((l) => l.anchorName === s.anchorName);
+  assert.equal(mine.why, 'ORDER STUCK — NO WAY TO WALK TO IT');
+  assert.equal(mine.attention, true, 'the sentence and the tile border are ONE derivation');
+  // …and NOBODY ELSE takes it. A fault that spread to every room would be worse than silence.
+  assert.deepEqual(lines.filter((l) => l.attention).map((l) => l.anchorName), [s.anchorName]);
+  // NEGATIVE CONTROL: nothing stuck ⇒ no clause and no attention anywhere.
+  const calm = compartmentLines(view, 0, crew, () => null);
+  assert.deepEqual(calm.filter((l) => l.why || l.attention), []);
+  // …and a crew member on ANOTHER DECK never marks this deck's rooms.
+  const offDeck = compartmentLines(view, 0, [{ cid: 7, deck: 3, x: s.rect.x + 2, y: s.rect.y + 2 }], stuck);
+  assert.deepEqual(offDeck.filter((l) => l.attention), []);
+});
+
+test('the caption and the masthead phrase the deck ONCE, and say nothing this sim cannot measure', () => {
+  // ⛔ THE COUNT IS THE COUNT. Both printed `totalDecks − 1` and the WRECK — which has two decks —
+  // read "deck 0 of 1" in the running game. `decksView.length` is how many decks there are.
+  assert.equal(deckCaptionLine(0, 2, 8), 'Deck 0 of 2 — 8 compartments, one to a cell.');
+  assert.equal(deckCaptionLine(1, 2, 8), 'Deck 1 of 2 — 8 compartments, one to a cell.');
+  assert.equal(deckCaptionLine(2, 3, 1), 'Deck 2 of 3 — 1 compartment, one to a cell.');
+  // ⛔ AND IT NO LONGER SAYS "looking down", WHICH WAS A FALSE CLAIM ABOUT THE DRAWING: the plate is
+  // not a plan seen from above, it is a grid of oblique cutaways whose cell ORDER is slot order.
+  assert.ok(!/looking down/i.test(deckCaptionLine(0, 2, 8)));
+  // ⛔ THE DESIGN'S CAPTION ENDS "Under way at 0.31 g, bow to starboard" AND THAT HALF IS NOT WRITTEN:
+  // there is no acceleration and no heading anywhere in `sim/`.
+  assert.ok(!/\bg\b|starboard|bow/i.test(deckCaptionLine(0, 2, 8)));
+  const m = mastheadStats(1, 2, 41, '12:04');
+  assert.equal(m.deck, 'deck 1 of 2');
+  assert.equal(m.clock, 'day 41 · 12:04');
+  // THE TWO MUST AGREE — one deck, phrased once. A second copy of the arithmetic is how the caption
+  // and the masthead came to disagree in the first place.
+  assert.ok(deckCaptionLine(1, 2, 8).toLowerCase().startsWith(m.deck),
+    `the caption says "${deckCaptionLine(1, 2, 8)}" and the masthead says "${m.deck}"`);
+});
+
+test('the compartments column carries a TEXT form of each line — the spans do not run together', () => {
+  // ⚠️ `.ov-cpname` and `.ov-cpstat` are adjacent spans and the gap between them is a CSS margin,
+  // which is not text: a screen reader and a `textContent` read both get "CRYO BAY.101.3 kPa". The
+  // line therefore carries its own written-out form, which the view puts on the element's
+  // `aria-label` and which a test can read.
+  const s = view[0].slots[0];
+  const lines = compartmentLines(view, 0, [], null);
+  const l = lines.find((x) => x.anchorName === s.anchorName);
+  assert.equal(l.label, l.name + ' ' + l.status);
+  assert.ok(/\S\s\S/.test(l.label), 'the label runs its two halves together');
+  // …and when an order is stuck the clause is IN the text form too, so the fault is not the one
+  // thing a non-visual reader misses.
+  const crew = [{ cid: 5, deck: 0, x: s.rect.x + 1, y: s.rect.y + 1 }];
+  const stuck = compartmentLines(view, 0, crew, () => ({ sentence: 'NO WAY TO WALK TO IT' }));
+  const sl = stuck.find((x) => x.anchorName === s.anchorName);
+  assert.match(sl.label, / — ORDER STUCK — NO WAY TO WALK TO IT$/);
+});
+
+test('the engraved gauge has a STATED scale, and no gauge at all where the wire has no denominator', () => {
+  assert.equal(GAUGE_CELLS, 8);
+  // Only the three RUNWAY rows have a bounded reading. `MATTER` is a unit count with no ceiling and
+  // `PARTS` is a rate — a gauge for either would need an invented denominator, which is the M1-F
+  // failure (a bar painted to look like a reading).
+  assert.deepEqual(Object.keys(LEDGER_GAUGE_DAYS).sort(),
+    ['days_of_food', 'days_of_water', 'o2_trend']);
+  assert.equal(LEDGER_GAUGE_DAYS.matter, undefined);
+  assert.equal(LEDGER_GAUGE_DAYS.parts_per_day, undefined);
+  // ONE CELL IS ONE DAY, capped at eight.
+  assert.deepEqual(runwayGauge(0), { filled: 0, total: 8 });
+  assert.deepEqual(runwayGauge(3.21), { filled: 3, total: 8 });
+  assert.deepEqual(runwayGauge(7.6), { filled: 8, total: 8 });
+  assert.deepEqual(runwayGauge(90), { filled: 8, total: 8 });
+  // ⚠️ A NON-ZERO RUNWAY UNDER HALF A DAY STILL LIGHTS ONE CELL. Rounding it to none would draw the
+  // same picture as "the water is gone", and those are the two states a player most needs told apart.
+  assert.deepEqual(runwayGauge(0.4), { filled: 1, total: 8 });
+  assert.deepEqual(runwayGauge(0.01), { filled: 1, total: 8 });
+  // `null` is NOT zero: a negative is the ledger's STEADY sentinel (no runway at all) and a missing
+  // number is a missing number. Neither may draw eight empty cells, which reads as "it is gone".
+  for (const v of [null, undefined, NaN, -1, 'x', {}]) {
+    assert.equal(runwayGauge(/** @type {any} */ (v)), null, `runwayGauge(${JSON.stringify(v)}) drew a bar`);
+  }
+});
+
+test('E11: the radar is an HONEST INSTRUMENT — it shows own ship and says it has no contacts', () => {
+  const cap = radarCaption();
+  assert.match(cap.sweep, /7 s/, 'the caption must name the cadence the animation really runs at');
+  assert.match(cap.contacts, /no contact data/i);
+  // ⛔ THE DESIGN DRAWS FOUR CONTACTS INCLUDING AN OXBLOOD ONE "closing · 340 km". There is no
+  // channel, no field and nothing in `sim/` that tracks another vessel, so none of the four may be
+  // drawn and none of their words may be written.
+  for (const invented of [/\d+\s*km/i, /closing/i, /contact\s+at/i]) {
+    assert.ok(!invented.test(cap.sweep + ' ' + cap.contacts),
+      `the radar caption states a sensor fact the wire does not carry: ${invented}`);
+  }
+  // …and the markup itself carries no contact marks. The scope is drawn in the SKELETON (it is
+  // static instrument art), so this reads the controller's own source for the shapes.
+  const view = readFileSync(fileURLToPath(new URL('../src/ui/overview-view.js', import.meta.url)), 'utf8');
+  const radar = /\$\('ov-radar'\)\.innerHTML =([\s\S]*?);\n/.exec(view);
+  assert.ok(radar, 'the radar markup was not found — this assertion is reading nothing');
+  assert.ok(!/#7B2C22|--attend/.test(radar[1]),
+    'the radar draws something in the ONE ACCENT. The only oxblood mark in the design is the '
+    + 'invented contact; there is no wire data that could ever justify it here.');
+  assert.equal((radar[1].match(/<circle/g) || []).length, 3,
+    'the scope must draw exactly its three RANGE RINGS — a fourth circle is a contact');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
 // WP-5, DRIVEN: the real `overview-view.js` controller over `dom-lite`.
 //
 // WHY DRIVEN AND NOT SCANNED. The whole risk of this package is in two behaviours a source scan
@@ -442,6 +601,14 @@ class OvDoc extends DomDocument {
 const OV_IDS = [
   'overview-view', 'ov-stage', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
   'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', // M1-L dropped 'ov-picker' with the modal
+  // ⭐ VR-P4 — the plate's own four boxes. `ov-sensor` and `ov-ledger` above did not move id: they
+  // are the `aboard` and `the ship` COLUMNS of `ov-columns` now (ruling E4 re-houses, never drops),
+  // which is why they are still in this list unchanged.
+  'ov-caption', 'ov-columns', 'ov-compart', 'ov-radar',
+  // …and the two console-shell ids `renderMetrics` writes UNGUARDED, needed by the masthead leg
+  // (the clock and the caution chip come off the metrics channel, and its ONLY writer paints these
+  // on the way past). Same reason the six status ids below are registered.
+  'metrics', 's-day', 's-caution',
   'ov-ending', // M3-5's one-line banner: the emergency-thaw grace, then the lose state
   'ov-alert',  // D2's one-line warning bar: a capsule's thaw price is about to rise
   's-deck', 's-lens', 'legendcard', 'crew-count', 'crewlist',
@@ -884,6 +1051,48 @@ test('M1-C driven: an unordered tile sends NOTHING, and the surface SAYS so', ()
   ovArm(ERASE_TOOL);
 });
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐ VR-P4 — THE CLICK REALLY GOES THROUGH `getScreenCTM().inverse()` (BUG-B's resolution path).
+//
+// ⛔ THIS TEST EXISTS BECAUSE ITS ABSENCE WAS MEASURED, NOT SUSPECTED. The mutation "drop the CTM
+// and hand `tileAt` the raw `e.clientX/clientY`" was physically applied to `pointToTile` during this
+// package's mutation pass and the WHOLE NODE SUITE STAYED GREEN — because this file's harness
+// installs an IDENTITY CTM (its own header says so: "the SVG CTM is the IDENTITY, so viewBox units
+// are client pixels"), under which the two paths are the same arithmetic. An equivalent mutant under
+// the only instrument that could see it is a blind spot, not a proof.
+//
+// So this leg installs a NON-IDENTITY CTM — scale 2, translate (100, 50) — for the length of one
+// gesture. A press at the screen position that CTM maps the tile centre to must still designate that
+// tile; the raw-pixel path resolves somewhere else entirely (or off the frame, sending nothing).
+// The stubs are restored in a `finally`, so a failure here cannot poison every later click test.
+test('VR-P4: the scene click is projected through the SVG CTM, not read as raw client pixels', () => {
+  const svg = ovStage.querySelector('svg.pl-overview');
+  const realCtm = svg.getScreenCTM;
+  const realPt = svg.createSVGPoint;
+  const A = 2, D = 2, E = 100, F = 50;         // screen = viewBox * scale + translate
+  try {
+    // `getScreenCTM().inverse()` is the SCREEN→viewBox matrix, so it undoes the transform above.
+    svg.getScreenCTM = () => ({ inverse: () => ({ a: 1 / A, d: 1 / D, e: -E / A, f: -F / D }) });
+    svg.createSVGPoint = () => ({
+      x: 0, y: 0,
+      matrixTransform(m) { return { x: this.x * m.a + m.e, y: this.y * m.d + m.f }; },
+    });
+    const [vx, vy] = ovTransform().project(12 + 0.5, 5 + 0.5);   // the tile centre, in viewBox units
+    ovArm('dig');
+    ovSent.length = 0;
+    const at = { clientX: vx * A + E, clientY: vy * D + F, detail: 1, button: 0 };
+    firePointer(ovStage, 'pointerdown', at);
+    firePointer(ovStage, 'pointerup', at);
+    assert.deepEqual(ovSent, [{ cmd: 'dig', x: 12, y: 5, on: 1 }],
+      'the press landed on the wrong tile (or on none). The gesture is being read in CLIENT pixels '
+      + 'instead of being projected through `getScreenCTM().inverse()`, so every click on a scaled '
+      + 'or scrolled page designates somewhere else — the exact class of defect BUG-B closed.');
+  } finally {
+    svg.getScreenCTM = realCtm;
+    svg.createSVGPoint = realPt;
+  }
+});
+
 // ⚠️ THE FOUR HIT SHAPES, ONE AT A TIME — WIDENED IN REVIEW (2026-07-29), and the narrow version it
 // replaces was a measured survivor, not a hypothetical: with the leg pinned only against a ROOM hit,
 // moving `isEraseTool` below `pawnCid` left 991/991 GREEN, and moving it below pawn + terminal +
@@ -1123,12 +1332,39 @@ test('WP-5 driven: the bar follows the deck on screen — header and readback bo
     'the decks no longer share a transform — this test can now assert the stronger geometric form');
 });
 
-test('WP-5 driven: a click outside the deck frame designates NOTHING', () => {
+test('WP-5 driven: a click outside the drawn plate designates NOTHING', () => {
+  // ⚠️ RETARGETED AT THE VR-P4 REVISION, AND THE OLD FORM IS QUOTED BECAUSE IT WAS ASKING THE WRONG
+  // QUESTION OF THE NEW SURFACE. It read:
+  //
+  //     ovClick(ovStage, FIX.frame.w + 4, 3)   // "a click at an off-deck TILE"
+  //
+  // — i.e. it manufactured a screen point by PROJECTING a tile that does not exist. On the warm
+  // schematic, one affine map covered the whole deck, so an out-of-range tile projected to an
+  // out-of-range point and the two questions were the same question. The plate is piecewise: an
+  // out-of-range tile has no place, so extrapolating the corridor strip's map for it can land the
+  // synthetic point INSIDE a real compartment's cell, where it correctly resolves to that
+  // compartment's tile. The old assertion was measuring the extrapolation, not the bound.
+  //
+  // The property that matters to a player is unchanged and is what is asserted now: **a press
+  // outside the drawn plate designates nothing**, and the bound itself is asserted directly on
+  // `tileAt`, which is where it lives.
   ovArm('strip');
-  assert.deepEqual(ovClick(ovStage, FIX.frame.w + 4, 3), [],
-    'an off-deck click sent an order — `tileAt` is no longer bounds-checking against the frame, so ' +
-    'the ORDERS bar can address tiles that are not on the deck it is showing');
-  assert.deepEqual(ovClick(ovStage, 3, FIX.frame.h + 4), []);
+  for (const [px, py] of [[DECK.x - 220, DECK.y - 90], [DECK.x + DECK.w + 260, DECK.y + 40]]) {
+    ovSent.length = 0;
+    const at = { clientX: px, clientY: py, detail: 1, button: 0 };
+    firePointer(ovStage, 'pointerdown', at);
+    firePointer(ovStage, 'pointerup', at);
+    assert.deepEqual(ovSent, [],
+      `a press at ${px},${py} — off the plate entirely — sent an order. \`tileAt\` is no longer `
+      + 'bounds-checking against the frame, so the ORDERS bar can address tiles that are not there');
+  }
+  // THE BOUND ITSELF, asserted where it is implemented rather than through a projection.
+  const t = ovTransform();
+  assert.equal(tileAt(t, ...t.project(FIX.frame.w + 4.5, 3.5), FIX.frame), null);
+  assert.equal(tileAt(t, ...t.project(-2.5, 3.5), FIX.frame), null);
+  assert.deepEqual(tileAt(t, ...t.project(FIX.frame.w - 0.5, FIX.frame.h - 0.5), FIX.frame),
+    { x: FIX.frame.w - 1, y: FIX.frame.h - 1 }, 'the last in-bounds tile stopped resolving');
+  // …and the live gesture on that last in-bounds tile still designates it.
   assert.equal(ovClick(ovStage, FIX.frame.w - 1, FIX.frame.h - 1).length, 1,
     'the last in-bounds tile stopped working — the bound is off by one, not absent');
 });
@@ -1541,14 +1777,27 @@ test('the LEDGER island paints the ship\'s matter census on the Level-1 Overview
             ['caveat', 'NO AIR RESERVE ABOARD']],
   });
 
+  // ⭐ VR-P4 — the island is the `the ship` COLUMN of the plate's four-column readout now, and its
+  // head is the design's own word. Re-housed, not renamed away: same id, same slots, same model.
   const island = ovRoot.querySelector('.ov-ledger .ov-hdr');
-  assert.equal(island.textContent, 'LEDGER', 'the island must render its header from live state');
+  assert.equal(island.textContent, 'the ship', 'the column must render its header from live state');
 
   const row = ovRoot.querySelectorAll('.ov-ledger .ov-ledrow')[0];
   assert.equal(row.hidden, false, 'row 0 must be SHOWN when the wire carried a ledger');
   assert.equal(row.querySelector('.ov-ledlabel').textContent, 'MATTER');
   assert.equal(row.querySelector('.ov-ledval').textContent, '731 u');
   assert.equal(row.querySelector('.ov-ledsub').textContent, '+9.0/d');
+  // ⭐ THE ENGRAVED GAUGE, AND THE HALF THAT MATTERS IS THE ABSENCE. `MATTER` is a unit count with
+  // no ceiling, so it gets NO cell strip — an eight-cell strip drawn empty beside `731 u` would say
+  // "matter is at zero", which is the M1-F failure (a bar painted to look like a reading).
+  assert.equal(row.querySelector('.ov-ledcells').hidden, true,
+    'the MATTER row grew a gauge, and there is no denominator on the wire that could fill it');
+  // ⚠️ THE OTHER FOUR ROWS CANNOT BE READ HERE, AND THAT IS THE STUB'S LIMIT RATHER THAN A GAP.
+  // `dom-lite`'s `querySelectorAll` memoises ONE stand-in per selector, so `_el.ledgerRows` has
+  // length 1 and only slot 0 is ever painted (the slot-count test below reads the built HTML string
+  // for exactly this reason). The rows that DO carry a gauge are pinned purely, two tests down.
+  // The scale is SAID, beside the gauges. A cell with an unstated denominator is unreadable.
+  assert.match(ovRoot.querySelector('.ov-ledscale').textContent, /ONE CELL = ONE DAY/);
   assert.equal(row.title, 'MATTER NOTE',
     'the host derivation note must ride the row as its title — a limit that does not travel with ' +
     'its number gets read off (DA-M3)');
@@ -1638,11 +1887,15 @@ test('D2: the ALERT bar names the decaying capsule, and is silent when there is 
   // satisfied by a bar nothing ever paints.
   Hud.renderAlerts({ type: 'alerts', text: 'CAPSULE DECAYING — MBEKI — THAW PRICE RISES SOON' });
   assert.equal(bar.hidden, false, 'the warning is INVISIBLE — the whole defect D2 filed');
-  assert.equal(bar.textContent, 'CAPSULE DECAYING — MBEKI — THAW PRICE RISES SOON');
+  // ⭐ VR-P4 — the sentence lives in its OWN span now, beside a fixed oxblood mono `alert` label
+  // (the design's `leak` row). Writing it onto the ROW would delete that label the first time an
+  // alert arrived — a re-housing that silently eats half of its own idiom.
+  const txt = () => ovRoot.querySelector('.ov-alerttxt').textContent;
+  assert.equal(txt(), 'CAPSULE DECAYING — MBEKI — THAW PRICE RISES SOON');
 
   // …a different capsule replaces it rather than stacking: one line, nearest-to-crossing.
   Hud.renderAlerts({ type: 'alerts', text: 'CAPSULE DECAYING — BAHRI — THAW PRICE RISES SOON' });
-  assert.equal(bar.textContent, 'CAPSULE DECAYING — BAHRI — THAW PRICE RISES SOON');
+  assert.equal(txt(), 'CAPSULE DECAYING — BAHRI — THAW PRICE RISES SOON');
 
   // …and it goes away again when the wire says all quiet, rather than sticking for the rest of the
   // run. The empty string is a STATE the channel expresses; a client that hid the bar when the
@@ -1670,6 +1923,126 @@ test('D2: the alerts channel is dispatched and drawn on the standard surface, no
   assert.ok(!/ov-alert|paintAlert/.test(hud),
     'hud.js is the deprecated console module and is CLOSED TO NEW WORK — it may cache the alert, ' +
     'it may not build the bar');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE FOUR NEW PAINTERS, DRIVEN — and this block exists because REVIEW MEASURED THAT THEY WERE
+// NOT PINNED AT ALL. Deleting `paintCompartments`, `paintCaption` or `paintRadar` from the repaint,
+// or blanking `mastheadStats`' strings or the radar's "no contact data" caption, each left ALL 1413
+// tests green: the model half was pinned, and no test ever asked whether the model's answer reached
+// a node. That is the exact shape of E0-4's WP-5 defect — a whole feature correct in the model and
+// absent from the running game — and it is the shape this repo pays for most often.
+//
+// So each painter is driven the way `paintLedger`, `paintAlert` and the awaiting-orders dock are:
+// the real controller, the real caches, and an assertion on a node the controller wrote into.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('VR-P4 driven: the `compartments` column paints one line per room, from the model', () => {
+  Hud.renderDecks(FIX.decks);
+  Hud.renderRooms(FIX.rooms);
+  Hud.renderFrame(FIX.frame);
+
+  const rows = ovRoot.querySelector('.ov-cplist').childNodes.filter((nd) => nd.nodeType === 1);
+  const expected = compartmentLines(view, FIX.frame.deck, [], () => null);
+  assert.equal(rows.length, expected.length,
+    `the column painted ${rows.length} lines for ${expected.length} compartments — the painter is `
+    + 'not running, or it is not reading the deck the plate is showing');
+  assert.ok(rows.length >= 8, 'fewer than 8 lines — this assertion is reading almost nothing');
+  for (let i = 0; i < rows.length; i += 1) {
+    // ⚠️ `byClass`, NOT `querySelector`: `OvEl.querySelector` hands back a MEMOISED STAND-IN per
+    // selector (the harness has no markup parser), so asking a created row for `.ov-cpname` returns
+    // a fresh empty node and every assertion here would read '' and compare it against ''. `byClass`
+    // walks the real children the painter appended.
+    assert.equal(rows[i].oneClass('ov-cpname').textContent, expected[i].name,
+      'a compartment line does not carry the model\'s NAME');
+    assert.equal(rows[i].oneClass('ov-cpstat').textContent.trim(), expected[i].status,
+      'a compartment line does not carry the model\'s STATUS');
+  }
+  // …and the empty state is the honest alternative, not eight blank lines.
+  assert.equal(ovRoot.querySelector('.ov-cpempty').hidden, true);
+});
+
+test('VR-P4 driven: the stuck-order clause REACHES THE DOM in oxblood\'s own class', () => {
+  // ⭐⭐ D5's re-housed half, driven end to end: a `blocked` row on the wire must become a visible
+  // clause under the room the person is standing in, and the row must be flagged so the tile beside
+  // it takes the accent. The pure join is pinned in `overview-dock-badge.test.js`; this is the half
+  // that says it reaches a node.
+  const slots = view[FIX.frame.deck].slots;
+  const target = slots[0];
+  Hud.renderRoster({ type: 'roster', crew: [{ cid: 41, name: 'Ada Rell', role: 'crew',
+    deck: FIX.frame.deck, x: target.rect.x + 1, y: target.rect.y + 1, task: 'Idle' }] });
+  // The host's own wire shape, `[x,y,deck,order,reason,detail,cid]`, with the REAL constants —
+  // a hand-picked `0,0` is not a repair that could not route, it is two codes this client cannot
+  // name, and `crewBlockedOrder` correctly declines to word it.
+  Hud.renderBlocked({ type: 'blocked', cells: [[target.rect.x + 1, target.rect.y + 1,
+    FIX.frame.deck, BLOCKED_ORDER_REPAIR, BLOCKED_REASON_NO_ROUTE, BLOCKED_DETAIL_NONE, 41]] });
+  Hud.renderFrame(FIX.frame);
+
+  const rows = ovRoot.querySelector('.ov-cplist').childNodes.filter((nd) => nd.nodeType === 1);
+  const hit = rows.filter((r) => !r.oneClass('ov-cpwhy').hidden);
+  assert.equal(hit.length, 1,
+    `${hit.length} compartment lines carry a stuck-order clause; exactly one soul is stuck`);
+  assert.match(hit[0].oneClass('ov-cpwhy').textContent, /^ORDER STUCK — /,
+    'the clause reached the DOM without the words that say what it is');
+  assert.ok(hit[0].classList.contains('attend'),
+    'the line is not flagged, so the tile beside it never takes the oxblood border');
+
+  // …and it GOES AWAY when the wire says the order is running again — a latched fault is a lie.
+  Hud.renderBlocked({ type: 'blocked', cells: [] });
+  Hud.renderFrame(FIX.frame);
+  const after = ovRoot.querySelector('.ov-cplist').childNodes.filter((nd) => nd.nodeType === 1);
+  assert.deepEqual(after.filter((r) => !r.oneClass('ov-cpwhy').hidden), []);
+  Hud.renderRoster({ type: 'roster', crew: [] });
+  Hud.renderFrame(FIX.frame);
+});
+
+test('VR-P4 driven: the caption, the masthead and the radar caption all reach the DOM', () => {
+  Hud.renderMetrics({ type: 'metrics', day: 41, dayFrac: 0.5 });
+  Hud.renderFrame(FIX.frame);
+
+  // (a) the caption — the model's sentence, not a rewrite of it
+  const total = view.length;
+  const rooms = view[FIX.frame.deck].slots.length;
+  assert.equal(ovRoot.querySelector('.ov-capline').textContent,
+    deckCaptionLine(FIX.frame.deck, total, rooms),
+    'the caption row is blank or says something the model did not');
+  assert.match(ovRoot.querySelector('.ov-capsouls').textContent, /^souls aboard · \d+$/);
+
+  // (b) the masthead's context stats — both spans, both from `mastheadStats`
+  const stats = mastheadStats(FIX.frame.deck, total, 41, clockHHMM(0.5));
+  assert.equal(ovRoot.querySelector('.ov-deckctx').textContent, stats.deck);
+  assert.equal(ovRoot.querySelector('.ov-clock').textContent, stats.clock);
+  assert.match(stats.deck, /of \d+$/, 'the masthead stopped naming how many decks the ship has');
+
+  // (c) the radar's two caption lines — including the one that says the scope has no contacts,
+  //     which is the whole of ruling E11 on this column and would be the cheapest thing to blank.
+  const cap = radarCaption();
+  assert.equal(ovRoot.querySelector('.ov-radarcap1').textContent, cap.sweep);
+  assert.equal(ovRoot.querySelector('.ov-radarcap2').textContent, cap.contacts);
+  assert.match(ovRoot.querySelector('.ov-radarcap2').textContent, /no contact data/i,
+    'the scope no longer says it has no contacts, so an empty scope reads as an all-clear it '
+    + 'cannot support');
+
+  // (d) …and the nav's serif hint, which is the one instruction the plate gives.
+  assert.match(ovCmd.innerHTML, /class="ov-navhint">click a compartment to open it</,
+    'the footer lost the hint that says the compartments are clickable at all');
+});
+
+test('VR-P4: ruling E1 keeps SIX tabs, and `relations` is spelled TIES', () => {
+  // Renaming the label back to RELATIONS survived the whole suite before this test existed. The KEY
+  // is what `Hud.selectTab` and `body.relations-open` are keyed on and must NOT move; the LABEL is
+  // the design's own word and is what the player reads.
+  const html = ovCmd.innerHTML;
+  for (const label of ['BUILD', 'CREW', 'WORK', 'TIES', 'MOSS', 'CHRONICLE']) {
+    assert.ok(html.includes('>' + label + '<'), `the footer nav lost the ${label} tab`);
+  }
+  assert.ok(!html.includes('>RELATIONS<'),
+    'the nav says RELATIONS again — ruling E1 adopts the design\'s own word, TIES');
+  assert.ok(html.includes('data-ov-tab="relations"'),
+    'the TIES tab lost the `relations` KEY, which is what the body switch and Hud.selectTab use');
+  assert.equal((html.match(/data-ov-tab="/g) || []).length, 6,
+    'the footer nav is no longer six tabs — ruling E1 reads the design\'s four as an incomplete '
+    + 'sketch, not as a deletion of WORK (OD-H) and MOSS (OD-N)');
 });
 
 // ⚠️ THE SLOT COUNT, DRIVEN — and it needed a DIFFERENT read of the stub than the test above.

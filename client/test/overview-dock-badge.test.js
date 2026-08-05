@@ -32,6 +32,7 @@ import { decodeBlocked, BLOCKED_ORDER_REPAIR, BLOCKED_ORDER_DIG, BLOCKED_REASON_
   BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE, BLOCKED_REASON_AIR,
   BLOCKED_DETAIL_NONE, BLOCKED_CID_NONE } from '../src/wire/messages.js';
 import { crewBlockedOrder, watchTask, OV_DOCK_TASK_CHARS } from '../src/ui/console-model.js';
+import { compartmentLines } from '../src/ui/overview-model.js';
 import { stylesSource } from './styles-source.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -221,4 +222,82 @@ test('the readout line\'s class is the SAME string in the built HTML and in the 
   for (const token of [BUILT, RESOLVED])
     assert.equal(codeOnly(commentOutLines(raw, token)).includes(token), false,
       'the scan passes on a source where the line is COMMENTED OUT, so it proves nothing (trap 1)');
+});
+
+// ═══════════════════════════ 5. ⭐⭐ VR-P4 — THE RE-HOUSED IDIOM
+//
+// The ship plate does not have the warm surface's red badge or its blocked scrim. Ruling E4 says
+// DROP NONE, so D5's Overview half now lands in TWO places at once, from ONE derivation:
+//
+//   the SENTENCE  → an oxblood serif clause under the room's own line in the `compartments` column
+//   the PLACE     → that room's tile, drawn in oxblood with the queued-order dash "8 5"
+//
+// Neither is a re-derivation of the other: `compartmentLines` computes the clause and the
+// `attention` flag in the same pass, and `overview-view.js` hands the flagged anchors straight to
+// the scene. That is what makes "which room is in trouble" a question with ONE answer.
+//
+// (The TILE half is driven in `overview-scene.test.js`; this file owns the SENTENCE half and the
+// join, because this is where the wire shape is typed out.)
+
+test('VR-P4: the stuck-order sentence reaches the `compartments` column, from the raw wire payload', () => {
+  const rows = decodeBlocked(msg([NO_ROUTE_ROW]));
+  assert.equal(rows.length, 1, 'the wire payload did not decode — every leg below would be vacuous');
+
+  // The room the machine is in, on the shipped-shape deck view this package builds by hand: the
+  // crew member stands where the sim put her, inside one compartment and not another.
+  const slots = [
+    { slotIndex: 0, anchorName: 'shop', displayName: 'WORKSHOP', roomType: 4, occupied: true,
+      active: true, atmos: null, rect: { x: 20, y: 0, w: 10, h: 6 } },
+    { slotIndex: 1, anchorName: 'hold', displayName: 'HOLD', roomType: 0, occupied: true,
+      active: true, atmos: null, rect: { x: 0, y: 0, w: 10, h: 6 } },
+  ];
+  const dView = [{ deck: 0, slots }];
+  const crew = [{ cid: HER, deck: 0, x: 24, y: 2 }];
+
+  const lines = compartmentLines(dView, 0, crew, (cid) => crewBlockedOrder(rows, cid));
+  const shop = lines.find((l) => l.anchorName === 'shop');
+  const hold = lines.find((l) => l.anchorName === 'hold');
+
+  // (a) THE SENTENCE IS THE SIM'S OWN, whole — this column wraps, so unlike the 26-character dock
+  //     cell it never has to shorten one. `crewBlockedOrder` is the same join the dock row and the
+  //     selected readout run, so all three are renderings of ONE row.
+  const sentence = crewBlockedOrder(rows, HER).sentence;
+  assert.equal(shop.why, 'ORDER STUCK — ' + sentence);
+  assert.ok(shop.why.length > OV_DOCK_TASK_CHARS,
+    'the re-housed line is no longer than the dock cell it exists to escape — check the fixture');
+
+  // (b) IT LANDS ON THE ROOM SHE IS IN, and on no other. A fault that spread to every compartment
+  //     would be worse than the silence D5 filed.
+  assert.equal(shop.attention, true);
+  assert.equal(hold.why, '');
+  assert.equal(hold.attention, false);
+
+  // (c) NON-VACUITY / NEGATIVE CONTROL: with the row belonging to SOMEBODY ELSE, no room is marked.
+  const other = decodeBlocked(msg([[24, 2, 0, BLOCKED_ORDER_REPAIR, BLOCKED_REASON_NO_ROUTE,
+    BLOCKED_DETAIL_NONE, SOMEONE_ELSE]]));
+  const clean = compartmentLines(dView, 0, crew, (cid) => crewBlockedOrder(other, cid));
+  assert.deepEqual(clean.filter((l) => l.attention).map((l) => l.anchorName), []);
+
+  // (d) …and a DESIGNATION, which belongs to nobody, never becomes a person's stuck order here
+  //     either — the same sentinel rule the dock row keeps.
+  const dig = decodeBlocked(msg([DIG_ROW]));
+  const noOne = compartmentLines(dView, 0, crew, (cid) => crewBlockedOrder(dig, cid));
+  assert.deepEqual(noOne.filter((l) => l.attention).map((l) => l.anchorName), []);
+});
+
+test('VR-P4: the re-housed clause has a stylesheet rule, and it is the ONE ACCENT', () => {
+  // The same shape as the `.ov-roblocked` guard above: a line that renders in default ink stops
+  // reading as a fault, and that is the whole of what this re-housing is for.
+  const css = codeOnly(stylesSource());
+  assert.ok(css.includes('.ov-cpwhy'),
+    'the compartments column\'s stuck-order clause has no rule — it renders in body ink and the '
+    + 're-housing says nothing');
+  const rule = /\.ov-cpwhy\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'the .ov-cpwhy rule could not be parsed');
+  assert.match(rule[1], /color:var\(--attend\)|#7B2C22/i,
+    'the clause is not in the one accent, so it reads as ordinary prose beside the room name');
+  // …and it WRAPS. The longest sentence this channel emits is 45 characters and the escape from the
+  // dock's 26-character clamp is the entire reason the sentence was moved here.
+  assert.ok(!/white-space:\s*nowrap|text-overflow/.test(rule[1]),
+    'the re-housed clause clamps or ellipsises — it was moved here precisely to stop doing that');
 });
