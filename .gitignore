@@ -33,3 +33,5 @@ client/tools/shots-roomzoom/
 client/tools/shots-capsules/
 # — lane/paper-materials —
 client/tools/shots-paper-materials/
+# — lane/material-under-pawn —
+client/tools/shots-material-pawn/

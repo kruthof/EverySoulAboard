@@ -15,7 +15,7 @@
 
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 
@@ -583,6 +583,101 @@ test('roomMaterialTiles skins every in-room wall + only non-default floors', () 
   assert.deepEqual(walls.find((t) => t.tx === 6 && t.ty === 8), { tx: 6, ty: 8, kind: 'wall', mat: 0 }); // no channel entry → default
   assert.deepEqual(floors, [{ tx: 7, ty: 7, kind: 'floor', mat: 4 }]); // only the materialed floor
   assert.deepEqual(roomMaterialTiles(frame, { ...room, deck: 9 }, materials), []); // wrong deck → empty
+});
+
+// ── THE OWNER'S DEFECT, 2026-08-05: "as soon as the pawn stands on the corresponding square, the
+//    carpet disappears until the pawn is out of the square." `GlyphMapper` pass 5 writes
+//    `Glyphs.Citizen` (64) over the whole cell, so the materialed floor's '.' is gone from the frame.
+//    Each leg is its own `test()` — a bare `assert` throws and a multi-leg test would report only
+//    the first failure (TRAPS 5th shape).
+const CARPET = [{ x: 7, y: 7, deck: 1, kind: 1, mat: 4 }]; // a floor material at (7,7), inside `room`
+const pawnAt77 = () => frameWith([[7, 7, '@']]);           // 64 = Glyphs.Citizen over that same tile
+
+test('roomMaterialTiles keeps a materialed FLOOR under a pawn (the citizen glyph is not a reason to take up the carpet)', () => {
+  const tiles = roomMaterialTiles(pawnAt77(), room, CARPET);
+  assert.deepEqual(tiles.filter((t) => t.kind === 'floor'),
+    [{ tx: 7, ty: 7, kind: 'floor', mat: 4, occluded: true }]);
+});
+
+test('roomMaterialTiles: a pawn on a DEFAULT floor adds nothing (the non-default rule is preserved)', () => {
+  // Same frame, same pawn, but the channel carries mat 0 for that tile — which is how the host
+  // publishes a default floor: `BuildMaterials` skips `mat == 0`, so the row is simply absent.
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, [{ x: 7, y: 7, deck: 1, kind: 1, mat: 0 }]), []);
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, []), []);       // absent row → same answer
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, null), []);     // no channel at all
+});
+
+test('roomMaterialTiles: NO STALE GHOST — the materials channel is the authority, the glyph only gated visibility', () => {
+  // The player rips the carpet up WHILE the pawn is standing on it: the channel row goes away (the
+  // host re-walks `level.Material` every render), the pawn does not. The tile must vanish AT ONCE.
+  // This is the leg that a "remember the last glyph on this tile" memo would fail — the design
+  // `roomCells`' fallback header rejects for the same reason.
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, []), []);
+  // …and the same tile with the pawn gone and the carpet gone is likewise empty (control: the
+  // emptiness above is not an artefact of the citizen glyph).
+  assert.deepEqual(roomMaterialTiles(frameWith([]), room, []), []);
+});
+
+test('roomMaterialTiles: the pawn LEAVING changes nothing but the occluded flag', () => {
+  const under = roomMaterialTiles(pawnAt77(), room, CARPET);
+  const after = roomMaterialTiles(frameWith([]), room, CARPET); // glyph back to '.' (46)
+  assert.deepEqual(after, [{ tx: 7, ty: 7, kind: 'floor', mat: 4 }]);
+  assert.deepEqual(under.map(({ occluded, ...t }) => t), after);   // same tiles, same mats, same kinds
+  assert.equal(after.some((t) => t.occluded), false);              // the flag is only for restored tiles
+});
+
+test('roomMaterialTiles: the citizen arm classifies from the CHANNEL kind byte, not "floor by construction"', () => {
+  // `BuildMaterials` derives `kind` from `level.Wall[idx]` — the same world plane pass 1 reads to
+  // choose '#' over '.'. A citizen glyph can never actually mask a wall (a wall tile is not
+  // `TileFlags.Walkable`), but the arm reads the published fact rather than relying on that rule.
+  const walls = roomMaterialTiles(pawnAt77(), room, [{ x: 7, y: 7, deck: 1, kind: 0, mat: 4 }]);
+  assert.deepEqual(walls, [{ tx: 7, ty: 7, kind: 'wall', mat: 4, occluded: true }]);
+});
+
+test('the `materials` channel has exactly ONE consumer, and the Overview plate is not it', () => {
+  // ⭐ THE OTHER HALF OF THE OWNER'S DEFECT, MEASURED RATHER THAN REMEMBERED. The obvious worry when
+  // fixing the citizen overwrite in `roomMaterialTiles` is that the Level-1 plate reads floor
+  // materials off the glyph grid too and carries the same hole. IT DOES NOT — and the reason is
+  // historical: the warm Overview DID paint "tile rects washed with material colours", and VR-P4
+  // replaced that whole layer with the compartment grid (`overview-scene.js`'s own header names the
+  // replacement). So there is no second seam to fix.
+  //
+  // ⛔ AND THAT CLAIM IS A COUNT, WHICH MEANS IT HAS TO BE MEASURED HERE OR IT ROTS. A comment
+  // saying "one consumer" is worth nothing the day someone adds a second one; this scan fails by
+  // name instead. Comment-stripped (`codeOnly`) so a call that is merely commented out cannot keep
+  // it green — CLAUDE.md trap 1 — with an inclusion control below so a scan that can find nothing
+  // cannot pass as a scan that found nothing.
+  const dir = join(HERE, '../src');
+  const files = [];
+  (function walk(d) {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(d, e.name));
+      else if (e.name.endsWith('.js')) files.push(join(d, e.name));
+    }
+  })(dir);
+  assert.ok(files.length > 30, `only ${files.length} client sources walked — the scan would be vacuous`);
+  const CALL = /\b(decodeMaterials|roomMaterialTiles)\s*\(/;
+  // The two DECLARATIONS are not call sites: `function roomMaterialTiles(` matches the same shape,
+  // and counting a definition as a consumer would put every seam's own file in every census.
+  const calls = (src) => CALL.test(codeOnly(src).replace(/function\s+(decodeMaterials|roomMaterialTiles)\s*\(/g, ''));
+  const names = files.filter((f) => calls(readFileSync(f, 'utf8'))).map((f) => f.slice(dir.length + 1)).sort();
+  assert.deepEqual(names, ['ui/roomzoom-view.js'],
+    'the `materials` channel must be CALLED in exactly ONE place — the Room Zoom. '
+    + `Found: ${names.join(', ')}. If the Overview plate is in that list it has grown a floor-material `
+    + 'layer, and it needs the same citizen-glyph arm `roomMaterialTiles` just grew.');
+  // INCLUSION CONTROL: the scan does fire on the shape it is looking for, and is not satisfied by a
+  // commented-out call or by the declaration it deliberately discounts.
+  assert.ok(calls('  x = roomMaterialTiles(a,b,c);\n'), 'the scan cannot see a real call — it is vacuous');
+  assert.ok(!calls('  // x = roomMaterialTiles(a,b,c);\n'), 'a commented-out call kept the scan green');
+  assert.ok(!calls('export function roomMaterialTiles(frame, focusRoom, materials) {\n'),
+    'the declaration counted as a call — every seam would name its own file');
+});
+
+test('roomMaterialTiles: NARROW ON PURPOSE — pass 3/4 overdraws are NOT repaired here (filed, measured)', () => {
+  // Ground items (pass 3) and devices (pass 4) also overdraw a materialed floor's glyph. This is the
+  // measurement behind the FILED note in the seam's header: a bed standing on the carpet still drops
+  // the tile. Asserting it means widening the arm later cannot happen silently.
+  assert.deepEqual(roomMaterialTiles(frameWith([[7, 7, 'b']]), room, CARPET), []);
 });
 
 test('roomDecor clamps decor to the room + deck', () => {
