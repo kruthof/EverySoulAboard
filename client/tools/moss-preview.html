@@ -36,7 +36,7 @@
 
   Usage:  python3 client/serve.py 8342
           open http://localhost:8342/tools/moss-preview.html
-  Params: ?screen=ledger|detail|faultlog|program   ?sel=<0-based row>   ?nolink=1 (IX-M13 state)
+  Params: ?screen=ledger|detail|faultlog|program|podbay   ?sel=<0-based row>   ?nolink=1 (IX-M13 state)
   Automated: client/tools/moss-shot.mjs screenshots this page at several widths and scrapes the
              [moss-check] console line below, which is the IX-M1 "no game chrome visible" assertion
              computed from real getComputedStyle — the one form of that proof node cannot give.
@@ -99,6 +99,23 @@ for (let i = 0; i < (+q.get('sel') || 0); i++) key('ArrowDown');
 const want = q.get('screen') || 'ledger';
 if (want === 'detail') { key('Enter'); screen.onMossEvent(pick('moss', 'sys')); }
 else if (want === 'faultlog') cmd('log');
+else if (want === 'podbay') {
+  // ⭐ ADDED AT VR-P6. M3-4's POD BAY is one of the six views ruling E5 protects, and it was the ONE
+  // this harness could not draw — so its SKIN was the one nobody could sign off from a screenshot.
+  // The bay is a request/reply op: `pods` is typed (the ask, which the real model requires before it
+  // will accept the reply) and the answer is injected here, exactly as `moss-screen.test.js`'s bay
+  // fixture does. The rows are the shape `GameSession` sends and cover every state the skin has a
+  // rule for — an offered [THAW], two dimmed refusals with their reasons, and a pending capsule.
+  cmd('pods');
+  screen.onMossEvent({ type: 'moss', ev: 'pods', tid: '@console', term: 'term_moss',
+    moss: 'COMMISSIONED', note: 'HEADROOM FOR 2 CREW — FOOD 60 U, CARRIED AND RESERVED INCLUDED',
+    rows: [
+      [1, 'pod_rell', 'Rell', 0, 'OPEN', 2, 'POD IS EMPTY — ALREADY THAWED', 0],
+      [2, 'pod_ozawa', 'Ozawa-Reyes', 1, 'SEALED', 0, 'READY — 2 SEALS', 1],
+      [3, 'pod_vance', 'Vance', 2, 'NO SIGNAL', 3, 'POD — NO SIGNAL', 0],
+      [7, 'pod_torres', 'Torres', 1, 'SEALED', 6, 'NEEDS 3 CONTROLLER MODULE — SHIP HAS 0', 0],
+    ] });
+}
 else if (want === 'program') {
   cmd('prog');
   // Select the first terminal and populate the embedded IDE so the frame shows a working editor:

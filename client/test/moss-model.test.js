@@ -61,14 +61,20 @@ test('the systems fixture is self-consistent: uptime and day describe the same i
 
 // ---------------- formatters (VS-M4 / VS-M8 and the -1 sentinels) ----------------
 
-test('loadBar: filled/stipple run at the fixed 8-cell width', () => {
-  assert.equal(BAR_WIDTH, 8);
+test('loadBar: filled/stipple run at the fixed cell width', () => {
+  // VR-P6 (the paper retint) widened the DEFAULT 8 → 10 so the engraved gauge draws the design's
+  // ten cells. The explicit-width legs below are unchanged on purpose: `loadBar` is parameterised
+  // and its arithmetic is what they pin, so they keep biting whatever the default becomes.
+  assert.equal(BAR_WIDTH, 10);
+  assert.equal(loadBar(0, 10), '[▒▒▒▒▒▒▒▒▒▒]');
+  assert.equal(loadBar(50, 10), '[█████▒▒▒▒▒]');
+  assert.equal(loadBar(100, 10), '[██████████]');
   assert.equal(loadBar(0, 8), '[▒▒▒▒▒▒▒▒]');
   assert.equal(loadBar(50, 8), '[████▒▒▒▒]');
   assert.equal(loadBar(100, 8), '[████████]');
   assert.equal(loadBar(61, 8), '[█████▒▒▒]');   // 4.88 cells → 5
   assert.equal(loadBar(12, 8), '[█▒▒▒▒▒▒▒]');   // 0.96 cells → 1
-  assert.equal(loadBar(50), '[████▒▒▒▒]', 'width defaults to VS-M4\'s 8');
+  assert.equal(loadBar(50), '[█████▒▒▒▒▒]', 'width defaults to BAR_WIDTH, which VR-P6 made 10');
 });
 
 test('loadBar: -1 renders an EMPTY bar of spaces, never a 0% bar (VS-M4)', () => {
@@ -1067,15 +1073,15 @@ test('ledgerView: every cell is formatted, and the -1 row is honest', () => {
   assert.equal(view.rows.length, 8);
   const nav = view.rows[7];
   assert.equal(nav.label, 'NAV / SENSORS');
-  assert.equal(nav.bar, '[        ]');
+  assert.equal(nav.bar, '[          ]', 'BAR_WIDTH cells of space — VR-P6 made that ten');
   assert.equal(nav.loadText, '--');
   assert.equal(nav.stateText, 'OFFLINE');
-  assert.equal(nav.warn, false, 'OFFLINE carries no ⚠ (VS-M8)');
+  assert.equal(nav.warn, false, 'OFFLINE carries no attention mark (VS-M8)');
   assert.equal(nav.fault, '—', 'an absent instrument is not a fault and has no day');
   const ls = view.rows[1];
   assert.equal(ls.stateText, 'DEGRADED');
   assert.equal(ls.warn, true);
-  assert.equal(ls.bar, '[██████▒▒]');
+  assert.equal(ls.bar, '[███████▒▒▒]', 'the same 71% load, over VR-P6\'s ten cells');
   const hull = view.rows[6];
   assert.equal(hull.fault, '—', 'no breach event is ever published, so this is legitimately blank');
   // the advisory under the rule belongs to the SELECTED row

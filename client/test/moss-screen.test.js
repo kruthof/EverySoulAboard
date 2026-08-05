@@ -19,7 +19,7 @@ import { cssCodeOnly } from './code-only.js';
 import { stylesSource } from './styles-source.js';
 import * as FAKE from './moss-model-fake.js';
 import {
-  MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect,
+  MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect, barCell,
   isTextEntryTarget, SCROLL_KEYS, shouldFollowTail, TAIL_SLACK_PX, linesBelowFold, FOLD_SLACK_PX,
 } from '../src/ui/moss-screen.js';
 import { decode } from '../src/wire/messages.js';
@@ -545,7 +545,7 @@ test('IX-M7: a row click with a half-typed command moves the CURSOR, not the com
  * Where each column's CONTENT actually begins in a rendered line — measured from the line, never
  * assumed. The earlier version of this test computed the fault offset as `COL_AT.fault` (a module
  * constant) inside the loop and asserted the set had one member, which is true by construction: it
- * could not fail. Under the exact mutation that matters — the `⚠` split writing one character too
+ * could not fail. Under the exact mutation that matters — the `△` split writing one character too
  * few, so every ATTEND/DEGRADED row's LAST FAULT slides a cell left — all tests stayed green.
  */
 function columnStarts(line) {
@@ -576,7 +576,7 @@ test('VS-M2: every ledger line is one fixed-width monospace record — a `--` sh
     assert.equal(load, load.trim().padStart(COLS.load), 'the load number is right-aligned: ' + line);
   }
   assert.equal(seen.bar.size, 1, 'the load bar starts in the same cell on every row');
-  assert.equal(seen.close.size, 1, 'and ends in the same cell (VS-M4: exactly 8 inner cells)');
+  assert.equal(seen.close.size, 1, 'and ends in the same cell (VS-M4: exactly BAR_WIDTH inner cells)');
   assert.equal(seen.state.size, 1, 'STATE begins in the same cell on every row');
   assert.equal(seen.fault.size, 1, 'LAST FAULT begins in the same cell on every row');
   assert.equal([...seen.bar][0], COL_AT.bar);
@@ -584,16 +584,126 @@ test('VS-M2: every ledger line is one fixed-width monospace record — a `--` sh
   assert.equal([...seen.state][0], COL_AT.state);
   assert.equal([...seen.fault][0], COL_AT.fault);
 
-  // the fixture mixes warned and unwarned rows, which is what makes the ⚠ split testable at all
-  assert.ok(lines.some((l) => l.includes('⚠')) && lines.some((l) => !l.includes('⚠')));
+  // the fixture mixes warned and unwarned rows, which is what makes the △ split testable at all
+  assert.ok(lines.some((l) => l.includes('△')) && lines.some((l) => !l.includes('△')));
 
   // the `--` row (nav_sensors carries load -1) uses an EMPTY bar and still lines up
   const navLine = lines[7];
-  assert.equal(navLine.slice(COL_AT.bar, COL_AT.bar + COLS.bar), '[        ]');
+  assert.equal(navLine.slice(COL_AT.bar, COL_AT.bar + COLS.bar), '[          ]');
   assert.equal(navLine.slice(COL_AT.load, COL_AT.load + COLS.load), '  --');
   assert.deepEqual(columnStarts(navLine), columnStarts(lines[0]),
     'a `--` row and a loaded row put every column in the same cell');
 });
+
+/**
+ * ⭐ VR-P6 — THE ENGRAVED GAUGE, ON THE DOM. The stylesheet guards below prove the CELLS are boxes;
+ * this proves the SCREEN emits the right number of them and fills the right ones, which is the half
+ * a CSS scan cannot see.
+ *
+ * ⛔ AND IT IS THE STRUCTURAL FORM OF THE OLD `.c-bar` WIDTH PIN. That pin existed because a loaded
+ * bar and a `--` bar did not advance identically; the gauge closes that by construction, and THIS is
+ * the assertion that says so out loud — every row, whatever its load, renders exactly BAR_WIDTH
+ * fixed-size cells, so no row can be a different width from another. A bar built from `filled` cells
+ * alone (the obvious "simplification") would put ten boxes on a 100% row and none on the `--` row
+ * and turn this red; nothing else in the suite would notice.
+ *
+ * The FILL is the model's, never the screen's: the count of `.on` cells is compared against the
+ * `█` run in the model's own bar string, so a screen that re-derived the fill from `loadText` —
+ * a second authority on a load — reds here.
+ */
+test('VR-P6: every ledger row draws BAR_WIDTH engraved cells, and the filled run is the MODEL\'s', () => {
+  const s = openWithSystems();
+  const rows = rowsOf(s.root);
+  const view = FAKE.ledgerView(s.screen.model);
+  const counts = new Set();
+  rows.forEach((el, i) => {
+    const cells = el.byClass('c-cell').filter((c) => !c.classList.contains('c-bracket'));
+    counts.add(cells.length);
+    const filled = cells.filter((c) => c.classList.contains('on')).length;
+    const wanted = (S(view.rows[i].bar).match(/█/g) || []).length;
+    assert.equal(filled, wanted, `row ${i}: ${filled} filled cells against the model's ${wanted}`);
+    // the brackets are present as CHARACTERS (the line is a record) and marked as non-cells
+    assert.equal(el.byClass('c-bracket').length, 2, `row ${i} lost the record's brackets`);
+  });
+  assert.deepEqual([...counts], [FAKE.BAR_WIDTH],
+    'rows disagree about how many gauge cells there are, so the bar column is not one width');
+  // the `--` row (nav_sensors, load -1) is the case the old width pin was written for: it must draw
+  // the SAME ten cells, all of them empty.
+  const nav = rows[7].byClass('c-cell').filter((c) => !c.classList.contains('c-bracket'));
+  assert.equal(nav.length, FAKE.BAR_WIDTH);
+  assert.equal(nav.filter((c) => c.classList.contains('on')).length, 0,
+    'an UNKNOWN load drew a filled cell — `--` is not `0%`');
+  // …and the record under the boxes is still exactly what the text bar wrote
+  assert.equal(rows[7].oneClass('c-bar').textContent,
+    S(view.rows[7].bar).padEnd(COLS.bar) + ''.padEnd(COLS.gapBar));
+});
+
+/**
+ * ⭐⭐ AN UNKNOWN LOAD MUST NOT DRAW AS A ZERO LOAD — DA-M1's rule, on the pixels.
+ *
+ * ⛔ THIS IS THE DEFECT VR-P6'S FIRST COMMIT SHIPPED, and the reason the cell-count guard above
+ * could not see it: `loadBar(-1)` writes SPACES and `loadBar(0)` writes `▒`, but `barCell` mapped
+ * both to the bare `c-cell` class — so `NAV / SENSORS`, whose load the wire never carried, drew a
+ * gauge byte-identical to a system measured at 0%. Both rows have zero `.on` cells, so counting
+ * filled cells can never tell them apart. THE CLASS IS THE ONLY THING THAT CAN, and it has to be
+ * asserted against BOTH bars — a fixture with only one of them proves nothing.
+ *
+ * Driven directly through `barCell` rather than through the fixture, because the shipped `systems`
+ * fixture happens to carry no 0% row: the pair `[▒…]` vs `[ …]` is exactly what the model emits for
+ * `0` and for `-1` (`moss-model.test.js` pins both strings), and asking the renderer about both is
+ * what makes "a genuine 0% also has zero filled cells" a testable statement instead of an excuse.
+ */
+test('VR-P6: a `--` load draws ABSENT cells, a measured 0% draws ENGRAVED-EMPTY ones', () => {
+  const doc = new DocumentLite();
+  const kinds = (barText) => barCell(doc, barText).byClass('c-cell')
+    .filter((c) => !c.classList.contains('c-bracket'))
+    .map((c) => (c.classList.contains('on') ? 'on'
+      : c.classList.contains('unknown') ? 'unknown' : 'empty'));
+
+  const zero = kinds(FAKE.loadBar(0, FAKE.BAR_WIDTH).padEnd(COLS.bar) + ''.padEnd(COLS.gapBar));
+  const unknown = kinds(FAKE.loadBar(-1, FAKE.BAR_WIDTH).padEnd(COLS.bar) + ''.padEnd(COLS.gapBar));
+
+  assert.equal(zero.length, FAKE.BAR_WIDTH);
+  assert.equal(unknown.length, FAKE.BAR_WIDTH);
+  assert.deepEqual([...new Set(zero)], ['empty'], 'a measured 0% must draw engraved-empty cells');
+  assert.deepEqual([...new Set(unknown)], ['unknown'],
+    'a `--` row drew the SAME cell a measured 0% draws. That is DA-M1 on the pixels: the one row '
+    + 'whose load nobody read is dressed as the row that read zero. Counting filled cells cannot '
+    + 'see it — both are zero — so the class is the whole instrument.');
+  assert.notDeepEqual(zero, unknown);
+
+  // …and the fixture's own OFFLINE row really is the sentinel one, so the ledger exercises it
+  const s = openWithSystems();
+  const nav = rowsOf(s.root)[7];
+  assert.equal(nav.classList.contains('offline'), true, 'precondition: nav_sensors is the OFFLINE row');
+  assert.equal(nav.byClass('c-cell').filter((c) => c.classList.contains('unknown')).length,
+    FAKE.BAR_WIDTH, 'the ledger\'s `--` row is not drawing absent cells');
+
+  // The SKIN half: `unknown` must be a different treatment, and the offline row's gauge must dim
+  // with the rest of the row (without this its boxes were byte-identical to a live row's).
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  const unk = /\.moss-row \.c-cell\.unknown\{([^}]*)\}/.exec(moss);
+  assert.ok(unk, 'nothing styles an unknown cell, so the class is a label with no consequence');
+  assert.match(unk[1], /background-image:none/,
+    'an unknown cell keeps the micro-hatch — engraved means measured, and this was not measured');
+  assert.match(unk[1], /var\(--moss-cell-absent\)/, 'the unknown cell reuses the empty cell\'s ring');
+  assert.match(moss, /\.moss-row\.sel \.c-cell\.unknown\{/,
+    'the unknown cell does not invert, so the selection band hands it its hatch back');
+  // ⛔ THE VALUE, NOT THE PROPERTY — and this assertion was written the lazy way first and CAUGHT BY
+  // ITS OWN PROBE. `/\.moss-row\.offline \.c-cells\{[^}]*opacity/` is satisfied by `opacity:1`, so
+  // setting the dimming to "no dimming at all" left it green: a guard whose filter cannot exclude
+  // the violation it exists for (CLAUDE.md's 4th shape), inside the fix for a defect of exactly that
+  // family. The number is read and required to actually dim.
+  const off = /\.moss-row\.offline \.c-cells\{([^}]*)\}/.exec(moss);
+  assert.ok(off, 'the OFFLINE row\'s gauge is not dimmed with the row — its words say OFFLINE while '
+    + 'its boxes go on looking exactly like a live reading');
+  const alpha = parseFloat((/opacity:\s*([\d.]+)/.exec(off[1]) || [])[1]);
+  assert.ok(alpha > 0 && alpha < 1,
+    `the offline gauge's opacity is ${off[1]} — that is not a dimming. \`opacity:1\` satisfies a `
+    + 'scan for the property and changes nothing on screen.');
+});
+
+const S = (v) => (v == null ? '' : String(v));
 
 test('DA-M1: a row whose state the wire did not carry reads UNKNOWN, never NOMINAL', () => {
   // The whole point of this screen. An unreadable row must not be dressed as a healthy one — and
@@ -607,13 +717,13 @@ test('DA-M1: a row whose state the wire did not carry reads UNKNOWN, never NOMIN
   const line = lineOf(rowsOf(s.root)[0]);
   assert.ok(line.includes('UNKNOWN'), line);
   assert.ok(!line.includes('NOMINAL'), 'an unreadable row must never read as healthy');
-  assert.ok(line.includes('[        ]'), 'and its load bar is empty, not zero');
+  assert.ok(line.includes('[          ]'), 'and its load bar is empty, not zero');
   assert.ok(line.includes('  --') && line.includes('—'), line);
 });
 
-test('VS-M2: the ⚠ split writes the state cell at its exact declared width', () => {
+test('VS-M2: the △ split writes the state cell at its exact declared width', () => {
   // The one place alignment can realistically break: `_ledgerLine` splits the state cell into three
-  // nodes so the ⚠ can be width-pinned, and a slice arithmetic slip there shifts LAST FAULT on
+  // nodes so the △ can be width-pinned, and a slice arithmetic slip there shifts LAST FAULT on
   // warned rows only — invisible to any assertion that reads the geometry constants back.
   const s = openWithSystems();
   const rows = rowsOf(s.root);
@@ -621,7 +731,7 @@ test('VS-M2: the ⚠ split writes the state cell at its exact declared width', (
   rows.forEach((el, i) => {
     const cell = el.oneClass('c-state').textContent;
     assert.equal(cell.length, COLS.state, `row ${i} state cell width`);
-    assert.equal(cell.trimEnd(), view.rows[i].stateText + (view.rows[i].warn ? ' ⚠' : ''),
+    assert.equal(cell.trimEnd(), view.rows[i].stateText + (view.rows[i].warn ? ' △' : ''),
       `row ${i} state cell content`);
   });
 });
@@ -643,14 +753,14 @@ test('VS-M3: the selection band carries the `>` caret and unselected rows keep a
   assert.equal(rowsOf(s.root)[0].classList.contains('sel'), false);
 });
 
-test('VS-M8: ⚠ trails ATTEND/DEGRADED only; OFFLINE is dim, not an alarm', () => {
+test('VS-M8: △ trails ATTEND/DEGRADED only; OFFLINE is dim, not an alarm', () => {
   const s = openWithSystems();
   const rows = rowsOf(s.root);
   const states = FAKE.ledgerView(s.screen.model).rows.map((r) => r.state);
   rows.forEach((el, i) => {
     const state = states[i];
     const warns = state === 1 || state === 2;
-    assert.equal(lineOf(el).includes('⚠'), warns, `row ${i} (state ${state}) ⚠`);
+    assert.equal(lineOf(el).includes('△'), warns, `row ${i} (state ${state}) △`);
     assert.equal(el.oneClass('c-state').classList.contains('warn'), warns);
     assert.equal(el.classList.contains('offline'), state === 3, `row ${i} offline class`);
   });
@@ -669,6 +779,13 @@ test('VS-M6: the header is the two title lines and the column head is the ledger
   assert.equal(thead.indexOf('LOAD'), COL_AT.bar);
   assert.equal(thead.indexOf('STATE'), COL_AT.state);
   assert.equal(thead.indexOf('LAST FAULT'), COL_AT.fault);
+  // FIVE heads, as the design draws them (`system · load · % · state · last fault`). VR-P6's first
+  // draft ran LOAD across the bar AND the number and left the percentage column unlabelled; `%` is
+  // right-aligned in its column because the numbers under it are.
+  assert.equal(thead.indexOf('%'), COL_AT.load + COLS.load - 1,
+    'the `%` head is not sitting over the right-aligned load numbers it names');
+  const pct = s.root.byClass('moss-row')[0].oneClass('c-load').textContent;
+  assert.equal(pct.indexOf('%'), COLS.load - 1, 'and the row\'s own `%` is in that same cell');
 });
 
 test('VS-M7: footer hints are per-screen bracket keys, joined with ` · `', () => {
@@ -1241,18 +1358,31 @@ test('IX-M12: a row set that changes length must not move the cursor under the p
  */
 test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes do not blind it', () => {
   const raw = stylesSource();
-  const CRT = /\.moss-crt\{([^}]*)\}/;
+  // ⚠️ THE SUBJECT MOVED AT VR-P6, AND ONLY THE SUBJECT. This control used `.moss-crt` because that
+  // was the rule VS-M5 scanned for; the paper skin DELETES the CRT overlay, so a control anchored to
+  // it would have failed its own precondition and been "fixed" by weakening. It is re-anchored to
+  // `.moss-page::before` — the sprocket gutter, which the VR-P6 guard below scans for — and every
+  // leg is unchanged, and it is re-anchored to `.moss-warn::before` — the △ path, which the VR-P6
+  // guard below scans for.
+  // ⛔ THE SUBJECT MUST OCCUR EXACTLY ONCE IN THE CASCADE, and the two obvious candidates do not:
+  // `.moss-cursor` is declared again inside the reduced-motion block, and `.moss-page::before` again
+  // inside the VS-M9 floor, so blinding the main rule left a second copy matching and leg 1 failed
+  // for a reason that had nothing to do with the stripper. The count assertion below is what turned
+  // that into a message instead of a puzzle; keep it if this is ever re-anchored again.
+  const CURSOR = /\.moss-warn::before\{([^}]*)\}/;
 
   // NON-VACUITY FIRST: the matcher must find the rule in the real sheet, or leg 1 proves nothing.
-  assert.ok(CRT.exec(cssCodeOnly(raw)), 'precondition: VS-M5 matches the live .moss-crt rule');
+  assert.ok(CURSOR.exec(cssCodeOnly(raw)), 'precondition: the matcher finds the live .moss-warn::before rule');
+  assert.equal((cssCodeOnly(raw).match(/\.moss-warn::before\{/g) || []).length, 1,
+    'the control\'s subject occurs more than once, so blinding one copy proves nothing');
 
   // 1. blind the real rule the way a layout experiment would, and watch the scan stop finding it.
-  const live = CRT.exec(raw)[0];
+  const live = CURSOR.exec(raw)[0];
   const blinded = raw.replace(live, '/* ' + live + ' */');
-  assert.ok(!CRT.exec(cssCodeOnly(blinded)),
-    'a COMMENTED-OUT .moss-crt rule still satisfied VS-M5. The rule is inert in the browser and '
-    + 'the guard is green — CLAUDE.md trap 1, which is why every read here is stripped.');
-  assert.ok(CRT.exec(blinded),
+  assert.ok(!CURSOR.exec(cssCodeOnly(blinded)),
+    'a COMMENTED-OUT .moss-warn::before rule still satisfied the scan. The rule is inert in the browser '
+    + 'and the guard is green — CLAUDE.md trap 1, which is why every read here is stripped.');
+  assert.ok(CURSOR.exec(blinded),
     'control on the control: the raw text DOES still contain the rule, so the line above is '
     + 'measuring the stripper and not a typo in the fixture');
 
@@ -1261,7 +1391,7 @@ test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes
   // ⚠️ THE TRAILING COMMENT IN THIS FIXTURE IS LOAD-BEARING AND THE FIRST VERSION OF THIS LEG DID
   // NOT HAVE IT, so the leg could not fail — this control's own named mutation was dead, inside the
   // package written to hunt dead named mutations. The fixture was
-  // `'.a::before{content:"/*"}\n.moss-crt{pointer-events:none}\n'`, which contains NO closing `*/`
+  // `'.a::before{content:"/*"}\n.moss-warn::before{pointer-events:none}\n'`, which contains NO closing `*/`
   // ANYWHERE. The naive `replace(/\/\*[\s\S]*?\*\//g, '')` the prose names therefore found no match
   // at all, returned the string untouched, and the assertion passed. Measured: substituting that
   // regex for `cssCodeOnly` left the whole client suite green, 280 pass / 0 fail.
@@ -1274,13 +1404,13 @@ test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes
   // regex in general; it was the fixture that failed to exercise it.)
   const quoted = [
     '.a::before{content:"/*"}',
-    '.moss-crt{pointer-events:none}',
+    '.moss-warn::before{pointer-events:none}',
     '/* a later, real comment — the terminator a naive stripper runs forward to */',
     '.z{color:red}',
     '',
   ].join('\n');
 
-  assert.ok(CRT.exec(cssCodeOnly(quoted)),
+  assert.ok(CURSOR.exec(cssCodeOnly(quoted)),
     'a `content: "/*"` string swallowed the rule after it — the stripper is not quote-aware, so it '
     + 'opened a comment inside a string and ran to the next `*/`, deleting real rules on the way. '
     + 'Every scan downstream would then pass vacuously on a sheet containing one such string.');
@@ -1358,6 +1488,18 @@ test('VS-M10: reduced motion turns the block cursor steady', () => {
   const block = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.moss-cursor\s*\{([^}]*)\}/.exec(css);
   assert.ok(block, 'the MOSS reduced-motion block exists');
   assert.match(block[1], /animation\s*:\s*none/);
+
+  // ⛔ …AND THE ANIMATION IT TURNS OFF HAS TO EXIST AND HAVE A BODY. Driven by review: emptying
+  // `@keyframes j11blink{}` while leaving the `animation:` declaration in place left the suite GREEN
+  // and the caret PERMANENTLY INVISIBLE — an `animation` naming an empty keyframe list computes to
+  // the element's own `opacity`, which the blink was the only thing setting. A prompt with no caret
+  // is the invisible-feedback rule broken at the one place the player types.
+  const kf = /@keyframes\s+j11blink\s*\{([\s\S]*?)\}\s*(?:\/|\.|@|$)/.exec(css);
+  assert.ok(kf, 'the j11blink keyframes are gone but `.moss-cursor` still animates by that name');
+  assert.match(kf[1], /opacity\s*:\s*1/, 'j11blink has no visible phase — the caret never paints');
+  assert.match(kf[1], /opacity\s*:\s*0/, 'j11blink has no hidden phase — the caret does not blink');
+  assert.match(css, /\.moss-cursor\{[^}]*animation:j11blink/,
+    'the caret no longer runs charter §1\'s j11blink');
 });
 
 test('VS-M9: the responsive floor drops LAST FAULT before any other column, and never scrolls x', () => {
@@ -1374,21 +1516,258 @@ test('VS-M9: the responsive floor drops LAST FAULT before any other column, and 
 
 test('VS-M4a: the bar cell stays width-pinned, so a `--` row does not drift the columns after it', () => {
   const css = cssCodeOnly(stylesSource());
-  // The block/stipple glyphs come from a fallback face, so `[████▒▒▒▒]` and `[        ]` do not
-  // advance identically; without this pin every column after the bar sat ~1.2px out on the `load:-1`
-  // row. Measured, not reasoned — and it was the one recorded deviation with no guard, so a future
-  // tidy-up could have deleted the rule with the whole suite staying green.
-  assert.match(css, /\.moss-row \.c-bar\{[^}]*width:calc\(12ch/,
-    'VS-M4a pins .c-bar in ch — deleting it silently re-drifts the `--` row');
+  // ⭐ RE-DERIVED AT VR-P6, NOT TRANSLATED — and re-derived TO THE SAME RULE it always encoded: the
+  // bar span is exactly as wide as the characters it stands in for. It used to read
+  // `width:calc(12ch + 12 * var(--moss-track))` because `COLS.bar` was 10 and `COLS.gapBar` 2; the
+  // ten-cell gauge made `COLS.bar` 12, so the pin is 14 characters.
+  //
+  // ⛔ THE ORIGINAL CAUSE IS RETIRED AND A SHARPER ONE TOOK ITS PLACE. The pin existed because
+  // `[████▒▒▒▒]` and `[        ]` did not advance identically on this machine's fallback face; the
+  // engraved cells close that by construction (each is a fixed CSS box with a clipped, transparent
+  // glyph). What it holds NOW is that the DRAWING fits the RECORD — and that half was broken in this
+  // package's own first draft, caught by the render and not by any test: cells chosen at the
+  // design's 1em/.2em measured ~11.8em against the 7.9em of characters they replace, so `.c-bar`
+  // overhung its column and every heading after LOAD floated over the wrong one.
+  const bar = /\.moss-row \.c-bar\{([^}]*)\}/.exec(css);
+  assert.ok(bar, 'the .c-bar rule is gone — the bar column is no longer pinned at all');
+  assert.match(bar[1], /width:calc\(14ch \+ 14 \* var\(--moss-track\)\)/,
+    'the bar span is no longer COLS.bar + COLS.gapBar characters wide. The column head is laid out '
+    + 'on the same monospace grid as the rows, so this is what keeps LOAD/STATE/LAST FAULT over the '
+    + 'columns they name.');
+  // …and the cell must be DERIVED from that same budget, not chosen: 10 cells + 9 gaps have to fill
+  // the twelve characters between the (undrawn) brackets, or the span overhangs its column again.
+  assert.match(css, /--moss-cell:calc\(\(12ch \+ 12 \* var\(--moss-track\) - 9 \* var\(--moss-cellgap\)\) \/ 10\)/,
+    'the gauge cell is a chosen size again rather than one solved out of the character budget — '
+    + 'that is the exact defect the render caught in this package');
+  assert.match(css, /--moss-cellgap:\.12em/);
+  // the column head must restate the rows' advance (the general sweep below is what enforces it
+  // everywhere else — this leg only pins that the head declares it at all)
+  const thead = /\.moss-thead\{([^}]*)\}/.exec(css);
+  assert.ok(thead);
+  assert.match(thead[1], /letter-spacing:var\(--moss-track\)/,
+    'the column head has its own letter-spacing, so its labels no longer sit on the rows\' grid');
 });
 
-test('VS-M5: the CRT treatment is ONE non-interactive overlay, never a per-character effect', () => {
-  const css = cssCodeOnly(stylesSource());
-  const crt = /\.moss-crt\{([^}]*)\}/.exec(css);
-  assert.ok(crt);
-  assert.match(crt[1], /pointer-events:none/);
-  assert.match(crt[1], /repeating-linear-gradient/);
-  assert.match(css, /\.moss-crt::after\{[^}]*box-shadow:\s*inset /, 'the vignette rides the same overlay');
+/**
+ * ⭐⭐ ONE TRACK, ONE SIZE, ACROSS THE WHOLE GRID — BOTH HALVES OF IT.
+ *
+ * ⛔ THIS OBLIGATION USED TO BE ONE LINE POINTED AT `.moss-thead`, AND THE HALF IT COULD NOT SEE IS
+ * THE HALF THAT SHIPPED BROKEN. VR-P6's first commit put `letter-spacing:.08em` on
+ * `.moss-row .c-state` — straight off the design, where it is free because the columns are a px
+ * grid. Here the columns ARE the characters, so a cell with its own track advances differently from
+ * the head that names it. Measured in Chrome at 1440: LAST FAULT drifted −3.657px from its head
+ * (12 characters × .02em × 15.12px); `.c-fault`'s left edge took TWO DISTINCT VALUES across the
+ * eight rows, split by whether the row carried a △; and `.moss-warn`'s `calc(1ch + var(--moss-track))`
+ * pin was measuring a cell whose real track was .08em. All 95 tests stayed green, because the only
+ * metric assertion in the file was pointed at the head.
+ *
+ * So the sweep is over EVERY rule that paints a grid cell, whichever grid it belongs to: the
+ * ledger's `.c-*` columns, the POD BAY's, the PROGRAM directory's, the head, the △, and the row
+ * boxes themselves. NO LIST OF EXCEPTIONS — a rule that needs one is a rule that is about to break
+ * the grid. (`.moss-thaw` is deliberately out of scope and stays free: it is appended AFTER the last
+ * column of a pod row, so nothing follows it to shift.)
+ *
+ * MUTATION, driven: `.moss-row .c-state{letter-spacing:.30em}` ⇒ RED here, and nowhere else.
+ */
+test('VR-P6: nothing on the monospace grid sets its own font-size or letter-spacing', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  // @media wrappers are unwrapped so their inner rules are swept too; @keyframes bodies are dropped
+  const flat = moss
+    .replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\}\s*)*\}/g, ' ')
+    .replace(/@(media|supports)[^{]*\{/g, '\n');
+  const GRID = /(^|,|\s)(\.c-[a-z]|\.moss-row|\.moss-podrow|\.moss-thead|\.moss-warn)/;
+  const offenders = [];
+  let seen = 0;
+  for (const m of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sel = m[1].trim().replace(/\s+/g, ' ');
+    if (!GRID.test(sel)) continue;
+    seen++;
+    for (const d of m[2].split(';')) {
+      const [prop, val] = d.split(':').map((x) => (x || '').trim());
+      if (prop === 'font-size') offenders.push(`${sel} { font-size:${val} }`);
+      // the shared track RESTATED is fine — a DIFFERENT track is the defect
+      if (prop === 'letter-spacing' && val !== 'var(--moss-track)') {
+        offenders.push(`${sel} { letter-spacing:${val} }`);
+      }
+    }
+  }
+  // NON-VACUITY BY INCLUSION, and by name: the sweep must be reading the rules that matter.
+  assert.ok(seen >= 12, `only ${seen} grid rules swept — the selector filter is reading nothing`);
+  for (const need of ['.moss-thead{', '.moss-row .c-bar{', '.moss-row .c-cell{', '.moss-warn{']) {
+    assert.ok(flat.includes(need), `the sweep never saw \`${need}\` — check the filter`);
+  }
+  assert.deepEqual(offenders, [],
+    'a cell on the monospace grid carries its own metric:\n  ' + offenders.join('\n  ')
+    + '\nThe columns here ARE the characters. A different font-size or letter-spacing on one cell '
+    + 'moves every column after it, and by a different amount on the rows where that cell is wider '
+    + '— which is how `.c-state{letter-spacing:.08em}` shipped past 95 green tests.');
+});
+
+// ⭐⭐ VR-P6 / RULING E5 — THE SKIN IS INK ON PAPER, AND THE GUARD WATCHES THE DIRECTION OF TRAVEL.
+//
+// This REPLACES VS-M5 ("the CRT treatment is ONE non-interactive overlay"). It is not a weakening:
+// the old test asserted a rule EXISTS, this one asserts a whole idiom does NOT, which is the harder
+// claim and the one that matters now. A retint is exactly the kind of change that gets half-reverted
+// — someone re-adds a scanline overlay "for texture", someone re-adds the glow to make the ink
+// "pop" — and nothing else in this suite would see either.
+//
+// MUTATIONS, each applied to the real sheet and each red here (VR-P6 report, table rows 1-2):
+//   · re-add `.moss-crt{…repeating-linear-gradient(to bottom,rgba(0,0,0,.22) 0 1px…)}` ⇒ RED
+//   · re-add `text-shadow:0 0 6px rgba(255,159,69,.30)` to `.moss-page`               ⇒ RED
+test('VR-P6/E5: the CRT is GONE — no overlay element, no scanlines, no phosphor glow', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  // NON-VACUITY BY INCLUSION: the scan really is reading the MOSS skin.
+  assert.match(moss, /\.moss-page\{/, 'the scan is not reading moss.css at all');
+  assert.ok(moss.length > 4000, `moss.css read as ${moss.length} chars — the scan is blind`);
+
+  assert.doesNotMatch(moss, /\.moss-crt/,
+    'the CRT overlay is back. Ruling E5 deletes it: the paper skin has no tube to simulate, and '
+    + '`moss-screen.js` no longer builds the element, so this rule would be dead paint at best.');
+  assert.doesNotMatch(moss, /repeating-linear-gradient\(\s*to bottom/,
+    'a vertical repeating gradient is a SCANLINE FIELD whatever it is called. The only repeating '
+    + 'gradient the paper skin owns is the 45° micro-hatch inside an empty gauge cell.');
+  assert.doesNotMatch(moss, /text-shadow/,
+    'a text-shadow in the MOSS skin is the phosphor glow coming back (it was `0 0 6px` amber on '
+    + '.moss-page and on the PROGRAM textarea). Ink on paper casts none, and `text-shadow:none` '
+    + 'overrides are not needed either once there is nothing to cancel.');
+  // …and the whole file must be free of the amber ramp it used to be built from.
+  assert.doesNotMatch(moss, /#ff9f45|#a4652c|#6d4620|#ffdcae|#100c06|#ff6a4d/i,
+    'an amber-phosphor literal survived the retint');
+});
+
+// The paper token block, pinned by VALUE — not by name, because a token that resolves to the old
+// near-black is a retint that never happened. Every one is DERIVED from paper.css (charter §1), so
+// this also proves the layer is wired: a typo in a paper token name resolves to nothing and the
+// surface paints as unstyled.
+//
+// MUTATION (report row 6): point `--moss-attend` at `--ink` ⇒ RED, and the △/faults go black.
+test('VR-P6: the .moss token block is charter §1\'s paper ramp, derived and not re-literalled', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  const block = /\.moss\{([\s\S]*?)\n\}/.exec(moss);
+  assert.ok(block, 'the .moss token block is gone');
+  const want = {
+    '--moss-bg': 'var(--paper-ground)',
+    '--moss-paper': 'var(--paper-plate)',
+    '--moss-ink': 'var(--ink)',
+    '--moss-dim': 'var(--ink-micro)',
+    '--moss-faint': 'var(--ink-faintest)',
+    '--moss-attend': 'var(--attend)',
+    '--moss-off': 'var(--ink-offline)',
+    '--moss-onink': 'var(--paper-plate)',
+    // ⭐ THE GAUGE TOKENS ARE PINNED BY VALUE TOO, and they were not until review drove it: setting
+    // `--moss-cell-ring:transparent` made every empty cell VANISH — the gauge went from "6 of 10" to
+    // "6 boxes floating in nothing" — and the whole suite stayed green, because the rules that read
+    // these names were scanned and the names themselves were not.
+    '--moss-cell-ring': 'var(--gauge-empty-ring)',
+    '--moss-cell-hatch': 'rgba(20,18,15,.28)',
+    '--moss-cell-absent': 'rgba(20,18,15,.16)',
+    '--moss-oncell-ring': 'rgba(235,228,209,.4)',
+    '--moss-oncell-hatch': 'rgba(235,228,209,.28)',
+    '--moss-oncell-absent': 'rgba(235,228,209,.18)',
+  };
+  for (const [name, value] of Object.entries(want)) {
+    const m = new RegExp(name.replace(/-/g, '\\-') + ':\\s*([^;]+);').exec(block[1]);
+    assert.ok(m, `${name} is not declared in the .moss block`);
+    assert.equal(m[1].trim(), value,
+      `${name} resolves to ${m[1].trim()}. Every MOSS token is charter §1's ramp by reference — a `
+      + 'literal here is the shadow theme VR-A spent a package deleting.');
+  }
+  // and the ground really is the paper one, not a dark plate wearing a paper name
+  const paper = readFileSync(join(CLIENT, 'src/theme/paper.css'), 'utf8');
+  assert.match(paper, /--paper-plate:\s*#EBE4D1/i);
+  assert.match(paper, /--attend:\s*#7B2C22/i);
+  assert.match(paper, /--gauge-empty-ring:\s*rgba\(20,18,15,\.4\)/,
+    '--moss-cell-ring points at --gauge-empty-ring, which paper.css no longer declares — the empty '
+    + 'gauge cell then has no ring at all and the whole reading disappears');
+
+  // ⭐ THE FREE ONE: no raw hex anywhere in the MOSS skin. Every colour is charter §1's ramp by
+  // reference or an alpha of ink; the census is ZERO today, so this costs nothing and it is the
+  // single cheapest way to catch a retint being half-reverted one literal at a time. The `%23`
+  // inside the two inline-SVG data URIs is URL-encoded, not a CSS hex, so `url(...)` is excluded.
+  const bare = moss.replace(/url\([^)]*\)/g, 'url()');
+  const hexes = bare.match(/#[0-9a-f]{3,8}\b/gi) || [];
+  assert.deepEqual(hexes, [],
+    'raw hex reached the MOSS skin: ' + hexes.join(', ') + '. Reference the paper token instead — '
+    + 'a literal here is a value no token layer controls and no other surface follows.');
+});
+
+// MUTATION (report row 3): give `.moss-row.sel` a paper background ⇒ RED.
+test('VR-P6: the selected row inverts to SOLID INK, and the gauge inverts with it', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  const sel = /\.moss-row\.sel\{([^}]*)\}/.exec(moss);
+  assert.ok(sel, 'the selected-row rule is gone');
+  assert.match(sel[1], /background-color:var\(--moss-ink\)/,
+    'the selection band is no longer solid ink — the design inverts the row, it does not tint it');
+  // the text on the band flips to paper…
+  assert.match(moss, /\.moss-row\.sel[^{]*\{color:var\(--moss-onink\)\}/,
+    'the inverted row\'s text is not paper — ink on ink is an unreadable row');
+  // …and so does the gauge, both halves of it
+  assert.match(moss, /\.moss-row\.sel \.c-cell\{[^}]*var\(--moss-oncell-ring\)/,
+    'an EMPTY gauge cell keeps its dark ring on the ink band, where it is invisible');
+  assert.match(moss, /\.moss-row\.sel \.c-cell\.on\{[^}]*background-color:var\(--moss-paper\)/,
+    'a FILLED gauge cell stays ink on the ink band — the whole gauge disappears when selected');
+});
+
+// The engraved gauge, and the △ drawn as a PATH rather than typed as a glyph (charter §1: "glyphs
+// not in Space Mono (⚠/△/blocks) are drawn as paths, never font glyphs").
+//
+// MUTATIONS (report rows 4-5): drop `color:transparent` from `.moss-warn` ⇒ RED (the raw fallback
+// glyph paints); drop the `.c-cell.on` background ⇒ RED (every bar reads empty).
+test('VR-P6: the gauge cells are engraved boxes and the △ is a drawn path, not a font glyph', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+
+  const cell = /\.moss-row \.c-cell\{([^}]*)\}/.exec(moss);
+  assert.ok(cell, 'the engraved cell rule is gone');
+  assert.match(cell[1], /box-shadow:inset 0 0 0 1px var\(--moss-cell-ring\)/, 'the empty cell lost its ring');
+  assert.match(cell[1], /repeating-linear-gradient\(45deg/, 'the empty cell lost its 45° micro-hatch');
+  assert.match(cell[1], /color:transparent/,
+    'the `█`/`▒` character inside the cell is painting again — the box is the gauge, the glyph is '
+    + 'only the record');
+  assert.match(moss, /\.moss-row \.c-cell\.on\{[^}]*background-color:var\(--moss-ink\)/,
+    'a FILLED cell is no longer solid ink, so every load reads as zero');
+  assert.match(moss, /\.moss-row \.c-bracket\{display:none\}/,
+    'the record\'s `[`/`]` are drawing again — the paper idiom has no brackets');
+
+  const warn = /\.moss-warn\{([^}]*)\}/.exec(moss);
+  assert.ok(warn, 'the △ rule is gone');
+  assert.match(warn[1], /color:transparent/,
+    'the △ CHARACTER is painting. It is not in Space Mono, so what shows is a fallback face at a '
+    + 'fallback advance — the exact trap the charter\'s "drawn as paths" rule exists for.');
+  assert.match(warn[1], /width:calc\(1ch \+ var\(--moss-track\)\)/,
+    'the △ cell is no longer pinned to one monospace cell, so the state column drifts on warned rows');
+  assert.match(moss, /\.moss-warn::before\{[^}]*mask:var\(--moss-tri\)/,
+    'the mark is not drawn from --moss-tri any more');
+  assert.match(moss, /--moss-tri:url\("data:image\/svg\+xml,[^"]*%3Cpath /,
+    'the △ is not an SVG PATH — a font glyph or a border trick has taken its place');
+});
+
+// The sprocket gutter: static, decorative, no JS, and TILED so it is honest at any window height.
+// MUTATION: replace `repeat-y` with `no-repeat` ⇒ RED (a 21-circle run is a lie on a tall window).
+test('VR-P6: the sprocket gutter is one tiled background, drawn by CSS alone', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  const gutter = /\.moss-page::before\{([^}]*)\}/.exec(moss);
+  assert.ok(gutter, 'the sprocket gutter is gone');
+  assert.match(gutter[1], /pointer-events:none/, 'decoration must never take a click');
+  assert.match(gutter[1], /background:var\(--moss-sprocket\) repeat-y/,
+    'the gutter does not TILE — a fixed run of circles is honest at exactly one window height');
+  assert.match(moss, /--moss-sprocket:url\("data:image\/svg\+xml,[^"]*%3Ccircle /,
+    'the sprocket tile is not an inline SVG circle any more');
+  // and no JS draws it — the sheet's punch-tape edge costs nothing per frame
+  const js = readFileSync(join(CLIENT, 'src/ui/moss-screen.js'), 'utf8');
+  assert.doesNotMatch(js, /sprocket/i, 'the gutter grew a JS half; it is a background-image, nothing more');
+});
+
+// The advisory is the design's one deliberate serif inside the terminal (charter §1 / Screen 03).
+// MUTATION: set `.moss-adv-line{font-family:var(--font-mono)}` ⇒ RED.
+test('VR-P6: the advisory is serif prose with an oxblood marker, not another mono row', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  const adv = /\.moss-adv-line\{([^}]*)\}/.exec(moss);
+  assert.ok(adv, 'the advisory rule is gone');
+  assert.match(adv[1], /font-family:var\(--font-serif\)/,
+    'the advisory dropped back to mono — serif prose inside the terminal is deliberate, it is the '
+    + 'machine explaining itself rather than reporting a number');
+  assert.match(moss, /\.moss-adv-line::before\{[^}]*color:var\(--moss-attend\)/,
+    'the advisory\'s `›` marker is no longer the one accent');
 });
 
 // ---------------- applyTakeover in isolation ----------------
@@ -1417,6 +1796,27 @@ test('applyTakeover is total and degenerate-safe', () => {
 
 import * as REAL from '../src/ui/moss-model.js';
 import { POD_COLS, POD_HEAD_LINE, POD_REFRESH_MS, POD_POLL_STALE } from '../src/ui/moss-screen.js';
+
+/**
+ * ⭐ THE DOUBLE MUST AGREE WITH THE SHIPPED MODEL ABOUT THE GAUGE'S WIDTH — the one number the two
+ * files both declare and neither checks.
+ *
+ * ⛔ DRIVEN BY REVIEW, and it is the fifth-trap shape wearing a fixture: `moss-model-fake.js`
+ * re-declares `BAR_WIDTH` independently, so reverting ONLY the real model to 8 left all 95 DOM
+ * tests in this file GREEN while the product drew eight cells against a twelve-character column and
+ * every heading after LOAD walked. The fake exists so this file tests the DOM in isolation from the
+ * model lane — that split is right and stays — but a fixture free to disagree about a SHARED
+ * GEOMETRY CONSTANT is a fixture that can certify a broken screen. `REAL` is already imported here
+ * for the POD BAY's join tests, so the check costs one line.
+ */
+test('VR-P6: the model double and the shipped model agree about BAR_WIDTH', () => {
+  assert.equal(typeof REAL.BAR_WIDTH, 'number');
+  assert.equal(FAKE.BAR_WIDTH, REAL.BAR_WIDTH,
+    `the DOM suite renders ${FAKE.BAR_WIDTH} gauge cells and the product renders ${REAL.BAR_WIDTH}. `
+    + 'Every assertion in this file is then about a screen nobody ships.');
+  // …and the geometry derived from it, so a change to one without the other cannot pass either
+  assert.equal(COLS.bar, REAL.BAR_WIDTH + 2, 'COLS.bar is `[` + BAR_WIDTH cells + `]`');
+});
 
 // ⚠️ `pod_ozawa`'s occupant is `Ozawa-Reyes` ON PURPOSE — see the same note over `PODS_MSG` in
 // moss-model.test.js. The click path's message assertion below is the one that has to bite when a

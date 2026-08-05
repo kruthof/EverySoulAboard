@@ -408,6 +408,23 @@ another lane's file mid-flight.
 
 ## 4. Visual (VS-M)
 
+> ⛔ **§4 IS SUPERSEDED BY THE VISUAL REDESIGN AS OF VR-P6 (2026-08-05) — READ THIS FIRST.**
+> The MOSS skin is no longer phosphor amber on near-black; it is **ink on paper**. The authority is
+> `docs/design/perilune-visual-redesign.charter.md` §1 + **ruling E5**, whose spec markup is
+> `design-import/Perilune Game.dc.html` **Screen 03**. What changed, row by row: **VS-M1**'s palette
+> is charter §1's paper/ink ramp (`--moss-*` now derives from `src/theme/paper.css`); **VS-M4**'s bar
+> is **ten ENGRAVED CELLS**, not eight, and is drawn as boxes over the same fixed-width character
+> record (`BAR_WIDTH` 8 → 10, `COLS.bar` 10 → 12); **VS-M5**'s CRT treatment is **DELETED** — no
+> scanlines, no vignette, no glow, and `moss-screen.js` no longer builds the overlay element;
+> **VS-M8**'s `⚠` is now `△`, drawn as an SVG path rather than typed as a glyph; the header's `▮` and
+> the block caret are drawn the same way. Everything NOT about paint is unchanged and still binding:
+> §1 (wire), §2 (model API), §3 (IX-M interaction), §5 (derivations), §6 (test obligations), and
+> **ruling E5's own promise — all six views survive** (system table · transcript · fault log ·
+> system detail · pod bay · PROGRAM editor · the IX-M13 no-link state).
+> **FILED, not done here:** a full rewrite of §4 in the paper idiom, plus §4.1's deviation list.
+> VR-P6 is a client package and rewriting another surface's spec wholesale was out of its scope; the
+> live contract in the meantime is the charter plus `client/styles/moss.css`'s own header comment.
+
 The mock is the reference. Deviations must be recorded here with a reason (the relations spec's
 VS-R5 is the precedent).
 

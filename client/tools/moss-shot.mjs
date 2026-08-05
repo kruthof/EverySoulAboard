@@ -48,6 +48,9 @@ const SHOTS = [
   { name: 'detail.png', w: 1440, h: 900, q: '?screen=detail&sel=1' },
   { name: 'faultlog.png', w: 1440, h: 900, q: '?screen=faultlog' },
   { name: 'program.png', w: 1440, h: 900, q: '?screen=program' },
+  // VR-P6: ruling E5 keeps all six views, so all six have to be reviewable from a frame. The bay
+  // was the missing one.
+  { name: 'podbay.png', w: 1440, h: 900, q: '?screen=podbay' },
   { name: 'nolink.png', w: 1440, h: 900, q: '?nolink=1' },
 ];
 
