@@ -227,12 +227,15 @@ test('B2: the task line is styled dim, and `.working` lifts it — the honesty r
   // DIRECTION, not merely difference. `notEqual` alone is satisfied by the colours SWAPPED, which
   // would make every idle row read as activity and every working row read as nothing — the exact
   // inversion of the affordance, passing its own guard. So each side is pinned to its own token.
-  assert.match(base, /ink-mute|#?8c8377/i,
-    `.ov-crewtask resolves to "${base}", which is not the dim ink-mute token. A doing-nothing crew `
+  // ⭐ VR-P4 — the Overview is ink on paper, so the ladder is `--ink-section` (the faintest ink that
+  // still reads) for idle and `--ink` (the darkest there is) for work. The DIRECTION claim is
+  // untouched: a swap still fails, because each side names its own token.
+  assert.match(base, /ink-section|#?8A7F6C/i,
+    `.ov-crewtask resolves to "${base}", which is not the faint ink token. A doing-nothing crew `
     + 'member must not read as activity.');
-  assert.match(work, /amber-light|#?f2b563/i,
-    `.ov-crewtask.working resolves to "${work}", which is not the amber accent. Scanning the dock's `
-    + 'colour is how "who is actually working?" gets answered at a glance.');
+  assert.match(work, /--ink\)|#?14120F/i,
+    `.ov-crewtask.working resolves to "${work}", which is not the work ink. Scanning the dock is how `
+    + '"who is actually working?" gets answered at a glance.');
   // Negative control: with the `.working` rule commented out, the assertion above must fail.
   // ⚠️ THE CLOSING ANCHOR MOVED AT M1-F (2026-07-29) and it had to. It used to be `}\n.ov-morale{`;
   // M1-F deleted the `.ov-morale` rules, which would have made this `.replace` a SILENT NO-OP,

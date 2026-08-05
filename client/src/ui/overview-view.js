@@ -65,6 +65,10 @@ import {
   ORDER_TOOLS, ORDER_LABEL, orderHintLine, orderPlacedLine,
   ERASE_TOOL, ERASE_LABEL, markNameAt, erasePlacedLine,
   WORK_COLUMNS, nextWorkPriority, workCellLabel, workRowColumns, workSkillLabel,
+  // ⭐ VR-P4 — the plate's own pure derivations: the compartment prose column, the deck caption, the
+  // masthead's context stats, and the engraved gauge's ONE honest scale (one cell = one day).
+  compartmentLines, deckCaptionLine, mastheadStats, GAUGE_CELLS, LEDGER_GAUGE_DAYS,
+  runwayGauge, radarCaption,
 } from './overview-model.js';
 
 /* eslint-disable no-multi-spaces */
@@ -84,7 +88,12 @@ const LENS_SHORT = ['∅', 'PRES', 'O₂', 'CO₂', 'TEMP', 'PWR', 'H₂O'];
 // screen over the modern game, which is the exact regression the module header records RELATIONS
 // causing. And it is NOT in `overview-model.js`'s `INERT_TABS`: under OD-H this tab is the only
 // route to enabling any work at all.
-const OV_TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['work', 'WORK'], ['relations', 'RELATIONS'], ['moss', 'MOSS'], ['chron', 'CHRONICLE']];
+// ⭐ VR-P4 / ruling E1 — SIX TABS, and only ONE label moved: `RELATIONS` → `TIES`, the design's own
+// word for the same surface (`Perilune Game.dc.html:221`). The KEY is untouched (`relations` is what
+// `Hud.selectTab` and `body.relations-open` are keyed on, and `relations-view.test.js` A2 parses this
+// very array to require that switch), and `MOSS` keeps its spelling because the onboarding card
+// teaches the player to look for a button spelled exactly that way (`onboarding.test.js`).
+const OV_TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['work', 'WORK'], ['relations', 'TIES'], ['moss', 'MOSS'], ['chron', 'CHRONICLE']];
 const SHIP_TABS = new Set(['build', 'crew', 'work']);
 
 function esc(s) {
@@ -145,6 +154,7 @@ let _onEnterRoom = (anchor) => { toast('ROOM ZOOM — coming soon (' + anchor + 
 const _el = {};                 // cached skeleton element references
 const _pips = new Map();        // deck key → {el}
 const _crew = new Map();        // cid key → {el, nameEl, roleEl, fill}
+const _cpRows = new Map();      // anchor key → {el, name, stat, why} — the `compartments` column
 const _workRows = new Map();    // cid key → {el, nameEl, cells:[{el, type}]} — the WORK grid's rows
 let _roBustCid = null;          // readout bust: whose portrait the <svg> currently holds
 let _roTraitsKey = '';          // readout traits: the last-rendered trait set (rebuild only on change)
@@ -275,36 +285,61 @@ function buildSkeleton() {
   // only prevents a flash-of-unstyled-content before this module runs).
   _root.hidden = false;
   _root.innerHTML =
+    // ⭐ VR-P4 — THE PLATE. `.ov-space` is no longer a void: it is the sheet of paper the ship is
+    // drawn on, and the three nebula washes are DELETED with the void they sat in (one ink, one
+    // paper, one accent — charter §1). What survives is the drifting starfield, RETINTED to ink dots
+    // at three parallax depths, and it is still built ONCE here rather than in the per-repaint scene
+    // so its CSS drift is never restarted by the scene's innerHTML rebuild.
+    // ⚠️ THE ORDER OF THESE SIX IS THE PAGE'S LAYOUT, not a preference: `#overview-view` is a FLEX
+    // COLUMN (styles/overview.css), so the masthead must be FIRST and the footer LAST. The first cut
+    // left the topbar after the plate — the flex order put the ship's name UNDER the drawing, which
+    // a photograph caught and no test could. The absolutely-positioned islands below this block sit
+    // OVER the plate and their DOM position does not matter.
+    '<div class="hud ov-topbar" id="ov-topbar"></div>' +
     '<div class="ov-space">' +
-      '<div class="ov-neb ov-neb1"></div><div class="ov-neb ov-neb2"></div><div class="ov-neb ov-neb3"></div>' +
-      // The drifting starfield: built ONCE here (not in the per-repaint scene) so its CSS drift is
-      // never restarted by the scene's innerHTML rebuild. Sits above the nebula, below the stage.
       starLayerSvg() +
       '<div class="ov-stage" id="ov-stage"></div>' +
     '</div>' +
-    '<div class="hud ov-topbar" id="ov-topbar"></div>' +
+    // the demoted LENS toggles, directly under the plate they wash (ruling E4: kept, quiet)
+    '<div class="hud ov-lens" id="ov-lens"></div>' +
+    // The caption row under the plate: serif italic sentence ⟷ mono souls count, both from the wire.
+    '<div class="ov-caption" id="ov-caption">' +
+      '<span class="ov-capline"></span><span class="ov-capsouls"></span></div>' +
+    // THE FOUR-COLUMN READOUT (design grid `1fr 1.02fr 258px 150px`). `compartments` is new;
+    // `aboard` is the SENSOR LOG re-housed; `the ship` is the LEDGER re-housed; `outside` is the
+    // radar. The 1px ink rule above it is `.ov-columns`' own border-top.
+    '<div class="ov-columns" id="ov-columns">' +
+      '<div class="ov-col ov-compart" id="ov-compart"></div>' +
+      '<div class="ov-col ov-sensor" id="ov-sensor"></div>' +
+      '<div class="ov-col ov-ledger" id="ov-ledger"></div>' +
+      '<div class="ov-col ov-radar" id="ov-radar"></div>' +
+    '</div>' +
+    '<div class="ov-cmd" id="ov-cmd"></div>' +
     '<div class="hud ov-deckrail" id="ov-deckrail"></div>' +
     '<aside class="hud ov-crewwatch" id="ov-crewwatch"></aside>' +
     '<aside class="hud ov-readout" id="ov-readout"></aside>' +
-    '<div class="hud ov-lens" id="ov-lens"></div>' +
-    '<div class="ov-cmd" id="ov-cmd"></div>' +
-    '<div class="hud ov-sensor" id="ov-sensor"></div>' +
-    // E0-8 LEDGER — the ship's matter census and its three rate members, sitting above the LENS
-    // island in the bottom-left. It is on THE STANDARD SURFACE (CLAUDE.md), never on the deprecated
-    // console shell: E0-4's WP-5 built a whole feature onto that shell and nobody noticed.
-    '<div class="hud ov-ledger" id="ov-ledger"></div>' +
+    // ⭐ VR-P4 — THE SENSOR LOG AND THE LEDGER ARE NO LONGER FLOATING ISLANDS. They are the
+    // `aboard` and `the ship` COLUMNS of the four-column readout above (ruling E4: re-house, never
+    // drop). Their ids, their classes and every element inside them are unchanged, so the model
+    // tests, the ledger slot census and the console-carryover scans keep biting exactly as before —
+    // what moved is where the box sits on the page, which is a stylesheet fact.
+    // E0-8's rule still holds: the LEDGER is on THE STANDARD SURFACE (CLAUDE.md), never on the
+    // deprecated console shell — E0-4's WP-5 built a whole feature onto that shell and nobody noticed.
     '<div class="ov-toast" id="ov-toast" hidden></div>' +
     // ⭐ M3-5 — THE ENDING BAR. One line from the `ending` channel: the grace while the ship wakes
     // one more soul by itself, and the lose state when it has nobody left to wake. It is NOT a
     // toast — a toast expires, and neither of these two facts ever stops being true. It is NOT the
     // ending screen either: M5-1 owns THE ENDING (OD-M item 4 = A) and this must stay one line.
     '<div class="ov-ending" id="ov-ending" hidden></div>' +
-    // ⭐⭐ D2 — THE ALERT BAR. One derived line, sitting directly UNDER the ending bar: a cryo
-    // capsule is within about a sim-day of its next thaw-ladder band edge, and when it crosses,
+    // ⭐⭐ D2 — THE ALERT BAR, RE-HOUSED AS THE DESIGN'S `leak` ROW (ruling E4). One derived line: a
+    // cryo capsule is within about a sim-day of its next thaw-ladder band edge, and when it crosses,
     // waking that person costs more. Not a toast (a toast expires and this fact does not until the
     // player acts) and not a Chronicle entry (the M3 demo measured the Chronicle ring evicting real
     // events under brownout spam). It is the FIRST ROW of M5-2/T17's alert stack — grow it there.
-    '<div class="ov-alert" id="ov-alert" hidden></div>' +
+    //
+    // ⚠️ ITS ELEMENT IS WRITTEN INTO THE `the ship` COLUMN (see `buildIslands`), not here, because
+    // the design puts it UNDER the five gauges behind a hairline — the alarming sentence sits with
+    // the numbers it is about. The id, the `hidden`-on-empty rule and `paintAlert` are unchanged.
     // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). It sits directly under
     // the top bar's HOLD/RESUME chip, because that chip is the fix for what it is complaining about.
     //
@@ -364,9 +399,18 @@ function buildIslands() {
   //  · PAUSE toggles between a loud "▶ RESUME" (with a .paused state class) and "❚❚ HOLD" so a
   //    paused ship unmistakably reads as "click again to resume".
   //  · CAUTION is now a button — clicking it opens the MOSS diagnostics screen (VS-O jump-to-fault).
+  //
+  // ⭐ VR-P4 — IT IS THE MASTHEAD ROW NOW: mono 9.5px/.24em, `the perilune, underway` on the left and
+  // the context stats on the right, exactly the design's `<div>` at `Perilune Game.dc.html:47-50`.
+  // The five interactive chips stay in it (ruling E4 drops nothing) and are restyled as quiet mono
+  // controls rather than glass pills — they are the only clickable things in a row of statements, so
+  // they carry a hairline box and the rest of the row does not.
   $('ov-topbar').innerHTML =
-    '<span class="ov-ship">MSV PERILUNE</span>' +
-    '<span class="ov-deckctx"></span><span class="ov-clock"></span><span class="ov-spacer"></span>' +
+    '<span class="ov-ship">the perilune, underway</span>' +
+    // …and the context stats sit on the RIGHT, as the design's masthead does: the spacer comes
+    // first, so a wider ship name never pushes the stats off the row.
+    '<span class="ov-spacer"></span>' +
+    '<span class="ov-deckctx"></span><span class="ov-clock"></span>' +
     '<span class="ov-chip ov-stores" data-ov-stores hidden ' +
       'title="Loose regolith aboard — the build material that feeds wall/door work. Wall ghosts starve at 0."></span>' +
     '<span class="ov-chip ov-llm" data-ov-llm hidden ' +
@@ -388,6 +432,21 @@ function buildIslands() {
   _el.tbPause = _root.querySelector('.ov-pause');
   _el.tbCaution = _root.querySelector('.ov-caution');
   _el.tbCautionLevel = '';
+
+  // The caption row under the plate (design `:99-102`): a serif italic sentence about the deck on
+  // screen ⟷ a mono souls count. Both are DERIVED FROM THE WIRE (`deckCaptionLine`), never prose.
+  _el.capLine = _root.querySelector('.ov-capline');
+  _el.capSouls = _root.querySelector('.ov-capsouls');
+
+  // ── the `compartments` column: one serif line per compartment on this deck ──────────────────
+  // Header + a keyed list. THIS IS WHERE THE WHY-LINE / ORDER STUCK SENTENCE RE-HOUSES (ruling E4):
+  // the oxblood serif clause under a room's own line, beside the tile that took the oxblood dashed
+  // border. The two are one derivation (`compartmentLines`) so they cannot come to disagree.
+  $('ov-compart').innerHTML =
+    '<span class="ov-colhdr">compartments</span><div class="ov-cplist"></div>' +
+    '<div class="ov-empty ov-cpempty" hidden>— no compartments on this deck —</div>';
+  _el.cpList = _root.querySelector('.ov-cplist');
+  _el.cpEmpty = _root.querySelector('.ov-cpempty');
 
   // deck rail — a keyed pip list, reconciled directly (all children are pips).
   _el.deckrail = $('ov-deckrail');
@@ -492,8 +551,18 @@ function buildIslands() {
       // than folded into `ORDER_TOOLS` because it is not an order (overview-model.js `ERASE_TOOL`).
       '<button class="ov-tool" data-ov-tool="' + ERASE_TOOL + '">' + esc(ERASE_LABEL) + '</button>' +
       '<span class="ov-orderhint"></span></div>' +
-    '<div class="hud ov-tabs">' + OV_TABS.map(([key, label]) =>
-      '<button class="ov-tab" data-ov-tab="' + key + '">' + esc(label) + '</button>').join('') + '</div>';
+    // ⭐ RULING E1 — THE FOOTER NAV KEEPS ALL SIX TABS. The design draws four (`plate · crew · ties ·
+    // chronicle`) and the charter reads that row as an INCOMPLETE SKETCH rather than a deletion:
+    // WORK is OD-H's opt-in surface and the only place a work type can be switched on at all, and
+    // MOSS is OD-N's door to doors, vents and programs. Dropping either ships a game in which a
+    // mechanic exists and is unreachable. What the design DOES decide, and what is adopted, is the
+    // IDIOM: mono 10px/.16em lowercase-feel labels, the active one ink with a 2px ink underline, no
+    // box around any of them. `RELATIONS` takes the design's own word, `ties`.
+    '<div class="ov-tabs">' + OV_TABS.map(([key, label]) =>
+      '<button class="ov-tab" data-ov-tab="' + key + '">' + esc(label) + '</button>').join('') +
+      // …and the design's right-hand hint, serif italic. It is an INSTRUCTION about the plate above,
+      // so it lives with the nav rather than in a column.
+      '<span class="ov-navhint">click a compartment to open it</span></div>';
   _el.place = _root.querySelector('.ov-place');
   _el.orders = _root.querySelector('.ov-orders');
   _el.ordersHdr = _root.querySelector('.ov-ordershdr');
@@ -501,7 +570,20 @@ function buildIslands() {
   _el.toolBtns = Array.from(_root.querySelectorAll('.ov-orders .ov-tool'));
   _el.tabBtns = Array.from(_root.querySelectorAll('.ov-tab'));
 
-  // sensor log — a fixed header + 5 fixed line slots (each ts span + rest span), toggled/updated.
+  // ── the `aboard` column: the SENSOR LOG re-housed ────────────────────────────────────────────
+  // A fixed header + 5 fixed line slots, each a mono DAY-STAMP gutter and a serif line — the
+  // design's own two-span row (`Perilune Game.dc.html:130-133`). ⭐ THE GUTTER IS REAL DATA: the
+  // host stamps every log line `D<day>.<frac>` and `logLineParts` already splits it off, so the
+  // design's `D 41` is our `D41.25`, unchanged and unrounded.
+  //
+  // ⛔ AND NOT ONE LINE OF IT IS OXBLOOD, WHICH IS A DECISION AND NOT AN OMISSION (ruling E11). The
+  // design paints one `aboard` line in the accent because a beat happened. THE WIRE CARRIES NO
+  // SEVERITY FOR A LOG LINE — `log` is an array of strings and nothing else — so the only way to
+  // pick one out here would be to match on its PROSE, which is the second implementation of a host
+  // contract this repo refuses by name (`MossPods`: a sentence with no code is unstylable). The
+  // accent on this surface is spent where the wire really does say "attend to this": the `leak`
+  // row under the gauges, the stuck-order clause in `compartments`, and the tile border that goes
+  // with it. When the chronicle channel gains a severity byte, style it off THAT.
   let slots = '<div class="ov-hdr"></div>';
   for (let i = 0; i < 5; i++) slots += '<div class="ov-logline" hidden><span class="ov-ts"></span><span class="ov-rest"></span></div>';
   $('ov-sensor').innerHTML = slots;
@@ -517,34 +599,87 @@ function buildIslands() {
   // ⚠️ THE COUNT COMES FROM THE MODEL, NOT FROM A LITERAL. `paintLedger` walks the SLOTS and reads
   // `rows[i]`, so a row the model gained beyond a hard-coded 4 would never be painted — green model
   // tests, nothing on screen. E0-9's FOOD row is the fifth and would have been the first casualty.
-  let ledger = '<div class="ov-hdr"></div>';
+  //
+  // ⭐ VR-P4 — EACH ROW NOW CARRIES AN ENGRAVED 8-CELL GAUGE, AND ITS SCALE IS STATED RATHER THAN
+  // INVENTED (ruling E11). The design draws five gauges whose denominators are obvious for a hull
+  // percentage or an oxygen fraction; THIS ledger's rows have no such denominator — `MATTER` is a
+  // unit count with no ceiling and `PARTS` is a rate. So the gauge is drawn ONLY for the three rows
+  // whose reading is a RUNWAY IN DAYS, and one cell means ONE DAY (`runwayGauge`, capped at eight).
+  // A row with no bounded reading gets NO cells at all — an all-empty strip would read as ZERO,
+  // which is the one thing those rows never mean. The column head says the scale out loud.
+  let ledger = '<div class="ov-hdr"></div><div class="ov-ledscale"></div>';
   for (let i = 0; i < LEDGER_ROW_IDS.length; i++) {
     ledger += '<div class="ov-ledrow" hidden>' +
-      '<span class="ov-ledlabel"></span><span class="ov-ledval"></span><span class="ov-ledsub"></span></div>';
+      '<span class="ov-ledlabel"></span><span class="ov-ledcells" hidden></span>' +
+      '<span class="ov-ledval"></span><span class="ov-ledsub"></span></div>';
   }
   ledger += '<div class="ov-ledcensus ov-faint" hidden></div>' +
             // The one caveat that does NOT ride a row's hover title. See caveatLine().
             '<div class="ov-ledcaveat" hidden></div>' +
-            '<div class="ov-ledempty ov-faint" hidden>— no ledger yet —</div>';
+            '<div class="ov-ledempty ov-faint" hidden>— no ledger yet —</div>' +
+            // ⭐⭐ D2's ALERT BAR, as the design's `leak` row: an oxblood mono label and an oxblood
+            // serif italic sentence, under a hairline, beneath the numbers it is about.
+            '<div class="ov-alert" id="ov-alert" hidden>' +
+              '<span class="ov-alertlbl">alert</span><span class="ov-alerttxt"></span></div>';
   $('ov-ledger').innerHTML = ledger;
   _el.ledgerHdr = _root.querySelector('.ov-ledger .ov-hdr');
+  _el.ledgerScale = _root.querySelector('.ov-ledscale');
   _el.ledgerRows = Array.from(_root.querySelectorAll('.ov-ledger .ov-ledrow')).map((row) => ({
     el: row,
     label: row.querySelector('.ov-ledlabel'),
+    cells: row.querySelector('.ov-ledcells'),
     val: row.querySelector('.ov-ledval'),
     sub: row.querySelector('.ov-ledsub'),
     level: '',
+    filled: -1,
   }));
   _el.ledgerCensus = _root.querySelector('.ov-ledcensus');
   _el.ledgerCaveat = _root.querySelector('.ov-ledcaveat');
   _el.ledgerEmpty = _root.querySelector('.ov-ledempty');
 
+  // ── the `outside` column: THE RADAR, AND IT IS AN HONEST INSTRUMENT ─────────────────────────
+  //
+  // ⛔ THE DESIGN DRAWS THREE INK CONTACTS AND ONE OXBLOOD CONTACT CLOSING AT 340 km. **THE WIRE
+  // CARRIES NO SENSOR-CONTACT DATA AT ALL** — there is no channel, no field, and nothing in `sim/`
+  // that tracks another vessel — so drawing any of the four would be four invented facts on the
+  // screen a first-hour player reads first (ruling E11, and `invisible-feedback-is-FUNCTIONAL`
+  // pointed the other way: an unearned reassurance, or here an unearned threat).
+  //
+  // So this renders the instrument and nothing else: the frame, the three range rings, the
+  // crosshairs and diagonals, the 7 s `j4sweep` wedge, and the OWN SHIP at the centre — which is a
+  // real thing, the ship this whole plate is about. The caption says what the scope can and cannot
+  // see, in the design's own mono. The moment a contacts channel exists, add the contacts here and
+  // the caption changes with them; until then the empty scope IS the reading.
+  $('ov-radar').innerHTML =
+    '<span class="ov-colhdr">outside</span>' +
+    '<svg class="ov-radarsvg" viewBox="0 0 150 150" width="150" height="150" aria-hidden="true">' +
+      '<rect x="0.7" y="0.7" width="148.6" height="148.6" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
+      '<circle cx="75" cy="75" r="66" fill="none" stroke="currentColor" stroke-width="0.7" opacity="0.75"/>' +
+      '<circle cx="75" cy="75" r="44" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.45"/>' +
+      '<circle cx="75" cy="75" r="22" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.45"/>' +
+      '<path d="M9 75 L141 75 M75 9 L75 141" stroke="currentColor" stroke-width="0.5" opacity="0.35"/>' +
+      '<path d="M75 75 L121 29" stroke="currentColor" stroke-width="0.5" opacity="0.3"/>' +
+      '<path d="M75 75 L29 121" stroke="currentColor" stroke-width="0.5" opacity="0.3"/>' +
+      '<g class="ov-sweep">' +
+        '<path d="M75 75 L75 9" stroke="currentColor" stroke-width="1.1"/>' +
+        '<path d="M75 75 L75 9 A66 66 0 0 0 40 18 Z" fill="currentColor" opacity="0.07" stroke="none"/>' +
+      '</g>' +
+      // OWN SHIP — the one mark on this scope, and the only one the wire supports.
+      '<rect x="66" y="70" width="18" height="10" fill="none" stroke="currentColor" stroke-width="1"/>' +
+      '<path d="M70 75 L80 75" stroke="currentColor" stroke-width="0.7" opacity="0.6"/>' +
+    '</svg>' +
+    '<div class="ov-radarcap"><span class="ov-radarcap1"></span><span class="ov-radarcap2"></span></div>';
+  _el.radarCap1 = _root.querySelector('.ov-radarcap1');
+  _el.radarCap2 = _root.querySelector('.ov-radarcap2');
+
   // M3-5's ENDING bar — written into the skeleton string above, so it is bound by id here.
   _el.ending = $('ov-ending');
-  // D2's ALERT bar, its sibling. Two bars and not one: the ending is about the RUN, this is about a
-  // capsule, and a ship whose crew is dying is exactly the ship whose capsules are decaying
-  // unattended — sharing a slot would have made the two facts mutually exclusive.
+  // D2's ALERT line, written into the `the ship` column above (the `leak` row). Two elements and not
+  // one: the ending is about the RUN, this is about a capsule, and a ship whose crew is dying is
+  // exactly the ship whose capsules are decaying unattended — sharing a slot would have made the two
+  // facts mutually exclusive.
   _el.alert = $('ov-alert');
+  _el.alertTxt = _root.querySelector('.ov-alerttxt');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -843,18 +978,42 @@ function repaint() {
   // the dock line and the badge are two renderings of one row and cannot come to different answers.
   const blocked = decodeBlocked(Hud.getBlocked());
 
-  paintScene(frame, dView, crew, designsMsg, activeDeck, lens, selCid);
+  // ⭐ VR-P4 — THE COMPARTMENT PROSE AND THE TILE BORDERS ARE ONE DERIVATION, computed once here and
+  // handed to both. `compartmentLines` joins this deck's slots to the crew standing in them and to
+  // the `blocked` rows that say why an order is stuck, so the oxblood sentence in the `compartments`
+  // column and the oxblood dashed border on the tile are the SAME row rendered twice. Two
+  // derivations of "which compartment is in trouble" is how the two would come to disagree.
+  const compart = compartmentLines(dView, activeDeck, crew, blocked);
+  const attention = compart.filter((c) => c.attention).map((c) => c.anchorName);
+  const selRoom = selectedCompartmentAnchor(frame, rosterMsg, dView, activeDeck);
+
+  paintScene(frame, dView, crew, designsMsg, activeDeck, lens, selCid, attention, selRoom);
   paintTopbar(activeDeck, dView);
+  paintCaption(activeDeck, dView, crew);
   paintDeckRail(dView, activeDeck);
   paintCrewWatch(crew, selCid, blocked);
   paintWork(crew);
   paintReadout(frame, rosterMsg, dView, activeDeck, blocked);
+  paintCompartments(compart);
   paintLens(lens);
   paintCommand(activeDeck);
   paintSensor();
   paintLedger();
+  paintRadar();
   paintEnding();
   paintAlert();
+}
+
+/** The anchor of the compartment the SELECTED crew member is standing in, or null. It is what draws
+ *  the design's 2.2 px selected tile border — the plate's answer to "where is the person I clicked".
+ *  Reuses the same `crewClickTarget` → `currentRoom` join the readout's CURRENT ROOM line runs on. */
+function selectedCompartmentAnchor(frame, rosterMsg, dView, activeDeck) {
+  const sel = selectedRosterEntry(frame, rosterMsg);
+  if (!sel || sel.deck !== activeDeck) return null;
+  const entry = (dView || []).find((d) => d.deck === activeDeck);
+  if (!entry) return null;
+  const room = currentRoom(crewClickTarget(frame, sel), entry.slots);
+  return room ? room.anchorName : null;
 }
 
 /**
@@ -890,7 +1049,10 @@ function paintAlert() {
   const msg = Hud.getAlerts();
   const text = msg && typeof msg.text === 'string' ? msg.text : '';
   setHidden(_el.alert, !text);
-  setText(_el.alert, text);
+  // ⚠️ THE SENTENCE GOES IN ITS OWN SPAN, NEVER ON THE ROW. The row carries a fixed oxblood mono
+  // label beside it (the design's `leak`), and `setText` on the row would delete that label the
+  // first time an alert arrived — a re-housing that silently eats half of its own idiom.
+  setText(_el.alertTxt, text);
 }
 
 // ── bottom-left LEDGER (E0-8) ──
@@ -909,7 +1071,10 @@ function paintAlert() {
 function paintLedger() {
   const msg = Hud.getLedger();
   const rows = ledgerRows(msg);
-  setText(_el.ledgerHdr, 'LEDGER');
+  setText(_el.ledgerHdr, 'the ship');
+  // The gauge's scale, said out loud beside the gauges. A cell with an unstated denominator is the
+  // shape M1-F deleted a morale bar for.
+  setText(_el.ledgerScale, 'ONE CELL = ONE DAY, EIGHT MAX');
   setHidden(_el.ledgerEmpty, rows.length > 0);
   const slots = _el.ledgerRows;
   for (let i = 0; i < slots.length; i++) {
@@ -920,6 +1085,7 @@ function paintLedger() {
     setText(s.label, r.label);
     setText(s.val, r.value);
     setText(s.sub, r.sub);
+    paintGauge(s, msg, r.id);
     if (s.level !== r.level) { // alarm ramp class: swap only when the level actually changes
       setCls(s.el, 'warn', r.level === 'warn');
       setCls(s.el, 'crit', r.level === 'crit');
@@ -937,11 +1103,57 @@ function paintLedger() {
   setText(_el.ledgerCaveat, caveat);
 }
 
+/**
+ * ONE ROW'S ENGRAVED 8-CELL GAUGE — filled cells solid ink, empty cells a 1 px inset ring over a 45°
+ * micro-hatch (charter §1 "Engraved cell gauge").
+ *
+ * ⛔ IT IS DRAWN ONLY WHERE THE WIRE GIVES A BOUNDED READING, and that is the whole honesty of the
+ * re-housing. `LEDGER_GAUGE_DAYS` names the three rows whose number is a RUNWAY IN DAYS and the
+ * message field each reads; every other row gets NO strip at all. An 8-cell strip drawn empty beside
+ * `MATTER 731 u` would say "matter is at zero" — a gauge that is never anything but a lie, which is
+ * exactly the failure M1-F deleted the morale bar for.
+ *
+ * The cells are rebuilt only when the FILLED COUNT changes, so an idle repaint touches no DOM.
+ */
+function paintGauge(slot, msg, id) {
+  const field = LEDGER_GAUGE_DAYS[id];
+  const g = field ? runwayGauge(msg ? msg[field] : null) : null;
+  if (!g) {
+    setHidden(slot.cells, true);
+    slot.filled = -1;
+    return;
+  }
+  setHidden(slot.cells, false);
+  if (slot.filled === g.filled) return;
+  slot.filled = g.filled;
+  let html = '';
+  for (let i = 0; i < GAUGE_CELLS; i++) html += '<i class="' + (i < g.filled ? 'on' : '') + '"></i>';
+  slot.cells.innerHTML = html;
+}
+
+// ── the `outside` column: the radar's caption ──
+
+/**
+ * The scope's two mono caption lines. The FIRST names what the instrument is doing (a 7 s sweep, the
+ * design's own cadence, which the CSS animation really runs at). The SECOND states, in words, that
+ * the wire carries no contacts — see the markup's own note. Both come from `radarCaption` so the
+ * sentence and the absence it describes are decided in one pure place.
+ */
+function paintRadar() {
+  const cap = radarCaption();
+  setText(_el.radarCap1, cap.sweep);
+  setText(_el.radarCap2, cap.contacts);
+}
+
 // ── the scene (schematic) + the lens wash overlay ──
 
-function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid) {
+function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid, attention, selAnchor) {
   const state = {
     deck, decksView: dView, frame, crew,
+    // ⭐ VR-P4 — the two plate-level states the scene cannot derive for itself: which compartments
+    // need attention (D5's stuck orders, re-housed per ruling E4) and which one holds the selected
+    // crew member (the 2.2 px border).
+    attentionAnchors: attention || [], selectedAnchor: selAnchor || null,
     designs: designsMsg && Array.isArray(designsMsg.cells) ? designsMsg.cells : [],
     terminals: terminalList(Hud.getTerminals()),
     // The mark layer comes off the `marks` channel, NOT off `frame`. The sentence this replaces was
@@ -967,7 +1179,21 @@ function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid) {
   _ctx = { transform: makeTransform(entry ? entry.slots : [], frame), frame };
 }
 
-/** The lens wash: a translucent grade rect over each occupied room (IX-O-30). PURE-derived tint. */
+/**
+ * The lens wash: a translucent grade over each occupied compartment's TILE (IX-O-30). PURE-derived
+ * tint, and in the paper dialect the tints are INK and OXBLOOD washes rather than four hues — ruling
+ * E4's "washes translate to ink/oxblood-tint treatments on tiles". `GRADE_TINT` is where the four
+ * bands now resolve to two inks at four strengths; nothing here knows their values.
+ *
+ * ⭐ IT LAYS OVER THE GRID CELL, NOT OVER A PROJECTED FLOOR RECT. `t.cellOf(slot)` is the SAME cell
+ * `overviewScene` drew the miniature into, asked of the same transform, so a wash can never land
+ * beside the compartment it is grading. (The old code called `t.rect(s.rect)` — correct while the
+ * transform was one affine map over a floor plan, and meaningless now that it is piecewise.)
+ *
+ * ⚠️ `mix-blend-mode` IS GONE WITH THE HUES. `hard-light` over paper turns a 22 %-alpha wash into a
+ * bleached patch; the washes are plain alpha over `#EBE4D1` now, which is what the design's own
+ * tints do.
+ */
 function lensOverlaySvg(dView, deck, frame, lens) {
   if (!lens || lens === 'none') return '';
   const entry = (dView || []).find((d) => d.deck === deck);
@@ -978,10 +1204,11 @@ function lensOverlaySvg(dView, deck, frame, lens) {
     if (!s.occupied) continue;
     const tint = lensSlotTint(lens, s);
     if (!tint) continue;
-    const r = t.rect(s.rect);
-    out += `<rect x="${r.x.toFixed(2)}" y="${r.y.toFixed(2)}" width="${r.w.toFixed(2)}" height="${r.h.toFixed(2)}" rx="2" fill="${tint}"/>`;
+    const r = t.cellOf(s);
+    if (!r) continue;
+    out += `<rect x="${r.x.toFixed(2)}" y="${r.y.toFixed(2)}" width="${r.w.toFixed(2)}" height="${r.h.toFixed(2)}" fill="${tint}"/>`;
   }
-  return out ? `<g class="pl-lens" style="mix-blend-mode:hard-light" pointer-events="none">${out}</g>` : '';
+  return out ? `<g class="pl-lens" pointer-events="none">${out}</g>` : '';
 }
 
 // ── top status bar ──
@@ -995,8 +1222,12 @@ function paintTopbar(activeDeck, dView) {
   const paused = status ? !!status.paused : false;
   const c = cautionState(metrics || {});
   const speed = status ? speedLabel(status.speed) : '1×';
-  setText(_el.tbDeck, 'DECK ' + activeDeck + (total ? ' OF ' + total : ''));
-  setText(_el.tbClock, 'DAY ' + day + ' · ' + clock);
+  // ⭐ VR-P4 — the design's right-hand masthead stat (`plate ii · 118 d out · 0.31 g`) built from the
+  // wire's own three facts: which deck of how many, what day it is, and the clock. `mastheadStats`
+  // owns the wording so the caption and the masthead cannot come to phrase the deck two ways.
+  const stats = mastheadStats(activeDeck, total, day, clock);
+  setText(_el.tbDeck, stats.deck);
+  setText(_el.tbClock, stats.clock);
   // (1) PAUSE — text AND a strong state class so a paused ship reads unmistakably as "resume me".
   setText(_el.tbPause, paused ? '▶  RESUME' : '❚❚  HOLD');
   setCls(_el.tbPause, 'paused', paused);
@@ -1037,6 +1268,64 @@ function paintLlmChip() {
   setText(_el.tbLlm, '◈ ' + String(backend).toUpperCase() + (llm.degraded ? ' ⚠ FALLBACK' : '') + cost);
   setCls(_el.tbLlm, 'degraded', !!llm.degraded);
   setHidden(_el.tbLlm, false);
+}
+
+// ── the caption row under the plate ──
+
+/**
+ * The design's caption (`:99-102`): a serif italic sentence about what is on screen, and a mono
+ * souls count. BOTH ARE WIRE FACTS (ruling E11) — the deck index, how many decks the ship has, how
+ * many compartments this one carries, and how many souls are aboard. The design's version adds
+ * "looking down. Under way at 0.31 g, bow to starboard", and the g-load and the heading are numbers
+ * this sim does not have, so they are not written.
+ */
+function paintCaption(activeDeck, dView, crew) {
+  const total = Array.isArray(dView) ? dView.length : 0;
+  const entry = (dView || []).find((d) => d.deck === activeDeck);
+  const rooms = entry && Array.isArray(entry.slots) ? entry.slots.length : 0;
+  setText(_el.capLine, deckCaptionLine(activeDeck, total, rooms));
+  const n = crew.length;
+  setText(_el.capSouls, 'souls aboard · ' + n);
+}
+
+// ── the `compartments` column ──
+
+/**
+ * One serif line per compartment on this deck: its NAME, the honest terse status the wire actually
+ * carries, and — in oxblood — the sentence saying why an order given to somebody in that room is
+ * stuck.
+ *
+ * ⭐⭐ THIS IS THE WHY-LINE / ORDER STUCK RE-HOUSING (ruling E4). D5's badge was Room-Zoom-only and
+ * its Overview half was a red line in the SELECTED readout, which a player only sees after clicking
+ * the right person. Here the sentence sits beside the room's own name, always visible, and the tile
+ * it names takes the oxblood dashed border in the same repaint. ⛔ The readout's `.ov-roblocked`
+ * line is KEPT as well and is not a duplicate to be tidied away: that one answers "why is the person
+ * I selected not working", this one answers "which room on this deck is in trouble", and the second
+ * question is the one the plate exists to answer.
+ *
+ * ⛔ NO INVENTED PROSE. `compartmentLines` builds every string from the slot's own `rooms` row and
+ * the `blocked` row's own sentence; where a compartment has no atmosphere reading at all the status
+ * says so rather than printing zeros that look like a sensor fault.
+ */
+function paintCompartments(lines) {
+  setHidden(_el.cpEmpty, lines.length > 0);
+  reconcile(_el.cpList, _cpRows, lines, (l) => l.anchorName,
+    () => {
+      const el = mkEl('div', 'ov-cpline');
+      const name = mkEl('span', 'ov-cpname');
+      const stat = mkEl('span', 'ov-cpstat');
+      const why = mkEl('span', 'ov-cpwhy');
+      why.hidden = true;
+      el.appendChild(name); el.appendChild(stat); el.appendChild(why);
+      return { el, name, stat, why };
+    },
+    (rec, l) => {
+      setText(rec.name, l.name);
+      setText(rec.stat, l.status);
+      setText(rec.why, l.why || '');
+      setHidden(rec.why, !l.why);
+      setCls(rec.el, 'attend', !!l.attention);
+    });
 }
 
 // ── deck rail ──
@@ -1293,7 +1582,10 @@ function paintCommand(activeDeck) {
 
 function paintSensor() {
   const tail = logTail(Hud.getLog(), 5);
-  setText(_el.sensorHdr, 'SENSOR LOG — LAST ' + tail.length);
+  // The design's column head is one word. The count moved into it rather than being dropped: this
+  // column shows the LAST FIVE lines of a ring that is much longer, and a head that did not say so
+  // would present five lines as the whole history.
+  setText(_el.sensorHdr, 'aboard · last ' + tail.length);
   const slots = _el.sensorLines;
   if (!tail.length) { // the honest empty state, reusing slot 0
     const s0 = slots[0];

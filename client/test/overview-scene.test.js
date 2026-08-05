@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { decode, decodeDecks, decodeRooms, MARK_KIND_NAMES } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
-  overviewScene, makeTransform, starfield, DECK, layoutPawnLabels, LABEL_MAX_ROWS,
+  overviewScene, makeTransform, starfield, starLayerSvg, DECK, gridLayout,
+  layoutPawnLabels, LABEL_MAX_ROWS,
 } from '../src/ui/overview-scene.js';
 import { taskTag } from '../src/ui/console-model.js';
 import { markCellSvg, markVariant } from '../src/ui/mark-overlay.js';
@@ -129,11 +130,21 @@ test('the fixture carries the channels the scene needs', () => {
   assert.equal(view[0].slots.filter((s) => s.occupied).length, 8); // deck 0 fully commissioned
 });
 
-test('the scene builds from the fixture without throwing and is a single <svg> document', () => {
+test('the scene builds from the fixture without throwing and is ONE document with N tile svgs', () => {
   const svg = overviewScene(baseState());
-  assert.match(svg, /^<svg class="pl-overview" viewBox="0 0 1300 561"/);
+  assert.match(svg, /^<svg class="pl-overview" viewBox="0 0 1300 405"/);
   assert.ok(svg.endsWith('</svg>'));
-  assert.equal((svg.match(/<svg/g) || []).length, 1);
+  // ⚠️ THE OLD ASSERTION WAS `exactly one <svg`, AND IT IS TRANSLATED RATHER THAN DROPPED. The plate
+  // draws each compartment as a NESTED `<svg>` carrying the design's own `viewBox="-10 -10 992 428"`
+  // + `preserveAspectRatio="xMidYMid meet"` — that is what makes a Level-2 cutaway scale into a
+  // ~190 px cell without any arithmetic in this module. So the claim becomes: exactly ONE ROOT
+  // document, and exactly one nested svg PER COMPARTMENT — which is strictly more than the old
+  // count could see (it could not tell a tile from a stray def wrapper).
+  assert.equal((svg.match(/^<svg class="pl-overview"/g) || []).length, 1);
+  const rooms = (svg.match(/class="pl-room[" ]/g) || []).length;
+  assert.equal((svg.match(/<svg /g) || []).length, rooms + 1,
+    'a nested <svg> that is not a compartment miniature appeared in the plate (or one went missing)');
+  assert.ok(rooms >= 8, 'the fixture deck has 8 compartments — this assertion is reading nothing');
 });
 
 test('the scene is deterministic — same state yields a byte-identical SVG', () => {
@@ -155,27 +166,44 @@ test('the starfield is the seeded 220 stars, deterministic across calls', () => 
   }
 });
 
-test('every PURPOSED slot gets a glow pool, and EVERY slot draws as a compartment (M1-L)', () => {
-  // Deck 0: all 8 typed → 8 glow gradients, 8 compartments.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐ VR-P4 — THE PURPOSE SIGNAL, TRANSLATED. The warm surface said "this compartment has an authored
+// PURPOSE" with an amber radial GLOW POOL (`id="ov-glow-N"`, one `<radialGradient>` per lit room).
+// The paper dialect has no glow and no second colour, so the SAME PREDICATE (`slot.roomType`) now
+// picks the tile's own SHELL TREATMENT — solid ink for a purposed compartment, the dash dialect's
+// UNBUILT stroke for one with no purpose — and the tile emits `data-purpose` so the predicate can be
+// read off the string instead of counting gradients that no longer exist.
+//
+// ⛔ EVERY LEG BELOW IS THE OLD LEG WITH ONE TOKEN CHANGED. Nothing was relaxed: the counts, the
+// synthetic three-flag deck, the dead-deck case and the non-vacuity checks are all as they were.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** How many tiles carry the PURPOSE mark (`roomType != 0`) — the glow pool's successor. */
+const purposeTiles = (svg) => (svg.match(/data-purpose="1"/g) || []).length;
+
+test('every PURPOSED slot is marked as such, and EVERY slot draws as a compartment (M1-L)', () => {
+  // Deck 0: all 8 typed → 8 purposed tiles, 8 compartments.
   const svg0 = overviewScene(baseState({ deck: 0 }));
-  assert.equal((svg0.match(/id="ov-glow-\d+"/g) || []).length, 8);
+  assert.equal(purposeTiles(svg0), 8);
   assert.equal((svg0.match(/class="pl-room"/g) || []).length, 8);
 
-  // Deck 1 MIXES typed and untyped slots, and that is what makes it the decisive deck: GLOW and
-  // DRAWING come apart here. Glow tracks the authored PURPOSE (`roomType`); DRAWING no longer
+  // Deck 1 MIXES typed and untyped slots, and that is what makes it the decisive deck: PURPOSE and
+  // DRAWING come apart here. The mark tracks the authored PURPOSE (`roomType`); DRAWING no longer
   // tracks anything — M1-L deleted `hallCompartment`, so all 8 draw as compartments.
   const d1 = view.find((d) => d.deck === 1);
   const typed1 = d1.slots.filter((s) => s.roomType).length;
   const untyped1 = d1.slots.filter((s) => !s.roomType).length;
   assert.ok(typed1 >= 1 && untyped1 >= 1, 'deck 1 must mix typed and untyped to separate the two');
   const svg1 = overviewScene(baseState({ deck: 1, frame: null }));
-  assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, typed1); // one glow per PURPOSED slot
+  assert.equal(purposeTiles(svg1), typed1);                                   // one mark per PURPOSED slot
   assert.equal((svg1.match(/class="pl-room"/g) || []).length, d1.slots.length); // ALL draw as rooms
-  // The glow layer carries mix-blend screen so it reads as light, not paint (VS-O-31).
-  assert.match(svg1, /mix-blend-mode:screen/);
+  // …and the mark really does change the drawing: an unpurposed tile takes the dash dialect's
+  // UNBUILT stroke, so the two states are distinguishable in ink and not merely in an attribute.
+  assert.equal((svg1.match(/data-state="unbuilt"/g) || []).length, untyped1);
+  assert.match(svg1, /stroke-dasharray="6 5"/);
 });
 
-test('glow is `roomType`, never `active` and — since M1-L — never `occupied` either', () => {
+test('the purpose mark is `roomType`, never `active` and — since M1-L — never `occupied` either', () => {
   // ⚠️ THIS TEST WAS RETARGETED IN REVIEW (2026-07-29) AND ITS OLD NAME WAS A FALSE CLAIM ABOUT THE
   // MODULE. It read "glow is `occupied`, never `active`" and its comment called itself "the ONLY
   // thing pinning `occupied` as a live input to the scene". MEASURED with the shipped `codeOnly`
@@ -204,19 +232,24 @@ test('glow is `roomType`, never `active` and — since M1-L — never `occupied`
     ],
   }];
   const svg = overviewScene(baseState({ deck: 3, decksView: split, frame: null, crew: [] }));
-  const glows = (svg.match(/id="ov-glow-(\d+)"/g) || []).map((s) => s.match(/(\d+)"/)[1]);
-  assert.deepEqual(glows, ['0', '1'],
-    'the glow pool is not following `roomType`: slot 2 (occupied, untyped) or slot 3 (active, '
-    + 'untyped) lit, or slot 1 (typed but unoccupied) went dark');
-  // …and all four still DRAW, which is the package: purpose decides light, geometry decides sight.
+  const marked = [...svg.matchAll(/data-slot="(\d+)" data-anchor="[^"]*" data-purpose="1"/g)].map((m) => m[1]);
+  assert.deepEqual(marked, ['0', '1'],
+    'the purpose mark is not following `roomType`: slot 2 (occupied, untyped) or slot 3 (active, '
+    + 'untyped) was marked, or slot 1 (typed but unoccupied) lost its mark');
+  // …and all four still DRAW, which is the package: purpose decides ink, geometry decides sight.
   assert.equal((svg.match(/class="pl-room"/g) || []).length, 4);
 
-  // And a fully-empty, inactive deck draws no glow — but still draws 8 NAMED compartments, which is
-  // the whole point of the package: a deck with no live rooms is still a deck you can look into.
+  // And a fully-empty, inactive deck marks nothing — but still draws 8 compartments, which is the
+  // whole point of the package: a deck with no live rooms is still a deck you can look into.
   const svg7 = overviewScene(baseState({ deck: 7, frame: null, crew: [] }));
-  assert.equal((svg7.match(/id="ov-glow-\d+"/g) || []).length, 0);
+  assert.equal(purposeTiles(svg7), 0);
   assert.equal((svg7.match(/class="pl-room"/g) || []).length, 8);
-  assert.equal((svg7.match(/ROOM [A-Z]\d/g) || []).length, 8);
+  // ⚠️ THE NEUTRAL NAME MOVED OFF THE DRAWING AND INTO THE `compartments` COLUMN, and that is the
+  // design's own arrangement (Screen 01 labels no tile — the prose column names every room). At
+  // ~190 × 70 px a tile cannot hold an 11-character label without covering its own interior, which
+  // is the clip `no-add-room.test.js` measured from the other side. The names are still emitted, by
+  // `compartmentLines`, and `overview-model.test.js` pins that they are all eight and all distinct.
+  assert.equal((svg7.match(/data-anchor="/g) || []).length, 8);
 });
 
 test('on-deck crew are placed as pawns; off-deck crew are not', () => {
@@ -487,14 +520,29 @@ test('WP-8: the work-marker scene is still byte-deterministic', () => {
   assert.equal(s(), s());
 });
 
-test('the selected crew gets a selection glow + amber tag; others do not', () => {
+test('the selected crew is marked, and exactly one of them is', () => {
+  // ⭐ VR-P4 — SELECTION IS A RULE, NOT A GLOW. The warm surface drew a radial amber gradient under
+  // the selected pawn, i.e. a `<defs>` + `<radialGradient>` with an `id` per repaint; the paper
+  // dialect draws a solid ink underline through her feet, which needs no def at all — one fewer id
+  // in a document whose collision-freedom is pinned two tests below. The property is unchanged:
+  // exactly the selected pawn is marked, and no selection marks nobody.
   const cid = crew[0].cid;
   const svg = overviewScene(baseState({ deck: 0, selectedCid: cid }));
-  assert.ok(svg.includes(`id="ov-sel-${cid}"`));               // selection glow gradient present
-  assert.equal((svg.match(/id="ov-sel-/g) || []).length, 1);   // exactly the one selected
-  // no selection → no selection glow at all
+  const sel = /<g class="pl-pawn" data-cid="([^"]+)"><path d="M[^"]*" stroke="#14120F"/g;
+  const marked = [...svg.matchAll(sel)].map((m) => m[1]);
+  assert.deepEqual(marked, [String(cid)], 'the selection rule is under the wrong pawn, or under none');
+  // no selection → nothing marked at all
   const svgNone = overviewScene(baseState({ deck: 0 }));
-  assert.equal((svgNone.match(/id="ov-sel-/g) || []).length, 0);
+  assert.equal([...svgNone.matchAll(sel)].length, 0);
+  // …and the plate's OTHER selection cue: the compartment she is in takes the design's 2.2 px border.
+  const anchor = view[0].slots[0].anchorName;
+  const svgRoom = overviewScene(baseState({ deck: 0, selectedAnchor: anchor }));
+  const selTile = /<g class="pl-room pl-room-sel"[^>]*><rect[^>]*stroke-width="2.2"/g;
+  assert.equal((svgRoom.match(selTile) || []).length, 1,
+    'exactly one compartment tile must carry the SELECTED 2.2px border');
+  assert.equal((svgRoom.match(/<g class="pl-room"[^>]*><rect[^>]*stroke-width="1.4"/g) || []).length, 7,
+    'every OTHER tile must keep the ordinary 1.4px border');
+  assert.equal((overviewScene(baseState({ deck: 0 })).match(selTile) || []).length, 0);
 });
 
 test('terminals on the shown deck render as clickable pl-terminal markers; other decks / none do not', () => {
@@ -550,7 +598,7 @@ test('unknown roomType and unknown glyphs degrade gracefully (no throw, no furni
   };
   const svg = overviewScene({ deck: 3, decksView: [weird], frame: null, crew: [] });
   assert.match(svg, /weird/);
-  assert.equal((svg.match(/id="ov-glow-0"/g) || []).length, 1); // still gets its glow
+  assert.equal((svg.match(/data-purpose="1"/g) || []).length, 1); // still marked as purposed
 
   // A frame full of glyphs NOTHING skins yields no furniture, no throw.
   //
@@ -751,11 +799,13 @@ test('WP-2: the mark layer keeps the scene deterministic and adds no ids', () =>
   // `ov-*` namespace however many marks a deck carries. (The first draft compared id COUNTS against
   // a `frame: null` scene — which has no furniture ids either, so the comparison was vacuous: adding
   // 33 ids to the mark layer would still have passed it.)
-  // The slice runs from the mark layer's open tag to the layer that follows it. That neighbour is
-  // `pl-glow` since the mark layer moved ABOVE `pl-furniture` (see the note on the layer-order test
-  // above); the extraction is anchored on the FOLLOWING layer rather than on a fixed count of `</g>`
-  // so that it fails loudly if the order shifts again instead of silently slicing the wrong bytes.
-  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g><g class="pl-glow"/.exec(svg);
+  // The slice runs from the mark layer's open tag to the layer that follows it. The extraction is
+  // anchored on the FOLLOWING layer rather than on a fixed count of `</g>` so that it fails loudly
+  // if the order shifts instead of silently slicing the wrong bytes. ⚠️ The neighbour used to be
+  // `pl-glow`; the glow layer is deleted with the warm skin, and the mark layer's successor on the
+  // plate is whichever of ghosts/terminals/pawns this fixture produces — so the anchor is the NEXT
+  // top-level `pl-` layer, and the assertion below proves the slice really is the mark layer.
+  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g><g class="pl-/.exec(svg);
   assert.ok(layer, 'the mark layer was not found where the layer order puts it — this pin has rotted');
   assert.ok(layer[1].includes('class="mk mk-'), 'the extracted slice is not the mark layer');
   assert.equal((layer[1].match(/\bid="/g) || []).length, 0,
@@ -814,5 +864,169 @@ test('the Overview draws each mark with ITS OWN tile\'s variant', () => {
         'a REAL defect that nothing catches. Add an asymmetric assertion to both surfaces\' variant ' +
         'tests in the same commit as whatever retuned its coefficients.');
     }
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐ VR-P4 — THE SHIP PLATE. The four properties the redesign added, each pinned where it can bite.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('E6: the compartment grid is DERIVED from the room census, never a fixed four-by-two', () => {
+  // The design draws ONE authored ship as 4 × 2 and the charter files that it "does not generalise
+  // as drawn". The rule is `cols = clamp(ceil(n/2), 1, 6)`, `rows = ceil(n/cols)` — which reproduces
+  // the design exactly at the shipped n = 8 and stays legible as n grows.
+  assert.deepEqual(
+    [1, 2, 3, 4, 8, 9, 12, 13, 20].map((n) => {
+      const g = gridLayout(n);
+      return [n, g.cols, g.rows, g.cells];
+    }),
+    [
+      [1, 1, 1, 1], [2, 1, 2, 2], [3, 2, 2, 4], [4, 2, 2, 4],
+      [8, 4, 2, 8],                       // ← the design's own shape, and the shipped one
+      [9, 5, 2, 10], [12, 6, 2, 12],
+      [13, 6, 3, 18], [20, 6, 4, 24],     // ← the cap holds; extra rows shrink INSIDE the box
+    ],
+    'the grid derivation moved — the design shape at n=8 and the column cap are both load-bearing');
+
+  // THE BOX IS FIXED AND THE ROWS SHRINK INTO IT, so the hull never has tiles hanging out of it.
+  for (const n of [1, 8, 13, 20]) {
+    const g = gridLayout(n);
+    assert.ok(g.tileW > 0 && g.tileH > 0, `n=${n} produced a degenerate tile`);
+    assert.ok(g.rows * g.tileH + (g.rows - 1) * 22.8 <= DECK.h + 0.01,
+      `n=${n} lays ${g.rows} rows outside the grid box`);
+    assert.ok(g.cols * g.tileW + (g.cols - 1) * 12.6 <= DECK.w + 0.01,
+      `n=${n} lays ${g.cols} columns outside the grid box`);
+  }
+  // …and hostile input does not throw or produce a NaN grid.
+  for (const bad of [null, undefined, NaN, -3, 'x', {}]) {
+    const g = gridLayout(/** @type {any} */ (bad));
+    assert.ok(g.cols >= 1 && g.rows >= 1 && Number.isFinite(g.tileW));
+  }
+});
+
+test('E6: a census that does not fill its last row leaves DASHED EMPTY cells, not blank paper', () => {
+  // 3 compartments ⇒ 2 × 2 ⇒ one empty cell. An empty grid slot must SAY it is empty (the design's
+  // dashed third tile); leaving it blank makes a partly-built deck look like a fully-built one.
+  const mk = (i) => ({
+    ...view[0].slots[0], slotIndex: i, roomType: 5, anchorName: 'a' + i, displayName: 'A' + i,
+    rect: { x: i * 8, y: 0, w: 6, h: 5 },
+  });
+  const svg = overviewScene(baseState({
+    deck: 4, decksView: [{ deck: 4, slots: [mk(0), mk(1), mk(2)] }], frame: null, crew: [],
+  }));
+  assert.equal((svg.match(/class="pl-room"/g) || []).length, 3);
+  assert.equal((svg.match(/class="pl-room-empty"/g) || []).length, 1,
+    'the unfilled grid cell drew nothing at all — a partly-built deck reads as a full one');
+  // …and a census that fills its grid exactly leaves none.
+  const full = overviewScene(baseState({
+    deck: 4, decksView: [{ deck: 4, slots: [mk(0), mk(1), mk(2), mk(3)] }], frame: null, crew: [],
+  }));
+  assert.equal((full.match(/class="pl-room-empty"/g) || []).length, 0);
+});
+
+test('the PIECEWISE transform: project ∘ invert is identity INSIDE a compartment, and the tile that '
+  + 'is inside none is the KNOWN LIMIT', () => {
+  const slots = view[0].slots;
+  const t = makeTransform(slots, frame);
+
+  // (a) IDENTITY, for a tile in every compartment — the property the order verbs' click→tile path
+  //     (BUG-B's `getScreenCTM().inverse()` route) actually needs.
+  let checked = 0;
+  for (const s of slots) {
+    for (const [dx, dy] of [[0.5, 0.5], [1.5, 2.5], [s.rect.w - 0.5, s.rect.h - 0.5]]) {
+      const tx = s.rect.x + dx, ty = s.rect.y + dy;
+      const [sx, sy] = t.project(tx, ty);
+      const [bx, by] = t.invert(sx, sy);
+      assert.ok(Math.abs(bx - tx) < 1e-6 && Math.abs(by - ty) < 1e-6,
+        `tile ${tx},${ty} in ${s.anchorName} did not round-trip (got ${bx},${by})`);
+      checked += 1;
+    }
+  }
+  assert.ok(checked >= 24, `only ${checked} tiles round-tripped — this assertion is reading nothing`);
+
+  // (b) …and each of those points really lands in ITS OWN compartment's cell, which is the whole
+  //     reason the transform is piecewise: a single affine map would put compartment 7's tiles in
+  //     compartment 3's box and the drawing would be a lie.
+  // ⚠️ THE SAMPLE IS THE RECT'S CENTRE, NOT ITS ORIGIN, and that is a fact about the SHIP rather
+  // than a convenience: adjacent compartments SHARE a wall column on this fixture (`quarters` runs
+  // x 0..11 and `mess` x 11..22), so the tile at a rect's origin is covered by two slots and the
+  // transform resolves it to the first — which is the only answer a piecewise map can give and is
+  // why `hitTest`'s DOM tier, not this arithmetic, decides which room a click enters.
+  const shared = slots.filter((s) => slots.some((o) => o !== s
+    && s.rect.x >= o.rect.x && s.rect.x < o.rect.x + o.rect.w
+    && s.rect.y >= o.rect.y && s.rect.y < o.rect.y + o.rect.h));
+  assert.ok(shared.length >= 1, 'no compartment shares a wall column — the caveat above has rotted');
+  for (const s of slots) {
+    const cell = t.cellOf(s);
+    const [sx, sy] = t.project(s.rect.x + s.rect.w / 2, s.rect.y + s.rect.h / 2);
+    assert.ok(sx >= cell.x && sx <= cell.x + cell.w && sy >= cell.y && sy <= cell.y + cell.h,
+      `${s.anchorName}'s own centre tile projected outside its own grid cell`);
+  }
+
+  // (c) THE KNOWN LIMIT, ASSERTED SO IT CANNOT BE FORGOTTEN RATHER THAN FIXED SILENTLY. A tile
+  //     inside no compartment has nowhere on the plate to be, so `invert` never returns one: every
+  //     point in the grid box comes back as a tile inside some slot.
+  const covers = (tx, ty) => slots.some((s) => tx >= s.rect.x && tx < s.rect.x + s.rect.w
+    && ty >= s.rect.y && ty < s.rect.y + s.rect.h);
+  let sampled = 0;
+  for (let i = 0; i <= 20; i += 1) {
+    for (let j = 0; j <= 8; j += 1) {
+      const px = DECK.x + (DECK.w * i) / 20, py = DECK.y + (DECK.h * j) / 8;
+      const [tx, ty] = t.invert(px, py);
+      // Points fall in the gaps BETWEEN cells too; those resolve through the fallback and are not
+      // part of the claim. What must never happen is a point INSIDE a cell resolving to a tile the
+      // cell's compartment does not contain.
+      const cell = t.cells.find((c) => px >= c.cell.x && px <= c.cell.x + c.cell.w
+        && py >= c.cell.y && py <= c.cell.y + c.cell.h);
+      if (!cell) continue;
+      sampled += 1;
+      assert.ok(covers(Math.floor(tx), Math.floor(ty)) || Math.floor(tx) === cell.rect.x + cell.rect.w
+        || Math.floor(ty) === cell.rect.y + cell.rect.h,
+        `a click at ${px},${py} inside ${cell.slot.anchorName}'s cell resolved to ${tx},${ty}, `
+        + 'which that compartment does not contain');
+    }
+  }
+  assert.ok(sampled >= 40, `only ${sampled} in-cell points sampled — the limit leg is reading nothing`);
+});
+
+test('⭐⭐ D5 RE-HOUSED: a compartment that needs attention takes the OXBLOOD DASHED border, and '
+  + 'nothing else on the plate does', () => {
+  const anchor = view[0].slots[2].anchorName;
+  const svg = overviewScene(baseState({ deck: 0, attentionAnchors: [anchor] }));
+  // The tile is marked as a group AND drawn in the dialect — a class alone would be a state nothing
+  // renders, which is `invisible-feedback-is-FUNCTIONAL` in its cheapest form.
+  assert.equal((svg.match(/class="pl-room pl-room-attend"/g) || []).length, 1);
+  const tile = /<g class="pl-room pl-room-attend"[^>]*data-anchor="([^"]+)"[^>]*><rect[^>]*stroke="#7B2C22"[^>]*stroke-dasharray="8 5"/.exec(svg);
+  assert.ok(tile, 'the attention tile is not drawn in oxblood + the queued-order dash (charter §1)');
+  assert.equal(tile[1], anchor, 'the oxblood border landed on the wrong compartment');
+  // NON-VACUITY / NEGATIVE CONTROL: with nothing stuck, no tile is in the accent at all.
+  const calm = overviewScene(baseState({ deck: 0 }));
+  assert.equal((calm.match(/pl-room-attend/g) || []).length, 0);
+  assert.equal((calm.match(/<g class="pl-room[^"]*"[^>]*><rect[^>]*stroke="#7B2C22"/g) || []).length, 0,
+    'a tile is drawn in the accent with nothing wrong — the one accent has been spent on nothing');
+  // …and a CONDEMNED tile puts its own compartment in the accent too, from the marks channel alone.
+  const s0 = view[0].slots[0];
+  const condemned = overviewScene(baseState({
+    deck: 0, marks: [{ x: s0.rect.x, y: s0.rect.y, deck: 0, kind: 3, mark: 'condemn' }],
+  }));
+  assert.match(condemned, /class="pl-room pl-room-attend"[^>]*data-anchor="[^"]*"/);
+});
+
+test('the STARFIELD is the persistent skeleton layer and is NEVER in the repainted scene string', () => {
+  // ⛔ THE WHOLE POINT OF THE SPLIT. The scene is `innerHTML`-swapped on every 10 Hz wire frame; a
+  // CSS-animated field written into that string restarts its drift ten times a second, which reads
+  // as a static field with a stutter. So `starLayerSvg` is injected ONCE into `.ov-space` and the
+  // scene must contain none of it.
+  const field = starLayerSvg();
+  assert.match(field, /class="ov-stars"/);
+  assert.equal((field.match(/ov-stars-drift/g) || []).length, 3, 'the three parallax layers are the design\'s');
+  assert.match(field, /fill="#14120F"/, 'the field is INK ON PAPER now — no cream stars in this dialect');
+  assert.equal((field.match(/opacity="0.5"|opacity="0.34"|opacity="0.2"/g) || []).length, 3,
+    'the measured parallax opacities (.5/.34/.2) moved');
+  const svg = overviewScene(baseState({ deck: 0 }));
+  for (const token of ['ov-stars', 'pl-stars', 'ov-stars-drift']) {
+    assert.ok(!svg.includes(token),
+      `the scene string carries "${token}" — the drifting field is back inside the repaint and its `
+      + 'animation now restarts at the wire\'s render rate');
   }
 });

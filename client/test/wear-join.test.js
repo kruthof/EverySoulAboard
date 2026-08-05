@@ -336,14 +336,18 @@ test('the Level-1 Overview paints a wrecked machine as its twin — driven, not 
 
   // …and it is the RIGHT twin, byte-identical to what `buildWrecked` gives for that id with the
   // surface's own idPrefix. `notEqual` alone would pass for ANY difference, including a bug.
-  const opts = { w: 0, h: 0, idPrefix: `ov-f${TX}-${TY}` };
+  // ⭐ VR-P4 — the idPrefix gained a SLOT segment (`ov-s<slot>-f<x>-<y>`). The plate draws each
+  // compartment's fittings inside that compartment's own nested `<svg>`, and two compartments can
+  // legitimately hold the same tile coordinates of a different room, so the namespace has to name
+  // the tile AND the room it is drawn in or the ids would collide across cells.
+  const opts = { w: 0, h: 0, idPrefix: `ov-s0-f${TX}-${TY}` };
   const side = /translate\([^)]*\)">(<g class="pl-item">)/.test(wrecked);
   assert.ok(side, 'the furniture layer no longer wraps its pieces the way this test reads them');
   // The side length is a function of the transform, so rebuild with the scene's own by extracting
   // the piece fragment and comparing the DEFS/BODY shape through a size-free probe: both builders
   // are pure in `w`/`h`, so equality of the ID NAMESPACE plus the twin's distinguishing marks is the
   // strongest size-independent statement available here.
-  assert.ok(wrecked.includes(`id="ov-f${TX}-${TY}__0"`),
+  assert.ok(wrecked.includes(`id="ov-s0-f${TX}-${TY}__0"`),
     'the piece on the device tile is not namespaced by this surface — the fixture missed the tile');
   const twinMarks = buildWrecked('o2-scrubber', opts).match(/fill="([^"]+)"/g) || [];
   const pieceMarks = buildItem('o2-scrubber', opts).match(/fill="([^"]+)"/g) || [];

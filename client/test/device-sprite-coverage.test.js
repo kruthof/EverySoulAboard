@@ -947,6 +947,32 @@ const ROOMS_JSON = '{"type":"rooms","rooms":[["quarters",1,0.209,512,101.3,293,9
 const VIEW = decksView(decodeDecks(decode(DECKS_JSON)), decodeRooms(decode(ROOMS_JSON)));
 const QUARTERS = roomTileRect(VIEW, 'quarters');
 
+/**
+ * ⭐ VR-P4 — A ONE-TILE OVERVIEW PROBE, PLACED INSIDE A COMPARTMENT.
+ *
+ * ⚠️ THE OLD PROBE WAS `{deck:1, w:1, h:1, cells:[[code,…]]}` — a single tile at (0,0) — AND THE SHIP
+ * PLATE CANNOT DRAW IT, by design rather than by bug. The plate is a GRID OF COMPARTMENTS: a
+ * fitting is drawn inside the miniature interior of the room that contains it, so a tile that is
+ * inside NO compartment has nowhere on the plate to be (the module header states that limit, and
+ * `makeTransform`'s inverse is pinned against it). Tile (0,0) is outside every deck-1 slot rect on
+ * this fixture, so every probe drew nothing and every assertion here would have failed for a reason
+ * that has nothing to do with art coverage.
+ *
+ * So the probe now puts the glyph at the FIRST TILE OF THE FIRST COMPARTMENT of deck 1, which is
+ * where a real device would be. The property under test is unchanged — "the composer draws art for
+ * this glyph" — and the fixture is now capable of expressing it.
+ */
+const OV_DECK = 1;
+const OV_SLOT = (VIEW.find((d) => d.deck === OV_DECK) || { slots: [] }).slots[0];
+function ovProbe(code) {
+  const r = OV_SLOT.rect;
+  const w = r.x + r.w, h = r.y + r.h;
+  const cells = new Array(w * h);
+  for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];   // floor everywhere else
+  cells[r.y * w + r.x] = [code, 8, 0, 0];
+  return { type: 'frame', deck: OV_DECK, w, h, lens: 'none', cells };
+}
+
 /** A frame for deck `d` whose (x,y) cells carry the given glyph chars, everything else floor. */
 function frameWith(placements, deck = 1, w = 24, h = 20) {
   const cells = new Array(w * h);
@@ -972,8 +998,8 @@ test('the Room Zoom MODEL skins every covered kind — no unknown chip (roomCell
 test('the Overview COMPOSER draws furniture for every covered kind (overviewScene, driven)', () => {
   const missing = [];
   for (const k of COVERED) {
-    const probe = { deck: 1, w: 1, h: 1, lens: 'none', cells: [[FOR_DEVICE[k].charCodeAt(0), 8, 0, 0]] };
-    const svg = overviewScene({ deck: 1, decksView: VIEW, frame: probe, crew: [], marks: [] });
+    const probe = ovProbe(FOR_DEVICE[k].charCodeAt(0));
+    const svg = overviewScene({ deck: OV_DECK, decksView: VIEW, frame: probe, crew: [], marks: [] });
     if (!svg.includes('class="pl-furniture"')) missing.push(`${k} (${JSON.stringify(FOR_DEVICE[k])})`);
   }
   assert.deepEqual(missing, [],
@@ -1079,8 +1105,8 @@ test('the CORPSE glyph reaches the OVERVIEW composer too (overviewScene, driven)
   // The Overview has no unknown-chip fallback — `furnitureLayer` does `if (!itemId) continue` — so a
   // corpse missing here is SILENT. The whole reason for the shared `NON_FURNITURE_CODES` import is
   // that a fix applied to one file would leave this leg red and nobody looking.
-  const probe = { deck: 1, w: 1, h: 1, lens: 'none', cells: [[CORPSE_GLYPH.charCodeAt(0), 8, 0, 0]] };
-  const svg = overviewScene({ deck: 1, decksView: VIEW, frame: probe, crew: [], marks: [] });
+  const probe = ovProbe(CORPSE_GLYPH.charCodeAt(0));
+  const svg = overviewScene({ deck: OV_DECK, decksView: VIEW, frame: probe, crew: [], marks: [] });
   assert.ok(svg.includes('class="pl-furniture"'),
     'THE OVERVIEW DREW NOTHING for a corpse. Either 38 is back in this surface\'s NON_FURNITURE, or\n'
     + 'the two surfaces have come to disagree about what "not furniture" means — which is exactly\n'
@@ -1099,8 +1125,8 @@ test('EVERY glyph the registry skins is drawn by BOTH surfaces — no surface fi
     const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
     const cells = roomCells({ deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 0, 0, 0]] }, focus);
     if (cells.length !== 1 || !cells[0].itemId) lost.roomZoom.push(JSON.stringify(g));
-    const probe = { deck: 1, w: 1, h: 1, lens: 'none', cells: [[code, 8, 0, 0]] };
-    const svg = overviewScene({ deck: 1, decksView: VIEW, frame: probe, crew: [], marks: [] });
+    const probe = ovProbe(code);
+    const svg = overviewScene({ deck: OV_DECK, decksView: VIEW, frame: probe, crew: [], marks: [] });
     if (!svg.includes('class="pl-furniture"')) lost.overview.push(JSON.stringify(g));
   }
   assert.deepEqual(lost, { roomZoom: [], overview: [] },

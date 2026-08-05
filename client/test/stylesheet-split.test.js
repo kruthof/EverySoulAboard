@@ -136,8 +136,17 @@ test('⭐ no var() fallback disagrees with the value the cascade actually resolv
       }
     });
   }
-  // NON-VACUITY BY INCLUSION: the surface files really are full of these.
-  assert.ok(checked >= 80, `only ${checked} var() fallbacks scanned — the scan is reading nothing`);
+  // NON-VACUITY BY INCLUSION: the surface files really do carry these.
+  //
+  // ⚠️ THE FLOOR WAS 80 AND IS NOW RE-MEASURED, AND THE REASON IS THE RIGHT DIRECTION. VR-P4
+  // rewrote `overview.css` in the paper idiom and wrote every token reference as a BARE `var(--x)`
+  // with no fallback at all — which is the state this test exists to push the stylesheet towards: a
+  // fallback is a second theme that nothing keeps in step, and the only fallback that cannot
+  // disagree with the cascade is the one that is not written. So the population shrank because the
+  // defect class shrank. The floor is re-measured on this tree (39 across the five surface files)
+  // and kept as a floor rather than an equality, so a file that stops being scanned at all still
+  // fails loudly. ⛔ Do not raise it back by adding fallbacks.
+  assert.ok(checked >= 30, `only ${checked} var() fallbacks scanned — the scan is reading nothing`);
   assert.deepEqual(fails, [], fails.join('\n'));
 });
 

@@ -53,7 +53,7 @@ import {
   SLOT_COLS,
 } from '../src/ui/decks-model.js';
 import { roomTileRect, crewRoomSlot } from '../src/ui/room-model.js';
-import { overviewClickAction, lensSlotTint, GRADE_TINT, currentRoom } from '../src/ui/overview-model.js';
+import { overviewClickAction, lensSlotTint, GRADE_TINT, currentRoom, compartmentLines } from '../src/ui/overview-model.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 
 const src = (p) => readFileSync(fileURLToPath(new URL('../src/' + p, import.meta.url)), 'utf8');
@@ -126,6 +126,14 @@ test('⭐ M1-L DRIVEN: a compartment holding wrecked machinery is now NAMED and 
 
 test('M1-L DRIVEN: the wreck Overview draws EIGHT named compartments on deck 0 and NO ＋ADD ROOM box', () => {
   const svg = overviewScene({ deck: 0, decksView: WVIEW, frame: null, crew: [], marks: [] });
+  // ⭐ VR-P4 — THE NAME MOVED OFF THE TILE AND INTO THE `compartments` COLUMN, which is the design's
+  // own arrangement (Screen 01 labels no tile; the prose column names every room). It is a
+  // RE-HOUSING and not a loss, and it is asserted as one: `compartmentLines` is the single
+  // derivation both the column and the tile's attention border run on, so the names below are read
+  // out of it rather than out of the drawing. It is also the fix for this very test's neighbour —
+  // the 11-character clip budget measured further down — because a prose column has no clip at all.
+  const named = compartmentLines(WVIEW, 0, [], null);
+  assert.equal(named.length, 8, 'the compartments column does not name all eight');
   assert.equal((svg.match(/class="pl-room"/g) || []).length, 8, 'deck 0 no longer draws 8 compartments');
   assert.equal((svg.match(/class="pl-hall"/g) || []).length, 0);
   assert.equal((svg.match(/class="pl-addroom"/g) || []).length, 0);
@@ -136,14 +144,20 @@ test('M1-L DRIVEN: the wreck Overview draws EIGHT named compartments on deck 0 a
   const untyped = WDECK0.slots.filter((s) => s.roomType === 0);
   assert.equal(untyped.length, 5, 'the wreck deck 0 has five untyped compartments (the owner\'s "5 of 8")');
   for (const s of untyped) {
-    assert.ok(svg.includes(s.displayName), `${s.anchorName} draws no label ("${s.displayName}")`);
+    const line = named.find((l) => l.anchorName === s.anchorName);
+    assert.ok(line && line.name.includes(s.displayName),
+      `${s.anchorName} is not named in the compartments column ("${s.displayName}")`);
     assert.ok(svg.includes(`data-anchor="${s.anchorName}"`),
       `${s.anchorName} draws no data-anchor, so a click on it cannot hit-test to a room`);
   }
   // …and the three AUTHORED purposes still win over the neutral name — the rule's first branch.
   for (const [anchor, label] of [['cryobay', 'CRYO BAY'], ['reactor', 'REACTOR'], ['lifesupport', 'LIFE SUPPORT']]) {
-    assert.ok(svg.includes(label), `${anchor} lost its authored name "${label}" to the neutral one`);
+    assert.ok(named.some((l) => l.name.includes(label)),
+      `${anchor} lost its authored name "${label}" to the neutral one`);
   }
+  // NON-VACUITY: the eight names are eight DIFFERENT names. A rule that returned one string for all
+  // of them would satisfy every `includes` above.
+  assert.equal(new Set(named.map((l) => l.name)).size, 8, 'two compartments share a name');
 });
 
 // ═══════════════════════════════════════════════════════════ 2. THE TOTALITY LEG (no hole anywhere)
@@ -481,27 +495,30 @@ test('M1-L: the neutral compartment name FITS its label slot — the clip budget
 // is never anything but a constant) arriving as a SIDE EFFECT rather than as a feature, and nothing
 // in the suite could see it because nothing pinned what the flag was worth.
 
-test('M1-L: the glow pools keep the EXACT set they had — a widened flag must not light the dead deck', () => {
-  // MEASURED on `--ship wreck` with the glow still reading `occupied`: pools go 3 → 8 on deck 0 and
+test('M1-L: the PURPOSE mark keeps the EXACT set the glow had — a widened flag must not light the dead deck', () => {
+  // ⭐ VR-P4 — the amber glow pool is gone with the warm skin and the SAME PREDICATE now picks the
+  // tile's shell treatment (`data-purpose`, solid ink vs the UNBUILT dash). Every number below is
+  // the number this test always asserted.
+  // MEASURED on `--ship wreck` with the signal still reading `occupied`: it goes 3 → 8 on deck 0 and
   // 0 → 8 on DECK 1, which is unpowered, airless, sealed, and dead by owner decision (OD-E).
+  const marks = (svg) => (svg.match(/data-purpose="1"/g) || []).length;
   for (const d of WVIEW) {
     const svg = overviewScene({ deck: d.deck, decksView: WVIEW, frame: null, crew: [], marks: [] });
-    const glows = (svg.match(/id="ov-glow-\d+"/g) || []).length;
     const purposed = d.slots.filter((s) => s.roomType !== 0).length;
-    assert.equal(glows, purposed,
-      `deck ${d.deck} draws ${glows} glow pools for ${purposed} purposed compartments. The glow is a `
+    assert.equal(marks(svg), purposed,
+      `deck ${d.deck} marks ${marks(svg)} tiles for ${purposed} purposed compartments. The mark is a `
       + 'claim about the ship\'s state, not about its floor plan.');
   }
   // The two decisive numbers, written out so a future edit cannot drift them quietly.
   const deck1 = WVIEW.find((d) => (d.deck | 0) === 1);
   assert.equal(deck1.slots.filter((s) => s.roomType !== 0).length, 0, 'the wreck\'s dead deck gained a purposed room');
   const svg1 = overviewScene({ deck: 1, decksView: WVIEW, frame: null, crew: [], marks: [] });
-  assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, 0,
-    'the DEAD DECK is lit by eight amber pools — `occupied` is back in the glow predicate');
-  // NON-VACUITY: deck 0 really does glow, so "0 on deck 1" is not "the layer is switched off".
+  assert.equal(marks(svg1), 0,
+    'the DEAD DECK is marked purposed in all eight tiles — `occupied` is back in the predicate');
+  // NON-VACUITY: deck 0 really is marked, so "0 on deck 1" is not "the signal is switched off".
   const svg0 = overviewScene({ deck: 0, decksView: WVIEW, frame: null, crew: [], marks: [] });
-  assert.equal((svg0.match(/id="ov-glow-\d+"/g) || []).length, 3,
-    'deck 0 lost its glow pools too — this test is measuring a dead layer, not a correct predicate');
+  assert.equal(marks(svg0), 3,
+    'deck 0 lost its purpose marks too — this test is measuring a dead layer, not a correct predicate');
 });
 
 test('M1-L: `active` still means "this deck is alive" — the POWER lens must not green the dead deck', () => {
