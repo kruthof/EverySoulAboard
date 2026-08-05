@@ -394,8 +394,14 @@ function element(el, { stroke, fill, sw, cap, join, dash, opacity }) {
  *
  * @param {Array<{d?:string, ellipse?:number[], rect?:number[], sw?:number, stroke?:string,
  *   fill?:string, cap?:string, join?:string, dash?:string, opacity?:number}>} paths
+ * ⚠️ `halo: false` emits the INK PASS ALONE. That is not a shortcut a caller may take to save bytes
+ * over art — it is the design's own treatment where a figure stands on bare paper with nothing
+ * behind it to knock out (`Perilune Game.dc.html` line 261, the crew dock: `fill="none"
+ * stroke="#14120F"`, one pass). The option lives here rather than in the caller so a single-pass
+ * figure and a two-pass one are still emitted from ONE element writer.
+ *
  * @param {object} [opts] knockout('#EBE4D1') · widen(3.0) · ink('#14120F' default per-element
- *   stroke) · sw (default per-element stroke width, 1.2)
+ *   stroke) · sw (default per-element stroke width, 1.2) · halo(true)
  * @returns {string} the knockout `<g>` followed by the ink elements — halo FIRST, always
  */
 export function ghost(paths, opts = {}) {
@@ -407,9 +413,10 @@ export function ghost(paths, opts = {}) {
   const defaultInk = o.ink == null ? INK : o.ink;
   const defaultSw = o.sw == null ? 1.2 : o.sw;
 
-  const halo = list.map((p) => element(p, {
-    stroke: knock, fill: knock, sw: n((p.sw == null ? defaultSw : p.sw) + widen), cap: 'round',
-  })).join('');
+  const halo = o.halo === false ? '' : `<g stroke-linejoin="round" stroke-linecap="round">${
+    list.map((p) => element(p, {
+      stroke: knock, fill: knock, sw: n((p.sw == null ? defaultSw : p.sw) + widen), cap: 'round',
+    })).join('')}</g>`;
   const ink = list.map((p) => element(p, {
     stroke: p.stroke == null ? defaultInk : p.stroke,
     fill: p.fill == null ? 'none' : p.fill,
@@ -420,5 +427,5 @@ export function ghost(paths, opts = {}) {
     opacity: p.opacity,
   })).join('');
 
-  return `<g stroke-linejoin="round" stroke-linecap="round">${halo}</g>${ink}`;
+  return halo + ink;
 }

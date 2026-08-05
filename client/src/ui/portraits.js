@@ -68,7 +68,27 @@ export function portraitElement(portrait) {
   }
   const el = document.createElement('div');
   el.className = 'portrait silhouette';
-  el.style.background = `linear-gradient(160deg, hsl(${portrait.hue} 45% 32%), hsl(${(portrait.hue + 40) % 360} 40% 18%))`;
+  // ── INK ON PAPER (visual redesign, package P5) ──────────────────────────────────────────────
+  // The silhouette used to be a saturated HSL gradient with cream initials over it — the warm skin's
+  // vocabulary. Left alone it would sit in the dossier next to the new ink figures as the one
+  // old-palette object on the surface, which is exactly the kind of half-migrated screen the redesign
+  // is meant to remove. It is retinted, NOT rebuilt: the resolver above is untouched, `hue` is still
+  // the same deterministic number, and it still varies per soul — it now chooses among the charter's
+  // three inset papers (§1) instead of spanning the colour wheel. The FULL portrait panel (the
+  // design's Screen 04) is M4's Persona window and is deliberately not built here.
+  //
+  // Written as inline style rather than as a rule in `styles/console.css`: this card lives in the
+  // DEPRECATED console shell, which is closed to new work, and an inline style beats the shell's own
+  // `color: var(--txt-onacc)` / `border: 1px solid var(--ln-chip)` without editing it.
+  el.style.background = PAPER_INSETS[portrait.hue % PAPER_INSETS.length];
+  el.style.color = SILHOUETTE_INK;
+  el.style.borderColor = SILHOUETTE_BORDER;
   el.textContent = portrait.initials;
   return el;
 }
+
+/** The charter's three inset papers (§1 `PAPER.inset1/2/3`), the whole range a silhouette varies over. */
+const PAPER_INSETS = Object.freeze(['#DED6C2', '#DCD3BE', '#E1D9C5']);
+/** `INK.ink` and `PAPER.border` (charter §1). Literals: this module is imported by pure node tests. */
+const SILHOUETTE_INK = '#14120F';
+const SILHOUETTE_BORDER = '#C6BBA2';
