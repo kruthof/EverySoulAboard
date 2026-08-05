@@ -40,9 +40,10 @@ measured on this tree at `8186cad`.
 - **Halo text**: `stroke #EBE4D1 stroke-width 3.4 paint-order stroke` for labels over art.
   Glyphs not in Space Mono (⚠/△/blocks) are drawn as paths, never font glyphs (de-DE /
   fallback-advance trap, `.c-bar` width pins).
-- **Pawns**: each stroke path emitted TWICE — knockout halo `#EBE4D1` ~3× width, then ink
-  `#14120F` — via a `ghost()` wrapper over ONE path list. Same generator serves portrait
-  scale and board scale.
+- **Pawns**: each stroke path emitted TWICE — knockout halo `#EBE4D1` at ink width **+3.0
+  (additive, measured from the doc: 1.4→4.4, 1.0→4.0)**, then ink `#14120F` — via a
+  `ghost()` wrapper over ONE path list. Same generator serves portrait scale and board
+  scale.
 - **Engraved cell gauge**: filled = `background #14120F`; empty = `inset 0 0 0 1px
   rgba(20,18,15,.4)` + 45° micro-hatch. 8 cells (ship gauges) / 10 cells (MOSS load).
 - **Animations**: `j4drift` starfield (ink dots on paper — retint existing `plnStarDrift`),
