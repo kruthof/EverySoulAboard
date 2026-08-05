@@ -32,22 +32,40 @@ mkdirSync(OUT, { recursive: true });
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 const NUM = new Map(FIXTURE_IDS.map((id, i) => [id, String(i + 1).padStart(2, '0')]));
 
-/** The dimension line the design document's footer asks for: a box, plus a mounting height. */
+/**
+ * The dimension line the design document's footer asks for — THE OBJECT, plus where it is fixed.
+ *
+ * ⛔ IT IS `SPECS[id].dim`, READ, NOT COMPUTED FROM `w × d × h` AND `z0`. That is what this function
+ * used to do and it was wrong on ten of the eleven rows that carry a `z0`, on the one artifact the
+ * set is judged from: `w × d × h` is the PICTURE's box — it holds the wall stub, the frame and the light
+ * spill — and `z0` is the lowest z the DRAWING puts ink at, which for a hung piece is below the
+ * fitting. A 240 × 14 × 14 conduit tray hung at 220 cm captioned "264 × 26 × 248 CM, HUNG 204".
+ *
+ * ⛔ AND IT IS NOT RE-TYPED HERE EITHER. A table of true dimensions in this tool would be a second
+ * source of truth that no test and no render can contradict; the string lives beside the painter
+ * whose numbers it describes, and this tool prints it.
+ */
 function dimensionLine(id) {
   const s = SPECS[id];
-  const box = s.round ? `∅ ${s.w} × ${s.h} CM` : `${s.w} × ${s.d} × ${s.h} CM`;
   const plane = STUB_PLANE[id];
-  if (!plane) return `${box} · TAKES FLOOR`;
-  const z0 = s.z0 == null ? 0 : s.z0;
-  return z0 > 0 ? `${box}, HUNG ${z0}` : `${box} · IN A ${plane === 'over' ? 'DECKHEAD' : 'BULKHEAD'}`;
+  if (!plane) return `${s.dim} · TAKES FLOOR`;
+  // The two doors stand ON the deck inside a bulkhead — no `z0`, so no mounting height to give.
+  if (s.z0 == null) return `${s.dim} · IN A ${plane === 'over' ? 'DECKHEAD' : 'BULKHEAD'}`;
+  return s.dim;
 }
+
+/** The drawing's own box, kept in the hint beside `size` — it is real, it is just not the object. */
+const boxLine = (id) => {
+  const s = SPECS[id];
+  return s.round ? `box ∅${s.w} × ${s.h}` : `box ${s.w}×${s.d}×${s.h}`;
+};
 
 const cards = FIXTURE_IDS.map((id) => {
   const svg = PF[camel(id)]({ w: CELL, h: CELL, idPrefix: `sheet-${id}`, state: 'on' });
   return `<figure class="card">
   <header><span class="n">${NUM.get(id)}</span><span class="name">${id}</span></header>
   <svg width="${CELL}" height="${CELL}" viewBox="0 0 ${CELL} ${CELL}">${svg}</svg>
-  <figcaption><span>${dimensionLine(id)}</span><span class="hint">size ${SIZES[id].w}×${SIZES[id].h}</span></figcaption>
+  <figcaption><span class="dim">${dimensionLine(id)}</span><span class="hint">${boxLine(id)} · size ${SIZES[id].w}×${SIZES[id].h}</span></figcaption>
 </figure>`;
 }).join('\n');
 
@@ -59,7 +77,12 @@ const CSS = `
   .card header { display: flex; gap: 8px; align-items: baseline; font-size: 10px; letter-spacing: .16em; color: #8A8272; text-transform: uppercase; }
   .card .name { color: ${INK}; letter-spacing: .1em; }
   .card svg { display: block; margin: 6px 0; }
-  figcaption { display: flex; justify-content: space-between; font-size: 8.5px; letter-spacing: .1em; color: ${INK}; border-top: 1px solid rgba(20,18,15,.3); padding-top: 8px; }
+  /* ⚠️ STACKED, NOT justify-between. The dimension line is now the OBJECT's and runs to ~55
+     characters on the doors; side by side with the box hint the two spans interleaved and the
+     caption read as one scrambled number. The line that answers "what is this fitting" gets the
+     card's full width; the picture's own box and size hint sit under it, muted. */
+  figcaption { display: flex; flex-direction: column; gap: 3px; font-size: 8.5px; line-height: 1.45; letter-spacing: .08em; color: ${INK}; border-top: 1px solid rgba(20,18,15,.3); padding-top: 8px; }
+  .dim { font-weight: 700; }
   .hint { color: #A79C86; }`;
 
 writeFileSync(join(OUT, 'paper-fixtures-sheet.html'),

@@ -55,9 +55,22 @@
 // frame at sill height; a floodlight matters mostly for HOW HIGH IT IS MOUNTED. Twelve of the
 // fourteen take no floor at all, and the design document's own footer states the convention for
 // those: *"Wall-hung items … carry their mounting height in the dimension line, since they take no
-// floor."* So each `SPECS` comment carries the dimension line the card would have printed —
+// floor."* So each `SPECS` entry carries a `dim` — the dimension line the card would have printed,
 // `W × D × H CM, HUNG N` — and each hung piece draws the hatched WALL STUB with dashed cut edges
 // that makes the mounting height a fact about the picture rather than a caption (ruling E8 class 6).
+//
+// ⛔ `dim` IS A FIELD AND NOT A COMMENT, AND THAT IS THE WHOLE OF WHY IT EXISTS. It was a comment
+// first, which meant the one surface that PRINTS a dimension line — `client/tools/paper-fixtures-
+// sheet.mjs`, the sheet the owner judges this set on — could not read it and computed its caption
+// from `w × d × h` and `z0` instead. Those two are the PICTURE: the box includes the wall stub, the
+// frame and the light spill, and `z0` is the lowest z the drawing puts ink at, which for a hung
+// piece is under the object (the sconce's rays, the conduit's drop). TEN OF THE ELEVEN ROWS THAT
+// CARRY A `z0` therefore captioned a mounting height that was not the fitting's — counted off the
+// captions themselves, before and after: a conduit tray hung at 220 cm read "HUNG 204", a sconce at
+// 190 read 182, a flood lamp at 240 read 232. (The eleventh, `door-airlock`, printed the right
+// number under the wrong word — SILL 20 as "HUNG 20" — beside a box that was still the picture's.)
+// A field the tool reads is one source of truth; a hand-typed table in the tool would have been a
+// second one, which is the defect one level up.
 //
 // ⚠️ `z0` IS THE LOWEST z THE PIECE DRAWS AT, and this set is where it earns its keep: a sconce whose
 // box ran from the deck would sit in the top third of its tile with two thirds of blank paper under
@@ -84,31 +97,51 @@ import { PAPER_FLAT, DEPTH_RATIO, n as nn } from '../render/oblique.js';
 // SPECS — every fixture's drawn box in centimetres, and its dimension line
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 //
-// `w` across · `d` back · `h` up · `z0` the lowest z drawn. The comment is the DIMENSION LINE — what
-// the object is — and the box is the PICTURE, which includes the frame, the wall stub and the light.
+// `w` across · `d` back · `h` up · `z0` the lowest z drawn — these four are the PICTURE, which
+// includes the frame, the wall stub and the light spill. `dim` is the DIMENSION LINE — what the
+// OBJECT is, and where it is fixed — and it is the string the catalogue sheet prints. The trailing
+// comment on a hung row names what the box holds that the object does not.
+//
+// ⚠️ EVERY NUMBER IN `dim` IS READ OFF THE PAINTER BELOW, NOT OFF THE BOX. A hung piece's mounting
+// height is the lowest z of the FITTING (the conduit tray's `bx` at 220, the screen bezel's at 126,
+// the sconce bowl's mouth at 190) — never `z0`, which is where the drawing's lowest ink is.
 
 export const SPECS = Object.freeze({
   // ── WAYS THROUGH (4) ──
-  'door-sliding':    { w: 132, d: 18, h: 236 },                 // opening 100 × 208 · leaf 2 × 50 × 6 · frame 132 × 18 × 236
-  'door-airlock':    { w: 124, d: 34, h: 158, z0: 20 },         // hatch ∅92 in a ∅112 coaming · 124 × 34 × 138, SILL 20
-  'door-blast':      { w: 156, d: 26, h: 254 },                 // opening 120 × 212 · slab 120 × 14 × 212 · frame 156 × 26 × 254
-  'deck-hatch':      { w: 118, d: 118, h: 74, z0: -8, round: true }, // opening ∅90 · coaming ∅118 × 14 · rail 60 · ladder drops 60+
+  'door-sliding':    { w: 132, d: 18, h: 236,
+    dim: 'opening 100 × 208 · leaf 2 × 50 × 6 · frame 132 × 18 × 236 CM' },
+  'door-airlock':    { w: 124, d: 34, h: 158, z0: 20,
+    dim: 'hatch ∅92 in a ∅112 coaming · 124 × 34 × 138 CM, SILL 20' },
+  'door-blast':      { w: 156, d: 26, h: 254,
+    dim: 'opening 120 × 212 · slab 120 × 14 × 212 · frame 156 × 26 × 254 CM' },
+  'deck-hatch':      { w: 118, d: 118, h: 74, z0: -8, round: true,
+    dim: 'opening ∅90 · coaming ∅118 × 14 CM · rail 60 · ladder drops 60+' },
 
   // ── SERVICES (3) ──
-  'conduit-run':     { w: 264, d: 26, h: 248, z0: 204 },        // tray 240 × 14 × 14 CM, HUNG 220 + wall
-  'vent-grille':     { w: 54, d: 16, h: 262, z0: 190 },         // grille 40 × 40 in a 54 × 12 × 54 frame, HUNG 200 + wall
-  'extractor-fan':   { w: 76, d: 26, h: 266, z0: 190 },         // housing 64 × 18 × 64 · impeller ∅52 CM, HUNG 194 + wall
+  'conduit-run':     { w: 264, d: 26, h: 248, z0: 204,          // + wall
+    dim: 'tray 240 × 14 × 14 CM, HUNG 220' },
+  'vent-grille':     { w: 54, d: 16, h: 262, z0: 190,           // + wall
+    dim: 'grille 40 × 40 in a 54 × 12 × 54 frame, HUNG 200' },
+  'extractor-fan':   { w: 76, d: 26, h: 266, z0: 190,           // + wall
+    dim: 'housing 64 × 18 × 64 · impeller ∅52 CM, HUNG 194' },
 
   // ── WALL FURNITURE (4) ──
-  'hull-port':       { w: 98, d: 18, h: 204, z0: 112 },         // glass ∅58 · frame ∅78 × 14 CM, SILL 116 + hull
-  'bulkhead-screen': { w: 108, d: 14, h: 202, z0: 112 },        // screen 88 × 50 · bezel 100 × 10 × 62 CM, HUNG 126 + wall
-  'arms-rack':       { w: 116, d: 32, h: 152, z0: 46 },         // 110 × 26 × 96 CM, HUNG 44 + wall
-  'deck-marker':     { w: 72, d: 16, h: 226, z0: 192 },         // plate 64 × 8 × 28 on 4 cm lugs, HUNG 194 + wall
+  'hull-port':       { w: 98, d: 18, h: 204, z0: 112,           // + hull
+    dim: 'glass ∅58 · frame ∅78 × 14 CM, SILL 116' },
+  'bulkhead-screen': { w: 108, d: 14, h: 202, z0: 112,          // + wall
+    dim: 'screen 88 × 50 · bezel 100 × 10 × 62 CM, HUNG 126' },
+  'arms-rack':       { w: 116, d: 32, h: 152, z0: 44,           // + wall
+    dim: '110 × 28 × 96 CM, HUNG 44' },
+  'deck-marker':     { w: 72, d: 16, h: 226, z0: 192,           // + wall
+    dim: 'plate 64 × 8 × 28 on 4 cm lugs, HUNG 194' },
 
   // ── LIGHT (3) ──
-  'lamp-sconce':     { w: 46, d: 22, h: 240, z0: 182 },         // bowl 30 × 16 × 14 on a 30 × 32 plate, HUNG 190 + wall
-  'grow-lamp':       { w: 96, d: 38, h: 224, z0: 178 },         // fixture 90 × 30 × 20 CM, HUNG 190 + deckhead
-  'flood-lamp':      { w: 78, d: 44, h: 286, z0: 232 },         // head 40 × 26 × 30 on a knuckle bracket, HUNG 240 + wall
+  'lamp-sconce':     { w: 46, d: 22, h: 240, z0: 182,           // + wall + the spill
+    dim: 'bowl ∅24 × 14 on a 24 × 24 × 8 plate, HUNG 190' },
+  'grow-lamp':       { w: 96, d: 38, h: 224, z0: 178,           // + deckhead + the spill
+    dim: 'fixture 90 × 30 × 20 CM, HUNG 190' },
+  'flood-lamp':      { w: 78, d: 44, h: 286, z0: 232,           // + wall + the cone
+    dim: 'head 40 × 26 × 30 on a knuckle bracket, HUNG 240' },
 });
 
 /** Every paper-fixture id, in this file's own order. */
@@ -515,14 +548,27 @@ const drawBulkheadScreen = (s, { F, hatch, powered }) => {
 };
 export const bulkheadScreen = (opts = {}) => fixture('bulkhead-screen', opts, drawBulkheadScreen);
 
-// 10 ARMS RACK · 110 × 26 × 96, HUNG 44 · "Three arms and a crate. Two lengths, so it is not a fence."
+// 10 ARMS RACK · 110 × 28 × 96, HUNG 44 · "Three arms and a crate. Two lengths, so it is not a fence."
 //
 // The warm piece's own redraw note is kept as the rule here: FOUR identical bars re-average into a
 // stripe pattern at tile size, so this is three arms of two lengths, each with a stock resting on the
 // butt shelf and a barrel standing against the top rail — an arm with a BUTT is what makes a rack a
 // rack rather than a radiator.
 const drawArmsRack = (s, { F, hatch }) => {
-  wallStub(s, F, 'back', 32, 0, 116, 46, 152, hatch);
+  // ⚠️ THE STUB STARTS AT 44, WHICH IS WHERE THE BUTT SHELF STARTS. It was drafted at 46 — so `z0`,
+  // whose whole definition is "the lowest z the piece draws at", was 2 cm ABOVE the lowest z the piece
+  // draws at, and the sheet caption computed from it read HUNG 46 for a rack that hangs at 44.
+  //
+  // ⛔ AND THE BOX PROBE COULD NOT HAVE CAUGHT IT — MEASURED, NOT ASSUMED, because the obvious story
+  // ("it drew outside its box") is false and worth killing before someone repeats it. The shelf stands
+  // 4 cm back from the near face, and 4 cm of depth lifts a point further up the page than 2 cm of
+  // height drops it: through this piece's own frame the shelf's near-bottom corner (3, 4, 44) lands at
+  // y 54.080 against a box bottom of 54.500 — INSIDE by 0.42 px, with `z0` wrong by 2 cm. A guard on
+  // where the ink lands cannot see a datum that is wrong in the direction the projection forgives; the
+  // only instrument for this one is reading the painter, which is what review did.
+  // (At the corrected `z0` the same corner reads 53.210 against 55.500, and the drawn extent grows
+  // 112×109 → 112×111 — so the piece really does redraw, slightly, and its shots are regenerated.)
+  wallStub(s, F, 'back', 32, 0, 116, 44, 152, hatch);
   bx(s, F, 3, 22, 48, 110, 96, 10, { hatch });                        // the back panel
   bx(s, F, 3, 4, 44, 110, 10, 28, { hatch, sw: W.heavy });            // the butt shelf
   // ⚠️ THE ARMS LEAN, THEY DO NOT HANG, AND THE FIRST DRAFT HAD THEM HANGING. With the rail at 124
@@ -556,7 +602,7 @@ const drawArmsRack = (s, { F, hatch }) => {
 };
 export const armsRack = (opts = {}) => fixture('arms-rack', opts, drawArmsRack);
 
-// 11 DECK MARKER · plate 64 × 8 × 28, HUNG 192 · "Which deck, and which way out."
+// 11 DECK MARKER · plate 64 × 8 × 28, HUNG 194 · "Which deck, and which way out."
 //
 // The warm piece set `2 ▸` as 15-px text on a post. Both halves are replaced: the arrow is a PATH
 // (charter §1 — a glyph outside the two shipped faces is drawn, never set) and the legend beside it
@@ -585,7 +631,7 @@ export const deckMarker = (opts = {}) => fixture('deck-marker', opts, drawDeckMa
 // LIGHT — three luminaires that must not be each other at tile size
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-// 12 LAMP, SCONCE · bowl 30 × 16 × 14 on a 30 × 32 plate, HUNG 190 · "Light down a wall, no more."
+// 12 LAMP, SCONCE · bowl ∅24 × 14 on a 24 × 24 × 8 plate, HUNG 190 · "Light down a wall, no more."
 //
 // ⚠️ THE THREE LAMPS ARE SEPARATED BY SILHOUETTE, NOT BY SIZE, and that is a decision made once for
 // all three: `GLYPH_SUBSTITUTE['*']` puts DeviceKind.Light on this piece, so it is the one a player
@@ -596,6 +642,15 @@ export const deckMarker = (opts = {}) => fixture('deck-marker', opts, drawDeckMa
 //
 // The bowl's mouth is a LEVEL ellipse and that is correct: it is a horizontal opening seen from
 // slightly above, the same construction the catalogue's deck lamp uses for its shade.
+//
+// ⛔ THE DIMENSION LINE WAS THE THING THAT WAS WRONG HERE, NOT THE DRAWING, AND IT IS WORTH SAYING
+// WHICH WAY ROUND. It read "bowl 30 × 16 × 14 on a 30 × 32 plate" — a first draft's intent, kept
+// after the render moved the piece. Measured off the ink below: the plate is `bx(11, 14, 208, 24,
+// 24, 8)`, i.e. 24 across × 24 up × 8 deep, flush to the wall at y = 22; and the bowl is a CONE, not
+// a box — its mouth is `disc(…, r 12)`, ∅24, its throat `disc(…, r 4)` at z 204, and the two sit at
+// a constant depth y = 6, so it has no third dimension to give. ∅24 × 14 is what it is. Prose loses
+// to the ink whenever they disagree: the drawing was corrected by looking at the render, and the
+// sentence never was.
 const drawLampSconce = (s, { F, hatch, powered }) => {
   wallStub(s, F, 'back', 22, 0, 46, 182, 240, hatch);
   bx(s, F, 11, 14, 208, 24, 24, 8, { hatch, sw: W.mid });             // the wall plate
@@ -649,7 +704,7 @@ const drawGrowLamp = (s, { F, hatch, powered }) => {
 };
 export const growLamp = (opts = {}) => fixture('grow-lamp', opts, drawGrowLamp);
 
-// 14 FLOOD LAMP · head 40 × 26 × 30 on a knuckle bracket, HUNG 244 · "Aim it at the work."
+// 14 FLOOD LAMP · head 40 × 26 × 30 on a knuckle bracket, HUNG 240 · "Aim it at the work."
 //
 // ⚠️ THE BRACKET IS TWO MEMBERS AND NOT ONE, and the reason is ruling E8 class 1 rather than
 // engineering: a single arm from the wall pad to the yoke is a 30-px diagonal on a 150-px piece —

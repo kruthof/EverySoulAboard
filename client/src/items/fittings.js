@@ -196,11 +196,16 @@ function scaleOf(spec) {
  *
  * ⛔ THIS IS NOT THE DRAWING SCALE — see `BOX_EXTENT` below, which is, and which is what a rule about
  * ink LENGTH inside a tile must be stated against.
+ *
+ * ⭐ AND IT READS `geometryFor(spec).size` RATHER THAN REPEATING THE ARITHMETIC. `geometryFor` was
+ * added below for the sibling paper catalogue and its whole reason for existing is that there is ONE
+ * body of this arithmetic; leaving an identical copy up here, in the same file, is the second
+ * derivation that door was cut to prevent. Measured, not asserted: all thirty ids' `SIZES` and
+ * `BOX_EXTENT` are byte-identical across the change, and `fittings.test.js` re-derives both
+ * independently and is unchanged.
  */
 export const SIZES = Object.freeze(FITTING_IDS.reduce((out, id) => {
-  const [ex, ey] = extents(SPECS[id]);
-  const k = PX_PER_CM.catalogue;
-  out[id] = Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) });
+  out[id] = geometryFor(SPECS[id]).size;
   return out;
 }, {}));
 
@@ -212,11 +217,10 @@ export const SIZES = Object.freeze(FITTING_IDS.reduce((out, id) => {
  * second derivation of the drawing scale is the same defect `frameFor` exists to prevent. The E8-1
  * length rule is stated against this and NOT against `SIZES`: a diagonal in the emitted path data is
  * measured in these px, and dividing it by a footprint at a different scale is a ratio about nothing.
+ * Read from `geometryFor(spec).extent` for the reason `SIZES` above records.
  */
 export const BOX_EXTENT = Object.freeze(FITTING_IDS.reduce((out, id) => {
-  const [ex, ey] = extents(SPECS[id]);
-  const k = scaleOf(SPECS[id]);
-  out[id] = Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) });
+  out[id] = geometryFor(SPECS[id]).extent;
   return out;
 }, {}));
 
