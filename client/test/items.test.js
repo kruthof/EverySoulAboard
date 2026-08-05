@@ -4,9 +4,9 @@
 // classified, and that buildItem() falls back safely. The count is pinned by equality.
 //
 // ⚠️ "THE 70-PIECE WARM SVG SET" WAS THIS FILE'S OPENING CLAUSE AND IS TWICE WRONG NOW, so it is
-// corrected rather than left: the registry is EIGHTY, and it is no longer one set. Thirty rows draw
-// from `client/src/items/fittings.js` in the paper/ink idiom of the visual redesign; the remaining
-// fifty still wear the warm mock's art until charter §3's P2b lands. A file whose header names a
+// corrected rather than left: the registry is EIGHTY-FOUR, and it is no longer one set. Thirty-four
+// rows draw from `client/src/items/fittings.js` in the paper/ink idiom of the visual redesign; the
+// remaining fifty still wear the warm mock's art until charter §3's P2b lands. A file whose header names a
 // count is a file whose header goes stale — the numbers that matter are the assertions below.
 //
 // 60 → 68 on 2026-07-27: the mock was re-imported with a "Resources & loose items" section — the
@@ -63,16 +63,29 @@ function idsIn(svg) {
 // never had, and they are the whole of the move. All nine are COSMETIC; index.js's own section
 // comment measures why (every DeviceKind they could plausibly claim is already claimed above).
 // RE-COUNTED off the shipped registry, not derived from this paragraph.
-test('the registry holds exactly 80 items', () => {
-  assert.equal(ITEM_IDS.length, 80);
-  assert.equal(Object.keys(ITEMS).length, 80);
+// ⚠️ 80 → 84 on 2026-08-05, LATER THE SAME DAY. The owner revised the fittings catalogue to
+// THIRTY-FOUR, adding a "Capsules and cells" section (31 CAPSULE SEALED, 32 CAPSULE OPEN, 33 CELL
+// SOUND, 34 CELL SPENT). Unlike VR-P2's nine, none of these four is decor: they are the paper
+// drawings for `DeviceKind.CryoPod` and `DeviceKind.Battery`, which had been drawing pre-redesign
+// warm art. Three warm rows lost their glyph claims to them (`cryo-capsule-occupied`,
+// `cryo-capsule-open`, `battery-bank`) and were KEPT — see index.js for the measured reason — so this
+// total moved by exactly the four additions and by nothing else. RE-COUNTED off the shipped registry.
+test('the registry holds exactly 84 items', () => {
+  assert.equal(ITEM_IDS.length, 84);
+  assert.equal(Object.keys(ITEMS).length, 84);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource', () => {
+test('the class tally holds: 33 functional, 30 cosmetic, 12 material, 9 resource', () => {
+  // ⚠️ RE-COUNTED AGAIN AFTER THE CAPSULES AND CELLS: FUNCTIONAL 29 → 33, and it is the ONLY class
+  // that moved — the mirror image of VR-P2's move, and the tell that these four are DEVICE art and
+  // the nine before them were decor. All four name a `DeviceKind` the sim really has (`CryoPod`,
+  // `Battery`); three of them claim a glyph the sim really projects and the fourth (`cell-spent`) is
+  // a condition state that reaches the screen through `wear.js`, not through a char.
+
   // ⚠️ RE-COUNTED AGAIN AFTER VR-P2: COSMETIC 21 → 30, and it is the ONLY class that moved. That is
   // the tell that the fittings package was an ADDITION of nine decor rows and not a reclassification
   // — twenty-one further rows changed their PAINTING in the same commit and are invisible here,
@@ -87,18 +100,18 @@ test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 9 });
+  assert.deepEqual(by, { functional: 33, cosmetic: 30, material: 12, resource: 9 });
 });
 
 // ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped
 // builders in one commit and every census in this file stayed still. So the swap is stated as a
 // MEMBERSHIP, both ways — a row that quietly went back to `objects.js`, and a row that quietly
 // arrived from the fittings catalogue, each fail here and name themselves.
-test('exactly the thirty catalogue rows draw from items/fittings.js, and nothing else does', () => {
+test('exactly the thirty-four catalogue rows draw from items/fittings.js, and nothing else does', () => {
   const fromFittings = ITEM_IDS.filter((id) => FITTING_IDS.includes(id));
   assert.deepEqual([...fromFittings].sort(), [...FITTING_IDS].sort(),
     'a fittings-catalogue id is missing from the registry entirely');
-  assert.equal(FITTING_IDS.length, 30, 'the catalogue is thirty pieces');
+  assert.equal(FITTING_IDS.length, 34, 'the catalogue is thirty-four pieces');
   for (const id of FITTING_IDS) {
     assert.equal(ITEMS[id].build, FITTINGS[camelOf(id)],
       `${id} does not draw from its own fittings builder`);

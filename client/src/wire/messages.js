@@ -130,6 +130,22 @@
  * @property {number} morale 0..1 @property {string} task @property {string} portrait
  * @property {number} deck @property {number} x @property {number} y
  * @property {string[]} [traits]  persona traits (APPEND-ONLY trailing field; CREW-tab TRAITS column)
+ * @property {number} [fx]  ⭐ sub-tile GLIDE position — see `fy`
+ * @property {number} [fy]
+ *   ⭐ THE GLIDE (APPEND-ONLY trailing fields). Where the figure is DRAWN while a step is in flight,
+ *   in the SAME COORDINATE SPACE AS `x`/`y` — a tile coordinate with NO half-tile centre offset — so
+ *   a crew member standing still sends `fx === x` and `fy === y` exactly and each view adds its own
+ *   centre offset as it always did. OPTIONAL: a host one version behind omits them, and every
+ *   consumer falls back to `x`/`y` (`Number.isFinite`, never `||` — `fx` of 0 is a real tile).
+ *   The host-side twin of this contract, and the authority on it, is
+ *   `hosts/web/WireFormat.cs`'s `RosterEntry.Fx`; `GameSession.WalkFraction` derives the value.
+ *
+ *   ⛔ WHICH TILE DECIDES WHAT, because the two disagree by up to a FULL TILE mid-walk (the sim
+ *   takes its step first and pays for it over the following ticks, so `x`/`y` lead the body):
+ *   anything DRAWN — and anything that must agree with what is drawn, including the Room Zoom's
+ *   room membership and pawn hit test — uses `fx`/`fy`; anything ADDRESSED TO THE SIM, above all
+ *   `crewClickTarget`'s `Cmd.click`, uses `x`/`y`, because the host resolves a click through
+ *   `Citizen.Pos`. Getting this backwards drew a crew member standing on a compartment's back wall.
  */
 /** @typedef {{type:'roster', crew:RosterEntry[]}} RosterMsg */
 

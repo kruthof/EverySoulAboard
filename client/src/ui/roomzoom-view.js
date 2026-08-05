@@ -62,7 +62,7 @@ import {
   // tile→client box for the one transient that lives outside the SVG).
   roomScene, scenePlacement, roomCutawaySvg, roomHatchDef, roomTitleSvg, roomDimensionsSvg,
   roomDoorsSvg, roomDoorTiles, tileClientBox, M_PER_TILE, ROOM_HEIGHT_M, ROOM_SCALE, RZ_ID,
-  deckSlots, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
+  deckSlots, tileFromCanvasXY, roomCells, roomCrew, crewHitAtTile, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   roomBlockedTiles,
   demolishTarget, removeDecor, escStackRung,
@@ -594,8 +594,13 @@ function repaint() {
 
   // The two caption facts, derived here because here is where a frame is: how much is placed or
   // pending in this room, and how many souls are standing in it (VS-Z-12).
+  // ⭐ `_deviceCond` HERE TOO, AND FOR THE SAME DEFECT IN ITS OTHER COSTUME. This is the caption's
+  // "N OF M FITTINGS BUILT" count; left reading the frame alone it would tick DOWN by one every time
+  // a crew member walked over a fitting, because the glyph she overwrites is the only evidence the
+  // count had. The number and the picture must not be able to disagree about how many things are in
+  // the room — so they are derived from the same call, with the same arguments.
   _capPlaced = roomDesigns(designs, _focus).length
-    + roomCells(frame, _focus).filter((c) => c.itemId).length;
+    + roomCells(frame, _focus, _deviceCond).filter((c) => c.itemId).length;
   _capHere = roomCrew(crew, _focus).length;
 
   paintCanvas(frame);
@@ -662,7 +667,12 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   _layers.setAttribute('viewBox', scene.viewBoxAttr);
   _layers.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-  const cells = roomCells(frame, _focus);
+  // ⭐ `_deviceCond` IS PASSED HERE SO A PAWN CANNOT UNBUILD A MACHINE (the owner's 2026-08-05
+  // defect). `roomCells` reads the frame's ONE glyph byte per tile, and `GlyphMapper` pass 5
+  // writes `Glyphs.Citizen` over it — so a device with someone standing on it left the drawing.
+  // The channel is the same Map this view already built for `cond`; see `room-model.js`'s
+  // `itemForDeviceRow` for why this is a reading of the wire and not a cache or a re-derived rule.
+  const cells = roomCells(frame, _focus, _deviceCond);
   const here = roomCrew(crew, _focus);
   const roster = Hud.getRoster();
   const aboard = roster && Array.isArray(roster.crew) ? roster.crew.length : here.length;
@@ -972,7 +982,19 @@ export function pawnSvg(list, focus, selCid, place) {
   const S = H / 24;                      // …over the sprite's 24-unit viewBox
   const sel = selCid == null ? null : String(selCid);
   for (const c of list) {
-    const [fx, fy] = pl.foot(c.x, c.y);
+    // ⭐ THE GLIDE — the same wire fields and the same fallback the Overview's `pawnLayer` uses
+    // (`WireFormat.RosterEntry.Fx` owns the convention: a tile coordinate, no centre offset, so it
+    // drops straight into `foot`, which is fractional-tolerant for exactly this). The name plate and
+    // work tag below hang off `fx`/`fy` too, so a label never detaches from its figure.
+    // ⚠️ THE FEET ARE ON THIS ROOM'S FLOOR BECAUSE `roomCrew` SAID SO, and that is a guarantee rather
+    // than a hope: it admits a crew member on her DRAWN tile, and the drawn tile is by construction
+    // the one whose quad contains this exact foot point (`drawnTile`'s header carries the algebra).
+    // The first draft filtered on the SIM tile, which leads the body by up to a full tile, and review
+    // photographed the result — a figure standing on the cryo bay's back wall.
+    const [fx, fy] = pl.foot(
+      Number.isFinite(c.fx) ? c.fx : c.x,
+      Number.isFinite(c.fy) ? c.fy : c.y,
+    );
     const selected = sel !== null && String(c.cid) === sel;
     if (selected) {
       // A LEVEL ellipse lying in the floor plane at the feet — the catalogue's round-objects rule,
@@ -1142,7 +1164,20 @@ function mkEl(tag, cls) {
  *
  * ⚠️ THE ROW NODES ARE REBUILT ONLY WHEN THE CID SET CHANGES. Everything else — the task line, the
  * WHERE line, the `.sel` class — is a guarded in-place write. That is §4h's lesson, not tidiness: the
- * roster rebroadcasts on every crew tile-step (~2/s at 1×, faster at speed), and a node torn down
+ * roster rebroadcasts on every crew tile-step — ⭐ AND THE GLIDE MADE IT REBROADCAST ON EVERY SIM
+ * TICK INSTEAD, because `fx`/`fy` move each tick and the channel's dedup can no longer collapse the
+ * frames between two tiles.
+ *
+ * ⚠️ MEASURED ON `--ship wreck` RATHER THAN ESTIMATED, and the first draft of this note guessed
+ * badly in BOTH directions. Over a 6.00 s window in which a crew member was actually walking
+ * (46 roster messages, all 46 carrying a distinct position): **roster 7.67 msg/s, 1693 B/s**. Idle:
+ * **0.00 msg/s, 0 B/s** — a standing crew member serializes `fx === x`, so the dedup collapses those
+ * frames exactly as before. (Review measured 4.97 msg/s / ~1096 B/s on its own run; the spread is
+ * the walk, the ship state and the box, and the ceiling either way is the host's ~10 fps render
+ * cap.) ⛔ AND THE "5×" APPLIES TO THE CHANNEL, NOT TO THIS DOCK'S REPAINT CADENCE: `rooms` was
+ * already arriving at 5.50 msg/s in the same window and already calls `notifyShip()`, so the dock
+ * was being re-driven ~5 times a second BEFORE this package. The in-place write is what makes that
+ * free, and it was already load-bearing for that reason. A node torn down
  * between mousedown and mouseup fires no `click` in Chrome at all. A dock you have to click twice is
  * indistinguishable from a dock that does not work, and this dock exists because the owner reported
  * having no way to reach a pawn.
@@ -1514,7 +1549,12 @@ function onCanvasClick(e) {
     // Pawn click = select, only when no tool is armed (IX-Z-30). Resolve crew from the tile.
     const roster = Hud.getRoster();
     const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
-    const hit = roomCrew(crew, _focus).find((c) => (c.x | 0) === tile.x && (c.y | 0) === tile.y);
+    // ⭐ THE GLIDE MADE THIS A TILE TEST ABOUT A MOVING TARGET — `crewHitAtTile` matches the tile
+    // the figure is DRAWN in, and ONLY that one: one rule, one pass, no sim-tile fallback (see its
+    // header). The sim tile leads the body by up to a full tile mid-walk, so the old
+    // `c.x === tile.x` missed the pawn being aimed at AND answered for the bare floor she had
+    // already left on screen. You select exactly what you can see.
+    const hit = crewHitAtTile(crew, _focus, tile.x, tile.y);
     if (hit) Hud.selectCrewByCid(hit.cid);
     return;
   }

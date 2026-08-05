@@ -3,9 +3,12 @@
 // pairs the pure SVG builder with its sim classification from docs/design/perilune-item-mapping.md:
 //
 // ⚠️ "ALL 70 PIECES OF THE MOCK" WAS THIS FILE'S OPENING CLAUSE AND IS NO LONGER TRUE. The registry
-// is 71: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
+// is 84: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
 // sim fact the mock predates (`ItemKind.Swarf`, from the wreck start's salvage rule) and it is
-// deliberately LAST — see its own comment for why the position is load-bearing.
+// deliberately LAST of the mock-order block — see its own comment for why the position is NOT
+// load-bearing. After it come the owner's fittings catalogue rows: nine at VR-P2 (2026-08-05) and
+// four more the same day when the catalogue grew its "Capsules and cells" section, 71 → 80 → 84.
+// ⚠️ RE-COUNT THAT NUMBER OFF THE TABLE, NEVER OFF THIS PARAGRAPH — `client/test/items.test.js` does.
 //
 // ⚠️ THE MOCK ALSO CARRIES 70 *WRECKED* TWINS AND THEY ARE NOT IN THIS TABLE. They live in
 // `client/src/items/wrecked.js`, keyed by the PRISTINE itemId, because a wrecked piece is not a
@@ -114,7 +117,18 @@ export const ITEMS = Object.freeze({
   // ── OBJECTS (30) ──
   'reactor':          { build: O.reactor,         size: { w: 64, h: 64 }, ...dev('Reactor', null, 'new') },
   'solar-panel':      { build: O.solarPanel,      size: { w: 92, h: 56 }, ...dev('SolarWing', 'G') },
-  'battery-bank':     { build: FT.batteryBank,     size: FT.SIZES['battery-bank'], ...dev('Battery', 'B') },
+  // ⚠️ `glyph: null` SINCE 2026-08-05, AND IT IS A DEMOTION RATHER THAN AN OVERSIGHT. This row is
+  // catalogue 27, the CELL RACK, and it held `'B'` (`Glyphs.ForDevice(DeviceKind.Battery)`) from the
+  // mock until the owner's "Capsules and cells" revision. `'B'` now belongs to `cell-sound` (34 rows
+  // below), because that pair — sound cell / spent cell — is what gives a Battery an honest wrecked
+  // drawing in the paper idiom; the rack has none and could only ever have been given repo-authored
+  // ink damage. The shape is `airlock`'s and `blast-door`'s exactly: a second registered piece for a
+  // kind whose glyph another row claims. ⇒ THE RACK IS NOW UNREACHED ART, said out loud rather than
+  // left to be discovered. It is NOT deleted — every `FITTING_IDS` id must be a registry row
+  // (`items.test.js` pins that both ways), and the catalogue still publishes it as piece 27. What it
+  // is waiting for is a rack that HOLDS cells; the caption on card 33 ("Sits on the rack bus bars")
+  // is the design's own statement that these two pieces belong together.
+  'battery-bank':     { build: FT.batteryBank,     size: FT.SIZES['battery-bank'], ...dev('Battery', null) },
   'o2-scrubber':      { build: FT.o2Scrubber,      size: FT.SIZES['o2-scrubber'], ...dev('Scrubber', 'S') },
   'oxygen-tank':      { build: O.oxygenTank,      size: { w: 38, h: 70 }, ...dev('OxygenTank', null, 'new') },
   'water-recycler':   { build: O.waterRecycler,   size: { w: 60, h: 66 }, ...dev('Reclaimer', 'R') },
@@ -153,7 +167,9 @@ export const ITEMS = Object.freeze({
   // new registry rows would each need a twin plus a `NON_MOCK_TWIN` ledger entry to stay out of that
   // join, and twelve old rows would keep drawing warm art nothing reaches — 24 material rows, two
   // ledgers touched, and a palette that has to choose. Replacing the `build` reference moves NO
-  // count anywhere: registry 80, class tally material 12, twin bijection 70, all unchanged.
+  // count anywhere: class tally material 12 and the twin bijection's 70 are unchanged by it.
+  // (The registry TOTAL is other lanes' business and goes stale here — 80 when this was written,
+  // 84 after the capsules merge; re-derive it from ITEMS, never quote this line. TRAPS 8th.)
   //
   // ⚠️ THE WRECKED TWINS STAY WARM, and that is the wave's own FILED inconsistency rather than an
   // oversight — charter §3's P2b, the same state the twenty-one furniture rows VR-P2 replaced are
@@ -249,8 +265,22 @@ export const ITEMS = Object.freeze({
   // ships alongside these two, it claims no glyph, and giving it one would put two pieces on one
   // char. The registry's first-wins rule would then pick by declaration order rather than by
   // decision, which is exactly the kind of silent choice `deriveGlyphToItem`'s guard exists to stop.
-  'cryo-capsule-occupied': { build: C.cryoCapsuleOccupied, size: { w: 60, h: 104 }, ...dev('CryoPod', 'K') },
-  'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...dev('CryoPod', 'k') },
+  //
+  // ⚠️ BOTH GLYPHS WENT `null` ON 2026-08-05 AND THE PARAGRAPH ABOVE IS NOW HISTORY, NOT WIRING. The
+  // owner's "Capsules and cells" revision draws this exact state pair in the paper idiom — catalogue
+  // 31 CAPSULE, SEALED and 32 CAPSULE, OPEN — and `'K'`/`'k'` moved to those two rows at the bottom of
+  // this table. Everything the paragraph says about the JOIN is still true; only the two rows it
+  // lands on changed. These two keep their `deviceKind`, their class and their wrecked twins and are
+  // now UNREACHED WARM ART, in the same position `battery-bank` is in and for the same reason.
+  // ⛔ RETIRING THEM WAS CONSIDERED AND REFUSED, with the cost measured rather than guessed: their
+  // twins are two of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
+  // `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as
+  // a bijection — that walk is the whole of the evidence that the other sixty-eight are transcribed
+  // correctly. Deleting two rows would take `MOCK_TWIN_IDS` to 68 and force a third ledger ("mock
+  // pieces deliberately unclaimed") to be invented so the bijection could be relaxed. Two dead rows
+  // cost a reader one paragraph; a relaxed bijection costs the next lane its instrument.
+  'cryo-capsule-occupied': { build: C.cryoCapsuleOccupied, size: { w: 60, h: 104 }, ...dev('CryoPod', null) },
+  'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...dev('CryoPod', null) },
 
   // ── SALVAGE (1) — REPO-AUTHORED, NOT FROM THE MOCK ──
   // ⛔ THIS ROW IS LAST BY CONVENTION, NOT BY CONSTRAINT — and the sentence that used to stand here
@@ -288,7 +318,8 @@ export const ITEMS = Object.freeze({
 
   // ── FITTINGS (9) — THE CATALOGUE ROWS THE MOCK NEVER HAD (VR-P2) ──────────────────────────────
   //
-  // `design-import/Perilune Fittings.dc.html` is the owner's buildable set and it is THIRTY pieces.
+  // `design-import/Perilune Fittings.dc.html` was the owner's buildable set and it was THIRTY pieces
+  // when these nine landed. It is now THIRTY-FOUR — see the section at the very bottom of this table.
   // Twenty-one of them are the mock's own furniture wearing new art, and those replaced their
   // builders in place above — same id, same class, same glyph, new drawing. These nine have no mock
   // piece at all, so they are new rows, and they sit after `swarf` for the reason that row's comment
@@ -323,6 +354,32 @@ export const ITEMS = Object.freeze({
   'vice-post':        { build: FT.vicePost,      size: FT.SIZES['vice-post'],   ...cos('vice_post') },
   'curtain-rail':     { build: FT.curtainRail,   size: FT.SIZES['curtain-rail'], ...cos('curtain_rail') },
   'shrine-shelf':     { build: FT.shrineShelf,   size: FT.SIZES['shrine-shelf'], ...cos('shrine_shelf') },
+
+  // ── CAPSULES AND CELLS (4) — THE OWNER'S 2026-08-05 CATALOGUE SECTION, 31–34 ─────────────────
+  //
+  // ⚠️ THESE FOUR ARE THE OPPOSITE OF THE NINE ABOVE, AND THE CONTRAST IS THE POINT. The nine are
+  // COSMETIC because every `DeviceKind` they could plausibly claim was already claimed. All four of
+  // these are FUNCTIONAL because they are drawings OF two kinds the sim really projects and has been
+  // drawing warm: `CryoPod` (twelve on `--ship wreck`, eleven sealed and one open) and `Battery`
+  // (three). Nothing here is placeable from the build palette — a pod and a battery are commissioned
+  // and repaired, never dragged out of a tool tray — so no palette row moves with them.
+  //
+  // ⚠️ THE FOUR JOIN THE SIM BY TWO DIFFERENT SEAMS, AND CONFUSING THEM IS TRAP 6. 31/32 are a STATE
+  // pair and their state is a GLYPH: `GlyphMapper.DeviceGlyph` reads `Device.IsOpen` and emits
+  // `'K'` occupied / `'k'` open, so `deriveGlyphToItem` picks the piece with nothing hand-mirrored.
+  // 33/34 are a CONDITION pair and there is no second Battery glyph to carry it — `'B'` is the kind's
+  // only arm — so `cell-spent` is NOT resolved from art or from a glyph: it is `WRECKED['cell-sound']`
+  // in `client/src/items/wrecked.js`, and `wear.js` picks it off the `devices` channel's own `cond`
+  // byte at `WRECK_THRESHOLD`, the same predicate every other device uses.
+  //
+  // ⇒ `cell-spent` therefore carries `glyph: null` (it is a Battery, in a state the wire spells with
+  // a number rather than a char) and is the second entry ever in `NO_WRECKED_TWIN`: a spent cell IS
+  // the wrecked state, so "a wrecked spent cell" names nothing the sim can reach. That is `swarf`'s
+  // argument, in its second instance.
+  'capsule-sealed':   { build: FT.capsuleSealed, size: FT.SIZES['capsule-sealed'], ...dev('CryoPod', 'K') },
+  'capsule-open':     { build: FT.capsuleOpen,   size: FT.SIZES['capsule-open'],   ...dev('CryoPod', 'k') },
+  'cell-sound':       { build: FT.cellSound,     size: FT.SIZES['cell-sound'],     ...dev('Battery', 'B') },
+  'cell-spent':       { build: FT.cellSpent,     size: FT.SIZES['cell-spent'],     ...dev('Battery', null) },
 });
 
 /** The full list of registered itemIds, in mock order. */
