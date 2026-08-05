@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path';
 
 import {
   PX_PER_CM, DEPTH_RATIO, INK, PAPER, PAPER_FLAT, ATTEND, HATCH, HALO, GHOST, ROOM_WEIGHT,
+  FONT, DEFAULT_ID_PREFIX,
   n, esc, poly, depth, fhDef, fhId, fhRef, box, boxFaces, room, roomFrame, haloText, ghost,
 } from '../src/render/oblique.js';
 import * as tokens from '../src/theme/paper-tokens.js';
@@ -80,6 +81,21 @@ test('the three duplicated colour literals agree with paper-tokens.js and items/
   assert.deepEqual({ ...HATCH }, { ...tokens.HATCH });
   assert.deepEqual({ ...HALO }, { ...tokens.HALO });
   assert.deepEqual({ ...GHOST }, { ...tokens.GHOST });
+});
+
+test('the SVG type stacks are byte-identical to the ones the DOM resolves', () => {
+  // An SVG label sits BESIDE DOM text in the same window. The design markup writes the SHORT stack
+  // (`'Instrument Serif', serif`) because a .dc.html page has the webfont or it does not; here a
+  // divergent fallback chain means the two halves of one screen disagree about what to draw the
+  // moment the webfont is missing or still loading — and on this de-DE box the system serif the SVG
+  // falls back to need not be the one the HTML beside it picks. Same stack, same advances.
+  assert.equal(FONT.serif, tokens.TYPE.serif);
+  assert.equal(FONT.mono, tokens.TYPE.mono);
+  // …and TYPE is itself mirrored to --font-serif/--font-mono in styles/base.css by
+  // paper-tokens.test.js's CSS_VAR walk, so this closes the chain SVG → JS token → CSS token.
+  assert.equal(tokens.CSS_VAR['TYPE.serif'], '--font-serif');
+  assert.equal(tokens.CSS_VAR['TYPE.mono'], '--font-mono');
+  assert.ok(!/inter/i.test(FONT.serif + FONT.mono), 'ruling E9: Inter is not shipped');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -159,7 +175,7 @@ test('boxFaces() reproduces the bench seat slab from the fittings sheet, to the 
 test('box() emits front, side and top IN THAT ORDER, with the design\'s fills', () => {
   const s = box(0, 100, 100, 50, 40, 1, { strokeWidth: 1.4 });
   const order = [...s.matchAll(/fill="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(order, [PAPER, 'url(#fh)', PAPER], 'front paper, side hatch, top paper');
+  assert.deepEqual(order, [PAPER, fhRef(), PAPER], 'front paper, side hatch, top paper');
   assert.equal((s.match(/<path /g) || []).length, 3);
   assert.ok(s.includes('stroke="#14120F"') && s.includes('stroke-width="1.4"'));
   // the front face stands ON the baseline and rises above it: y=100 is the floor, 50 px of height
@@ -205,7 +221,7 @@ test('⭐ room(8.6, 2.8, 2.4, 0.95) reproduces the galley plate\'s own geometry'
   assert.ok(svg.includes('d="M875 224 L981.4 64.4"'), 'the diagonal cut edge moved');
   assert.equal((svg.match(/stroke-dasharray="7 5"/g) || []).length, 2, 'exactly two cut edges are dashed');
   // the left wall is the ONLY hatched face
-  assert.equal((svg.match(/fill="url\(#fh\)"/g) || []).length, 1);
+  assert.equal((svg.match(new RegExp(`fill="${fhRef().replace(/[()#]/g, '\\$&')}"`, 'g')) || []).length, 1);
 });
 
 test('the floor grid is 60 cm across the width, five bands deep, at 0.5/0.2 like the design', () => {
@@ -249,7 +265,7 @@ test('room() honours its origin, scale and paint overrides, and is byte-determin
   const b = room(4, 3, 2.5, PX_PER_CM.plate, { x: 10, y: 300, hatch: 'url(#p-fh)', ink: ATTEND });
   assert.equal(a, b);
   assert.ok(a.includes('M10 300 L410 300'), 'a 4 m room at 1 px/cm is 400 px wide from x=10');
-  assert.ok(a.includes('url(#p-fh)') && !a.includes('url(#fh)'));
+  assert.ok(a.includes('url(#p-fh)') && !a.includes(fhRef()));
   assert.equal((a.match(/stroke="#7B2C22"/g) || []).length, 6,
     'ink override must reach all five stroked paths AND the floor-grid group');
   // a degenerate room does not throw and emits no grid
@@ -265,9 +281,8 @@ test('room() honours its origin, scale and paint overrides, and is byte-determin
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 test('fhDef() is the design\'s pattern verbatim and NAMESPACES its id', () => {
-  const bare = fhDef('');
-  assert.equal(bare,
-    '<pattern id="fh" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+  assert.equal(fhDef(),
+    '<pattern id="ob-fh" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
     + '<rect width="7" height="7" fill="#EBE4D1"/>'
     + '<path d="M0 0 L0 7" stroke="#14120F" stroke-width="0.7" opacity="0.28"/>'
     + '</pattern>');
@@ -277,10 +292,53 @@ test('fhDef() is the design\'s pattern verbatim and NAMESPACES its id', () => {
   assert.equal(fhRef('rz'), 'url(#rz-fh)');
   assert.ok(fhDef('rz').startsWith('<pattern id="rz-fh"'));
   assert.notEqual(fhId('rz'), fhId('ov'));
-  // an absent/blank prefix is the design's own bare id, deliberately — not a crash, not "undefined-fh"
-  for (const blank of [undefined, null, '', '   ', 42, {}]) assert.equal(fhId(blank), 'fh');
   // the prefix is escaped, so a hostile id cannot close the attribute
   assert.ok(!fhDef('a"b').includes('id="a"b"'));
+});
+
+test('⭐ NO input to fhId() yields the design\'s BARE `fh` — the default is namespaced too', () => {
+  // The design documents write `<pattern id="fh">` because each is one hand-authored page with one
+  // hatch. This kit feeds four surfaces that compose into ONE document, so a bare `fh` is a
+  // collision waiting for the second caller — and every input below used to produce it.
+  for (const blank of [undefined, null, '', '   ', '\t\n ', 42, {}, [], NaN]) {
+    assert.equal(fhId(blank), `${DEFAULT_ID_PREFIX}-fh`, `fhId(${String(blank)}) fell back wrong`);
+    assert.notEqual(fhId(blank), 'fh', `fhId(${String(blank)}) produced the UNNAMESPACED id`);
+  }
+  // a prefix is trimmed, not taken literally: '  rz ' and 'rz' are one namespace, not two
+  assert.equal(fhId('  rz '), 'rz-fh');
+  assert.equal(fhId('\trz\n'), fhId('rz'));
+});
+
+test('⭐ THE DEFAULT PATH IS SELF-CONSISTENT — box()/room() reference the id fhDef() defines', () => {
+  // ⛔ THE BUG THIS PINS, WHICH SHIPPED IN VR-A AND WAS CAUGHT BY REVIEW: `box()` and `room()`
+  // defaulted their hatch to `url(#fh)` while `fhDef(prefix)` emitted `prefix-fh`. A caller taking
+  // ALL the defaults — which is what every early P2 fitting does — emitted a side face pointing at
+  // an id nothing in the document defined. SVG renders an unresolvable paint as NOTHING: no error,
+  // no console warning, just a side face that quietly stops being hatched. Only the two halves
+  // agreeing makes the default path safe, so assert the JOIN, never each half's spelling.
+  const defId = fhDef().match(/id="([^"]+)"/)[1];
+
+  const boxRef = box(0, 0, 10, 10, 10, 1).match(/fill="url\(#([^)]+)\)"/)[1];
+  assert.equal(boxRef, defId, 'default box() hatches with an id default fhDef() never defines');
+
+  const roomRef = room(4, 3, 2.5, 1).match(/fill="url\(#([^)]+)\)"/)[1];
+  assert.equal(roomRef, defId, 'default room() hatches with an id default fhDef() never defines');
+
+  // NON-VACUITY: the join above would also hold if both halves were empty or malformed.
+  assert.equal(defId, `${DEFAULT_ID_PREFIX}-fh`);
+  assert.ok(defId.length > 3 && !defId.includes('undefined') && !defId.includes('NaN'));
+
+  // and two DIFFERENT explicit prefixes never collide, in any of the three emitters
+  const a = 'rz'; const b = 'ov';
+  assert.notEqual(fhId(a), fhId(b));
+  assert.ok(fhDef(a).includes(`id="${fhId(a)}"`) && fhDef(b).includes(`id="${fhId(b)}"`));
+  assert.ok(box(0, 0, 10, 10, 10, 1, { hatch: fhRef(a) }).includes(`url(#${fhId(a)})`));
+  assert.ok(!box(0, 0, 10, 10, 10, 1, { hatch: fhRef(a) }).includes(`url(#${fhId(b)})`));
+  assert.ok(room(4, 3, 2.5, 1, { hatch: fhRef(b) }).includes(`url(#${fhId(b)})`));
+  assert.ok(!room(4, 3, 2.5, 1, { hatch: fhRef(b) }).includes(`url(#${fhId(a)})`));
+  // …and neither explicit prefix silently lands back on the default namespace
+  assert.notEqual(fhId(a), defId);
+  assert.notEqual(fhId(b), defId);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -290,7 +348,7 @@ test('fhDef() is the design\'s pattern verbatim and NAMESPACES its id', () => {
 test('haloText() paints the stroke UNDER the fill, in paper, at the measured 3.4', () => {
   const t = haloText("Osei's place is still laid", 672.8, 437.9, { italic: true, size: 15 });
   // the design's own leader label: serif, italic, 15px, oxblood on a 3.4px paper halo
-  assert.ok(t.includes('font-family="\'Instrument Serif\', serif"'));
+  assert.ok(t.includes(`font-family="${FONT.serif}"`));
   assert.ok(t.includes('font-style="italic"'));
   assert.ok(t.includes('font-size="15"'));
   assert.ok(t.includes(`fill="${ATTEND}"`));
@@ -303,7 +361,7 @@ test('haloText() paints the stroke UNDER the fill, in paper, at the measured 3.4
   assert.ok(!/data-paint-order/.test(t), 'paint-order must be the real attribute, not a data- shadow');
   assert.ok(t.includes('>Osei&#039;s place is still laid</text>') || t.includes(">Osei's place is still laid</text>"));
   // mono is the other face, and nothing may name Inter (ruling E9)
-  assert.ok(haloText('SEATS 5 OF 3 ABOARD', 9, 42, { font: 'mono' }).includes("'Space Mono', monospace"));
+  assert.ok(haloText('SEATS 5 OF 3 ABOARD', 9, 42, { font: 'mono' }).includes(FONT.mono));
   assert.ok(!/inter/i.test(haloText('x', 0, 0, {}) + haloText('x', 0, 0, { font: 'mono' })));
   // the label is XML-escaped — a crew name with an ampersand must not break the document
   assert.ok(haloText('Stores & Logistics', 0, 0).includes('Stores &amp; Logistics'));

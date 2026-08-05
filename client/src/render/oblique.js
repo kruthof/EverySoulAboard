@@ -65,6 +65,23 @@ export const HATCH = Object.freeze({ period: 7, angle: 45, ink: INK, ground: PAP
 export const HALO = Object.freeze({ stroke: PAPER, width: 3.4, paintOrder: 'stroke' });
 export const GHOST = Object.freeze({ knockout: PAPER, widen: 3.0 });
 
+/**
+ * The two type stacks, byte-identical to what the DOM resolves (`--font-serif` / `--font-mono` in
+ * `styles/base.css`, mirrored by `theme/paper-tokens.js`'s `TYPE`) — duplicated as literals for the
+ * same reason the colours are, and pinned against `TYPE` by `oblique.test.js`.
+ *
+ * ⚠️ THE DESIGN MARKUP IS THE SHORTER STRING AND IT IS NOT THE ONE TO COPY. The documents write
+ * `font-family="'Instrument Serif', serif"`, because a `.dc.html` page has the webfont or it does
+ * not. Here an SVG label sits BESIDE DOM text in the same window, so a divergent fallback chain
+ * means the two disagree about what to draw the moment the webfont is missing or still loading —
+ * a de-DE box picking a different system serif for the SVG than for the HTML beside it. Same stack,
+ * same fallback, same advances.
+ */
+export const FONT = Object.freeze({
+  serif: "'Instrument Serif',ui-serif,Georgia,serif",
+  mono:  "'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace",
+});
+
 /** The room cutaway's default drawing weights, measured on the galley plate. */
 export const ROOM_WEIGHT = Object.freeze({
   wall: 2.2, floor: 1.4, edge: 2.2, cut: 1.1, cutDash: '7 5', grid: 0.5, gridOpacity: 0.2,
@@ -121,10 +138,24 @@ export function depth(dCm, s) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * The DEFAULT id namespace, used by `fhDef`/`fhRef`/`box`/`room` when a caller names none.
+ *
+ * ⛔ IT IS NOT THE EMPTY STRING, AND THAT IS THE POINT. The design documents write a bare
+ * `<pattern id="fh">` because each is one hand-authored page with exactly one hatch. This kit feeds
+ * four surfaces that compose into ONE document, so a bare `fh` is a collision waiting for the
+ * second caller — and it would have arrived through the DEFAULT path, which is the path every early
+ * P2 fitting takes. `box()` and `room()` defaulted their `hatch` to `url(#fh)` while `fhDef(prefix)`
+ * emitted `prefix-fh`, so taking all the defaults produced a reference to an id nothing defined: a
+ * silently unpainted side face, never an error. One shared constant closes both halves.
+ */
+export const DEFAULT_ID_PREFIX = 'ob';
+
+/**
  * The 45° side-face hatch, as ONE `<pattern>` def. `idPrefix` namespaces the id so two surfaces (or
  * two scenes in one document) never collide — the id-collision rule `overview-scene.test.js` pins.
- * Pass the SAME prefix to `fhRef()` and hand the result to `box({ hatch })`.
- * @param {string} idPrefix e.g. 'rz' → `<pattern id="rz-fh">`
+ * Pass the SAME prefix to `fhRef()` and hand the result to `box({ hatch })`, or take the default on
+ * both and they agree by construction.
+ * @param {string} [idPrefix] e.g. 'rz' → `<pattern id="rz-fh">`; omitted → `<pattern id="ob-fh">`
  */
 export function fhDef(idPrefix) {
   const id = fhId(idPrefix);
@@ -138,10 +169,14 @@ export function fhDef(idPrefix) {
   );
 }
 
-/** The id `fhDef(idPrefix)` writes. An empty/absent prefix yields the design's own bare `fh`. */
+/**
+ * The id `fhDef(idPrefix)` writes. An absent, empty, whitespace-only or non-string prefix falls back
+ * to `DEFAULT_ID_PREFIX` — NEVER to a bare `fh`, so there is no input that produces the unnamespaced
+ * id. `'  rz '` and `'rz'` are the same namespace; a prefix is trimmed, not taken literally.
+ */
 export function fhId(idPrefix) {
   const p = typeof idPrefix === 'string' ? idPrefix.trim() : '';
-  return p ? `${p}-fh` : 'fh';
+  return `${p || DEFAULT_ID_PREFIX}-fh`;
 }
 
 /** The paint string for the hatch def of `idPrefix` — hand this to `box({ hatch })`. */
@@ -181,7 +216,8 @@ export function boxFaces(x, y, wCm, hCm, dCm, s) {
  *   strokeWidth weight, 0.9–2.2 by mass (charter §1)          (default 1.4)
  *   dash        stroke-dasharray, e.g. the dialect's '8 5'    (default none)
  *   sideFill    'hatch' | 'flat' | 'none'                     (default 'hatch')
- *   hatch       the hatch paint for sideFill:'hatch'          (default 'url(#fh)' — see fhRef())
+ *   hatch       the hatch paint for sideFill:'hatch'          (default fhRef() — `url(#ob-fh)`,
+ *               the SAME id `fhDef()` writes when it is called without a prefix)
  *   flat        the flat side paint for sideFill:'flat'       (default PAPER_FLAT, thumbnail scale)
  *   front, top  face fill overrides                           (default PAPER)
  *   opacity     applied to all three faces
@@ -196,7 +232,7 @@ export function box(x, y, wCm, hCm, dCm, s, opts = {}) {
   const side =
     mode === 'none' ? 'none'
       : mode === 'flat' ? (o.flat == null ? PAPER_FLAT : o.flat)
-        : (o.hatch == null ? 'url(#fh)' : o.hatch);
+        : (o.hatch == null ? fhRef() : o.hatch);
   const front = o.front == null ? PAPER : o.front;
   const top = o.top == null ? PAPER : o.top;
   const tail = attr('stroke', stroke) + attr('stroke-width', sw) +
@@ -265,7 +301,8 @@ export function roomFrame(wM, dM, hM, s, opts = {}) {
  * @param {object} [opts]
  *   x, y        the front-left floor corner in px             (default 58, 452 — the design's)
  *   ink, paper  stroke ink / face fill                        (default INK / PAPER)
- *   hatch       the left wall's paint                         (default 'url(#fh)' — see fhRef())
+ *   hatch       the left wall's paint                         (default fhRef() — `url(#ob-fh)`,
+ *               the SAME id `fhDef()` writes when it is called without a prefix)
  *   gridCm      floor-grid spacing ACROSS the width, cm       (default 60)
  *   depthDivs   how many bands the floor grid cuts the depth into (default 5)
  *   grid        false to omit the floor grid entirely
@@ -277,7 +314,7 @@ export function room(wM, dM, hM, s, opts = {}) {
   const P = f.project;
   const ink = o.ink == null ? INK : o.ink;
   const paper = o.paper == null ? PAPER : o.paper;
-  const hatch = o.hatch == null ? 'url(#fh)' : o.hatch;
+  const hatch = o.hatch == null ? fhRef() : o.hatch;
   const gridCm = o.gridCm == null ? 60 : o.gridCm;
   const divs = o.depthDivs == null ? 5 : o.depthDivs;
   const c = f.corners;
@@ -340,8 +377,8 @@ export function room(wM, dM, hM, s, opts = {}) {
  */
 export function haloText(t, x, y, opts = {}) {
   const o = opts || {};
-  const font = o.font === 'mono' ? "'Space Mono', monospace"
-    : o.font === 'serif' || o.font == null ? "'Instrument Serif', serif"
+  const font = o.font === 'mono' ? FONT.mono
+    : o.font === 'serif' || o.font == null ? FONT.serif
       : o.font;
   return (
     '<text' + attr('x', x) + attr('y', y) +

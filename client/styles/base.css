@@ -41,7 +41,22 @@
   /* lines */
   --ln-hair:#2b241c; --ln-chip:#3a332a; --ln-row:#2e2820;
   /* amber accent ramp */
-  --amber-1:#cf7a33; --amber-2:#e8934a; --amber-3:#f2b563; --amber-4:#b5652a;
+  /* ⚠️ SHADOW THEME, RECONCILED AT VR-A — the SECOND of two, and this was the live one.
+     `--amber-1` read #cf7a33 here while `warm.css` declares #e8934a, and warm.css has been linked
+     AFTER this file since the day it landed. So all TWENTY `var(--amber-1)` consumers
+     (13 in console.css, 6 in overview.css, 1 elsewhere) have been painting #e8934a, and the
+     #cf7a33 written here has never once reached a pixel. Setting it to the value that wins is a
+     NO-OP in the browser — no page loads this file without the theme layer — and it stops the next
+     reader reasoning from the loser.
+     ⛔ SAY THE CONSEQUENCE OUT LOUD, because it is the thing a retint has to decide: the console's
+     four-rung amber ramp now has a DUPLICATED RUNG — `--amber-1` and `--amber-2` are both #e8934a,
+     and `#cf7a33` survives in this block only as `--warn` / `--sel-bd` (and as warm's
+     `--amber-deep`, whose comment still claims it equals "--amber-1 on the console"; it does not,
+     and has not for a long time). That is the HONEST state of the ramp, not damage this commit did.
+     P4/P6 own the decision when they restyle: collapse the rung or restore the intended deep amber.
+     Generalised guard: `stylesheet-split.test.js` now requires EVERY property declared in both
+     base.css and warm.css to agree, so a third of these cannot appear unnoticed. */
+  --amber-1:#e8934a; --amber-2:#e8934a; --amber-3:#f2b563; --amber-4:#b5652a;
   /* text ramp */
   --txt-hi:#e8dcc9; --txt:#b3aa9c; --txt-dim:#8c8377; --txt-faint:#57503f;
   --txt-onacc:#12100d; --txt-peak:#fefbf6;

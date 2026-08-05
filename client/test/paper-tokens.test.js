@@ -15,7 +15,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -204,6 +204,26 @@ test('both Instrument Serif subsets are actually committed, and Inter is not', (
       `client/assets/fonts/${f} is referenced but not committed`);
   }
   assert.ok(!/inter[-.]/i.test(fonts), 'ruling E9: no Inter face may be declared');
+});
+
+test('EVERY committed .woff2 is named in OFL.txt, under its OWN copyright holder', () => {
+  // The two families have DIFFERENT copyright holders, and VR-A shipped Instrument Serif with only
+  // Space Mono's notice in the file — a licensing defect no rendering test could ever see. This
+  // makes the obligation structural: the census is of what is ON DISK, so the next font to arrive
+  // reddens this until someone writes its line.
+  const dir = join(CLIENT, 'assets/fonts');
+  const ofl = readFileSync(join(dir, 'OFL.txt'), 'utf8');
+  const shipped = readdirSync(dir).filter((f) => f.endsWith('.woff2')).sort();
+  assert.ok(shipped.length >= 4, `only ${shipped.length} .woff2 files found — the census is blind`);
+  for (const f of shipped) {
+    assert.ok(ofl.includes(f), `${f} is committed but never named in OFL.txt — it ships unlicensed`);
+  }
+  // both copyright holders are present, verbatim from their upstream OFL
+  assert.match(ofl, /Copyright 2016 The Space Mono Project Authors/);
+  assert.match(ofl, /Copyright 2022 The Instrument Serif Project Authors/);
+  // and the licence body itself survived the edit — a file of notices with no licence grants nothing
+  assert.match(ofl, /SIL OPEN FONT LICENSE Version 1\.1 - 26 February 2007/);
+  assert.match(ofl, /TERMINATION/);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

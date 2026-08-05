@@ -155,14 +155,55 @@ test('the paper token names are DISJOINT from the warm ones — the new layer ov
   assert.deepEqual(clash, [],
     `paper.css redeclares ${clash.join(', ')} — it is linked LAST, so it would silently restyle `
     + 'every surface that still reads the warm value. Rename the paper token.');
-  // The ONE deliberate overlap is `--font-mono`, and it is deliberate because it is RECONCILED:
-  // base.css and warm.css both declare it and they now say the same thing. Before VR-A they did
-  // not, and warm's (the later one) had been the live stack all along.
-  assert.equal(base.has('--font-mono') && warm.has('--font-mono'), true);
-  const val = (file, name) => codeOnly(readFileSync(join(CLIENT_DIR, file), 'utf8'))
-    .match(new RegExp(`${name}\\s*:\\s*([^;}]+)`))[1].trim().replace(/\s+/g, ' ');
-  assert.equal(val('styles/base.css', '--font-mono'), val('src/theme/warm.css', '--font-mono'),
-    'the two --font-mono declarations disagree again — the loser is what the next reader will believe');
+});
+
+/** Every `--name: value` a single file declares, comments stripped, whitespace normalised. */
+function fileVars(rel) {
+  const css = codeOnly(readFileSync(join(CLIENT_DIR, rel), 'utf8')).replace(/@import[^;]+;/g, ' ');
+  const out = new Map();
+  for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/gi)) {
+    out.set(m[1], m[2].trim().replace(/\s+/g, ' '));
+  }
+  return out;
+}
+
+test('⭐ EVERY property declared in BOTH base.css and warm.css agrees value-for-value', () => {
+  // ⛔ THIS TEST REPLACES A HARDCODED `--font-mono` CHECK, AND THE NARROWING IS WHY VR-A SHIPPED A
+  // LIVE SHADOW THEME PAST ITS OWN GUARD. The first draft asserted that the ONE overlapping name
+  // was `--font-mono` and compared only that. The claim was FALSE when it was written — FIVE names
+  // are declared in both files — and the guard's scope excluded the very disagreement it existed to
+  // catch: `--amber-1` read #cf7a33 in base.css and #e8934a in warm.css, warm.css wins, and all
+  // twenty `var(--amber-1)` consumers had been painting the warm value while the file said
+  // otherwise. A guard whose filter excludes the violation is the 4th trap shape, and a test that
+  // ENUMERATES what it expects to find will always be one honest edit behind the file.
+  //
+  // So: no list. Take the intersection, whatever it happens to be, and require agreement across all
+  // of it. The rule this encodes is the real one — base.css is linked FIRST and warm.css comes in
+  // behind paper.css, so on every name they share, base.css is the LOSER and its value is read by
+  // nobody but the next human. Two files may say a thing twice; they may not say it differently.
+  const base = fileVars('styles/base.css');
+  const warm = fileVars('src/theme/warm.css');
+  const shared = [...base.keys()].filter((k) => warm.has(k));
+
+  // NON-VACUITY BY INCLUSION, in both directions: an empty parse, or an empty intersection, would
+  // make the loop below free. The intersection is a fact about the tree — five names as of VR-A —
+  // and if it ever becomes empty that is a finding, not a pass.
+  assert.ok(base.size >= 20 && warm.size >= 25,
+    `parsed ${base.size} base / ${warm.size} warm properties — the declaration scan is reading nothing`);
+  assert.ok(shared.length >= 4,
+    `only ${shared.length} properties are declared in both files. That is either a real cleanup `
+    + '(delete this floor and say so) or a broken parse — do not let it pass silently.');
+
+  const fails = [];
+  for (const name of shared) {
+    if (base.get(name).toLowerCase() !== warm.get(name).toLowerCase()) {
+      fails.push(`${name}: base.css says "${base.get(name)}", warm.css says "${warm.get(name)}". `
+        + 'warm.css is linked LAST (through paper.css), so warm\'s value is what every consumer '
+        + 'paints and base.css\'s is a shadow no pixel has ever seen. Reconcile them — set base.css '
+        + 'to the value that WINS, which is a no-op, and never the other way round.');
+    }
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
