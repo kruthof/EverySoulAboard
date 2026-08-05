@@ -1,7 +1,21 @@
-// The 30 OBJECT builders (structures & furniture) of the warm item set. Each is a pure
+// The OBJECT builders (structures & furniture) of the warm item set. Each is a pure
 // `(opts) -> string` SVG-`<g>`-fragment builder; geometry + colour are translated verbatim from
 // docs/design/perilune-item-set.dc.html (element numbers 1–30). Authored in centred mock-px space;
 // see helpers.js for the coordinate/normalisation model. `opts.state:'off'` dims a lit device's glow.
+//
+// ⚠️ IT WAS 30 AND IS NOW 14, AND THE HEADLINE THAT SAID "30" IS CORRECTED RATHER THAN LEFT.
+// VR-P2 (the visual redesign's fittings package) RETIRED sixteen of them — `battery-bank`,
+// `o2-scrubber`, `hydroponics`, `cooker`, `cooler`, `dining-table`, `bunk-bed`, `desk`, `chair`,
+// `locker`, `rug`, `standing-lamp`, `research-console`, `workbench`, `storage-crate`, `fuel-drum` —
+// because the owner's `design-import/Perilune Fittings.dc.html` draws every one of them and the
+// registry rows now point at `client/src/items/fittings.js`. The ROWS did not move: same id, same
+// class, same glyph, new drawing. What is gone is the warm-set painting, and it is gone rather than
+// merely unreferenced because a dead builder beside a live one is how the next art lane restyles the
+// wrong file. `git log` has them; `docs/design/perilune-item-set.dc.html` still specifies them.
+//
+// Everything still here is a row the fittings catalogue does NOT cover, and it keeps its warm-set
+// art until the follow-up package (charter §3, filed as P2b) gives the remaining rows the paper
+// idiom too. The set is deliberately mid-migration and says so.
 
 import { item, roundedRectPath } from './helpers.js';
 
@@ -58,53 +72,6 @@ export const solarPanel = (opts = {}) =>
     s.rect({ x: -46, y: -28, w: 92, h: 56, rx: 4, fill: grid });
     s.border({ x: -46, y: -28, w: 92, h: 56, rx: 4, color: '#d9c9a0', width: 4 });
   });
-
-// 3 BATTERY BANK — two navy cells, a green-charged + an amber-charged bar.
-export const batteryBank = (opts = {}) =>
-  item('battery-bank', opts, (s) => {
-    const cell = () =>
-      s.lin([
-        ['0', '#3a4b5c'],
-        ['1', '#28323d'],
-      ]);
-    // left cell
-    s.rect({ x: -29, y: -28, w: 26, h: 56, rx: 4, fill: cell() });
-    s.border({ x: -29, y: -28, w: 26, h: 56, rx: 4, color: '#1c242d', width: 2 });
-    s.glow(-16, 8, 16, 'rgba(90,167,127,.4)');
-    s.rect({ x: -24, y: -7, w: 16, h: 30, rx: 2, fill: '#5aa77f' });
-    // right cell
-    s.rect({ x: 3, y: -28, w: 26, h: 56, rx: 4, fill: cell() });
-    s.border({ x: 3, y: -28, w: 26, h: 56, rx: 4, color: '#1c242d', width: 2 });
-    s.glow(16, 13, 16, 'rgba(232,147,74,.4)');
-    s.rect({ x: 8, y: 3, w: 16, h: 20, rx: 2, fill: '#e8934a' });
-  });
-
-// 4 O₂ SCRUBBER — REDRAWN. The old piece put a 6-unit louvre strip and a small cyan bar on a plain
-// box: at tile size that is the same drawing as the paste dispenser. The grille is now the dominant
-// feature (a scrubber is a thing that BREATHES), it has an intake port on one flank and an exhaust on
-// the other, and the readout is wide enough to read as an instrument rather than as a light.
-export const o2Scrubber = (opts = {}) =>
-  item('o2-scrubber', opts, (s, { powered }) => {
-    s.rect({ x: -31, y: -33, w: 62, h: 66, rx: 6, fill: s.lin([['0', '#4a5560'], ['1', '#38424d']]) });
-    s.border({ x: -31, y: -33, w: 62, h: 66, rx: 6, color: '#2b3742', width: 2 });
-    s.rect({
-      x: -23, y: -25, w: 46, h: 22, rx: 3,
-      fill: s.pat('<rect width="9" height="22" fill="#7d8b96"/><rect width="5" height="22" fill="#2b3742"/>',
-        { w: 9, h: 22 }),
-    });
-    s.glow(0, 14, 26, 'rgba(90,200,220,.4)', powered ? 1 : 0.12, 10);
-    s.rect({ x: -23, y: 7.5, w: 46, h: 13, rx: 2, fill: s.lin([['0', '#0e3a44'], ['1', '#0b2a32']]) });
-    // ports: lit blue O₂ out one side, dull grey CO₂ in the other. The mock letters the readout
-    // `CO₂` at 8 mock-px; at the size a tile actually renders that is a smudge, so the SIDES carry
-    // the meaning instead — see the TEXT RULE note on `waterRecycler`.
-    s.glow(-40, -8, 12, 'rgba(90,159,212,.5)', powered ? 1 : 0.15);
-    s.rect({ x: -48, y: -12, w: 16, h: 8, rx: 3, fill: '#5a9fd4' });
-    s.rect({ x: 32, y: -12, w: 16, h: 8, rx: 3, fill: '#8c8377' });
-  });
-
-// 5 OXYGEN TANK — REDRAWN. One capsule with a nub on top was a cryopod, a barrel or a battery. It is
-// now the mock's TWIN BOTTLE SET: two cylinders yoked at the neck and strapped at the base, each with
-// a valve cap and a white label patch. A pair of bottles in a cradle is a gas store and nothing else.
 export const oxygenTank = (opts = {}) =>
   item('oxygen-tank', opts, (s) => {
     s.rect({ x: -26, y: -49, w: 52, h: 6, rx: 3, fill: '#5a6672' });   // the yoke across both necks
@@ -142,60 +109,6 @@ export const waterRecycler = (opts = {}) =>
     s.rect({ x: 27, y: 21.5, w: 22, h: 9, rx: 4, fill: '#5a9fd4' });           // clean water OUT
     s.text('♻', { x: 0, y: 4, size: 22, weight: 700, fill: 'rgba(255,255,255,.85)' });
   });
-
-// 7 HYDROPONICS — wood tray with two lit green crop rows.
-export const hydroponics = (opts = {}) =>
-  item('hydroponics', opts, (s) => {
-    s.rect({ x: -46, y: -24, w: 92, h: 48, rx: 5, fill: '#5a442c' });
-    for (const dy of [-9, 9]) {
-      s.glow(0, dy, 44, 'rgba(95,138,58,.45)', 1, 9);
-      s.stripes({ x: -40, y: dy - 6, w: 80, h: 12, rx: 2, dir: 'v', band: 11, colors: ['#5f8a3a', '#4f7a30'] });
-    }
-  });
-
-// 8 COOKER — dark range with two glowing hobs.
-export const cooker = (opts = {}) =>
-  item('cooker', opts, (s, { powered }) => {
-    s.rect({
-      x: -33,
-      y: -26,
-      w: 66,
-      h: 52,
-      rx: 6,
-      fill: s.lin([
-        ['0', '#39424c'],
-        ['1', '#2a323b'],
-      ]),
-    });
-    s.border({ x: -33, y: -26, w: 66, h: 52, rx: 6, color: '#1c242d', width: 2 });
-    for (const dx of [-14, 16]) {
-      s.glow(dx, 0, 22, 'rgba(232,134,60,.6)', powered ? 1 : 0.12);
-      const hob = s.rad([
-        [0, '#f2b563'],
-        [0.6, '#e8863c'],
-        [1, '#c14a32'],
-      ]);
-      s.circle({ cx: dx, cy: 0, r: 11, fill: powered ? hob : '#5a2f1c' });
-    }
-  });
-
-// 9 COOLER — REDRAWN. The old piece was a white box with one cyan panel and a stub handle, which is
-// a wall screen in a pale frame. It is now a TWO-DOOR cabinet: a frozen compartment carrying the
-// snowflake, a chilled compartment below it, a hard split between them and a handle on each door.
-// Two doors and a split is what says "cabinet" rather than "screen".
-export const cooler = (opts = {}) =>
-  item('cooler', opts, (s) => {
-    s.rect({ x: -28, y: -37, w: 56, h: 74, rx: 6, fill: s.lin([['0', '#d8e2e8'], ['1', '#b8c6cf']]) });
-    s.border({ x: -28, y: -37, w: 56, h: 74, rx: 6, color: '#8fa2ad', width: 3 });
-    s.rect({ x: -20, y: -29, w: 40, h: 26, rx: 3, fill: s.lin([['0', '#9fd4e8'], ['1', '#6fb4d8']]) });
-    s.text('❄', { x: 0, y: -16, size: 21, weight: 700, fill: '#20536b' });
-    s.rect({ x: -20, y: 3, w: 40, h: 26, rx: 3, fill: '#c7d5dd' });
-    s.border({ x: -20, y: 3, w: 40, h: 26, rx: 3, color: '#8fa2ad', width: 2 });
-    s.rect({ x: -28, y: -1.5, w: 56, h: 3, fill: '#8fa2ad' });                 // the door split
-    for (const cy of [-16, 16]) s.rect({ x: 19.5, y: cy - 7, w: 5, h: 14, rx: 2, fill: '#5a6c78' });
-  });
-
-// 10 PASTE DISPENSER — steel column, cyan screen, tan spout.
 export const pasteDispenser = (opts = {}) =>
   item('paste-dispenser', opts, (s) => {
     s.rect({
@@ -224,126 +137,6 @@ export const pasteDispenser = (opts = {}) =>
     });
     s.rect({ x: -20, y: 18, w: 40, h: 8, rx: 2, fill: '#c9b083' });
   });
-
-// 11 DINING TABLE — warm-wood top with amber trim, two stools.
-export const diningTable = (opts = {}) =>
-  item('dining-table', opts, (s) => {
-    s.rect({
-      x: -39,
-      y: -25,
-      w: 78,
-      h: 50,
-      rx: 8,
-      fill: s.lin([
-        ['0', '#7a5334'],
-        ['1', '#5f3f26'],
-      ]),
-    });
-    s.rect({ x: -37, y: -23, w: 74, h: 3, rx: 1.5, fill: 'rgba(242,181,99,.35)' });
-    s.circle({ cx: -52, cy: 0, r: 9, fill: '#4a3a28' });
-    s.circle({ cx: 52, cy: 0, r: 9, fill: '#4a3a28' });
-  });
-
-// 12 BUNK BED — timber frame, red-striped mattress, cream pillow.
-export const bunkBed = (opts = {}) =>
-  item('bunk-bed', opts, (s) => {
-    s.rect({ x: -28, y: -40, w: 56, h: 80, rx: 8, fill: '#8a6b4a' });
-    s.stripes({ x: -24, y: -30, w: 48, h: 52, rx: 5, dir: 'v', band: 11, colors: ['#c14a32', '#b0402b'] });
-    s.rect({ x: -20, y: -32, w: 40, h: 16, rx: 4, fill: '#eadfca' });
-  });
-
-// 13 DESK — wood surface, amber trim, corner terminal.
-export const desk = (opts = {}) =>
-  item('desk', opts, (s) => {
-    s.rect({
-      x: -44,
-      y: -22,
-      w: 88,
-      h: 44,
-      rx: 5,
-      fill: s.lin([
-        ['0', '#7a5c38'],
-        ['1', '#5f4527'],
-      ]),
-    });
-    s.rect({ x: -42, y: -20, w: 84, h: 3, rx: 1.5, fill: 'rgba(242,181,99,.35)' });
-    s.glow(20, -16, 20, 'rgba(90,200,220,.4)', 1, 12);
-    s.rect({
-      x: 5,
-      y: -25,
-      w: 30,
-      h: 18,
-      rx: 3,
-      fill: s.lin([
-        ['0', '#0e3a44'],
-        ['1', '#0b2a32'],
-      ]),
-    });
-  });
-
-// 14 CHAIR — dark seat + a lighter back rail.
-export const chair = (opts = {}) =>
-  item('chair', opts, (s) => {
-    s.rect({ x: -22, y: -22, w: 44, h: 44, rx: 8, fill: '#4a3a28' });
-    s.rect({ x: -22, y: -29, w: 44, h: 14, rx: 6, fill: '#5f4a30' });
-  });
-
-// 15 LOCKER — twin steel doors, seam, amber handle.
-export const locker = (opts = {}) =>
-  item('locker', opts, (s) => {
-    s.rect({
-      x: -26,
-      y: -40,
-      w: 52,
-      h: 80,
-      rx: 5,
-      fill: s.lin(
-        [
-          ['0', '#4a5560'],
-          ['1', '#3a434d'],
-        ],
-        'h',
-      ),
-    });
-    s.border({ x: -26, y: -40, w: 52, h: 80, rx: 5, color: '#2b3742', width: 2 });
-    s.rect({ x: -1, y: -40, w: 2, h: 80, fill: 'rgba(0,0,0,.45)' });
-    s.rect({ x: -10.5, y: -6, w: 5, h: 12, rx: 2, fill: '#f2b563' });
-  });
-
-// 16 RUG — red woven field with a cream border + dashed inset.
-export const rug = (opts = {}) =>
-  item('rug', opts, (s) => {
-    s.stripes({ x: -48, y: -32, w: 96, h: 64, rx: 8, dir: 'v', band: 14, colors: ['#b34a34', '#a4402d'] });
-    s.border({ x: -48, y: -32, w: 96, h: 64, rx: 8, color: '#d9b48a', width: 5 });
-    s.rect({
-      x: -30,
-      y: -17,
-      w: 60,
-      h: 34,
-      rx: 5,
-      fill: 'none',
-      stroke: 'rgba(217,180,138,.7)',
-      sw: 2,
-    });
-    s.raw(
-      '<rect x="-30" y="-17" width="60" height="34" rx="5" fill="none" stroke="rgba(217,180,138,.7)" stroke-width="2" stroke-dasharray="6 5"/>',
-    );
-  });
-
-// 17 STANDING LAMP — warm glowing head on a slim pole + base.
-export const standingLamp = (opts = {}) =>
-  item('standing-lamp', opts, (s, { powered }) => {
-    s.rect({ x: -3, y: -2, w: 6, h: 44, fill: '#4a3a28' });
-    s.rect({ x: -13, y: 39, w: 26, h: 6, rx: 3, fill: '#4a3a28' });
-    s.glow(0, -18, 40, 'rgba(232,134,60,.5)', powered ? 1 : 0.1);
-    const head = s.rad([
-      [0, '#f2b563'],
-      [1, '#e8863c'],
-    ]);
-    s.circle({ cx: 0, cy: -18, r: 22, fill: powered ? head : '#6b4a26' });
-  });
-
-// 18 POTTED PLANT — leafy green crown over a tapered pot.
 export const pottedPlant = (opts = {}) =>
   item('potted-plant', opts, (s) => {
     s.path(roundedRectPath(-17, 16, 34, 28, { bl: 10, br: 10 }), {
@@ -410,37 +203,6 @@ export const medBed = (opts = {}) =>
     s.rect({ x: -11, y: 3.5, w: 22, h: 5, fill: '#c14a32' });
     s.rect({ x: -2.5, y: -5, w: 5, h: 22, fill: '#c14a32' });
   });
-
-// 21 RESEARCH CONSOLE — dark desk, big cyan display, keyboard.
-export const researchConsole = (opts = {}) =>
-  item('research-console', opts, (s) => {
-    s.rect({
-      x: -40,
-      y: -26,
-      w: 80,
-      h: 52,
-      rx: 6,
-      fill: s.lin([
-        ['0', '#333d47'],
-        ['1', '#232b33'],
-      ]),
-    });
-    s.glow(0, -8, 40, 'rgba(90,200,220,.5)', 1, 16);
-    s.rect({
-      x: -33,
-      y: -21,
-      w: 66,
-      h: 26,
-      rx: 3,
-      fill: s.lin([
-        ['0', '#0e3a44'],
-        ['1', '#0b2a32'],
-      ]),
-    });
-    s.rect({ x: -33, y: 14, w: 66, h: 8, rx: 2, fill: '#2b3742' });
-  });
-
-// 22 COMMS DISH — tan parabola on a mast + base (native SVG in the mock).
 export const commsDish = (opts = {}) =>
   item('comms-dish', opts, (s) => {
     // mock viewBox 0..90, centre (45,45): subtract 45 from every coord.
@@ -460,36 +222,6 @@ export const sensorArray = (opts = {}) =>
     s.glow(18, -18, 10, 'rgba(232,147,74,.6)');
     s.circle({ cx: 18, cy: -18, r: 3.5, fill: '#e8934a' });
   });
-
-// 24 WORKBENCH — REDRAWN. The old piece was a brown slab with one glowing dot and one grey bar: the
-// dining table with a lamp on it. The redraw adds the thing that actually distinguishes a workbench
-// from a table — a TOOL RAIL along the back wall carrying five recognisable tools — plus a vice
-// clamped to the near edge and a work light at the far end.
-export const workbench = (opts = {}) =>
-  item('workbench', opts, (s, { powered }) => {
-    s.rect({ x: -48, y: -16, w: 96, h: 44, rx: 4, fill: s.lin([['0', '#7a5c38'], ['1', '#5f4527']]) });
-    s.rect({ x: -46, y: -14, w: 92, h: 3, rx: 1.5, fill: 'rgba(242,181,99,.35)' });
-    s.rect({ x: -48, y: -31, w: 96, h: 14, rx: 3, fill: '#4a3a28' });
-    s.border({ x: -48, y: -31, w: 96, h: 14, rx: 3, color: '#2b2018', width: 1 });
-    s.rect({ x: -33, y: -35, w: 6, h: 22, rx: 2, fill: '#8fa2ad' });      // hammer shaft
-    s.rect({ x: -37, y: -37.5, w: 14, h: 7, rx: 2, fill: '#c14a32' });    // hammer head
-    s.rect({ x: -14.5, y: -35, w: 5, h: 18, rx: 2, fill: '#8fa2ad' });    // screwdriver
-    s.rect({ x: -1, y: -31, w: 18, h: 6, rx: 2, fill: '#c9b083' });       // file
-    s.rect({ x: 22, y: -34, w: 16, h: 16, rx: 3, fill: '#5a6672' });      // box spanner
-    s.border({ x: 22, y: -34, w: 16, h: 16, rx: 3, color: '#38424d', width: 2 });
-    s.rect({ x: -41, y: -2, w: 30, h: 16, rx: 3, fill: '#8fa2ad' });      // the vice
-    s.border({ x: -41, y: -2, w: 30, h: 16, rx: 3, color: '#5f6e79', width: 2 });
-    s.glow(24, 8, 24, 'rgba(232,134,60,.55)', powered ? 1 : 0.15);
-    s.circle({
-      cx: 24, cy: 8, r: 10,
-      fill: powered ? s.rad([[0, '#f2b563'], [1, '#e8863c']]) : '#6b4a26',
-    });
-  });
-
-// 25 FABRICATOR — REDRAWN. The old piece was a steel box with a hot rectangle inside it, which at
-// tile size is the cooker seen from a different angle. It is now a printer you can watch WORKING: a
-// dark chamber you look into, a bright print head sweeping across the top of it, a billet forming
-// underneath, an output tray at the bottom lip and a green ready-lamp in the corner.
 export const fabricator = (opts = {}) =>
   item('fabricator', opts, (s, { powered }) => {
     s.rect({ x: -39, y: -36, w: 78, h: 72, rx: 6, fill: s.lin([['0', '#4a5560'], ['1', '#38424d']]) });
@@ -507,27 +239,6 @@ export const fabricator = (opts = {}) =>
     s.glow(-30, -30, 10, 'rgba(90,167,127,.6)', powered ? 1 : 0.15);
     s.circle({ cx: -30, cy: -30, r: 4, fill: powered ? '#5aa77f' : '#2f4f3f' });
   });
-
-// 26 STORAGE CRATE — banded timber crate with cross straps.
-export const storageCrate = (opts = {}) =>
-  item('storage-crate', opts, (s) => {
-    s.rect({
-      x: -32,
-      y: -30,
-      w: 64,
-      h: 60,
-      rx: 5,
-      fill: s.lin([
-        ['0', '#7a5c38'],
-        ['1', '#5f4527'],
-      ]),
-    });
-    s.border({ x: -32, y: -30, w: 64, h: 60, rx: 5, color: '#4a3822', width: 2 });
-    s.rect({ x: -32, y: -4.5, w: 64, h: 9, fill: '#4a3822' });
-    s.rect({ x: -4.5, y: -30, w: 9, h: 60, fill: '#4a3822' });
-  });
-
-// 27 BLAST DOOR — reinforced steel with a seam + two hazard bands.
 export const blastDoor = (opts = {}) =>
   item('blast-door', opts, (s) => {
     s.rect({
@@ -605,37 +316,4 @@ export const cryopod = (opts = {}) =>
       ]),
     });
     s.rect({ x: -11, y: -27, w: 22, h: 20, rx: 10, fill: 'rgba(255,255,255,.35)' });
-  });
-
-// 30 FUEL DRUM — copper barrel, hazard band, base shadow.
-export const fuelDrum = (opts = {}) =>
-  item('fuel-drum', opts, (s) => {
-    s.rect({
-      x: -24,
-      y: -32,
-      w: 48,
-      h: 64,
-      rx: 8,
-      fill: s.lin(
-        [
-          ['0', '#c8935a'],
-          ['0.55', '#a8763f'],
-          ['1', '#8a5f30'],
-        ],
-        'h',
-      ),
-    });
-    s.border({ x: -24, y: -32, w: 48, h: 64, rx: 8, color: '#6b4a26', width: 2 });
-    s.rect({
-      x: -24,
-      y: -14,
-      w: 48,
-      h: 12,
-      fill: s.pat('<rect width="14" height="12" fill="#2b241c"/><rect width="7" height="12" fill="#e8934a"/>', {
-        w: 14,
-        h: 12,
-        transform: 'rotate(45)',
-      }),
-    });
-    s.rect({ x: -24, y: 14, w: 48, h: 4, fill: 'rgba(0,0,0,.3)' });
   });

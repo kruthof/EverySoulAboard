@@ -226,10 +226,10 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 | FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 26 |
 | FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
 | **FUNCTIONAL total** | **29** |
-| COSMETIC (view-only `decor`, non-hashed) | 21 |
+| COSMETIC (view-only `decor`, non-hashed) | 30 |
 | MATERIAL (wall/floor tint) | 12 |
 | RESOURCE (ground stack, a sim `ItemKind`) | 9 |
-| **Total** | **71** |
+| **Total** | **80** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -237,6 +237,27 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **21 → 30 COSMETIC and 71 → 80 on 2026-08-05 (VR-P2, the visual redesign's fittings package).**
+The owner's second design document, `design-import/Perilune Fittings.dc.html`, is a THIRTY-piece
+buildable catalogue drawn in the paper/ink idiom, and it overlaps this table's furniture by
+twenty-one rows. **Those twenty-one moved NO number here**: `chair`, `locker`, `dining-table`,
+`shelf-rack`, `bunk-bed`, `cooker`, `cooler`, `desk`, `storage-crate`, `supply-barrel`,
+`o2-scrubber`, `pipe-run`, `fuel-drum`, `herb-planter`, `hydroponics`, `workbench`,
+`research-console`, `standing-lamp`, `space-heater`, `battery-bank` and `rug` kept their id, their
+class, their glyph and their `deviceKind`, and changed only which module paints them
+(`client/src/items/fittings.js` instead of `objects.js`/`fixtures.js`, whose retired builders were
+deleted in the same commit). ⚠️ **That is precisely the change this Tally cannot see**, and it is
+worth saying out loud beside a table whose whole job is to be a census: `kind` is a fact about what a
+piece IS, not about how it is drawn. `client/test/items.test.js` therefore also pins the
+row → fittings-builder membership, both ways.
+The nine that DID move it are the catalogue rows the mock never had — BENCH, STOOL, COT, FOOTLOCKER,
+SINK, COMPOST BIN, VICE POST, CURTAIN RAIL, SHRINE SHELF — all **COSMETIC**, because every
+`DeviceKind` any of them could plausibly claim is already claimed by a row above (`Chair` by `chair`,
+`Bed` by `bunk-bed`, `Locker` by `locker`, `MachineShop` by `workbench`) and the other five name
+nothing in `DeviceKind` at all. None claims a glyph, so `items/glyph-map.js` and every pin in
+`client/test/device-sprite-coverage.test.js` are untouched — **measured, not assumed: that suite was
+green before and after with no expectation edited.**
 
 ⚠️ **THEN 23 → 21 COSMETIC and 27 → 29 FUNCTIONAL, later the same day**, when the wreck start
 shipped `DeviceKind.CryoPod` and the two CRYO CAPSULE pieces were reclassified. **The TOTAL did not
