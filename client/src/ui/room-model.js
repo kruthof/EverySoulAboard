@@ -162,7 +162,12 @@ const PALETTE_CMD = Object.freeze({
   medbed:{ cls: 'functional', verb: 'place',  kind: 'medbed', deviceKind: 'MedBed' },
   table: { cls: 'functional', verb: 'place',  kind: 'table',  deviceKind: 'Table' },
   rug:   { cls: 'cosmetic',   verb: 'decor',  itemId: 'rug' },
-  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'bookshelf' },
+  // — lane/paper-machines — `itemId` was `'bookshelf'` (the warm row) until 2026-08-05. This is the
+  // ONE draw site in the shipping client that reaches a cosmetic piece: the host's `decor` channel
+  // ships an empty list (`GameSession.cs`, `_decor` is a static empty `List`), so the two tools on
+  // this bar are the whole of the decor population. It now places the paper `book-case`; nothing
+  // else about the tool, the verb or the class moved.
+  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'book-case' },
   // ORDER class (console-retirement WP-4) — a DESIGNATION, not a build. It consumes no material and
   // changes no geometry: it marks a tile as intent and the sim's job board picks it up. `verb` is the
   // wire verb NAME (`dig`/`stockpile`/`strip`), which is what makes it emphatically NOT a build:

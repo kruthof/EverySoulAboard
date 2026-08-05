@@ -773,8 +773,12 @@ test('THE THREE FROM §4l, by name: hydroponics, the MOSS terminal and the senso
   // fails with the owner's own bug report in the message rather than as an anonymous count.
   assert.equal(itemIdForGlyphChar(FOR_DEVICE.GrowBed), 'hydroponics');
   assert.equal(itemIdForGlyphChar(FOR_DEVICE.Terminal), 'research-console');
-  assert.equal(itemIdForGlyphChar(FOR_DEVICE.Telescope), 'sensor-array');
-  for (const id of ['hydroponics', 'research-console', 'sensor-array']) {
+  // — lane/paper-machines — `'x'` moved from the warm `sensor-array` to the paper `ring-array` on
+  // 2026-08-05. WHAT THIS LEG IS ABOUT IS UNCHANGED: §4l's defect was that the Telescope glyph
+  // resolved to NOTHING and drew a dashed chip with a raw `x` in it. Which piece it resolves TO is
+  // an art decision; that it resolves at all is the fix, and that is still what is asserted here.
+  assert.equal(itemIdForGlyphChar(FOR_DEVICE.Telescope), 'ring-array');
+  for (const id of ['hydroponics', 'research-console', 'ring-array']) {
     assert.notEqual(buildItem(id, OPTS), PLACEHOLDER, `${id} builds the placeholder`);
   }
 });

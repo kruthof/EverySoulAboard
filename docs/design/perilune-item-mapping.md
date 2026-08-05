@@ -223,13 +223,13 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 26 |
-| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
-| **FUNCTIONAL total** | **29** |
-| COSMETIC (view-only `decor`, non-hashed) | 30 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 32 |
+| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 5 |
+| **FUNCTIONAL total** | **37** |
+| COSMETIC (view-only `decor`, non-hashed) | 35 |
 | MATERIAL (wall/floor tint) | 12 |
 | RESOURCE (ground stack, a sim `ItemKind`) | 9 |
-| **Total** | **80** |
+| **Total** | **93** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -237,6 +237,18 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **80 → 93 on 2026-08-05 (lane/paper-machines), and TWO classes moved: FUNCTIONAL 29 → 37 and
+COSMETIC 30 → 35.** `client/src/items/machines.js` draws the ship's own plant — the thirteen pieces
+neither design document covers — and every one is a NEW row rather than a re-skin: `reactor-plant`,
+`solar-wing`, `bottle-rack`, `reclaimer-stack`, `paste-column`, `med-cot`, `fab-cell`, `ring-array`,
+`dish-mast`, `plant-pot`, `book-case`, `deck-turret`, `sleeper-pod`. The thirteen WARM rows they
+replace (`reactor`, `solar-panel`, `oxygen-tank`, `water-recycler`, `paste-dispenser`, `med-bed`,
+`fabricator`, `sensor-array`, `comms-dish`, `potted-plant`, `bookshelf`, `turret`, `cryopod`) are
+kept, at `glyph: null`, so this Tally counts both halves and neither number shrank. **[NEW] went
+3 → 5** for a reason that is about ART and not about the sim: `reactor-plant` and `bottle-rack` are
+paper drawings of the same two kinds `reactor` and `oxygen-tank` were already waiting on, and
+`DeviceKind.Reactor` / `DeviceKind.OxygenTank` still do not exist.
 
 ⚠️ **21 → 30 COSMETIC and 71 → 80 on 2026-08-05 (VR-P2, the visual redesign's fittings package).**
 The owner's second design document, `design-import/Perilune Fittings.dc.html`, is a THIRTY-piece

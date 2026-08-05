@@ -113,6 +113,8 @@ import { ITEMS, ITEM_IDS, placeholderItem } from './index.js';
 import {
   paintFitting, line as fLine, disc as fDisc, curve as fCurve,
 } from './fittings.js';
+// — lane/paper-machines — the thirteen machine twins live in the block at the end of this file.
+import { paintMachine } from './machines.js';
 
 // ── the layer primitive ──────────────────────────────────────────────────────────────────────
 
@@ -1026,6 +1028,118 @@ const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
   inkCrack(s, F, [[11, 8, 133], [18, 10, 133]]);          // the near bracket, cracked at the mount
 });
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// — lane/paper-machines — THE THIRTEEN MACHINE TWINS (2026-08-05)
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Same construction as the nine fittings twins above, on the other module's frame: re-run the
+// PRISTINE painter (`machines.paintMachine`), then ink damage in the piece's own centimetres. The
+// five marks are the same five ideas — crack, tear, hole, scorch, wire — because a raid does the same
+// things to a reactor that it does to a chair; what changes is WHERE, and each mark below is placed
+// on a part the piece actually has, named in its comment.
+//
+// ⚠️ THE MOCK'S OWN PREMISE IS THE RULE HERE TOO: *"each keeps one identifying feature so it still
+// reads as the same object."* Nothing below removes the thing a piece is recognised by. The reactor
+// keeps its containment ring and its lamp bank; the wing keeps its grid; the bottles keep their yoke;
+// the cot keeps its cross. The damage is over the top of that, never instead of it.
+const reactorPlant = (s) => paintMachine(s, 'reactor-plant', (_s, { F }) => {
+  inkCrack(s, F, [[60, 0, 140], [96, 0, 104]]);           // across the inspection door
+  inkHole(s, F, 130, 0, 110, 9);                          // …and through it
+  inkScorch(s, F, 20, 24, 120, 22);                       // up the near coolant stack
+  inkCrack(s, F, [[80, 32, 180], [96, 32, 166]]);         // the drum, struck beside the hazard plate
+  inkWire(s, F, [176, 24, 90], [192, 24, 70], [172, 24, 48]);  // a loom, torn off the far stack
+});
+
+const solarWing = (s) => paintMachine(s, 'solar-wing', (_s, { F }) => {
+  // ⚠️ EVERY MARK ON THE PANEL IS ON THE PANEL'S OWN PLANE, which runs (y 12, z 36) → (y 80, z 170),
+  // i.e. `z = 36 + (y − 12)·134/68`. A mark authored off that plane renders as a stroke floating
+  // beside the wing — visible in a render, invisible to every string assertion in the suite.
+  inkTear(s, F, [[60, 25.6, 62.8], [110, 46, 103], [150, 66.4, 143.2]]);   // a crack up the cells
+  inkHole(s, F, 180, 46, 103, 10);                        // …and a cell punched out
+  inkScorch(s, F, 50, 66.4, 143.2, 20);
+  inkCrack(s, F, [[206, 80, 0], [212, 72, 30]]);          // the far mast, bent at the deck
+});
+
+const bottleRack = (s) => paintMachine(s, 'bottle-rack', (_s, { F }) => {
+  inkHole(s, F, 47, 6, 90, 8);                            // the far bottle, holed through its label
+  inkCrack(s, F, [[17, 6, 110], [27, 6, 80]]);
+  inkScorch(s, F, 30, 4, 20, 16);
+  inkWire(s, F, [30, 18, 96], [38, 14, 84], [30, 10, 70]);   // the upper strap, hanging
+});
+
+const reclaimerStack = (s) => paintMachine(s, 'reclaimer-stack', (_s, { F }) => {
+  inkCrack(s, F, [[30, 0, 126], [54, 0, 96], [46, 0, 70]]);  // across the sight glass
+  inkHole(s, F, 70, 0, 110, 8);
+  inkScorch(s, F, 20, 0, 36, 18);
+  inkCrack(s, F, [[92, 0, 40], [100, 0, 28]]);            // the clean-water spigot, snapped off
+});
+
+const pasteColumn = (s) => paintMachine(s, 'paste-column', (_s, { F }) => {
+  inkDead(s, F, [[12, 0, 112], [58, 0, 112], [58, 0, 140], [12, 0, 140]]);  // the screen, dark
+  inkCrack(s, F, [[35, 18, 90], [44, 14, 78]]);           // the spout, off its collar
+  inkHole(s, F, 20, 0, 60, 7);
+  inkScorch(s, F, 50, 0, 30, 16);
+});
+
+const medCot = (s) => paintMachine(s, 'med-cot', (_s, { F }) => {
+  inkTear(s, F, [[100, 20, 64], [140, 50, 64], [180, 30, 64]]);   // the blanket, across the cross
+  inkHole(s, F, 60, 40, 64, 9);
+  inkScorch(s, F, 30, 30, 64, 18);
+  inkWire(s, F, [6, 80, 104], [18, 84, 92], [6, 86, 74]);  // the monitor's loom, hanging
+  inkCrack(s, F, [[186, 12, 40], [194, 12, 12]]);         // the far-right leg, kicked out
+});
+
+const fabCell = (s) => paintMachine(s, 'fab-cell', (_s, { F }) => {
+  inkCrack(s, F, [[30, 0, 132], [70, 0, 100], [60, 0, 72]]);      // across the chamber window
+  inkHole(s, F, 110, 0, 100, 9);
+  inkScorch(s, F, 40, 0, 34, 18);
+  inkTear(s, F, [[22, 0, 128], [62, 0, 122]]);            // the gantry rail, sagging off true
+  inkCrack(s, F, [[128, 45, 168], [136, 45, 156]]);       // the extract, bent
+});
+
+const ringArray = (s) => paintMachine(s, 'ring-array', (_s, { F }) => {
+  inkCrack(s, F, [[30, 125, 110], [52, 116, 110]]);       // the outer ring, parted on the spoke plane
+  inkHole(s, F, 70, 70, 110, 10);                         // the hub, punched
+  inkScorch(s, F, 110, 40, 110, 20);
+  inkWire(s, F, [70, 70, 110], [88, 60, 88], [94, 50, 62]);  // a spoke, torn loose and hanging
+});
+
+const dishMast = (s) => paintMachine(s, 'dish-mast', (_s, { F }) => {
+  inkTear(s, F, [[20, 34, 180], [50, 34, 158], [80, 34, 136]]);   // across the bowl
+  inkHole(s, F, 60, 34, 150, 8);
+  inkScorch(s, F, 30, 34, 170, 18);
+  inkCrack(s, F, [[48.5, 34, 166], [40, 34, 148]]);       // the feed horn, off its struts
+});
+
+const plantPot = (s) => paintMachine(s, 'plant-pot', (_s, { F }) => {
+  inkCrack(s, F, [[16, 28, 10], [24, 28, 34]]);           // the pot, split up one side
+  inkScorch(s, F, 28, 28, 43, 14);                        // the soil, burnt
+  inkTear(s, F, [[28, 8, 110], [24, 12, 94]]);            // the tallest leaf, broken over
+  inkHole(s, F, 38, 28, 20, 5);
+});
+
+const bookCase = (s) => paintMachine(s, 'book-case', (_s, { F }) => {
+  inkCrack(s, F, [[10, 4, 150], [40, 4, 120]]);
+  inkHole(s, F, 60, 4, 100, 8);
+  inkScorch(s, F, 30, 4, 40, 20);
+  inkTear(s, F, [[8, 4, 52], [44, 4, 47]]);               // a shelf, sagging under its books
+  inkCrack(s, F, [[91, 0, 20], [96, 0, 4]]);              // the far side panel, split at the plinth
+});
+
+const deckTurret = (s) => paintMachine(s, 'deck-turret', (_s, { F }) => {
+  inkCrack(s, F, [[80, 44, 108], [92, 44, 124]]);         // the barrel, split
+  inkHole(s, F, 44, 44, 50, 9);                           // the head, punched through
+  inkScorch(s, F, 20, 30, 30, 18);
+  inkWire(s, F, [22, 40, 50], [32, 36, 36], [20, 32, 20]);   // the belt, out of the feed box
+});
+
+const sleeperPod = (s) => paintMachine(s, 'sleeper-pod', (_s, { F }) => {
+  inkCrack(s, F, [[26, 10, 140], [46, 10, 100], [38, 10, 64]]);   // the pane, cracked end to end
+  inkHole(s, F, 52, 10, 110, 8);
+  inkScorch(s, F, 42, 6, 30, 20);
+  inkCrack(s, F, [[42, 42, 182], [54, 42, 172]]);         // the hood, stove in
+});
+
 // ── the registry ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1144,6 +1258,37 @@ export const WRECKED = Object.freeze({
   'vice-post':        { paint: vicePost,     state: '15%', mockLabel: null, catalogue: '23 VICE POST' },
   'curtain-rail':     { paint: curtainRail,  state: '2%',  mockLabel: null, catalogue: '29 CURTAIN RAIL' },
   'shrine-shelf':     { paint: shrineShelf,  state: '31%', mockLabel: null, catalogue: '30 SHRINE SHELF' },
+
+  // ── MACHINES (13, 2026-08-05) — REPO-AUTHORED, FROM NO DOCUMENT AT ALL ──────────────────────
+  //
+  // ⚠️ A THIRD PROVENANCE, AND IT IS WORTH NAMING BECAUSE THE OTHER TWO ARE BOTH DOCUMENTS. Seventy
+  // twins are transcribed from `docs/design/perilune-item-set.dc.html`; nine are repo-authored damage
+  // over pieces the owner's FITTINGS CATALOGUE draws. These thirteen are damage over pieces the repo
+  // drew for itself (`client/src/items/machines.js`), because no document draws the ship's own plant.
+  // They are ledgered in `NON_MOCK_TWIN` for exactly the reason the nine are: what that ledger
+  // protects is the label/badge bijection below measuring the mock's own SEVENTY, and a repo-authored
+  // twin left inside that population does not merely fail the walk — it shifts every row after it
+  // onto the wrong label, which is a green-looking wrong answer for the rows either side of the gap.
+  //
+  // ⚠️ THE `catalogue` STRINGS CARRY AN `M` PREFIX AND THAT IS NOT COSMETIC. The nine fittings twins
+  // name a card in `design-import/Perilune Fittings.dc.html` — `'01 BENCH'` IS a page a reader can
+  // turn to. These name a SHEET number in `client/tools/machines-sheet.mjs`, which is a different
+  // kind of citation, and giving them bare `'01'`…`'13'` would have put two different documents'
+  // numbering into one column with nothing to tell them apart. `wrecked.test.js` accepts both shapes
+  // and says which is which.
+  'reactor-plant':    { paint: reactorPlant,   state: '3%',  mockLabel: null, catalogue: 'M01 REACTOR PLANT' },
+  'solar-wing':       { paint: solarWing,      state: '12%', mockLabel: null, catalogue: 'M02 SOLAR WING' },
+  'bottle-rack':      { paint: bottleRack,     state: '7%',  mockLabel: null, catalogue: 'M03 BOTTLE RACK' },
+  'reclaimer-stack':  { paint: reclaimerStack, state: '14%', mockLabel: null, catalogue: 'M04 RECLAIMER STACK' },
+  'paste-column':     { paint: pasteColumn,    state: '20%', mockLabel: null, catalogue: 'M05 PASTE COLUMN' },
+  'med-cot':          { paint: medCot,         state: '26%', mockLabel: null, catalogue: 'M06 MED COT' },
+  'fab-cell':         { paint: fabCell,        state: '10%', mockLabel: null, catalogue: 'M07 FAB CELL' },
+  'ring-array':       { paint: ringArray,      state: '5%',  mockLabel: null, catalogue: 'M08 RING ARRAY' },
+  'dish-mast':        { paint: dishMast,       state: '18%', mockLabel: null, catalogue: 'M09 DISH MAST' },
+  'plant-pot':        { paint: plantPot,       state: '29%', mockLabel: null, catalogue: 'M10 PLANT POT' },
+  'book-case':        { paint: bookCase,       state: '33%', mockLabel: null, catalogue: 'M11 BOOK CASE' },
+  'deck-turret':      { paint: deckTurret,     state: '8%',  mockLabel: null, catalogue: 'M12 DECK TURRET' },
+  'sleeper-pod':      { paint: sleeperPod,     state: '16%', mockLabel: null, catalogue: 'M13 SLEEPER POD' },
 });
 
 /**
@@ -1192,6 +1337,14 @@ export const NON_MOCK_TWIN = Object.freeze({
   bench: '01 BENCH', stool: '05 STOOL', cot: '07 COT', footlocker: '09 FOOTLOCKER', sink: '11 SINK',
   'compost-bin': '21 COMPOST BIN', 'vice-post': '23 VICE POST', 'curtain-rail': '29 CURTAIN RAIL',
   'shrine-shelf': '30 SHRINE SHELF',
+  // — lane/paper-machines — the thirteen machine twins, 2026-08-05. `M`-prefixed because they cite a
+  // SHEET (`client/tools/machines-sheet.mjs`) rather than a card in the owner's fittings document —
+  // see the section comment on their rows in `WRECKED` for why the two must be tellable apart.
+  'reactor-plant': 'M01 REACTOR PLANT', 'solar-wing': 'M02 SOLAR WING',
+  'bottle-rack': 'M03 BOTTLE RACK', 'reclaimer-stack': 'M04 RECLAIMER STACK',
+  'paste-column': 'M05 PASTE COLUMN', 'med-cot': 'M06 MED COT', 'fab-cell': 'M07 FAB CELL',
+  'ring-array': 'M08 RING ARRAY', 'dish-mast': 'M09 DISH MAST', 'plant-pot': 'M10 PLANT POT',
+  'book-case': 'M11 BOOK CASE', 'deck-turret': 'M12 DECK TURRET', 'sleeper-pod': 'M13 SLEEPER POD',
 });
 
 /** The pristine itemIds that have a wrecked twin, in registry order. */

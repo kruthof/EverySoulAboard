@@ -63,16 +63,29 @@ function idsIn(svg) {
 // never had, and they are the whole of the move. All nine are COSMETIC; index.js's own section
 // comment measures why (every DeviceKind they could plausibly claim is already claimed above).
 // RE-COUNTED off the shipped registry, not derived from this paragraph.
-test('the registry holds exactly 80 items', () => {
-  assert.equal(ITEM_IDS.length, 80);
-  assert.equal(Object.keys(ITEMS).length, 80);
+// ⚠️ 80 → 93 on 2026-08-05 (lane/paper-machines). `client/src/items/machines.js` draws the ship's own
+// PLANT — reactor, solar wing, gas bottles, reclaimer, paste column, med cot, fab cell, ring array,
+// dish, plant pot, book case, turret, sleeper pod — thirteen pieces the owner's fittings catalogue
+// never covered and which were still wearing `objects.js`'s mock art. Every one is a NEW row: the
+// thirteen warm rows they replace stay registered at `glyph: null`, so this is an addition of
+// thirteen and not a re-skin of thirteen, and both halves of that are visible in the tally below.
+// RE-COUNTED off the shipped registry, not derived from this paragraph.
+test('the registry holds exactly 93 items', () => {
+  assert.equal(ITEM_IDS.length, 93);
+  assert.equal(Object.keys(ITEMS).length, 93);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource', () => {
+test('the class tally holds: 37 functional, 35 cosmetic, 12 material, 9 resource', () => {
+  // ⚠️ RE-COUNTED AGAIN AFTER lane/paper-machines: functional 29 → 37 and cosmetic 30 → 35, so TWO
+  // classes moved this time and the pair of them is the shape of the package. Eight of the thirteen
+  // machines name a `DeviceKind` (six that the sim projects today plus Reactor and OxygenTank, which
+  // it does not yet — see the `deviceStatus:new` test below); five name none and are decor, exactly
+  // as their warm predecessors were. Nothing was RE-CLASSIFIED: the warm rows kept their class and
+  // lost only their glyph, which is why both numbers grew and neither shrank.
   // ⚠️ RE-COUNTED AGAIN AFTER VR-P2: COSMETIC 21 → 30, and it is the ONLY class that moved. That is
   // the tell that the fittings package was an ADDITION of nine decor rows and not a reclassification
   // — twenty-one further rows changed their PAINTING in the same commit and are invisible here,
@@ -87,7 +100,7 @@ test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 9 });
+  assert.deepEqual(by, { functional: 37, cosmetic: 35, material: 12, resource: 9 });
 });
 
 // ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped
@@ -239,9 +252,14 @@ test('every registry entry has a valid kind + a callable builder + a size', () =
 // claims its own glyph and is reachable by projection rather than only by the Radiator's borrow.
 // This assertion is the reason that claim cannot be made in prose: a piece whose `deviceStatus` says
 // `new` while a live DeviceKind projects it is a registry lie.
-test('the three remaining NEW device kinds are flagged deviceStatus:new', () => {
+// ⚠️ THREE BECAME FIVE ON 2026-08-05, AND THE TWO NEW ONES ARE NOT NEW FACTS ABOUT THE SIM. They are
+// `reactor-plant` and `bottle-rack`, the PAPER drawings of the same two kinds `reactor` and
+// `oxygen-tank` have been waiting on: `DeviceKind.Reactor` and `DeviceKind.OxygenTank` still do not
+// exist in `sim/Sim.Core/Entities/Device.cs`. So the list grows because the ART grew, not because the
+// enum did — which is the honest reading and the reason the guard is a NAMED LIST rather than a count.
+test('the five NEW device kinds are flagged deviceStatus:new', () => {
   const news = ITEM_IDS.filter((id) => ITEMS[id].deviceStatus === 'new').sort();
-  assert.deepEqual(news, ['cooker', 'oxygen-tank', 'reactor']);
+  assert.deepEqual(news, ['bottle-rack', 'cooker', 'oxygen-tank', 'reactor', 'reactor-plant']);
   assert.equal(ITEMS['space-heater'].deviceStatus, 'exists',
     'space-heater must read `exists` — DeviceKind.Heater (28) projects it directly since M3-10');
   assert.equal(ITEMS['space-heater'].glyph, 'E', 'and it must carry the glyph the sim projects');

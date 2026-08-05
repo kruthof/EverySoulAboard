@@ -324,7 +324,9 @@ test('paletteCommand maps every one of the twenty-one tools to a class + verb', 
     assert.equal(byTool[t].deviceKind, dk);
   }
   assert.deepEqual(byTool.rug, { cls: 'cosmetic', verb: 'decor', itemId: 'rug' });
-  assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'bookshelf' });
+  // — lane/paper-machines — `itemId` was `'bookshelf'` until 2026-08-05. This is the only draw site
+  // in the client that reaches a cosmetic piece, so it is the only one the paper machines rewire.
+  assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'book-case' });
   assert.deepEqual(byTool.demolish, { cls: 'demolish', verb: null });
   // The THREE ORDER verbs. `verb` is the WIRE verb name, not 'build': an order is a designation, and
   // routing it through Cmd.build would hand it to BuildSystem (controls.js:52-58). STOCKPILE joined
@@ -540,7 +542,9 @@ test('roomCells clamps to the room rect + deck and skins glyphs to items / unkno
 
 test('itemForGlyph maps device glyphs, skips floor/wall, and is empty for the unmapped', () => {
   assert.equal(itemForGlyph('D'.charCodeAt(0)), 'desk');
-  assert.equal(itemForGlyph('P'.charCodeAt(0)), 'potted-plant');
+  // — lane/paper-machines — `'P'` (PlantPot) moved from the warm `potted-plant` to the paper
+  // `plant-pot` on 2026-08-05. What this leg asserts is unchanged: a device glyph resolves to a piece.
+  assert.equal(itemForGlyph('P'.charCodeAt(0)), 'plant-pot');
   assert.equal(itemForGlyph('.'.charCodeAt(0)), '');
   assert.equal(itemForGlyph('#'.charCodeAt(0)), '');
   assert.equal(itemForGlyph('z'.charCodeAt(0)), '');

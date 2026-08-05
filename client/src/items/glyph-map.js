@@ -90,15 +90,21 @@ import { ITEMS } from './index.js';
  * a real builder, and that no entry here shadows a glyph a real piece already claims.
  */
 export const GLYPH_SUBSTITUTE = Object.freeze({
-  // WaterTank (10). The set has no water tank; OXYGEN TANK is the same upright pressure vessel and
-  // is otherwise unreachable art (`deviceStatus: 'new'` — no `DeviceKind.OxygenTank` exists).
-  O: 'oxygen-tank',
+  // WaterTank (10). The set has no water tank; the OXYGEN BOTTLE RACK is the same upright pressure
+  // vessel and is otherwise unreachable art (`deviceStatus: 'new'` — no `DeviceKind.OxygenTank`).
+  // — lane/paper-machines — REPOINTED from `oxygen-tank` (the warm row) to `bottle-rack` (the paper
+  // one) on 2026-08-05. The SUBSTITUTION is unchanged and so is its reason: what moved is only which
+  // drawing the borrow lands on, and leaving it on the warm row would have made a WaterTank the one
+  // tile on the ship still projecting mock art after the whole plant was redrawn.
+  O: 'bottle-rack',
   // Radiator (16). No radiator piece. SPACE HEATER is the set's only thermal fixture; likewise
   // `deviceStatus: 'new'`, so this substitution is the only way it ever reaches the screen.
   '=': 'space-heater',
-  // SalvageRecycler (15). No recycler piece. WATER RECYCLER is the same hopper-and-drum machine
-  // silhouette; the legacy `recycler` sprite role pointed at it too.
-  Y: 'water-recycler',
+  // SalvageRecycler (15). No recycler piece. THE RECLAIMER STACK is the same hopper-and-drum machine
+  // silhouette; the legacy `recycler` sprite role pointed at its warm predecessor too.
+  // — lane/paper-machines — REPOINTED from `water-recycler` to `reclaimer-stack`, 2026-08-05, for the
+  // reason given on `O` above.
+  Y: 'reclaimer-stack',
   // MedCabinet (21). No cabinet piece. LOCKER is the set's only tall closed store.
   C: 'locker',
   // Light (8). The set's luminaires are all COSMETIC (`wall-lamp`, `floodlight`, `sun-lamp`); there
