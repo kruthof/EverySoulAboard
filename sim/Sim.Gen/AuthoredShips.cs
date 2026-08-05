@@ -2044,19 +2044,36 @@ namespace Perilune.Gen
                 });
                 if (pod.Dead)
                 {
-                    // THE BODY IS AN ITEM AND THE DEATH IS A LOG LINE — and that is the WHOLE of it,
-                    // deliberately. `ItemKind.Corpse` has art, a label and ZERO consumers anywhere in
-                    // the sim; the eulogy/Chronicle path fires on `CitizenDiedEvent`, which a sleeper
-                    // who was never a `Citizen` cannot raise. Synthesising one would write a false
-                    // death into the hashed event stream and send `EulogySystem` looking for a mind
-                    // that does not exist. A log line is a fact; a eulogy is a relationship, and
-                    // these FOUR people have no relationships because they have never been entities.
-                    // (Four, not eight: this block runs inside `if (pod.Dead)`. The eight are the
-                    // LIVING sleepers, who get no log line at all.)
-                    plan.Items.Add(new ItemSpec
-                    {
-                        Kind = ItemKind.Corpse, Count = 1, Pos = new Int3(pod.X, pod.Y, 0), Label = pod.Who,
-                    });
+                    // ⛔ THE BODY IS NO LONGER AN ITEM. OWNER RULING, 2026-08-05, from a screenshot of
+                    // the cryo bay: "there are still old body bags — delete them." The four
+                    // `ItemKind.Corpse` stacks this block used to author — one per dead sleeper, on
+                    // the sleeper's own pod tile — are gone.
+                    //
+                    // THE LOG LINE STAYS, AND THAT IS THE WHOLE OF WHAT CHANGED. The paragraph that
+                    // stood here is quoted rather than deleted, because half of it is still the
+                    // reasoning and the owner overruled only the other half. It read: *"THE BODY IS
+                    // AN ITEM AND THE DEATH IS A LOG LINE — and that is the WHOLE of it, deliberately.
+                    // `ItemKind.Corpse` has art, a label and ZERO consumers anywhere in the sim; the
+                    // eulogy/Chronicle path fires on `CitizenDiedEvent`, which a sleeper who was never
+                    // a `Citizen` cannot raise. Synthesising one would write a false death into the
+                    // hashed event stream and send `EulogySystem` looking for a mind that does not
+                    // exist. A log line is a fact; a eulogy is a relationship, and these FOUR people
+                    // have no relationships because they have never been entities."*
+                    //
+                    // ⇒ Every clause about the EULOGY still holds and still forbids synthesising a
+                    // death; what the owner removed is the ITEM half. It is affordable now because the
+                    // pod tile tells the story by itself: `capsule-sealed`'s wrecked twin
+                    // (`client/src/items/wrecked.js`) is what a breached capsule with someone still in
+                    // it looks like, and all four of these pods are authored at Condition 0.03–0.07,
+                    // far below `wear.wreck_threshold` 0.25, so all four draw it. A body bag lying on
+                    // top of that was the pre-redesign warm art saying a second time, in a second
+                    // idiom, what the capsule now says once.
+                    //
+                    // ⚠️ `ItemKind.Corpse` IS NOT RETIRED and its warm art is still reachable —
+                    // `NeedsSystem` drops one when a CITIZEN dies in play. This deletes four AUTHORED
+                    // stacks from one ship's boot state; it does not touch the runtime path, and it
+                    // deliberately does not touch `Perilune()`'s own "Ensign Rojas" (that fixture sits
+                    // behind the tick-3000 golden, and `AddIceAtTheForwardHold` rides its tile).
                     plan.LogLines.Add(pod.Who + " did not survive the raid — capsule breached.");
                 }
             }

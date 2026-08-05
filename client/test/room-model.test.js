@@ -37,9 +37,11 @@ import {
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
   zoomChrome, ZOOM_HINT_IDLE, ZOOM_HINT_ARMED,
+  // The pawn-occlusion fallback (2026-08-05) — see its own section at the end of this file.
+  DEVICE_STATE_PIECE, itemForDeviceRow, DEVICE_KIND_NAMES, CITIZEN_GLYPH_CODE,
 } from '../src/ui/room-model.js';
-import { ITEMS, isDeviceItem } from '../src/items/index.js';
-import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM } from '../src/items/glyph-map.js';
+import { ITEMS, ITEM_IDS, isDeviceItem } from '../src/items/index.js';
+import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { dragModeForTool } from '../src/ui/build-drag-model.js';
 import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
@@ -5012,4 +5014,96 @@ test('VR-P3: the stat line is scaled to fit its own scene, and never grown past 
   // …and the NARROW room really is the case that needs the fit, or the leg above is vacuous.
   assert.ok(read({ deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 }).size < 9,
     'a 1×1 compartment fits the full stat line at 9 px on its own — this test proves nothing');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE DEVICE-TILE FALLBACK — `itemForDeviceRow`, and the two DECLARED entries it rests on
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ WHAT THIS PINS IS THE ONE PLACE THE CLIENT NAMES A PIECE WITHOUT A GLYPH. Everything else on
+// both surfaces resolves art through `items/glyph-map.js`, which is derived from `ITEMS` and guarded
+// against `Glyphs.For*` by `device-sprite-coverage.test.js`. The pawn-occlusion fallback cannot use
+// that road — the glyph is exactly what a crew member overwrote — so it goes kind → piece, and TWO
+// kinds need a declared answer because they have several glyph-reachable pieces.
+//
+// ⇒ THE DECLARED ENTRIES ARE PINNED AGAINST THE SIM'S OWN SWITCH, PARSED FROM THE C#, so the table
+// is a MIRROR with a mechanical check and not a second authority. Same idiom as `STOCK_KINDS`.
+const GLYPHS_CS = readFileSync(join(HERE, '..', '..', 'sim', 'Sim.Glyph', 'Glyphs.cs'), 'utf8');
+
+/** `DeviceKind.Foo => 'x',` and `DeviceKind.Foo => NamedConst,` out of `Glyphs.ForDevice`. */
+function parseForDevice(src) {
+  const body = src.slice(src.indexOf('ForDevice(DeviceKind kind)'));
+  const end = body.indexOf('};');
+  const consts = {};
+  for (const m of src.matchAll(/public const char (\w+) = '(.)';/g)) consts[m[1]] = m[2];
+  const out = {};
+  for (const m of body.slice(0, end).matchAll(/DeviceKind\.(\w+)\s*=>\s*(?:'(.)'|(\w+))/g)) {
+    out[m[1]] = m[2] !== undefined ? m[2] : consts[m[3]];
+  }
+  return out;
+}
+
+test('the device-tile fallback: 21 kinds derive, exactly TWO are declared, and both agree with the sim', () => {
+  const FOR_DEVICE = parseForDevice(GLYPHS_CS);
+  const fails = [];   // BLINDED (TRAPS 5th shape)
+
+  // NON-VACUITY FIRST, as an INCLUSION test (TRAPS 4th shape): the parser must find the arms this
+  // test is about, or every comparison below is an agreement between two empty things.
+  for (const k of ['Door', 'Battery', 'CryoPod', 'Scrubber']) {
+    if (!FOR_DEVICE[k]) fails.push(`the ForDevice parser did not find ${k} — it proves nothing`);
+  }
+  if (FOR_DEVICE.CryoPod !== 'K') fails.push(`ForDevice(CryoPod) parsed as ${FOR_DEVICE.CryoPod}, not 'K'`);
+  if (FOR_DEVICE.Door !== '+') fails.push(`ForDevice(Door) parsed as ${FOR_DEVICE.Door}, not '+'`);
+
+  // 1 — EVERY DECLARED `shut` PIECE IS THE PIECE THE KIND'S *REST GLYPH* RESOLVES TO. That is the
+  // whole claim: a shut device under a pawn draws what the frame would have drawn for it.
+  for (const [kind, pair] of Object.entries(DEVICE_STATE_PIECE)) {
+    const rest = FOR_DEVICE[kind];
+    if (!rest) { fails.push(`${kind} is declared here but has no ForDevice arm at all`); continue; }
+    if (pair.shut !== itemIdForGlyphChar(rest)) {
+      fails.push(`DEVICE_STATE_PIECE.${kind}.shut is ${JSON.stringify(pair.shut)} but the kind's rest `
+        + `glyph ${JSON.stringify(rest)} resolves to ${JSON.stringify(itemIdForGlyphChar(rest))}. The `
+        + 'declared table has drifted from the sim it mirrors.');
+    }
+  }
+
+  // 2 — AND THE TABLE IS EXACTLY THE AMBIGUOUS KINDS: no more (a kind that can be derived must not be
+  // declared, or the declaration silently outranks the registry) and no fewer (an ambiguous kind left
+  // undeclared resolves to '' and the device stays invisible under a pawn, which is the whole bug).
+  const reachable = new Set(Object.values(GLYPH_TO_ITEM));
+  const byKind = {};
+  for (const id of ITEM_IDS) {
+    const e = ITEMS[id];
+    if (e.kind !== 'functional' || !e.deviceKind || !reachable.has(id)) continue;
+    (byKind[e.deviceKind] = byKind[e.deviceKind] || []).push(id);
+  }
+  const ambiguous = Object.keys(byKind).filter((k) => byKind[k].length > 1).sort();
+  assert.deepEqual(ambiguous, ['CryoPod', 'Door'],
+    'the set of DeviceKinds with several glyph-reachable pieces changed. Every kind here needs a\n'
+    + '`DEVICE_STATE_PIECE` entry keyed on the wire\'s `open` bit; every kind NOT here derives.');
+  assert.deepEqual(Object.keys(DEVICE_STATE_PIECE).sort(), ambiguous,
+    'DEVICE_STATE_PIECE is not exactly the ambiguous kinds');
+  const derived = Object.keys(byKind).filter((k) => byKind[k].length === 1);
+  if (derived.length !== 21) fails.push(`${derived.length} kinds derive, expected 21 — re-count`);
+
+  // 3 — THE RESOLVER ITSELF, on the rows the wire really sends. Both capsule states, the Battery
+  // (the kind with ONE arm and THREE registered rows), an open doorway, and the tolerant answers.
+  const R = (kind, open) => itemForDeviceRow({ kind, open });
+  const POD = DEVICE_KIND_NAMES.indexOf('CryoPod');
+  const BATT = DEVICE_KIND_NAMES.indexOf('Battery');
+  const DOOR = DEVICE_KIND_NAMES.indexOf('Door');
+  if (R(POD, 0) !== 'capsule-sealed') fails.push(`a shut pod resolves to ${R(POD, 0)}`);
+  if (R(POD, 1) !== 'capsule-open') fails.push(`an open pod resolves to ${R(POD, 1)}`);
+  if (R(BATT, 0) !== 'cell-sound') fails.push(`a Battery resolves to ${R(BATT, 0)}`);
+  if (R(DOOR, 0) !== 'sliding-door') fails.push(`a shut door resolves to ${R(DOOR, 0)}`);
+  if (R(DOOR, 1) !== '') {
+    fails.push('an OPEN doorway resolves to a door leaf. An open doorway is a gap and both surfaces '
+      + 'draw nothing for it — restoring a leaf because a pawn is walking through would be a new lie.');
+  }
+  // TOLERANCE: a kind byte off the end of the table, a kind with no piece at all (Conduit is drawn
+  // by another layer), and no row at all must each answer '' rather than throw or guess.
+  for (const bad of [{ kind: 250, open: 0 }, { kind: DEVICE_KIND_NAMES.indexOf('Conduit'), open: 0 }, undefined, null]) {
+    if (itemForDeviceRow(bad) !== '') fails.push(`itemForDeviceRow(${JSON.stringify(bad)}) is not ''`);
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
 });

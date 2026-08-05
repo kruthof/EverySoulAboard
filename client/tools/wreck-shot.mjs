@@ -19,6 +19,15 @@
 // actually carries, and how many of them the client resolved to a piece), because "the picture looks
 // right" is not the same claim as "the tile resolved to the piece I think it did".
 //
+// ⚠️ THE CENSUS IS RACY AGAINST A HOST THAT HAS ONLY JUST STARTED, AND A LOW READING IS THIS RIG,
+// NOT THE SHIP. Observed 2026-08-05: run against a host started ~8 s earlier it printed
+// `10 'K' + 1 'k' = 11` on a deck the plan authors twelve pods for; independent re-measurement on
+// FIVE fresh connections to the same host once settled printed `11 + 1 = 12` every time. This tool
+// grabs the first frame it is handed, so on a cold host it can photograph a partially-populated
+// projection. ⇒ A count short of the plan's is a WARMUP artefact to re-measure, not a census
+// discrepancy to chase. (Left as a filed observation rather than fixed: the fix is a settle-wait
+// before the first read, and it belongs to whoever next has this rig in their charter.)
+//
 // USAGE
 //   1. ~/.dotnet/dotnet run --project hosts/web -- --port 8390 --ship wreck
 //      python3 client/serve.py 8391

@@ -513,3 +513,55 @@ test('overview-view.js feeds the scene from the devices CHANNEL, not from the fr
     /deviceCond:\s*deckDeviceConditions/,
     'a quoted block-comment opener blinded codeOnly, or the REAL later comment survived it');
 });
+
+// ⭐ THE OWNER'S 2026-08-05 DEFECT ON THE *OTHER* SURFACE. The Room Zoom's repro lives in
+// `devices-model.test.js`; this is the plate, driven, because "the fix must cover the Overview
+// miniatures IF they share the defect" is a question to be MEASURED and not inherited. They did
+// share it: `miniContents` read the same `NON_FURNITURE` skip off the same one-glyph-per-tile frame,
+// so a pawn standing anywhere on a plate deleted the machine under her there too.
+//
+// MUTATION: drop the `CITIZEN_GLYPH_CODE` arm from `overview-scene.js` ⇒ RED on leg 2.
+// MUTATION: make `itemForDeviceRow` ignore `open` ⇒ RED on leg 3.
+test('THE OWNER\'S DEFECT on the PLATE (driven): a pawn does not delete the machine she stands on', () => {
+  const W = 6, H = 5, DECK = 1, TX = 2, TY = 2;
+  const floor = () => {
+    const cells = new Array(W * H);
+    for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];
+    return cells;
+  };
+  const decksView = [{ deck: DECK, slots: [{ rect: { x: 0, y: 0, w: W, h: H }, occupied: true, displayName: 'HOLD' }] }];
+  const scene = (cells, rows) => overviewScene({
+    deck: DECK, decksView, frame: { deck: DECK, w: W, h: H, lens: 'none', cells }, idPrefix: 'ov',
+    deviceCond: deckDeviceConditions(rows, DECK),
+  });
+  const POD = (open) => [{ x: TX, y: TY, deck: DECK, kind: 27, cond: 255, oper: 1, open }];
+  const fails = [];
+
+  // 1 — PRECONDITION: with the pod's own glyph on the tile, the plate draws it.
+  const plain = floor(); plain[TY * W + TX] = ['K'.charCodeAt(0), 0, 0, 0];
+  const alone = scene(plain, POD(0));
+  if (!alone.includes(`id="ov-s0-f${TX}-${TY}__0"`)) {
+    fails.push('precondition: the plate draws no piece on the pod tile at all — this leg is vacuous');
+  }
+
+  // 2 — THE DEFECT: `Glyphs.Citizen` (64) at `GlyphColor.Crew` (5), byte for byte what pass 5 writes.
+  const pawned = floor(); pawned[TY * W + TX] = [64, 5, 0, 0];
+  const occupied = scene(pawned, POD(0));
+  if (!occupied.includes(`id="ov-s0-f${TX}-${TY}__0"`)) {
+    fails.push('THE PLATE LOST THE MACHINE UNDER THE PAWN. Same cause as the Room Zoom: one glyph '
+      + 'byte per tile, and pass 5 owns it.');
+  }
+
+  // 3 — AND THE STATE IS THE CHANNEL'S, not a default. An `open` pod under a pawn must not draw shut.
+  const openScene = scene(pawned, POD(1));
+  if (openScene === occupied) {
+    fails.push('an OPEN and a SHUT pod under a pawn render identically — the fallback ignores the '
+      + '`open` bit the wire carries, and every cycled capsule on the plate would read as sealed');
+  }
+
+  // 4 — NO GHOST: no device row, no piece, pawn or not.
+  if (scene(pawned, []).includes(`id="ov-s0-f${TX}-${TY}__0"`)) {
+    fails.push('the plate draws a machine that is not on the channel — the fallback is a cache');
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
+});

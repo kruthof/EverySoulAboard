@@ -594,8 +594,13 @@ function repaint() {
 
   // The two caption facts, derived here because here is where a frame is: how much is placed or
   // pending in this room, and how many souls are standing in it (VS-Z-12).
+  // ⭐ `_deviceCond` HERE TOO, AND FOR THE SAME DEFECT IN ITS OTHER COSTUME. This is the caption's
+  // "N OF M FITTINGS BUILT" count; left reading the frame alone it would tick DOWN by one every time
+  // a crew member walked over a fitting, because the glyph she overwrites is the only evidence the
+  // count had. The number and the picture must not be able to disagree about how many things are in
+  // the room — so they are derived from the same call, with the same arguments.
   _capPlaced = roomDesigns(designs, _focus).length
-    + roomCells(frame, _focus).filter((c) => c.itemId).length;
+    + roomCells(frame, _focus, _deviceCond).filter((c) => c.itemId).length;
   _capHere = roomCrew(crew, _focus).length;
 
   paintCanvas(frame);
@@ -662,7 +667,12 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   _layers.setAttribute('viewBox', scene.viewBoxAttr);
   _layers.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-  const cells = roomCells(frame, _focus);
+  // ⭐ `_deviceCond` IS PASSED HERE SO A PAWN CANNOT UNBUILD A MACHINE (the owner's 2026-08-05
+  // defect). `roomCells` reads the frame's ONE glyph byte per tile, and `GlyphMapper` pass 5
+  // writes `Glyphs.Citizen` over it — so a device with someone standing on it left the drawing.
+  // The channel is the same Map this view already built for `cond`; see `room-model.js`'s
+  // `itemForDeviceRow` for why this is a reading of the wire and not a cache or a re-derived rule.
+  const cells = roomCells(frame, _focus, _deviceCond);
   const here = roomCrew(crew, _focus);
   const roster = Hud.getRoster();
   const aboard = roster && Array.isArray(roster.crew) ? roster.crew.length : here.length;

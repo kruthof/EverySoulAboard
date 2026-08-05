@@ -82,6 +82,18 @@ try {
 const mockByLabel = new Map(brokenD.map((b) => [b.name, b]));
 
 // ───────────────────────────────────────────────────────────── 1. build every piece, up front
+//
+// ⛔ FILED, NOT FIXED (2026-08-05): THIS GUARD IS UNSATISFIABLE AND THE TOOL HAS EXITED 2 SINCE
+// `swarf` LANDED. It asserts a twin for EVERY registry row, but `client/src/items/wrecked.js` has
+// carried a deliberate `NO_WRECKED_TWIN` ledger since 2026-07-28 — `swarf` (already the wrecked
+// state of a machine), joined on 2026-08-05 by `cell-spent` (already the wrecked state of a
+// Battery). MEASURED on the parent commit as well as here: `main` prints "80 registry rows but 79
+// wrecked twins" and this tree prints "84 … but 82", so the capsules-and-cells package widened a
+// pre-existing gap from 1 to 2 rather than creating one. The correct predicate is
+// `WRECKED_IDS` vs `ITEM_IDS.length - Object.keys(NO_WRECKED_TWIN).length`, or simply
+// `itemsWithoutWreckedTwin()` — which is what `client/test/wrecked.test.js` already asserts, and is
+// why the suite is green while this rig is not. Left alone deliberately: it is a rig, not a gate,
+// and repairing it was outside the package that found it.
 if (WRECKED_IDS.length !== ITEM_IDS.length) {
   console.error(`FAIL: ${ITEM_IDS.length} registry rows but ${WRECKED_IDS.length} wrecked twins`);
   process.exit(2);
@@ -147,16 +159,24 @@ const sectionHtml = ([key, title, pick]) => `
     <div class="wrap">${pieces.filter(pick).map(cell).join('')}</div>
   </section>`;
 
-// The two NEW static capsules on their own, big — they are the only pieces in this package that a
-// player could ever see UNDAMAGED, so they get judged at a size where the occupant is visible.
-const bigCryo = ['cryo-capsule-occupied', 'cryo-capsule-open'].map((id) => `
+// The two capsules on their own, big — a player meets twelve of them in the first minute of
+// `--ship wreck`, so they get judged at a size where the occupant behind the glass is visible.
+//
+// ⚠️ RE-POINTED 2026-08-05, AND THE OLD IDS ARE NAMED SO THE CHANGE IS NOT MISTAKEN FOR A RENAME.
+// This panel read `['cryo-capsule-occupied', 'cryo-capsule-open']` — the warm `items/cryo.js` pieces
+// — which held `'K'` / `'k'` until the owner's "Capsules and cells" catalogue section took those
+// glyphs over. Those two rows are still REGISTERED (see `items/index.js` for why they were not
+// deleted) but nothing on either surface resolves to them any more, so a gallery that judged them
+// big was photographing art no player can reach. It now shows the pieces the wreck actually draws,
+// plus the Battery's two, which are the other pair this section is about.
+const bigCryo = ['capsule-sealed', 'capsule-open', 'cell-sound'].map((id) => `
   <div class="pair big">
     <div class="stages">
       <div class="stage big">${svgBox(buildItem(id, { w: 300, h: 300, idPrefix: `big-${id}` }), 'sv', 300)}</div>
       <div class="stage big wr">${svgBox(buildWrecked(id, { w: 300, h: 300, idPrefix: `bigw-${id}` }), 'sv', 300)}
         <div class="badge">${WRECKED[id].state}</div></div>
     </div>
-    <div class="lbl">${WRECKED[id].mockLabel}</div>
+    <div class="lbl">${WRECKED[id].mockLabel || WRECKED[id].catalogue}</div>
   </div>`).join('');
 
 const html = `<!doctype html><meta charset="utf-8"><title>PERILUNE — wrecked item set</title>
