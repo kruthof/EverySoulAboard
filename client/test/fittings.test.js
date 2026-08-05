@@ -449,12 +449,13 @@ test('E8-3b: the two members that hid behind their own piece are OUTSIDE its sil
   // The panel is `bx(…, 8, 0, 40, 60, 70, 25)`, so its right-most ink in the picture is the back edge
   // of its side face — x = 8 + 60 cm at depth 25. Nothing of the pipe may reach left of that.
   const [bodyRight] = Fh.project(8 + 60, 25, 0);
-  // ⚠️ ANCHORED ON THE TWO ATTACHMENTS ONLY — the panel corner it leaves and the wall's own bottom
-  // cut edge it runs off at. Everything BETWEEN them is left free on purpose, so the rule below is
-  // what polices the route rather than the anchor being the whole test: an elbow re-placed over the
-  // fins keeps both ends and must still fail.
+  // ⚠️ ANCHORED ON THE PANEL ATTACHMENT ALONE — the corner the pipe leaves. The far end is
+  // deliberately NOT an anchor: anchoring it at the wall made the depth assertion below a
+  // tautology (memberThrough already required the point, so `.some()` could never report —
+  // found by the revision verifier, mutation-proven). With one anchor, the silhouette loop
+  // polices the route and the depth rule genuinely polices the free end.
   const pipe = memberThrough(heater, 'space-heater',
-    [[68, 25, 50], [69, HEATER_WALL, 20]], 'the heater\'s supply pipe');
+    [[68, 25, 50]], 'the heater\'s supply pipe');
   for (const [px, py] of pipe) {
     assert.ok(px >= bodyRight - 0.05,
       `the heater's supply pipe passes through (${px}, ${py}) — left of the panel's own right edge\n`
