@@ -33,20 +33,24 @@ namespace Perilune.Tests
             };
             string json = WireFormat.Roster(rows);
             StringAssert.Contains("\"type\":\"roster\"", json);
-            // The traits array is APPEND-ONLY trailing on each row.
+            // The traits array, then fx/fy, are APPEND-ONLY trailing on each row. A caller that
+            // supplies no glide (these two do not) serializes fx/fy AT the integer tile — never a
+            // silently wrong (0,0) — which is also exactly what a crew member standing still sends.
             StringAssert.Contains("{\"cid\":7,\"name\":\"Ada\",\"role\":\"welder\",\"mood\":\"grief\"," +
                 "\"morale\":0.75,\"task\":\"hauling\",\"portrait\":\"pk_00000001\",\"deck\":0,\"x\":3,\"y\":4," +
-                "\"traits\":[\"steady\",\"wry\"]}", json);
+                "\"traits\":[\"steady\",\"wry\"],\"fx\":3,\"fy\":4}", json);
             // A row with no traits (null) still emits the stable empty array.
             StringAssert.Contains("\"cid\":9", json);
-            StringAssert.Contains("\"y\":2,\"traits\":[]}", json);
+            StringAssert.Contains("\"y\":2,\"traits\":[],\"fx\":10,\"fy\":2}", json);
             Assert.AreEqual("{\"type\":\"roster\",\"crew\":[]}", WireFormat.Roster(Array.Empty<WireFormat.RosterEntry>()));
         }
 
         [Test]
         public void Roster_Serialization_Is_InvariantCulture()
         {
-            var rows = new[] { new WireFormat.RosterEntry(1u, "X", "", "", "", "", 0.5f, 0, 0, 0) };
+            // fx/fy are FRACTIONAL on purpose here: they are the only per-frame floats on this
+            // channel, and a locale comma in one would make the whole message invalid JSON.
+            var rows = new[] { new WireFormat.RosterEntry(1u, "X", "", "", "", "", 0.5f, 0, 0, 0, null, 3.4f, 7.9f) };
             var prev = Thread.CurrentThread.CurrentCulture;
             try
             {
@@ -56,6 +60,7 @@ namespace Perilune.Tests
                 string inv = WireFormat.Roster(rows);
                 Assert.AreEqual(inv, de, "roster bytes are culture-independent");
                 StringAssert.Contains("\"morale\":0.5", de, "decimal dot, never a locale comma");
+                StringAssert.Contains("\"fx\":3.4,\"fy\":7.9", de, "the glide floats too");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }

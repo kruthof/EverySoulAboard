@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -27,7 +28,8 @@ namespace Perilune.Web
     ///   citizen {"type":"citizen","cid":..,"name":"..","role":"..","mood":"..","traits":[..],"portrait":"..","log":[[who,text],..]}
     ///   device  {"type":"device","kind":"terminal","tid":".."}
     ///   roster  {"type":"roster","crew":[{"cid":..,"name":"..","role":"..","mood":"..","morale":0.8,
-    ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4,"traits":["..",".."]},..]}
+    ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4,"traits":["..",".."],"fx":3.4,"fy":4},..]}
+    ///            (fx/fy = the sub-tile GLIDE position, same coordinate space as x/y — see RosterEntry)
     ///   designs {"type":"designs","cells":[[x,y,deck,kind],..]}   (pending build ghosts; kind 0 wall / 1 door)
     ///   terminals {"type":"terminals","list":[[tid,deck,x,y],..]} (MOSS terminal directory)
     ///   relations {"type":"relations","edges":[[fromCid,toCid,opinion,tier,note,secret],..]}
@@ -243,14 +245,53 @@ namespace Perilune.Web
             // Persona traits (APPEND-ONLY trailing field): the CREW tab's TRAITS column. Host-owned
             // mind-persona knowledge, same source as the citizen card; empty when the mind is absent.
             public readonly IReadOnlyList<string> Traits;
+            /// <summary>
+            /// ⭐ THE GLIDE (APPEND-ONLY trailing fields <c>fx</c>/<c>fy</c>) — where the figure is
+            /// DRAWN while a step is in flight. <b>SAME COORDINATE SPACE AS <c>X</c>/<c>Y</c>: a
+            /// tile coordinate with NO half-tile centre offset</b>, so a crew member standing still
+            /// serializes <c>fx == x</c> and <c>fy == y</c> exactly, and each view adds its own
+            /// centre offset exactly as it does for <c>x</c>/<c>y</c> today. This is the one place
+            /// the convention is written down; both client views (`overview-scene.js` pawnLayer,
+            /// `roomzoom-view.js` pawnSvg) read it and fall back to <c>x</c>/<c>y</c> when absent.
+            ///
+            /// <para>⭐⭐ <b>WHICH TILE DECIDES WHAT — SPLIT BY PURPOSE, NOT BY HABIT.</b> The two
+            /// disagree by up to a FULL TILE mid-walk: the sim takes its step first and pays for it
+            /// over the following <c>ticksPerTile</c> ticks, so <c>x</c>/<c>y</c> LEAD the body.
+            /// <list type="bullet">
+            ///   <item><b>The DRAWN tile (<c>fx</c>/<c>fy</c>, rounded) decides everything that must
+            ///   AGREE WITH THE DRAWING</b> — the two pawn layers, the Room Zoom's room membership
+            ///   (<c>room-model.js</c>'s <c>roomCrew</c>), the crew dock's HERE flag, the
+            ///   <c>N HERE</c> caption, and the pawn hit test (<c>crewHitAtTile</c>).</item>
+            ///   <item><b>The SIM tile (<c>x</c>/<c>y</c>) keeps everything ADDRESSED TO THE SIM</b>
+            ///   — deck membership (there is no fractional deck; a ladder step keeps X/Y), the
+            ///   order/selection target <c>crewClickTarget</c> (the host resolves a click through
+            ///   <c>Citizen.Pos</c>, so it MUST), and <c>crewRoomSlot</c>'s "which room do I
+            ///   navigate to".</item>
+            /// </list></para>
+            ///
+            /// <para>⛔ <b>THIS PARAGRAPH USED TO SAY THE OPPOSITE — "the integer tile stays
+            /// authoritative for … room membership … the CREW WATCH rows" — AND THAT SENTENCE IS
+            /// WHAT SHIPPED THE BUG.</b> Filtering membership on the sim tile while drawing at the
+            /// fraction put a crew member on a compartment's back wall on entry and vanished her on
+            /// exit while her body was still inside. The client twin of this contract
+            /// (<c>client/src/wire/messages.js</c>'s <c>RosterEntry</c> typedef) states the same
+            /// split; if the two ever disagree again, THIS file is not automatically the right one.
+            /// Derived read-only at render time by <c>GameSession.WalkFraction</c> (see its header
+            /// for the counter's direction, and for why the "corner-cutting" caveat that once stood
+            /// there was measured false and deleted); no sim state is added.</para>
+            /// </summary>
+            public readonly float Fx, Fy;
 
             public RosterEntry(uint cid, string name, string role, string mood, string task,
                                string portrait, float morale, int deck, int x, int y,
-                               IReadOnlyList<string> traits = null)
+                               IReadOnlyList<string> traits = null, float? fx = null, float? fy = null)
             {
                 Cid = cid; Name = name; Role = role; Mood = mood; Task = task;
                 Portrait = portrait; Morale = morale; Deck = deck; X = x; Y = y;
                 Traits = traits;
+                // Callers that do not know about the glide (tests of the older shape) get the tile
+                // centre-of-record, so `fx`/`fy` are never a silently wrong (0,0).
+                Fx = fx ?? x; Fy = fy ?? y;
             }
         }
 
@@ -285,6 +326,14 @@ namespace Perilune.Web
                             AppendString(sb, traits[t] ?? "");
                         }
                     sb.Append(']');
+                    // APPEND-ONLY trailing fields: the sub-tile glide position (see RosterEntry.Fx).
+                    // Rounded to 2 dp — at the shipped 10 ticks/tile every value is an exact tenth,
+                    // so this is lossless there and keeps the payload small if the cadence changes.
+                    // `Num` is InvariantCulture (dev machine is de-DE; a locale comma would be
+                    // invalid JSON, and the culture leg of Roster_Serialization_Is_InvariantCulture
+                    // now covers these two fields as well as `morale`).
+                    sb.Append(",\"fx\":").Append(Num(Math.Round((double)e.Fx, 2)));
+                    sb.Append(",\"fy\":").Append(Num(Math.Round((double)e.Fy, 2)));
                     sb.Append('}');
                 }
             sb.Append("]}");

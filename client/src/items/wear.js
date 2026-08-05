@@ -29,13 +29,29 @@
 // WORTH THE PARAGRAPH. `WireFormat.Devices.cs` carries the raw `DeviceKind`, and its own header
 // suggests the wrecked-sprite join "should derive its table from `ITEMS`". Deriving
 // `DeviceKind → itemId` from `ITEMS` is possible and it is NOT A FUNCTION: `DeviceKind.Door` is
-// claimed by `sliding-door`, `airlock` AND `blast-door`, and `DeviceKind.CryoPod` by BOTH
-// `cryo-capsule-occupied` and `cryo-capsule-open`. A kind-keyed join would have to pick one of each
-// arbitrarily — and the two capsules are precisely the pieces this package exists to put on screen,
-// so it would fail on its own headline case. What separates them is STATE, and state reaches the
-// client as the projected glyph (`GlyphMapper.DeviceGlyph` returns `'K'` occupied / `'k'` open,
-// `'+'`/`'/'`/`'X'` for a door). The surfaces already resolve art from the glyph; this module leaves
-// that untouched and adds only the wear question. The non-functionality is not an assumption —
+// claimed by `sliding-door`, `airlock` AND `blast-door`; `DeviceKind.CryoPod` by `capsule-sealed`
+// and `capsule-open`; and `DeviceKind.Battery` by `cell-sound`, `cell-spent` AND `battery-bank`.
+// A kind-keyed join would have to pick one of each arbitrarily — and the capsules are precisely the
+// pieces the wreck start exists to put on screen, so it would fail on its own headline case.
+//
+// ⚠️ THE CRYO NAMES IN THAT SENTENCE MOVED ON 2026-08-05 and the old ones are worth keeping in view,
+// because a reader who greps for them will find two rows that look like the answer and are not:
+// `cryo-capsule-occupied` / `cryo-capsule-open` (`items/cryo.js`) held `'K'` / `'k'` until the
+// owner's "Capsules and cells" catalogue section landed, and now sit at `glyph: null` beside
+// `battery-bank` as registered-but-unreached warm art. They are still `deviceKind: 'CryoPod'`, which
+// is exactly why they still make this argument true — three of the rows in the two lists above draw
+// nothing a player can reach, and a kind-keyed join could not tell them from the three that do.
+//
+// ⚠️ AND BATTERY IS THE SHARPEST CASE OF THE THREE, BECAUSE IT IS NOT A STATE-GLYPH KIND AT ALL.
+// Door and CryoPod are multi-piece because `GlyphMapper.DeviceGlyph` gives them several chars.
+// `Glyphs.ForDevice(Battery)` is the single arm `'B'`, and `cell-spent` is reached ONLY through this
+// module — `WRECKED['cell-sound']`, chosen by the `cond` byte below. So for a Battery the kind byte
+// carries no way to choose at all, which is the road-not-taken argument at its strongest.
+//
+// What separates the multi-glyph pieces is STATE, and state reaches the client as the projected
+// glyph (`GlyphMapper.DeviceGlyph` returns `'K'` occupied / `'k'` open, `'+'`/`'/'`/`'X'` for a
+// door). The surfaces already resolve art from the glyph; this module leaves that untouched and adds
+// only the wear question. The non-functionality is not an assumption —
 // `deviceKindsWithSeveralPieces()` measures it off `ITEMS` and the test asserts it is non-empty, so
 // if the registry ever became one-piece-per-kind the argument would fail loudly instead of rotting.
 //
@@ -122,7 +138,8 @@ export function isWreckedCond(cond) {
 
 /**
  * Does `itemId` have a wrecked twin to wear? PURE, TOLERANT — `false` for an unknown id and for the
- * rows in `NO_WRECKED_TWIN` (`swarf` today).
+ * rows in `NO_WRECKED_TWIN` (`swarf`, `cell-spent` and `turnings` today — re-read the ledger, it
+ * has grown once per lane).
  */
 export function hasWreckedTwin(itemId) {
   return typeof itemId === 'string' && WRECKED[itemId] !== undefined;
