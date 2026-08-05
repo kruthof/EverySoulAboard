@@ -1476,9 +1476,11 @@ function onCanvasClick(e) {
     // Pawn click = select, only when no tool is armed (IX-Z-30). Resolve crew from the tile.
     const roster = Hud.getRoster();
     const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
-    // ⭐ THE GLIDE MADE THIS A TILE TEST ABOUT A MOVING TARGET — `crewHitAtTile` prefers the tile
-    // the figure is DRAWN in and falls back to the sim tile (see its header; the sim tile leads the
-    // body by up to a full tile mid-walk, so the old `c.x === tile.x` missed the pawn being aimed at).
+    // ⭐ THE GLIDE MADE THIS A TILE TEST ABOUT A MOVING TARGET — `crewHitAtTile` matches the tile
+    // the figure is DRAWN in, and ONLY that one: one rule, one pass, no sim-tile fallback (see its
+    // header). The sim tile leads the body by up to a full tile mid-walk, so the old
+    // `c.x === tile.x` missed the pawn being aimed at AND answered for the bare floor she had
+    // already left on screen. You select exactly what you can see.
     const hit = crewHitAtTile(crew, _focus, tile.x, tile.y);
     if (hit) Hud.selectCrewByCid(hit.cid);
     return;

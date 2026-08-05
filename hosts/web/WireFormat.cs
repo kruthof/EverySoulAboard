@@ -253,11 +253,32 @@ namespace Perilune.Web
             /// centre offset exactly as it does for <c>x</c>/<c>y</c> today. This is the one place
             /// the convention is written down; both client views (`overview-scene.js` pawnLayer,
             /// `roomzoom-view.js` pawnSvg) read it and fall back to <c>x</c>/<c>y</c> when absent.
-            /// <para>THE INTEGER TILE STAYS AUTHORITATIVE for everything that is not a drawing
-            /// position — deck/room membership, selection, click targets, the CREW WATCH rows: a
-            /// crew member belongs to the tile the SIM says she is on, mid-glide or not. Derived
-            /// read-only at render time by <c>GameSession.WalkFraction</c> (see its header for the
-            /// counter's direction and the corner-cutting caveat); no sim state is added.</para>
+            ///
+            /// <para>⭐⭐ <b>WHICH TILE DECIDES WHAT — SPLIT BY PURPOSE, NOT BY HABIT.</b> The two
+            /// disagree by up to a FULL TILE mid-walk: the sim takes its step first and pays for it
+            /// over the following <c>ticksPerTile</c> ticks, so <c>x</c>/<c>y</c> LEAD the body.
+            /// <list type="bullet">
+            ///   <item><b>The DRAWN tile (<c>fx</c>/<c>fy</c>, rounded) decides everything that must
+            ///   AGREE WITH THE DRAWING</b> — the two pawn layers, the Room Zoom's room membership
+            ///   (<c>room-model.js</c>'s <c>roomCrew</c>), the crew dock's HERE flag, the
+            ///   <c>N HERE</c> caption, and the pawn hit test (<c>crewHitAtTile</c>).</item>
+            ///   <item><b>The SIM tile (<c>x</c>/<c>y</c>) keeps everything ADDRESSED TO THE SIM</b>
+            ///   — deck membership (there is no fractional deck; a ladder step keeps X/Y), the
+            ///   order/selection target <c>crewClickTarget</c> (the host resolves a click through
+            ///   <c>Citizen.Pos</c>, so it MUST), and <c>crewRoomSlot</c>'s "which room do I
+            ///   navigate to".</item>
+            /// </list></para>
+            ///
+            /// <para>⛔ <b>THIS PARAGRAPH USED TO SAY THE OPPOSITE — "the integer tile stays
+            /// authoritative for … room membership … the CREW WATCH rows" — AND THAT SENTENCE IS
+            /// WHAT SHIPPED THE BUG.</b> Filtering membership on the sim tile while drawing at the
+            /// fraction put a crew member on a compartment's back wall on entry and vanished her on
+            /// exit while her body was still inside. The client twin of this contract
+            /// (<c>client/src/wire/messages.js</c>'s <c>RosterEntry</c> typedef) states the same
+            /// split; if the two ever disagree again, THIS file is not automatically the right one.
+            /// Derived read-only at render time by <c>GameSession.WalkFraction</c> (see its header
+            /// for the counter's direction, and for why the "corner-cutting" caveat that once stood
+            /// there was measured false and deleted); no sim state is added.</para>
             /// </summary>
             public readonly float Fx, Fy;
 

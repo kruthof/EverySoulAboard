@@ -2544,14 +2544,20 @@ namespace Perilune.Web
         /// <para>⚠️ <b>THE CONSEQUENCE WORTH KNOWING, MEASURED LIVE RATHER THAN REASONED ABOUT:
         /// THE SIM TILE LEADS THE DRAWN BODY BY UP TO A FULL TILE.</b> Because the step is taken
         /// first, <c>Pos</c> arrives a whole <c>ticksPerTile</c> window before the figure does — on
-        /// <c>--ship wreck</c> the roster published <c>x=7 fx=8.0</c> in one row. Everything that
-        /// reads the INTEGER tile therefore commits early: room membership, the CREW WATCH's HERE
-        /// flag, `currentRoom`. That is the correct reading (she IS on that tile as far as the sim
-        /// is concerned) and it is the owner-approved design. But it DID break one thing, and it is
-        /// fixed rather than filed because it is the affordance the owner reported by name: the
-        /// Room Zoom resolves a pawn click through the floor TILE, so clicking the drawn figure
-        /// selected nobody. See `room-model.js`'s <c>crewHitAtTile</c>. The Overview is unaffected —
-        /// it hit-tests the drawn element's own <c>data-cid</c>.</para>
+        /// <c>--ship wreck</c> the roster published <c>x=7 fx=8.0</c> in one row.
+        /// <b>So a consumer that reads the INTEGER tile commits EARLY, by up to a second.</b> That
+        /// is the right answer for anything addressed to the sim, and the wrong one for anything
+        /// that has to agree with what is on screen — which is the split
+        /// <c>WireFormat.RosterEntry.Fx</c> now writes down and this paragraph used to get backwards.
+        /// Room membership, the crew dock's HERE flag and the <c>N HERE</c> caption all follow the
+        /// DRAWN tile today (<c>room-model.js</c>'s <c>roomCrew</c>); the order target
+        /// <c>crewClickTarget</c> and <c>crewRoomSlot</c>'s navigation keep the sim tile.
+        /// It broke two things on the way, both now closed: the Room Zoom resolves a pawn click
+        /// through the floor TILE, so clicking the drawn figure selected nobody
+        /// (<c>crewHitAtTile</c>); and the same surface drew a figure where the cutaway has no
+        /// floor (the paragraph above). The Overview is unaffected by both — it hit-tests the drawn
+        /// element's own <c>data-cid</c>, and its only rect test is the deck, which cannot go
+        /// fractional.</para>
         ///
         /// <para>⚠️ <b>FILED, NOT FIXED — A RE-PATH MID-GLIDE SNAPS THE BODY FORWARD.</b>
         /// <c>StartPath</c> writes <c>PrevPos = Pos</c>, so a crew member who is re-ordered (or has
@@ -2580,7 +2586,7 @@ namespace Perilune.Web
             // pathfinder over real routes on two ships and asserts BOTH halves (no diagonal step
             // exists; a Z step leaves X and Y untouched), which is also the instrument that stops
             // the deleted corner-cutting caveat from quietly becoming true again. It stays because
-            // neighbour that moves X/Y and Z together would make it load-bearing overnight and the
+            // a neighbour that moved X/Y and Z together would make it load-bearing overnight and the
             // failure would be a figure sliding between two decks' floor planes — but no reader
             // should believe it is holding anything back today.
             if (ticksPerTile <= 0 || c.MoveCooldown <= 0 || c.PrevPos == c.Pos || c.PrevPos.Z != c.Pos.Z)
