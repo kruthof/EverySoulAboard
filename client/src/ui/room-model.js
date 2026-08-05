@@ -1122,8 +1122,57 @@ export function roomCells(frame, focusRoom) {
 }
 
 /**
- * The crew standing in the room (VS-Z-27). Roster entries ({cid,role,name,deck,x,y}) on the room's
- * deck inside the rect. PURE.
+ * ⭐ THE TILE A CREW MEMBER'S FEET ARE DRAWN IN — `Math.round` of the glide position, falling back
+ * to the integer sim tile when the host publishes no glide. PURE.
+ *
+ * <p><b>`Math.round` IS THE EXACT ANSWER HERE, NOT AN APPROXIMATION OF ONE, and the whole of
+ * `roomCrew` below rests on that.</b> `scenePlacement.foot(fx,·)` returns
+ * `P((fx − rx)·cm + cm/2, …)`, while tile `T`'s floor quad spans `[(T − rx)·cm, (T − rx + 1)·cm]`.
+ * The foot lies inside tile `T`'s quad exactly when `T ≤ fx + 0.5 ≤ T + 1`, i.e. when
+ * `|T − fx| ≤ 0.5` — which is the definition of `T = Math.round(fx)`. So the drawn feet are ALWAYS
+ * inside the quad of the tile this function names, with equality only when they stand on the
+ * quad's own edge. Truncation (`| 0`) would name the wrong tile for the whole second half of every
+ * step, which is mutation M15.</p>
+ */
+export function drawnTile(c) {
+  if (!c) return { x: 0, y: 0 };
+  return {
+    x: Math.round(Number.isFinite(c.fx) ? c.fx : (c.x | 0)),
+    y: Math.round(Number.isFinite(c.fy) ? c.fy : (c.y | 0)),
+  };
+}
+
+/**
+ * The crew standing in the room (VS-Z-27) — the list the cutaway DRAWS, the `N HERE` caption counts,
+ * and the dock's HERE flag is taken from. Roster entries on the room's deck whose feet land inside
+ * the rect. PURE.
+ *
+ * ⭐⭐ <b>MEMBERSHIP IS THE DRAWN TILE, NOT THE SIM TILE, AND THAT IS A CORRECTION — the first draft
+ * of the pawn glide used the sim tile here and it put a crew member ON A WALL.</b> Review measured
+ * it on `--ship wreck`: 14 of 319 live frames (4.4%) drew a figure outside the focused room's floor,
+ * with a screenshot of Rell standing on the CRYO BAY'S BACK WALL at wire `5,7|5,7.8`. Both halves
+ * were wrong, in opposite directions, because the sim takes its tile step FIRST and pays for it over
+ * the next `ticksPerTile` ticks:
+ *   · ENTERING (`x:4, fx:3.1`) — the sim tile was already inside, so she was drawn, 0.4 tile OUTSIDE
+ *     the room quad. The cutaway has no floor there; the only thing to stand on is the back wall.
+ *   · LEAVING (`x:7, fx:6.1`) — the sim tile was already outside, so she VANISHED from the cutaway
+ *     while her body was still a full tile inside it, and the hit test at her drawn tile returned
+ *     null: a figure you can see and cannot click.
+ *
+ * <b>Deciding on the drawn tile closes both, and closes them by CONSTRUCTION rather than by a
+ * clamp:</b> `drawnTile` names the tile whose quad contains the feet (see its header), so if that
+ * tile is in the room then the feet are on the room's floor — there is no position a member can
+ * occupy that is off the floor, and no clamp is needed to keep her on it. Leaving, she stays drawn
+ * until her body crosses the threshold; entering, she appears as it crosses, standing on the room's
+ * edge, and slides in from there. She is never drawn where there is nothing to stand on.
+ *
+ * <b>The two-source rule is PRESERVED, which is why this is one function and not two.</b>
+ * `shipCrewRows`'s HERE flag and `_capHere` both read this list, so "HERE" still means exactly what
+ * the pawn layer draws — the invariant that comment has always claimed. What does NOT follow the
+ * glide is anything that is a SIM fact rather than a drawing: `crewClickTarget` addresses the host
+ * by `frame.crew`'s integer tile (the host resolves a click through `Citizen.Pos`, so it must), and
+ * `crewRoomSlot` answers "which room do I navigate to" off the sim tile. See `pawn-glide.test.js`.
+ *
  * @param {Array|null} crew  roster crew list
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
  */
@@ -1132,22 +1181,10 @@ export function roomCrew(crew, focusRoom) {
   if (!Array.isArray(crew) || !focusRoom) return out;
   for (const c of crew) {
     if (!c || (c.deck | 0) !== (focusRoom.deck | 0)) continue;
-    if (clampTileToRoom(c.x | 0, c.y | 0, focusRoom)) out.push(c);
+    const d = drawnTile(c);
+    if (clampTileToRoom(d.x, d.y, focusRoom)) out.push(c);
   }
   return out;
-}
-
-/**
- * The tile a crew member's FEET ARE DRAWN IN — `Math.round` of the glide position, because
- * `scenePlacement.foot(fx,·)` puts the feet at the CENTRE of the virtual tile `fx`, and the real
- * tile containing that point is `floor(fx + 0.5)`. Falls back to the integer tile. PURE.
- */
-export function drawnTile(c) {
-  if (!c) return { x: 0, y: 0 };
-  return {
-    x: Math.round(Number.isFinite(c.fx) ? c.fx : (c.x | 0)),
-    y: Math.round(Number.isFinite(c.fy) ? c.fy : (c.y | 0)),
-  };
 }
 
 /**
@@ -1163,19 +1200,23 @@ export function drawnTile(c) {
  * the empty tile ahead of her. Measured live on `--ship wreck`: the roster published
  * `tile=(7,2) frac=(8,2)` — a whole tile apart.</p>
  *
- * <p>THE DRAWN TILE WINS AND THE SIM TILE IS THE FALLBACK, in that order: the player is pointing at
- * a figure, so what is under the cursor decides, and the sim tile still answers for anyone the
- * glide has no opinion about (an older host, a standing crew member). Everything that is NOT a hit
- * test keeps the sim tile — membership, the CREW WATCH rows, the order target. PURE.</p>
+ * <p><b>YOU CAN CLICK EXACTLY WHAT YOU CAN SEE — one rule, one pass, no fallback.</b> The candidates
+ * are `roomCrew`, which is now the DRAWN list, and the tile matched is `drawnTile`, which is where
+ * that list's figures stand. An earlier draft added a second pass on the sim tile "as a fallback";
+ * it is deleted, because with `roomCrew` deciding on the drawn tile that pass could only ever fire
+ * for a figure that is NOT DRAWN on the clicked tile — selecting an invisible pawn from bare floor.
+ * A crew member with no glide at all is unaffected: `drawnTile` falls back to her sim tile, so the
+ * pre-package behaviour is reproduced exactly.</p>
  *
  * @param {Array|null} crew roster crew list @param {object} focusRoom the room rect
  * @param {number} tx @param {number} ty absolute sim tile under the pointer
  */
 export function crewHitAtTile(crew, focusRoom, tx, ty) {
-  const here = roomCrew(crew, focusRoom);
   const x = tx | 0, y = ty | 0;
-  for (const c of here) { const d = drawnTile(c); if (d.x === x && d.y === y) return c; }
-  for (const c of here) if ((c.x | 0) === x && (c.y | 0) === y) return c;
+  for (const c of roomCrew(crew, focusRoom)) {
+    const d = drawnTile(c);
+    if (d.x === x && d.y === y) return c;
+  }
   return null;
 }
 

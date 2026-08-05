@@ -447,9 +447,15 @@ test('BASELINE: a click on a pawn with NO tool armed selects THAT crew member, b
 // at for up to a full second per tile — and selected her by clicking the empty tile ahead. That is
 // exactly the affordance the owner reported at the 2026-07-29 playtest, so it is fixed, not filed.
 //
-// MUTATION: drop `crewHitAtTile`'s drawn-tile pass (back to the sim tile only) ⇒ RED on leg 1.
+// ⭐ AND THE COMMAND STILL CARRIES THE SIM TILE. `crewHitAtTile` resolves WHO from the drawn body;
+// `crewClickTarget` then addresses the host by `frame.crew`'s integer tile, because `ContextAction`
+// resolves a click through `Citizen.Pos`. The two halves use different tiles ON PURPOSE, and this
+// test sees both at once: the click LANDS on the drawn tile and the command SAYS the sim tile.
+//
+// MUTATION: drop `crewHitAtTile`'s drawn-tile match (back to the sim tile) ⇒ RED on leg 2.
+// MUTATION: `roomCrew` filters on the SIM tile again                       ⇒ RED on leg 2.
 // MUTATION: `crewHitAtTile` → the old `roomCrew(...).find((c) => c.x === tile.x …)` in the view
-//           (the WIRING, not the model)                                        ⇒ RED on leg 1.
+//           (the WIRING, not the model)                                    ⇒ RED on leg 2.
 test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the sim has her', () => {
   prime(null);
   // She has stepped to her tile in the sim; the body is still a tile back and sliding.
@@ -457,8 +463,8 @@ test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the 
   assert.ok(crewRoomSlot(DVIEW, behind).anchor === 'quarters',
     'precondition: the tile she is drawn on is inside the focused room');
 
-  // CONTROL — with nobody drawn there, that tile selects nobody. Without this the leg below could
-  // pass on a hit test that simply selects the room's first occupant from any click.
+  // LEG 1 — CONTROL. With nobody drawn there, that tile selects nobody. Without this the leg below
+  // could pass on a hit test that simply selects the room's first occupant from any click.
   hudSent.length = 0;
   clickTile(behind.x, behind.y);
   assert.deepEqual(hudSent, [], 'bare floor selected someone before the glide was even published');
@@ -466,15 +472,81 @@ test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the 
   Hud.renderRoster({ type: 'roster', crew: CREW.map((c) => (c.cid === RYN.cid
     ? { ...c, fx: RYN.x - 0.9, fy: RYN.y } : { ...c, fx: c.x, fy: c.y })) });
 
+  // LEG 2 — the click lands on the BODY, and the command names the SIM tile.
   hudSent.length = 0;
   clickTile(behind.x, behind.y);
   assert.deepEqual(hudSent, [{ cmd: 'click', x: RYN.x, y: RYN.y }],
     'clicking the drawn figure did not select her — the hit test is reading the sim tile only');
 
-  // …and her SIM tile still answers, so nothing that worked before this package stopped working.
+  // LEG 3 — ⭐ AND HER SIM TILE NO LONGER ANSWERS, which is the correction the send-back forced.
+  // Nothing is DRAWN on that tile (her body is a tile back), so it is bare floor, and the first
+  // draft's "sim tile fallback" selected an invisible pawn from it. You click what you can see.
   hudSent.length = 0;
   clickTile(RYN.x, RYN.y);
-  assert.deepEqual(hudSent, [{ cmd: 'click', x: RYN.x, y: RYN.y }], 'the sim tile stopped answering');
+  assert.deepEqual(hudSent, [],
+    'the tile she has VACATED on screen still selected her — that is bare floor to the player');
+
+  Hud.renderRoster({ type: 'roster', crew: CREW });   // leave the rig as the other tests expect
+});
+
+// ⭐⭐ THE ROOM BOUNDARY, DRIVEN THROUGH THE REAL SURFACE — the send-back's MAJOR.
+//
+// `roomCrew` used to filter on the SIM tile while `pawnSvg` drew at `fx`/`fy`. The two disagree at
+// every room boundary for up to a full tile, and review photographed the result: a crew member drawn
+// standing ON THE CRYO BAY'S BACK WALL. Both directions are asserted here against the LIVE `#rz-layers`
+// markup — the emitted `rz-pawn` transform — rather than against the model that produced it.
+//
+// MUTATION: `roomCrew` filters on the sim tile again ⇒ RED on BOTH legs (drawn outside / vanished).
+test('a pawn is drawn in the room only while her BODY is on its floor — both boundaries', () => {
+  prime(null);
+  // A LOCAL walker — the shared CREW fixture is never mutated, so nothing here can reach a sibling
+  // test through ordering. Row/column are inside `quarters`; only x and fx move.
+  const walker = (x, fx) => ({ cid: 99, name: 'Glide Test', role: 'crew', deck: QUARTERS.deck,
+    x, y: QUARTERS.ry + 1, fx, fy: QUARTERS.ry + 1, task: 'Idle' });
+  /** Repaint with one walker and return her emitted `rz-pawn` x, or null when she is not drawn. */
+  const drawnX = (x, fx) => {
+    Hud.renderRoster({ type: 'roster', crew: [walker(x, fx)] });
+    RoomZoom.exitRoom(); RoomZoom.enterRoom('quarters');
+    const m = /<g class="rz-pawn" transform="translate\(([-\d.]+) /.exec(layers());
+    return m ? +m[1] : null;
+  };
+
+  const first = QUARTERS.rx, last = QUARTERS.rx + QUARTERS.rw - 1;
+
+  // Sanity: standing well inside, she is drawn. Without this every "null" below is meaningless.
+  assert.ok(drawnX(first + 1, first + 1) !== null, 'the rig never drew the walker at all');
+
+  // LEAVING — the sim has stepped her out past the far edge; her body is still a tile inside.
+  assert.ok(drawnX(last + 1, last + 0.1) !== null,
+    'she VANISHED from the cutaway while her body was still a full tile inside it');
+
+  // ENTERING — the sim already has her inside; her body is still outside, where there is no floor.
+  assert.equal(drawnX(first, first - 0.9), null,
+    'she was drawn 0.9 tile OUTSIDE the room quad — the only thing to stand on there is the wall');
+
+  // …and the switch happens at the FLOOR EDGE (half a tile past the outermost tile centre), in both
+  // directions, swept in tenths through the real surface.
+  //
+  // ⚠️ THE INTERVAL IS HALF-OPEN, `[first − 0.5, last + 0.5)`, AND THAT IS `Math.round`'s TIE RULE
+  // RATHER THAN A FUDGE. At `fx === last + 0.5` the feet sit exactly on the line the room's floor
+  // shares with the next tile, and JS rounds a .5 tie UP — so that one frame is attributed to the
+  // tile outside and she is not drawn. At the near edge the same rule attributes the tie INWARD
+  // (`round(first − 0.5) === first`), so she is. It is reachable in real play (with 10 ticks per
+  // tile every published `fx` is an exact tenth), it lasts one frame, and in both cases the figure
+  // is standing on the boundary line itself. Pinned rather than smoothed over, because a test that
+  // allowed either answer here could not tell this rule from a half-tile error.
+  let drawn = 0, absent = 0;
+  for (let k = -15; k <= (QUARTERS.rw - 1) * 10 + 15; k += 1) {
+    const fx = Math.round((first + k / 10) * 10) / 10;
+    const onFloor = fx >= first - 0.5 - 1e-9 && fx < last + 0.5 - 1e-9;
+    // The sim tile is deliberately held at a fixed INSIDE tile for the whole sweep, so the only
+    // thing that can decide "drawn" is the glide — which is exactly the property under test.
+    const px = drawnX(first + 1, fx);
+    if (px === null) { absent += 1; } else { drawn += 1; }
+    assert.equal(px !== null, onFloor,
+      `fx=${fx}: drawn=${px !== null} but the room floor spans ${first - 0.5}..${last + 0.5}`);
+  }
+  assert.ok(drawn > 20 && absent > 20, `sweep saw too few of each (drawn ${drawn}, absent ${absent})`);
 
   Hud.renderRoster({ type: 'roster', crew: CREW });   // leave the rig as the other tests expect
 });

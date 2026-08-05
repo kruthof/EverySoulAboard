@@ -2519,12 +2519,23 @@ namespace Perilune.Web
         /// as an unbroken run of <c>ticksPerTile</c> even steps per tile with no seam at a tile
         /// boundary (segment k ends at <c>A + 0.9·(B−A)</c> and segment k+1 opens at <c>B</c>).</para>
         ///
-        /// <para>⚠️ <b>THE LERP IS A STRAIGHT LINE BETWEEN TILE CENTRES AND MAY CUT A CORNER.</b>
-        /// Where a path steps diagonally, or squeezes past a door jamb, the drawn figure can pass
-        /// through up to half a tile of wall mid-glide. ACCEPTED for this first look (owner:
-        /// "lets do B first to see how it looks") and deliberately NOT engineered around — routing
-        /// the glide along the walkable path would be a second, larger package. Nothing downstream
-        /// depends on it: membership, selection and click targets all keep using the integer tile.</para>
+        /// <para>⛔ <b>A "THE LERP MAY CUT A CORNER THROUGH A WALL" CAVEAT STOOD HERE AND IT WAS
+        /// FALSE — REVIEW MEASURED IT AWAY.</b> The hazard is unreachable because no diagonal step
+        /// exists: <c>PathService.GetNeighbors</c> emits <c>(X±1, Y, Z)</c>, <c>(X, Y±1, Z)</c> and
+        /// pure-<c>Z</c> ladder links, and nothing else. Every walked segment is therefore
+        /// orthogonal, and a straight line between two orthogonally adjacent tile centres stays
+        /// inside those two tiles for its whole length — including through a door, whose centre the
+        /// line passes exactly along. Do not re-file this as a known limitation.</para>
+        ///
+        /// <para>⚠️ <b>THE REAL HAZARD IS THE ONE THAT COST A SEND-BACK, AND IT IS ON THE CLIENT:
+        /// a consumer that decides ROOM MEMBERSHIP on the integer tile while DRAWING at the
+        /// fraction will put a figure where there is no floor.</b> The two disagree at every room
+        /// boundary for up to a full tile — measured live, 14 of 319 frames (4.4%) drew outside the
+        /// focused room, one of them with the crew member standing on the cryo bay's back wall.
+        /// Closed at the seam that draws: <c>room-model.js</c>'s <c>roomCrew</c> admits a crew
+        /// member on her DRAWN tile, so the feet are on the room's floor by construction. Anything
+        /// that adds a NEW consumer of these fields owes the same question — decide membership on
+        /// whichever tile you are about to draw at.</para>
         ///
         /// <para>⛔ READ-ONLY. <c>Pos</c>, <c>PrevPos</c> and <c>MoveCooldown</c> are pre-existing
         /// public saved fields (<c>SaveWriter.cs:246</c>, <c>Simulation.cs:522</c>) — no sim state
@@ -2542,6 +2553,15 @@ namespace Perilune.Web
         /// selected nobody. See `room-model.js`'s <c>crewHitAtTile</c>. The Overview is unaffected —
         /// it hit-tests the drawn element's own <c>data-cid</c>.</para>
         ///
+        /// <para>⚠️ <b>FILED, NOT FIXED — A RE-PATH MID-GLIDE SNAPS THE BODY FORWARD.</b>
+        /// <c>StartPath</c> writes <c>PrevPos = Pos</c>, so a crew member who is re-ordered (or has
+        /// her job pre-empted) part-way through a tile stops interpolating from where she was drawn
+        /// and jumps to <c>Pos</c> in one frame — up to a full tile. It is strictly no worse than
+        /// the teleport this package replaced, which did that on EVERY tile; it is rare (one order,
+        /// not one per second); and the boundary tests cannot see it because they drive a single
+        /// uninterrupted walk. Closing it means carrying the drawn position into the sim or damping
+        /// it on the client, and neither belongs in "option B, to see how it looks".</para>
+        ///
         /// <para><b>COORDINATE SPACE:</b> the SAME space as <c>Citizen.Pos</c> and the roster's
         /// integer <c>x</c>/<c>y</c> — a TILE coordinate with no half-tile centre offset. Standing
         /// still ⇒ exactly <c>(Pos.X, Pos.Y)</c>. Each view adds its own centre offset just as it
@@ -2551,8 +2571,18 @@ namespace Perilune.Web
         {
             if (c == null) return (0f, 0f);
             // Standing still: PrevPos == Pos is the settled stance CitizenSystem writes, and a
-            // spent counter means no step is in flight. A deck change is never interpolated —
-            // there is no continuous path between two decks' x/y planes.
+            // spent counter means no step is in flight.
+            // ⚠️ THE Z GUARD IS BELT ONLY, AND SAYING SO IS THE POINT — it prevents NOTHING
+            // VISIBLE. A deck change is a LADDER step, and `PathService.GetNeighbors` emits a
+            // Z-neighbour as (X, Y, Z±1): X and Y are IDENTICAL across it, so the lerp it skips
+            // would have returned Pos.X/Pos.Y anyway. Not read off the generator and believed —
+            // `PawnGlideTests.EveryPathStepIsOrthogonal_AndAZStepMovesNoXY` drives the shipped
+            // pathfinder over real routes on two ships and asserts BOTH halves (no diagonal step
+            // exists; a Z step leaves X and Y untouched), which is also the instrument that stops
+            // the deleted corner-cutting caveat from quietly becoming true again. It stays because
+            // neighbour that moves X/Y and Z together would make it load-bearing overnight and the
+            // failure would be a figure sliding between two decks' floor planes — but no reader
+            // should believe it is holding anything back today.
             if (ticksPerTile <= 0 || c.MoveCooldown <= 0 || c.PrevPos == c.Pos || c.PrevPos.Z != c.Pos.Z)
                 return (c.Pos.X, c.Pos.Y);
             int elapsed = ticksPerTile - c.MoveCooldown;

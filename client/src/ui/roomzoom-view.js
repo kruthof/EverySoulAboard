@@ -913,9 +913,13 @@ export function pawnSvg(list, focus, selCid, place) {
   for (const c of list) {
     // ⭐ THE GLIDE — the same wire fields and the same fallback the Overview's `pawnLayer` uses
     // (`WireFormat.RosterEntry.Fx` owns the convention: a tile coordinate, no centre offset, so it
-    // drops straight into `foot`, which is fractional-tolerant for exactly this). ROOM MEMBERSHIP
-    // is NOT affected: `roomCrew` decided who is in this list off the integer tile, and the name
-    // plate + work tag below hang off `fx`/`fy`, so a label never detaches from its figure.
+    // drops straight into `foot`, which is fractional-tolerant for exactly this). The name plate and
+    // work tag below hang off `fx`/`fy` too, so a label never detaches from its figure.
+    // ⚠️ THE FEET ARE ON THIS ROOM'S FLOOR BECAUSE `roomCrew` SAID SO, and that is a guarantee rather
+    // than a hope: it admits a crew member on her DRAWN tile, and the drawn tile is by construction
+    // the one whose quad contains this exact foot point (`drawnTile`'s header carries the algebra).
+    // The first draft filtered on the SIM tile, which leads the body by up to a full tile, and review
+    // photographed the result — a figure standing on the cryo bay's back wall.
     const [fx, fy] = pl.foot(
       Number.isFinite(c.fx) ? c.fx : c.x,
       Number.isFinite(c.fy) ? c.fy : c.y,
@@ -1089,12 +1093,20 @@ function mkEl(tag, cls) {
  *
  * ⚠️ THE ROW NODES ARE REBUILT ONLY WHEN THE CID SET CHANGES. Everything else — the task line, the
  * WHERE line, the `.sel` class — is a guarded in-place write. That is §4h's lesson, not tidiness: the
- * roster rebroadcasts on every crew tile-step — ⭐ AND THE GLIDE MADE THAT ~5× MORE OFTEN: `fx`/`fy`
- * move every sim tick while anyone is walking, so the channel's dedup no longer collapses the frames
- * between two tiles and the dock is re-driven at the render cap (~10/s) rather than ~2/s at 1×. The
- * in-place write is what makes that free; it was already the rule and it is now load-bearing at five
- * times the rate. (An all-idle ship still sends nothing: standing crew serialize `fx === x`, so the
- * dedup collapses those frames exactly as before.) A node torn down
+ * roster rebroadcasts on every crew tile-step — ⭐ AND THE GLIDE MADE IT REBROADCAST ON EVERY SIM
+ * TICK INSTEAD, because `fx`/`fy` move each tick and the channel's dedup can no longer collapse the
+ * frames between two tiles.
+ *
+ * ⚠️ MEASURED ON `--ship wreck` RATHER THAN ESTIMATED, and the first draft of this note guessed
+ * badly in BOTH directions. Over a 6.00 s window in which a crew member was actually walking
+ * (46 roster messages, all 46 carrying a distinct position): **roster 7.67 msg/s, 1693 B/s**. Idle:
+ * **0.00 msg/s, 0 B/s** — a standing crew member serializes `fx === x`, so the dedup collapses those
+ * frames exactly as before. (Review measured 4.97 msg/s / ~1096 B/s on its own run; the spread is
+ * the walk, the ship state and the box, and the ceiling either way is the host's ~10 fps render
+ * cap.) ⛔ AND THE "5×" APPLIES TO THE CHANNEL, NOT TO THIS DOCK'S REPAINT CADENCE: `rooms` was
+ * already arriving at 5.50 msg/s in the same window and already calls `notifyShip()`, so the dock
+ * was being re-driven ~5 times a second BEFORE this package. The in-place write is what makes that
+ * free, and it was already load-bearing for that reason. A node torn down
  * between mousedown and mouseup fires no `click` in Chrome at all. A dock you have to click twice is
  * indistinguishable from a dock that does not work, and this dock exists because the owner reported
  * having no way to reach a pawn.

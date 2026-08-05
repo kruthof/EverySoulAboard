@@ -205,6 +205,76 @@ namespace Perilune.Tests
             Assert.IsNotNull(c);
         }
 
+        // ---------------------------------------------------------------- the shape of a step
+
+        /// <summary>
+        /// ⭐ THE INSTRUMENT THAT DELETED A CAVEAT AND DEMOTED A GUARD — both halves of the claim
+        /// that a straight lerp between two tile centres is SAFE, driven off the shipped pathfinder
+        /// on two ships rather than read off <c>PathService.GetNeighbors</c> and believed.
+        ///
+        /// <para>The first draft of this package shipped a "the lerp may cut a corner through a wall
+        /// on a diagonal step" caveat. Review measured it false: no diagonal step exists, so an
+        /// orthogonal segment's straight line stays inside its two tiles for its whole length and
+        /// there is nothing to engineer around. The caveat is gone — and this test is what stops it
+        /// from silently becoming TRUE again, because a lane that adds a diagonal neighbour would
+        /// reintroduce the hazard with nothing else in the repo watching.</para>
+        ///
+        /// <para>The second half is the reason <c>WalkFraction</c>'s <c>PrevPos.Z != Pos.Z</c> guard
+        /// is documented as BELT ONLY: a Z neighbour is a LADDER link at the same X/Y, so the lerp
+        /// the guard skips would have returned the same X/Y anyway. Asserted here rather than
+        /// asserted in prose.</para>
+        /// </summary>
+        [Test]
+        public void EveryPathStepIsOrthogonal_AndAZStepMovesNoXY()
+        {
+            int steps = 0, zSteps = 0, routes = 0;
+            foreach (var ship in new[] { ShipChoice.Perilune, ShipChoice.Wreck })
+            {
+                var sim = SimHost.Build(SimHost.DefaultSeed, ship: ship).Sim;
+                var start = sim.Citizens.Items.First(z => !z.Dead).Pos;
+                var path = new List<Int3>();
+                // Sweep the whole world for reachable targets — including OTHER DECKS, which is the
+                // only way a ladder link can appear in a route at all.
+                for (int z = 0; z < sim.World.Depth; z++)
+                    for (int y = 0; y < sim.World.Height; y += 3)
+                        for (int x = 0; x < sim.World.Width; x += 3)
+                        {
+                            var target = new Int3(x, y, z);
+                            if (target == start || !sim.IsWalkable(target)) continue;
+                            path.Clear();
+                            if (!sim.Paths.FindPath(sim, start, target, path) || path.Count == 0) continue;
+                            routes++;
+                            var prev = start;
+                            foreach (var p in path)
+                            {
+                                int dx = Math.Abs(p.X - prev.X), dy = Math.Abs(p.Y - prev.Y), dz = Math.Abs(p.Z - prev.Z);
+                                steps++;
+                                // NO DIAGONAL: exactly one axis moves, by exactly one.
+                                Assert.AreEqual(1, dx + dy + dz,
+                                    $"{ship}: {prev}→{p} is not a single orthogonal step — a diagonal step "
+                                    + "would let the drawn glide cut a corner through a wall, which is the "
+                                    + "hazard this package's header says cannot happen");
+                                if (dz == 1)
+                                {
+                                    zSteps++;
+                                    // A Z STEP MOVES NO X/Y — so the deck guard skips a lerp that
+                                    // would have produced the same answer.
+                                    Assert.AreEqual(prev.X, p.X, "a ladder step moved X");
+                                    Assert.AreEqual(prev.Y, p.Y, "a ladder step moved Y");
+                                }
+                                prev = p;
+                            }
+                        }
+            }
+            // Non-vacuity, both halves: a sweep that found no route, or only same-deck routes,
+            // would assert nothing while looking exactly like a pass.
+            Assert.That(routes, Is.GreaterThan(50), "the sweep found almost no walkable route — it proves nothing");
+            Assert.That(steps, Is.GreaterThan(500), "too few steps examined to call the shape pinned");
+            Assert.That(zSteps, Is.GreaterThan(0),
+                "NO ladder step appeared in any route, so the Z half of this test is VACUOUS — "
+                + "the deck guard's belt-only claim would be unmeasured");
+        }
+
         // ---------------------------------------------------------------- the wire
 
         [Test]

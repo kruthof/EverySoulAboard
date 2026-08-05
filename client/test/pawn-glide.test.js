@@ -17,9 +17,17 @@
 // from under it is worse than no glide at all, so the pill's emitted rect is checked to move WITH the
 // drawn body — the whole point of deriving it from the same `fx`.
 //
-// ⛔ WHAT MUST NOT MOVE: room membership, selection and click targets keep the INTEGER tile. The
-// roomzoom leg drives `roomCrew` (the room filter) with a crew member whose glide has carried her
-// fractional position outside the room, and requires her to still be listed as inside it.
+// ⛔ WHICH TILE DECIDES WHAT — the question this file got WRONG the first time, and the send-back
+// that corrected it. The original header read "room membership, selection and click targets keep the
+// INTEGER tile", and section 3 asserted it. That pinned a DEFECT: because the sim tile leads the
+// drawn body by up to a full tile, a room filtered on the sim tile but drawn at the fraction puts a
+// figure where there is no floor — measured live at 4.4% of frames, one of them a crew member
+// standing on the cryo bay's back wall. The rule is now split by PURPOSE, not by habit:
+//   · ANYTHING DRAWN, and anything that must agree with what is drawn — the two pawn layers, the
+//     Room Zoom's membership (`roomCrew`), its `N HERE` caption, the dock's HERE flag, the pawn hit
+//     test — uses the DRAWN tile. Section 3 pins both boundary directions.
+//   · ANYTHING ADDRESSED TO THE SIM — `crewClickTarget`, which produces the `Cmd.click` the host
+//     resolves through `Citizen.Pos` — keeps the INTEGER tile, and section 3 pins that too.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,6 +39,7 @@ import { decksView } from '../src/ui/decks-model.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 import { pawnSvg } from '../src/ui/roomzoom-view.js';
 import { roomScene, scenePlacement, roomCrew, crewHitAtTile, drawnTile } from '../src/ui/room-model.js';
+import { crewClickTarget } from '../src/ui/console-model.js';
 
 const FIX = JSON.parse(
   readFileSync(fileURLToPath(new URL('./fixtures/overview-grid.json', import.meta.url)), 'utf8'),
@@ -160,22 +169,133 @@ test('roomzoom: the name plate and work tag ride WITH the gliding figure', () =>
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// 3. THE INTEGER TILE STAYS AUTHORITATIVE
+// 3. ⭐⭐ THE ROOM BOUNDARY — the send-back, and the leg that used to pin the BROKEN case.
+//
+// This section previously asserted "room membership is decided by the SIM tile, never by the glide",
+// and it was WRONG: it pinned the defect. The sim tile leads the drawn body by up to a full tile, so
+// a room filtered on the sim tile and drawn at the fraction disagrees at every boundary. Review
+// measured 14 of 319 live frames (4.4%) drawing outside the focused room, with a screenshot of a
+// crew member standing ON THE CRYO BAY'S BACK WALL at wire `5,7|5,7.8`.
+//
+// The rule is now ONE tile for both: `roomCrew` admits a crew member on her DRAWN tile, which is by
+// construction the tile whose floor quad holds her feet. Both directions are covered here, and the
+// geometry is asserted against the PROJECTED floor quad rather than against the rule that produced
+// it — a test that only re-stated `Math.round` could not have caught the original defect either.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-test('room membership is decided by the SIM tile, never by the glide', () => {
-  const focus = { deck: 0, rx: 4, ry: 5, rw: 3, rh: 3 };   // tiles x∈[4,6], y∈[5,7]
-  const at = (over) => ({ cid: 1, name: 'Vega', role: 'crew', deck: 0, task: 'Idle', ...over });
+const ROOM = { deck: 0, rx: 4, ry: 5, rw: 3, rh: 3 };   // tiles x ∈ [4,6], y ∈ [5,7]
+const soul = (over) => ({ cid: 1, name: 'Vega', role: 'crew', deck: 0, task: 'Idle', ...over });
 
-  // Standing on the room's LAST column, already gliding past its far edge: still IN.
-  assert.equal(roomCrew([at({ x: 6, y: 5, fx: 6.9, fy: 5 })], focus).length, 1,
-    'a crew member mid-stride still belongs to the tile the sim says she is on');
-  // And the mirror: her glide has entered the room but the sim has not. Still OUT.
-  assert.equal(roomCrew([at({ x: 7, y: 5, fx: 6.1, fy: 5 })], focus).length, 0,
-    'arriving is a SIM fact — the drawn position never admits anyone to a room');
-  // Non-vacuity: the same rect does include and exclude on the integer tile.
-  assert.equal(roomCrew([at({ x: 6, y: 5 })], focus).length, 1);
-  assert.equal(roomCrew([at({ x: 7, y: 5 })], focus).length, 0);
+/** Is point p inside the parallelogram [a,b,c,d] (wound consistently)? Cross-product sign test. */
+function insideQuad(p, quad) {
+  let sign = 0;
+  for (let i = 0; i < 4; i += 1) {
+    const a = quad[i], b = quad[(i + 1) % 4];
+    const cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+    if (Math.abs(cross) < 1e-9) continue;            // on the edge — still inside
+    const s = cross > 0 ? 1 : -1;
+    if (sign === 0) sign = s; else if (s !== sign) return false;
+  }
+  return true;
+}
+
+/**
+ * The focused room's WHOLE floor, as a projected quad — each corner taken from the tile that owns
+ * it. (Reading `nearRight` off the FAR row instead builds a quad one tile short on one side, which
+ * is a fine way to make this test fail for a reason that has nothing to do with the pawn.)
+ */
+function roomFloorQuad(focus) {
+  const place = scenePlacement(roomScene(focus), focus);
+  const x0 = focus.rx, y0 = focus.ry;
+  const x1 = focus.rx + focus.rw - 1, y1 = focus.ry + focus.rh - 1;
+  return [
+    place.corners(x0, y0).nearLeft,
+    place.corners(x1, y0).nearRight,
+    place.corners(x1, y1).farRight,
+    place.corners(x0, y1).farLeft,
+  ];
+}
+
+test('LEAVING: she stays drawn until her BODY crosses — no vanish, and the click still lands', () => {
+  // Sim tile already outside (7); body still a full tile inside (6.1). The reviewer's exit receipt.
+  const leaving = soul({ x: 7, y: 5, fx: 6.1, fy: 5 });
+  assert.equal(roomCrew([leaving], ROOM).length, 1,
+    'she VANISHED from the cutaway while her body was still inside it — the exit half of the defect');
+  assert.equal(crewHitAtTile([leaving], ROOM, 6, 5).cid, 1,
+    'a figure you can see must be a figure you can click');
+
+  // …and she leaves the list exactly when the body crosses the threshold, not a tile early.
+  assert.equal(roomCrew([soul({ x: 7, y: 5, fx: 6.4, fy: 5 })], ROOM).length, 1, 'still on the floor at 6.4');
+  assert.equal(roomCrew([soul({ x: 7, y: 5, fx: 6.6, fy: 5 })], ROOM).length, 0, 'past the edge at 6.6');
+});
+
+test('ENTERING: she is never drawn where there is no floor', () => {
+  // Sim tile already inside (4); body still outside (3.1). The reviewer's entry receipt — this is
+  // the frame that drew a crew member standing on the back wall.
+  assert.equal(roomCrew([soul({ x: 4, y: 5, fx: 3.1, fy: 5 })], ROOM).length, 0,
+    'drawn 0.9 tile outside the room quad — there is no floor there, only the back wall');
+  assert.equal(roomCrew([soul({ x: 4, y: 5, fx: 3.4, fy: 5 })], ROOM).length, 0, 'still outside at 3.4');
+  assert.equal(roomCrew([soul({ x: 4, y: 5, fx: 3.6, fy: 5 })], ROOM).length, 1,
+    'she appears as the body crosses the threshold, standing on the room edge');
+});
+
+test('EVERY drawn member has her feet inside the room floor — swept across both boundaries', () => {
+  const quad = roomFloorQuad(ROOM);
+  const place = scenePlacement(roomScene(ROOM), ROOM);
+  let drawn = 0, skipped = 0;
+  // Sweep a full walk THROUGH the room in tenths, on BOTH axes — starting a tile and a half outside
+  // one side and ending a tile and a half outside the other, so both boundaries are crossed.
+  const sweep = [];
+  for (let k = -15; k <= (ROOM.rw - 1) * 10 + 15; k += 1) sweep.push(ROOM.rx + k / 10);   // x axis
+  for (const f of sweep) {
+    // one walker crossing on X (fy pinned to a middle row), one crossing on Y (fx pinned)
+    const fyRow = ROOM.ry + 1, fxCol = ROOM.rx + 1;
+    const fOnY = ROOM.ry + (f - ROOM.rx);
+    for (const [fx, fy] of [[f, fyRow], [fxCol, fOnY]]) {
+      const c = soul({ x: Math.round(fx), y: Math.round(fy), fx, fy });
+      if (roomCrew([c], ROOM).length === 0) { skipped += 1; continue; }
+      drawn += 1;
+      const foot = place.foot(fx, fy);
+      assert.ok(insideQuad(foot, quad),
+        `a DRAWN member's feet landed outside the room floor at fx=${fx} fy=${fy} → ${foot}`);
+    }
+  }
+  // Non-vacuity both ways: a sweep that drew nobody, or excluded nobody, proves nothing.
+  assert.ok(drawn > 40, `too few drawn positions swept (${drawn})`);
+  assert.ok(skipped > 20, `the sweep never left the room (${skipped}) — it cannot see an overhang`);
+});
+
+test('what must NOT follow the glide: the host is still addressed by the SIM tile', () => {
+  // `crewClickTarget` produces the {x,y} of a `Cmd.click`, and the HOST resolves that click through
+  // `Citizen.Pos`. If it ever followed the drawn position, selecting a walking crew member would
+  // send the server a tile she is not on and select nobody. It reads `frame.crew`, never fx/fy.
+  const frame = { deck: 0, crew: [[7, 5, 0, 1]] };
+  assert.deepEqual(crewClickTarget(frame, soul({ x: 7, y: 5, fx: 6.1, fy: 5 })), { x: 7, y: 5 });
+  // And with no frame tuple it falls back to the roster's INTEGER x/y, not to the glide.
+  assert.deepEqual(crewClickTarget(null, soul({ x: 7, y: 5, fx: 6.1, fy: 5 })), { x: 7, y: 5 });
+});
+
+// ⭐ THE SAME QUESTION, ASKED OF THE OVERVIEW PLATE — and the answer is that it has no such hazard.
+// The plate filters on `c.deck`, not on a rect, and the deck axis CANNOT go fractional: a deck
+// change is a ladder step, `PathService.GetNeighbors` emits it at the same X/Y, and
+// `GameSession.WalkFraction` refuses to interpolate across Z anyway. So there is no frame in which
+// a pawn is drawn on two decks, or between them. Pinned here because the send-back asked the
+// question, and because "we checked and it was fine" is not evidence.
+test('overview: a gliding pawn is drawn on exactly ONE deck, never between two', () => {
+  const gliding = withPos({ deck: 0, x: 8, y: 8, fx: 8.5, fy: 8 });
+  const onDeck0 = overviewScene({ ...state(gliding), deck: 0 });
+  const onDeck1 = overviewScene({ ...state(gliding), deck: 1 });
+  assert.equal((onDeck0.match(/class="pl-pawn"/g) || []).length, 1, 'her own deck must draw her');
+  assert.equal((onDeck1.match(/class="pl-pawn"/g) || []).length, 0, 'another deck must not');
+  // The wire cannot express "half way between decks": there is no fz, and the deck is an integer.
+  assert.equal(Object.keys(gliding[0]).includes('fz'), false, 'no fractional deck exists on the wire');
+});
+
+test('a crew member with NO glide is filtered exactly as before the package', () => {
+  assert.equal(roomCrew([soul({ x: 6, y: 5 })], ROOM).length, 1);
+  assert.equal(roomCrew([soul({ x: 7, y: 5 })], ROOM).length, 0);
+  assert.equal(roomCrew([soul({ x: 6, y: 5, fx: null, fy: 'x' })], ROOM).length, 1, 'junk ⇒ the sim tile');
+  assert.equal(roomCrew([soul({ x: 6, y: 5, deck: 1, fx: 6, fy: 5 })], ROOM).length, 0, 'wrong deck');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -207,8 +327,11 @@ test('roomzoom click hits the pawn WHERE SHE IS DRAWN, mid-glide', () => {
   assert.ok(onBody, 'clicking the figure selects her — this is the leg that was broken');
   assert.equal(onBody.cid, 42);
 
-  // The sim tile still answers, so nothing that worked before stopped working.
-  assert.equal(crewHitAtTile([walker], focus, 7, 5).cid, 42, 'the sim tile remains a fallback');
+  // ⭐ AND THE SIM TILE DOES **NOT** ANSWER — the "fallback" the first draft carried is deleted.
+  // Nothing is drawn on tile 7 (she is drawn on 6), so a click there is a click on bare floor, and
+  // selecting an invisible pawn from bare floor is the mirror of the bug this whole item is about.
+  assert.equal(crewHitAtTile([walker], focus, 7, 5), null,
+    'clicking where NOTHING IS DRAWN selected someone');
   assert.equal(crewHitAtTile([walker], focus, 5, 5), null, 'an empty tile still selects nobody');
 
   // Old host / standing crew: exactly the old behaviour.
