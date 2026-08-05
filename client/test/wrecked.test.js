@@ -1,8 +1,17 @@
-// The WRECKED item set — 70 post-raid twins (client/src/items/wrecked.js), imported 2026-07-28 from
-// the "Wrecked — post-raid state" section of docs/design/perilune-item-set.dc.html.
+// The WRECKED item set — 79 post-raid twins (client/src/items/wrecked.js). SEVENTY of them were
+// imported 2026-07-28 from the "Wrecked — post-raid state" section of
+// docs/design/perilune-item-set.dc.html; NINE are repo-authored (VR-P2), for the fittings-catalogue
+// rows that mock never had, and are ledgered as such in `NON_MOCK_TWIN`.
 //
 // WHAT THIS FILE IS FOR, in one sentence: to make it impossible for the twin registry to drift from
 // the pristine registry OR from the mock, silently.
+//
+// ⚠️ AND THE TWO POPULATIONS ARE NOT INTERCHANGEABLE, which is the whole of what VR-P2 changed here.
+// Assertions about the REGISTRY (every row that should have a twin has one, in order; every twin is
+// a different picture; no twin is its own pristine piece) run over all 79. Assertions about the
+// SPEC (labels, condition badges, the positional walk, the bijection) run over the 70 the mock drew,
+// and MUST keep measuring exactly 70 — a repo-authored twin left inside them does not merely fail,
+// it removes a mock piece from the evidence while the suite stays green.
 //
 // ⚠️ IT READS THE COMMITTED SPEC, and that is the point rather than a convenience. The alternative —
 // asserting the 70 labels and 70 condition badges from memory — would be a SECOND TRANSCRIPTION of
@@ -39,7 +48,10 @@ import {
   itemsWithoutWreckedTwin,
   orphanWreckedTwins,
   NO_WRECKED_TWIN,
+  NON_MOCK_TWIN,
+  MOCK_TWIN_IDS,
 } from '../src/items/wrecked.js';
+import { FITTING_IDS } from '../src/items/fittings.js';
 import { codeOnly } from './code-only.js';
 
 // The registry rows that come FROM THE MOCK, in the mock's own order — `ITEM_IDS` minus the ledger
@@ -65,7 +77,17 @@ import { codeOnly } from './code-only.js';
 // exactly one wrecked twin`, `hasWreckedTwin follows the registry`, and the positional label walk.
 // The rest are size-census, class-tally, mapping-doc and painter-name guards that fire on ANY
 // registry growth, and the probe row duplicated a glyph as well. A red count is not an attribution.
-const MOCK_IDS = ITEM_IDS.filter((id) => !(id in NO_WRECKED_TWIN));
+//
+// ⚠️ IT NOW SUBTRACTS TWO LEDGERS, NOT ONE (VR-P2), AND THE SECOND IS A DIFFERENT KIND OF FACT.
+// `NO_WRECKED_TWIN` removes rows that have NO TWIN. `NON_MOCK_TWIN` removes rows that HAVE a twin
+// which the mock did not draw — the nine fittings-catalogue pieces. Both have to come out of THIS
+// list, because what this list is for is the positional walk against the mock's own 70 labels, and a
+// repo-authored twin left in it does not merely fail the walk: it shifts every row after it onto the
+// wrong label, which is a GREEN-looking wrong answer for the rows either side of the gap.
+const MOCK_IDS = ITEM_IDS.filter((id) => !(id in NO_WRECKED_TWIN) && !(id in NON_MOCK_TWIN));
+
+/** Every row that must have a twin, in registry order — the population `WRECKED_IDS` must equal. */
+const TWINNED_IDS = ITEM_IDS.filter((id) => !(id in NO_WRECKED_TWIN));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SPEC_PATH = join(HERE, '..', '..', 'docs', 'design', 'perilune-item-set.dc.html');
@@ -132,13 +154,16 @@ test('the spec really carries 70 wrecked pieces and 70 pristine labels', () => {
 // number. This one is a per-class OBJECT so a class that moves names itself, and the four numbers
 // were re-counted off the shipped registry (they are `items.test.js`'s tally, which is the point:
 // every registry row, of every class, has exactly one twin).
-test('the class census of the twin set: 29 functional, 21 cosmetic, 12 material, 8 resource', () => {
+test('the class census of the twin set: 29 functional, 30 cosmetic, 12 material, 8 resource', () => {
+  // ⚠️ RE-COUNTED AFTER VR-P2: 70 → 79, COSMETIC 21 → 30, because the nine fittings-catalogue rows
+  // the mock never had are all decor and all got a repo-authored twin. `resource` stays 8 against
+  // `items.test.js`'s 9 for the standing reason — `swarf` is ledgered as having no twin at all.
   // ⚠️ MOVED ABOVE THE LOOP DELIBERATELY (CLAUDE.md trap 5). It used to sit AFTER the `deepEqual`
   // below, where it could never fire on its own: the four class counts sum to 70 and every id
   // contributes exactly one, so a 69-row twin set fails the `deepEqual` first and `assert` throws.
   // A leg that cannot report is indistinguishable from one that can. Here it is the file's first
   // absolute-scale statement and it bites alone.
-  assert.equal(WRECKED_IDS.length, 70);
+  assert.equal(WRECKED_IDS.length, 79);
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of WRECKED_IDS) {
     // ⚠️ NOT `by[ITEMS[id].kind]++`. An orphan twin (a key with no registry row) made that throw a
@@ -152,13 +177,17 @@ test('the class census of the twin set: 29 functional, 21 cosmetic, 12 material,
   // 'K' (occupied) and 'k' (open). Functional 27 → 29, cosmetic 23 → 21; the total is unchanged
   // at 70 because nothing was added or removed, only reclassified — which is exactly the shape a
   // single total would have hidden, and the reason this census is a per-class object.
-  assert.deepEqual(by, { functional: 29, cosmetic: 21, material: 12, resource: 8 });
+  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 8 });
 });
 
-test('the state census: 62 pieces carry a percentage, 8 carry the em-dash', () => {
+test('the state census: 71 pieces carry a percentage, 8 carry the em-dash', () => {
+  // ⚠️ 62 → 71 (VR-P2): the nine repo-authored fittings twins carry AUTHORED badges inside the
+  // mock's own 2–31% band. The em-dash side did NOT move, and that is the half worth watching: the
+  // dash means "cannot be repaired, only written off", which is a claim about RESOURCES, and nine
+  // decor rows are not resources.
   const pct = WRECKED_IDS.filter((id) => /^\d+%$/.test(WRECKED[id].state));
   const dash = WRECKED_IDS.filter((id) => WRECKED[id].state === '—');
-  assert.equal(pct.length, 62);
+  assert.equal(pct.length, 71);
   assert.equal(dash.length, 8);
   assert.equal(pct.length + dash.length, WRECKED_IDS.length, 'no third state exists');
   // the em-dash ones are exactly the loose resources: you cannot repair a spoiled pile
@@ -180,8 +209,43 @@ test('the state census: 62 pieces carry a percentage, 8 carry the em-dash', () =
 // `WRECKED_IDS.length === ITEM_IDS.length` perfectly true. `deepEqual` on the ORDERED id lists is
 // the only form that regresses on a rename, a reorder, a swap, an omission AND an extra.
 test('every registry row has exactly one wrecked twin, and no twin is an orphan', () => {
-  assert.deepEqual(WRECKED_IDS, MOCK_IDS, 'the twin key set is exactly the mock rows, in order');
+  // ⚠️ AGAINST `TWINNED_IDS`, NOT `MOCK_IDS` (VR-P2). This assertion is about the REGISTRY — every
+  // row that is supposed to have a twin has one, in order — and since the nine fittings rows have
+  // twins, they belong in it. `MOCK_IDS` is the narrower population the SPEC joins run over, and
+  // comparing against it here would have quietly demanded that the nine have no twin at all.
+  assert.deepEqual(WRECKED_IDS, TWINNED_IDS, 'the twin key set is exactly the twinned rows, in order');
   assert.deepEqual(orphanWreckedTwins(), [], 'twins with no registry row');
+  // and the module's own derivation of the mock population must agree with this file's
+  assert.deepEqual([...MOCK_TWIN_IDS], MOCK_IDS, 'MOCK_TWIN_IDS disagrees with the two ledgers');
+});
+
+// ⚠️ THE SECOND LEDGER, PINNED THE SAME WAY AS THE FIRST AND FOR A SHARPER REASON. `NON_MOCK_TWIN`
+// is what keeps the label/badge bijection below measuring exactly the mock's seventy. If a row
+// slipped OUT of it the bijection would fail loudly (good); if a row slipped IN, the bijection would
+// still pass on a smaller set and the mock piece that row used to claim would go UNCHECKED — a
+// silent hole in the evidence, which is the failure mode this whole file exists to prevent.
+test('the non-mock ledger is exactly the fittings rows, and each one says so in its twin', () => {
+  assert.deepEqual(Object.keys(NON_MOCK_TWIN).sort(), [
+    'bench', 'compost-bin', 'cot', 'curtain-rail', 'footlocker', 'shrine-shelf', 'sink', 'stool',
+    'vice-post',
+  ], 'the repo-authored twin set changed. Nine rows of `design-import/Perilune Fittings.dc.html`\n'
+    + 'have no piece in `docs/design/perilune-item-set.dc.html`; growing this means another twin was\n'
+    + 'drawn outside the mock, shrinking it means the mock grew one — in which case transcribe it.');
+  // TWO-WAY, against `mockLabel`, so the ledger cannot disagree with the rows it describes.
+  for (const id of WRECKED_IDS) {
+    assert.equal(WRECKED[id].mockLabel === null, id in NON_MOCK_TWIN,
+      `${id}: a twin's mockLabel and its ledger membership disagree about where its drawing came from`);
+  }
+  for (const [id, cat] of Object.entries(NON_MOCK_TWIN)) {
+    assert.ok(ITEMS[id], `${id} is ledgered but is not a registry row`);
+    assert.ok(FITTING_IDS.includes(id), `${id} is ledgered non-mock but is not a fittings row`);
+    assert.equal(WRECKED[id].catalogue, cat, `${id}: the twin names a different catalogue entry`);
+    assert.match(cat, /^\d\d [A-Z]/, `${id}: the catalogue reference is not "NN NAME"`);
+  }
+  assert.equal(MOCK_TWIN_IDS.length, 70,
+    'THE MOCK POPULATION MOVED OFF SEVENTY. Every label, badge and positional assertion below is\n'
+    + 'measured against `docs/design/perilune-item-set.dc.html`, which has exactly seventy wrecked\n'
+    + 'pieces. If this is not 70 the bijection is being asked about the wrong set.');
 });
 
 // ⚠️ THE LEDGER IS THE ONLY WAY A ROW MAY HAVE NO TWIN, AND IT IS PINNED BOTH WAYS. `deepEqual` of
@@ -216,7 +280,7 @@ test('every twin label and condition badge matches the mock, row for row', () =>
   const byName = new Map(rows.map((r) => [r.name, r.state]));
   assert.equal(byName.size, 70, 'two mock pieces share a label — the join cannot be by name');
   const claimed = new Set();
-  for (const id of WRECKED_IDS) {
+  for (const id of MOCK_TWIN_IDS) {
     const { mockLabel, state } = WRECKED[id];
     assert.ok(byName.has(mockLabel), `${id}: no mock piece is labelled ${JSON.stringify(mockLabel)}`);
     assert.equal(state, byName.get(mockLabel), `${id} (${mockLabel}): condition badge`);
@@ -404,14 +468,14 @@ test('no twin is byte-identical to its pristine piece', () => {
 
 // Every twin is DISTINCT from every other twin. Two rows pointing at one painter is the other half
 // of the same slip, and the deep-equal on ids above cannot see it.
-test('the 70 twins are 70 different pictures', () => {
+test('the 79 twins are 79 different pictures', () => {
   const seen = new Map();
   for (const id of WRECKED_IDS) {
     const svg = buildWrecked(id, { idPrefix: 'k' });
     assert.ok(!seen.has(svg), `${id} renders identically to ${seen.get(svg)} — one painter, two rows`);
     seen.set(svg, id);
   }
-  assert.equal(seen.size, 70);
+  assert.equal(seen.size, 79);
 });
 
 // ⚠️ THE JOIN PINS WHICH ROWS EXIST — IT PINS NOTHING ABOUT WHICH PICTURE A ROW DRAWS.

@@ -1,7 +1,13 @@
-// Item-library tests — the 70-piece warm SVG set (client/src/items/*). Pure builders: no DOM, no
-// clock, no randomness. Asserts every registered item builds to a non-empty SVG `<g>` fragment,
-// is deterministic (same opts → identical bytes), collision-free across idPrefixes, correctly
-// classified, and that buildItem() falls back safely. The count is pinned at exactly 70.
+// Item-library tests — the registry in `client/src/items/*`. Pure builders: no DOM, no clock, no
+// randomness. Asserts every registered item builds to a non-empty SVG `<g>` fragment, is
+// deterministic (same opts → identical bytes), collision-free across idPrefixes, correctly
+// classified, and that buildItem() falls back safely. The count is pinned by equality.
+//
+// ⚠️ "THE 70-PIECE WARM SVG SET" WAS THIS FILE'S OPENING CLAUSE AND IS TWICE WRONG NOW, so it is
+// corrected rather than left: the registry is EIGHTY, and it is no longer one set. Thirty rows draw
+// from `client/src/items/fittings.js` in the paper/ink idiom of the visual redesign; the remaining
+// fifty still wear the warm mock's art until charter §3's P2b lands. A file whose header names a
+// count is a file whose header goes stale — the numbers that matter are the assertions below.
 //
 // 60 → 68 on 2026-07-27: the mock was re-imported with a "Resources & loose items" section — the
 // eight GROUND STACKS the `items` wire channel was built to carry. They are a FOURTH `kind`
@@ -30,6 +36,11 @@ import {
   isDeviceItem,
 } from '../src/items/index.js';
 import { coilPath } from '../src/items/resources.js';
+import * as FITTINGS from '../src/items/fittings.js';
+import { FITTING_IDS, SIZES } from '../src/items/fittings.js';
+
+/** itemId → its builder's name. The convention `wrecked.test.js`'s painter floor already pins. */
+const camelOf = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 
 /** All gradient/pattern/filter ids referenced anywhere in an SVG fragment (url(#id) + id="..."). */
 function idsIn(svg) {
@@ -44,16 +55,28 @@ function idsIn(svg) {
 // `w` chip on the deck plate in the shipping game. The row sits LAST in `ITEMS` on purpose (the
 // mock's order is walked positionally by `wrecked.test.js`) and has no wrecked twin (ledgered by
 // name in `client/src/items/wrecked.js`).
-test('the registry holds exactly 71 items', () => {
-  assert.equal(ITEM_IDS.length, 71);
-  assert.equal(Object.keys(ITEMS).length, 71);
+// ⚠️ 71 → 80 on 2026-08-05 (VR-P2). The owner's `design-import/Perilune Fittings.dc.html` is a
+// THIRTY-piece buildable catalogue, and it overlaps the mock's furniture by twenty-one: those
+// twenty-one REPLACED their art in place (same id, same class, same glyph, new drawing on
+// `client/src/items/fittings.js`) and moved NO count at all. The nine that follow — BENCH, STOOL,
+// COT, FOOTLOCKER, SINK, COMPOST BIN, VICE POST, CURTAIN RAIL, SHRINE SHELF — are pieces the mock
+// never had, and they are the whole of the move. All nine are COSMETIC; index.js's own section
+// comment measures why (every DeviceKind they could plausibly claim is already claimed above).
+// RE-COUNTED off the shipped registry, not derived from this paragraph.
+test('the registry holds exactly 80 items', () => {
+  assert.equal(ITEM_IDS.length, 80);
+  assert.equal(Object.keys(ITEMS).length, 80);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 29 functional, 21 cosmetic, 12 material, 9 resource', () => {
+test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource', () => {
+  // ⚠️ RE-COUNTED AGAIN AFTER VR-P2: COSMETIC 21 → 30, and it is the ONLY class that moved. That is
+  // the tell that the fittings package was an ADDITION of nine decor rows and not a reclassification
+  // — twenty-one further rows changed their PAINTING in the same commit and are invisible here,
+  // which is exactly right: `kind` is a fact about what a piece IS, never about how it is drawn.
   // ⚠️ RE-COUNTED AGAIN AFTER W0b: `swarf` is a ninth RESOURCE row (8 → 9) and the only class that
   // moved. The total moved WITH it (70 → 71) because this is an addition and not a reclassification
   // — the opposite of the cryo move recorded below, and the reason both numbers are asserted.
@@ -64,7 +87,28 @@ test('the class tally holds: 29 functional, 21 cosmetic, 12 material, 9 resource
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 29, cosmetic: 21, material: 12, resource: 9 });
+  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 9 });
+});
+
+// ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped
+// builders in one commit and every census in this file stayed still. So the swap is stated as a
+// MEMBERSHIP, both ways — a row that quietly went back to `objects.js`, and a row that quietly
+// arrived from the fittings catalogue, each fail here and name themselves.
+test('exactly the thirty catalogue rows draw from items/fittings.js, and nothing else does', () => {
+  const fromFittings = ITEM_IDS.filter((id) => FITTING_IDS.includes(id));
+  assert.deepEqual([...fromFittings].sort(), [...FITTING_IDS].sort(),
+    'a fittings-catalogue id is missing from the registry entirely');
+  assert.equal(FITTING_IDS.length, 30, 'the catalogue is thirty pieces');
+  for (const id of FITTING_IDS) {
+    assert.equal(ITEMS[id].build, FITTINGS[camelOf(id)],
+      `${id} does not draw from its own fittings builder`);
+    assert.equal(ITEMS[id].size, SIZES[id], 'the size hint is the DERIVED one, not a transcription');
+  }
+  // …and the complement: no OTHER row may point into that module, which is what would happen if a
+  // later lane pointed, say, `bookshelf` at `shelfRack` instead of drawing it.
+  const builders = new Set(FITTING_IDS.map((id) => FITTINGS[camelOf(id)]));
+  const strays = ITEM_IDS.filter((id) => !FITTING_IDS.includes(id) && builders.has(ITEMS[id].build));
+  assert.deepEqual(strays, [], 'a non-catalogue row borrows a fitting builder');
 });
 
 test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value, no unlisted one', () => {

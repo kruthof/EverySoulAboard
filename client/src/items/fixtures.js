@@ -1,6 +1,15 @@
-// The 18 FIXTURE builders (#43–60) — doors, hatches, conduits, wall props & lights. Pure
-// `(opts) -> string`; geometry/colour translated verbatim from perilune-item-set.dc.html.
-// `opts.state:'off'` dims the glow-bearing fixtures (lamps, heater, conduit, floodlight, sun lamp).
+// The THIRTEEN FIXTURE builders — doors, hatches, conduits, wall props & lights. Pure
+// `(opts) -> string`; geometry/colour translated verbatim from perilune-item-set.dc.html, whose
+// element numbers 43–60 this file used to cover in full and now covers in part: the surviving
+// builders keep their mock numbers in their own comments (43, 44, 45, 46, 47, 49, 50, 51, 53, 56,
+// 57, 59, 60), and the five gaps are the rows listed below.
+// `opts.state:'off'` dims the glow-bearing fixtures (lamps, conduit, floodlight, sun lamp).
+//
+// ⚠️ IT WAS 18 AND IS NOW 13, for the same reason `objects.js`'s header records: VR-P2 retired
+// `pipe-run`, `space-heater`, `shelf-rack`, `supply-barrel` and `herb-planter`, whose registry rows
+// now point at `client/src/items/fittings.js`. `space-heater` leaving is the one worth noticing
+// twice — it is the piece `GLYPH_SUBSTITUTE['=']` (Radiator) borrows, so TWO device kinds now wear
+// the fittings catalogue's heater rather than this file's.
 
 import { item, roundedRectPath } from './helpers.js';
 
@@ -83,27 +92,6 @@ export const airVent = (opts = {}) =>
       }),
     });
   });
-
-// 48 PIPE RUN — a main run with two elbow branches.
-export const pipeRun = (opts = {}) =>
-  item('pipe-run', opts, (s) => {
-    const pipeH = s.lin([
-      ['0', '#5a6672'],
-      ['1', '#3a434d'],
-    ]);
-    const pipeV = s.lin(
-      [
-        ['0', '#5a6672'],
-        ['1', '#3a434d'],
-      ],
-      'h',
-    );
-    s.rect({ x: -30, y: 2, w: 16, h: 34, rx: 6, fill: pipeV });
-    s.rect({ x: 22, y: -31, w: 16, h: 30, rx: 6, fill: pipeV });
-    s.rect({ x: -48, y: -8, w: 96, h: 16, rx: 8, fill: pipeH });
-    s.rect({ x: -46, y: -7, w: 92, h: 3, rx: 1.5, fill: 'rgba(255,255,255,.12)' });
-  });
-
 // 49 WALL LAMP — a warm sconce with a broad downward glow.
 export const wallLamp = (opts = {}) =>
   item('wall-lamp', opts, (s, { powered }) => {
@@ -153,22 +141,6 @@ export const wallScreen = (opts = {}) =>
     s.glow(0, 0, 30, 'rgba(90,200,220,.5)', 1, 20);
     s.rect({ x: -38, y: -22, w: 76, h: 44, rx: 3, fill: screenTeal(s) });
   });
-
-// 52 SPACE HEATER — steel box with three glowing element bars.
-export const spaceHeater = (opts = {}) =>
-  item('space-heater', opts, (s, { powered }) => {
-    s.rect({ x: -30, y: -32, w: 60, h: 64, rx: 6, fill: steelBody(s) });
-    s.border({ x: -30, y: -32, w: 60, h: 64, rx: 6, color: '#2b3742', width: 2 });
-    const bar = s.rad([
-      [0, '#f2b563'],
-      [1, '#e8863c'],
-    ]);
-    for (const cy of [-13, 0, 13]) {
-      s.glow(0, cy, 24, 'rgba(232,134,60,.5)', powered ? 1 : 0.12, 5);
-      s.rect({ x: -20, y: cy - 3.5, w: 40, h: 7, rx: 3, fill: powered ? bar : '#6b4a26' });
-    }
-  });
-
 // 53 VENT FAN — a four-blade fan in a steel housing.
 export const ventFan = (opts = {}) =>
   item('vent-fan', opts, (s) => {
@@ -181,57 +153,6 @@ export const ventFan = (opts = {}) =>
     s.circle({ cx: 0, cy: 0, r: 28.5, fill: 'none', stroke: '#2b3742', sw: 3 });
     s.circle({ cx: 0, cy: 0, r: 6, fill: '#8fa2ad' });
   });
-
-// 54 SHELF RACK — a steel shelf with two rows of stacked crates.
-export const shelfRack = (opts = {}) =>
-  item('shelf-rack', opts, (s) => {
-    s.rect({ x: -44, y: -38, w: 88, h: 76, rx: 5, fill: '#4a5560' });
-    s.border({ x: -44, y: -38, w: 88, h: 76, rx: 5, color: '#38424d', width: 3 });
-    const row = (cy, colors) => {
-      const gap = 6;
-      const total = colors.length * 22 + (colors.length - 1) * gap;
-      let bx = -total / 2;
-      for (const c of colors) {
-        s.rect({ x: bx, y: cy - 8, w: 22, h: 16, rx: 2, fill: c });
-        bx += 22 + gap;
-      }
-    };
-    row(-18, ['#c8935a', '#7a5c38', '#c14a32']);
-    row(16, ['#5aa77f', '#c8935a', '#5a9fd4']);
-  });
-
-// 55 SUPPLY BARREL — a blue drum with a hazard-striped top band.
-export const supplyBarrel = (opts = {}) =>
-  item('supply-barrel', opts, (s) => {
-    s.rect({
-      x: -24,
-      y: -32,
-      w: 48,
-      h: 64,
-      rx: 8,
-      fill: s.lin(
-        [
-          ['0', '#5a9fd4'],
-          ['0.55', '#3d7fb0'],
-          ['1', '#2f6690'],
-        ],
-        'h',
-      ),
-    });
-    s.border({ x: -24, y: -32, w: 48, h: 64, rx: 8, color: '#274f61', width: 2 });
-    s.rect({
-      x: -24,
-      y: -13,
-      w: 48,
-      h: 10,
-      fill: s.pat('<rect width="14" height="10" fill="#274f61"/><rect width="7" height="10" fill="#cfe0ff"/>', {
-        w: 14,
-        h: 10,
-        transform: 'rotate(45)',
-      }),
-    });
-  });
-
 // 56 WEAPONS RACK — a steel rack holding four vertical rods.
 export const weaponsRack = (opts = {}) =>
   item('weapons-rack', opts, (s) => {
@@ -278,31 +199,6 @@ export const sunLamp = (opts = {}) =>
         : '#6b4a26',
     });
   });
-
-// 58 HERB PLANTER — a small wall planter with a green crown.
-export const herbPlanter = (opts = {}) =>
-  item('herb-planter', opts, (s) => {
-    s.path(roundedRectPath(-22, 1, 44, 30, { bl: 8, br: 8 }), {
-      fill: s.lin([
-        ['0', '#8a5a38'],
-        ['1', '#6b4527'],
-      ]),
-    });
-    s.glow(0, -14, 32, 'rgba(95,138,58,.35)');
-    s.circle({
-      cx: 0,
-      cy: -14,
-      r: 25,
-      fill: s.rad(
-        [
-          [0, '#6f9c48'],
-          [1, '#3f6b2a'],
-        ],
-        { cx: 0.45, cy: 0.4 },
-      ),
-    });
-  });
-
 // 59 DECK SIGN — a wayfinding sign on a post.
 export const deckSign = (opts = {}) =>
   item('deck-sign', opts, (s) => {

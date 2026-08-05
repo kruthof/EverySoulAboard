@@ -64,7 +64,15 @@
 // door state that correctly draws nothing.
 //   decor       the non-hashed decor channel key, for COSMETIC pieces
 //   material    'wall' | 'floor', for MATERIAL pieces
-//   size        {w,h} — the piece's design footprint in mock px (a placement hint; from the mock)
+//   size        {w,h} — the piece's design footprint in mock px (a placement hint; from the mock).
+//               ⚠️ NOTHING LAYS OUT ON IT TODAY: the only reader outside the tests is
+//               `wrecked.js:wreckedInfo()`, which passes it through so a twin cannot carry a second,
+//               drifting copy. That is why it can be — and now is — an HONEST number rather than a
+//               tile size. The thirty fitting rows take theirs from `fittings.SIZES`, which is each
+//               piece's own centimetres at ONE shared scale (`PX_PER_CM.catalogue`), so a 260 cm
+//               bench reads bigger than a ∅46 cm chair; the warm-set rows below are the mock's own
+//               card measurements, at roughly the same px/cm. ⛔ It is NOT the drawn tile extent —
+//               that is `fittings.BOX_EXTENT`, and a rule about ink length must use that one.
 //
 // The two SVG views (Overview, Room Zoom) place items through this registry; `buildItem(id, opts)`
 // is the tolerant entry point (unknown id → a neutral placeholder group, never a throw).
@@ -75,6 +83,7 @@ import * as S from './structures.js';
 import * as F from './fixtures.js';
 import * as R from './resources.js';
 import * as C from './cryo.js';
+import * as FT from './fittings.js';
 
 const fn = (kind, glyph = null) => ({ kind, glyph });
 const dev = (deviceKind, glyph = null, deviceStatus = 'exists') => ({
@@ -98,34 +107,34 @@ export const ITEMS = Object.freeze({
   // ── OBJECTS (30) ──
   'reactor':          { build: O.reactor,         size: { w: 64, h: 64 }, ...dev('Reactor', null, 'new') },
   'solar-panel':      { build: O.solarPanel,      size: { w: 92, h: 56 }, ...dev('SolarWing', 'G') },
-  'battery-bank':     { build: O.batteryBank,     size: { w: 58, h: 56 }, ...dev('Battery', 'B') },
-  'o2-scrubber':      { build: O.o2Scrubber,      size: { w: 66, h: 60 }, ...dev('Scrubber', 'S') },
+  'battery-bank':     { build: FT.batteryBank,     size: FT.SIZES['battery-bank'], ...dev('Battery', 'B') },
+  'o2-scrubber':      { build: FT.o2Scrubber,      size: FT.SIZES['o2-scrubber'], ...dev('Scrubber', 'S') },
   'oxygen-tank':      { build: O.oxygenTank,      size: { w: 38, h: 70 }, ...dev('OxygenTank', null, 'new') },
   'water-recycler':   { build: O.waterRecycler,   size: { w: 60, h: 66 }, ...dev('Reclaimer', 'R') },
-  'hydroponics':      { build: O.hydroponics,     size: { w: 92, h: 48 }, ...dev('GrowBed', '"') },
-  'cooker':           { build: O.cooker,          size: { w: 66, h: 52 }, ...dev('Cooker', null, 'new') },
-  'cooler':           { build: O.cooler,          size: { w: 52, h: 70 }, ...cos('cooler') },
+  'hydroponics':      { build: FT.hydroponics,     size: FT.SIZES['hydroponics'], ...dev('GrowBed', '"') },
+  'cooker':           { build: FT.cooker,          size: FT.SIZES['cooker'], ...dev('Cooker', null, 'new') },
+  'cooler':           { build: FT.cooler,          size: FT.SIZES['cooler'], ...cos('cooler') },
   'paste-dispenser':  { build: O.pasteDispenser,  size: { w: 58, h: 64 }, ...cos('paste_dispenser') },
-  'dining-table':     { build: O.diningTable,     size: { w: 78, h: 50 }, ...dev('Table', 't') },
-  'bunk-bed':         { build: O.bunkBed,         size: { w: 56, h: 80 }, ...dev('Bed', 'b') },
-  'desk':             { build: O.desk,            size: { w: 88, h: 44 }, ...dev('Desk', 'D') },
-  'chair':            { build: O.chair,           size: { w: 44, h: 44 }, ...dev('Chair', 'h') },
-  'locker':           { build: O.locker,          size: { w: 52, h: 80 }, ...dev('Locker', 'L') },
-  'rug':              { build: O.rug,             size: { w: 96, h: 64 }, ...cos('rug') },
-  'standing-lamp':    { build: O.standingLamp,    size: { w: 44, h: 70 }, ...cos('standing_lamp') },
+  'dining-table':     { build: FT.diningTable,     size: FT.SIZES['dining-table'], ...dev('Table', 't') },
+  'bunk-bed':         { build: FT.bunkBed,         size: FT.SIZES['bunk-bed'], ...dev('Bed', 'b') },
+  'desk':             { build: FT.desk,            size: FT.SIZES['desk'], ...dev('Desk', 'D') },
+  'chair':            { build: FT.chair,           size: FT.SIZES['chair'], ...dev('Chair', 'h') },
+  'locker':           { build: FT.locker,          size: FT.SIZES['locker'], ...dev('Locker', 'L') },
+  'rug':              { build: FT.rug,             size: FT.SIZES['rug'], ...cos('rug') },
+  'standing-lamp':    { build: FT.standingLamp,    size: FT.SIZES['standing-lamp'], ...cos('standing_lamp') },
   'potted-plant':     { build: O.pottedPlant,     size: { w: 58, h: 68 }, ...dev('PlantPot', 'P') },
   'bookshelf':        { build: O.bookshelf,       size: { w: 80, h: 66 }, ...cos('bookshelf') },
   'med-bed':          { build: O.medBed,          size: { w: 52, h: 78 }, ...dev('MedBed', 'd') },
-  'research-console': { build: O.researchConsole, size: { w: 80, h: 52 }, ...dev('Terminal', 'T') },
+  'research-console': { build: FT.researchConsole, size: FT.SIZES['research-console'], ...dev('Terminal', 'T') },
   'comms-dish':       { build: O.commsDish,       size: { w: 90, h: 90 }, ...cos('comms_dish') },
   'sensor-array':     { build: O.sensorArray,     size: { w: 88, h: 88 }, ...dev('Telescope', 'x') },
-  'workbench':        { build: O.workbench,       size: { w: 92, h: 48 }, ...dev('MachineShop', 'M') },
+  'workbench':        { build: FT.workbench,       size: FT.SIZES['workbench'], ...dev('MachineShop', 'M') },
   'fabricator':       { build: O.fabricator,      size: { w: 70, h: 64 }, ...dev('Fabricator', 'F') },
-  'storage-crate':    { build: O.storageCrate,    size: { w: 64, h: 60 }, ...cos('storage_crate') },
+  'storage-crate':    { build: FT.storageCrate,    size: FT.SIZES['storage-crate'], ...cos('storage_crate') },
   'blast-door':       { build: O.blastDoor,       size: { w: 78, h: 70 }, ...dev('Door', null) },
   'turret':           { build: O.turret,          size: { w: 48, h: 74 }, ...cos('turret') },
   'cryopod':          { build: O.cryopod,         size: { w: 48, h: 82 }, ...cos('cryopod') },
-  'fuel-drum':        { build: O.fuelDrum,        size: { w: 48, h: 64 }, ...cos('fuel_drum') },
+  'fuel-drum':        { build: FT.fuelDrum,        size: FT.SIZES['fuel-drum'], ...cos('fuel_drum') },
 
   // ── WALLS (6) — MATERIAL ──
   'steel-bulkhead':   { build: S.steelBulkhead,   size: { w: 106, h: 94 }, ...wall() },
@@ -152,7 +161,7 @@ export const ITEMS = Object.freeze({
   'hatch-ladder':     { build: F.hatchLadder,     size: { w: 64, h: 74 }, ...dev('Ladder', 'H') },
   'power-conduit':    { build: F.powerConduit,    size: { w: 96, h: 14 }, ...dev('Conduit', null) },
   'air-vent':         { build: F.airVent,         size: { w: 72, h: 56 }, ...dev('AirVent', '^') },
-  'pipe-run':         { build: F.pipeRun,         size: { w: 96, h: 56 }, ...dev('Pipe', null) },
+  'pipe-run':         { build: FT.pipeRun,         size: FT.SIZES['pipe-run'], ...dev('Pipe', null) },
   'wall-lamp':        { build: F.wallLamp,        size: { w: 52, h: 44 }, ...cos('wall_lamp') },
   'viewport':         { build: F.viewport,        size: { w: 90, h: 64 }, ...cos('viewport') },
   'wall-screen':      { build: F.wallScreen,      size: { w: 92, h: 60 }, ...cos('wall_screen') },
@@ -166,13 +175,13 @@ export const ITEMS = Object.freeze({
   // considered and REFUSED here — `cooler` is registered `cosmetic`, and `glyph-map.js`'s header
   // records the live bug that came from a functional device wearing a cosmetic piece. Picking the
   // radiator's art is an OWNER call on art, not a seam call; it is FILED, not decided.
-  'space-heater':     { build: F.spaceHeater,     size: { w: 60, h: 64 }, ...dev('Heater', 'E') },
+  'space-heater':     { build: FT.spaceHeater,     size: FT.SIZES['space-heater'], ...dev('Heater', 'E') },
   'vent-fan':         { build: F.ventFan,         size: { w: 76, h: 76 }, ...cos('vent_fan') },
-  'shelf-rack':       { build: F.shelfRack,       size: { w: 88, h: 76 }, ...cos('shelf_rack') },
-  'supply-barrel':    { build: F.supplyBarrel,    size: { w: 48, h: 64 }, ...cos('supply_barrel') },
+  'shelf-rack':       { build: FT.shelfRack,       size: FT.SIZES['shelf-rack'], ...cos('shelf_rack') },
+  'supply-barrel':    { build: FT.supplyBarrel,    size: FT.SIZES['supply-barrel'], ...cos('supply_barrel') },
   'weapons-rack':     { build: F.weaponsRack,     size: { w: 88, h: 60 }, ...cos('weapons_rack') },
   'sun-lamp':         { build: F.sunLamp,         size: { w: 70, h: 60 }, ...cos('sun_lamp') },
-  'herb-planter':     { build: F.herbPlanter,     size: { w: 50, h: 60 }, ...cos('herb_planter') },
+  'herb-planter':     { build: FT.herbPlanter,     size: FT.SIZES['herb-planter'], ...cos('herb_planter') },
   'deck-sign':        { build: F.deckSign,        size: { w: 80, h: 74 }, ...cos('deck_sign') },
   'floodlight':       { build: F.floodlight,      size: { w: 40, h: 60 }, ...cos('floodlight') },
 
@@ -246,6 +255,44 @@ export const ITEMS = Object.freeze({
   // ledgered by name in `client/src/items/wrecked.js` (`NO_WRECKED_TWIN`) with its reason; it is not an
   // omission to be filled in later.
   'swarf':            { build: R.swarf,          size: { w: 74, h: 50 }, ...res('Swarf', 'w') },
+
+  // ── FITTINGS (9) — THE CATALOGUE ROWS THE MOCK NEVER HAD (VR-P2) ──────────────────────────────
+  //
+  // `design-import/Perilune Fittings.dc.html` is the owner's buildable set and it is THIRTY pieces.
+  // Twenty-one of them are the mock's own furniture wearing new art, and those replaced their
+  // builders in place above — same id, same class, same glyph, new drawing. These nine have no mock
+  // piece at all, so they are new rows, and they sit after `swarf` for the reason that row's comment
+  // gives: the prefix above is `docs/design/perilune-item-set.dc.html` in the mock's own order, and
+  // keeping it uninterrupted is what lets a reader diff this table against that spec by eye.
+  //
+  // ⚠️ ALL NINE ARE COSMETIC, AND THAT IS A MEASUREMENT RATHER THAN A DEFAULT. A `functional` row
+  // must name a `DeviceKind` the sim really has (`items.test.js` asserts it), and every kind these
+  // pieces could plausibly claim is ALREADY CLAIMED by a row above: `Chair` by `chair` (so not bench
+  // or stool), `Bed` by `bunk-bed` (so not cot), `Locker` by `locker` (so not footlocker),
+  // `MachineShop` by `workbench` (so not vice post). Sink, compost bin, curtain rail and shrine shelf
+  // name nothing in `DeviceKind` at all. Filing any of them `functional` would mean either a second
+  // piece on one glyph — which `glyph-map.js`'s first-wins rule would resolve by DECLARATION ORDER
+  // rather than by decision — or a `deviceStatus: 'new'` row promising a sim change nobody has
+  // chartered. Both are worse than decor, and decor is the honest state: nothing places these yet.
+  // ⇒ WHEN A KIND ARRIVES for one of them, the change is this row's `...cos(…)` becoming `...dev(…)`
+  // plus the two censuses that move with it; the ART does not change.
+  //
+  // ⚠️ AND NONE OF THEM CLAIMS A GLYPH, so `items/glyph-map.js` is untouched by this package and
+  // `device-sprite-coverage.test.js`'s pins do not move: `deriveGlyphToItem` reads `functional` and
+  // `resource` rows only, and a cosmetic row is placed by itemId and never resolved from a glyph.
+  //
+  // Their wrecked twins are REPO-AUTHORED (the mock has none) and are ledgered as such in
+  // `client/src/items/wrecked.js` (`NON_MOCK_TWIN`), which is what keeps the twin↔mock bijection —
+  // the thing that proves the other seventy are right — measuring exactly seventy.
+  'bench':            { build: FT.bench,         size: FT.SIZES.bench,          ...cos('bench') },
+  'stool':            { build: FT.stool,         size: FT.SIZES.stool,          ...cos('stool') },
+  'cot':              { build: FT.cot,           size: FT.SIZES.cot,            ...cos('cot') },
+  'footlocker':       { build: FT.footlocker,    size: FT.SIZES.footlocker,     ...cos('footlocker') },
+  'sink':             { build: FT.sink,          size: FT.SIZES.sink,           ...cos('sink') },
+  'compost-bin':      { build: FT.compostBin,    size: FT.SIZES['compost-bin'], ...cos('compost_bin') },
+  'vice-post':        { build: FT.vicePost,      size: FT.SIZES['vice-post'],   ...cos('vice_post') },
+  'curtain-rail':     { build: FT.curtainRail,   size: FT.SIZES['curtain-rail'], ...cos('curtain_rail') },
+  'shrine-shelf':     { build: FT.shrineShelf,   size: FT.SIZES['shrine-shelf'], ...cos('shrine_shelf') },
 });
 
 /** The full list of registered itemIds, in mock order. */

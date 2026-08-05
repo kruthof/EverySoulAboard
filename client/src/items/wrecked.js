@@ -107,9 +107,12 @@
 //        would make it a cog. Two conic gradients, two answers, and the difference is deliberate.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-import { item, roundedRectPath, r3 } from './helpers.js';
+import { item, roundedRectPath, r3, INK } from './helpers.js';
 import { gearPath } from './resources.js';
 import { ITEMS, ITEM_IDS, placeholderItem } from './index.js';
+import {
+  paintFitting, line as fLine, disc as fDisc, curve as fCurve,
+} from './fittings.js';
 
 // ── the layer primitive ──────────────────────────────────────────────────────────────────────
 
@@ -917,6 +920,112 @@ const cryoCapsuleOpen = (s) => {
   wire(s, -30, 34, 26); dead(s, 0, 44, 44, 11);
 };
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE NINE FITTINGS (VR-P2) — post-raid twins for the rows the mock never had
+//
+// ⚠️ THESE ARE NOT THE MOCK'S, AND THE DIFFERENCE IS STRUCTURAL RATHER THAN COSMETIC. Every twin
+// above is a transcription of a drawing in `docs/design/perilune-item-set.dc.html`, checked against
+// that spec's own `brokenD` array label-for-label and badge-for-badge — that bijection is what proves
+// the seventy are right. `design-import/Perilune Fittings.dc.html` ships THIRTY pristine fittings and
+// ZERO wrecked ones, so there is nothing to transcribe for these nine and nothing to check against.
+// They are repo-authored, ledgered as such in `NON_MOCK_TWIN` below, and excluded from the mock join
+// so that it still measures exactly seventy.
+//
+// ⚠️ AND THEY ARE DRAWN IN THE PAPER IDIOM, NOT THIS FILE'S WARM ONE, because their PRISTINE pieces
+// are: a `#EBE4D1`/`#14120F` bench under a steel-grey scorch bloom would read as two objects. Each
+// twin RE-RUNS its own pristine painter through `fittings.paintFitting` and then adds ink damage on
+// the same frame, in the same centimetres. That is not a shortcut — it is the only construction under
+// which "the twin is the same object, damaged" survives a redraw of the object, and it keeps the
+// mock's own stated premise for its seventy ("each keeps one identifying feature so it still reads
+// as the same object") true here by force rather than by care.
+//
+// ⛔ THE TWENTY-ONE REPLACED ROWS KEEP THEIR WARM TWINS, and that is a KNOWN, FILED INCONSISTENCY
+// rather than an oversight: `chair`, `locker`, `cooker` and eighteen more now draw a paper-ink
+// pristine piece and a steel-grey wreck. Restyling those seventy is charter §3's package P2b. Until
+// it lands, a wrecked galley mixes two palettes on screen.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** INK DAMAGE — the paper half of the vocabulary above, in a fitting's own centimetres.
+ *  `crack`/`hole`/`scorch`/`wire`/`dead` are the mock's five marks; these are the same five ideas
+ *  drawn as ink line rather than as steel and soot, because that is the register the pieces are in. */
+const inkCrack = (s, F, pts) => fLine(s, F, pts, { sw: 1.7 });
+const inkTear = (s, F, pts) => fLine(s, F, pts, { sw: 1.1, dash: '2 2', opacity: 0.85 });
+const inkHole = (s, F, x, y, z, r) => fDisc(s, F, x, y, z, r, { fill: INK, sw: 1.4 });
+// ⚠️ A SOOT BLOOM IS A FILL, NOT A RING, and the first draft got it the other way round — a wide
+// low-opacity STROKE draws a grey hoop round clean paper, which on a barrel or a locker reads as a
+// second hoop rather than as a burn. Seen, not reasoned out: `node client/tools/fittings-sheet.mjs`
+// writes `fittings-twins.html`, every twin beside its pristine piece — re-run it and look. The shots
+// themselves are NOT committed, so a path to one would be a citation nobody can follow.
+const inkScorch = (s, F, x, y, z, r) => fDisc(s, F, x, y, z, r, { fill: INK, sw: 0.9, opacity: 0.16 });
+const inkWire = (s, F, a, c, b) => fCurve(s, F, a, c, b, { sw: 1.3, opacity: 0.9 });
+const inkDead = (s, F, pts) => fLine(s, F, pts, { close: true, fill: INK, sw: 1.1, opacity: 0.85 });
+
+const bench = (s) => paintFitting(s, 'bench', (_s, { F }) => {
+  inkCrack(s, F, [[62, 4, 45], [96, 30, 45]]);
+  inkHole(s, F, 150, 17, 45, 7);
+  inkScorch(s, F, 200, 12, 45, 17);
+  inkCrack(s, F, [[236.5, 7, 26], [251, 7, 5]]);          // the near-right leg, kicked out
+});
+
+const stool = (s) => paintFitting(s, 'stool', (_s, { F }) => {
+  inkCrack(s, F, [[6, 14, 45], [26, 21, 45]]);
+  inkScorch(s, F, 17, 17, 45, 9);
+  inkCrack(s, F, [[17, 3, 20], [24, 1, 2]]);              // the snapped front leg
+});
+
+const cot = (s) => paintFitting(s, 'cot', (_s, { F }) => {
+  inkTear(s, F, [[52, 10, 40], [88, 46, 40], [124, 22, 40]]);
+  inkHole(s, F, 150, 34, 40, 9);
+  inkScorch(s, F, 30, 26, 40, 16);
+  inkWire(s, F, [186, 6, 36], [192, 4, 24], [180, 2, 12]);
+});
+
+const footlocker = (s) => paintFitting(s, 'footlocker', (_s, { F }) => {
+  inkCrack(s, F, [[14, 2, 45], [50, 26, 45]]);
+  inkHole(s, F, 66, 2, 20, 7);
+  inkScorch(s, F, 24, 2, 14, 14);
+  inkTear(s, F, [[18, 0, 41], [18, 0, 34]]);              // the sprung latch
+});
+
+const sink = (s) => paintFitting(s, 'sink', (_s, { F }) => {
+  inkCrack(s, F, [[80, 47, 112], [92, 30, 100]]);         // the tap, snapped at the collar
+  inkHole(s, F, 49, 27, 96, 6);                           // …and the drain, gone
+  inkScorch(s, F, 30, 0, 40, 18);
+  inkDead(s, F, [[78, 0, 20], [92, 0, 20], [92, 0, 40], [78, 0, 40]]);
+});
+
+const compostBin = (s) => paintFitting(s, 'compost-bin', (_s, { F }) => {
+  inkCrack(s, F, [[8, 0, 84], [34, 0, 62], [22, 0, 30]]);
+  inkHole(s, F, 42, 0, 44, 7);
+  inkScorch(s, F, 20, 0, 20, 15);
+  inkCrack(s, F, [[64, 30, 52], [72, 30, 60]]);           // the crank, bent off its shaft
+});
+
+const vicePost = (s) => paintFitting(s, 'vice-post', (_s, { F }) => {
+  inkCrack(s, F, [[13, 20, 8], [27, 20, 22]]);            // the post, split at the plinth
+  inkHole(s, F, 29, 16, 114, 6);                          // the far jaw, punched out
+  inkScorch(s, F, 20, 20, 3, 16);
+  inkTear(s, F, [[38, 14, 113], [50, 14, 106]]);
+});
+
+const curtainRail = (s) => paintFitting(s, 'curtain-rail', (_s, { F }) => {
+  inkTear(s, F, [[52, 14, 186], [58, 14, 140], [46, 14, 104]]);
+  inkTear(s, F, [[92, 14, 180], [86, 14, 132]]);
+  inkCrack(s, F, [[5, 12, 206], [14, 12, 196]]);          // the near bracket, torn from the deckhead
+  inkScorch(s, F, 110, 14, 172, 14);
+});
+
+const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
+  inkCrack(s, F, [[14, 12, 166], [26, 12, 146]]);         // across the frame
+  inkHole(s, F, 46, 16, 150, 5);                          // the cup, holed
+  inkScorch(s, F, 34, 28, 128, 15);
+  // ⚠️ THIS MARK MOVED WITH THE PART IT IS ABOUT. It used to run (14,6,139) → (14,20,131), which was
+  // the near bracket's own line when the bracket was flat and hidden inside the shelf plate; both
+  // were invisible, so the twin lost a mark and nothing said so. The bracket now falls from the
+  // plate's front-bottom edge to the wall, and the crack crosses it just under the shelf.
+  inkCrack(s, F, [[11, 8, 133], [18, 10, 133]]);          // the near bracket, cracked at the mount
+});
+
 // ── the registry ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1017,6 +1126,24 @@ export const WRECKED = Object.freeze({
   // ── CRYO (2) ──
   'cryo-capsule-occupied': { paint: cryoCapsuleOccupied, state: '13%', mockLabel: 'CRYO CAPSULE · OCCUPIED' },
   'cryo-capsule-open':     { paint: cryoCapsuleOpen,     state: '10%', mockLabel: 'CRYO CAPSULE · OPEN' },
+
+  // ── FITTINGS (9, VR-P2) — REPO-AUTHORED, NOT FROM THE MOCK ──
+  // `mockLabel: null` is the load-bearing field here, not the name: it is what takes these nine OUT
+  // of the label/badge bijection above, which must keep measuring exactly the mock's seventy. The
+  // catalogue entry each one comes from is carried in `catalogue` instead, so the row still names its
+  // source. Their `state` badges are AUTHORED (the catalogue publishes no condition figures) and are
+  // spread across the same 2–31% band the mock uses, so nothing on screen can tell a repo-authored
+  // badge from a transcribed one — which is correct: a badge is a fact about a device, not about a
+  // document.
+  'bench':            { paint: bench,        state: '19%', mockLabel: null, catalogue: '01 BENCH' },
+  'stool':            { paint: stool,        state: '6%',  mockLabel: null, catalogue: '05 STOOL' },
+  'cot':              { paint: cot,          state: '23%', mockLabel: null, catalogue: '07 COT' },
+  'footlocker':       { paint: footlocker,   state: '12%', mockLabel: null, catalogue: '09 FOOTLOCKER' },
+  'sink':             { paint: sink,         state: '8%',  mockLabel: null, catalogue: '11 SINK' },
+  'compost-bin':      { paint: compostBin,   state: '27%', mockLabel: null, catalogue: '21 COMPOST BIN' },
+  'vice-post':        { paint: vicePost,     state: '15%', mockLabel: null, catalogue: '23 VICE POST' },
+  'curtain-rail':     { paint: curtainRail,  state: '2%',  mockLabel: null, catalogue: '29 CURTAIN RAIL' },
+  'shrine-shelf':     { paint: shrineShelf,  state: '31%', mockLabel: null, catalogue: '30 SHRINE SHELF' },
 });
 
 /**
@@ -1041,8 +1168,37 @@ export const NO_WRECKED_TWIN = Object.freeze({
     + 'twin set and the thing the bijection test measures against, has no SWARF piece at all.',
 });
 
+/**
+ * TWINS THAT ARE NOT THE MOCK'S — the second ledger, and it exists because the first one cannot
+ * express this case.
+ *
+ * `NO_WRECKED_TWIN` says "this row has no twin, and here is why". These nine rows DO have twins; what
+ * they have no part in is the JOIN against `docs/design/perilune-item-set.dc.html`'s `brokenD` array.
+ * That join is a BIJECTION — `client/test/wrecked.test.js` asserts every mock piece is claimed
+ * exactly once, and walks the mock's 70 pristine labels POSITIONALLY against the twinned rows — so a
+ * repo-authored twin left inside it does not merely fail; it destroys the evidence that the other
+ * seventy are transcribed correctly, which is the whole reason that test reads the committed spec
+ * instead of a remembered list.
+ *
+ * ⇒ THE INVARIANT IS: `WRECKED_IDS` is every registry row minus `NO_WRECKED_TWIN`, in registry order
+ * (pinned); and the MOCK join runs over `WRECKED_IDS` minus THIS ledger, which must be exactly 70
+ * (pinned). Both sides fail loudly, and neither can be satisfied by relaxing the other.
+ *
+ * Every entry here also carries `mockLabel: null` in `WRECKED` above, and the test pins the two facts
+ * to each other: a ledgered row with a mock label, or an unledgered row without one, is a lie about
+ * where a drawing came from.
+ */
+export const NON_MOCK_TWIN = Object.freeze({
+  bench: '01 BENCH', stool: '05 STOOL', cot: '07 COT', footlocker: '09 FOOTLOCKER', sink: '11 SINK',
+  'compost-bin': '21 COMPOST BIN', 'vice-post': '23 VICE POST', 'curtain-rail': '29 CURTAIN RAIL',
+  'shrine-shelf': '30 SHRINE SHELF',
+});
+
 /** The pristine itemIds that have a wrecked twin, in registry order. */
 export const WRECKED_IDS = Object.freeze(Object.keys(WRECKED));
+
+/** The twinned rows that came FROM the mock — the population the label/badge bijection measures. */
+export const MOCK_TWIN_IDS = Object.freeze(WRECKED_IDS.filter((id) => !(id in NON_MOCK_TWIN)));
 
 /** The id prefix that namespaces a wrecked piece away from its pristine twin. */
 export const WRECKED_PREFIX = 'wrecked:';
