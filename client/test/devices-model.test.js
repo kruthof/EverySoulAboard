@@ -354,10 +354,31 @@ test('the Room Zoom derives the wear layer once per repaint, from the channel', 
 // census you measured. The seam's MEANING is unchanged and now has ONE owner again — exactly one
 // thing draws the wear (`buildTileItem`, through `furnitureSvg`) — and `open` has NO client reader at
 // all, which is a fact about the channel, not about this seam.
+//
+// ⭐⭐ RE-MEASURED A FOURTH TIME, 2026-08-05, BY THE PAWN-OCCLUSION FIX — AND READ OFF THE FAILING
+// ASSERTION'S OWN `actual`, NOT INCREMENTED, TWICE. `_deviceCond` 4 → 5 → 6. The owner reported that
+// a capsule vanished while a pawn stood on it, and the cause is that `roomCells` read the frame's ONE
+// glyph byte per tile while `GlyphMapper` pass 5 writes `Glyphs.Citizen` over it. The channel is now
+// consulted for PRESENCE as well as for `cond`, at BOTH of this file's `roomCells` call sites — the
+// furniture pass (the picture) and `_capPlaced` (the caption's "N OF M FITTINGS BUILT"). The second
+// was found by re-reading the diff, not by a red test: with only the first fixed, the picture kept
+// the fitting and the CAPTION still ticked down by one as a pawn walked over it, which is the same
+// defect wearing words instead of ink. ⇒ 5 was measured, shipped in a draft, and superseded by 6 in
+// the same session; both numbers came off an `actual`, neither off arithmetic.
+//
+// ⛔ AND THAT IS A REAL WIDENING OF WHAT THIS SEAM MEANS, SAID OUT LOUD RATHER THAN WAVED THROUGH.
+// Until today the census's sentence was "exactly one thing draws the wear". It is now "exactly one
+// thing draws the wear, and the same map says which tiles hold a device at all". Both questions are
+// answered from the SAME Map, built ONCE per repaint by the SAME `roomDeviceConditions` call — the
+// count of that call did not move, which is the number that would have caught a second derivation.
+// The new reference is a hand-off, not a new route to the channel. If `roomDeviceConditions` or
+// `decodeDevices` ever moves off 2, that IS the hand-mirror defect and this paragraph does not
+// excuse it.
 const WEAR_SEAM_CENSUS = Object.freeze({
-  // the `let` declaration, the repaint assignment, the accessor's own `.get`, and the map handed to
-  // `furnitureSvg` (the draw)
-  _deviceCond: 4,
+  // the `let` declaration, the repaint assignment, the accessor's own `.get`, the map handed to
+  // `furnitureSvg` (the draw), and the map handed to the TWO `roomCells` calls (which tiles hold a
+  // device — once for the picture, once for the caption's count)
+  _deviceCond: 6,
   // the exported declaration + M2-10's `onCanvasContext`, which asks the same "is there anything
   // here?" question for the right-click PRIORITISE menu. It reads NOTHING but presence — `cond` and
   // `oper` still have exactly one consumer each — and it is here because the `devices` channel is the
@@ -744,4 +765,111 @@ test('a tile with NO device on the channel keeps its ordinary art', () => {
     + 'reconnect, on the first frames, or against an older host, the whole ship would otherwise\n'
     + 'appear raided — a lie the player cannot tell apart from the real thing.');
   assert.ok(html.includes('rz-furniture'), 'and the piece must still be drawn');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE OWNER'S DEFECT, 2026-08-05: "when the pawn works across a capsule, the capsule disappears
+// until the pawn is out of the cell"
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// THE MECHANISM, CONFIRMED BEFORE IT WAS FIXED. `GlyphMapper` writes ONE glyph per tile in six
+// passes and later passes overdraw earlier ones (`sim/Sim.Glyph/GlyphMapper.cs:13-23`). Pass 4 is
+// devices; pass 5 is living citizens and it writes `Glyphs.Citizen` over the whole cell
+// UNCONDITIONALLY (`GlyphMapper.cs:185-195`). So a device with a crew member on it has NO device
+// glyph on the frame at all — and `roomCells` dropped the tile entirely, because 64 (`'@'`) is in
+// `NON_FURNITURE_CODES`. `WireFormat.Devices.cs:261-266` describes this exact loss in its own
+// header and calls the fix "a channel, not a better reader"; the channel was already on the client
+// and already handed to the furniture pass — it was only ever read for `cond`.
+//
+// ⚠️ IT IS NOT ONLY "WORKING AT" A TILE, WHICH IS WHY THE TEST DOES NOT MODEL A JOB.
+// `CitizenSystem.cs:51-54` snaps `citizen.Pos` to the DESTINATION tile the instant a step begins and
+// holds it for `ticksPerTile`, while the presenter interpolates. Pass 5 projects `Pos`. So a pawn
+// merely WALKING THROUGH blanks the device for the whole ~1 s traversal, before she is visibly
+// there. The owner saw it at a capsule because the cryo bay is twelve capsules in a corridor.
+//
+// MUTATION RECEIPTS (each planted, watched red, reverted) are in the fix's own comment in
+// `client/src/ui/room-model.js`.
+
+/** A frame for `deck` that is all floor except one tile carrying `glyph`, plus a crew member
+ *  standing on `[px, py]` — i.e. `Glyphs.Citizen` (64) at `GlyphColor.Crew` (5), byte for byte
+ *  what pass 5 writes over whatever pass 4 put there. */
+function frameWithPawnOn(deck, tx, ty, glyph, px, py, w = 24, h = 20) {
+  const f = frameWithDevice(deck, tx, ty, glyph, w, h);
+  f.cells[py * w + px] = [64, 5, 0, 0];
+  return f;
+}
+
+test('THE OWNER\'S DEFECT (driven): a pawn standing on a device does NOT delete the device', () => {
+  const tx = RECT.rx + 1, ty = RECT.ry + 1;
+  RoomZoom.initRoomZoom({ send: () => {} });
+  Hud.renderDecks(decode(DECKS_JSON));
+  Hud.renderRooms(decode(ROOMS_JSON));
+  const layers = () => devDoc.getElementById('rz-layers').innerHTML;
+  const fails = [];   // BLINDED (TRAPS 5th shape)
+
+  // A CryoPod, sealed and healthy, on the tile — the owner's own case. Kind 27 = `CryoPod`.
+  const POD = [[tx, ty, RECT.deck, 27, 255, 1, 0, 0]];
+
+  // 1 — THE PRECONDITION. With nobody on it the capsule is drawn. Without this leg every assertion
+  // below is also satisfied by a Room Zoom that draws no furniture at all.
+  Hud.renderFrame(frameWithDevice(RECT.deck, tx, ty, 'K'));
+  driveDevices(POD);
+  const alone = layers();
+  if (!alone.includes('rz-f-' + tx + '-' + ty)) {
+    fails.push('precondition: the capsule is not drawn even with nobody on its tile — this rig is '
+      + 'measuring nothing');
+  }
+
+  // 2 — THE DEFECT. The SAME device row, the SAME tile, one crew member standing on it.
+  Hud.renderFrame(frameWithPawnOn(RECT.deck, tx, ty, 'K', tx, ty));
+  driveDevices(POD);
+  const occupied = layers();
+  if (!occupied.includes('rz-f-' + tx + '-' + ty)) {
+    fails.push('THE CAPSULE VANISHED UNDER THE PAWN. The `devices` channel still carries a CryoPod '
+      + 'on this tile; only the frame\'s GLYPH was overwritten by `Glyphs.Citizen`. A device\'s '
+      + 'presence must not be read from a byte something else is allowed to overwrite.');
+  }
+
+  // 3 — AND IT IS STILL THE RIGHT PIECE, IN THE RIGHT STATE. A fallback that resolved every pod to
+  // the sealed capsule would pass leg 2 and quietly lie about every OPEN pod a pawn walks past.
+  Hud.renderFrame(frameWithPawnOn(RECT.deck, tx, ty, 'k', tx, ty));
+  driveDevices([[tx, ty, RECT.deck, 27, 255, 1, 1, 0]]);          // the same pod, `open = 1`
+  const openPod = layers();
+  // ⛔ ASKED AS A DIFFERENCE, NOT AS A PREFIX, AND THE FIRST DRAFT GOT THIS WRONG IN A WAY WORTH
+  // RECORDING. It compared `occupied.includes(sealedArt.slice(0, 120))` — and the first 120 bytes of
+  // EVERY piece in this registry are the same `<g class="pl-item"><defs>…` boilerplate, so the leg
+  // was true of both capsules and of a bench. MEASURED: the mutation "the fallback ignores `open`"
+  // left this test GREEN and was caught only by the plate's own driven leg. A shared-prefix check on
+  // two pieces from one builder is a check on the builder, not on the choice between them.
+  const opts = { w: 100, h: 100, idPrefix: 'rz-f-' + tx + '-' + ty };
+  const marks = (id) => new Set(buildItem(id, opts).match(/stroke="[^"]+"/g) || []);
+  const sealedOnly = [...marks('capsule-sealed')].filter((m) => !marks('capsule-open').has(m));
+  if (!sealedOnly.length) fails.push('the two capsule pieces are indistinguishable — leg 3 is vacuous');
+  if (occupied === openPod) {
+    fails.push('a SEALED and an OPEN pod under a pawn render IDENTICALLY — the fallback ignores the '
+      + '`open` bit the wire carries (`WireFormat.Devices.cs` tuple element 6, `Device.IsOpen` — the '
+      + 'same field `GlyphMapper.DeviceGlyph` reads to choose \'K\' from \'k\')');
+  }
+  // ⚠️ AND ASKED AS A COUNT, NOT AS PRESENCE — the second thing this leg got wrong. `#EBE4D1` is
+  // `capsule-sealed`'s sleeper knockout AND the PAWN's own two-pass halo, so "absent from the open
+  // scene" was false on correct code: the pawn is in BOTH scenes and puts the mark in both. The pawn
+  // contributes the SAME strokes to each, so any DIFFERENCE in count is the piece and nothing else.
+  const tally = (html, m) => (html.split(m).length - 1);
+  for (const m of sealedOnly) {
+    if (!(tally(occupied, m) > tally(openPod, m))) {
+      fails.push(`a SEALED pod under a pawn draws ${tally(occupied, m)} of ${m} and an OPEN one `
+        + `${tally(openPod, m)} — a mark only card 31 carries is not telling the two apart, so the `
+        + 'fallback is drawing one piece for both states.');
+    }
+  }
+
+  // 4 — NO STALE GHOST. A device that is genuinely gone from the channel must vanish, pawn or no
+  // pawn. This is the half a "remember the last glyph" fix would have failed.
+  Hud.renderFrame(frameWithPawnOn(RECT.deck, tx, ty, '.', tx, ty));
+  driveDevices([]);
+  if (layers().includes('rz-f-' + tx + '-' + ty)) {
+    fails.push('a DECONSTRUCTED device still draws under a pawn — the fallback is a cache, not a '
+      + 'reading of the channel, and the player is looking at a machine that is not there');
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
 });

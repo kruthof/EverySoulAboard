@@ -1,5 +1,11 @@
-// THE THIRTY FITTINGS — the buildable set of `design-import/Perilune Fittings.dc.html`, redrawn in
-// the paper/ink/oxblood idiom on the cabinet-oblique kit (`client/src/render/oblique.js`).
+// THE THIRTY-FOUR FITTINGS — the buildable set of `design-import/Perilune Fittings.dc.html`, redrawn
+// in the paper/ink/oxblood idiom on the cabinet-oblique kit (`client/src/render/oblique.js`).
+//
+// ⚠️ IT WAS THIRTY UNTIL 2026-08-05 and this file said so in nine places. The owner's revision adds a
+// fifth section — "Capsules and cells", cards 31–34, footer "34 of 34" — and those four are a
+// different animal from the thirty: they are not furniture a player places, they are the paper
+// drawings for two DEVICE KINDS the sim has been rendering in the pre-redesign warm idiom. Their own
+// section below carries the seams; everything ABOVE this line is about all thirty-four alike.
 //
 // Every builder is a pure `(opts) -> string` SVG-`<g>`-fragment builder with exactly the contract the
 // rest of `client/src/items/*` holds (helpers.js:1-16): no DOM, no clock, no randomness, same input
@@ -52,6 +58,15 @@
 //
 // Everything else is faithful: the same proportions, the same 3-face extrusion, the same hatched
 // side faces, the same round-objects-level rule, and the same stroke-weight ramp by mass.
+//
+// ⚠️ THE SIX CLASSES ARE NOT A CLOSED LIST OF THIRTY DEFECTS — THEY ARE HOW THIS FILE READS A CARD.
+// The 2026-08-05 section (31–34) was NOT in the charter's audit and was not therefore assumed clean:
+// it was measured against the same six, and it carries FOUR class-3 detachments (both capsules float
+// 4 cm above their own feet; 32's hinge post supports nothing), one class-5 projection break (32's
+// inner rim runs along the tub's own front edge, so the opening has no near lip), a weep line that
+// stops short of the floor it is drawn against, and one MARK THAT CONTRADICTS ITS OWN CAPTION (34's
+// "swollen" side walls are chevrons pointing inward). Each is fixed at the place it occurs and named
+// in its builder's comment, exactly as the thirty above.
 //
 // ⚠️ ONE DIALECT CHOICE IS THE CATALOGUE'S AND IS KEPT DELIBERATELY: a round FEATURE on a vertical
 // face (a dial, a knob, an intake port, a hob seen on a top face) is drawn as a LEVEL ellipse. On a
@@ -151,9 +166,14 @@ export const SPECS = Object.freeze({
   'rug':              { w: 126, d: 86, h: 0 },                   // 28 · 120 × 80 + fringe (mat)
   'curtain-rail':     { w: 120, d: 24, h: 206, z0: 74 },         // 29 · 120 hung 190 + ceiling
   'shrine-shelf':     { w: 64, d: 30, h: 172, z0: 100 },         // 30 · 50 × 20 hung 140 + wall
+  // ── CAPSULES AND CELLS · 31–34 — the owner's "34 of 34" section, added 2026-08-05 ──
+  'capsule-sealed':   { w: 206, d: 78, h: 56 },                  // 31 · 206 × 78 × 56
+  'capsule-open':     { w: 206, d: 78, h: 124 },                 // 32 · 206 × 78 × 124 (lid raised)
+  'cell-sound':       { w: 64, d: 56, h: 98 },                   // 33 · 64 × 56 × 86 + terminal posts
+  'cell-spent':       { w: 88, d: 56, h: 98 },                   // 34 · 64 × 56 × 98 + the swell
 });
 
-/** Every fitting id, in catalogue order (01 → 30). */
+/** Every fitting id, in catalogue order (01 → 34). */
 export const FITTING_IDS = Object.freeze(Object.keys(SPECS));
 
 /**
@@ -196,11 +216,16 @@ function scaleOf(spec) {
  *
  * ⛔ THIS IS NOT THE DRAWING SCALE — see `BOX_EXTENT` below, which is, and which is what a rule about
  * ink LENGTH inside a tile must be stated against.
+ *
+ * ⭐ AND IT READS `geometryFor(spec).size` RATHER THAN REPEATING THE ARITHMETIC. `geometryFor` was
+ * added below for the sibling paper catalogue and its whole reason for existing is that there is ONE
+ * body of this arithmetic; leaving an identical copy up here, in the same file, is the second
+ * derivation that door was cut to prevent. Measured, not asserted: all thirty ids' `SIZES` and
+ * `BOX_EXTENT` are byte-identical across the change, and `fittings.test.js` re-derives both
+ * independently and is unchanged.
  */
 export const SIZES = Object.freeze(FITTING_IDS.reduce((out, id) => {
-  const [ex, ey] = extents(SPECS[id]);
-  const k = PX_PER_CM.catalogue;
-  out[id] = Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) });
+  out[id] = geometryFor(SPECS[id]).size;
   return out;
 }, {}));
 
@@ -212,11 +237,10 @@ export const SIZES = Object.freeze(FITTING_IDS.reduce((out, id) => {
  * second derivation of the drawing scale is the same defect `frameFor` exists to prevent. The E8-1
  * length rule is stated against this and NOT against `SIZES`: a diagonal in the emitted path data is
  * measured in these px, and dividing it by a footprint at a different scale is a ratio about nothing.
+ * Read from `geometryFor(spec).extent` for the reason `SIZES` above records.
  */
 export const BOX_EXTENT = Object.freeze(FITTING_IDS.reduce((out, id) => {
-  const [ex, ey] = extents(SPECS[id]);
-  const k = scaleOf(SPECS[id]);
-  out[id] = Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) });
+  out[id] = geometryFor(SPECS[id]).extent;
   return out;
 }, {}));
 
@@ -344,12 +368,16 @@ function cyl(s, F, x, y, z0, z1, rCm, o = {}) {
   const rx = F.s * rCm;
   const ry = DY * F.s * rCm;
   const sw = o.sw == null ? W.mid : o.sw;
+  // `stroke` passes THROUGH to both halves, and it was added by 34 (the spent cell, drawn entirely in
+  // the accent). Before it, `cyl` hard-coded ink in two places and a caller that wanted an oxblood
+  // terminal post got an oxblood tube with an INK cap — the two halves of one cylinder disagreeing
+  // about their own colour, which is the shape of defect this module keeps one derivation for.
   ink(s,
     `M${nn(cx - rx)} ${nn(yt)} L${nn(cx - rx)} ${nn(yb)}`
     + ` A${nn(rx)} ${nn(ry)} 0 0 0 ${nn(cx + rx)} ${nn(yb)}`
     + ` L${nn(cx + rx)} ${nn(yt)} A${nn(rx)} ${nn(ry)} 0 0 1 ${nn(cx - rx)} ${nn(yt)} Z`,
-    { fill: o.fill === undefined ? PAPER : o.fill, sw, cap: false });
-  if (o.cap !== false) disc(s, F, x, y, z1, rCm, { sw });
+    { fill: o.fill === undefined ? PAPER : o.fill, sw, cap: false, stroke: o.stroke });
+  if (o.cap !== false) disc(s, F, x, y, z1, rCm, { sw, stroke: o.stroke });
 }
 
 /** A standoff FOOT on the deck grid — the catalogue's shared vocabulary, 7 × 4 × 6 cm. */
@@ -387,12 +415,46 @@ function wallStub(s, F, plane, at, a0, a1, b0, b1, hatch) {
  * to skin the same glyph two different ways (`oblique.js`'s own header records that scar).
  */
 export function frameFor(id) {
-  const spec = SPECS[id];
+  const g = geometryFor(SPECS[id]);
+  return g === undefined ? undefined : g.frame;
+}
+
+/**
+ * ⭐ THE SAME DERIVATION, TAKEN A SPEC RATHER THAN AN ID — the door a SECOND catalogue module comes
+ * through (`client/src/items/paper-fixtures.js`, lane/paper-fixtures).
+ *
+ * ⛔ IT EXISTS SO THERE IS STILL EXACTLY ONE DERIVATION OF THE DRAWING SCALE, which is the rule
+ * `frameFor` above states and the scar `oblique.js`'s header records. A second paper catalogue with
+ * its own `SPECS` cannot call `frameFor(id)` — that reads THIS module's table — and the alternative
+ * on offer was for it to re-type `extents`/`scaleOf`/`roomFrame(...)` in its own file. Two copies of
+ * "how big is a centimetre in a fitting's tile" is precisely how the Overview and the Room Zoom came
+ * to skin one glyph two ways. This takes the spec object and returns everything derived from it, so
+ * `frameFor`, `SIZES` and `BOX_EXTENT` here and the whole of the sibling module all read ONE body of
+ * arithmetic. Adding it moved no number: `fittings.test.js` re-derives `SIZES` and `BOX_EXTENT`
+ * independently and is unchanged.
+ *
+ * @param {{w:number,d:number,h:number,z0?:number,round?:boolean}} spec
+ * @returns {{ex:number, ey:number, k:number, z0:number, frame:object, size:{w:number,h:number},
+ *   extent:{w:number,h:number}}|undefined}
+ */
+export function geometryFor(spec) {
   if (!spec) return undefined;
   const [ex, ey] = extents(spec);
   const k = scaleOf(spec);
-  return roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
-    { x: -(k * ex) / 2, y: k * (ey / 2 + (spec.z0 == null ? 0 : spec.z0)) });
+  const z0 = spec.z0 == null ? 0 : spec.z0;
+  return Object.freeze({
+    ex,
+    ey,
+    k,
+    z0,
+    frame: roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
+      { x: -(k * ex) / 2, y: k * (ey / 2 + z0) }),
+    size: Object.freeze({
+      w: Math.max(1, Math.round(PX_PER_CM.catalogue * ex)),
+      h: Math.max(1, Math.round(PX_PER_CM.catalogue * ey)),
+    }),
+    extent: Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) }),
+  });
 }
 
 /**
@@ -1141,6 +1203,240 @@ const drawShrineShelf = (s, { F, hatch }) => {
 };
 export const shrineShelf = (opts = {}) => fitting('shrine-shelf', opts, drawShrineShelf);
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// CAPSULES AND CELLS — 31–34
+//
+// The owner's 2026-08-05 revision of `design-import/Perilune Fittings.dc.html` adds a fifth section
+// ("Capsules and cells", cards 31–34, footer now "34 of 34"). Unlike the thirty above, these four are
+// NOT furniture: they are the paper/ink drawings for two things the sim really has and has been
+// drawing in the pre-redesign warm idiom — `DeviceKind.CryoPod` (twelve of them on `--ship wreck`)
+// and `DeviceKind.Battery` (three). See `client/src/items/index.js` for the rewiring and for what
+// became of the warm rows they displace.
+//
+// ⚠️ THEY COME IN TWO PAIRS, AND THE TWO PAIRS ARE JOINED TO THE SIM BY DIFFERENT SEAMS. Say it here
+// because the drawings look symmetric and the wiring is not:
+//   • 31/32 are a STATE pair on the glyph. `GlyphMapper.DeviceGlyph` (sim/Sim.Glyph/GlyphMapper.cs)
+//     returns `Glyphs.CryoPodClosed 'K'` or `Glyphs.CryoPodOpen 'k'` from `Device.IsOpen`, so which
+//     of the two is drawn is a fact the sim publishes on every tick. Two registry rows, two glyphs.
+//   • 33/34 are a CONDITION pair on the wear join. There is no second Battery glyph — `'B'` is the
+//     kind's only arm — so the spent cell is `WRECKED['cell-sound']` and `wear.js` picks it off the
+//     `devices` channel's `cond` byte at `WRECK_THRESHOLD`, exactly as every other device chooses its
+//     twin. ⛔ NEVER split them on the art (CLAUDE.md trap 6): the picture is downstream of the bit.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * THE SLEEPER — the occupant of 31, in FIGURE UNITS: soles at `ly = 0`, crown at `ly ≈ −145`,
+ * `lx` across the body. Transcribed from the catalogue's own card, which draws the pawn of
+ * `client/src/render/pawn-svg.js` (`figurePaths` → `ghost`) at `rotate(-90) scale(0.52)` — the same
+ * shoulders, the same C-torso, the same two shut eyes.
+ *
+ * ⛔ AUTHORED HERE RATHER THAN IMPORTED FROM `pawn-svg.js`, AND THE REASON IS A GUARD, NOT TASTE.
+ * `inkFigure()` returns a fragment in figure units meant to be placed by a `transform` — and
+ * `fittings.test.js` has two rules a transformed group walks straight through: *"nothing is drawn
+ * outside the box the piece is centred on"* reads raw path coordinates (a head at `y = −144` would
+ * fail it while being perfectly placed), and *"this dialect has no heading"* forbids `rotate(` in a
+ * fitting at all. Both would have to be weakened to admit one import. Instead every point below goes
+ * through the piece's OWN frame like every other member in this file, and the two guards keep their
+ * teeth. The CONSTRUCTION is `pawn-svg.js`'s and is kept verbatim: a fat PAPER knockout pass under a
+ * thin INK pass, the halo widened by one ramp step rather than by a free number.
+ *
+ * ⚠️ ONE DIALECT EXCEPTION, DELIBERATE: the head is the only round thing in this module NOT drawn
+ * level. It is a head, not a port — the level-ellipse rule is about round fittings having no heading
+ * so they can be set down any way about, and a person has a heading. It is a PATH of quadratics for
+ * that reason too: `disc()` would force `ry = 0.6·rx` and draw a coin lying on the sleeper's face.
+ */
+const SLEEPER = Object.freeze([
+  [['M', -13, 0], ['L', -2, 0]],                                            // the near sole
+  [['M', 2, 0], ['L', 13, 0]],                                              // the far sole
+  [['M', -8, -2], ['L', -7, -66]],                                          // the near leg
+  [['M', 7, -2], ['L', 6, -66]],                                            // the far leg
+  [['M', -16, -116], ['Q', -22, -72, -18, -40], ['L', 18, -40],
+    ['Q', 22, -72, 16, -116]],                                              // the torso and its hem
+  [['M', -16, -116], ['Q', 0, -126, 16, -116]],                             // the shoulders
+  [['M', -10, -121], ['L', -4, -112], ['L', 4, -112], ['L', 10, -121]],     // the collar
+  [['M', -16, -110], ['Q', -26, -88, -15, -74]],                            // the near arm
+  [['M', 16, -110], ['Q', 25, -94, 17, -86]],                               // the far arm
+  [['M', -11, -132], ['Q', -11, -144.5, 0, -144.5], ['Q', 11, -144.5, 11, -132],
+    ['Q', 11, -119.5, 0, -119.5], ['Q', -11, -119.5, -11, -132]],           // the head
+  [['M', -11, -136], ['Q', 0, -146, 11, -136]],                             // the hair
+  [['M', -6, -134], ['L', -3, -134]],                                       // the eyes, shut
+  [['M', 4, -134], ['L', 7, -134]],
+]);
+
+/** The figure's sole-to-crown span in its own units, and the centimetres it is drawn at inside 31's
+ *  glass. 104 cm is not a person's height: it is the LONGEST figure whose 50-unit girth (plus the
+ *  knockout's own half-width) still lands inside the 42 cm pane, measured rather than chosen. */
+const SLEEPER_SPAN = 145;
+const SLEEPER_CM = 104;
+
+/** One figure path, mapped into the capsule's centimetres and projected. The figure LIES along +x
+ *  with its head to the LEFT (`ly` runs back along x), and `lx` becomes height. */
+function sleeperPath(F, segs, footX, axisZ) {
+  const k = SLEEPER_CM / SLEEPER_SPAN;
+  const at = (lx, ly) => {
+    const [px, py] = F.project(footX + k * ly, 0, axisZ + k * lx);
+    return `${nn(px)} ${nn(py)}`;
+  };
+  return segs.map(([cmd, ...v]) => {
+    const pts = [];
+    for (let i = 0; i < v.length; i += 2) pts.push(at(v[i], v[i + 1]));
+    return cmd + pts.join(' ');
+  }).join(' ');
+}
+
+/** The two-pass figure: the PAPER knockout first, then the ink over it. Both passes run the SAME
+ *  path list through the SAME mapper — the drift `pawn-svg.js`'s `ghost()` exists to prevent. */
+function sleeper(s, F, footX, axisZ) {
+  for (const segs of SLEEPER) {
+    ink(s, sleeperPath(F, segs, footX, axisZ), { stroke: PAPER, sw: W.heavy });
+  }
+  for (const segs of SLEEPER) ink(s, sleeperPath(F, segs, footX, axisZ), { sw: W.hair });
+}
+
+/** The tub 31 and 32 share: four standoff feet, then the body from z = 4 to z = 56.
+ *  ⛔ DEFECT 3 FIXED, AND IT IS THE SAME FIX ON BOTH CARDS. The catalogue draws the feet 3.5 cm tall
+ *  with their tops at z ≈ 3.5 and the tub's underside at z ≈ 7.6 — a 4 cm gap, on all four, so the
+ *  capsule floats over its own standoffs. Seating the tub ON the feet also reconciles the drawing
+ *  with its own dimension line: 4 cm of foot + 52 cm of tub is the 56 CM the card prints. */
+function capsuleTub(s, F, hatch) {
+  // ⛔ AND THE FEET ARE SYMMETRIC HERE, WHICH THEY ARE NOT ON THE CARD: the catalogue insets them
+  // 3.6 cm from the left end and 11.4 cm from the right, 10 cm from the front face and 2 cm from the
+  // back. Nothing in the object justifies either asymmetry.
+  //
+  // ⛔ AND THE FRONT PAIR MOVED FROM y = 10 TO y = 4 AFTER LOOKING AT THE RENDER, which is the
+  // shrine-shelf lesson arriving on a second piece. In this oblique a centimetre of depth LIFTS a
+  // point 0.6 cm, so a 4 cm foot standing 10 cm back has its lowest ink at an effective −4 + 6 = +2 cm
+  // — ABOVE the tub's own front-bottom edge, i.e. entirely behind the tub's opaque PAPER front face.
+  // MEASURED, not reasoned: at y = 10 both front feet contributed ZERO visible pixels to a 420 px
+  // render. At y = 4 the sum is 4 − 2.4 = 1.6 cm of foot below the body and the standoffs read as
+  // standoffs. (The BACK pair stays deep and stays hidden, which is correct — they are behind the
+  // object.) The catalogue gets away with y = 10 only because its tub floats 7.6 cm up, which is the
+  // very detachment fixed above; fixing that defect is what exposed this one.
+  for (const x of [4, 195]) { foot(s, F, x, 4, hatch); foot(s, F, x, 68, hatch); }
+  bx(s, F, 0, 0, 4, 206, 52, 78, { hatch });
+}
+
+// 31 CAPSULE, SEALED · 206 × 78 × 56 · "Still running. The frost on the glass is on the inside."
+// The lid is shut, so the piece is one box: the tub, a seam line 4 cm under the lid edge, the dark
+// glass panel with the sleeper behind it, the two status stripes along the lid, and the end port.
+// ⛔ THE CATALOGUE'S `<clipPath>` IS DROPPED RATHER THAN TRANSCRIBED, and it is dropped because it
+// clips NOTHING: the card's figure spans x 143.6…220.0 inside a pane of 100.2…261.7 and ±13 px of a
+// pane 35.7 px tall, so the clip is a promise about geometry that is already true. Here the figure is
+// authored inside the pane instead (see `SLEEPER_CM`), which is the same guarantee made where it can
+// be checked. A clip would also have to mint a def id, and `items.test.js` requires every def id in a
+// fragment to be namespaced AND used — an unused-in-practice clip path is exactly the shape
+// `wrecked.test.js` already treats as a defect.
+const drawCapsuleSealed = (s, { F, hatch }) => {
+  capsuleTub(s, F, hatch);
+  line(s, F, [[0, 0, 52], [206, 0, 52]], { sw: W.hair, opacity: 0.45, cap: false });
+  quad(s, F, [[8, 0, 8], [198, 0, 8], [198, 0, 50], [8, 0, 50]], { fill: PAPER_FLAT, sw: W.mid });
+  sleeper(s, F, 152, 29);
+  line(s, F, [[190, 0, 12], [184, 0, 48]], { sw: W.hair, opacity: 0.18, cap: false });
+  line(s, F, [[20, 12, 56], [70, 12, 56]], { sw: W.heavy });
+  line(s, F, [[90, 12, 56], [112, 12, 56]], { sw: W.heavy, stroke: ATTEND });
+  disc(s, F, 180, 16, 56, 9, { sw: W.fine });
+  disc(s, F, 180, 16, 56, 2, { fill: INK, sw: W.hair });
+};
+export const capsuleSealed = (opts = {}) => fitting('capsule-sealed', opts, drawCapsuleSealed);
+
+// 32 CAPSULE, OPEN · 206 × 78 × 124 · "Lid up, straps loose. Whoever it was got out on their own."
+// The same tub, emptied: the opening inset from the rim, an empty front panel with the pad line faded
+// out of it, two loose straps, and the lid swung up on its hinge. No occupant and NO ACCENT — 31's
+// oxblood stripe is a running system, and this one is not running.
+//
+// ⛔ THE LID IS RE-AUTHORED AT ITS OWN DIMENSION LINE, which is the biggest deviation in these four
+// and the one worth reading. The card draws a lid 102 cm long swung to ~67°, which puts its top edge
+// at z = 148 cm against a card that prints 206 × 78 × 124 CM. A lid the length of the tub's DEPTH
+// (78 cm) at 60° puts it at 56 + 78·sin 60° = 123.6 — i.e. the printed 124 is exactly the lid the
+// caption describes, and the drawing overshot it by 24 cm. The dimension line wins.
+// ⛔ DEFECT 3 FIXED TWICE MORE: the card's hinge-post ellipse floats 13 cm forward of the pivot and
+// outboard of the lid's own right edge, so it supports nothing; there are now two, one at each end of
+// the hinge line, standing exactly where the lid turns. And the card's inner rim runs its FRONT edge
+// along the tub's own front-top edge, so the opening has no near lip and reads as a fold in the lid
+// rather than as a hole; it is inset from all four rim edges here.
+const drawCapsuleOpen = (s, { F, hatch }) => {
+  capsuleTub(s, F, hatch);
+  line(s, F, [[10, 8, 56], [196, 8, 56], [196, 62, 56], [10, 62, 56]],
+    { sw: W.fine, close: true, cap: false });
+  line(s, F, [[6, 0, 20], [200, 0, 20], [200, 0, 44], [6, 0, 44]],
+    { sw: W.hair, close: true, cap: false, opacity: 0.8 });
+  line(s, F, [[20, 0, 32], [70, 0, 32]], { sw: W.heavy, opacity: 0.3 });
+  // The straps: flat across the rim, then dipping into the tub — two flats per strap, which is the
+  // card's own two-segment construction, with the second segment's fall made explicit (the card's
+  // reads as a flat quad only until you measure its depth against its drop).
+  // ⚠️ 14 CM WIDE, NOT THE CARD'S 9. Also a render call: at 9 cm a strap on a 206 cm capsule is two
+  // hairlines a millimetre apart and reads as a scratch on the rim rather than as webbing. 14 cm is
+  // the narrowest that still reads as a band at the 48 px the Overview draws a tile at.
+  for (const x of [54, 134]) {
+    quad(s, F, [[x, 6, 56], [x + 14, 6, 56], [x + 14, 34, 56], [x, 34, 56]], { sw: W.fine });
+    quad(s, F, [[x, 34, 56], [x + 14, 34, 56], [x + 14, 62, 46], [x, 62, 46]], { sw: W.fine });
+  }
+  const HINGE_Y = 70; const FREE_Y = 31; const LID_TOP = 123.5;
+  const X0 = 22; const X1 = 184;
+  const lidPt = (x, t) => [x, HINGE_Y + (FREE_Y - HINGE_Y) * t, 56 + (LID_TOP - 56) * t];
+  for (const x of [X0, X1]) disc(s, F, x, HINGE_Y, 56, 8, { sw: W.fine });
+  line(s, F, [lidPt(X0, 0), lidPt(X1, 0), lidPt(X1, 1), lidPt(X0, 1)],
+    { sw: W.mid, close: true, cap: false });
+  for (let i = 1; i <= 5; i += 1) {
+    const x = X0 + ((X1 - X0) * i) / 6;
+    line(s, F, [lidPt(x, 0.05), lidPt(x, 0.95)], { sw: W.hair, opacity: 0.28, cap: false });
+  }
+};
+export const capsuleOpen = (opts = {}) => fitting('capsule-open', opts, drawCapsuleOpen);
+
+// 33 CELL, SOUND · 64 × 56 × 98 · "Four bands showing. Sits on the rack bus bars."
+// An upright case with two terminal posts on the top face and a recessed front panel carrying four
+// charge bands. The posts are the catalogue's cylinder idiom exactly — tube walls, a visible bottom
+// arc, a level cap — so they come straight off `cyl()` rather than being drawn again here.
+// ⚠️ THE 98 IN THE DIMENSION LINE IS THE POSTS, MEASURED: the case is 86 cm and the terminals stand
+// 12 cm proud of it. Reading 98 as the case's own height would draw a battery a foot too tall and
+// leave the terminals hanging off the top of the box.
+const drawCellSound = (s, { F, hatch }) => {
+  bx(s, F, 0, 0, 0, 64, 86, 56, { hatch });
+  for (const x of [16, 48]) cyl(s, F, x, 16, 86, 98, 7, { sw: W.fine });
+  line(s, F, [[8, 0, 18], [56, 0, 18], [56, 0, 64], [8, 0, 64]],
+    { sw: W.fine, close: true, cap: false });
+  for (const z of [26, 36, 46, 56]) line(s, F, [[14, 0, z], [50, 0, z]], { sw: W.heavy });
+  line(s, F, [[8, 0, 74], [56, 0, 74]], { sw: W.hair, opacity: 0.45, cap: false });
+};
+export const cellSound = (opts = {}) => fitting('cell-sound', opts, drawCellSound);
+
+// 34 CELL, SPENT · 64 × 56 × 98 + the swell · "Swollen on both sides, one band left, and it weeps."
+// The same case, drawn ENTIRELY in the accent: one terminal sunk 4 cm into the lid, one band left of
+// four, both side walls bowed out, a branching crack off the panel and a weep line down to the deck.
+// This is the ONLY piece in the catalogue drawn in oxblood throughout, and that is the point of it —
+// it is not a fitting the player places, it is what a Battery LOOKS like below `wear.wreck_threshold`.
+//
+// ⛔ THE SWELL IS REDRAWN, NOT TRANSCRIBED, AND IT IS THE ONE PLACE THESE FOUR CONTRADICT THE CARD.
+// The catalogue's two "swell" marks are chevrons at x 162.1 → 167.2 → 162.1 and 213.1 → 208 → 213.1:
+// both start OUTSIDE the recessed panel and kink TOWARDS it, so both point INWARD. Drawn on a case
+// that is 160.4…214.8 wide they read as a case pinched in at the waist — the opposite of a caption
+// that says "swollen on both sides". They are now outward bows on the case's own side edges, meeting
+// it at both ends (defect 3), which is what a cell that has gassed itself actually does.
+// ⚠️ AND THAT IS WHY THIS SPEC IS 88 CM WIDE FOR A 64 CM OBJECT: the bows have to live inside the
+// declared box or the centring will not count them and they will clip. The 12 cm of margin at each
+// end is the bow, and `X0` is the case's own left edge inside it.
+// ⛔ THE WEEP REACHES THE DECK. The card's stops at z = 4, four centimetres short of the floor line it
+// is drawn against, which makes it a mark on the case rather than something leaving it.
+const drawCellSpent = (s, { F, hatch }) => {
+  const X0 = 12;
+  bx(s, F, X0, 0, 0, 64, 86, 56, { hatch, stroke: ATTEND });
+  cyl(s, F, X0 + 16, 16, 86, 98, 7, { sw: W.fine, stroke: ATTEND });
+  cyl(s, F, X0 + 48, 16, 86, 94, 7, { sw: W.fine, stroke: ATTEND });
+  line(s, F, [[X0 + 8, 0, 18], [X0 + 56, 0, 18], [X0 + 56, 0, 64], [X0 + 8, 0, 64]],
+    { sw: W.fine, close: true, cap: false, stroke: ATTEND });
+  line(s, F, [[X0 + 14, 0, 26], [X0 + 50, 0, 26]], { sw: W.heavy, stroke: ATTEND });
+  curve(s, F, [X0, 0, 4], [X0 - 12, 0, 43], [X0, 0, 82], { sw: W.fine, stroke: ATTEND, opacity: 0.8 });
+  curve(s, F, [X0 + 64, 0, 4], [X0 + 76, 0, 43], [X0 + 64, 0, 82],
+    { sw: W.fine, stroke: ATTEND, opacity: 0.8 });
+  line(s, F, [[X0 + 22, 0, 58], [X0 + 30, 0, 48], [X0 + 36, 0, 40]], { sw: W.fine, stroke: ATTEND });
+  line(s, F, [[X0 + 30, 0, 48], [X0 + 40, 0, 52]], { sw: W.hair, stroke: ATTEND });
+  line(s, F, [[X0 + 36, 0, 40], [X0 + 34, 0, 32]], { sw: W.hair, stroke: ATTEND });
+  line(s, F, [[X0 + 26, 0, 20], [X0 + 26, 0, 10], [X0 + 22, 0, 0]],
+    { sw: W.fine, stroke: ATTEND, opacity: 0.75 });
+};
+export const cellSpent = (opts = {}) => fitting('cell-spent', opts, drawCellSpent);
+
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The painter map + the frame, for a caller that wants to draw ON a fitting
@@ -1183,6 +1479,10 @@ export const DRAW = Object.freeze({
   'rug': drawRug,
   'curtain-rail': drawCurtainRail,
   'shrine-shelf': drawShrineShelf,
+  'capsule-sealed': drawCapsuleSealed,
+  'capsule-open': drawCapsuleOpen,
+  'cell-sound': drawCellSound,
+  'cell-spent': drawCellSpent,
 });
 
 /**
@@ -1205,3 +1505,20 @@ export function paintFitting(s, id, extra, state) {
 
 /** The drawing vocabulary, for the same caller: cm-space strokes, level ellipses and the ramp. */
 export { ink, line, disc, path, curve };
+
+// — lane/paper-fixtures —
+/**
+ * THE REST OF THE DIALECT, EXPORTED FOR A SECOND CATALOGUE MODULE (`items/paper-fixtures.js`).
+ *
+ * ⛔ NOT A CONVENIENCE. Every name below is a thin wrapper over `oblique.js` that encodes ONE
+ * decision this dialect has already made — how a three-face body is wound (`bx`), what "this surface
+ * continues past the drawing" looks like (`wallStub`, `CUT_DASH`), that a cylinder never shows its
+ * back arc (`cyl`, `hoop`), that a standoff foot is 7 × 4 × 6 cm (`foot`), and that a fitting's hatch
+ * is a per-`idPrefix` `<pattern>` rather than the kit's fixed-id one (`hatchPaint`, whose own comment
+ * says why). Re-typing any of them in a sibling file would put a second answer to a settled question
+ * in the tree, which is the defect this module's header spends four paragraphs on. Nothing here is
+ * new and no builder above changed.
+ */
+export {
+  bx, quad, cyl, hoop, foot, wallStub, hatchPaint, CUT_DASH,
+};

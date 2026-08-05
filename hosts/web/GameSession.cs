@@ -2472,6 +2472,7 @@ namespace Perilune.Web
         {
             var citizens = _sim.Citizens.Items;
             var rows = new List<WireFormat.RosterEntry>(citizens.Count);
+            int tpt = _sim.Defs.Citizen.TicksPerTile;   // the TUNED cadence, never the display const
             for (int i = 0; i < citizens.Count; i++)
             {
                 var c = citizens[i];
@@ -2488,10 +2489,120 @@ namespace Perilune.Web
                         traits = mind.Persona.Traits ?? (IReadOnlyList<string>)Array.Empty<string>();
                     }
                 }
+                var (wx, wy) = WalkFraction(c, tpt);
                 rows.Add(new WireFormat.RosterEntry(c.Id, Name(c), role, mood, TaskLabel(c),
-                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y, traits));
+                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y, traits, wx, wy));
             }
             return rows;
+        }
+
+        /// <summary>
+        /// ⭐ SMOOTH PAWN MOVEMENT (option B) — where a walking crew member is BETWEEN two tiles,
+        /// as a continuous tile coordinate. Derived at RENDER time from state the sim already
+        /// keeps; the sim itself stays discrete and nothing here is ever called from a tick path.
+        ///
+        /// <para><b>THE DIRECTION, READ OFF <c>CitizenSystem.Tick</c> RATHER THAN GUESSED — and it
+        /// is the opposite of the obvious reading.</b> The step is taken FIRST and paid for
+        /// AFTERWARDS: on the tick a crew member moves, <c>CitizenSystem</c> writes
+        /// <c>PrevPos = Pos; Pos = next; MoveCooldown = ticksPerTile</c> (lines 51–54). So during
+        /// the whole cooldown window <c>Pos</c> is ALREADY the destination and <c>PrevPos</c> is
+        /// the tile she is walking out of, and <c>MoveCooldown</c> COUNTS DOWN
+        /// (<c>if (--citizen.MoveCooldown > 0) continue;</c>). The elapsed fraction is therefore
+        /// <c>(ticksPerTile − MoveCooldown) / ticksPerTile</c>: at a FRESH counter
+        /// (<c>MoveCooldown == ticksPerTile</c>) it is 0 and the figure stands on <c>PrevPos</c>,
+        /// the DEPARTED tile — not on <c>Pos</c>. Interpolating <c>Pos → Path[PathIndex]</c>
+        /// instead would run a whole tile ahead of the truth.</para>
+        ///
+        /// <para>The final step settles through the same field: with no path left,
+        /// <c>CitizenSystem</c> runs the cooldown out and only then writes <c>PrevPos = Pos</c>
+        /// (lines 65–68), which is exactly this function's "standing still" case. So a walk reads
+        /// as an unbroken run of <c>ticksPerTile</c> even steps per tile with no seam at a tile
+        /// boundary (segment k ends at <c>A + 0.9·(B−A)</c> and segment k+1 opens at <c>B</c>).</para>
+        ///
+        /// <para>⛔ <b>A "THE LERP MAY CUT A CORNER THROUGH A WALL" CAVEAT STOOD HERE AND IT WAS
+        /// FALSE — REVIEW MEASURED IT AWAY.</b> The hazard is unreachable because no diagonal step
+        /// exists: <c>PathService.GetNeighbors</c> emits <c>(X±1, Y, Z)</c>, <c>(X, Y±1, Z)</c> and
+        /// pure-<c>Z</c> ladder links, and nothing else. Every walked segment is therefore
+        /// orthogonal, and a straight line between two orthogonally adjacent tile centres stays
+        /// inside those two tiles for its whole length — including through a door, whose centre the
+        /// line passes exactly along. Do not re-file this as a known limitation.</para>
+        ///
+        /// <para>⚠️ <b>THE REAL HAZARD IS THE ONE THAT COST A SEND-BACK, AND IT IS ON THE CLIENT:
+        /// a consumer that decides ROOM MEMBERSHIP on the integer tile while DRAWING at the
+        /// fraction will put a figure where there is no floor.</b> The two disagree at every room
+        /// boundary for up to a full tile — measured live, 14 of 319 frames (4.4%) drew outside the
+        /// focused room, one of them with the crew member standing on the cryo bay's back wall.
+        /// Closed at the seam that draws: <c>room-model.js</c>'s <c>roomCrew</c> admits a crew
+        /// member on her DRAWN tile, so the feet are on the room's floor by construction. Anything
+        /// that adds a NEW consumer of these fields owes the same question — decide membership on
+        /// whichever tile you are about to draw at.</para>
+        ///
+        /// <para>⛔ READ-ONLY. <c>Pos</c>, <c>PrevPos</c> and <c>MoveCooldown</c> are pre-existing
+        /// public saved fields (<c>SaveWriter.cs:246</c>, <c>Simulation.cs:522</c>) — no sim state
+        /// is added, changed or ordered differently, so no determinism pin can move.</para>
+        ///
+        /// <para>⚠️ <b>THE CONSEQUENCE WORTH KNOWING, MEASURED LIVE RATHER THAN REASONED ABOUT:
+        /// THE SIM TILE LEADS THE DRAWN BODY BY UP TO A FULL TILE.</b> Because the step is taken
+        /// first, <c>Pos</c> arrives a whole <c>ticksPerTile</c> window before the figure does — on
+        /// <c>--ship wreck</c> the roster published <c>x=7 fx=8.0</c> in one row.
+        /// <b>So a consumer that reads the INTEGER tile commits EARLY, by up to a second.</b> That
+        /// is the right answer for anything addressed to the sim, and the wrong one for anything
+        /// that has to agree with what is on screen — which is the split
+        /// <c>WireFormat.RosterEntry.Fx</c> now writes down and this paragraph used to get backwards.
+        /// Room membership, the crew dock's HERE flag and the <c>N HERE</c> caption all follow the
+        /// DRAWN tile today (<c>room-model.js</c>'s <c>roomCrew</c>); the order target
+        /// <c>crewClickTarget</c> and <c>crewRoomSlot</c>'s navigation keep the sim tile.
+        /// It broke two things on the way, both now closed: the Room Zoom resolves a pawn click
+        /// through the floor TILE, so clicking the drawn figure selected nobody
+        /// (<c>crewHitAtTile</c>); and the same surface drew a figure where the cutaway has no
+        /// floor (the paragraph above). The Overview is unaffected by both — it hit-tests the drawn
+        /// element's own <c>data-cid</c>, and its only rect test is the deck, which cannot go
+        /// fractional.</para>
+        ///
+        /// <para>⚠️ <b>FILED, NOT FIXED — A RE-PATH MID-GLIDE SNAPS THE BODY FORWARD.</b>
+        /// <c>StartPath</c> writes <c>PrevPos = Pos</c>, so a crew member who is re-ordered (or has
+        /// her job pre-empted) part-way through a tile stops interpolating from where she was drawn
+        /// and jumps to <c>Pos</c> in one frame — up to a full tile. It is strictly no worse than
+        /// the teleport this package replaced, which did that on EVERY tile; it is rare (one order,
+        /// not one per second); and the boundary tests cannot see it because they drive a single
+        /// uninterrupted walk. Closing it means carrying the drawn position into the sim or damping
+        /// it on the client, and neither belongs in "option B, to see how it looks".</para>
+        ///
+        /// <para><b>COORDINATE SPACE:</b> the SAME space as <c>Citizen.Pos</c> and the roster's
+        /// integer <c>x</c>/<c>y</c> — a TILE coordinate with no half-tile centre offset. Standing
+        /// still ⇒ exactly <c>(Pos.X, Pos.Y)</c>. Each view adds its own centre offset just as it
+        /// does for <c>x</c>/<c>y</c> today.</para>
+        /// </summary>
+        public static (float X, float Y) WalkFraction(Citizen c, int ticksPerTile)
+        {
+            if (c == null) return (0f, 0f);
+            // Standing still: PrevPos == Pos is the settled stance CitizenSystem writes, and a
+            // spent counter means no step is in flight.
+            // ⚠️ THE Z GUARD IS BELT ONLY, AND SAYING SO IS THE POINT — it prevents NOTHING
+            // VISIBLE. A deck change is a LADDER step, and `PathService.GetNeighbors` emits a
+            // Z-neighbour as (X, Y, Z±1): X and Y are IDENTICAL across it, so the lerp it skips
+            // would have returned Pos.X/Pos.Y anyway. Not read off the generator and believed —
+            // `PawnGlideTests.EveryPathStepIsOrthogonal_AndAZStepMovesNoXY` drives the shipped
+            // pathfinder over real routes on two ships and asserts BOTH halves (no diagonal step
+            // exists; a Z step leaves X and Y untouched), which is also the instrument that stops
+            // the deleted corner-cutting caveat from quietly becoming true again. It stays because
+            // a neighbour that moved X/Y and Z together would make it load-bearing overnight and the
+            // failure would be a figure sliding between two decks' floor planes — but no reader
+            // should believe it is holding anything back today.
+            if (ticksPerTile <= 0 || c.MoveCooldown <= 0 || c.PrevPos == c.Pos || c.PrevPos.Z != c.Pos.Z)
+                return (c.Pos.X, c.Pos.Y);
+            int elapsed = ticksPerTile - c.MoveCooldown;
+            // Fresh counter ⇒ the DEPARTED tile. `<=` rather than `==` covers the one way this can
+            // go negative: `TicksPerTile` is a DEF FIELD, so a save taken mid-step and loaded after
+            // the def shrank carries a counter larger than the new tile time.
+            if (elapsed <= 0) return (c.PrevPos.X, c.PrevPos.Y);
+            // No upper clamp is written because none is reachable: the branch above guarantees
+            // MoveCooldown > 0, so elapsed < ticksPerTile and t < 1 — the segment always ENDS
+            // short of the destination, and the next step opens there. A clamp here would be a
+            // guard nothing can make bite.
+            float t = (float)elapsed / ticksPerTile;
+            return (c.PrevPos.X + (c.Pos.X - c.PrevPos.X) * t,
+                    c.PrevPos.Y + (c.Pos.Y - c.PrevPos.Y) * t);
         }
 
         /// <summary>The pending build designations for the BUILD ghosts — a READ-ONLY mirror of the

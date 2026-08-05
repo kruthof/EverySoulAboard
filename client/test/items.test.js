@@ -4,9 +4,9 @@
 // classified, and that buildItem() falls back safely. The count is pinned by equality.
 //
 // ⚠️ "THE 70-PIECE WARM SVG SET" WAS THIS FILE'S OPENING CLAUSE AND IS TWICE WRONG NOW, so it is
-// corrected rather than left: the registry is EIGHTY, and it is no longer one set. Thirty rows draw
-// from `client/src/items/fittings.js` in the paper/ink idiom of the visual redesign; the remaining
-// fifty still wear the warm mock's art until charter §3's P2b lands. A file whose header names a
+// corrected rather than left: the registry is EIGHTY-FOUR, and it is no longer one set. Thirty-four
+// rows draw from `client/src/items/fittings.js` in the paper/ink idiom of the visual redesign; the
+// remaining fifty still wear the warm mock's art until charter §3's P2b lands. A file whose header names a
 // count is a file whose header goes stale — the numbers that matter are the assertions below.
 //
 // 60 → 68 on 2026-07-27: the mock was re-imported with a "Resources & loose items" section — the
@@ -63,29 +63,82 @@ function idsIn(svg) {
 // never had, and they are the whole of the move. All nine are COSMETIC; index.js's own section
 // comment measures why (every DeviceKind they could plausibly claim is already claimed above).
 // RE-COUNTED off the shipped registry, not derived from this paragraph.
-// ⚠️ 80 → 93 on 2026-08-05 (lane/paper-machines). `client/src/items/machines.js` draws the ship's own
-// PLANT — reactor, solar wing, gas bottles, reclaimer, paste column, med cot, fab cell, ring array,
-// dish, plant pot, book case, turret, sleeper pod — thirteen pieces the owner's fittings catalogue
-// never covered and which were still wearing `objects.js`'s mock art. Every one is a NEW row: the
-// thirteen warm rows they replace stay registered at `glyph: null`, so this is an addition of
-// thirteen and not a re-skin of thirteen, and both halves of that are visible in the tally below.
-// RE-COUNTED off the shipped registry, not derived from this paragraph.
-test('the registry holds exactly 93 items', () => {
-  assert.equal(ITEM_IDS.length, 93);
-  assert.equal(Object.keys(ITEMS).length, 93);
+// ⚠️ 80 → 84 on 2026-08-05, LATER THE SAME DAY. The owner revised the fittings catalogue to
+// THIRTY-FOUR, adding a "Capsules and cells" section (31 CAPSULE SEALED, 32 CAPSULE OPEN, 33 CELL
+// SOUND, 34 CELL SPENT). Unlike VR-P2's nine, none of these four is decor: they are the paper
+// drawings for `DeviceKind.CryoPod` and `DeviceKind.Battery`, which had been drawing pre-redesign
+// warm art. Three warm rows lost their glyph claims to them (`cryo-capsule-occupied`,
+// `cryo-capsule-open`, `battery-bank`) and were KEPT — see index.js for the measured reason — so this
+// total moved by exactly the four additions and by nothing else. RE-COUNTED off the shipped registry.
+// ⚠️ RE-COUNTED AGAIN AFTER lane/paper-resources: 84 → 93, and the class that moved is RESOURCE
+// (9 → 18). It is an ADDITION of nine rows and NOT a reclassification: the nine loose ground stacks
+// were redrawn in the paper/ink dialect under new ids (`spoil-heap`, `tuber-crate`, … `turnings`),
+// and the nine warm rows they displace are KEPT as unreached art with both joins handed over
+// (`itemKind: null, glyph: null, supersededBy: …`). The total moved WITH the class, which is the
+// tell for an addition; a reclassification would have moved the class and left the total alone.
+// ⚠️ 93 IS RE-DERIVED OFF THE MERGED TREE, not summed from either lane's literal (TRAPS 8th shape).
+// ⚠️ 80 → 94 on 2026-08-05 (lane/paper-fixtures). The ship's ARCHITECTURE — doors, hatches, service
+// runs, wall furniture and the three luminaires — is redrawn in the paper/ink dialect in
+// `client/src/items/paper-fixtures.js`, a module with no design card behind it (every dimension in
+// its `SPECS` is a real-world measurement chosen there, not transcribed). ⛔ ALL FOURTEEN ARE NEW
+// ROWS AND NONE REPLACES ONE IN PLACE, which is the opposite of VR-P2's twenty-one and is the whole
+// reason the total moves: the warm rows they displace (`sliding-door`, `hatch-ladder`, `air-vent`,
+// `airlock`, `power-conduit`, `wall-lamp`, `viewport`, `wall-screen`, `vent-fan`, `weapons-rack`,
+// `sun-lamp`, `deck-sign`, `floodlight`, `blast-door`) STAY REGISTERED, at `glyph: null` where they
+// held one, because their wrecked twins are fourteen of the mock's seventy and `wrecked.test.js`
+// walks that bijection positionally. RE-COUNTED off the shipped registry, not derived from here.
+// ⚠️ 93 + 14 → 107 ON THE MERGED TREE (main × lane/paper-fixtures). RE-DERIVED off the merged
+// registry with `node -e` over the real export, never summed from the two lanes' literals — each
+// lane's number was correct on its own tree and wrong on this one (TRAPS 8th shape).
+// ⚠️ 107 → 120 on 2026-08-05 (lane/paper-machines). `client/src/items/machines.js` draws the ship's
+// own PLANT — reactor, solar wing, gas bottles, reclaimer, paste column, med cot, fab cell, ring
+// array, dish, plant pot, book case, turret, sleeper pod — thirteen pieces the owner's fittings
+// catalogue never covered and which were still wearing `objects.js`'s mock art. Every one is a NEW
+// row: the thirteen warm rows they replace stay registered at `glyph: null`, so this is an addition
+// of thirteen and not a re-skin of thirteen, and both halves are visible in the tally below.
+// ⚠️ 120 IS RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines) with `node -e` over the real
+// export — never summed from either lane's literal. The lane's own tree said 93 and main said 107;
+// both were correct there and wrong here (TRAPS 8th shape).
+test('the registry holds exactly 120 items', () => {
+  assert.equal(ITEM_IDS.length, 120);
+  assert.equal(Object.keys(ITEMS).length, 120);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 37 functional, 35 cosmetic, 12 material, 9 resource', () => {
-  // ⚠️ RE-COUNTED AGAIN AFTER lane/paper-machines: functional 29 → 37 and cosmetic 30 → 35, so TWO
-  // classes moved this time and the pair of them is the shape of the package. Eight of the thirteen
-  // machines name a `DeviceKind` (six that the sim projects today plus Reactor and OxygenTank, which
-  // it does not yet — see the `deviceStatus:new` test below); five name none and are decor, exactly
-  // as their warm predecessors were. Nothing was RE-CLASSIFIED: the warm rows kept their class and
-  // lost only their glyph, which is why both numbers grew and neither shrank.
+test('the class tally holds: 47 functional, 43 cosmetic, 12 material, 18 resource', () => {
+  // ⚠️ RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines) with `node -e` over the real
+  // export: FUNCTIONAL 47, COSMETIC 43, MATERIAL 12, RESOURCE 18, total 120. ⛔ NEITHER SIDE'S
+  // TALLY IS RIGHT HERE — main read 39/38/12/18 and the lane read 37/35/12/9 — because each moved a
+  // different pair of classes off a different base. Summing them would have been a guess, and this
+  // is the third merge in a row where that guess would have been wrong (TRAPS 8th shape).
+  // ⚠️ THE MACHINES HALF: functional +8 and cosmetic +5. Eight of the thirteen machines name a
+  // `DeviceKind` (six the sim projects today plus Reactor and OxygenTank, which it does not yet —
+  // see the `deviceStatus:new` test below); five name none and are decor, exactly as their warm
+  // predecessors were. Nothing was RE-CLASSIFIED: the warm rows kept their class and lost only
+  // their glyph, which is why both numbers grew and neither shrank.
+  // ⚠️ RE-DERIVED EARLIER OFF main × lane/paper-fixtures: FUNCTIONAL 39, COSMETIC 38, MATERIAL 12,
+  // RESOURCE 18 — kept as the previous step in the chain, superseded by the four numbers above.
+  // ⚠️ RE-COUNTED AGAIN AFTER THE CAPSULES AND CELLS: FUNCTIONAL 29 → 33, and it was the ONLY class
+  // that moved — the mirror image of VR-P2's move, and the tell that these four are DEVICE art and
+  // the nine before them were decor. All four name a `DeviceKind` the sim really has (`CryoPod`,
+  // `Battery`); three of them claim a glyph the sim really projects and the fourth (`cell-spent`) is
+  // a condition state that reaches the screen through `wear.js`, not through a char.
+  // ⚠️ AND AFTER lane/paper-resources: RESOURCE 9 → 18, the only class that moved that time. The
+  // four numbers below are RE-DERIVED off the merged registry, never summed from the two lanes'
+  // literals — each lane's tally was correct on its own tree and wrong on this one (TRAPS 8th shape).
+
+  // ⚠️ RE-COUNTED AGAIN AFTER lane/paper-fixtures: FUNCTIONAL 29 → 35 and COSMETIC 30 → 38, and
+  // BOTH moved, which is what makes this census worth having. The six functional rows are the three
+  // door states, the deck ladder, the conduit run and the vent grille — every one of them a
+  // `DeviceKind` the sim really has and really projects. The eight cosmetic ones name nothing in
+  // `DeviceKind` at all. ⛔ `DeviceKind.Light` is the one that looks like an omission and is not: it
+  // exists, it is projected, and it has NEVER had a functional piece — `GLYPH_SUBSTITUTE['*']`
+  // borrows a cosmetic luminaire for it, a shape `glyph-map.js` records as a live trap. That borrow
+  // moved from `wall-lamp` to `lamp-sconce` in the same commit and is still a cosmetic row.
+  // MATERIAL and RESOURCE did not move — an addition, not a reclassification.
   // ⚠️ RE-COUNTED AGAIN AFTER VR-P2: COSMETIC 21 → 30, and it is the ONLY class that moved. That is
   // the tell that the fittings package was an ADDITION of nine decor rows and not a reclassification
   // — twenty-one further rows changed their PAINTING in the same commit and are invisible here,
@@ -100,18 +153,18 @@ test('the class tally holds: 37 functional, 35 cosmetic, 12 material, 9 resource
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 37, cosmetic: 35, material: 12, resource: 9 });
+  assert.deepEqual(by, { functional: 47, cosmetic: 43, material: 12, resource: 18 });
 });
 
 // ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped
 // builders in one commit and every census in this file stayed still. So the swap is stated as a
 // MEMBERSHIP, both ways — a row that quietly went back to `objects.js`, and a row that quietly
 // arrived from the fittings catalogue, each fail here and name themselves.
-test('exactly the thirty catalogue rows draw from items/fittings.js, and nothing else does', () => {
+test('exactly the thirty-four catalogue rows draw from items/fittings.js, and nothing else does', () => {
   const fromFittings = ITEM_IDS.filter((id) => FITTING_IDS.includes(id));
   assert.deepEqual([...fromFittings].sort(), [...FITTING_IDS].sort(),
     'a fittings-catalogue id is missing from the registry entirely');
-  assert.equal(FITTING_IDS.length, 30, 'the catalogue is thirty pieces');
+  assert.equal(FITTING_IDS.length, 34, 'the catalogue is thirty-four pieces');
   for (const id of FITTING_IDS) {
     assert.equal(ITEMS[id].build, FITTINGS[camelOf(id)],
       `${id} does not draw from its own fittings builder`);
@@ -134,14 +187,36 @@ test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value
   assert.equal(ITEM_KINDS.length, 4, 'four kinds: functional, cosmetic, material, resource');
 });
 
-test('every RESOURCE row names a sim ItemKind and a Glyphs.ForItem char', () => {
+// ⚠️ THE POPULATION IS NOW TWO POPULATIONS, AND MERGING THEM WOULD HAVE BEEN THE EASY WRONG FIX.
+// Since lane/paper-resources a `resource` row is either LIVE — it claims a sim `ItemKind` name and a
+// `Glyphs.ForItem` char, and both joins land on it — or SUPERSEDED: its art is still registered and
+// still builds, but another row took both joins and it carries `itemKind: null, glyph: null,
+// supersededBy: '<the row that took them>'`. Relaxing the old loop to "itemKind is a string OR null"
+// would have kept it green while making the uniqueness half unenforceable, which is the whole thing
+// it exists for. So the split is asserted first, and each half is then held to its OWN contract.
+test('every RESOURCE row is LIVE (a sim ItemKind + a glyph) or SUPERSEDED (neither, and it says by whom)', () => {
   const res = ITEM_IDS.filter((id) => ITEMS[id].kind === 'resource');
   assert.deepEqual(res.sort(), [
-    'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals', 'swarf',
+    'body-bag', 'control-card', 'controller-module', 'corpse', 'gear-set', 'ice', 'ice-block',
+    'parts', 'plate-offcut', 'potato', 'regolith', 'scrap', 'seal-set', 'seals', 'spoil-heap',
+    'swarf', 'tuber-crate', 'turnings',
   ]);
+  const live = res.filter((id) => ITEMS[id].supersededBy === undefined);
+  const dead = res.filter((id) => ITEMS[id].supersededBy !== undefined);
+  assert.equal(live.length, 9, 'nine ItemKinds have art; a tenth LIVE row means a kind grew a piece');
+  assert.equal(dead.length, 9, 'nine warm rows were superseded by the paper redraw');
+  // THE SUPERSEDED HALF: both joins really let go, and the row names its successor, which must be a
+  // LIVE resource row. A demotion that kept either field would silently keep winning the join.
+  for (const id of dead) {
+    const e = ITEMS[id];
+    assert.equal(e.itemKind, null, `${id} is superseded but still claims an ItemKind`);
+    assert.equal(e.glyph, null, `${id} is superseded but still claims a glyph`);
+    assert.ok(live.includes(e.supersededBy),
+      `${id}: supersededBy "${e.supersededBy}" is not a live resource row`);
+  }
   const kinds = new Set();
   const glyphs = new Set();
-  for (const id of res) {
+  for (const id of live) {
     const e = ITEMS[id];
     assert.equal(typeof e.itemKind, 'string', `${id} carries the sim ItemKind NAME`);
     assert.ok(e.itemKind.length > 2, `${id}: itemKind looks like a member name`);
@@ -163,12 +238,22 @@ test('every RESOURCE row names a sim ItemKind and a Glyphs.ForItem char', () => 
 test('RESOURCE_ITEM_BY_KIND_NAME is derived from the registry, not transcribed', () => {
   for (const id of ITEM_IDS) {
     const e = ITEMS[id];
-    if (e.kind !== 'resource') continue;
+    if (e.kind !== 'resource' || e.supersededBy !== undefined) continue;
     assert.equal(RESOURCE_ITEM_BY_KIND_NAME[e.itemKind], id, `${e.itemKind} → ${id}`);
   }
   assert.equal(Object.keys(RESOURCE_ITEM_BY_KIND_NAME).length, 9);
+  // ⚠️ AND THE OTHER DIRECTION, WHICH IS THE ONE THE SUPERSEDING MOVE COULD BREAK SILENTLY: no
+  // superseded row may appear as a VALUE in the join. The loop above skips them, so on its own it
+  // would stay green if `regolith` were still what `Regolith` resolved to.
+  const superseded = new Set(ITEM_IDS.filter((id) => ITEMS[id].supersededBy !== undefined));
+  for (const [kind, id] of Object.entries(RESOURCE_ITEM_BY_KIND_NAME)) {
+    assert.ok(!superseded.has(id),
+      `ItemKind ${kind} still resolves to the SUPERSEDED row "${id}". The registry reducer takes the`
+      + ' FIRST row that claims a kind name, and the warm rows sit above the paper ones.');
+  }
   // and the two predicates the view layer classifies with
-  assert.equal(isResourceItem('regolith'), true);
+  assert.equal(isResourceItem('regolith'), true, 'a superseded pile is still a pile');
+  assert.equal(isResourceItem('spoil-heap'), true);
   assert.equal(isResourceItem('locker'), false, 'a device is not a resource');
   assert.equal(isResourceItem('rug'), false, 'decor is not a resource');
   assert.equal(isDeviceItem('locker'), true);
@@ -243,7 +328,14 @@ test('every registry entry has a valid kind + a callable builder + a size', () =
     if (e.kind === 'functional') assert.ok(e.deviceKind, `${id} functional ⇒ deviceKind`);
     if (e.kind === 'material') assert.ok(['wall', 'floor'].includes(e.material), `${id} material tag`);
     if (e.kind === 'cosmetic') assert.ok(e.decor, `${id} cosmetic ⇒ decor key`);
-    if (e.kind === 'resource') assert.ok(e.itemKind, `${id} resource ⇒ itemKind name`);
+    // ⚠️ `supersededBy` IS THE ONLY EXIT, and it is checked as an EXCLUSIVE OR rather than as an
+    // excuse: a resource row names a sim kind, or it names the row that took its kind, never both
+    // and never neither. (`itemKind` else-branch guarded so an `undefined` cannot slip through as
+    // "well, it is superseded".)
+    if (e.kind === 'resource') {
+      if (e.supersededBy === undefined) assert.ok(e.itemKind, `${id} resource ⇒ itemKind name`);
+      else assert.equal(e.itemKind, null, `${id} is superseded ⇒ it must claim no itemKind`);
+    }
   }
 });
 

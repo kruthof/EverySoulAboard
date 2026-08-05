@@ -47,7 +47,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { codeOnly } from './code-only.js';
-import { ITEMS, buildItem } from '../src/items/index.js';
+import { ITEMS, buildItem, RESOURCE_ITEM_BY_KIND_NAME } from '../src/items/index.js';
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
@@ -1120,7 +1120,15 @@ test("the CORPSE glyph reaches the Room Zoom's furniture layer at all (roomCells
   assert.equal(cells.length, 1,
     "roomCells DROPPED the corpse tile. `'&'` (38) is back in NON_FURNITURE, so a corpse reaches no\n"
     + 'furniture layer on this surface and draws NOTHING — the state this package was written to end.');
-  assert.equal(cells[0].itemId, 'corpse', 'the corpse tile resolved to no art');
+  // ⚠️ `'body-bag'` SINCE lane/paper-resources — the paper redraw of this pile — and the literal is
+  // kept rather than derived so a silent reassignment of `'&'` to some other row still fails here.
+  // The second leg is the one that makes it more than a transcription: the GLYPH join and the
+  // KIND-NAME join are two separate derivations off the registry, and a tile is only correct when
+  // both land on the same row.
+  assert.equal(cells[0].itemId, 'body-bag', 'the corpse tile resolved to no art');
+  assert.equal(cells[0].itemId, RESOURCE_ITEM_BY_KIND_NAME.Corpse,
+    "the '&' glyph and ItemKind.Corpse resolve to DIFFERENT rows — a corpse on the map and a corpse\n"
+    + 'in the items channel would draw two different pictures on the same tile.');
 });
 
 test('the CORPSE glyph reaches the OVERVIEW composer too (overviewScene, driven)', () => {

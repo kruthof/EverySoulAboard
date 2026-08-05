@@ -85,7 +85,7 @@ import { taskTag } from './console-model.js';
 import { markVariant, markCellSvg } from './mark-overlay.js';
 // The glyph codes that are NOT an item on a tile, OWNED by room-model.js and imported rather than
 // re-declared — see the NON_FURNITURE note below for the bug the second copy hid.
-import { NON_FURNITURE_CODES } from './room-model.js';
+import { NON_FURNITURE_CODES, itemForDeviceRow, CITIZEN_GLYPH_CODE } from './room-model.js';
 // THE OBLIQUE KIT (charter §1). The miniature interiors are built on it DIRECTLY — `roomFrame` for
 // the projection, `boxFaces`/`poly` for geometry — rather than through `oblique.room()`, because a
 // tile is drawn at ~1/7 scale and every stroke in it must carry `vector-effect="non-scaling-stroke"`
@@ -648,9 +648,16 @@ function miniContents(slot, frame, deck, deviceCond, marks, idPrefix) {
       const cell = frame.cells[ty * frame.w + tx];
       if (!Array.isArray(cell)) continue;
       const code = cell[0];
-      if (NON_FURNITURE.has(code)) continue;
-      const itemId = itemIdForGlyphChar(String.fromCharCode(code));
-      if (!itemId) continue; // glyph nothing skins → graceful skip
+      // ⭐ THE SAME PAWN-OCCLUSION REPAIR THE ROOM ZOOM MAKES, and it is here because the defect is
+      // the FRAME's, not the cutaway's: `GlyphMapper` pass 5 writes `Glyphs.Citizen` over the device
+      // glyph, so a plate miniature lost its machine the moment a crew member stood on it too.
+      // MEASURED on this surface, not assumed from the other one — `overview-scene.test.js` drives it.
+      // `cond` is the `deckDeviceConditions` Map this function is ALREADY handed; it was read for the
+      // wear byte and for nothing else.
+      const itemId = NON_FURNITURE.has(code)
+        ? (code === CITIZEN_GLYPH_CODE ? itemForDeviceRow(cond.get(tx + ',' + ty)) : '')
+        : itemIdForGlyphChar(String.fromCharCode(code));
+      if (!itemId) continue; // glyph nothing skins (or a floor/wall/doorway) → graceful skip
       const u = (tx + 0.5 - rect.x) / rect.w;
       const v = (ty + 0.5 - rect.y) / rect.h;
       // ⭐ THE SAME FUNCTION THE CLICK MAP INVERTS. A piece stands on the floor point its own tile
@@ -954,7 +961,22 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
   const pawns = [];
   for (const c of list) {
     if (!c || c.deck !== deck) continue; // off-deck / fogged crew simply do not render
-    const [fx, fy] = t.project(c.x + 0.5, c.y + 0.5); // feet on the tile centre
+    // ⭐ THE GLIDE. `fx`/`fy` are the wire's sub-tile walk position in the SAME coordinate space as
+    // `x`/`y` (a tile coordinate, no centre offset — the convention is written down once, at
+    // `WireFormat.RosterEntry.Fx`), so the `+ 0.5` that puts the feet on the tile CENTRE is applied
+    // here exactly as it always was. An older host omits them and the integer tile is used, which is
+    // also what a standing crew member serializes (`fx === x`), so the fallback is never a jump.
+    // WHICH TILE DECIDES WHAT, on THIS surface (`WireFormat.RosterEntry.Fx` states the rule in full):
+    // this plate's only rect test is the DECK (`c.deck !== deck` above), and a deck cannot go
+    // fractional — a ladder step keeps X/Y — so the Room Zoom's room-boundary problem has no
+    // counterpart here. The ORDER TARGET keeps the integer tile (`crewClickTarget`, because the host
+    // resolves a click through `Citizen.Pos`). Everything DRAWN follows the glide, including the
+    // selection underline and the label pill below: both hang off `fx`/`fy`, so neither can detach
+    // from the figure. Selecting BY CLICK needs no tile at all here — the hit test is the drawn
+    // `.pl-pawn` element's own `data-cid`, which is why this surface never had the Room Zoom's bug.
+    const gx = Number.isFinite(c.fx) ? c.fx : c.x;
+    const gy = Number.isFinite(c.fy) ? c.fy : c.y;
+    const [fx, fy] = t.project(gx + 0.5, gy + 0.5); // feet on the tile centre
     const S = Math.max(0.5, t.tileSize * 2.2 / 24);   // pawn box ≈ 2.2 tiles tall (viewBox 24)
     const sur = surnameOf(c.name);
     const tag = taskTag(c.task);                      // null ⇒ idle / walking / en route (no tag)

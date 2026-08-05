@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-// fittings-sheet.mjs — RENDER THE THIRTY FITTINGS ONTO ONE PAGE, so they can be looked at.
+// fittings-sheet.mjs — RENDER THE THIRTY-FOUR FITTINGS ONTO ONE PAGE, so they can be looked at.
+//
+// ⚠️ IT ENUMERATES `FITTING_IDS`, SO THE SECTION THE OWNER ADDED ON 2026-08-05 (31–34, capsules and
+// cells) ARRIVES HERE BY EXISTING. Nothing below names a count; the window sizes in the USAGE lines
+// were re-measured for thirty-four cards.
 //
 // ⚠️ WHY THIS EXISTS. `client/test/fittings.test.js` proves things about STRINGS: that a hoop is a
 // half-arc, that a member's two ends meet, that no raw hex escapes the seam. None of that is a
@@ -16,7 +20,7 @@
 // USAGE
 //   node client/tools/fittings-sheet.mjs --out client/tools/shots-fittings
 //   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
-//     --screenshot=<out>/fittings-sheet.png --window-size=1520,3400 <out>/fittings-sheet.html
+//     --screenshot=<out>/fittings-sheet.png --window-size=1520,3800 <out>/fittings-sheet.html
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -67,7 +71,7 @@ console.log('wrote', join(OUT, 'fittings-sheet.html'), '·', FITTING_IDS.length,
 // ⚠️ 22 IS THE ROW THAT MATTERS AND IT WAS MISSING. The Overview sizes furniture at
 // `max(10, tileSize * 1.7)` (`ui/overview-scene.js:380`), and `tileSize` is `min(KX, KY)` fitted to
 // the deck's extent — on the wreck's decks that lands around 13, i.e. ~22 px per piece. That is the
-// SMALLEST size any of these thirty is actually shown at in the shipping game, and a sheet whose
+// SMALLEST size any of these thirty-four is actually shown at in the shipping game, and a sheet whose
 // finest row was 32 px was flattering every one of them by about half again.
 const tiles = [22, 32, 48, 72].map((px) => `<div class="row"><span>${px}px</span>${
   FITTING_IDS.map((id) => `<svg width="${px}" height="${px}" viewBox="0 0 ${px} ${px}" title="${id}">${
