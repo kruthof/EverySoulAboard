@@ -167,6 +167,11 @@ the game does not have.
 
 Added by the **2026-07-28 mock re-import**. Both are `client/src/items/cryo.js`.
 
+⛔ **BOTH ROWS' GLYPH COLUMNS BELOW ARE HISTORY SINCE 2026-08-05 — READ THE NOTE UNDER THE TABLE.**
+`K` and `k` now belong to catalogue 31/32 (`capsule-sealed` / `capsule-open`,
+`client/src/items/fittings.js`). These two keep their class, their `deviceKind` and their wrecked
+twins, and draw nothing the player can reach.
+
 | # | Piece | Class | Placement | Sim glyph | Notes |
 |---|-------|-------|-----------|-----------|-------|
 | 69 | CRYO CAPSULE · OCCUPIED | FUNCTIONAL [exists] | CryoPod (27) | `K` → occupied capsule | A crew member frozen behind frost glass; cyan `-196°` plate, live LED. The kind's REST glyph (`Glyphs.ForDevice`). |
@@ -223,13 +228,13 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 26 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 30 |
 | FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
-| **FUNCTIONAL total** | **29** |
+| **FUNCTIONAL total** | **33** |
 | COSMETIC (view-only `decor`, non-hashed) | 30 |
 | MATERIAL (wall/floor tint) | 12 |
 | RESOURCE (ground stack, a sim `ItemKind`) | 9 |
-| **Total** | **80** |
+| **Total** | **84** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -237,6 +242,34 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **29 → 33 FUNCTIONAL and 80 → 84 on 2026-08-05, LATER THE SAME DAY** — the owner's revision of
+`design-import/Perilune Fittings.dc.html` from thirty pieces to **thirty-four**, adding a "Capsules
+and cells" section (31 CAPSULE SEALED · 32 CAPSULE OPEN · 33 CELL SOUND · 34 CELL SPENT). **FUNCTIONAL
+is the only class that moved, and that is the mirror image of the nine below it**: those were decor
+because every `DeviceKind` they could claim was taken; these four ARE the art for two kinds that were
+still drawing pre-redesign warm pieces — `CryoPod` (twelve on `--ship wreck`) and `Battery` (three).
+All four are `[exists]`, so the `[NEW]` split does not move.
+
+⇒ **THREE WARM ROWS LOST THEIR GLYPH CLAIMS TO THEM AND WERE KEPT, NOT DELETED**:
+`cryo-capsule-occupied` and `cryo-capsule-open` (69/70 above) surrendered `K`/`k` to 31/32, and
+`battery-bank` (the cell RACK, catalogue 27) surrendered `B` to 33. All three now read
+`glyph: null` — the shape `airlock` and `blast-door` already have — and are **unreached art**, said
+out loud here rather than left to be found. Deleting them was refused with the cost measured:
+their twins are three of the SEVENTY the wrecked bijection walks positionally against
+`docs/design/perilune-item-set.dc.html`, and shrinking that population would have required inventing
+a "mock pieces deliberately unclaimed" ledger to relax the one test that proves the other twins are
+transcribed correctly. **The Tally cannot see any of this** — three rows changed a field that is not
+`kind` — which is the same blind spot the VR-P2 note below records, in its second instance.
+
+⇒ **`cell-spent` (34) is the only one of the four with no glyph, and that is not an omission.**
+`DeviceKind.Battery` has exactly one `Glyphs.ForDevice` arm (`B`), so "spent" is a CONDITION, not a
+state the glyph channel can spell. It reaches the screen as `WRECKED['cell-sound']` in
+`client/src/items/wrecked.js`, chosen by `client/src/items/wear.js` off the `devices` channel's
+`cond` byte at `wear.wreck_threshold` — the same predicate every other device uses. It is also the
+second entry ever in `NO_WRECKED_TWIN` (a spent cell is already the wrecked state — `swarf`'s
+argument), and the FIRST twin in this repo that is a design drawing rather than a damage pass over
+its pristine piece.
 
 ⚠️ **21 → 30 COSMETIC and 71 → 80 on 2026-08-05 (VR-P2, the visual redesign's fittings package).**
 The owner's second design document, `design-import/Perilune Fittings.dc.html`, is a THIRTY-piece

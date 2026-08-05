@@ -34,8 +34,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { ITEMS, ITEM_IDS, buildItem } from '../src/items/index.js';
+import { ATTEND } from '../src/items/helpers.js';
 import { WRECKED, buildWrecked, wreckedState, NO_WRECKED_TWIN } from '../src/items/wrecked.js';
-import { GLYPH_SUBSTITUTE, itemIdForGlyphChar } from '../src/items/glyph-map.js';
+import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import {
   WRECK_THRESHOLD,
   WRECK_COND_BYTE,
@@ -261,14 +262,75 @@ test('DeviceKind → art is NOT a function, which is why the join keys on the it
   assert.ok(names.includes('CryoPod'),
     'CryoPod is claimed by BOTH capsule pieces. They are the pieces this package exists to put on\n'
     + 'screen, and a kind-keyed join could not tell them apart — it would fail on its headline case.');
+  // ⚠️ AND `Battery` JOINED THE MAP ON 2026-08-05, WHICH IS THE ARGUMENT'S THIRD AND SHARPEST CASE.
+  // The other two kinds are multi-piece because they have several STATE GLYPHS. Battery has exactly
+  // one arm (`'B'`) and three rows — `cell-sound` (which claims it), `cell-spent` and the older
+  // `battery-bank`, both `glyph: null`. So a kind-keyed join would have to choose between three
+  // pieces with no state to choose BY, which is a stronger statement of the same defect.
+  assert.ok(names.includes('Battery'),
+    'Battery is claimed by cell-sound / cell-spent / battery-bank. If it is no longer multi-piece '
+    + 'the capsules-and-cells wiring has been undone.');
   for (const k of names) assert.ok(multi[k].length > 1, `${k} is in the multi map with one piece`);
-  // …and what separates them really is the glyph, i.e. the device's STATE.
-  assert.equal(itemIdForGlyphChar('K'), 'cryo-capsule-occupied');
-  assert.equal(itemIdForGlyphChar('k'), 'cryo-capsule-open');
+  // …and what separates the two capsules really is the glyph, i.e. the device's STATE.
+  // ⚠️ THE TWO IDS MOVED ON 2026-08-05 (`cryo-capsule-*` → `capsule-*`) and the ASSERTION DID NOT
+  // CHANGE SHAPE, which is the point of pinning ids rather than "some two different pieces": the
+  // owner's paper drawings took the two glyphs over from the warm rows, and that hand-over is a
+  // decision this line has to be edited to make.
+  assert.equal(itemIdForGlyphChar('K'), 'capsule-sealed');
+  assert.equal(itemIdForGlyphChar('k'), 'capsule-open');
   assert.notEqual(itemIdForGlyphChar('K'), itemIdForGlyphChar('k'));
+  // ⛔ AND THE ROWS THEY DISPLACED RESOLVE FROM NOTHING NOW. Asserted, not assumed: a `glyph: null`
+  // demotion that was only half-made would leave the OLD row winning `deriveGlyphToItem`'s
+  // first-wins rule (it is declared earlier), and every capsule on the wreck would still be warm
+  // with this file green above.
+  for (const dead of ['cryo-capsule-occupied', 'cryo-capsule-open', 'battery-bank']) {
+    assert.equal(ITEMS[dead].glyph, null, `${dead} still claims a glyph`);
+    assert.ok(!Object.values(GLYPH_TO_ITEM).includes(dead),
+      `${dead} is still reachable from a glyph — the hand-over to the paper pieces is half-made`);
+  }
+  // …and the Battery's own char lands on the sound cell, whose WRECKED twin is the spent one.
+  assert.equal(itemIdForGlyphChar('B'), 'cell-sound');
 });
 
 // ═════════════════════════════════════════════════════════ 4. THE TWO SURFACES, THROUGH THE MODELS
+
+// ⭐ THE BATTERY'S TWO PICTURES, DRIVEN THROUGH THE JOIN THE SURFACES ACTUALLY CALL. Everything
+// above is about tables; this is about what a tile draws. `buildTileItem` is the ONE door both SVG
+// surfaces use, so a Battery that stopped switching art would be invisible to every other assertion
+// in this file and perfectly visible to a player.
+//
+// MUTATION: point `WRECKED['cell-sound'].paint` at `cellSound`'s pristine painter ⇒ RED on leg 3.
+// MUTATION: raise `WRECK_THRESHOLD` above 1 ⇒ RED on leg 1.
+test('a Battery draws the SOUND cell healthy and the SPENT cell wrecked — driven', () => {
+  const opts = { idPrefix: 'batt' };
+  const fails = [];   // BLINDED (TRAPS 5th shape)
+  const healthy = buildTileItem('cell-sound', opts, 255);
+  const wrecked = buildTileItem('cell-sound', opts, 10);
+
+  // 1 — THE PICTURES DIFFER AT ALL. A join that ignored `cond` hands back one drawing for both.
+  if (healthy === wrecked) {
+    fails.push('a pristine Battery and a wrecked one draw the identical picture — the wear join is '
+      + 'not consulted for this row at all');
+  }
+  // 2 — THE HEALTHY ONE IS THE SOUND CELL, and it carries no accent (a working machine says nothing).
+  if (healthy !== buildItem('cell-sound', opts)) fails.push('a healthy Battery is not card 33');
+  if (healthy.includes(ATTEND)) fails.push('a healthy Battery draws in the fault colour');
+  // 3 — THE WRECKED ONE IS THE OWNER'S OWN CARD 34, not ink damage over 33. Compared against the
+  // SPENT PIECE's own fragment, re-drawn at the twin's id prefix so only the drawing is in question.
+  if (!wrecked.includes(ATTEND)) fails.push('a wrecked Battery draws no oxblood — it is not card 34');
+  const spentShapes = (s2) => (s2.match(/<(path|ellipse)\b/g) || []).length;
+  if (spentShapes(wrecked) !== spentShapes(buildItem('cell-spent', opts))) {
+    fails.push('the wrecked Battery is not the spent cell shape-for-shape — the twin has been '
+      + 'redrawn as a damage pass and the design\'s own card 34 has gone unreachable');
+  }
+  // …and the two capsules do NOT switch on condition, because a pod's state is a GLYPH. A wrecked
+  // pod is a wrecked pod, not an open one — the two axes must stay independent.
+  if (buildTileItem('capsule-sealed', opts, 10) === buildItem('capsule-open', opts)) {
+    fails.push('a wrecked SEALED capsule renders as the OPEN one — condition has been wired to the '
+      + 'state axis, and a damaged pod would read as an empty pod');
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
+});
 
 test('deckDeviceConditions keeps this deck only, and keys by tile like its room-scoped sibling', () => {
   // ⚠️ `open` ARRIVED AT THE MERGE with the OPERATE verb (the seventh tuple element) and is carried

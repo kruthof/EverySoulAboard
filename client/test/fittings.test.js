@@ -122,12 +122,19 @@ function memberThrough(svg, id, pts, what) {
 function depthAt(F, xCm, px) { return (px - F.x0 - F.s * xCm) / (RX * F.s); }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// 1. THE SET — thirty pieces, present, pure, namespaced
+// 1. THE SET — thirty-four pieces, present, pure, namespaced
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-test('the catalogue is thirty, every id has a builder, and every builder draws something', () => {
-  assert.equal(FITTING_IDS.length, 30, 'the owner\'s catalogue is thirty pieces');
-  assert.equal(Object.keys(SPECS).length, 30);
+// ⚠️ 30 → 34 ON 2026-08-05, RE-COUNTED OFF `SPECS` AND OFF THE DOCUMENT. The owner's revision of
+// `design-import/Perilune Fittings.dc.html` adds a fifth section, "Capsules and cells", cards 31–34,
+// and changes the catalogue footer from "30 of 30" to "34 of 34". The four are pinned BY NAME below
+// as well as by this count, because a count alone cannot tell four new pieces from four renames.
+test('the catalogue is thirty-four, every id has a builder, and every builder draws something', () => {
+  assert.equal(FITTING_IDS.length, 34, 'the owner\'s catalogue is thirty-four pieces');
+  assert.equal(Object.keys(SPECS).length, 34);
+  assert.deepEqual(FITTING_IDS.slice(30),
+    ['capsule-sealed', 'capsule-open', 'cell-sound', 'cell-spent'],
+    'the "Capsules and cells" section is the catalogue\'s last four, in its own order 31 → 34');
   for (const id of FITTING_IDS) {
     const fn = FT[camel(id)];
     assert.equal(typeof fn, 'function', `${id} has no exported builder`);
@@ -677,4 +684,146 @@ test('the SPECS are the catalogue\'s dimensions, and every drawn box says where 
     if (s.z0 == null) continue;
     assert.ok(s.z0 > 0 && s.z0 < s.h, `${id}: z0 ${s.z0} is not inside 0..${s.h}`);
   }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 4. CAPSULES AND CELLS — the owner's 2026-08-05 section, 31–34
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THESE FOUR NEED GUARDS THE THIRTY DO NOT, and the reason is that they are the first catalogue
+// pieces WIRED TO THE SIM as device art. A bench that is drawn a little wrong is a bench that looks
+// wrong. A capsule that is drawn a little wrong is twelve tiles of `--ship wreck` and the first
+// screen a player sees. The wiring itself is pinned in `client/test/wear-join.test.js` (which glyph
+// resolves to which piece, and that the three displaced warm rows resolve from nothing); what is
+// pinned HERE is the drawing: the two seams that are new to this file, and the marks each card was
+// fixed at.
+
+// MUTATION: give the sleeper's ink pass `stroke: PAPER` (paper on paper) ⇒ RED on leg 2.
+// MUTATION: delete the halo pass ⇒ RED on leg 1. MUTATION: fill the pane with `PAPER` ⇒ RED on leg 3.
+test('31: the sleeper is a TWO-PASS figure and no pass is invisible ink', () => {
+  const svg = build('capsule-sealed');
+  const fails = [];   // BLINDED (TRAPS 5th shape)
+
+  // 1 — TWO PASSES OVER ONE PATH LIST. Every figure stroke must appear twice: once in the knockout's
+  // colour at a heavier weight, once in ink at a lighter one. Counted as a MULTISET of `d` strings,
+  // which is the only form that regresses when the two lists are allowed to drift apart.
+  const paintOf = (re) => [...svg.matchAll(re)].map((m) => m[1]);
+  const paper = paintOf(new RegExp(`<path d="([^"]+)" fill="none" stroke="${PAPER}"[^>]*/>`, 'g'));
+  const inked = paintOf(new RegExp(`<path d="([^"]+)" fill="none" stroke="${INK}"[^>]*/>`, 'g'));
+  if (paper.length < 10) {
+    fails.push(`the capsule draws ${paper.length} knockout strokes — the halo pass is gone, and the `
+      + 'occupant is bare ink on the pane');
+  }
+  for (const d of paper) {
+    if (!inked.includes(d)) fails.push(`a knockout stroke has no ink stroke over it: ${d.slice(0, 40)}…`);
+  }
+
+  // 2 — THE INK PASS IS NARROWER THAN ITS KNOCKOUT. A halo that is not wider paints over the thing it
+  // is meant to separate; equal widths make the figure a solid paper blob and every count above still
+  // passes.
+  const widthOf = (paint, d) => {
+    const m = svg.match(new RegExp(`<path d="${d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" fill="none" stroke="${paint}" stroke-width="([\\d.]+)"`));
+    return m ? +m[1] : NaN;
+  };
+  for (const d of paper.slice(0, 3)) {
+    const hw = widthOf(PAPER, d);
+    const iw = widthOf(INK, d);
+    if (!(hw > iw)) fails.push(`a figure stroke's knockout (${hw}) is not wider than its ink (${iw})`);
+  }
+
+  // 3 — THE PANE UNDER IT IS NOT PAPER. This is the one that catches invisible ink at the SURFACE
+  // rather than at the stroke: a knockout the colour of the ground it lies on separates nothing, and
+  // VR-P2's review found exactly that shape twice. The pane is the flat side tone, one step down.
+  if (!svg.includes(`fill="${PAPER_FLAT}"`)) {
+    fails.push('the capsule\'s glass is no longer the flat tone — a PAPER-coloured knockout drawn on '
+      + 'a PAPER pane is invisible ink, which is what the two-pass construction exists to avoid');
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
+});
+
+// MUTATION: point `DRAW['cell-spent']` at `drawCellSound` ⇒ RED on legs 1 and 3 (the SWAP).
+// MUTATION: give 34 one INK stroke ⇒ RED on leg 1.
+test('34 is drawn ENTIRELY in the accent, 33 in none of it, and the two are different pictures', () => {
+  const spent = build('cell-spent');
+  const sound = build('cell-sound');
+  const fails = [];
+
+  // 1 — EVERY MEMBER OF 34 IS OXBLOOD. The hatch pattern's own hairline is INK by construction
+  // (`HATCH.ink`) and is stripped first, exactly as the round-things test strips it.
+  const drawing = spent.replace(/<pattern[\s\S]*?<\/pattern>/g, '');
+  const strokes = new Set([...drawing.matchAll(/stroke="(#[0-9a-fA-F]{3,8})"/g)].map((m) => m[1]));
+  if (![...strokes].every((c) => c === ATTEND)) {
+    fails.push(`34 strokes in ${[...strokes].join(', ')}. The card draws the spent cell in oxblood `
+      + 'throughout — that is what makes it read as a fault rather than as another fitting.');
+  }
+  // 2 — AND 33 IN NONE OF IT, which is the half a one-sided check cannot make. A sound cell that
+  // picked up the accent would say "attend to me" about a machine that is working.
+  if (sound.includes(ATTEND)) fails.push('33 uses the accent — a healthy cell is not a fault');
+
+  // 3 — THE SWAP. Two rows pointing at one painter leaves every count above true.
+  if (spent === sound) fails.push('33 and 34 render identically — one painter, two rows');
+  assert.deepEqual(fails, [], fails.join('\n'));
+});
+
+// ── the four cards' own E8 fixes, each pinned at the point it must now reach ──
+//
+// MUTATION: put the tub back at z = 7.6 ⇒ RED. MUTATION: move the hinge post off the pivot ⇒ RED.
+test('E8 on 31–34: the tub sits on its feet, the lid turns on its posts, the weep reaches the deck', () => {
+  // ⚠️ THE FOOT LEGS ARE ASKED WITH A TOLERANCE AND THE TUB LEG IS NOT, WHICH IS NOT SLOPPINESS.
+  // `bx()` hands `oblique.box()` an ALREADY-ROUNDED origin and box() walks its own corners off that
+  // by arithmetic, so a face corner can sit 0.01 px from what `project()` would have said — a string
+  // match on it is a coin toss that depends on the piece's scale (it passes on 31 and fails on 32 for
+  // the same centimetres). The tub's own origin IS `project()`'s output and is matched exactly.
+  const near = (svg, id, [x, y, z], msg) => {
+    const [px, py] = frameFor(id).project(x, y, z);
+    const hit = points(svg).some(([ax, ay]) => Math.abs(ax - px) < 0.05 && Math.abs(ay - py) < 0.05);
+    assert.ok(hit, `${msg}\n  expected ${id} to draw within 0.05 px of (${x}, ${y}, ${z}) cm `
+      + `⇒ "${nn(px)} ${nn(py)}", and it does not.`);
+  };
+  for (const id of ['capsule-sealed', 'capsule-open']) {
+    const svg = build(id);
+    // The four standoffs are 4 cm tall (`foot()`), so the tub's underside must be at z = 4 and the
+    // feet must stand under it — asked at the CORNER where the two meet, on both.
+    hasPoint(svg, id, [0, 0, 4], `${id}: the tub does not start at the top of its own feet`);
+    near(svg, id, [4, 4, 4], `${id}: the near-left foot does not reach the tub`);
+    near(svg, id, [195, 68, 4], `${id}: the far-right foot does not reach the tub`);
+    // …and they stand ON the deck at the other end, so the gap cannot be closed by shrinking the
+    // capsule down onto floating feet.
+    near(svg, id, [4, 4, 0], `${id}: the near-left foot does not stand on the deck`);
+    // ⚠️ AND THE FRONT PAIR MUST STAY SHALLOW ENOUGH TO BE SEEN. A 4 cm foot at depth y has its
+    // lowest ink 4 − 0.6·y cm below the tub's front-bottom edge; at y ≥ 6.67 that is zero or
+    // negative and the standoffs disappear behind the tub's own opaque front face — drawn,
+    // centred, counted, and contributing no pixels. Asked as the INEQUALITY rather than as the
+    // coordinate, so re-placing the feet is allowed and hiding them is not.
+    const F = frameFor(id);
+    const tubEdge = F.project(0, 0, 4)[1];
+    const footLow = F.project(4, 4, 0)[1];
+    assert.ok(footLow > tubEdge + 0.3,
+      `${id}: the front standoffs are ${(footLow - tubEdge).toFixed(2)} px below the tub's own\n`
+      + 'front-bottom edge — at or under zero they are hidden behind its opaque front face, which\n'
+      + 'is the shrine-shelf defect (geometry emitted, centred and invisible) on a second piece.');
+  }
+  const open = build('capsule-open');
+  // The hinge posts ARE the pivot: the lid's own hinge line runs between their two centres.
+  for (const x of [22, 184]) {
+    hasPoint(open, 'capsule-open', [x, 70, 56], 'a hinge post is not at the pivot the lid turns on');
+  }
+  // …and the lid really reaches the height its dimension line prints, rather than the card's 148.
+  hasPoint(open, 'capsule-open', [22, 31, 123.5], 'the raised lid does not reach 124 cm');
+
+  const spent = build('cell-spent');
+  hasPoint(spent, 'cell-spent', [34, 0, 0], 'the weep line stops short of the deck');
+  // THE SWELL BOWS OUTWARD. Its two control points are the widest ink on the piece; if they were the
+  // catalogue's inward chevrons they would lie INSIDE the case's own side faces instead.
+  hasPoint(spent, 'cell-spent', [0, 0, 43], 'the near side wall does not bow OUT past the case');
+  hasPoint(spent, 'cell-spent', [88, 0, 43], 'the far side wall does not bow OUT past the case');
+  // NON-VACUITY, as an INCLUSION test (TRAPS 4th shape): the catalogue's own inward chevron apex
+  // must be a point this check would NOT accept. Card 34 kinks the near wall to 6 cm INSIDE the
+  // case's left edge (x = 12), i.e. x = 18; if `hasPoint` matched that too the two legs above would
+  // agree with a verbatim port.
+  const [ix, iy] = frameFor('cell-spent').project(18, 0, 43);
+  assert.ok(!spent.includes(`${nn(ix)} ${nn(iy)}`),
+    'the catalogue\'s INWARD chevron apex is drawn — the swell is back to reading as a pinch, which '
+    + 'is the opposite of what card 34\'s caption says. The two legs above cannot tell the two apart '
+    + 'on their own, which is why this one is stated as an exclusion.');
 });
