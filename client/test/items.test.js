@@ -63,16 +63,22 @@ function idsIn(svg) {
 // never had, and they are the whole of the move. All nine are COSMETIC; index.js's own section
 // comment measures why (every DeviceKind they could plausibly claim is already claimed above).
 // RE-COUNTED off the shipped registry, not derived from this paragraph.
-test('the registry holds exactly 80 items', () => {
-  assert.equal(ITEM_IDS.length, 80);
-  assert.equal(Object.keys(ITEMS).length, 80);
+// ⚠️ RE-COUNTED AGAIN AFTER lane/paper-resources: 80 → 89, and the class that moved is RESOURCE
+// (9 → 18). It is an ADDITION of nine rows and NOT a reclassification: the nine loose ground stacks
+// were redrawn in the paper/ink dialect under new ids (`spoil-heap`, `tuber-crate`, … `turnings`),
+// and the nine warm rows they displace are KEPT as unreached art with both joins handed over
+// (`itemKind: null, glyph: null, supersededBy: …`). The total moved WITH the class, which is the
+// tell for an addition; a reclassification would have moved the class and left the total alone.
+test('the registry holds exactly 89 items', () => {
+  assert.equal(ITEM_IDS.length, 89);
+  assert.equal(Object.keys(ITEMS).length, 89);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource', () => {
+test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 18 resource', () => {
   // ⚠️ RE-COUNTED AGAIN AFTER VR-P2: COSMETIC 21 → 30, and it is the ONLY class that moved. That is
   // the tell that the fittings package was an ADDITION of nine decor rows and not a reclassification
   // — twenty-one further rows changed their PAINTING in the same commit and are invisible here,
@@ -87,7 +93,7 @@ test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 9 });
+  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 18 });
 });
 
 // ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped
@@ -121,14 +127,36 @@ test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value
   assert.equal(ITEM_KINDS.length, 4, 'four kinds: functional, cosmetic, material, resource');
 });
 
-test('every RESOURCE row names a sim ItemKind and a Glyphs.ForItem char', () => {
+// ⚠️ THE POPULATION IS NOW TWO POPULATIONS, AND MERGING THEM WOULD HAVE BEEN THE EASY WRONG FIX.
+// Since lane/paper-resources a `resource` row is either LIVE — it claims a sim `ItemKind` name and a
+// `Glyphs.ForItem` char, and both joins land on it — or SUPERSEDED: its art is still registered and
+// still builds, but another row took both joins and it carries `itemKind: null, glyph: null,
+// supersededBy: '<the row that took them>'`. Relaxing the old loop to "itemKind is a string OR null"
+// would have kept it green while making the uniqueness half unenforceable, which is the whole thing
+// it exists for. So the split is asserted first, and each half is then held to its OWN contract.
+test('every RESOURCE row is LIVE (a sim ItemKind + a glyph) or SUPERSEDED (neither, and it says by whom)', () => {
   const res = ITEM_IDS.filter((id) => ITEMS[id].kind === 'resource');
   assert.deepEqual(res.sort(), [
-    'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals', 'swarf',
+    'body-bag', 'control-card', 'controller-module', 'corpse', 'gear-set', 'ice', 'ice-block',
+    'parts', 'plate-offcut', 'potato', 'regolith', 'scrap', 'seal-set', 'seals', 'spoil-heap',
+    'swarf', 'tuber-crate', 'turnings',
   ]);
+  const live = res.filter((id) => ITEMS[id].supersededBy === undefined);
+  const dead = res.filter((id) => ITEMS[id].supersededBy !== undefined);
+  assert.equal(live.length, 9, 'nine ItemKinds have art; a tenth LIVE row means a kind grew a piece');
+  assert.equal(dead.length, 9, 'nine warm rows were superseded by the paper redraw');
+  // THE SUPERSEDED HALF: both joins really let go, and the row names its successor, which must be a
+  // LIVE resource row. A demotion that kept either field would silently keep winning the join.
+  for (const id of dead) {
+    const e = ITEMS[id];
+    assert.equal(e.itemKind, null, `${id} is superseded but still claims an ItemKind`);
+    assert.equal(e.glyph, null, `${id} is superseded but still claims a glyph`);
+    assert.ok(live.includes(e.supersededBy),
+      `${id}: supersededBy "${e.supersededBy}" is not a live resource row`);
+  }
   const kinds = new Set();
   const glyphs = new Set();
-  for (const id of res) {
+  for (const id of live) {
     const e = ITEMS[id];
     assert.equal(typeof e.itemKind, 'string', `${id} carries the sim ItemKind NAME`);
     assert.ok(e.itemKind.length > 2, `${id}: itemKind looks like a member name`);
@@ -150,12 +178,22 @@ test('every RESOURCE row names a sim ItemKind and a Glyphs.ForItem char', () => 
 test('RESOURCE_ITEM_BY_KIND_NAME is derived from the registry, not transcribed', () => {
   for (const id of ITEM_IDS) {
     const e = ITEMS[id];
-    if (e.kind !== 'resource') continue;
+    if (e.kind !== 'resource' || e.supersededBy !== undefined) continue;
     assert.equal(RESOURCE_ITEM_BY_KIND_NAME[e.itemKind], id, `${e.itemKind} → ${id}`);
   }
   assert.equal(Object.keys(RESOURCE_ITEM_BY_KIND_NAME).length, 9);
+  // ⚠️ AND THE OTHER DIRECTION, WHICH IS THE ONE THE SUPERSEDING MOVE COULD BREAK SILENTLY: no
+  // superseded row may appear as a VALUE in the join. The loop above skips them, so on its own it
+  // would stay green if `regolith` were still what `Regolith` resolved to.
+  const superseded = new Set(ITEM_IDS.filter((id) => ITEMS[id].supersededBy !== undefined));
+  for (const [kind, id] of Object.entries(RESOURCE_ITEM_BY_KIND_NAME)) {
+    assert.ok(!superseded.has(id),
+      `ItemKind ${kind} still resolves to the SUPERSEDED row "${id}". The registry reducer takes the`
+      + ' FIRST row that claims a kind name, and the warm rows sit above the paper ones.');
+  }
   // and the two predicates the view layer classifies with
-  assert.equal(isResourceItem('regolith'), true);
+  assert.equal(isResourceItem('regolith'), true, 'a superseded pile is still a pile');
+  assert.equal(isResourceItem('spoil-heap'), true);
   assert.equal(isResourceItem('locker'), false, 'a device is not a resource');
   assert.equal(isResourceItem('rug'), false, 'decor is not a resource');
   assert.equal(isDeviceItem('locker'), true);
@@ -230,7 +268,14 @@ test('every registry entry has a valid kind + a callable builder + a size', () =
     if (e.kind === 'functional') assert.ok(e.deviceKind, `${id} functional ⇒ deviceKind`);
     if (e.kind === 'material') assert.ok(['wall', 'floor'].includes(e.material), `${id} material tag`);
     if (e.kind === 'cosmetic') assert.ok(e.decor, `${id} cosmetic ⇒ decor key`);
-    if (e.kind === 'resource') assert.ok(e.itemKind, `${id} resource ⇒ itemKind name`);
+    // ⚠️ `supersededBy` IS THE ONLY EXIT, and it is checked as an EXCLUSIVE OR rather than as an
+    // excuse: a resource row names a sim kind, or it names the row that took its kind, never both
+    // and never neither. (`itemKind` else-branch guarded so an `undefined` cannot slip through as
+    // "well, it is superseded".)
+    if (e.kind === 'resource') {
+      if (e.supersededBy === undefined) assert.ok(e.itemKind, `${id} resource ⇒ itemKind name`);
+      else assert.equal(e.itemKind, null, `${id} is superseded ⇒ it must claim no itemKind`);
+    }
   }
 });
 

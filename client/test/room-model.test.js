@@ -3523,9 +3523,38 @@ function chipAt(html, tx, ty) {
   return m ? m[1] : null;
 }
 
-/** The `idPrefix` the ITEM layer builds a stack's piece with, per tile and slot — so a test can say
- *  WHICH layer drew a piece on a tile. The furniture layer's is `rz-f-<tx>-<ty>`. */
-const stackId = (tx, ty, slot = 0) => 'rz-it-' + tx + '-' + ty + '-' + slot;
+/**
+ * ⛔ THE HELPER THAT USED TO LIVE HERE WAS A PROXY, AND IT WENT RED FOR THE WRONG REASON.
+ * It read `const stackId = (tx, ty, slot = 0) => 'rz-it-' + tx + '-' + ty + '-' + slot;` — the
+ * `idPrefix` the item layer hands `buildItem` — and "did the layer draw a piece here?" was answered
+ * by searching the HTML for that string. ⚠️ AN `idPrefix` ONLY REACHES THE OUTPUT IF THE PIECE
+ * REGISTERS A `<defs>` ENTRY: `scene.pat`/`lin`/`rad` name their defs after it and nothing else does.
+ * Every ground-stack piece happened to use a gradient, so the proxy held — until three pieces of the
+ * paper redraw (`gear-set`, `ice-block`, `turnings`) legitimately needed no def at all, and two
+ * driven tests reported "the stack drew nothing" about a stack that was drawn perfectly.
+ *
+ * ⇒ THE MARKERS BELOW ARE THE LAYER'S OWN, and they exist for exactly this: `itemStackSvg` writes
+ * `class="rz-item" data-tile="tx,ty"` per tile and `class="rz-stack" data-kind="N"` per slot, on
+ * purpose, as test hooks. Nothing about them depends on how a piece is painted.
+ */
+const stackTile = (tx, ty) => 'class="rz-item" data-tile="' + tx + ',' + ty + '"';
+
+/**
+ * The KIND BYTES the item layer drew on one tile, in emission order — or `null` when the layer put
+ * no group on that tile at all. The two answers are kept apart deliberately: "the tile was not
+ * drawn" and "the tile was drawn with no slots" fail in the same direction and mean opposite things.
+ *
+ * The slice runs from this tile's group to the NEXT tile's, which is exact because the layer emits
+ * one group per tile in order; `rz-stack` appears in no other layer, so an unbounded tail on the
+ * last tile cannot pick up a neighbour's slots.
+ */
+function stackSlotsAt(html, tx, ty) {
+  const i = html.indexOf(stackTile(tx, ty));
+  if (i < 0) return null;
+  const next = html.indexOf('class="rz-item"', i + 1);
+  const seg = html.slice(i, next < 0 ? html.length : next);
+  return [...seg.matchAll(/class="rz-stack" data-kind="([^"]+)"/g)].map((m) => m[1]);
+}
 const furnId = (tx, ty) => 'rz-f-' + tx + '-' + ty;
 /** The badge/chip texts the item layer drew, in emission order (anchored on the badge text colour). */
 // ⭐ VR-P3 — the badge's ink moved to the paper dialect: the count plate is PAPER with an INK
@@ -3570,7 +3599,7 @@ test('THE PILE IS DRAWN ONCE, FROM THE CHANNEL (driven): count present, frame du
     const after = rzLayers.innerHTML;
 
     assert.ok(after.includes('class="rz-items"'), 'the item layer must reach the DOM');
-    assert.ok(after.includes(stackId(tx, ty)),
+    assert.deepEqual(stackSlotsAt(after, tx, ty), ['0'],
       'the ITEM layer drew no piece on the stocked tile — the count has nothing to sit beside');
     assert.deepEqual(badges(after), ['40'],
       'the COUNT is the fact no projection byte could ever carry: a stack of 1 and a stack of 40 '
@@ -3609,8 +3638,9 @@ test('LOSS 2 (driven): two kinds on one tile are BOTH drawn — the projection c
     Hud.renderItems(itemsMsg([[tx, ty, 0, 7], [tx, ty, 3, 2]]));
     rzApi.exit(); rzApi.enter('hold');
     const html = rzLayers.innerHTML;
-    assert.ok(html.includes(stackId(tx, ty, 0)), 'the stack the projection DROPPED must be drawn');
-    assert.ok(html.includes(stackId(tx, ty, 1)), 'and so must the one it kept');
+    assert.deepEqual(stackSlotsAt(html, tx, ty), ['0', '3'],
+      'BOTH slots must be drawn, in the channel\'s own order — the one the projection DROPPED '
+      + '(Regolith) and the one it kept (Potato).');
     assert.deepEqual(badges(html), ['7', '2'], 'with a count each — two piles, two numbers');
     assert.ok(html.includes('data-kind="0"') && html.includes('data-kind="3"'),
       'both KINDS must be named, or the two slots could be two drawings of the same pile');
@@ -3645,7 +3675,7 @@ test('LOSS 3 (driven): a stack on a DEVICE tile is drawn, and drawn ABOVE the de
     rzApi.exit(); rzApi.enter('hold');
     const html = rzLayers.innerHTML;
 
-    assert.ok(html.includes(stackId(tx, ty)),
+    assert.deepEqual(stackSlotsAt(html, tx, ty), ['5'],
       'a stack stored on a device tile drew nothing. Under the projection it reached the client '
       + 'nowhere at all — pass 4 painted the device glyph over it — and that is loss 3.');
     assert.deepEqual(badges(html), ['12'], 'and it must carry its count');
@@ -3654,7 +3684,7 @@ test('LOSS 3 (driven): a stack on a DEVICE tile is drawn, and drawn ABOVE the de
       + 'letter chip) may be dropped on a stocked tile: real furniture art says what is installed '
       + 'there, the stack says what is lying there, and both are true.');
 
-    assert.ok(html.indexOf(stackId(tx, ty)) > html.indexOf(furnId(tx, ty)),
+    assert.ok(html.indexOf(stackTile(tx, ty)) > html.indexOf(furnId(tx, ty)),
       'the stack is drawn BEFORE (i.e. underneath) the device sprite, so the player sees the machine '
       + 'and not the stock — the wire loss removed and the same loss reintroduced in the client');
   } finally {
@@ -3676,12 +3706,12 @@ test('an items dispatch ALONE repaints the surfaces — the cache is not enough'
   try {
     rzApi.exit(); rzApi.enter('hold');
     await new Promise((r) => setTimeout(r, 40));
-    assert.ok(!rzLayers.innerHTML.includes(stackId(tx, ty)), 'precondition: nothing is stocked yet');
+    assert.equal(stackSlotsAt(rzLayers.innerHTML, tx, ty), null, 'precondition: nothing is stocked yet');
 
     // NOTHING ELSE IS DISPATCHED. No frame, no decks, no rooms — only the channel under test.
     Hud.renderItems(itemsMsg([[tx, ty, 8, 9]]));
     await new Promise((r) => setTimeout(r, 40));
-    assert.ok(rzLayers.innerHTML.includes(stackId(tx, ty)),
+    assert.deepEqual(stackSlotsAt(rzLayers.innerHTML, tx, ty), ['8'],
       'an `items` message reached the cache and the Room Zoom never repainted. The channel is '
       + 'deduped by GameSession.Send, so on a quiet ship it is sent ONCE — a haul that just landed '
       + 'would then sit invisible until some unrelated channel moved.');

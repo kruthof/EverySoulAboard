@@ -228,8 +228,8 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 | **FUNCTIONAL total** | **29** |
 | COSMETIC (view-only `decor`, non-hashed) | 30 |
 | MATERIAL (wall/floor tint) | 12 |
-| RESOURCE (ground stack, a sim `ItemKind`) | 9 |
-| **Total** | **80** |
+| RESOURCE (ground stack, a sim `ItemKind`) | 18 |
+| **Total** | **89** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -237,6 +237,20 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **9 → 18 RESOURCE and 80 → 89 on 2026-08-05 (lane/paper-resources, the visual redesign's ground
+stacks).** The nine loose piles the `items` wire channel carries were redrawn in the owner's
+paper/ink dialect (`client/src/items/paper-resources.js`) under new ids that name the OBJECT rather
+than the material — `spoil-heap`, `tuber-crate`, `plate-offcut`, `gear-set`, `control-card`,
+`seal-set`, `ice-block`, `body-bag`, `turnings`. ⚠️ **It is an ADDITION and not a re-skin, and the
+total moving with the class is the tell.** A registry key is unique, so the redraw could not reuse
+`regolith`/`potato`/… while those rows stayed registered; the nine warm rows are therefore KEPT as
+unreached art with BOTH joins handed over (`itemKind: null`, `glyph: null`, `supersededBy: '<the new
+row>'`) — the `ItemKind` name join `room-model.js` reads and the `Glyphs.ForItem` join
+`items/glyph-map.js` reads, which are two different derivations and both had to move. Retiring them
+outright was refused with the cost measured: eight of their wrecked twins are eight of the mock's
+SEVENTY, and that bijection is the evidence the other sixty-two are transcribed correctly.
+`GLYPH_TO_ITEM` did not change size — the same nine chars, nine different rows.
 
 ⚠️ **21 → 30 COSMETIC and 71 → 80 on 2026-08-05 (VR-P2, the visual redesign's fittings package).**
 The owner's second design document, `design-import/Perilune Fittings.dc.html`, is a THIRTY-piece

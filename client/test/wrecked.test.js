@@ -52,6 +52,7 @@ import {
   MOCK_TWIN_IDS,
 } from '../src/items/wrecked.js';
 import { FITTING_IDS } from '../src/items/fittings.js';
+import { PAPER_RESOURCE_IDS } from '../src/items/paper-resources.js';
 import { codeOnly } from './code-only.js';
 
 // The registry rows that come FROM THE MOCK, in the mock's own order — `ITEM_IDS` minus the ledger
@@ -154,7 +155,7 @@ test('the spec really carries 70 wrecked pieces and 70 pristine labels', () => {
 // number. This one is a per-class OBJECT so a class that moves names itself, and the four numbers
 // were re-counted off the shipped registry (they are `items.test.js`'s tally, which is the point:
 // every registry row, of every class, has exactly one twin).
-test('the class census of the twin set: 29 functional, 30 cosmetic, 12 material, 8 resource', () => {
+test('the class census of the twin set: 29 functional, 30 cosmetic, 12 material, 16 resource', () => {
   // ⚠️ RE-COUNTED AFTER VR-P2: 70 → 79, COSMETIC 21 → 30, because the nine fittings-catalogue rows
   // the mock never had are all decor and all got a repo-authored twin. `resource` stays 8 against
   // `items.test.js`'s 9 for the standing reason — `swarf` is ledgered as having no twin at all.
@@ -163,7 +164,11 @@ test('the class census of the twin set: 29 functional, 30 cosmetic, 12 material,
   // contributes exactly one, so a 69-row twin set fails the `deepEqual` first and `assert` throws.
   // A leg that cannot report is indistinguishable from one that can. Here it is the file's first
   // absolute-scale statement and it bites alone.
-  assert.equal(WRECKED_IDS.length, 79);
+  // ⚠️ RE-COUNTED AFTER lane/paper-resources: 79 → 87, RESOURCE 8 → 16, and it is the only class
+  // that moved. Nine paper ground stacks joined the registry; EIGHT of them got a twin and
+  // `turnings` is ledgered as having none, for `swarf`'s own reason carried onto the new art. So the
+  // twin set grows by eight while the registry grew by nine, and the one-row gap is the ledger.
+  assert.equal(WRECKED_IDS.length, 87);
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of WRECKED_IDS) {
     // ⚠️ NOT `by[ITEMS[id].kind]++`. An orphan twin (a key with no registry row) made that throw a
@@ -177,22 +182,27 @@ test('the class census of the twin set: 29 functional, 30 cosmetic, 12 material,
   // 'K' (occupied) and 'k' (open). Functional 27 → 29, cosmetic 23 → 21; the total is unchanged
   // at 70 because nothing was added or removed, only reclassified — which is exactly the shape a
   // single total would have hidden, and the reason this census is a per-class object.
-  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 8 });
+  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 16 });
 });
 
-test('the state census: 71 pieces carry a percentage, 8 carry the em-dash', () => {
+test('the state census: 71 pieces carry a percentage, 16 carry the em-dash', () => {
   // ⚠️ 62 → 71 (VR-P2): the nine repo-authored fittings twins carry AUTHORED badges inside the
   // mock's own 2–31% band. The em-dash side did NOT move, and that is the half worth watching: the
   // dash means "cannot be repaired, only written off", which is a claim about RESOURCES, and nine
   // decor rows are not resources.
   const pct = WRECKED_IDS.filter((id) => /^\d+%$/.test(WRECKED[id].state));
   const dash = WRECKED_IDS.filter((id) => WRECKED[id].state === '—');
+  // ⚠️ 8 → 16 (lane/paper-resources), and THE PERCENTAGE SIDE DID NOT MOVE — which is the half worth
+  // watching, and it says the package added RESOURCES and not devices. The dash means "cannot be
+  // repaired, only written off", which is a claim about matter; eight paper piles are matter.
   assert.equal(pct.length, 71);
-  assert.equal(dash.length, 8);
+  assert.equal(dash.length, 16);
   assert.equal(pct.length + dash.length, WRECKED_IDS.length, 'no third state exists');
   // the em-dash ones are exactly the loose resources: you cannot repair a spoiled pile
   assert.deepEqual(dash.sort(), [
-    'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals',
+    'body-bag', 'control-card', 'controller-module', 'corpse', 'gear-set', 'ice', 'ice-block',
+    'parts', 'plate-offcut', 'potato', 'regolith', 'scrap', 'seal-set', 'seals', 'spoil-heap',
+    'tuber-crate',
   ]);
   // ⚠️ AUDITED AND KEPT — this leg is NOT implied by the `deepEqual` above, though it looks it. The
   // `deepEqual` pins WHICH eight ids carry the em-dash; this reads `ITEMS`, a different module, and
@@ -224,23 +234,37 @@ test('every registry row has exactly one wrecked twin, and no twin is an orphan'
 // slipped OUT of it the bijection would fail loudly (good); if a row slipped IN, the bijection would
 // still pass on a smaller set and the mock piece that row used to claim would go UNCHECKED — a
 // silent hole in the evidence, which is the failure mode this whole file exists to prevent.
-test('the non-mock ledger is exactly the fittings rows, and each one says so in its twin', () => {
+test('the non-mock ledger is exactly the repo-authored rows, and each one says so in its twin', () => {
   assert.deepEqual(Object.keys(NON_MOCK_TWIN).sort(), [
-    'bench', 'compost-bin', 'cot', 'curtain-rail', 'footlocker', 'shrine-shelf', 'sink', 'stool',
-    'vice-post',
+    'bench', 'body-bag', 'compost-bin', 'control-card', 'cot', 'curtain-rail', 'footlocker',
+    'gear-set', 'ice-block', 'plate-offcut', 'seal-set', 'shrine-shelf', 'sink', 'spoil-heap',
+    'stool', 'tuber-crate', 'vice-post',
   ], 'the repo-authored twin set changed. Nine rows of `design-import/Perilune Fittings.dc.html`\n'
-    + 'have no piece in `docs/design/perilune-item-set.dc.html`; growing this means another twin was\n'
-    + 'drawn outside the mock, shrinking it means the mock grew one — in which case transcribe it.');
+    + 'have no piece in `docs/design/perilune-item-set.dc.html`, and eight paper GROUND STACKS have\n'
+    + 'no card in either document; growing this means another twin was drawn outside the mock,\n'
+    + 'shrinking it means the mock grew one — in which case transcribe it.');
   // TWO-WAY, against `mockLabel`, so the ledger cannot disagree with the rows it describes.
   for (const id of WRECKED_IDS) {
     assert.equal(WRECKED[id].mockLabel === null, id in NON_MOCK_TWIN,
       `${id}: a twin's mockLabel and its ledger membership disagree about where its drawing came from`);
   }
+  // ⚠️ TWO SOURCES, TWO SHAPES, AND THE ROW IS CHECKED AGAINST THE ONE IT REALLY CAME FROM. Until
+  // lane/paper-resources every non-mock twin was a fittings-catalogue row and the value was a card
+  // reference (`NN NAME`). The eight paper ground stacks have no card in EITHER document — a pile is
+  // not something the owner drew a card for — so writing `NN` for them would be inventing a citation.
+  // ⛔ The exit taken is NOT to relax the pattern to something both satisfy (which would stop the
+  // guard seeing a fittings row with a made-up reference); each id is routed to its own shape, and
+  // an id in NEITHER population fails by name rather than falling through to the looser branch.
+  const catShape = (id) => (FITTING_IDS.includes(id) ? /^\d\d [A-Z]/
+    : PAPER_RESOURCE_IDS.includes(id) ? /^PAPER RESOURCE · [A-Z]/ : null);
   for (const [id, cat] of Object.entries(NON_MOCK_TWIN)) {
     assert.ok(ITEMS[id], `${id} is ledgered but is not a registry row`);
-    assert.ok(FITTING_IDS.includes(id), `${id} is ledgered non-mock but is not a fittings row`);
-    assert.equal(WRECKED[id].catalogue, cat, `${id}: the twin names a different catalogue entry`);
-    assert.match(cat, /^\d\d [A-Z]/, `${id}: the catalogue reference is not "NN NAME"`);
+    const shape = catShape(id);
+    assert.ok(shape,
+      `${id} is ledgered non-mock but is neither a fittings row nor a paper ground stack. Every\n`
+      + 'repo-authored twin has to name where its drawing came from, and this one names nothing.');
+    assert.equal(WRECKED[id].catalogue, cat, `${id}: the twin names a different source`);
+    assert.match(cat, shape, `${id}: the source reference is not in its population's shape`);
   }
   assert.equal(MOCK_TWIN_IDS.length, 70,
     'THE MOCK POPULATION MOVED OFF SEVENTY. Every label, badge and positional assertion below is\n'
@@ -268,8 +292,10 @@ test('the ledger is exactly the rows with no twin, and its reasons are real pros
     assert.ok(ITEMS[id], `${id} is ledgered but is not a registry row at all`);
     assert.ok(typeof why === 'string' && why.length > 80, `${id}: the ledger entry has no reason`);
   }
-  assert.equal(Object.keys(NO_WRECKED_TWIN).length, 1,
-    'THE NO-TWIN LEDGER CHANGED SIZE. It went 0 → 1 when `swarf` landed — a piece drawn for a sim\n'
+  assert.equal(Object.keys(NO_WRECKED_TWIN).length, 2,
+    'THE NO-TWIN LEDGER CHANGED SIZE. It went 0 → 1 when `swarf` landed, and 1 → 2 when `turnings`\n'
+    + 'redrew that same pile in the paper dialect and carried the same reason onto the new art\n'
+    + '(both rows are registered until the warm one is retired, so BOTH need the line) — a piece drawn for a sim\n'
     + 'fact the mock predates, so the mock has no twin for it. Growing it means another piece was\n'
     + 'drawn outside the mock; SHRINKING it means the mock was re-imported with a twin, in which\n'
     + 'case add the twin rather than deleting the reason.');
@@ -468,14 +494,14 @@ test('no twin is byte-identical to its pristine piece', () => {
 
 // Every twin is DISTINCT from every other twin. Two rows pointing at one painter is the other half
 // of the same slip, and the deep-equal on ids above cannot see it.
-test('the 79 twins are 79 different pictures', () => {
+test('the 87 twins are 87 different pictures', () => {
   const seen = new Map();
   for (const id of WRECKED_IDS) {
     const svg = buildWrecked(id, { idPrefix: 'k' });
     assert.ok(!seen.has(svg), `${id} renders identically to ${seen.get(svg)} — one painter, two rows`);
     seen.set(svg, id);
   }
-  assert.equal(seen.size, 79);
+  assert.equal(seen.size, 87);
 });
 
 // ⚠️ THE JOIN PINS WHICH ROWS EXIST — IT PINS NOTHING ABOUT WHICH PICTURE A ROW DRAWS.

@@ -3,9 +3,18 @@
 // pairs the pure SVG builder with its sim classification from docs/design/perilune-item-mapping.md:
 //
 // ⚠️ "ALL 70 PIECES OF THE MOCK" WAS THIS FILE'S OPENING CLAUSE AND IS NO LONGER TRUE. The registry
-// is 71: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
+// is 89: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
 // sim fact the mock predates (`ItemKind.Swarf`, from the wreck start's salvage rule) and it is
-// deliberately LAST — see its own comment for why the position is load-bearing.
+// deliberately LAST of the mock-order block — see its own comment for why the position is NOT
+// load-bearing. After it come the redesign's own rows: nine from the owner's fittings catalogue
+// (VR-P2, 2026-08-05) and then the NINE PAPER GROUND STACKS the same day, 71 → 80 → 89.
+// ⚠️ RE-COUNT THAT NUMBER OFF THE TABLE, NEVER OFF THIS PARAGRAPH — `client/test/items.test.js` does.
+//
+// ⚠️ AND `resource` IS NOW TWO POPULATIONS, which is the one thing a reader of this table has to
+// know before trusting a row. A resource row is either LIVE — it claims a sim `ItemKind` name and a
+// `Glyphs.ForItem` char, and both joins land on it — or SUPERSEDED, meaning its art is still here and
+// still builds but another row took both joins (`itemKind: null, glyph: null, supersededBy: '…'`).
+// The nine warm ground stacks are all superseded; see `resSuperseded` below for why they are kept.
 //
 // ⚠️ THE MOCK ALSO CARRIES 70 *WRECKED* TWINS AND THEY ARE NOT IN THIS TABLE. They live in
 // `client/src/items/wrecked.js`, keyed by the PRISTINE itemId, because a wrecked piece is not a
@@ -84,6 +93,8 @@ import * as F from './fixtures.js';
 import * as R from './resources.js';
 import * as C from './cryo.js';
 import * as FT from './fittings.js';
+// — lane/paper-resources —
+import * as PR from './paper-resources.js';
 
 const fn = (kind, glyph = null) => ({ kind, glyph });
 const dev = (deviceKind, glyph = null, deviceStatus = 'exists') => ({
@@ -97,6 +108,30 @@ const wall = () => ({ kind: 'material', material: 'wall', glyph: '#' });
 const floor = () => ({ kind: 'material', material: 'floor', glyph: '.' });
 /** A GROUND STACK: `itemKind` is the sim `ItemKind` member name, `glyph` its `Glyphs.ForItem` char. */
 const res = (itemKind, glyph) => ({ kind: 'resource', itemKind, glyph });
+/**
+ * — lane/paper-resources — A SUPERSEDED GROUND STACK: still a `resource` row, still a real builder,
+ * but claiming NEITHER the sim kind NOR the glyph any more, because another row draws that pile now.
+ *
+ * ⚠️ THE TWO JOINS BOTH HAVE TO MOVE AND THEY ARE NOT THE SAME JOIN — confusing them is trap 6.
+ * A resource row is reached TWICE: `glyph-map.js`'s `deriveGlyphToItem` resolves a projected
+ * `Glyphs.ForItem` char to a piece, and `room-model.js` joins the `items` channel's kind BYTE through
+ * `STOCK_KINDS` → `RESOURCE_ITEM_BY_KIND_NAME` → a piece. The first keys on `glyph`, the second on
+ * `itemKind`, and BOTH derivations take the FIRST row that claims the key — so a demoted row that
+ * kept either field would silently keep winning it, from above the new row, forever. Setting both to
+ * `null` is what actually hands the join over; `supersededBy` names the row that took it, so the
+ * demotion is greppable and the guard can check the pair rather than trusting a comment.
+ *
+ * ⛔ RETIRING THE ROWS OUTRIGHT WAS CONSIDERED AND REFUSED, with the cost measured rather than
+ * guessed — the same call the capsules lane made for `cryo-capsule-occupied`. Eight of these nine
+ * have twins that are eight of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
+ * `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as a
+ * bijection — that walk is the whole of the evidence that the other sixty-two are transcribed
+ * correctly. Deleting them would take `MOCK_TWIN_IDS` to 62 and force a third ledger to be invented
+ * so the bijection could be relaxed. Nine dead rows cost a reader one paragraph.
+ */
+const resSuperseded = (supersededBy) => ({
+  kind: 'resource', itemKind: null, glyph: null, supersededBy,
+});
 
 /**
  * ITEMS[itemId] = { build, size, kind, ... }. Order follows the mock (objects → walls → floors →
@@ -192,14 +227,23 @@ export const ITEMS = Object.freeze({
   // table and the enum itself — nothing produces it, nothing consumes it, no recipe names it. It is
   // dead E3 mining vocabulary and must not be given art until it is real, so it STAYS in
   // `NO_GROUND_ITEM_SPRITE` (client/test/device-sprite-coverage.test.js) with that as its reason.
-  'regolith':         { build: R.regolith,        size: { w: 70, h: 46 }, ...res('Regolith', ',') },
-  'potato':           { build: R.potato,          size: { w: 68, h: 48 }, ...res('Potato', 'f') },
-  'scrap':            { build: R.scrap,           size: { w: 72, h: 48 }, ...res('Scrap', 's') },
-  'parts':            { build: R.parts,           size: { w: 68, h: 54 }, ...res('Parts', 'p') },
-  'controller-module':{ build: R.controllerModule, size: { w: 84, h: 50 }, ...res('ControllerModule', 'c') },
-  'seals':            { build: R.seals,           size: { w: 72, h: 62 }, ...res('Seals', 'g') },
-  'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...res('Ice', 'i') },
-  'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...res('Corpse', '&') },
+  //
+  // ⚠️ ALL EIGHT WENT `itemKind: null, glyph: null` ON 2026-08-05 (lane/paper-resources) AND THE
+  // PARAGRAPH ABOVE IS NOW HISTORY, NOT WIRING. The nine ground stacks were redrawn in the owner's
+  // paper/ink dialect — `client/src/items/paper-resources.js`, the nine rows at the bottom of this
+  // table — and both joins moved with them: the `Glyphs.ForItem` char AND the `ItemKind` name. These
+  // eight keep their class, their builder, their `size` and their mock twins, and are now UNREACHED
+  // WARM ART, in exactly the position `battery-bank` and the two cryo capsules are in.
+  //   Everything the note above says about `MetalOre` is still true and still lives in
+  // `NO_GROUND_ITEM_SPRITE`; only the rows the eight kinds land on changed.
+  'regolith':         { build: R.regolith,        size: { w: 70, h: 46 }, ...resSuperseded('spoil-heap') },
+  'potato':           { build: R.potato,          size: { w: 68, h: 48 }, ...resSuperseded('tuber-crate') },
+  'scrap':            { build: R.scrap,           size: { w: 72, h: 48 }, ...resSuperseded('plate-offcut') },
+  'parts':            { build: R.parts,           size: { w: 68, h: 54 }, ...resSuperseded('gear-set') },
+  'controller-module':{ build: R.controllerModule, size: { w: 84, h: 50 }, ...resSuperseded('control-card') },
+  'seals':            { build: R.seals,           size: { w: 72, h: 62 }, ...resSuperseded('seal-set') },
+  'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...resSuperseded('ice-block') },
+  'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...resSuperseded('body-bag') },
 
   // ── CRYO (2) — FUNCTIONAL since the wreck start (W3) ──
   // ⚠️ THE NOTE THAT STOOD HERE IS QUOTED RATHER THAN DELETED, BECAUSE IT WAS TRUE WHEN WRITTEN AND
@@ -254,7 +298,10 @@ export const ITEMS = Object.freeze({
   // the mock was drawn, so there is no mock piece and no mock WRECKED twin for it. The missing twin is
   // ledgered by name in `client/src/items/wrecked.js` (`NO_WRECKED_TWIN`) with its reason; it is not an
   // omission to be filled in later.
-  'swarf':            { build: R.swarf,          size: { w: 74, h: 50 }, ...res('Swarf', 'w') },
+  // ⚠️ AND THIS ONE WENT `null`/`null` WITH THE EIGHT ABOVE — see their block. `turnings` draws
+  // `ItemKind.Swarf` now; this row is unreached warm art and keeps its `NO_WRECKED_TWIN` line,
+  // because the reason for that line is a fact about the MATERIAL and follows it onto the new art.
+  'swarf':            { build: R.swarf,          size: { w: 74, h: 50 }, ...resSuperseded('turnings') },
 
   // ── FITTINGS (9) — THE CATALOGUE ROWS THE MOCK NEVER HAD (VR-P2) ──────────────────────────────
   //
@@ -293,6 +340,43 @@ export const ITEMS = Object.freeze({
   'vice-post':        { build: FT.vicePost,      size: FT.SIZES['vice-post'],   ...cos('vice_post') },
   'curtain-rail':     { build: FT.curtainRail,   size: FT.SIZES['curtain-rail'], ...cos('curtain_rail') },
   'shrine-shelf':     { build: FT.shrineShelf,   size: FT.SIZES['shrine-shelf'], ...cos('shrine_shelf') },
+
+  // ── PAPER GROUND STACKS (9) — lane/paper-resources, 2026-08-05 ───────────────────────────────
+  //
+  // The nine loose piles of the `items` wire channel, redrawn in the owner's paper/ink dialect on
+  // the cabinet-oblique kit. They REPLACE the eight warm mock resources and `swarf` — see that block
+  // above for the demotion and why those rows are kept — so this is a NINE-ROW ADDITION that moves
+  // no sim kind and no glyph anywhere else: the same nine `ItemKind`s, the same nine `Glyphs.ForItem`
+  // chars, nine different rows carrying them.
+  //
+  // ⚠️ THE IDS ARE NEW AND THAT IS DELIBERATE. A registry key is unique, so the redraw could not
+  // reuse `regolith`/`potato`/… while the warm rows stayed registered. Each new id names the OBJECT
+  // rather than the material — a spoil heap, a tuber crate, a body bag — which is the catalogue's own
+  // habit, and which is the honest description of what is drawn: the sim's `Potato` is a food unit,
+  // and what a hold floor actually carries is a crate of them.
+  //
+  //   Regolith          → spoil-heap        Seals    → seal-set
+  //   Potato            → tuber-crate       Ice      → ice-block
+  //   Scrap             → plate-offcut      Corpse   → body-bag
+  //   Parts             → gear-set          Swarf    → turnings
+  //   ControllerModule  → control-card
+  //
+  // ⚠️ NOTHING HAND-MIRRORS THAT TABLE. `itemKind` carries the sim's own enum member NAME and
+  // `glyph` its `Glyphs.ForItem` char, exactly as the warm rows did, so `room-model.js`'s kind-byte
+  // join and `glyph-map.js`'s glyph join both land here by DERIVATION. The list above is a reader's
+  // aid; `client/test/paper-resources.test.js` drives the real join for every one of the nine.
+  //
+  // ⛔ `size` IS `PR.SIZES`, THE DERIVED ONE, never a transcription — same rule as the fittings rows:
+  // a piece cannot disagree with its own drawing about how big it is.
+  'spoil-heap':       { build: PR.spoilHeap,     size: PR.SIZES['spoil-heap'],    ...res('Regolith', ',') },
+  'tuber-crate':      { build: PR.tuberCrate,    size: PR.SIZES['tuber-crate'],   ...res('Potato', 'f') },
+  'plate-offcut':     { build: PR.plateOffcut,   size: PR.SIZES['plate-offcut'],  ...res('Scrap', 's') },
+  'gear-set':         { build: PR.gearSet,       size: PR.SIZES['gear-set'],      ...res('Parts', 'p') },
+  'control-card':     { build: PR.controlCard,   size: PR.SIZES['control-card'],  ...res('ControllerModule', 'c') },
+  'seal-set':         { build: PR.sealSet,       size: PR.SIZES['seal-set'],      ...res('Seals', 'g') },
+  'ice-block':        { build: PR.iceBlock,      size: PR.SIZES['ice-block'],     ...res('Ice', 'i') },
+  'body-bag':         { build: PR.bodyBag,       size: PR.SIZES['body-bag'],      ...res('Corpse', '&') },
+  'turnings':         { build: PR.turnings,      size: PR.SIZES.turnings,         ...res('Swarf', 'w') },
 });
 
 /** The full list of registered itemIds, in mock order. */
