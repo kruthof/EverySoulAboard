@@ -115,3 +115,83 @@ test('an unknown key and an absent portrait both fall back to the silhouette', (
   assert.equal(resolvePortrait({ cid: 'ghost' }, portraitRegistry).kind, 'silhouette');
   assert.equal(resolvePortrait({ cid: 'ghost', portrait: null }, portraitRegistry).kind, 'silhouette');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE SILHOUETTE IT BUILDS — ink on paper (visual redesign, package P5)
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ WHY THIS EXISTS. The leg above proves an unknown key falls back to a silhouette DESCRIPTOR.
+// Nothing anywhere proved what that descriptor is then PAINTED as — `portraitElement` had zero
+// coverage on this tree (its only other reference is `panels.js:327`), so P5 retinted it from a
+// saturated HSL gradient to ink-on-paper with no instrument that could have noticed either the
+// retint or its removal. A DOM builder is not exempt from being pinned just because it needs a
+// document: `dom-lite.js` is the shared stub the dossier suite already drives panels.js through,
+// and `Element.style` is a plain object there, which is exactly the surface this function writes.
+//
+// It pins the VALUES BY IDENTITY WITH THE TOKEN MODULE, not by repeating the hexes: a test that
+// hard-codes '#14120F' is a fourth copy of the palette and would go green against a paper-tokens
+// change it should have caught.
+
+import { DocumentLite } from './dom-lite.js';
+import { portraitElement, fallbackPortrait } from '../src/ui/portraits.js';
+import { PAPER, INK } from '../src/theme/paper-tokens.js';
+
+/** Build a portrait element against the stub document, restoring any previous global. */
+function paint(portrait) {
+  const had = Object.prototype.hasOwnProperty.call(globalThis, 'document');
+  const prev = globalThis.document;
+  globalThis.document = new DocumentLite();
+  try {
+    return portraitElement(portrait);
+  } finally {
+    if (had) globalThis.document = prev; else delete globalThis.document;
+  }
+}
+
+// MUTATION (applied, red, reverted): restore the warm gradient —
+//   el.style.background = `linear-gradient(160deg, hsl(${portrait.hue} 45% 32%), …)`
+// ⇒ RED on the inset-membership leg AND on the "no hsl(" leg.
+test('P5: the silhouette a citizen falls back to is INK ON PAPER, from the token module', () => {
+  const el = paint(fallbackPortrait('kort', 'Kort Vael'));
+
+  assert.equal(el.tagName.toLowerCase(), 'div');
+  assert.equal(el.className, 'portrait silhouette', 'the console shell selects on both classes');
+  assert.equal(el.textContent, 'KV', 'the always-a-face guarantee lost its initials');
+
+  const insets = [PAPER.inset1, PAPER.inset2, PAPER.inset3];
+  assert.ok(insets.includes(el.style.background),
+    `silhouette ground ${el.style.background} is not one of the charter's three inset papers`);
+  assert.equal(el.style.color, INK.ink, 'the initials are not ink');
+  assert.equal(el.style.borderColor, PAPER.border, 'the border is not the plate border');
+
+  // the warm skin is GONE — an inclusion check on the actual painted values, so a hue nobody
+  // thought to blacklist cannot creep back in
+  for (const v of Object.values(el.style)) {
+    assert.equal(/hsl\(|linear-gradient|rgba?\(/.test(String(v)), false,
+      `the silhouette still paints ${v} — the warm gradient survived the retint`);
+  }
+});
+
+// ⭐ THE DISCRIMINATING LEG. The pin above would be satisfied by a builder that ignored `hue`
+// entirely and painted every soul the same. `hue` is the ONE thing that still varies per person on
+// this element, and `resolvePortrait` is contractually deterministic — so the variation has to be
+// live AND stable, and both halves are checked here.
+// MUTATION: `PAPER_INSETS[portrait.hue % …]` → `PAPER_INSETS[0]` ⇒ RED on the "more than one" leg.
+test('P5: the silhouette still varies per soul, deterministically', () => {
+  const grounds = new Set();
+  for (const cid of ['kort', 'mira', 'deng', 'rell', 'nour', 'halvard', 'osei', 'vale']) {
+    grounds.add(paint(fallbackPortrait(cid, cid)).style.background);
+    assert.equal(paint(fallbackPortrait(cid, cid)).style.background,
+      paint(fallbackPortrait(cid, cid)).style.background, `${cid} repainted differently`);
+  }
+  assert.ok(grounds.size > 1,
+    'every soul paints the same ground — the per-person variation the `hue` field exists for is dead');
+});
+
+test('P5: a known portrait key still paints an <img>, untouched by the retint', () => {
+  const img = paint({ kind: 'image', key: 'pk_1', src: 'portraits/pk_1.png' });
+  assert.equal(img.tagName.toLowerCase(), 'img');
+  assert.equal(img.className, 'portrait', 'the image portrait must NOT carry the silhouette class');
+  assert.equal(img.src, 'portraits/pk_1.png');
+  assert.deepEqual({ ...img.style }, {}, 'the retint leaked onto the image branch');
+});

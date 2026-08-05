@@ -229,8 +229,15 @@ test('resolvePawnLook is deterministic per (cid, role)', () => {
   // — every figure in the process then shares the same wrong coordinate and the comparisons above all
   // agree. Nothing else in the client suite hashes an SVG, so a load-time RNG (or clock, or locale
   // call) would ship silently. The source scan is the only instrument that can see it, and it reads
-  // CODE, not prose (TRAPS 1). The same scan bars a MEMO TABLE, which would make the two-call legs
-  // above vacuous rather than true — the cheap answer to E10 that must not be taken quietly.
+  // CODE, not prose (TRAPS 1).
+  //
+  // ⚠️ WHAT THIS SCAN DOES AND DOES NOT CATCH — the claim is narrowed to what it checks. It bars the
+  // NAMED impure APIs and the three memo spellings below, and that is ALL. It does NOT detect a
+  // memo in general: a module-scope `const memo = Object.create(null)` (or a bare `{}`) walks
+  // straight past every needle here. Review found that hole by planting exactly that. A source scan
+  // cannot honestly promise "no memo table", so it no longer says so — the promise is kept
+  // BEHAVIOURALLY by the interleaved leg in the next test, which is what actually catches a memo
+  // with too coarse a key.
   const code = codeOnly(SRC);
   const FORBIDDEN = ['Math.random', 'Date.', 'new Date', 'performance.', 'toLocaleString', 'Intl.',
     'new Map(', 'new WeakMap(', 'cache'];
@@ -244,6 +251,86 @@ test('resolvePawnLook is deterministic per (cid, role)', () => {
   assert.equal(codeOnly('// const a = Math.random();').includes('Math.random'), false,
     'codeOnly did not strip the comment — the scan above could be green with a live RNG');
   assert.ok(SRC.includes('no memo table'), 'the no-cache rule lost its stated reason');
+});
+
+// ⭐ THE BEHAVIOURAL HALF OF THE NO-MEMO PROMISE, because the source scan above cannot make it.
+// A memo whose KEY is too coarse — role only, or `cid` alone when the role also matters — is
+// invisible to "call it twice with the same argument": the second call is the one that gets the
+// stale answer, and both calls in a same-argument pair are the same soul. It only shows up when
+// DIFFERENT souls are interleaved between the two calls. So: render every soul alone to get the
+// reference, then render them again in a shuffled, interleaved order and demand byte-identity.
+// MUTATION (applied, red, reverted): `const memo = Object.create(null)` keyed on `desc.role`
+// ⇒ RED here, GREEN on every other leg in this file.
+test('⭐ interleaving DIFFERENT souls does not change what any of them draws', () => {
+  // ⚠️ THE FIXTURE HAS TO BREAK THE cid/role CORRELATION OR THE LEG IS BLIND. MOCK_CREW gives eight
+  // souls with eight DIFFERENT roles, so a memo keyed on role alone answers every one of them
+  // correctly and survives — measured, it did. The interleaved set therefore carries BOTH shapes:
+  // eight cids under one shared role (kills a role-only key) and one cid under several roles (kills
+  // a cid-only key).
+  const cases = [
+    ...MOCK_CREW.map((c) => ({ cid: c.cid, role: c.role })),           // the natural pairing
+    ...MOCK_CREW.map((c) => ({ cid: c.cid, role: 'reactor' })),        // eight cids, ONE role
+    ...['reactor', 'medic', 'helm', 'stores'].map((r) => ({ cid: 'twin', role: r })), // ONE cid, four roles
+  ];
+  const key = (c) => `${c.cid}|${c.role}`;
+  const ref = new Map();
+  for (const c of cases) ref.set(key(c), { s: pawnSprite(c), k: pawnChip(c) });
+  assert.equal(ref.size, cases.length, 'the fixture collapsed — two cases share a (cid, role) key');
+
+  // ⚠️ THE REPLAY BELOW CANNOT, ON ITS OWN, CATCH A MEMO KEYED ON ROLE. Measured: such a memo
+  // poisons the REFERENCE map too — the eight one-role cases all cache the first soul's answer, the
+  // replay reads the same poisoned value back, and every comparison agrees. So the two groups are
+  // checked for INTERNAL distinctness first. Whole-fixture distinctness is NOT assertable here and
+  // that is honest, not lax: `volkov`'s "reactor watch" and `{volkov, 'reactor'}` are the same
+  // figure by design, because the role only ever reaches the drawing through its prop.
+  const group = (pred) => new Set(cases.filter(pred).map((c) => ref.get(key(c)).s));
+  assert.equal(group((c) => c.role === 'reactor' && c.cid !== 'twin').size, MOCK_CREW.length,
+    'eight cids under ONE role drew fewer than eight figures — a cache keyed on the role alone');
+  assert.equal(group((c) => c.cid === 'twin').size, 4,
+    'one cid under four roles drew fewer than four figures — a cache keyed on the cid alone');
+
+  // three passes in orders that are NOT the reference order, so every case is revisited with other
+  // cases drawn in between it and its first render
+  const order = [...cases].reverse().concat(cases).concat([...cases].reverse());
+  for (const c of order) {
+    assert.equal(pawnSprite(c), ref.get(key(c)).s,
+      `${key(c)}'s sprite changed once other souls were drawn between the calls — a cache with a key `
+      + 'that does not carry everything the figure depends on');
+    assert.equal(pawnChip(c), ref.get(key(c)).k, `${key(c)}'s chip changed under interleaving`);
+  }
+  // and the same soul under two ROLES, interleaved, must still differ — the other half of the key
+  const a1 = pawnSprite({ cid: 'twin', role: 'reactor' });
+  const b1 = pawnSprite({ cid: 'twin', role: 'medic' });
+  const a2 = pawnSprite({ cid: 'twin', role: 'reactor' });
+  assert.equal(a2, a1, 'the (cid, role) pair is not being carried across an intervening call');
+  assert.notEqual(b1, a1, 'one cid under two roles drew the same figure — the role left the key');
+});
+
+// ⭐ THE THREE BUILDS MUST BE THREE DRAWINGS. Review's geometry mutations (perturb one build's
+// coordinate; byte-copy `tall`'s path list onto `broad`) both stayed GREEN: every other leg in this
+// file reads STRUCTURE — pass counts, colours, anchors, clearances — and a collapsed build satisfies
+// all of it while putting the same person on the board three times. That is the whole silhouette
+// axis quietly dying, and "distinct across the crew" would still pass because the PROP still differs.
+// This does not pin the doc's coordinates (nothing here can, short of a golden nobody wants); it
+// kills the COLLAPSE case, which is the one a refactor actually causes.
+// MUTATION: copy `tall.paths` over `broad.paths` ⇒ RED.
+test('⭐ the three BUILDS are three different drawings, pairwise', () => {
+  const dOf = (id) => BUILDS[id].paths.map((p) => p.d || `E${(p.ellipse || p.rect || []).join(',')}`).join('|');
+  for (let i = 0; i < BUILD_IDS.length; i++) {
+    for (let j = i + 1; j < BUILD_IDS.length; j++) {
+      const a = BUILD_IDS[i], b = BUILD_IDS[j];
+      assert.notEqual(dOf(a), dOf(b), `builds '${a}' and '${b}' are the same drawing — the silhouette `
+        + 'axis has collapsed and every structural leg in this file would still be green');
+      // …and they differ in the SILHOUETTE, not only in a facial detail: the anchors a form places
+      // them by must differ too, or a "different" build reads identically at board scale.
+      assert.notDeepEqual(
+        [BUILDS[a].hw, BUILDS[a].wide, BUILDS[a].top, BUILDS[a].sy],
+        [BUILDS[b].hw, BUILDS[b].wide, BUILDS[b].top, BUILDS[b].sy],
+        `builds '${a}' and '${b}' have identical width/height anchors`);
+    }
+  }
+  // non-vacuity: the reader really is reading path data, not empty strings
+  for (const id of BUILD_IDS) assert.ok(dOf(id).length > 200, `${id} produced no path data to compare`);
 });
 
 test('resolvePawnLook fills every slot from the frozen tables', () => {
