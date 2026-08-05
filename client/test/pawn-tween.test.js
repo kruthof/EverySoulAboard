@@ -129,7 +129,7 @@ test('⛔ A DECK CHANGE SNAPS, whatever the tile distance says (rule 2, second t
   assert.equal(tw.positions(300).get('1').x, 5.4);
 });
 
-test('THE SEGMENT STARTS AT THE CURRENT DRAWN POINT — an early sample never jumps BACKWARDS (rule 5)', () => {
+test('THE SEGMENT STARTS AT THE CURRENT DRAWN POINT — an early sample never SNAPS FORWARD (rule 5)', () => {
   const tw = makePawnTween();
   tw.sample([{ cid: 1, x: 0, y: 0, deck: 0 }], 0);
   tw.sample([{ cid: 1, x: 1, y: 0, deck: 0 }], 100);     // segment 0 → 1 over 100 ms
@@ -139,8 +139,8 @@ test('THE SEGMENT STARTS AT THE CURRENT DRAWN POINT — an early sample never ju
   const after = tw.positions(140).get('1').x;
   assert.ok(Math.abs(after - midX) < 1e-9,
     `the figure teleported from ${midX} to ${after} the instant a sample arrived. Taking the PREVIOUS `
-    + 'SAMPLE as the segment start snaps her back to where she already was — visible as a stutter, and '
-    + 'as backwards motion in the 60 Hz witness.');
+    + 'SAMPLE as the segment start snaps her FORWARD over the rest of a segment she has not walked '
+    + 'yet — the tween is always BEHIND the samples, never ahead, so the jump can only go that way.');
   // …and from there she goes FORWARD only.
   let prev = after;
   for (let t = 141; t <= 300; t += 1) {
@@ -337,6 +337,29 @@ test('DRIVEN: a departed cid\'s node is REMOVED, and the map does not leak', () 
   assert.equal(layer.size(), 0);
 });
 
+// ⭐ THE CLAIM `roomzoom-view.js`'s `crewDrawnAtTile` MAKES IN PROSE, PINNED: under reduced motion the
+// view's tween pass and the `crewHitAtTile` fallback CANNOT disagree, so the crew click behaves
+// exactly as it did before the tween existed. `placePawns` reads the tween at a time past every
+// segment's end, which is by definition the newest sample; `drawnTile` rounds that same sample. Two
+// readers, one number, same rounding.
+//
+// MUTATION: `positions(Number.MAX_SAFE_INTEGER)` returning `a` instead of `b` ⇒ red.
+test('reduced motion reads EXACTLY the newest sample, which is what `drawnTile` rounds', () => {
+  const tw = makePawnTween();
+  for (const [ax, ay, bx, by] of [[4, 5, 4.6, 5], [9, 2, 8.4, 2.9], [0, 0, 1.49, 0]]) {
+    tw.clear();
+    tw.sample([{ cid: 1, x: ax, y: ay, deck: 0 }], 0);
+    tw.sample([{ cid: 1, x: bx, y: by, deck: 0 }], 100);
+    const p = tw.positions(Number.MAX_SAFE_INTEGER).get('1');
+    assert.deepEqual({ x: p.x, y: p.y }, { x: bx, y: by },
+      'the reduced-motion reading is not the newest sample, so a reduced-motion visitor would click '
+      + 'one tile and select from another');
+    // …and therefore the two hit tests round to the same tile, which is the whole promise.
+    assert.deepEqual({ x: Math.round(p.x), y: Math.round(p.y) },
+      { x: Math.round(bx), y: Math.round(by) });
+  }
+});
+
 test('the reduced-motion query answers FALSE when it cannot be asked', () => {
   // The tween is the default and the opt-out is the exception: a node harness (no `matchMedia`) must
   // not silently disable the feature, or a suite would be pinning a fallback nobody ships.
@@ -469,9 +492,9 @@ test('MUTATION 5: settled() always false ⇒ the idle loop never stops ⇒ RED',
   );
 });
 
-test('MUTATION 6: the segment starts at the previous SAMPLE ⇒ backwards motion ⇒ RED', async () => {
+test('MUTATION 6: the segment starts at the previous SAMPLE ⇒ a forward snap ⇒ RED', async () => {
   await mustGoRed(
-    'an early sample snapped the figure back to where she already was',
+    'an early sample snapped the figure forward over a segment it had not walked',
     'pawn-tween-model.js',
     'const cur = at(prev, now);                               // rule 5 — start from what is DRAWN',
     'const cur = { x: prev.bx, y: prev.by };',
@@ -481,7 +504,7 @@ test('MUTATION 6: the segment starts at the previous SAMPLE ⇒ backwards motion
       tw.sample([{ cid: 1, x: 1, y: 0, deck: 0 }], 100);
       const mid = tw.positions(140).get('1').x;
       tw.sample([{ cid: 1, x: 2, y: 0, deck: 0 }], 140);
-      assert.ok(Math.abs(tw.positions(140).get('1').x - mid) < 1e-9, 'the figure jumped on a sample');
+      assert.ok(Math.abs(tw.positions(140).get('1').x - mid) < 1e-9, 'the figure snapped forward on a sample');
     },
   );
 });

@@ -20,9 +20,21 @@
 //     evaluated at message cadence against `b`. A tween that ran past `b` would draw a person on a
 //     tile no membership test ever admitted — the "standing on the cryo bay's back wall" defect the
 //     glide package's send-back was about, re-introduced from the other end.
-//     ⚠️ THE COST IS STATED AND ACCEPTED: the figure is ONE SAMPLE INTERVAL (~130 ms at 1×) behind
-//     the host's newest word. That is invisible at walking pace and it is the price of never drawing
-//     a position nobody authorised.
+//     ⚠️⚠️ THE COST IS STATED, MEASURED, AND IT HAS A SECOND HALF THIS COMMENT ORIGINALLY ARGUED
+//     ONLY THE FORWARD DIRECTION OF. The figure trails the host's newest word by up to one sample
+//     interval, and IN TILES that lag is bounded by the wire's own step size — measured on
+//     `--ship wreck`, re-measured by this lane over four 5 s walks: consecutive samples are median
+//     0.100-0.200, p90 0.200, max 0.200-0.300 of a tile apart, so the drawn body sits up to about a
+//     quarter of a tile behind the sample and, at a tile boundary, in the PREVIOUS TILE.
+//     Independent review measured the consequence as `round(drawn) != round(sample)` on 11.0% of
+//     moving frames; on a HELD ship it is not a percentage at all, it is PERMANENT until the player
+//     starts the ship again.
+//     ⛔ SO ANY CONSUMER WHOSE JOB IS TO AGREE WITH THE PIXELS MUST ASK THIS MODULE, NOT THE WIRE.
+//     Exactly one does — the crew CLICK (`roomzoom-view.js`'s `crewDrawnAtTile`), whose entire
+//     justification is that you select what you can see. Everything else on the drawn-tile side of
+//     `WireFormat.RosterEntry.Fx`'s split — room membership, the `N HERE` caption, the crew dock's
+//     HERE flag — is a per-message LIST and correctly stays on the sample: promoting those would make
+//     a compartment's population flicker at 60 Hz to chase a body that is on its way in anyway.
 //
 //  2. SNAP, NEVER TWEEN, when the step is not a walk. Two triggers, both measured against the last
 //     sample: a jump longer than `SNAP_TILES`, and a change of DECK. A re-path, a thaw, a ladder
@@ -47,8 +59,13 @@
 //  5. THE SEGMENT STARTS AT THE CURRENT DRAWN POINT, not at the previous sample. In the ordinary
 //     case they are the same point — the previous segment has completed, because the durations are
 //     measured from real arrivals. They differ only when a sample lands EARLY, and there taking the
-//     previous sample as `a` would teleport the figure BACKWARDS to where it already was. The live
-//     witness checks for exactly zero backwards motion, and this is the rule that earns it.
+//     previous sample as `a` TELEPORTS THE FIGURE FORWARD to a point it has not walked to yet: the
+//     drawn body is mid-way between sample n-1 and n, and re-anchoring on sample n jumps it the rest
+//     of that segment in one frame. (An earlier draft of this line said "backwards", which is the
+//     wrong direction — the tween is BEHIND the samples, never ahead, so re-anchoring on a sample can
+//     only ever skip forward. The defect is a visible snap either way; the sentence was wrong.)
+//     `pawn-tween.test.js` pins it as a discontinuity — the drawn position must not move at all on
+//     the frame a sample arrives — and the live witness's zero-reversals leg is a separate claim.
 //
 // ⛔ THE CLOCK IS PAUSABLE, AND THAT IS A PRODUCT REQUIREMENT, NOT A CONVENIENCE. When the player
 // holds the ship the host stops ticking, so no new samples arrive — and a wall-clock tween would

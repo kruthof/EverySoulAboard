@@ -396,6 +396,14 @@ function buildSkeleton() {
   _pawnSvgEl = document.getElementById('ov-pawnlay');
   _pawnLayer = _pawnSvgEl ? makePawnLayer(_pawnSvgEl, { groupClass: 'pl-pawn' }) : null;
   _reduce = prefersReducedMotion();
+  // ⛔ AND THE INTERPOLATOR IS RESET WITH THE NODES IT DRIVES. `_pawnLayer` is rebuilt here, so a
+  // second `buildSkeleton` (a re-init, a harness mounting the surface twice) would otherwise leave
+  // `_tween` — a module SINGLETON — holding samples keyed to cids whose nodes no longer exist, and
+  // the first frame after the re-mount would place brand-new figures at the OLD skeleton's positions.
+  // Today this file is initialised once per page, so the line is unreachable in the shipping client;
+  // it is here because "two pieces of state that must be cleared together" is the shape that gets
+  // half-cleared by the next lane, and it costs one call.
+  _tween.clear();
   _toast = document.getElementById('ov-toast');
   _nudge = makeNudge({ el: () => $('ov-nudge') });
 

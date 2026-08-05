@@ -365,6 +365,43 @@ test('the SCENE draws no figures — they live in the overlay, stacked above it'
     + 'draw over the crew standing on it.');
 });
 
+// ⛔⛔ THE POINTER RULE ON THE OVERLAY IS TWO DECLARATIONS AND BOTH ARE LOAD-BEARING — and until this
+// test neither was measured. Since the figures left `#ov-stage`, a crew click is resolved by
+// `hitTest`'s `target.closest('.pl-pawn')` on a node in a SIBLING element, so:
+//   · the SHEET must be `pointer-events:none`, or the overlay covers the whole plate and every press
+//     on empty paper stops there instead of reaching the scene's room/tile hit test; and
+//   · the FIGURES must take it back with `pointer-events:auto`, or a press on a crew member falls
+//     through to the room behind her and selection silently stops working.
+// ⛔ THE RECEIPT, SPLIT BY WHO MEASURED WHAT (the repo's rule: a count you did not measure yourself
+// is not evidence). INDEPENDENT REVIEW measured the live consequence — with both deleted, clicking a
+// crew member on the plate went 8/8 → 0/8 in a running game while the node suite stayed 1523/1523
+// GREEN. THIS LANE measured the enforcement: with both deleted, exactly TWO legs in the whole
+// 1527-test suite go red — this one and `overview-model.test.js`'s pawn-overlay leg — and nothing
+// else in the suite notices at all.
+// A stylesheet fact needs a stylesheet assertion; the DRIVEN half — that the press reaches the
+// overlay's own listeners at all — is `overview-model.test.js`'s pawn-overlay leg.
+//
+// MUTATION: drop `.ov-pawnlay .pl-pawn{pointer-events:auto}` ⇒ RED on leg 2.
+// MUTATION: `.ov-pawnlay{…pointer-events:auto}` ⇒ RED on leg 1.
+test('the pawn overlay is transparent to the pointer, and the FIGURES are not', () => {
+  const css = stylesSource();
+  const peOf = (sel) => {
+    const m = new RegExp(sel.replace(/\./g, '\\.') + '\\{[^}]*pointer-events:(\\w+)').exec(css);
+    return m ? m[1] : null;
+  };
+  assert.equal(peOf('.ov-pawnlay'), 'none',
+    'the pawn overlay sheet takes the pointer. It is `inset:0` over the whole plate, so every press '
+    + 'on empty paper would stop at it and the compartment/tile hit test would never run — rooms '
+    + 'would stop opening and armed orders would stop landing.');
+  assert.equal(peOf('.ov-pawnlay .pl-pawn'), 'auto',
+    'the FIGURES do not take the pointer back. `hitTest` resolves a crew click through '
+    + '`target.closest(".pl-pawn")`, so with the sheet transparent and the figures transparent too, '
+    + 'a press on a crew member lands on the room behind her: clicking a pawn silently stops '
+    + 'selecting anybody, which is the affordance the owner reported by name on 2026-07-29.');
+  // NON-VACUITY: the reader really can tell the two apart, and really can come back empty.
+  assert.equal(peOf('.ov-nosuchclass'), null, 'the scan matches a selector that is not in the sheet');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // WP-8 — the on-map WORK MARKERS (console-retirement plan §1(b) B4, ported off `hud.js`).
 //

@@ -37,6 +37,12 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { die, waitFor, sleep, dismissOnboarding } from './rig-lib.mjs';
+// The SHIPPED reader of `frame.sel` — imported rather than re-implemented, so this rig cannot come to
+// a different answer about "who is selected" than the surface it is measuring (the `paletteOrders`
+// rule the other rigs follow).
+import { selectedCrewCid, decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
+import { decksView } from '../src/ui/decks-model.js';
+import { makeTransform } from '../src/ui/overview-scene.js';
 
 const arg = (name, dflt) => {
   const i = process.argv.indexOf('--' + name);
@@ -330,6 +336,38 @@ if (!walking) {
     + 'measured on a ship where nobody walks.');
 }
 
+// ⭐ THE PLATE'S OWN DISCONTINUITIES, DERIVED FROM THE SHIPPED `makeTransform` ON THE LIVE `decks`
+// CHANNEL — never from a literal. Scanning the projection along each axis at 1/20 of a tile finds
+// the compartment-cell boundaries this deck really has, so §4 can tell "the plate jumped" from "the
+// tween tore" on whatever ship it is pointed at.
+const seamsX = [], seamsY = [];
+{
+  const dv = decksView(decodeDecks(decode(JSON.stringify(latest.get('decks')))),
+    decodeRooms(decode(JSON.stringify(latest.get('rooms') || { type: 'rooms', rooms: [] }))));
+  const entry = (dv || []).find((d) => d.deck === DECK);
+  if (entry) {
+    const tf = makeTransform(entry.slots, null);
+    const W = frame0 ? frame0.w : 44, H = frame0 ? frame0.h : 20;
+    let prev = null;
+    for (let v = 0; v <= W; v += 0.05) {
+      const q2 = tf.project(v + 0.5, 6.5);
+      if (prev && Math.hypot(q2[0] - prev[0], q2[1] - prev[1]) > 2) seamsX.push(v);
+      prev = q2;
+    }
+    prev = null;
+    for (let v = 0; v <= H; v += 0.05) {
+      const q2 = tf.project(6.5, v + 0.5);
+      if (prev && Math.hypot(q2[0] - prev[0], q2[1] - prev[1]) > 2) seamsY.push(v);
+      prev = q2;
+    }
+  }
+  log(`  plate seams on deck ${DECK}: x at ${JSON.stringify(seamsX.map((v) => +v.toFixed(2)))}, `
+    + `y at ${JSON.stringify(seamsY.map((v) => +v.toFixed(2)))}`);
+}
+/** Is this tile position within a sample step of a projection discontinuity? */
+const plateSeam = (fx, fy) => seamsX.some((v) => Math.abs(fx - v) < 0.45)
+  || seamsY.some((v) => Math.abs(fy - v) < 0.45);
+
 log('\n=== 3. SMOOTHNESS: distinct drawn positions per tile ===');
 // BEFORE and AFTER from ONE window: the wire samples are what the client drew per message before
 // this package (one drawn position per roster message, by construction); the screen samples are what
@@ -373,6 +411,20 @@ log(`  AFTER  (distinct screen positions)         : ${uniqScreen} distinct, ${af
 check(afterPerTile >= 2 * beforePerTile, 'the figure draws at least 2x the wire\'s distinct positions per tile',
   `${afterPerTile.toFixed(1)} vs ${beforePerTile.toFixed(1)} per tile`);
 
+// ⭐ THE DRAWING LAG, MEASURED AT ITS SOURCE. The tween never extrapolates, so the drawn body trails
+// the newest sample by at most ONE SAMPLE STEP — and the step is a thing this rig can measure
+// exactly, off the wire, without needing the page's projection. It is the number that decides how
+// often `round(drawn) != round(sample)`, i.e. how often a hit test on the SAMPLE answers for a tile
+// the player is not looking at. Reported, not checked: it is a property of the host's cadence.
+const wireSteps = [];
+for (let i = 1; i < wireSeen.length; i += 1) {
+  wireSteps.push(Math.hypot(wireSeen[i].fx - wireSeen[i - 1].fx, wireSeen[i].fy - wireSeen[i - 1].fy));
+}
+wireSteps.sort((a, b) => a - b);
+const q = (x) => (wireSteps.length ? wireSteps[Math.min(wireSteps.length - 1, Math.floor(wireSteps.length * x))] : 0);
+log(`  drawing lag bound (consecutive wire samples, tiles): median ${q(0.5).toFixed(3)}, `
+  + `p90 ${q(0.9).toFixed(3)}, max ${(wireSteps.at(-1) || 0).toFixed(3)}`);
+
 log('\n=== 4. MONOTONICITY: no backwards motion, and how big a single frame step is ===');
 // The walk is a straight line in tile space here, so "backwards" is a reversal of the dominant axis.
 const dxTotal = live.at(-1).x - live[0].x;
@@ -389,16 +441,27 @@ for (let i = 1; i < live.length; i += 1) {
   steps.push(step);
   if (d < -0.5) { back += 1; backWorst = Math.min(backWorst, d); }   // 0.5 px: rounding is not motion
   if (step > 10) {
-    // ⭐ CLASSIFY IT AGAINST THE WIRE. A big one-frame move is only a DEFECT if the host's own
-    // position barely changed; if the host jumped more than `SNAP_TILES`, the figure cutting rather
-    // than sliding is the tween doing exactly what rule 2 says (a re-path, a thaw, a ladder).
+    // ⭐ CLASSIFY IT — AGAINST THE WIRE **AND** AGAINST THE PLATE'S OWN PROJECTION. There are exactly
+    // two innocent explanations for a big one-frame move and this rig now knows both:
+    //   (a) THE HOST JUMPED. A step over `SNAP_TILES` is a re-path/thaw/ladder and the figure cutting
+    //       rather than sliding is rule 2 doing its job.
+    //   (b) THE PLATE JUMPED. The Level-1 transform is PIECEWISE — each compartment is drawn as its
+    //       own miniature cell — so a crew member walking from one compartment into the next moves a
+    //       fraction of a tile and lands a long way off on screen. Measured on `--ship wreck` deck 0
+    //       off the shipped `makeTransform`: 3 discontinuities along x of 68.1 px (at tiles 11.5,
+    //       22.5, 33.5) and 3 along y (39.9 / 82.7 / 41.8 px, at 7.55 / 9.5 / 17.5). That is
+    //       pre-existing plate behaviour — it teleported a walking pawn between compartments before
+    //       this package existed and it still does — and the tween cannot smooth it, because the
+    //       screen gap between two cells is not a place a person can be drawn.
+    // Anything left over is a TEAR, which is what this leg is for.
     const wa = t0Wall + live[i - 1].t, wb = t0Wall + live[i].t + 400;
     const near = wireSeen.filter((w) => w.t >= wa - 400 && w.t <= wb);
     let tile = 0;
     for (let k = 1; k < near.length; k += 1) {
       tile = Math.max(tile, Math.hypot(near[k].fx - near[k - 1].fx, near[k].fy - near[k - 1].fy));
     }
-    big.push({ atMs: Math.round(live[i].t), px: +step.toFixed(1), wireTileStep: +tile.toFixed(2) });
+    const atSeam = near.some((w) => plateSeam(w.fx, w.fy));
+    big.push({ atMs: Math.round(live[i].t), px: +step.toFixed(1), wireTileStep: +tile.toFixed(2), atSeam });
   }
 }
 steps.sort((a, b) => a - b);
@@ -414,10 +477,10 @@ check(p(0.99) < 4, 'the ordinary frame moves the figure a fraction of a pixel',
   `p99 ${p(0.99).toFixed(2)} px`);
 // …and every LARGE step must be explained by the host jumping too (rule 2). An unexplained one is
 // the tween tearing, which is exactly what this package must not do.
-const unexplained = big.filter((b) => b.wireTileStep <= 1.5);
+const unexplained = big.filter((b) => b.wireTileStep <= 1.5 && !b.atSeam);
 if (big.length) log('  large steps: ' + JSON.stringify(big));
 check(unexplained.length === 0,
-  'every large single-frame step is a SNAP the host itself made (> SNAP_TILES), never a tear',
+  'every large single-frame step is a host SNAP or a plate seam, never a tear',
   big.length ? `${big.length} large step(s), ${unexplained.length} unexplained` : 'no large steps at all');
 await png('02-walking.png');
 
@@ -476,6 +539,100 @@ if (!midGlide) {
     + (quiet ? ` (quiet baseline ${quiet.raf.toFixed(1)}/s)` : ''));
   await png('03-held.png');
   send({ cmd: 'pause' });   // …and leave the ship as we found it: running
+}
+
+// ────────────────────────────────────────────────── 6c. THE HELD-SHIP CREW CLICK (the review's MAJOR 2)
+//
+// ⛔⛔ THE DEFECT, AND WHY THE HOLD IS WHERE IT IS MEASURED. `crewHitAtTile` matches the tile of the
+// NEWEST WIRE SAMPLE; the tween draws the body BETWEEN the last two samples and never past the
+// newest. So for most of every interval the figure stands one tile short of what a sample-based hit
+// test answers — and on a HELD ship the clock stops, so it stands there PERMANENTLY. Independent
+// review measured 11.0% of moving frames disagreeing and a held-ship click drive at 14/17 (a base
+// client without the tween: 11/12). That is the 2026-07-29 "we cannot select a pawn by clicking on
+// him" affordance coming back for a new reason.
+//
+// THIS DRIVE IS END-TO-END AND ON THE ROOM ZOOM, because that is the surface with the geometric hit
+// test. The Overview is immune by construction — it hit-tests the drawn ELEMENT (`.pl-pawn` +
+// `data-cid`), which is the thing the tween moves — and §0 plus `overview-model.test.js` pin that.
+// The gesture is a real Chrome click at her drawn FEET; the verdict is the HOST's own `frame.sel`
+// read on this tool's socket, never the page's opinion of itself.
+log('\n=== 6c. THE HELD-SHIP CREW CLICK (Room Zoom) ===');
+{
+  // Walk her into a compartment and hold the ship mid-glide, so the drawn/sample disagreement is
+  // frozen and every trial below is the same, reproducible state.
+  const rzSlots = [];
+  for (const d of (latest.get('decks')?.decks || [])) {
+    if ((d.deck | 0) !== DECK) continue;
+    for (const sl of (d.slots || [])) { const [, x, y, w, h, anchor] = sl; if (w > 1 && h > 1) rzSlots.push({ x, y, w, h, anchor }); }
+  }
+  const inR = (c, r) => {
+    const tx = Math.round(Number.isFinite(c.fx) ? c.fx : c.x), ty = Math.round(Number.isFinite(c.fy) ? c.fy : c.y);
+    return tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h;
+  };
+  let room = rzSlots.find((r) => inR(crewOf(SUBJECT.cid) || SUBJECT, r)) || null;
+  for (const r of rzSlots) {
+    if (room) break;
+    const now = crewOf(SUBJECT.cid) || SUBJECT;
+    send({ cmd: 'click', x: now.x, y: now.y }); await sleep(300);
+    send({ cmd: 'cursor', x: r.x + (r.w >> 1), y: r.y + (r.h >> 1) }); send({ cmd: 'move' });
+    room = await waitFor(`${SUBJECT.name} to reach ${r.anchor}`, () => (inR(crewOf(SUBJECT.cid) || SUBJECT, r) ? r : null),
+      { timeoutMs: 12000, everyMs: 200, fatal: false });
+  }
+  if (!room) {
+    check(false, 'the subject could be walked into a compartment for the click drive', 'no reachable room');
+  } else {
+    // Open the room from the plate (held, so the gesture is stable), then release and walk her again
+    // so the hold below lands MID-GLIDE — a settled figure has no disagreement to measure.
+    send({ cmd: 'pause' });
+    await waitFor('the ship held', () => (latest.get('status')?.paused ? true : null), { timeoutMs: 8000, chrome, code: 3 });
+    await sleep(500);
+    const box = await centre(SEL_BODY);
+    const hit = box ? await evalJson(`(()=>{const p=${JSON.stringify(box)};`
+      + 'for(const r of document.querySelectorAll("#ov-stage .pl-room[data-anchor]")){const b=r.getBoundingClientRect();'
+      + 'if(p.x>=b.x&&p.x<=b.x+b.width&&p.y>=b.y&&p.y<=b.y+b.height)return {x:b.x+b.width/2,y:b.y+b.height/2};}return null;})()') : null;
+    if (hit) {
+      await waitFor('the Room Zoom open for the click drive', async () => {
+        if (await evaluate("document.body.classList.contains('roomzoom-open')")) return true;
+        await clickAt(hit.x, hit.y); await sleep(600); return null;
+      }, { timeoutMs: 20000, everyMs: 200, chrome, code: 11 });
+    }
+    send({ cmd: 'pause' });
+    await waitFor('the ship running again', () => (latest.get('status')?.paused ? null : true), { timeoutMs: 8000, chrome, code: 3 });
+    // Keep her moving inside the room, then freeze mid-step.
+    const dest = { x: room.x + 1, y: room.y + 1 };
+    const her = crewOf(SUBJECT.cid) || SUBJECT;
+    send({ cmd: 'click', x: her.x, y: her.y }); await sleep(300);
+    send({ cmd: 'cursor', x: dest.x, y: dest.y }); send({ cmd: 'move' });
+    const mid = await waitFor('the subject mid-step inside the room', () => {
+      const c = crewOf(SUBJECT.cid);
+      return c && Number.isFinite(c.fx) && Math.abs(c.fx - Math.round(c.fx)) > 0.2 ? c : null;
+    }, { timeoutMs: 20000, everyMs: 50, fatal: false });
+    send({ cmd: 'pause' });
+    await waitFor('the ship held mid-glide', () => (latest.get('status')?.paused ? true : null), { timeoutMs: 8000, chrome, code: 3 });
+    await sleep(500);
+    if (!mid) log('  (could not catch her mid-step; the drive still runs, on a settled figure)');
+
+    // THE DRIVE: 18 clicks at her drawn feet, deselecting between each so every trial is independent.
+    const TRIALS = 18;
+    let hits = 0;
+    for (let i = 0; i < TRIALS; i += 1) {
+      send({ cmd: 'click', x: 0, y: 0 });            // …a tile no crew member is on: clears `sel`
+      await sleep(180);
+      const feet = await centre(SEL_BODY);
+      if (!feet) continue;
+      // The FEET, not the sprite's centre: the figure is 2.2 tiles tall and stands ON the floor
+      // point, so the middle of its box is a tile or two behind it in the oblique.
+      await clickAt(feet.x, feet.y + feet.h * 0.42);
+      await sleep(220);
+      if (selectedCrewCid(latest.get('frame')) === SUBJECT.cid) hits += 1;
+    }
+    log(`  held-ship clicks on the drawn feet: ${hits}/${TRIALS} selected her`);
+    check(hits >= TRIALS - 1, 'clicking the figure you can SEE selects her on a held ship',
+      `${hits}/${TRIALS} (independent review measured 14/17 before this fix, against a base client's 11/12)`);
+    await png('05-held-click.png');
+    send({ cmd: 'pause' });
+    await waitFor('the ship running again', () => (latest.get('status')?.paused ? null : true), { timeoutMs: 8000, chrome, code: 3 });
+  }
 }
 
 // ────────────────────────────────────────────────── 7. THE OTHER STANDARD SURFACE

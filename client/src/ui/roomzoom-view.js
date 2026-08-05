@@ -344,6 +344,14 @@ function buildSkeleton() {
   _layers = $('rz-layers');
   _pawnSvgEl = $('rz-pawnlay');
   _pawnLayer = _pawnSvgEl ? makePawnLayer(_pawnSvgEl, { groupClass: 'rz-pawn-root' }) : null;
+  // ⛔ AND THE INTERPOLATOR IS RESET WITH THE NODES IT DRIVES. `_pawnLayer` is rebuilt here, so a
+  // second `buildSkeleton` (a re-init, a harness mounting the surface twice) would otherwise leave
+  // `_tween` — a module SINGLETON — holding samples keyed to cids whose nodes no longer exist, and
+  // the first frame after the re-mount would place brand-new figures at the OLD skeleton's positions.
+  // Today this file is initialised once per page, so the line is unreachable in the shipping client;
+  // it is here because "two pieces of state that must be cleared together" is the shape that gets
+  // half-cleared by the next lane, and it costs one call.
+  _tween.clear();
   _pulseLayer = $('rz-pulse');
   _reduce = prefersReducedMotion();
   _zoneKey = $('rz-zonekey');
@@ -813,6 +821,35 @@ function placePawns() {
     screen.set(key, { x: sx, y: sy });
   }
   return _pawnLayer.place(screen);
+}
+
+/**
+ * ⭐ WHO IS DRAWN ON TILE (tx,ty) RIGHT NOW — the view's own answer, taken from the interpolator the
+ * figures are placed by rather than from the wire sample they are travelling towards.
+ *
+ * It reads `_tween.positions` at `_clock.peek()` — the SAME reading `placePawns` last painted with,
+ * deliberately NOT a fresh `tick()`. A click must resolve against the frame the player was looking
+ * at when they pressed, not against a clock advanced by the press itself; and it makes "where the
+ * click thinks she is" and "where her feet are" one number rather than two derivations that agree
+ * most of the time. The candidates are still `roomCrew` — the DRAWN-tile membership list off the wire contract —
+ * so this narrows who can be selected, it never widens it: a crew member this room has not admitted
+ * cannot be clicked in it whatever the tween says.
+ *
+ * Returns `null` when the tween has nothing for a cid (before the first repaint of a room, or with
+ * the loop off), and the caller falls back to `crewHitAtTile`. Under `prefers-reduced-motion` the
+ * tween reads at `u = 1`, i.e. exactly the sample, so both passes agree and the answer is unchanged.
+ */
+function crewDrawnAtTile(crew, tx, ty) {
+  if (!_pawnLayer || !_focus) return null;
+  const now = _reduce ? Number.MAX_SAFE_INTEGER : _clock.peek();
+  const pos = _tween.positions(now);
+  const x = tx | 0, y = ty | 0;
+  for (const c of roomCrew(crew, _focus)) {
+    const p = pos.get(String(c.cid));
+    if (!p) continue;
+    if (Math.round(p.x) === x && Math.round(p.y) === y) return c;
+  }
+  return null;
 }
 
 /**
@@ -1692,12 +1729,35 @@ function onCanvasClick(e) {
     // Pawn click = select, only when no tool is armed (IX-Z-30). Resolve crew from the tile.
     const roster = Hud.getRoster();
     const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
-    // ⭐ THE GLIDE MADE THIS A TILE TEST ABOUT A MOVING TARGET — `crewHitAtTile` matches the tile
-    // the figure is DRAWN in, and ONLY that one: one rule, one pass, no sim-tile fallback (see its
-    // header). The sim tile leads the body by up to a full tile mid-walk, so the old
-    // `c.x === tile.x` missed the pawn being aimed at AND answered for the bare floor she had
-    // already left on screen. You select exactly what you can see.
-    const hit = crewHitAtTile(crew, _focus, tile.x, tile.y);
+    // ⭐⭐ TWO LAYERS, AND THE FIRST ONE IS THE ONE THAT IS ACTUALLY ON SCREEN.
+    //
+    // `crewHitAtTile` matches the tile of the NEWEST WIRE SAMPLE, which was "what you can see" right
+    // up until this client started interpolating — and then stopped being. The tween deliberately
+    // draws the figure BETWEEN the last two samples (no extrapolation, `pawn-tween-model.js` rule 1),
+    // so for most of every interval the body stands one tile short of the sample, and on a HELD ship
+    // it stays there permanently. Independent review measured the disagreement at 11.0% of moving
+    // frames, and a held-ship click drive at 14/17 against a base client's 11/12 — i.e. the affordance
+    // the owner reported by name on 2026-07-29 ("we cannot select a pawn by clicking on him") coming
+    // back for a NEW reason, three days before a playtest.
+    //
+    // So the FIRST pass asks the tween where each figure is being drawn RIGHT NOW — the same numbers
+    // `placePawns` just wrote onto the nodes, at the same clock reading, so the answer cannot differ
+    // from the drawing by construction. `crewHitAtTile` stays as the second pass and is not
+    // redundant: it is what answers before the first repaint of a room, for a client with the tween
+    // switched off, and for any cid the tween has not been told about.
+    // ⭐ RE-DRIVEN BY THIS LANE AFTER THE FIX, on `--ship wreck` held mid-glide, 18 independent
+    // trials clicking the figure's drawn feet through real Chrome and reading the HOST's `frame.sel`
+    // back: 18/18. (`client/tools/pawn-tween-shot.mjs` §6c — the pre-fix 14/17 above is review's
+    // measurement, not this lane's, and is quoted as theirs.)
+    //
+    // ⛔ MEMBERSHIP DOES NOT MOVE, AND THAT IS THE WIRE CONTRACT, NOT AN OVERSIGHT.
+    // `WireFormat.RosterEntry.Fx` gives room membership, the `N HERE` caption and the crew dock to
+    // the DRAWN TILE OF THE SAMPLE, and every one of them is a per-message list this view rebuilds at
+    // message cadence. The CLICK is the one consumer whose entire justification is agreeing with the
+    // pixels, so the click is the only thing promoted to the tween — and the candidate set is still
+    // `roomCrew`, so nobody this room has not admitted can be selected in it.
+    const hit = crewDrawnAtTile(crew, tile.x, tile.y)
+      || crewHitAtTile(crew, _focus, tile.x, tile.y);
     if (hit) Hud.selectCrewByCid(hit.cid);
     return;
   }

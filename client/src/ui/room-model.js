@@ -1206,13 +1206,27 @@ export function roomCrew(crew, focusRoom) {
  * the empty tile ahead of her. Measured live on `--ship wreck`: the roster published
  * `tile=(7,2) frac=(8,2)` — a whole tile apart.</p>
  *
- * <p><b>YOU CAN CLICK EXACTLY WHAT YOU CAN SEE — one rule, one pass, no fallback.</b> The candidates
- * are `roomCrew`, which is now the DRAWN list, and the tile matched is `drawnTile`, which is where
- * that list's figures stand. An earlier draft added a second pass on the sim tile "as a fallback";
- * it is deleted, because with `roomCrew` deciding on the drawn tile that pass could only ever fire
- * for a figure that is NOT DRAWN on the clicked tile — selecting an invisible pawn from bare floor.
- * A crew member with no glide at all is unaffected: `drawnTile` falls back to her sim tile, so the
- * pre-package behaviour is reproduced exactly.</p>
+ * <p><b>ONE RULE, ONE PASS, NO SIM-TILE FALLBACK.</b> The candidates are `roomCrew`, which is the
+ * DRAWN list, and the tile matched is `drawnTile`. An earlier draft added a second pass on the sim
+ * tile "as a fallback"; it is deleted, because with `roomCrew` deciding on the drawn tile that pass
+ * could only ever fire for a figure that is NOT DRAWN on the clicked tile — selecting an invisible
+ * pawn from bare floor. A crew member with no glide at all is unaffected: `drawnTile` falls back to
+ * her sim tile, so the pre-glide behaviour is reproduced exactly.</p>
+ *
+ * <p>⚠️⚠️ <b>THIS HEADER USED TO SAY "YOU CAN CLICK EXACTLY WHAT YOU CAN SEE", AND SINCE THE
+ * CLIENT-SIDE TWEEN (2026-08-05) THAT SENTENCE IS FALSE OF THIS FUNCTION.</b> It is true of the
+ * SAMPLE — this matches the tile of the newest thing the host said — and the client now deliberately
+ * draws the figure BETWEEN the last two samples, so for most of every render interval the body is
+ * standing one tile short of what this function answers, and on a HELD ship it stays there for as
+ * long as the player leaves it held. Independent review measured `round(drawn) != round(sample)` on
+ * <b>11.0% of moving frames</b>, and a held-ship click drive at 14/17 against a base client's 11/12.
+ * <b>The fix is not in here.</b> A pure model cannot know where a view's interpolator has drawn
+ * anything, and it must not: this function is also the answer for a client with no tween, for the
+ * first repaint of a room, and for `prefers-reduced-motion` (where the tween reads at `u = 1` and the
+ * two agree exactly). `roomzoom-view.js` asks its OWN tween first — `crewDrawnAtTile`, at the same
+ * clock reading `placePawns` writes with — and falls back to this. The claim that survives here is
+ * the narrower and still load-bearing one: <b>this never selects somebody the room has not
+ * admitted.</b></p>
  *
  * @param {Array|null} crew roster crew list @param {object} focusRoom the room rect
  * @param {number} tx @param {number} ty absolute sim tile under the pointer

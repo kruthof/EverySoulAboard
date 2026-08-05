@@ -552,6 +552,19 @@ class OvEl extends DomEl {
     this._html = '';
     this._qs = new Map();
   }
+  /** ⚠️ `setAttribute('class', …)` MUST REACH `classList`, BECAUSE IN A BROWSER IT DOES — and the
+   *  gap made the pawn-click pin below unfalsifiable rather than merely awkward. `dom-lite`'s
+   *  `setAttribute` only fills `attributes`, and its `className` setter is the only thing that fills
+   *  `classList`; but an SVG element's `className` is a read-only `SVGAnimatedString`, so
+   *  `pawn-layer.js` CANNOT use it and correctly writes the attribute. Without this override the
+   *  mounted `<g class="pl-pawn">` was invisible to `hitTest`'s `closest('.pl-pawn')` in node while
+   *  working perfectly in Chrome — i.e. the harness, not the product, decided the result.
+   *  Local to this suite on purpose: `dom-lite.js` is shared with every other client suite and with
+   *  concurrent lanes, and this is a harness gap one file needs. */
+  setAttribute(k, v) {
+    super.setAttribute(k, v);
+    if (k === 'class') this.classList._reset(String(v));
+  }
   get innerHTML() { return this._html; }
   set innerHTML(v) { this._html = String(v); this.childNodes = []; }
   /** A memoised stand-in per selector: no markup parser, but a STABLE node, so `setText`/`setCls`
@@ -1436,6 +1449,107 @@ test('WP-5 driven: with NOTHING armed the schematic still behaves exactly as bef
   assert.deepEqual(ovEntered, ['reactor']);
   assert.deepEqual(ovClick(ovStage, 12, 5), [], 'bare space must stay a no-op');
   assert.deepEqual(ovEntered, []);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE PAWN CLICK, DRIVEN THROUGH THE OVERLAY'S OWN LISTENER — the seam the client-side tween
+// created and, until this test, the seam nothing pinned.
+//
+// ⛔⛔ WHY IT IS A SEPARATE TEST FROM EVERY OTHER PAWN LEG IN THIS FILE. All of those build a
+// SYNTHETIC `.pl-pawn` div with `ovTarget` and append it to `#ov-stage`, so the press bubbles to
+// `_stage`'s handlers — the path that existed before the figures moved. Since the tween, the figures
+// are NOT in `#ov-stage`: they are in `#ov-pawnlay`, a SIBLING, whose events never reach `_stage` at
+// all. Selection therefore hangs on exactly two lines that nothing was measuring:
+//   · `overview-view.js` — the two `_pawnSvgEl.addEventListener` calls, and
+//   · `overview.css`     — `.ov-pawnlay .pl-pawn{pointer-events:auto}` (the sheet is `none`).
+// ⛔ THE RECEIPT, SPLIT BY WHO MEASURED WHAT (the repo's rule: a count you did not measure yourself
+// is not evidence). INDEPENDENT REVIEW measured the live consequence — with both deleted, clicking a
+// crew member on the plate went 8/8 → 0/8 in a running game while the node suite stayed 1523/1523
+// GREEN. THIS LANE measured the enforcement: with both deleted, exactly TWO legs in the whole
+// 1527-test suite go red — this one and `overview-model.test.js`'s pawn-overlay leg — and nothing
+// else in the suite notices at all.
+// That is the BUG-B family — a gesture that produces NO action, not a wrong one — and before these
+// two legs it had no enforcement at all.
+//
+// SO THIS LEG BUILDS NOTHING ITSELF. It dispatches a roster and lets the SHIPPING controller do the
+// whole thing — `pawnLayerParts` builds the art, `makePawnLayer` mounts it into the harness's real
+// `#ov-pawnlay` node — and then presses on the `<g>` the surface actually created, so the event walks
+// up through the OVERLAY's own listeners. Nothing here is a stand-in except the document itself.
+//
+// MUTATION (applied, RED, reverted): delete the two `_pawnSvgEl.addEventListener` lines ⇒ the press
+//   reaches nobody and `hudSent` is empty ⇒ red.
+// MUTATION (applied, RED, reverted): `hitTest`'s `.pl-pawn` closest → `.pl-nothing` ⇒ red.
+// The CSS half is pinned in `overview-scene.test.js` (it already reads `stylesSource()` for the
+// stacking rule) — a `pointer-events` declaration is a fact about the sheet, not about this DOM.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** What the SHARED selection flow (`hud.js`) sent — `initConsole`'s first statement assigns `_send`,
+ *  everything after it is console chrome this document cannot host, hence the try/catch. */
+const ovHudSent = [];
+try { Hud.initConsole({ send: (o) => ovHudSent.push(o) }); } catch { /* chrome, not state */ }
+
+/** A crew member MID-GLIDE, AND DELIBERATELY ACROSS A TILE LINE: her sim tile is (12,5) and her body
+ *  is drawn at 12.6, i.e. in tile 13. That disagreement is the whole point — it is the shape that
+ *  breaks the ROOM ZOOM's geometric hit test (which is why that surface now asks its tween first),
+ *  and it is the shape this surface is IMMUNE to, because the Overview hit-tests the FIGURE ELEMENT
+ *  itself (`target.closest('.pl-pawn')` + `data-cid`) and the element is the thing the tween moves.
+ *  Both halves are asserted below: the click finds her by her figure, and the command still carries
+ *  her SIM tile (the host resolves it through `Citizen.Pos` — `WireFormat.RosterEntry.Fx`). */
+const OV_WALKER = {
+  cid: 4242, name: 'Ada Ozawa', role: 'general crew', mood: '', morale: 1, task: 'Idle',
+  portrait: '', deck: FIX.frame.deck, x: 12, y: 5, traits: [], fx: 12.6, fy: 5,
+};
+
+/** The live `<g class="pl-pawn">` the SURFACE mounted for `cid`, out of the real overlay node.
+ *
+ *  ⚠️ FROM THE MOUNTED DOCUMENT, NOT FROM THE MODULE-LEVEL `ovDoc` — the same trap this file already
+ *  documents for `#ov-nudge`. `mountOverview(makeOvDoc(), …)` builds its OWN document; asking `ovDoc`
+ *  for `#ov-pawnlay` hands back an element the controller has never seen, which reads exactly like
+ *  the surface having mounted nobody. (It did, on the first draft of this test.) */
+const ovMountedDoc = ovStage.ownerDocument;
+function ovMountedPawn(cid) {
+  const lay = ovMountedDoc.getElementById('ov-pawnlay');
+  return ((lay && lay.childNodes) || []).find((nd) => nd.getAttribute
+    && nd.getAttribute('data-cid') === String(cid)) || null;
+}
+
+test('DRIVEN: a press on the figure in the pawn OVERLAY selects that crew member', () => {
+  Hud.renderRoster({ type: 'roster', crew: [OV_WALKER] });   // …which repaints (synchronous rAF)
+
+  const node = ovMountedPawn(OV_WALKER.cid);
+  assert.ok(node, 'the surface mounted no figure into `#ov-pawnlay` — every assertion below would be '
+    + 'vacuous, and the plate would be drawing nobody at all');
+  assert.equal(node.getAttribute('class'), 'pl-pawn',
+    'the group does not carry the class `hitTest` resolves a crew click through');
+  assert.equal(node.dataset.cid, String(OV_WALKER.cid),
+    '`hitTest` reads `pawn.dataset.cid`; without it the press finds a pawn and cannot name one');
+
+  // THE PRESS, at the mounted figure. It walks node → #ov-pawnlay, and ONLY the overlay's own
+  // listeners can catch it: `#ov-stage` is not on this path.
+  ovHudSent.length = 0;
+  clickTile(node, 12, 5);
+  assert.deepEqual(ovHudSent, [{ cmd: 'click', x: OV_WALKER.x, y: OV_WALKER.y }],
+    'clicking the figure on the plate selected nobody. The overlay is a SIBLING of `#ov-stage`, so '
+    + 'without its own pointerdown/pointerup listeners the press reaches no handler and produces NO '
+    + 'action — the BUG-B failure mode, silent by construction.');
+
+  // ⭐⭐ AND THIS IS THE OVERVIEW'S IMMUNITY, PINNED RATHER THAN ASSERTED IN PROSE. Her body is drawn
+  // in tile 13 while her sim tile is 12 — the exact disagreement that made the Room Zoom's geometric
+  // hit test select nobody ~10% of the time. This surface never asks a tile at all: it hit-tests the
+  // drawn ELEMENT, so the lag cannot reach it. The command then carries her SIM tile, because the
+  // host resolves a click through `Citizen.Pos` — the one consumer that must NOT follow the drawing.
+  assert.equal(Math.round(OV_WALKER.fx), OV_WALKER.x + 1,
+    'fixture check: the drawn tile and the sim tile must be DIFFERENT TILES, or the immunity claim '
+    + 'below is about a case that cannot fail');
+  assert.equal(ovHudSent[0].x, 12, 'the wire command must address the SIM tile, not the drawn one');
+
+  // NON-VACUITY, the other way: the same press on bare plate selects nobody, so leg 1 is not
+  // satisfied by a surface that selects on every press.
+  ovHudSent.length = 0;
+  clickTile(ovStage, 12, 5);
+  assert.deepEqual(ovHudSent, [], 'a press on bare plate selected a crew member');
+
+  Hud.renderRoster({ type: 'roster', crew: [] });
 });
 
 // ── BUG-B: the scene gesture resolves on POINTERUP, because `click` is not delivered ───────────

@@ -5138,6 +5138,125 @@ test('DRIVEN: the pawn node SURVIVES a repaint that rebuilds the whole room', as
     'the figure carries no transform, so every crew member is drawn at the layer origin');
 });
 
+/** What the SHARED selection flow (`hud.js`) sent. `initConsole`'s FIRST statement assigns `_send`;
+ *  everything after it is console chrome this document cannot host, hence the try/catch — the same
+ *  pattern `zoom-pawn.test.js` uses for the same reason. */
+const rzHudSent = [];
+try { Hud.initConsole({ send: (o) => rzHudSent.push(o) }); } catch { /* chrome, not state */ }
+
+/** A plain click at the centre of a tile of the CURRENTLY focused room, through the real canvas
+ *  handler — the gesture a player makes to select a crew member (no tool armed). */
+function rzClickTile(tx, ty) {
+  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(_rzFocusNow, tx, ty) });
+}
+let _rzFocusNow = null;
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ YOU SELECT WHAT YOU CAN SEE — AND SINCE THE TWEEN, THAT IS NO LONGER `crewHitAtTile` ALONE.
+//
+// `crewHitAtTile` matches the tile of the NEWEST WIRE SAMPLE. The tween deliberately draws the body
+// BETWEEN the last two samples (no extrapolation), so the figure stands one tile short of the sample
+// for most of every render interval — and on a HELD ship it stays there until the player starts the
+// ship again. Independent review measured `round(drawn) != round(sample)` on 11.0% of moving frames
+// and a held-ship click drive at 14/17 against a base client's 11/12: the 2026-07-29 "cannot select a
+// pawn by clicking on him" affordance coming back for a new reason.
+//
+// The view now asks its own interpolator first (`crewDrawnAtTile`) and falls back to
+// `crewHitAtTile`. These legs drive the case that matters — a figure whose DRAWN tile and SAMPLE
+// tile are DIFFERENT TILES — through the real mounted surface and the real click handler.
+//
+// MUTATION (applied, RED, reverted): drop the `crewDrawnAtTile(...) ||` first pass in `onCanvasClick`
+//   ⇒ the click on her feet selects NOBODY ⇒ red on leg 1.
+// ⚠️ MEMBERSHIP IS GUARDED TWICE, AND NEITHER SINGLE REMOVAL IS OBSERVABLE — said out loud rather
+//   than left as a comfortable "either suffices". `_tween` is fed only `roomCrew(here)`, AND
+//   `crewDrawnAtTile` iterates `roomCrew` again; deleting either one alone leaves the suite green
+//   (measured, both ways). The never-widen leg therefore drives the case where BOTH are gone —
+//   `_tween.sample((crew || []).map(…))` plus a raw-list iteration ⇒ RED. Both are kept: the filter
+//   in the lookup is what a future lane will read, and the filter on the feed is what keeps the
+//   tween from tracking pawns this surface never draws.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('DRIVEN: mid-glide, a click on her FEET selects her — not on the tile the wire is aiming at', async () => {
+  const f = rzEnter('hold'); _rzFocusNow = f;
+  const sim = { x: f.rx + 5, y: f.ry + 3 };
+  const walker = { cid: 7007, name: 'Ada Ozawa', role: 'engineer', deck: f.deck, x: sim.x, y: sim.y, task: '' };
+  // ⭐ THE SHAPE THAT MAKES THE TWO ANSWERS DIFFER, built deliberately: sample A sits a whole tile
+  // back, sample B lands just short of the sim tile. `drawnTile(B)` rounds to the SIM tile, which is
+  // what `crewHitAtTile` answers — while the tween, which never extrapolates, is still drawing her
+  // near A. The long gap between the two renders makes the measured interval ~250 ms (the model's
+  // ceiling), so the 40 ms coalesced repaint below leaves her ~16% along and unambiguously in A's
+  // tile. This is the live 11%-of-frames case, made deterministic.
+  const A = { fx: sim.x - 1, fy: sim.y };
+  const B = { fx: sim.x - 0.05, fy: sim.y };
+  const drawnStart = { x: Math.round(A.fx), y: Math.round(A.fy) };
+  const sampleTile = { x: Math.round(B.fx), y: Math.round(B.fy) };
+  assert.notDeepEqual(drawnStart, sampleTile,
+    'the fixture no longer straddles a tile line — this leg would pass on the broken client too');
+  assert.deepEqual(sampleTile, sim, 'fixture check: the newest sample rounds to her sim tile');
+
+  Hud.renderRoster({ type: 'roster', crew: [{ ...walker, ...A }] });
+  await new Promise((r) => setTimeout(r, 400));      // …so the MEASURED interval is the 250 ms ceiling
+  Hud.renderRoster({ type: 'roster', crew: [{ ...walker, ...B }] });
+  await new Promise((r) => setTimeout(r, 40));       // the coalesced repaint that mounts + samples
+
+  rzSent.length = 0; rzHudSent.length = 0;
+  rzClickTile(drawnStart.x, drawnStart.y);
+  assert.deepEqual(rzHudSent, [{ cmd: 'click', x: sim.x, y: sim.y }],
+    'clicking the tile her BODY is standing in selected nobody. The tween draws her behind the '
+    + 'newest sample by design, so a hit test on the sample alone answers for bare floor she has not '
+    + 'reached — which is the affordance the owner reported by name on 2026-07-29, coming back for a '
+    + 'new reason.');
+  // …and the wire command still carries her SIM tile: the host resolves a click through
+  // `Citizen.Pos`, so this is the one consumer that must NOT follow the drawing.
+  assert.equal(rzHudSent[0].x, sim.x, 'the command must address the SIM tile, not the drawn one');
+
+  // ⭐ THE SAMPLE TILE STILL WORKS TOO — the tween pass is an ADDITION, not a replacement. A player
+  // aiming slightly ahead of a walking figure keeps the behaviour that shipped with the glide.
+  rzHudSent.length = 0;
+  rzClickTile(sampleTile.x, sampleTile.y);
+  assert.deepEqual(rzHudSent, [{ cmd: 'click', x: sim.x, y: sim.y }],
+    'the `crewHitAtTile` fallback stopped answering — the tween pass replaced it instead of '
+    + 'preceding it, so a client with the loop off would select nobody at all');
+
+  // NON-VACUITY: a tile with nobody drawn on it and nobody sampled on it still selects nobody.
+  rzHudSent.length = 0;
+  rzClickTile(sim.x + 3, sim.y + 2);
+  assert.deepEqual(rzHudSent, [], 'bare floor selected somebody');
+  Hud.renderRoster({ type: 'roster', crew: [] });
+});
+
+test('DRIVEN: the tween pass NEVER widens who can be selected — only the room\'s own crew', async () => {
+  const f = rzEnter('hold'); _rzFocusNow = f;
+  // ⛔⛔ THE OUTSIDER STANDS ON A TILE **INSIDE** THIS ROOM'S RECT, ON ANOTHER DECK — and the first
+  // draft of this leg did not, which made it VACUOUS. It put her three tiles beyond the room's right
+  // edge, where `onCanvasClick`'s own `tileAt` returns null ("outside the room", IX-Z-11) and the
+  // crew hit test is never reached at all: BOTH membership filters could be deleted and the leg
+  // stayed green (measured, twice). A wrong-DECK crew member on an in-room tile is the only shape
+  // where the click really lands and only membership can refuse her.
+  const tile = { x: f.rx + 4, y: f.ry + 2 };
+  const otherDeck = { cid: 7008, name: 'Bo Ashby', role: 'crew', deck: f.deck + 1,
+    x: tile.x, y: tile.y, fx: tile.x, fy: tile.y, task: '' };
+  Hud.renderRoster({ type: 'roster', crew: [otherDeck] });
+  await new Promise((r) => setTimeout(r, 40));
+  rzHudSent.length = 0;
+  rzClickTile(tile.x, tile.y);
+  assert.deepEqual(rzHudSent, [],
+    'a crew member on ANOTHER DECK was selectable by clicking this room\'s floor. `crewDrawnAtTile` '
+    + 'must narrow `roomCrew`, never replace it — the drawn-tile membership contract is the wire\'s '
+    + '(`WireFormat.RosterEntry.Fx`), not this view\'s to widen.');
+
+  // …and the SAME click on the SAME tile selects a crew member who IS in the room, so the refusal
+  // above is membership and not a dead click path.
+  const insider = { ...otherDeck, cid: 7009, deck: f.deck };
+  Hud.renderRoster({ type: 'roster', crew: [insider] });
+  await new Promise((r) => setTimeout(r, 40));
+  rzHudSent.length = 0;
+  rzClickTile(tile.x, tile.y);
+  assert.deepEqual(rzHudSent, [{ cmd: 'click', x: tile.x, y: tile.y }],
+    'the same tile selects nobody even for this room\'s own crew — the leg above proves nothing');
+  Hud.renderRoster({ type: 'roster', crew: [] });
+});
+
 test('DRIVEN: leaving the room drops the figures — a closed surface holds no pawn state', async () => {
   const f = rzEnter('hold');
   Hud.renderRoster({ type: 'roster', crew: [
