@@ -8,6 +8,8 @@
 // registry — or absent entirely — we synthesize a silhouette: the citizen's initials over a hue
 // derived deterministically from their cid, so the same person always gets the same colour.
 
+import { PAPER, INK } from '../theme/paper-tokens.js';
+
 /** @typedef {{kind:'image', key:string, src:string} | {kind:'silhouette', hue:number, initials:string}} Portrait */
 
 /**
@@ -68,7 +70,40 @@ export function portraitElement(portrait) {
   }
   const el = document.createElement('div');
   el.className = 'portrait silhouette';
-  el.style.background = `linear-gradient(160deg, hsl(${portrait.hue} 45% 32%), hsl(${(portrait.hue + 40) % 360} 40% 18%))`;
+  // ── INK ON PAPER (visual redesign, package P5) ──────────────────────────────────────────────
+  // The silhouette used to be a saturated HSL gradient with cream initials over it — the warm skin's
+  // vocabulary. Left alone it would sit in the dossier next to the new ink figures as the one
+  // old-palette object on the surface, which is exactly the kind of half-migrated screen the redesign
+  // is meant to remove. It is retinted, NOT rebuilt: the resolver above is untouched, `hue` is still
+  // the same deterministic number, and it still varies per soul — it now chooses among the charter's
+  // three inset papers (§1) instead of spanning the colour wheel. The FULL portrait panel (the
+  // design's Screen 04) is M4's Persona window and is deliberately not built here.
+  //
+  // Written as inline style rather than as a rule in `styles/console.css`: this card lives in the
+  // DEPRECATED console shell, which is closed to new work, and an inline style beats the shell's own
+  // `color: var(--txt-onacc)` / `border: 1px solid var(--ln-chip)` without editing it.
+  //
+  // Every value below comes from `theme/paper-tokens.js` — see the note on PAPER_INSETS.
+  el.style.background = PAPER_INSETS[portrait.hue % PAPER_INSETS.length];
+  el.style.color = SILHOUETTE_INK;
+  el.style.borderColor = SILHOUETTE_BORDER;
   el.textContent = portrait.initials;
   return el;
 }
+
+/**
+ * The charter's three inset papers (§1), the whole range a silhouette varies over — READ FROM THE
+ * TOKEN MODULE, never copied.
+ *
+ * ⚠️ THE FIRST DRAFT COPIED FIVE HEXES IN HERE behind the comment *"Literals: this module is
+ * imported by pure node tests"*. That reason was FALSE and is recorded so nobody re-derives it:
+ * `theme/paper-tokens.js` is itself a pure ES module with no DOM, no clock and no side effects, and
+ * three pure node suites already import it (`paper-tokens.test.js`, `oblique.test.js`,
+ * `pawn-svg.test.js`). There was never anything to work around. A duplicated palette with a wrong
+ * justification is exactly how `warm.css` and `warm-tokens.js` drifted for a year — the drift the
+ * mirror pin in `paper-tokens.test.js` exists to stop, which a copy in a THIRD file walks straight
+ * around.
+ */
+const PAPER_INSETS = Object.freeze([PAPER.inset1, PAPER.inset2, PAPER.inset3]);
+const SILHOUETTE_INK = INK.ink;
+const SILHOUETTE_BORDER = PAPER.border;

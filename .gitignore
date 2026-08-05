@@ -24,3 +24,6 @@ art/spritegen/work/*/candidates/
 art/spritegen/work/*/*_raw.png
 art/spritegen/work/*/shot.png
 art/spritegen/work/*/contact_candidates.png
+
+# P5 visual-review shots (client/tools/pawn-gallery.mjs regenerates them on demand)
+client/tools/shots-pawns/

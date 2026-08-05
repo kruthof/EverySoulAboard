@@ -3,84 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PERILUNE — pawn generator gallery</title>
-<link rel="stylesheet" href="./src/theme/warm.css">
+<title>PERILUNE — ink figure gallery</title>
+<link rel="stylesheet" href="./src/theme/paper.css">
 <style>
-  /* A visual-review page for src/render/pawn-svg.js — the eight mock crew rendered as
-     in-world pawns on a warm plank stage + as roster portrait chips. Not a shipped view. */
+  /* A visual-review page for src/render/pawn-svg.js — the eight mock crew as in-world ink figures
+     and as roster chips. Not a shipped view.
+     RETINTED AT P5, WITH THE ART IT REVIEWS. It used to stage the pawns on a warm plank floor under
+     a navy page and caption them "each role owns a hue", and it read `look.uniform`, which no longer
+     exists — the dot rendered `background: undefined`. A review page that describes the PREVIOUS
+     design certifies the wrong thing, which is worse than having no page at all.
+     ⚠️ THIS PAGE IS THE EYEBALL, NOT THE MEASUREMENT: it draws the figures ~3x the size they ship
+     at. The instrument that draws them at the REAL board sizes, over the hatch / floor grid /
+     starfield the knockout has to survive, is `client/tools/pawn-gallery.mjs`, which screenshots
+     itself in real Chrome. */
   body {
     margin: 0;
-    background: #0c1522;
-    color: var(--ink-body, #b3aa9c);
-    font-family: 'Space Mono', ui-monospace, monospace;
+    background: var(--paper-ground, #E7E0D2);
+    color: var(--ink-prose, #4E463A);
+    font-family: var(--font-mono, 'Space Mono', ui-monospace, monospace);
   }
   section { display: flex; flex-direction: column; gap: 34px; padding: 48px; }
-  h1 { color: var(--ink-bright, #e8dcc9); font-size: 20px; font-weight: 400; margin: 0; }
-  .cap { color: var(--ink-mute, #8c8377); font-size: 11.5px; max-width: 960px; line-height: 1.7; }
-  .label { font-size: 10px; letter-spacing: .18em; color: var(--ink-faint, #57503f); }
+  h1 { font-family: var(--font-serif, 'Instrument Serif', serif); font-weight: 400;
+       color: var(--ink-display, #241E17); font-size: 30px; margin: 0; }
+  .cap { font-family: var(--font-serif, 'Instrument Serif', serif); font-size: 16px;
+         color: var(--ink-serif, #2E2A23); max-width: 900px; line-height: 1.45; }
+  .label { font-size: 9.5px; letter-spacing: .22em; text-transform: uppercase;
+           color: var(--ink-section, #8A7F6C); }
 
-  /* the warm plank floor, verbatim from the crew-sprites mock */
-  .plank {
-    position: relative; max-width: 1020px; border-radius: 8px; padding: 34px 20px 26px;
-    background: repeating-linear-gradient(90deg, #c2894e 0 44px, #b57e45 44px 47px);
-    box-shadow: inset 0 8px 22px rgba(0,0,0,.2), inset 0 0 0 1px rgba(0,0,0,.15);
-    overflow: hidden;
-  }
-  .plank .trim {
-    position: absolute; left: 0; right: 0; top: 0; height: 12px; background: #3a4b5c;
-    box-shadow: inset 0 3px 0 rgba(232,147,74,.55), inset 0 -2px 0 rgba(0,0,0,.4);
-  }
-  .plank .pool {
-    position: absolute; left: -100px; top: -40px; width: 400px; height: 200px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(242,181,99,.16), transparent 70%);
-    mix-blend-mode: screen; pointer-events: none;
-  }
-  .crew-row { display: flex; gap: 6px; justify-content: space-between; flex-wrap: wrap; position: relative; }
+  /* the plate the figures stand on */
+  .plate { background: var(--paper-plate, #EBE4D1); border: 1px solid var(--paper-border, #C6BBA2);
+           box-shadow: var(--plate-shadow, 0 18px 40px -28px rgba(28,26,23,.55));
+           padding: 30px 20px 20px; max-width: 1020px; }
+  .crew-row { display: flex; gap: 6px; justify-content: space-between; flex-wrap: wrap; }
   .pawn-cell { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 114px; }
-  .pawn-cell svg { display: block; animation: bob 3.2s ease-in-out infinite; }
-  .pawn-name { font-size: 11px; letter-spacing: .1em; color: #3a2c1c; font-weight: 700; }
-  .pawn-role { font-size: 8.5px; letter-spacing: .08em; color: #6b4f30; text-align: center; }
+  .pawn-cell svg { display: block; }
+  .pawn-name { font-family: var(--font-serif, 'Instrument Serif', serif); font-size: 17px;
+               color: var(--ink, #14120F); }
+  .pawn-role { font-size: 8px; letter-spacing: .14em; text-transform: uppercase;
+               color: var(--ink-micro, #6B6252); text-align: center; }
+  .pawn-traits { font-size: 8px; letter-spacing: .06em; color: var(--ink-faintest, #A79C86);
+                 text-align: center; }
 
   /* the roster chips */
   .chips { display: grid; grid-template-columns: repeat(4, 236px); gap: 12px; }
-  .chip { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #1a1310;
-          border-radius: 6px; box-shadow: inset 0 0 0 1px #2b241c; }
-  .chip svg { display: block; flex-shrink: 0; border-radius: 5px; }
-  .chip-name { font-size: 12px; letter-spacing: .08em; color: #e8dcc9; }
-  .chip-role { font-size: 9px; letter-spacing: .06em; color: #8c8377; }
-  .chip-status { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: 9px; color: #6fc09a; }
-  .chip-dot { width: 7px; height: 7px; border-radius: 50%; }
-
-  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+  .chip { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+          background: var(--paper-inset-3, #E1D9C5);
+          border: 1px solid var(--paper-hairline, #CFC3A9); }
+  .chip svg { display: block; flex-shrink: 0; width: 44px; height: 55px; }
+  .chip-name { font-family: var(--font-serif, 'Instrument Serif', serif); font-size: 17px;
+               color: var(--ink, #14120F); }
+  .chip-role { font-size: 8px; letter-spacing: .14em; color: var(--ink-micro, #6B6252); }
+  .chip-status { margin-top: 2px; font-size: 8px; letter-spacing: .1em;
+                 color: var(--ink-faintest, #A79C86); }
 </style>
 </head>
 <body>
 <section>
   <div style="display:flex;flex-direction:column;gap:10px;">
-    <h1>Crew, drawn to match the warm deck</h1>
-    <div class="cap">Parametric SVG pawns from <code>src/render/pawn-svg.js</code> — one pure
-      builder serving both the in-world pawn (16×24) and the roster portrait chip (16×20). Warm
-      skin, role-coloured uniform, ground shadow, and a thin amber rim-light down the left side.
-      Hair/skin are hashed deterministically from each soul's <code>cid</code>. No rotation; the
-      figure is always front-facing.</div>
+    <h1>Crew, drawn in ink</h1>
+    <div class="cap">Two-pass figures from <code>src/render/pawn-svg.js</code> — one pure builder,
+      one path list, serving the in-world pawn (16×24) and the roster chip (16×20). Every stroke is
+      emitted twice: a paper knockout that carves the figure out of whatever it stands on, then the
+      ink. Nobody has a colour. A soul's <code>cid</code> chooses their build, their topper, their
+      personal mark and their height; their ROLE chooses the tool in their hand. The one oxblood on
+      a person is a keepsake.</div>
   </div>
 
   <div style="display:flex;flex-direction:column;gap:14px;">
-    <div class="label">LIVE SPRITE FEED — 8 SOULS · IN-WORLD PAWNS</div>
-    <div class="plank">
-      <div class="trim"></div>
-      <div class="pool"></div>
-      <div class="crew-row" id="pawns"></div>
-    </div>
+    <div class="label">eight souls · in-world figures</div>
+    <div class="plate"><div class="crew-row" id="pawns"></div></div>
   </div>
 
   <div style="display:flex;flex-direction:column;gap:14px;">
-    <div class="label">CREW WATCH — ROSTER CHIP</div>
+    <div class="label">crew watch · roster chip</div>
     <div class="chips" id="chips"></div>
   </div>
 
-  <div class="cap">Each role owns a hue so you read the deck at a glance. The same builder makes
-    both the pawn and the bust; the hue reaches map, in-world pawn and roster together.</div>
+  <div class="cap">Height, stance and silhouette carry them at board size; the details reward
+    zooming. For the sizes that actually ship, run
+    <code>node client/tools/pawn-gallery.mjs</code>.</div>
 </section>
 
 <script type="module">
@@ -89,18 +90,19 @@
   const pawns = document.getElementById('pawns');
   const chips = document.getElementById('chips');
 
-  MOCK_CREW.forEach((c, i) => {
+  MOCK_CREW.forEach((c) => {
     const look = resolvePawnLook(c);
+    const traits = `${look.build} · ${look.topper} · ${look.mark} · ${look.prop}`;
 
-    // ── in-world pawn ──
+    // ── in-world figure ──
     const cell = document.createElement('div');
     cell.className = 'pawn-cell';
     cell.innerHTML =
-      `<svg width="74" height="111" viewBox="0 0 16 24" style="animation-delay:${(i * 0.37).toFixed(2)}s">`
-      + pawnSprite(c) + `</svg>`
+      `<svg width="74" height="111" viewBox="0 0 16 24">` + pawnSprite(c) + `</svg>`
       + `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">`
       +   `<div class="pawn-name">${c.surname}</div>`
       +   `<div class="pawn-role">${c.roleLabel}</div>`
+      +   `<div class="pawn-traits">${traits}</div>`
       + `</div>`;
     pawns.appendChild(cell);
 
@@ -108,11 +110,11 @@
     const chip = document.createElement('div');
     chip.className = 'chip';
     chip.innerHTML =
-      `<svg width="56" height="70" viewBox="0 0 16 20">` + pawnChip(c) + `</svg>`
+      `<svg viewBox="0 0 16 20">` + pawnChip(c) + `</svg>`
       + `<div style="display:flex;flex-direction:column;gap:3px;min-width:0;">`
       +   `<div class="chip-name">${c.surname}</div>`
       +   `<div class="chip-role">${c.roleLabel}</div>`
-      +   `<div class="chip-status"><span class="chip-dot" style="background:${look.uniform}"></span>${c.status}</div>`
+      +   `<div class="chip-status">${c.status} · ${look.prop}</div>`
       + `</div>`;
     chips.appendChild(chip);
   });
