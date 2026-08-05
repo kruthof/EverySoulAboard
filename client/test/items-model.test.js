@@ -297,6 +297,39 @@ function spriteAt(svg) {
     .map((m) => ({ x: +m[1], y: +m[2] }));
 }
 
+// ⭐⭐ VR-P3-a — A PILE SAYS WHICH TILE IT IS ON, AND ITS OWN INK IS THE PRESSABLE PART.
+//
+// `place.stand` puts a pile UPRIGHT on its tile's floor centre, so its body hangs over the tile
+// BEHIND it and the Room Zoom's floor-plane inverse resolved a press on the pile to that tile — one
+// tile of error against the fittings' three, and the same defect. `roomzoom-view.js`'s `tileAt`
+// resolves `e.target.closest('[data-tile]')` first; this tag is one of the three places the client
+// EMITS that attribute, and without it the handler tier is inert over every ground stack.
+//
+// ⛔ IT IS ITS OWN LEG BECAUSE THE OTHER TWO EMITTERS' LEGS DO NOT COVER IT — measured by an
+// independent reviewer: deleting `data-tile` from this exact tag left the whole suite 1469/1469 GREEN
+// while the live surface went back to designating the wrong tile. "One family, one test" is the 4th
+// shape wearing a call-site costume.
+// MUTATION: drop ` data-tile="…"` from `itemStackSvg`'s `<g class="rz-item">` ⇒ RED here.
+// MUTATION: drop ` pointer-events="visiblePainted"` from the same tag ⇒ RED here (the group above is
+//   `none`, so without the per-item tier the ink is not hit-testable and the tier can never fire).
+test('VR-P3-a: every ground-item pile is emitted with its own tile, and its ink takes the pointer', () => {
+  const svg = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [7, 4, 1, 3, 2]])), ROOM), ROOM);
+  const tags = [...svg.matchAll(/<g class="rz-item"([^>]*)>/g)].map((m) => m[1]);
+  assert.equal(tags.length, 2, 'precondition: two stocked tiles must draw two groups');
+  for (const [i, [tx, ty]] of [[4, 2], [7, 4]].entries()) {
+    assert.match(tags[i], new RegExp(` data-tile="${tx},${ty}"`),
+      `pile ${i} does not say which tile it was drawn for, so a press on it falls back to the `
+      + 'FLOOR-PLANE inverse and designates the tile the pile is standing OVER');
+    assert.match(tags[i], / pointer-events="visiblePainted"/,
+      `pile ${i} is not hit-testable. The `
+      + '`rz-items` group is `pointer-events="none"` (so the paper between piles falls through to the '
+      + 'floor), which means the per-item tier is the ONLY thing that can make a pile pressable — '
+      + 'without it the `data-tile` beside it can never be reached.');
+  }
+  // …and the GROUP stays none, the same pairing `furnitureSvg` carries: ink is a target, paper is not.
+  assert.match(svg, /^<g class="rz-items" pointer-events="none">/);
+});
+
 // ⚠️ THE PREDECESSOR OF THIS TEST HAD FOUR MUTATIONS SURVIVE 782/782 GREEN, all plain arithmetic in a
 // pure builder, because it asserted `x` and nothing else: a zero-height plate, a TOP-anchored one, one
 // drawn five tiles below its own tile, and `- rx` written for `- ry` (every plate off by rows). The
@@ -306,7 +339,11 @@ test('itemStackSvg draws one group per tile inside the rz-items layer, in room-l
   const tiles = roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [7, 4, 1, 3, 2]])), ROOM);
   const svg = itemStackSvg(tiles, ROOM);
   assert.match(svg, /^<g class="rz-items" pointer-events="none">/);
-  assert.equal([...svg.matchAll(/<g class="rz-item">/g)].length, 2, 'one group per stocked tile');
+  // ⚠️ THE READER ALLOWS ATTRIBUTES AFTER THE CLASS. VR-P3-a put `data-tile` +
+  // `pointer-events="visiblePainted"` on this tag (a pile stands UP off its floor point, so a press
+  // on it resolved one tile back); a reader anchored on the bare `<g class="rz-item">` went red for a
+  // reason with nothing to do with the placement it is about — a FALSE RED in TRAPS-3's family.
+  assert.equal([...svg.matchAll(/<g class="rz-item"[^>]*>/g)].length, 2, 'one group per stocked tile');
 
   // THE ART. Not "a string came back" — the real pieces, from the real registry, by kind.
   assert.ok(svg.includes('data-kind="0"') && svg.includes('data-kind="3"'), 'both kinds named');
@@ -387,7 +424,7 @@ test('itemIdForStockKind is the DERIVED join, byte → sim name → piece', () =
 
 test('two kinds on one tile each get their own piece and their own count', () => {
   const svg = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 7], [4, 2, 1, 3, 2]])), ROOM), ROOM);
-  assert.equal([...svg.matchAll(/<g class="rz-item">/g)].length, 1, 'one tile, one group');
+  assert.equal([...svg.matchAll(/<g class="rz-item"[^>]*>/g)].length, 1, 'one tile, one group');
   assert.equal(spriteAt(svg).length, 2, 'both kinds must be drawn — the projection could show one');
   assert.deepEqual(badgeTexts(svg), ['7', '2'], 'and both counts');
   const rects = badgeRects(svg);

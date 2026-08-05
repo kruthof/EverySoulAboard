@@ -136,13 +136,41 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
    grow without bound scrolls inside itself (`.ov-cplist`). `overview-plate-shot.mjs` measures the
    alert and the caveat against the viewport, because dom-lite cannot see this class of defect at
    all. */
+/* ⛔⛔ AND THE WIDTH IS RESPONSIVE, WHICH IT WAS NOT — the owner's report, reproduced in headless
+   Chrome before it was touched. Two separate defects lived in the three lines below.
+   (1) THE BAND DID NOT COMPRESS. `258px 150px` are hard tracks and `column-gap:28px` + the 26px
+   separator padding are hard too, so 490 px of the band's width was incompressible and the two PROSE
+   columns were the only things that could give: at a 700 px viewport `compartments` measured 147 px
+   and `aboard` 120 px of content while the two instruments kept every pixel they had at 1600.
+   (2) THE RADAR HUNG OUT OF ITS OWN COLUMN BY 27 px — 18 % of a 150 px instrument, clipped away by
+   `.ov-col{overflow:hidden}`, at EVERY viewport that drew it (measured: svg right = 1581 against a
+   column ending at 1554, at 1600/1500/1440/1400/1360 alike). The cause is a CSS SPECIFICITY loss,
+   not a missing rule: `.ov-columns .ov-radar` (0,2,0) never beat `.ov-columns .ov-col+.ov-col`
+   (0,3,0), so the reset below was dead and the radar column computed `padding-left:26px` +
+   `border-left:1px` INSIDE a `border-box` 150 px track — 123 px of content for a 150 px drawing.
+   THE SIZES ARE THE DESIGN'S, DERIVED RATHER THAN DROPPED. `258px` is not a preference: the widest
+   `.ov-ledrow` measures 229 px of max-content and the column adds 27 px of chrome, so 256 px is the
+   ledger's floor and it stays a hard track. Everything else scales: `min(150px,11vw)` is exactly
+   150 px at any viewport ≥ 1364 px (the design's own number, unchanged where the design was drawn)
+   and shrinks below it, and the gap/padding clamps hit their 28/26 maxima at 1600. Measured at 1600
+   the four tracks come back 503 / 513 / 258 / 150 — the pre-fix numbers to the pixel.
+   ⚠️ AND THE FLOOR IS MEASURED RATHER THAN IMPLIED, so nobody re-measures it (independent review,
+   2026-08-05): the band is clean down to a 580 px viewport; at 540 px `#ov-compart` clips its own
+   content (scrollWidth 90 against clientWidth 80); at 500 px spans escape their columns. The cause is
+   the one incompressible track — 258 px of ledger plus 92 px of plate margin plus the gaps is ~380 px
+   before either prose column gets a pixel — and it is the price of keeping the ledger's numbers
+   legible. Below 580 px this band is honest about nothing; that is a KNOWN LIMIT, not a target. */
 .ov-columns{flex:none;height:auto;max-height:min(46vh,340px);
-  display:grid;grid-template-columns:1fr 1.02fr 258px 150px;column-gap:28px;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.02fr) 258px min(150px,11vw);
+  column-gap:clamp(14px,1.75vw,28px);
   border-top:1px solid var(--ink);padding-top:14px}
 .ov-col{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;overflow:hidden}
 /* the hairline separators the design puts between the columns */
-.ov-columns .ov-col+.ov-col{border-left:1px solid var(--paper-hairline);padding-left:26px}
-.ov-columns .ov-radar{border-left:0;padding-left:0}
+.ov-columns .ov-col+.ov-col{border-left:1px solid var(--paper-hairline);
+  padding-left:clamp(12px,1.65vw,26px)}
+/* ⛔ `.ov-col+.ov-col.ov-radar`, NOT `.ov-radar` — see the specificity note above. The radar column
+   is the one column with no separator, so its whole track must be drawing. */
+.ov-columns .ov-col+.ov-col.ov-radar{border-left:0;padding-left:0}
 
 /* `compartments` — one serif line per room, and the oxblood clause when an order is stuck */
 /* ⚠️ THE DESIGN SHOWS THREE ROOMS AND THE SHIP HAS EIGHT. Measured in headless Chrome at the
@@ -211,7 +239,11 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
 
 /* `outside` — the radar. `currentColor` inside the SVG resolves to the column's ink. */
 .ov-radar{color:var(--ink)}
-.ov-radarsvg{display:block;background:var(--paper-plate)}
+/* ⭐ THE SCOPE SCALES WITH ITS COLUMN. It carries a `viewBox` and no `width`/`height` attributes
+   (`overview-view.js`), so `width:100%` + the 1:1 `aspect-ratio` make it exactly as wide as whatever
+   track `min(150px,11vw)` gave it — 150 px at the design's widths, smaller below. The hard-coded
+   150×150 it replaces could not fit a 123 px content box and was clipped by 27 px. */
+.ov-radarsvg{display:block;width:100%;height:auto;aspect-ratio:1;background:var(--paper-plate)}
 .ov-sweep{transform-origin:75px 75px;animation:j4sweep 7s linear infinite}
 @keyframes j4sweep{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.ov-sweep{animation:none}}
@@ -491,9 +523,16 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
   background:var(--paper-plate);border:1px solid var(--paper-border);box-shadow:var(--plate-shadow)}
 .onb-help:hover{color:var(--paper-plate);background:var(--ink);border-color:var(--ink)}
 
-/* ==== narrow-viewport drops (unchanged behaviour, new homes) ==== */
-@media (max-width:1359px){
-  #overview-view .ov-columns{grid-template-columns:1fr 1fr 258px}
+/* ==== narrow-viewport drop ====
+   ⚠️ THE BREAKPOINT MOVED FROM 1359px TO 818px, AND THE NEW NUMBER IS DERIVED WHERE THE OLD ONE WAS
+   NOT. 1359 was a magic edge: at 1360 the scope was a full 150px column and at 1359 the whole column
+   vanished, which is the discontinuity the owner was shrinking the window through. Now the track is
+   `min(150px,11vw)` and the instrument scales inside it, so the column only has to go when the
+   DRAWING stops being one: 11vw crosses 90px at a 818px viewport, and at 90px the scope's own-ship
+   mark (18×10 of 150 user units) renders 10.8×6.0px and its innermost range ring 13.2px across. The
+   other three columns then take the width, exactly as before. */
+@media (max-width:818px){
+  #overview-view .ov-columns{grid-template-columns:minmax(0,1fr) minmax(0,1.02fr) 258px}
   #overview-view .ov-radar{display:none}
 }
 

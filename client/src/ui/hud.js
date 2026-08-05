@@ -1073,6 +1073,14 @@ function renderCrewWatch() {
   reflectRowSelection();
 }
 
+// ⚠️ FILED, NOT FIXED (pawn-glide review, 2026-08-05): this is the ONE document-wide query on the
+// per-roster path — `document.querySelectorAll` over the whole document, not a scoped container —
+// and the pawn glide made the roster arrive on every sim tick while anyone walks (measured on
+// `--ship wreck`: 7.67 roster msg/s walking, 0 idle). So it now runs ~5-8×/s instead of ~2×/s. It
+// is O(document), it is not the package's to fix, and the honest scoping is that `rooms` was
+// already re-driving these rows ~5×/s before the glide existed. The fix, when someone takes it, is
+// to scope the query to the two list containers (or to reuse the keyed row maps both docks already
+// hold) — NOT to throttle the channel.
 function reflectRowSelection() {
   const sel = selectedRosterEntry(_frame, _roster);
   const selCid = sel ? String(sel.cid) : null;

@@ -961,7 +961,22 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
   const pawns = [];
   for (const c of list) {
     if (!c || c.deck !== deck) continue; // off-deck / fogged crew simply do not render
-    const [fx, fy] = t.project(c.x + 0.5, c.y + 0.5); // feet on the tile centre
+    // ⭐ THE GLIDE. `fx`/`fy` are the wire's sub-tile walk position in the SAME coordinate space as
+    // `x`/`y` (a tile coordinate, no centre offset — the convention is written down once, at
+    // `WireFormat.RosterEntry.Fx`), so the `+ 0.5` that puts the feet on the tile CENTRE is applied
+    // here exactly as it always was. An older host omits them and the integer tile is used, which is
+    // also what a standing crew member serializes (`fx === x`), so the fallback is never a jump.
+    // WHICH TILE DECIDES WHAT, on THIS surface (`WireFormat.RosterEntry.Fx` states the rule in full):
+    // this plate's only rect test is the DECK (`c.deck !== deck` above), and a deck cannot go
+    // fractional — a ladder step keeps X/Y — so the Room Zoom's room-boundary problem has no
+    // counterpart here. The ORDER TARGET keeps the integer tile (`crewClickTarget`, because the host
+    // resolves a click through `Citizen.Pos`). Everything DRAWN follows the glide, including the
+    // selection underline and the label pill below: both hang off `fx`/`fy`, so neither can detach
+    // from the figure. Selecting BY CLICK needs no tile at all here — the hit test is the drawn
+    // `.pl-pawn` element's own `data-cid`, which is why this surface never had the Room Zoom's bug.
+    const gx = Number.isFinite(c.fx) ? c.fx : c.x;
+    const gy = Number.isFinite(c.fy) ? c.fy : c.y;
+    const [fx, fy] = t.project(gx + 0.5, gy + 0.5); // feet on the tile centre
     const S = Math.max(0.5, t.tileSize * 2.2 / 24);   // pawn box ≈ 2.2 tiles tall (viewBox 24)
     const sur = surnameOf(c.name);
     const tag = taskTag(c.task);                      // null ⇒ idle / walking / en route (no tag)

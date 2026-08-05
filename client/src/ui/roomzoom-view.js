@@ -62,7 +62,7 @@ import {
   // tile→client box for the one transient that lives outside the SVG).
   roomScene, scenePlacement, roomCutawaySvg, roomHatchDef, roomTitleSvg, roomDimensionsSvg,
   roomDoorsSvg, roomDoorTiles, tileClientBox, M_PER_TILE, ROOM_HEIGHT_M, ROOM_SCALE, RZ_ID,
-  deckSlots, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
+  deckSlots, tileFromCanvasXY, roomCells, roomCrew, crewHitAtTile, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   roomBlockedTiles,
   demolishTarget, removeDecor, escStackRung,
@@ -753,11 +753,31 @@ function previewSvg(scene, place) {
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
 }
 
+/**
+ * ⭐⭐ VR-P3-a — THE ONE WRAPPER EVERY STANDING PIECE WEARS. It says which tile the piece was DRAWN
+ * for and makes the piece's own INK the pressable part, which is what `tileAt` resolves a pointer
+ * against before it falls back to the floor-plane inverse (`room-model.js`'s `tileFromScenePoint`,
+ * which is right about the floor and wrong about anything with height).
+ *
+ * ⛔ IT IS A SHARED FUNCTION RATHER THAN A LINE COPIED INTO EACH BUILDER, and that is the review
+ * finding it exists to close: the first cut wrapped `furnitureSvg`'s pieces and left `decorSvg`
+ * standing its own with `pointer-events="none"` and no tile — LATENT, because the `decor` channel is
+ * empty on the wreck, and wrong the moment anything reaches it. A standing layer resolves to the
+ * wrong tile WHETHER OR NOT it takes pointer events: with events it answers with the floor behind it,
+ * without them its ink is a hole the player presses through. Both are "I clicked the thing and the
+ * order went somewhere else".
+ */
+function standingPiece(tx, ty, body) {
+  return '<g class="rz-fit" data-tile="' + (tx | 0) + ',' + (ty | 0)
+    + '" pointer-events="visiblePainted">' + body + '</g>';
+}
+
 /** Cosmetic decor pieces (VS-Z-34), standing on their tiles under the furniture layer. */
 function decorSvg(list, place) {
   const out = [];
   for (const d of list) {
-    out.push(standItem(d.itemId, d.x, d.y, place, 'rz-dc-' + d.x + '-' + d.y, undefined));
+    out.push(standingPiece(d.x, d.y,
+      standItem(d.itemId, d.x, d.y, place, 'rz-dc-' + d.x + '-' + d.y, undefined)));
   }
   return out.length ? '<g class="rz-decor" pointer-events="none">' + out.join('') + '</g>' : '';
 }
@@ -868,26 +888,47 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
   const skip = stocked instanceof Set ? stocked : new Set();
   const cond = deviceCond instanceof Map ? deviceCond : new Map();
   const plated = new Set((Array.isArray(doorTiles) ? doorTiles : []).map((d) => d.tx + ',' + d.ty));
+  // ⭐⭐ VR-P3-a — EVERY PIECE SAYS WHICH TILE IT WAS DRAWN FOR, AND ITS OWN INK IS PRESSABLE. This is
+  // the `.pl-fit` tier the Level-1 plate already ships (`overview-scene.js:684`), brought to Level 2,
+  // and it is what closes the filed defect: in the cutaway a fitting STANDS UP off its floor point, so
+  // its top and front faces hang over the tiles BEHIND it, and the floor-plane inverse alone resolved
+  // a press on the drawing to one of those. Measured before the fix on the wreck's cryo bay through
+  // the real gesture (STRIP armed, the `strip` command read off the wire): of 18 drawn fittings, 16
+  // designated a DIFFERENT tile — 1 to 3 rows back — and 2 designated NO tile at all, because their
+  // ink projects clean out of the room.
+  // ⛔ THE RESOLUTION RULE, WRITTEN DOWN WHERE IT IS CREATED: THE ELEMENT UNDER THE POINTER WINS, and
+  // bare floor falls through to the closed-form inverse. `pointer-events="visiblePainted"` is what
+  // makes the two tiers agree instead of fight — the unpainted gaps inside a piece's box (the paper
+  // between a chair's legs) are not targets and fall through. A square VISUALLY COVERED by a taller
+  // piece standing in front of it is therefore not directly clickable, and that is the deliberate
+  // half of the rule: pieces are drawn back to front, so the nearer piece is the one a player is
+  // pointing at. The covered tile stays reachable by its own uncovered floor.
+  // The wrapper is `standingPiece`, SHARED with `decorSvg` rather than written twice — see its header
+  // for why a second copy is how the decor layer was left latent-wrong by the first cut of this fix.
+  const fit = standingPiece;
   for (const c of cells) {
     if (plated.has(c.tx + ',' + c.ty)) continue;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
       const row = cond.get(c.tx + ',' + c.ty);
-      out.push(standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
-        row ? row.cond : undefined));
+      out.push(fit(c.tx, c.ty, standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
+        row ? row.cond : undefined)));
     } else {
       // VS-Z-25's unknown chip, in the paper dialect: an INK `6 5` dashed plate — the charter's
       // UNBUILT/PLANNED spelling, which is the honest thing to say about a glyph with no art, and
       // emphatically not the oxblood a queued order wears.
       const [cx, cy] = place.foot(c.tx, c.ty);
       const side = ROOM_SCALE * 100 * M_PER_TILE * 0.7;
-      out.push('<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2) + ')">' +
+      // The unknown chip STANDS UP too (`cy - side`), so it takes the same tier: a glyph with no art
+      // is still a thing on a tile, and pressing it must designate that tile.
+      out.push(fit(c.tx, c.ty,
+        '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2) + ')">' +
         '<rect x="1" y="1" width="' + (side - 2).toFixed(2) + '" height="' + (side - 2).toFixed(2) +
         '" rx="2" fill="' + PAPER + '" stroke="' + INK + '" stroke-width="1.2" stroke-dasharray="6 5"/>' +
         '<text x="' + (side / 2).toFixed(2) + '" y="' + (side / 2).toFixed(2) + '" font-size="' +
         (side * 0.34).toFixed(2) + '" fill="' + INK + '" text-anchor="middle" ' +
         'dominant-baseline="central" font-family="' + MONO_STACK + '">' +
-        esc(String.fromCharCode(c.code)) + '</text></g>');
+        esc(String.fromCharCode(c.code)) + '</text></g>'));
     }
   }
   return out.length ? '<g class="rz-furniture" pointer-events="none">' + out.join('') + '</g>' : '';
@@ -921,7 +962,19 @@ export function pawnSvg(list, focus, selCid, place) {
   const S = H / 24;                      // …over the sprite's 24-unit viewBox
   const sel = selCid == null ? null : String(selCid);
   for (const c of list) {
-    const [fx, fy] = pl.foot(c.x, c.y);
+    // ⭐ THE GLIDE — the same wire fields and the same fallback the Overview's `pawnLayer` uses
+    // (`WireFormat.RosterEntry.Fx` owns the convention: a tile coordinate, no centre offset, so it
+    // drops straight into `foot`, which is fractional-tolerant for exactly this). The name plate and
+    // work tag below hang off `fx`/`fy` too, so a label never detaches from its figure.
+    // ⚠️ THE FEET ARE ON THIS ROOM'S FLOOR BECAUSE `roomCrew` SAID SO, and that is a guarantee rather
+    // than a hope: it admits a crew member on her DRAWN tile, and the drawn tile is by construction
+    // the one whose quad contains this exact foot point (`drawnTile`'s header carries the algebra).
+    // The first draft filtered on the SIM tile, which leads the body by up to a full tile, and review
+    // photographed the result — a figure standing on the cryo bay's back wall.
+    const [fx, fy] = pl.foot(
+      Number.isFinite(c.fx) ? c.fx : c.x,
+      Number.isFinite(c.fy) ? c.fy : c.y,
+    );
     const selected = sel !== null && String(c.cid) === sel;
     if (selected) {
       // A LEVEL ellipse lying in the floor plane at the feet — the catalogue's round-objects rule,
@@ -1091,7 +1144,20 @@ function mkEl(tag, cls) {
  *
  * ⚠️ THE ROW NODES ARE REBUILT ONLY WHEN THE CID SET CHANGES. Everything else — the task line, the
  * WHERE line, the `.sel` class — is a guarded in-place write. That is §4h's lesson, not tidiness: the
- * roster rebroadcasts on every crew tile-step (~2/s at 1×, faster at speed), and a node torn down
+ * roster rebroadcasts on every crew tile-step — ⭐ AND THE GLIDE MADE IT REBROADCAST ON EVERY SIM
+ * TICK INSTEAD, because `fx`/`fy` move each tick and the channel's dedup can no longer collapse the
+ * frames between two tiles.
+ *
+ * ⚠️ MEASURED ON `--ship wreck` RATHER THAN ESTIMATED, and the first draft of this note guessed
+ * badly in BOTH directions. Over a 6.00 s window in which a crew member was actually walking
+ * (46 roster messages, all 46 carrying a distinct position): **roster 7.67 msg/s, 1693 B/s**. Idle:
+ * **0.00 msg/s, 0 B/s** — a standing crew member serializes `fx === x`, so the dedup collapses those
+ * frames exactly as before. (Review measured 4.97 msg/s / ~1096 B/s on its own run; the spread is
+ * the walk, the ship state and the box, and the ceiling either way is the host's ~10 fps render
+ * cap.) ⛔ AND THE "5×" APPLIES TO THE CHANNEL, NOT TO THIS DOCK'S REPAINT CADENCE: `rooms` was
+ * already arriving at 5.50 msg/s in the same window and already calls `notifyShip()`, so the dock
+ * was being re-driven ~5 times a second BEFORE this package. The in-place write is what makes that
+ * free, and it was already load-bearing for that reason. A node torn down
  * between mousedown and mouseup fires no `click` in Chrome at all. A dock you have to click twice is
  * indistinguishable from a dock that does not work, and this dock exists because the owner reported
  * having no way to reach a pawn.
@@ -1453,15 +1519,22 @@ function onMinimapSlot(slotEl) {
 
 function onCanvasClick(e) {
   closeCtx(); // ⭐ M2-10: a left click anywhere on the floor dismisses an open right-click menu
-  const rect = _layers.getBoundingClientRect();
-  const tile = tileFromCanvasXY(e.clientX, e.clientY, rect, _focus);
+  // ⭐ THROUGH `tileAt`, NOT THROUGH THE INVERSE DIRECTLY (VR-P3-a). This is the PLACE path — the one
+  // the owner reported as "not all squares work" — and it has to resolve the pointer exactly the way
+  // the sweep and the right-click do, or the same press means two tiles on one surface.
+  const tile = tileAt(e);
   if (!tile) return; // letterbox margin / outside the room (IX-Z-11)
 
   if (_armed == null) {
     // Pawn click = select, only when no tool is armed (IX-Z-30). Resolve crew from the tile.
     const roster = Hud.getRoster();
     const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
-    const hit = roomCrew(crew, _focus).find((c) => (c.x | 0) === tile.x && (c.y | 0) === tile.y);
+    // ⭐ THE GLIDE MADE THIS A TILE TEST ABOUT A MOVING TARGET — `crewHitAtTile` matches the tile
+    // the figure is DRAWN in, and ONLY that one: one rule, one pass, no sim-tile fallback (see its
+    // header). The sim tile leads the body by up to a full tile mid-walk, so the old
+    // `c.x === tile.x` missed the pawn being aimed at AND answered for the bare floor she had
+    // already left on screen. You select exactly what you can see.
+    const hit = crewHitAtTile(crew, _focus, tile.x, tile.y);
     if (hit) Hud.selectCrewByCid(hit.cid);
     return;
   }
@@ -1572,7 +1645,10 @@ function onCanvasContext(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
   closeCtx();
   if (!_open || !_focus) return;
-  const tile = tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
+  // The RIGHT-CLICK's target is captured HERE, at open time, through the same `tileAt` the left click
+  // and the sweep use — PRIORITISE points at a machine, and a machine is precisely a tall piece whose
+  // ink used to resolve to the empty floor behind it.
+  const tile = tileAt(e);
   if (!tile) return; // letterbox margin / outside the room (IX-Z-11), same rule as the left click
   const roster = Hud.getRoster();
   const offer = prioritiseOffer({
@@ -1790,8 +1866,37 @@ function roomBounds() {
   return { x: _focus.rx | 0, y: _focus.ry | 0, w: _focus.rw | 0, h: _focus.rh | 0 };
 }
 
-/** Resolve a mouse event to an absolute sim tile (or null on the letterbox / outside the room). */
+/**
+ * Resolve a mouse event to an absolute sim tile (or null on the letterbox / outside the room).
+ *
+ * ⭐⭐ TWO TIERS, AND THE FIRST ONE IS THE DRAWING ITSELF — VR-P3-a, CLOSED. `room-model.js`'s
+ * `tileFromScenePoint` inverts the cabinet oblique ON THE FLOOR PLANE ONLY, which is exactly right
+ * for bare floor and wrong for anything that stands up off it: at the cutaway's 2.4 m ceiling a press
+ * on a tall piece's top face resolved up to three tiles BEHIND the piece. That function's own header
+ * named this route as the correction (a pure model cannot have a depth buffer; the VIEW has the
+ * browser's own picking), and this is it. Every standing piece carries `data-tile` — the tile it was
+ * DRAWN for, emitted rather than inferred — so a press on its painted ink takes that answer directly.
+ *
+ * ⛔ THE RULE IS "THE ELEMENT UNDER THE POINTER WINS, BARE FLOOR FALLS THROUGH", and it is ONE
+ * function so that the click, the right-click and BOTH sweep endpoints cannot come to disagree about
+ * which tile the player just pointed at. `furnitureSvg`'s header carries the occlusion half.
+ *
+ * ⚠️ THE ANSWER IS STILL BOUNDS-CHECKED against the focused room. Tier two returns null outside it by
+ * construction; tier one is a string off an attribute, so it is checked rather than trusted — a stray
+ * `data-tile` reaching this handler must never lower an order onto a tile in another compartment.
+ */
 function tileAt(e) {
+  const el = e && e.target && typeof e.target.closest === 'function' ? e.target.closest('[data-tile]') : null;
+  const raw = el && el.dataset ? el.dataset.tile : null;
+  if (raw) {
+    const parts = String(raw).split(',');
+    const x = Number(parts[0]), y = Number(parts[1]);
+    if (Number.isFinite(x) && Number.isFinite(y) && _focus
+      && (x | 0) >= (_focus.rx | 0) && (x | 0) < (_focus.rx | 0) + (_focus.rw | 0)
+      && (y | 0) >= (_focus.ry | 0) && (y | 0) < (_focus.ry | 0) + (_focus.rh | 0)) {
+      return { x: x | 0, y: y | 0 };
+    }
+  }
   return tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
 }
 

@@ -3772,6 +3772,195 @@ function rzEnter(anchor) {
   return f;
 }
 
+// ═══════════════════════════════ ⭐⭐ VR-P3-a — THE PRESS LANDS ON THE PIECE, NOT THE FLOOR BEHIND IT
+//
+// THE DEFECT, MEASURED IN THE RUNNING GAME BEFORE THE FIX (headless Chrome, the wreck's cryo bay,
+// STRIP armed, the `strip` command read straight off the page's own WebSocket): of the 18 fittings
+// that room draws, SIXTEEN designated a tile one to three rows BEHIND the one they are drawn on and
+// TWO designated NO TILE AT ALL — their ink projects clean out of the room, so the press was simply
+// swallowed. `tileFromScenePoint` inverts the cabinet oblique on the FLOOR PLANE only, and a fitting
+// STANDS UP off its floor point, so its top and front faces hang over the tiles behind it. That is
+// the whole of the owner's "not all squares work", and it is worst on exactly the pieces STRIP and
+// PRIORITISE are aimed at.
+//
+// THE FIX IS TWO HALVES AND BOTH ARE DRIVEN HERE, because either alone is INERT:
+//   (1) the BUILDER emits `data-tile` + `pointer-events="visiblePainted"` on every standing piece;
+//   (2) the HANDLER's `tileAt` reads the element under the pointer FIRST and falls through to the
+//       closed-form inverse only on bare floor.
+// A handler reading an attribute nothing emits is `verb parity is NOT sufficient` exactly; a builder
+// emitting an attribute nothing reads is the same failure from the other side. Neither half alone
+// moves a pixel for the player, so neither half alone is allowed to be the test.
+//
+// ⛔ THE CONTROL IS HALF THE TEST. Every leg fires the SAME coordinates twice — once with a piece as
+// `e.target` and once with the bare canvas — and the two must answer DIFFERENT tiles. Without it,
+// "the press designates the piece's tile" is satisfied just as well by a tier that swallowed the
+// floor map whole, and every bare-floor sweep in this file would then be quietly wrong.
+//
+// EACH LEG IS ITS OWN `test()` (CLAUDE.md trap 5 — `assert` throws, so a multi-leg test reports only
+// its first failing leg and a dead later leg is indistinguishable from a live one).
+//
+// MUTATIONS (physically applied, watched RED for the right reason, reverted):
+//   · delete the `data-tile` tier from `roomzoom-view.js`'s `tileAt`  ⇒ legs 2/3/4 RED
+//   · drop `data-tile=` from `furnitureSvg`'s `fit()` wrapper         ⇒ leg 1 RED
+//   · drop `pointer-events="visiblePainted"` from that wrapper        ⇒ leg 1 RED
+//   · delete the room-bounds check in `tileAt`                        ⇒ leg 5 RED
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** A standing piece as `e.target`: the node the browser hands a handler when a press lands on drawn
+ *  ink. `dataset` AND the attribute are set the way the innerHTML scanner sets them for a real one —
+ *  the controller reads `dataset.tile`, `closest('[data-tile]')` walks `dataset`. */
+function rzFitNode(tx, ty) {
+  const el = new RzEl(rzDoc, 'g');
+  el.setAttribute('data-tile', tx + ',' + ty);
+  el.dataset.tile = tx + ',' + ty;
+  el.parentNode = rzCanvas;   // a press on a piece bubbles to the canvas handler, as in the document
+  return el;
+}
+/** The tile a fitting is planted on, and a SECOND tile whose scene point the presses below use. The
+ *  two are different on both axes, so a leg cannot pass by accident on one of them. */
+const VR_FIT = { x: HOLD.rx + 5, y: HOLD.ry + 3 };
+const VR_FLOOR = { x: HOLD.rx + 4, y: HOLD.ry + 6 };
+
+test('VR-P3-a leg 1: every standing piece is EMITTED with the tile it was drawn for, and its own '
+  + 'ink is the pressable part', () => {
+  const cells = wreck.cells.slice();
+  try {
+    // A LOCKER — the tall case, and the one the cryo-bay measurement was worst on.
+    cells[VR_FIT.y * wreck.w + VR_FIT.x] = ['L'.charCodeAt(0), 8, 0, 0];
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    const html = rzLayers.innerHTML;
+    assert.ok(html.includes(furnId(VR_FIT.x, VR_FIT.y)),
+      'precondition: the locker did not draw at all, so nothing below is about this package');
+    assert.ok(html.includes('<g class="rz-fit" data-tile="' + VR_FIT.x + ',' + VR_FIT.y
+      + '" pointer-events="visiblePainted">'),
+      'the piece carries no `data-tile`/`pointer-events` wrapper, so the surface has nothing to '
+      + 'resolve a press against and every press on it falls back to the FLOOR-PLANE inverse — which '
+      + 'is the defect, measured at 16 of 18 fittings designating the wrong tile.');
+    // …and the GROUP stays `none`, which is what makes the two tiers agree instead of fight: the
+    // unpainted paper inside a piece's box (between a chair's legs) is not a target.
+    assert.ok(html.includes('<g class="rz-furniture" pointer-events="none">'),
+      'the furniture GROUP became hit-testable. Then a piece\'s whole bounding box swallows presses '
+      + 'aimed at the floor showing through it, which trades this defect for its mirror image.');
+  } finally { Hud.renderFrame(wreck); rzEnter('hold'); }
+});
+
+// ⛔ LEG 1 COVERED ONE OF THE THREE EMITTERS, AND THAT WAS A HOLE (independent review, 2026-08-05):
+// dropping `data-tile` from `itemStackSvg`'s `<g class="rz-item">` left the suite 1469/1469 GREEN, and
+// so did removing the wrapper from the UNKNOWN-CHIP branch alone. Both were covered only by a live
+// browser measurement, which no gate runs. ONE LEG PER EMITTER, because "the fitting branch emits it"
+// is not a fact about the other two — the 4th shape, applied to a family of call sites instead of to
+// a scope filter. The stack leg lives in `items-model.test.js`, on the PURE builder that owns it.
+test('VR-P3-a leg 1b: the UNKNOWN-GLYPH CHIP carries the tier too — a glyph with no art is still a '
+  + 'thing standing on a tile', () => {
+  const cells = wreck.cells.slice();
+  try {
+    cells[VR_FIT.y * wreck.w + VR_FIT.x] = ['z'.charCodeAt(0), 8, 0, 0];   // nothing skins `z`
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    const html = rzLayers.innerHTML;
+    assert.equal(chipAt(html, VR_FIT.x, VR_FIT.y), 'z',
+      'precondition: the VS-Z-25 dashed chip did not render, so this leg is asserting nothing');
+    assert.ok(html.includes('<g class="rz-fit" data-tile="' + VR_FIT.x + ',' + VR_FIT.y
+      + '" pointer-events="visiblePainted">'),
+      'the unknown chip is stood UP on its tile (`cy - side`) exactly as a fitting is, so without the '
+      + 'wrapper a press on it resolves to the floor behind it. An unskinned glyph is the case a '
+      + 'player most needs to be able to STRIP.');
+  } finally { Hud.renderFrame(wreck); rzEnter('hold'); }
+});
+
+// ⛔ THE FOURTH STANDING EMITTER, AND IT WAS LATENT-WRONG (independent review, 2026-08-05).
+// `decorSvg` stands its pieces with `standItem` exactly as `furnitureSvg` does, and the first cut of
+// this fix left it with `pointer-events="none"` and no tile — invisible on the wreck only because the
+// host's `BuildDecor()` returns a permanently empty list today. Latent is not fixed: `Cmd.decor` is
+// M4-6's open owner call, and the day the channel carries anything, every press on a decor piece's
+// ink would fall THROUGH it onto the wrong floor tile. Both builders now share `standingPiece`, and
+// this leg is what makes that sharing a fact rather than a convention — it drives the real `decor`
+// channel through the real dispatch and reads the real repaint.
+// MUTATION: `decorSvg` back to a bare `standItem(...)` push ⇒ RED.
+test('VR-P3-a leg 1c: a DECOR piece carries the tier too — the emitter the empty channel was hiding', () => {
+  try {
+    Hud.renderDecor({ type: 'decor', items: [[HOLD.deck, VR_FIT.x, VR_FIT.y, 'rug', 0, 0]] });
+    rzEnter('hold');
+    const html = rzLayers.innerHTML;
+    const at = html.indexOf('<g class="rz-decor"');
+    assert.ok(at >= 0,
+      'precondition: the decor layer did not render at all, so this leg is asserting nothing');
+    // ⚠️ READ INSIDE THE DECOR GROUP, not across the whole document: the furniture layer emits the
+    // same wrapper, and a leg that scanned the lot would pass on a decor layer that emits nothing.
+    const decorHtml = html.slice(at);
+    assert.ok(decorHtml.includes('<g class="rz-fit" data-tile="' + VR_FIT.x + ',' + VR_FIT.y
+      + '" pointer-events="visiblePainted">'),
+      'a decor piece stands UP on its tile with no `data-tile` and no pointer events, so a press on '
+      + 'its ink passes through it and the floor-plane inverse answers with the tile behind it.');
+  } finally { Hud.renderDecor(null); rzEnter('hold'); }
+});
+
+test('VR-P3-a leg 2: a STRIP sweep pressed on a piece marks the PIECE\'S tile, and the same '
+  + 'coordinates on bare floor still mark the floor tile', () => {
+  rzArm('strip');
+  // CONTROL — bare canvas: the floor-plane inverse answers, exactly as it always did.
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzMouseUp();
+  assert.deepEqual(rzOrders(rzSent.slice()).map(xy), [[VR_FLOOR.x, VR_FLOOR.y]],
+    'the bare-floor tier stopped working — tier one is swallowing the whole canvas');
+  // …and with a piece under the pointer the piece wins, at the SAME coordinates.
+  rzSent.length = 0;
+  rzFire(rzFitNode(VR_FIT.x, VR_FIT.y), 'mousedown', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzMouseUp();
+  assert.deepEqual(rzOrders(rzSent.slice()).map(xy), [[VR_FIT.x, VR_FIT.y]],
+    'STRIP pressed ON a fitting condemned the floor tile the fitting is drawn OVER. That is the '
+    + 'reported defect: the mark lands behind the thing the player pointed at.');
+  rzArm('strip');
+});
+
+test('VR-P3-a leg 3: a single-click PLACE on a piece targets the piece\'s tile', () => {
+  rzArm('lamp');   // `cls: functional` — exactly one click and exactly one `Cmd.place`
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'click', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  const floor = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
+  assert.deepEqual(floor.map(xy), [[VR_FLOOR.x, VR_FLOOR.y]], 'control: the floor tier answers');
+  rzSent.length = 0;
+  rzFire(rzFitNode(VR_FIT.x, VR_FIT.y), 'click', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  const onPiece = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
+  assert.deepEqual(onPiece.map(xy), [[VR_FIT.x, VR_FIT.y]],
+    'a PLACE click on a drawn piece landed on the floor tile behind it — `onCanvasClick` is still '
+    + 'reaching for the floor-plane inverse directly instead of going through `tileAt`.');
+  rzArm('lamp');
+});
+
+test('VR-P3-a leg 4: both ENDPOINTS of a sweep take the element tier', () => {
+  rzArm('strip');
+  rzSent.length = 0;
+  // press on a piece at (fit), drag to bare floor at (floor) — the rectangle must span BOTH answers.
+  rzFire(rzFitNode(VR_FIT.x, VR_FIT.y), 'mousedown', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzMouseUp();
+  const tiles = rzOrders(rzSent.slice()).map(xy).sort();
+  const lo = { x: Math.min(VR_FIT.x, VR_FLOOR.x), y: Math.min(VR_FIT.y, VR_FLOOR.y) };
+  const hi = { x: Math.max(VR_FIT.x, VR_FLOOR.x), y: Math.max(VR_FIT.y, VR_FLOOR.y) };
+  const want = [];
+  for (let y = lo.y; y <= hi.y; y += 1) for (let x = lo.x; x <= hi.x; x += 1) want.push([x, y]);
+  assert.deepEqual(tiles, want.slice().sort(),
+    'the sweep did not span the PIECE tile and the FLOOR tile. A press resolved one way and a '
+    + 'release resolved another is a rectangle the player never drew.');
+  rzArm('strip');
+});
+
+test('VR-P3-a leg 5: a `data-tile` OUTSIDE the focused room is refused and the floor tier answers', () => {
+  rzArm('strip');
+  const stray = rzFitNode(HOLD.rx + HOLD.rw + 3, HOLD.ry + 1);   // a tile in the next compartment
+  rzSent.length = 0;
+  rzFire(stray, 'mousedown', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzMouseUp();
+  assert.deepEqual(rzOrders(rzSent.slice()).map(xy), [[VR_FLOOR.x, VR_FLOOR.y]],
+    'an attribute naming a tile in ANOTHER compartment lowered an order there. Tier two returns null '
+    + 'outside the room by construction; tier one is a string off an attribute and must be checked, '
+    + 'not trusted.');
+  rzArm('strip');
+});
+
 // THE BUG, DRIVEN THROUGH THE SHIPPING CONTROLLER, on a tile a player reaches by pressing DOOR.
 // `sim/Sim.Core/Systems/BuildSystem.cs:226` says in its own comment "the door starts closed", and
 // the DOOR tool is on this palette — so a closed door inside a room is one gesture away, not a
@@ -4852,7 +5041,12 @@ test('VR-P3 (assembled): a ground-item pile STANDS at its own tile through the s
   try {
     const svg = vrMount();
     const items = svg.slice(svg.indexOf('<g class="rz-items"'));
-    const m = /<g class="rz-item" transform="([^"]+)"/.exec(items);
+    // ⚠️ THE READER SKIPS WHATEVER ATTRIBUTES SIT BETWEEN THE CLASS AND THE TRANSFORM, and it has to:
+    // VR-P3-a added `data-tile` + `pointer-events` to this same tag (a pile stands up off its floor
+    // point too, so a press on it used to resolve one tile back). Anchoring on the literal
+    // `class="rz-item" transform=` made this leg red for a reason that has nothing to do with the
+    // placement it is about — a FALSE RED in TRAPS-3's family.
+    const m = /<g class="rz-item"[^>]*\stransform="([^"]+)"/.exec(items);
     assert.ok(m, 'the mounted item layer carries no transform at all — `place` is not being '
       + 'threaded, so every pile draws at the layer origin instead of its tile');
     assert.equal(m[1], vrPlace().stand(VR_ITEM.x, VR_ITEM.y),

@@ -585,8 +585,19 @@ export function scenePlacement(scene, focusRoom, unit = U) {
       const c = corners(tx, ty).centre;
       return 'translate(' + nn(c[0] - unit / 2) + ' ' + nn(c[1] - unit) + ')';
     },
-    /** The tile's floor CENTRE in scene px — where a person's feet or a fitting's anchor go. */
-    foot(tx, ty) { return corners(tx, ty).centre; },
+    /**
+     * The tile's floor CENTRE in scene px — where a person's feet or a fitting's anchor go.
+     *
+     * ⭐ FRACTIONAL-TOLERANT, for the pawn glide: `corners` floors its inputs with `| 0` (it must —
+     * `cell`/`stand`/`quad` describe a whole tile's parallelogram), so this one computes the centre
+     * DIRECTLY instead of going through it. For an INTEGER `tx`/`ty` the arithmetic is the same
+     * expression `corners` evaluates and the result is identical to the digit; a fractional argument
+     * now lands between the two tile centres instead of snapping back to the lower one.
+     */
+    foot(tx, ty) {
+      const fx = Number.isFinite(tx) ? tx : 0, fy = Number.isFinite(ty) ? ty : 0;
+      return P((fx - rx) * cm + cm / 2, (fy - ry) * cm + cm / 2, 0);
+    },
     /** The tile's NEAR-LEFT floor corner in scene px — a fitting's own cm origin. */
     front(tx, ty) { return corners(tx, ty).nearLeft; },
     /** The tile's floor quad as a closed `d`, for an outline that lies in the plane. */
@@ -605,19 +616,25 @@ export function scenePlacement(scene, focusRoom, unit = U) {
  *     px = x0 + s·x + 0.4·s·y          py = y0 − s·z − 0.6·s·y
  * On the floor plane z = 0, so `y = (y0 − py) / (0.6·s)` and then `x = (px − x0 − 0.4·s·y) / s`.
  *
- * ⚠️ THE PLANE IS AN ASSUMPTION AND IT HAS ONE MEASURED CONSEQUENCE: a click on the TOP FACE of a
+ * ⚠️ THE PLANE IS AN ASSUMPTION AND IT HAS ONE MEASURED CONSEQUENCE: a point on the TOP FACE of a
  * tall fitting resolves to the floor tile that face covers, which is further BACK than the tile the
  * fitting stands on. At the cutaway's 2.4 m ceiling that is up to ~3 tiles of error on the tallest
- * pieces — a real miss, not a rounding one, and it is FILED rather than closed here.
+ * pieces — a real miss, not a rounding one. That is a TRUE STATEMENT ABOUT THIS FUNCTION and it stays
+ * true; what changed is that it is no longer the surface's answer.
  *
- * ⚠️ THE JUSTIFICATION THAT STOOD HERE WAS OVERSTATED AND IS CORRECTED (VR-P3 review, MINOR 7). It
- * read: *"the alternative (hit-test every drawn face in paint order) needs the browser's own picking,
- * which a pure model cannot have."* The first half is true of THIS FUNCTION and false of the SURFACE:
- * the pieces are real SVG elements in a real document, so `roomzoom-view.js` could resolve a pointer
- * from `e.target` (or `elementFromPoint`) and fall back to this inverse only on the floor itself —
- * every fitting already carries an id naming its tile (`rz-f-<tx>-<ty>`). What a PURE model cannot
- * have is a depth buffer; what the VIEW cannot have is an excuse. The old plan view had no such case
- * because nothing had height.
+ * ⭐⭐ VR-P3-a IS CLOSED, AND THE ROUTE IS THE ONE THIS HEADER NAMED (VR-P3 review, MINOR 7). The
+ * paragraph that stood here said the alternative "needs the browser's own picking, which a pure model
+ * cannot have" — true of THIS FUNCTION, false of the SURFACE. `roomzoom-view.js`'s `tileAt` now
+ * resolves the pointer from `e.target` first (every standing piece carries `data-tile` and
+ * `pointer-events="visiblePainted"`) and falls through to this inverse only on bare floor, which is
+ * the plane this closed form is exactly right about. What a PURE model cannot have is a depth buffer;
+ * what the VIEW cannot have is an excuse. The old plan view had no such case because nothing had
+ * height.
+ *
+ * ⛔ SO DO NOT READ THIS FUNCTION AS "THE CLICK MAP". It is one of two tiers, and the tier that is
+ * wrong about anything with height. Reaching for it directly from a handler re-opens the defect —
+ * measured on the wreck's cryo bay before the fix: 16 of 18 drawn fittings designated a different
+ * tile through this path and 2 designated none at all.
  * PURE.
  */
 export function tileFromScenePoint(sx, sy, scene, focusRoom) {
@@ -1241,8 +1258,57 @@ export function roomCells(frame, focusRoom, deviceCond) {
 }
 
 /**
- * The crew standing in the room (VS-Z-27). Roster entries ({cid,role,name,deck,x,y}) on the room's
- * deck inside the rect. PURE.
+ * ⭐ THE TILE A CREW MEMBER'S FEET ARE DRAWN IN — `Math.round` of the glide position, falling back
+ * to the integer sim tile when the host publishes no glide. PURE.
+ *
+ * <p><b>`Math.round` IS THE EXACT ANSWER HERE, NOT AN APPROXIMATION OF ONE, and the whole of
+ * `roomCrew` below rests on that.</b> `scenePlacement.foot(fx,·)` returns
+ * `P((fx − rx)·cm + cm/2, …)`, while tile `T`'s floor quad spans `[(T − rx)·cm, (T − rx + 1)·cm]`.
+ * The foot lies inside tile `T`'s quad exactly when `T ≤ fx + 0.5 ≤ T + 1`, i.e. when
+ * `|T − fx| ≤ 0.5` — which is the definition of `T = Math.round(fx)`. So the drawn feet are ALWAYS
+ * inside the quad of the tile this function names, with equality only when they stand on the
+ * quad's own edge. Truncation (`| 0`) would name the wrong tile for the whole second half of every
+ * step, which is mutation M15.</p>
+ */
+export function drawnTile(c) {
+  if (!c) return { x: 0, y: 0 };
+  return {
+    x: Math.round(Number.isFinite(c.fx) ? c.fx : (c.x | 0)),
+    y: Math.round(Number.isFinite(c.fy) ? c.fy : (c.y | 0)),
+  };
+}
+
+/**
+ * The crew standing in the room (VS-Z-27) — the list the cutaway DRAWS, the `N HERE` caption counts,
+ * and the dock's HERE flag is taken from. Roster entries on the room's deck whose feet land inside
+ * the rect. PURE.
+ *
+ * ⭐⭐ <b>MEMBERSHIP IS THE DRAWN TILE, NOT THE SIM TILE, AND THAT IS A CORRECTION — the first draft
+ * of the pawn glide used the sim tile here and it put a crew member ON A WALL.</b> Review measured
+ * it on `--ship wreck`: 14 of 319 live frames (4.4%) drew a figure outside the focused room's floor,
+ * with a screenshot of Rell standing on the CRYO BAY'S BACK WALL at wire `5,7|5,7.8`. Both halves
+ * were wrong, in opposite directions, because the sim takes its tile step FIRST and pays for it over
+ * the next `ticksPerTile` ticks:
+ *   · ENTERING (`x:4, fx:3.1`) — the sim tile was already inside, so she was drawn, 0.4 tile OUTSIDE
+ *     the room quad. The cutaway has no floor there; the only thing to stand on is the back wall.
+ *   · LEAVING (`x:7, fx:6.1`) — the sim tile was already outside, so she VANISHED from the cutaway
+ *     while her body was still a full tile inside it, and the hit test at her drawn tile returned
+ *     null: a figure you can see and cannot click.
+ *
+ * <b>Deciding on the drawn tile closes both, and closes them by CONSTRUCTION rather than by a
+ * clamp:</b> `drawnTile` names the tile whose quad contains the feet (see its header), so if that
+ * tile is in the room then the feet are on the room's floor — there is no position a member can
+ * occupy that is off the floor, and no clamp is needed to keep her on it. Leaving, she stays drawn
+ * until her body crosses the threshold; entering, she appears as it crosses, standing on the room's
+ * edge, and slides in from there. She is never drawn where there is nothing to stand on.
+ *
+ * <b>The two-source rule is PRESERVED, which is why this is one function and not two.</b>
+ * `shipCrewRows`'s HERE flag and `_capHere` both read this list, so "HERE" still means exactly what
+ * the pawn layer draws — the invariant that comment has always claimed. What does NOT follow the
+ * glide is anything that is a SIM fact rather than a drawing: `crewClickTarget` addresses the host
+ * by `frame.crew`'s integer tile (the host resolves a click through `Citizen.Pos`, so it must), and
+ * `crewRoomSlot` answers "which room do I navigate to" off the sim tile. See `pawn-glide.test.js`.
+ *
  * @param {Array|null} crew  roster crew list
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
  */
@@ -1251,9 +1317,43 @@ export function roomCrew(crew, focusRoom) {
   if (!Array.isArray(crew) || !focusRoom) return out;
   for (const c of crew) {
     if (!c || (c.deck | 0) !== (focusRoom.deck | 0)) continue;
-    if (clampTileToRoom(c.x | 0, c.y | 0, focusRoom)) out.push(c);
+    const d = drawnTile(c);
+    if (clampTileToRoom(d.x, d.y, focusRoom)) out.push(c);
   }
   return out;
+}
+
+/**
+ * ⭐ WHO DID THE PLAYER JUST CLICK — the Room Zoom's pawn hit test, which resolves a FLOOR TILE
+ * (`tileFromCanvasXY`) rather than a DOM element, and therefore had to learn about the glide.
+ *
+ * <p>⚠️ IT WAS A REGRESSION THE MOMENT THE FIGURES STARTED SLIDING, and the affordance it breaks is
+ * the one the owner reported by name at the 2026-07-29 playtest (<i>"we cannot select a pawn by
+ * clicking on him"</i>). The sim takes a tile step FIRST and pays for it over the next
+ * `ticksPerTile` ticks, so mid-walk `c.x`/`c.y` is ALREADY the destination while the body is still
+ * drawn on the tile behind it. A hit test that only asked `c.x === tile.x` therefore missed the
+ * figure the player was aiming at for up to a full second per tile, and selected her by clicking
+ * the empty tile ahead of her. Measured live on `--ship wreck`: the roster published
+ * `tile=(7,2) frac=(8,2)` — a whole tile apart.</p>
+ *
+ * <p><b>YOU CAN CLICK EXACTLY WHAT YOU CAN SEE — one rule, one pass, no fallback.</b> The candidates
+ * are `roomCrew`, which is now the DRAWN list, and the tile matched is `drawnTile`, which is where
+ * that list's figures stand. An earlier draft added a second pass on the sim tile "as a fallback";
+ * it is deleted, because with `roomCrew` deciding on the drawn tile that pass could only ever fire
+ * for a figure that is NOT DRAWN on the clicked tile — selecting an invisible pawn from bare floor.
+ * A crew member with no glide at all is unaffected: `drawnTile` falls back to her sim tile, so the
+ * pre-package behaviour is reproduced exactly.</p>
+ *
+ * @param {Array|null} crew roster crew list @param {object} focusRoom the room rect
+ * @param {number} tx @param {number} ty absolute sim tile under the pointer
+ */
+export function crewHitAtTile(crew, focusRoom, tx, ty) {
+  const x = tx | 0, y = ty | 0;
+  for (const c of roomCrew(crew, focusRoom)) {
+    const d = drawnTile(c);
+    if (d.x === x && d.y === y) return c;
+  }
+  return null;
 }
 
 /**
@@ -2115,7 +2215,14 @@ export function itemStackSvg(tiles, focusRoom, unit = U, place = null) {
     }
     // No escaping: every character here comes from ITEM_LABEL (our own ASCII table), from `| 0`
     // arithmetic, or from a pure builder. Nothing on this layer is player- or host-authored text.
-    out.push('<g class="rz-item"'
+    // ⭐ VR-P3-a — A PILE SAYS WHICH TILE IT IS ON, AND ITS OWN INK IS PRESSABLE, for the same reason
+    // `furnitureSvg`'s pieces do: `place.stand` puts it UPRIGHT on the floor centre, so its body hangs
+    // over the tile behind it and the floor-plane inverse resolved a press on the pile to that tile.
+    // One tile of error rather than the fittings' three, and the same defect. The `pointer-events` is
+    // per-item and `visiblePainted`, so the empty paper inside a pile's box still falls through to the
+    // floor — the group below stays `none` so nothing but drawn ink is a target.
+    out.push('<g class="rz-item" data-tile="' + (t.tx | 0) + ',' + (t.ty | 0)
+      + '" pointer-events="visiblePainted"'
       + (place ? ' transform="' + place.stand(t.tx | 0, t.ty | 0) + '"' : '') + '>' + body + '</g>');
   }
   return out.length ? '<g class="rz-items" pointer-events="none">' + out.join('') + '</g>' : '';
