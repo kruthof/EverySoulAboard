@@ -136,12 +136,29 @@ so the main tree IS the gated lane tree at `64ba593` (final full gate exit 0, tw
   plate miniatures + cutaway make them the drawing's subject; a wrecked room mixes two palettes.
 - **P7 (the owner's core goal)**: the `aboard`/`compartments` story prose needs sim+wire data
   that does not exist (gated on M4 mood/Persona); the columns render honest wire data only.
-- **VR-P3-a**: a tall fitting's TOP-face click resolves ~3 tiles behind its floor tile
-  (`tileFromScenePoint` header has the corrected note; `e.target`/`elementFromPoint` is the route).
+- ~~**VR-P3-a**~~ **CLOSED 2026-08-05** (owner-reported as "not all squares work"), with the
+  owner's band defect, in one reviewed follow-up. Measured before: 16 of 18 cryo-bay fittings
+  designated a tile 1–3 rows back and 2 designated none at all. Every STANDING piece (fittings,
+  the unknown chip, ground stacks, decor) now carries `data-tile` + `pointer-events="visiblePainted"`
+  through one shared `standingPiece`, and one `tileAt` resolves `e.target` first, bare floor
+  falling through to the closed-form inverse. After: 18/18, 12/12 stacks, 4/4 life support.
+  **Residuals filed here, not closed:** an UPRIGHT CAPTION'S INK reads as pressable and designates
+  the floor beneath it — the blocked layer's leader badge is now `pointer-events="none"`, which is
+  the rule "a caption is not a target" and is MEASURED INERT on the wreck (72/72 of its ink points
+  have no `data-tile` under them, so the press still answers the floor tile, `strip x:34,y:5`);
+  closing it needs a "not a target" concept the surface does not have. · `rz-blockeds` is the only
+  layer painted ABOVE the new tier that takes pointer events (shadows nothing today — geometry, not
+  a guarantee). · zone `<title>` tooltips are now unreachable where a fitting covers the tile.
+- **The Overview readout band** (owner-reported same day) **CLOSED**: the radar hung 27 px — 18 % —
+  out of its column at every viewport (a CSS specificity loss, not a missing rule), and 490 px of
+  the band was incompressible. Now `min(150px,11vw)` + clamps, drop point 1359 → 818 px.
+  ⚠️ **The measured floor is 580 px**: at 540 `#ov-compart` clips its own content, at 500 spans
+  escape. The 258 px ledger track is its own max-content and cannot shrink — a KNOWN LIMIT.
 - Owner-eye items: stool drawn as tripod (catalogue's caption honoured, silhouette win) · shrine
   shelf's permanently-oxblood frame vs the accent dialect · pawn props anchored outside the doc's
   arm line · the radar shows own-ship only (no contact channel exists) · short viewports let the
-  readout band grow at the plate's expense (playtest eye) · design-doc fixture slips (E7).
+  readout band grow at the plate's expense (playtest eye — the band fix moved WIDTH only, the
+  `max-height:min(46vh,340px)` seam is untouched) · design-doc fixture slips (E7).
 - Tooling/debt: `zoom-pawn-shot` exit code doesn't track its own `FAILURES: n` · chip id collision
   on prefix-less `pawnChip` call sites (pre-existing) · pawn sprite overflows its viewBox for
   270/1944 modifier combos (cosmetic; comment at `pawn-svg.js:365` still overclaims) · E10 bench

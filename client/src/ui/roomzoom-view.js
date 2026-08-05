@@ -743,11 +743,31 @@ function previewSvg(scene, place) {
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
 }
 
+/**
+ * ⭐⭐ VR-P3-a — THE ONE WRAPPER EVERY STANDING PIECE WEARS. It says which tile the piece was DRAWN
+ * for and makes the piece's own INK the pressable part, which is what `tileAt` resolves a pointer
+ * against before it falls back to the floor-plane inverse (`room-model.js`'s `tileFromScenePoint`,
+ * which is right about the floor and wrong about anything with height).
+ *
+ * ⛔ IT IS A SHARED FUNCTION RATHER THAN A LINE COPIED INTO EACH BUILDER, and that is the review
+ * finding it exists to close: the first cut wrapped `furnitureSvg`'s pieces and left `decorSvg`
+ * standing its own with `pointer-events="none"` and no tile — LATENT, because the `decor` channel is
+ * empty on the wreck, and wrong the moment anything reaches it. A standing layer resolves to the
+ * wrong tile WHETHER OR NOT it takes pointer events: with events it answers with the floor behind it,
+ * without them its ink is a hole the player presses through. Both are "I clicked the thing and the
+ * order went somewhere else".
+ */
+function standingPiece(tx, ty, body) {
+  return '<g class="rz-fit" data-tile="' + (tx | 0) + ',' + (ty | 0)
+    + '" pointer-events="visiblePainted">' + body + '</g>';
+}
+
 /** Cosmetic decor pieces (VS-Z-34), standing on their tiles under the furniture layer. */
 function decorSvg(list, place) {
   const out = [];
   for (const d of list) {
-    out.push(standItem(d.itemId, d.x, d.y, place, 'rz-dc-' + d.x + '-' + d.y, undefined));
+    out.push(standingPiece(d.x, d.y,
+      standItem(d.itemId, d.x, d.y, place, 'rz-dc-' + d.x + '-' + d.y, undefined)));
   }
   return out.length ? '<g class="rz-decor" pointer-events="none">' + out.join('') + '</g>' : '';
 }
@@ -858,26 +878,47 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
   const skip = stocked instanceof Set ? stocked : new Set();
   const cond = deviceCond instanceof Map ? deviceCond : new Map();
   const plated = new Set((Array.isArray(doorTiles) ? doorTiles : []).map((d) => d.tx + ',' + d.ty));
+  // ⭐⭐ VR-P3-a — EVERY PIECE SAYS WHICH TILE IT WAS DRAWN FOR, AND ITS OWN INK IS PRESSABLE. This is
+  // the `.pl-fit` tier the Level-1 plate already ships (`overview-scene.js:684`), brought to Level 2,
+  // and it is what closes the filed defect: in the cutaway a fitting STANDS UP off its floor point, so
+  // its top and front faces hang over the tiles BEHIND it, and the floor-plane inverse alone resolved
+  // a press on the drawing to one of those. Measured before the fix on the wreck's cryo bay through
+  // the real gesture (STRIP armed, the `strip` command read off the wire): of 18 drawn fittings, 16
+  // designated a DIFFERENT tile — 1 to 3 rows back — and 2 designated NO tile at all, because their
+  // ink projects clean out of the room.
+  // ⛔ THE RESOLUTION RULE, WRITTEN DOWN WHERE IT IS CREATED: THE ELEMENT UNDER THE POINTER WINS, and
+  // bare floor falls through to the closed-form inverse. `pointer-events="visiblePainted"` is what
+  // makes the two tiers agree instead of fight — the unpainted gaps inside a piece's box (the paper
+  // between a chair's legs) are not targets and fall through. A square VISUALLY COVERED by a taller
+  // piece standing in front of it is therefore not directly clickable, and that is the deliberate
+  // half of the rule: pieces are drawn back to front, so the nearer piece is the one a player is
+  // pointing at. The covered tile stays reachable by its own uncovered floor.
+  // The wrapper is `standingPiece`, SHARED with `decorSvg` rather than written twice — see its header
+  // for why a second copy is how the decor layer was left latent-wrong by the first cut of this fix.
+  const fit = standingPiece;
   for (const c of cells) {
     if (plated.has(c.tx + ',' + c.ty)) continue;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
       const row = cond.get(c.tx + ',' + c.ty);
-      out.push(standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
-        row ? row.cond : undefined));
+      out.push(fit(c.tx, c.ty, standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
+        row ? row.cond : undefined)));
     } else {
       // VS-Z-25's unknown chip, in the paper dialect: an INK `6 5` dashed plate — the charter's
       // UNBUILT/PLANNED spelling, which is the honest thing to say about a glyph with no art, and
       // emphatically not the oxblood a queued order wears.
       const [cx, cy] = place.foot(c.tx, c.ty);
       const side = ROOM_SCALE * 100 * M_PER_TILE * 0.7;
-      out.push('<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2) + ')">' +
+      // The unknown chip STANDS UP too (`cy - side`), so it takes the same tier: a glyph with no art
+      // is still a thing on a tile, and pressing it must designate that tile.
+      out.push(fit(c.tx, c.ty,
+        '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2) + ')">' +
         '<rect x="1" y="1" width="' + (side - 2).toFixed(2) + '" height="' + (side - 2).toFixed(2) +
         '" rx="2" fill="' + PAPER + '" stroke="' + INK + '" stroke-width="1.2" stroke-dasharray="6 5"/>' +
         '<text x="' + (side / 2).toFixed(2) + '" y="' + (side / 2).toFixed(2) + '" font-size="' +
         (side * 0.34).toFixed(2) + '" fill="' + INK + '" text-anchor="middle" ' +
         'dominant-baseline="central" font-family="' + MONO_STACK + '">' +
-        esc(String.fromCharCode(c.code)) + '</text></g>');
+        esc(String.fromCharCode(c.code)) + '</text></g>'));
     }
   }
   return out.length ? '<g class="rz-furniture" pointer-events="none">' + out.join('') + '</g>' : '';
@@ -1468,8 +1509,10 @@ function onMinimapSlot(slotEl) {
 
 function onCanvasClick(e) {
   closeCtx(); // ⭐ M2-10: a left click anywhere on the floor dismisses an open right-click menu
-  const rect = _layers.getBoundingClientRect();
-  const tile = tileFromCanvasXY(e.clientX, e.clientY, rect, _focus);
+  // ⭐ THROUGH `tileAt`, NOT THROUGH THE INVERSE DIRECTLY (VR-P3-a). This is the PLACE path — the one
+  // the owner reported as "not all squares work" — and it has to resolve the pointer exactly the way
+  // the sweep and the right-click do, or the same press means two tiles on one surface.
+  const tile = tileAt(e);
   if (!tile) return; // letterbox margin / outside the room (IX-Z-11)
 
   if (_armed == null) {
@@ -1592,7 +1635,10 @@ function onCanvasContext(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
   closeCtx();
   if (!_open || !_focus) return;
-  const tile = tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
+  // The RIGHT-CLICK's target is captured HERE, at open time, through the same `tileAt` the left click
+  // and the sweep use — PRIORITISE points at a machine, and a machine is precisely a tall piece whose
+  // ink used to resolve to the empty floor behind it.
+  const tile = tileAt(e);
   if (!tile) return; // letterbox margin / outside the room (IX-Z-11), same rule as the left click
   const roster = Hud.getRoster();
   const offer = prioritiseOffer({
@@ -1810,8 +1856,37 @@ function roomBounds() {
   return { x: _focus.rx | 0, y: _focus.ry | 0, w: _focus.rw | 0, h: _focus.rh | 0 };
 }
 
-/** Resolve a mouse event to an absolute sim tile (or null on the letterbox / outside the room). */
+/**
+ * Resolve a mouse event to an absolute sim tile (or null on the letterbox / outside the room).
+ *
+ * ⭐⭐ TWO TIERS, AND THE FIRST ONE IS THE DRAWING ITSELF — VR-P3-a, CLOSED. `room-model.js`'s
+ * `tileFromScenePoint` inverts the cabinet oblique ON THE FLOOR PLANE ONLY, which is exactly right
+ * for bare floor and wrong for anything that stands up off it: at the cutaway's 2.4 m ceiling a press
+ * on a tall piece's top face resolved up to three tiles BEHIND the piece. That function's own header
+ * named this route as the correction (a pure model cannot have a depth buffer; the VIEW has the
+ * browser's own picking), and this is it. Every standing piece carries `data-tile` — the tile it was
+ * DRAWN for, emitted rather than inferred — so a press on its painted ink takes that answer directly.
+ *
+ * ⛔ THE RULE IS "THE ELEMENT UNDER THE POINTER WINS, BARE FLOOR FALLS THROUGH", and it is ONE
+ * function so that the click, the right-click and BOTH sweep endpoints cannot come to disagree about
+ * which tile the player just pointed at. `furnitureSvg`'s header carries the occlusion half.
+ *
+ * ⚠️ THE ANSWER IS STILL BOUNDS-CHECKED against the focused room. Tier two returns null outside it by
+ * construction; tier one is a string off an attribute, so it is checked rather than trusted — a stray
+ * `data-tile` reaching this handler must never lower an order onto a tile in another compartment.
+ */
 function tileAt(e) {
+  const el = e && e.target && typeof e.target.closest === 'function' ? e.target.closest('[data-tile]') : null;
+  const raw = el && el.dataset ? el.dataset.tile : null;
+  if (raw) {
+    const parts = String(raw).split(',');
+    const x = Number(parts[0]), y = Number(parts[1]);
+    if (Number.isFinite(x) && Number.isFinite(y) && _focus
+      && (x | 0) >= (_focus.rx | 0) && (x | 0) < (_focus.rx | 0) + (_focus.rw | 0)
+      && (y | 0) >= (_focus.ry | 0) && (y | 0) < (_focus.ry | 0) + (_focus.rh | 0)) {
+      return { x: x | 0, y: y | 0 };
+    }
+  }
   return tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
 }
 

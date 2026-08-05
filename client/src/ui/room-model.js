@@ -616,19 +616,25 @@ export function scenePlacement(scene, focusRoom, unit = U) {
  *     px = x0 + s·x + 0.4·s·y          py = y0 − s·z − 0.6·s·y
  * On the floor plane z = 0, so `y = (y0 − py) / (0.6·s)` and then `x = (px − x0 − 0.4·s·y) / s`.
  *
- * ⚠️ THE PLANE IS AN ASSUMPTION AND IT HAS ONE MEASURED CONSEQUENCE: a click on the TOP FACE of a
+ * ⚠️ THE PLANE IS AN ASSUMPTION AND IT HAS ONE MEASURED CONSEQUENCE: a point on the TOP FACE of a
  * tall fitting resolves to the floor tile that face covers, which is further BACK than the tile the
  * fitting stands on. At the cutaway's 2.4 m ceiling that is up to ~3 tiles of error on the tallest
- * pieces — a real miss, not a rounding one, and it is FILED rather than closed here.
+ * pieces — a real miss, not a rounding one. That is a TRUE STATEMENT ABOUT THIS FUNCTION and it stays
+ * true; what changed is that it is no longer the surface's answer.
  *
- * ⚠️ THE JUSTIFICATION THAT STOOD HERE WAS OVERSTATED AND IS CORRECTED (VR-P3 review, MINOR 7). It
- * read: *"the alternative (hit-test every drawn face in paint order) needs the browser's own picking,
- * which a pure model cannot have."* The first half is true of THIS FUNCTION and false of the SURFACE:
- * the pieces are real SVG elements in a real document, so `roomzoom-view.js` could resolve a pointer
- * from `e.target` (or `elementFromPoint`) and fall back to this inverse only on the floor itself —
- * every fitting already carries an id naming its tile (`rz-f-<tx>-<ty>`). What a PURE model cannot
- * have is a depth buffer; what the VIEW cannot have is an excuse. The old plan view had no such case
- * because nothing had height.
+ * ⭐⭐ VR-P3-a IS CLOSED, AND THE ROUTE IS THE ONE THIS HEADER NAMED (VR-P3 review, MINOR 7). The
+ * paragraph that stood here said the alternative "needs the browser's own picking, which a pure model
+ * cannot have" — true of THIS FUNCTION, false of the SURFACE. `roomzoom-view.js`'s `tileAt` now
+ * resolves the pointer from `e.target` first (every standing piece carries `data-tile` and
+ * `pointer-events="visiblePainted"`) and falls through to this inverse only on bare floor, which is
+ * the plane this closed form is exactly right about. What a PURE model cannot have is a depth buffer;
+ * what the VIEW cannot have is an excuse. The old plan view had no such case because nothing had
+ * height.
+ *
+ * ⛔ SO DO NOT READ THIS FUNCTION AS "THE CLICK MAP". It is one of two tiers, and the tier that is
+ * wrong about anything with height. Reaching for it directly from a handler re-opens the defect —
+ * measured on the wreck's cryo bay before the fix: 16 of 18 drawn fittings designated a different
+ * tile through this path and 2 designated none at all.
  * PURE.
  */
 export function tileFromScenePoint(sx, sy, scene, focusRoom) {
@@ -2079,7 +2085,14 @@ export function itemStackSvg(tiles, focusRoom, unit = U, place = null) {
     }
     // No escaping: every character here comes from ITEM_LABEL (our own ASCII table), from `| 0`
     // arithmetic, or from a pure builder. Nothing on this layer is player- or host-authored text.
-    out.push('<g class="rz-item"'
+    // ⭐ VR-P3-a — A PILE SAYS WHICH TILE IT IS ON, AND ITS OWN INK IS PRESSABLE, for the same reason
+    // `furnitureSvg`'s pieces do: `place.stand` puts it UPRIGHT on the floor centre, so its body hangs
+    // over the tile behind it and the floor-plane inverse resolved a press on the pile to that tile.
+    // One tile of error rather than the fittings' three, and the same defect. The `pointer-events` is
+    // per-item and `visiblePainted`, so the empty paper inside a pile's box still falls through to the
+    // floor — the group below stays `none` so nothing but drawn ink is a target.
+    out.push('<g class="rz-item" data-tile="' + (t.tx | 0) + ',' + (t.ty | 0)
+      + '" pointer-events="visiblePainted"'
       + (place ? ' transform="' + place.stand(t.tx | 0, t.ty | 0) + '"' : '') + '>' + body + '</g>');
   }
   return out.length ? '<g class="rz-items" pointer-events="none">' + out.join('') + '</g>' : '';

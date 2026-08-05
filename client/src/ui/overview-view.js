@@ -652,7 +652,13 @@ function buildIslands() {
   // the caption changes with them; until then the empty scope IS the reading.
   $('ov-radar').innerHTML =
     '<span class="ov-colhdr">outside</span>' +
-    '<svg class="ov-radarsvg" viewBox="0 0 150 150" width="150" height="150" aria-hidden="true">' +
+    // ⛔ NO `width`/`height` ATTRIBUTES — the `viewBox` is the whole size contract and `.ov-radarsvg`
+    // gives it its box (`width:100%` + a 1:1 `aspect-ratio`). The hard 150×150 that stood here was
+    // measured hanging 27px — 18% of the drawing — outside a column whose content box is narrower
+    // than 150px, and `.ov-col{overflow:hidden}` simply cut that 18% off at every viewport that drew
+    // the scope. A fixed pixel size inside a track that is allowed to move is the defect; the
+    // viewBox already says everything about this instrument's proportions.
+    '<svg class="ov-radarsvg" viewBox="0 0 150 150" aria-hidden="true">' +
       '<rect x="0.7" y="0.7" width="148.6" height="148.6" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
       '<circle cx="75" cy="75" r="66" fill="none" stroke="currentColor" stroke-width="0.7" opacity="0.75"/>' +
       '<circle cx="75" cy="75" r="44" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.45"/>' +

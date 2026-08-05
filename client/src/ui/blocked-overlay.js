@@ -132,6 +132,25 @@ export function blockedBadgeSvg(reason, text, unit) {
   const cx = unit / 2;
   const topY = -unit * 0.55;            // the label sits ABOVE the tile, clear of what stands on it
   const cls = 'rz-blocked-badge' + (reason ? ' rz-blocked-badge-' + reason : '');
+  // ⛔ THE BADGE TAKES NO POINTER EVENTS — A CAPTION IS NOT A TARGET. It is drawn with `place.stand`,
+  // UPRIGHT and floating ABOVE its tile at `-0.55·unit`, inside a layer that is `visiblePainted` for
+  // the CELL outlines' `<title>`; so its ink looked pressable and a press on it designated a tile the
+  // player was not pointing at (independent review, 2026-08-05: `strip x:34,y:5` while the room's
+  // blocked tiles were 35,2 / 38,2 / 41,2 / 35,6).
+  //
+  // ⚠️⚠️ AND SAY THE HARD HALF: THIS ATTRIBUTE IS **MEASURED INERT ON THE SHIPPED WRECK**, so it is a
+  // RULE rather than a fix, and the reported press is UNCHANGED by it. Driven on the life-support
+  // room after four refused STRIPs: a 576-point grid over the badge found 72 points of its own ink,
+  // and under ALL 72 lies a bare cutaway floor path — not one `data-tile` element anywhere beneath
+  // it. So `tileAt` falls to the floor-plane inverse either way and still answers `strip x:34,y:5`,
+  // which IS the honest floor tile for that screen point. What the attribute buys is that the caption
+  // can never SHADOW a real piece that happens to stand under it; what it does not buy is a press on
+  // a label meaning anything better than "the floor behind the label".
+  // ⛔ A `data-tile` WOULD BE WORSE, not better: `said` below de-duplicates by SENTENCE, so one badge
+  // captions a GROUP of tiles and any single tile it named would be a guess dressed as an answer.
+  // The residual — an upright label's ink reads as pressable and designates the floor under it — is
+  // FILED in `docs/HANDOVER.md`'s open list, not closed here.
+  // It costs no tooltip: the `<title>` lives on `blockedCellSvg`'s cell, not here.
   // ⚠️ THE PLATE AND THE TYPE ARE IN THE **DOCUMENT'S** SCALE, NOT THE TILE'S, and both directions of
   // that were measured on a render rather than reasoned about. Fixed at the plan view's 12 units the
   // plate is a speck inside a ~95-unit cutaway tile; scaled by `unit/32` the sentence comes out at
@@ -143,7 +162,7 @@ export function blockedBadgeSvg(reason, text, unit) {
   const k = Math.min(1.6, Math.max(1, unit / 32));
   const bh = 12 * k, bw = 12 * k;
   const bx = cx - bw / 2, by = topY - bh;
-  return '<g class="' + cls + '">'
+  return '<g class="' + cls + '" pointer-events="none">'
     // the leader: from the tile's floor centre up to the plate
     + '<path class="rz-blocked-leader" d="M' + n(cx) + ' ' + n(unit) + ' L' + n(cx) + ' ' + n(topY)
     + '" fill="none" stroke="' + FAULT + '" stroke-width="' + n(0.9 * k) + '" opacity="0.75"/>'
@@ -168,9 +187,25 @@ export function blockedBadgeSvg(reason, text, unit) {
  * POINTER EVENTS ARE ON, DELIBERATELY — the `zone-overlay.js` finding, inherited rather than
  * rediscovered. Every other group in this stack carries `pointer-events="none"`, and copying that
  * silently disables the `<title>` tooltip. The Room Zoom's click/drag handlers are bound to the
- * CONTAINER and resolve tiles from `clientX/clientY` against the layer's bounding rect; they never
- * read `e.target`, so a child receiving the event and letting it bubble changes nothing.
+ * CONTAINER, so a child receiving the event and letting it bubble changes nothing.
  * `cursor="inherit"` keeps the armed-tool crosshair.
+ *
+ * ⚠️ THE INHERITED SENTENCE *"they never read `e.target`"* IS STALE AND IS CORRECTED HERE TOO — since
+ * VR-P3-a `tileAt` resolves `e.target.closest('[data-tile]')` first. The dashed CELL outlines below
+ * are `place.cell` — sheared into the floor plane on their own tile — so they fall through to the
+ * floor inverse and answer correctly, and they keep their pointer events for the `<title>`.
+ *
+ * ⛔ THE LEADER BADGE IS `pointer-events="none"` — see `blockedBadgeSvg` for the measurement, and for
+ * the honest limit: on the shipped wreck the attribute changes NOTHING (72 of 72 ink points have no
+ * `data-tile` under them, so the floor inverse answers either way). It is the rule that a caption is
+ * not a target, and insurance against the badge ever shadowing a piece; the press itself still means
+ * "the floor behind the label", which is FILED rather than closed.
+ *
+ * ⚠️ AND THE ONE STRUCTURAL FACT WORTH WRITING DOWN: `rz-blockeds` is the ONLY layer painted ABOVE
+ * the `data-tile` tier that takes pointer events at all. Today it shadows nothing — its cells lie in
+ * the floor plane and its badge is now inert — but that is GEOMETRY, not a guarantee. A future shape
+ * on this layer with real ink over a fitting would sit between the player and that fitting's own
+ * answer, and would have to carry the tile itself.
  *
  * @param {{tx:number, ty:number, reasonName:string, label:string}[]} tiles roomBlockedTiles output
  * @param {{rx:number, ry:number}} focus the focused room rect's origin, for the local transform

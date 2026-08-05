@@ -181,13 +181,33 @@ const onScreenExpr = `JSON.stringify((()=>{
     const vh = window.innerHeight, vw = window.innerWidth;
     return { sel, w: Math.round(r.width), h: Math.round(r.height),
       top: Math.round(r.top), bottom: Math.round(r.bottom),
-      hostBottom: Math.round(b.bottom),
-      insideHost: r.top >= b.top - 1 && r.bottom <= b.bottom + 1,
+      hostBottom: Math.round(b.bottom), hostRight: Math.round(b.right), right: Math.round(r.right),
+      // HORIZONTAL CONTAINMENT JOINED THE VERTICAL ONE, and it was added because the pin MISSED a
+      // shipped defect that is this rig's exact subject: the radar svg carried a hard 150x150 inside
+      // a 150px border-box track whose padding-left:26px (a CSS specificity loss) left it 123px of
+      // content, so 27px -- 18% of the instrument -- hung out of the column and was cut off by
+      // .ov-col{overflow:hidden} at EVERY viewport. Vertically it was perfectly placed, so a
+      // top/bottom-only check called it fine. Owner-reported, then reproduced here.
+      //
+      // AND THE ZERO BOX IS ITS OWN FINDING, because the containment check above CANNOT TELL
+      // "contained" FROM "NOT RENDERED AT ALL" and the first draft of this widening shipped exactly
+      // that hole -- the 4th shape (a guard whose scope filter excludes the violation) inside the
+      // guard widened to close this class. Measured: with the shipped band defect restored, a
+      // display:none column gives a 0x0 rect, every containment term is vacuously true (0 >= -1,
+      // 0 <= +1), and visiblePx(0) < h-1(-1) is FALSE -- so two of the four swept widths passed
+      // while drawing nothing. Every width this rig sweeps (1600/1360/1100/900) is ABOVE the 818px
+      // point where the radar column is legitimately dropped, so "this affordance has a box" is a
+      // true, cheap assertion at all of them, and it is the assertion that makes the containment
+      // terms mean something.
+      rendered: r.width > 0 && r.height > 0,
+      insideHost: r.top >= b.top - 1 && r.bottom <= b.bottom + 1
+        && r.left >= b.left - 1 && r.right <= b.right + 1,
       insideView: r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw,
       visiblePx: Math.max(0, Math.min(r.bottom, b.bottom, vh) - Math.max(r.top, b.top, 0)) };
   };
   const out = [probe('#ov-alert', '#ov-ledger'), probe('.ov-ledcaveat', '#ov-ledger'),
-               probe('.ov-radarcap', '#ov-radar'), probe('.ov-cplist', '#ov-compart'),
+               probe('.ov-radarcap', '#ov-radar'), probe('.ov-radarsvg', '#ov-radar'),
+               probe('.ov-cplist', '#ov-compart'),
                probe('.ov-navhint', '#ov-cmd')];
   bar.hidden = was; txt.textContent = wasTxt;
   return out;
@@ -287,18 +307,62 @@ if (c0.tiles.every((t) => t.fittings === 0)) {
 }
 
 // ── the on-screen check ──
-const boxes = await json(onScreenExpr);
-log('\n── ON-SCREEN GEOMETRY (the pin dom-lite cannot carry) ──────────────');
-for (const b of boxes) {
-  if (b.missing) { problems.push(`${b.sel} is not in the DOM at all`); continue; }
-  log(`  ${b.sel.padEnd(16)} ${b.w}×${b.h} top=${b.top} bottom=${b.bottom} `
-    + `hostBottom=${b.hostBottom} visible=${b.visiblePx}px inHost=${b.insideHost} inView=${b.insideView}`);
-  if (!b.insideHost || !b.insideView || b.visiblePx < b.h - 1) {
-    problems.push(`${b.sel} renders ${b.visiblePx}px of ${b.h}px on screen (top=${b.top}, `
-      + `bottom=${b.bottom}, its column ends at ${b.hostBottom}). An affordance clipped out of its `
-      + 'own box is an affordance deleted — see D2 and the always-visible ledger caveat.');
+function readBoxes(boxes, at) {
+  for (const b of boxes) {
+    if (b.missing) { problems.push(`${at}: ${b.sel} is not in the DOM at all`); continue; }
+    log(`  ${b.sel.padEnd(16)} ${b.w}×${b.h} top=${b.top} bottom=${b.bottom} right=${b.right} `
+      + `hostBottom=${b.hostBottom} hostRight=${b.hostRight} visible=${b.visiblePx}px `
+      + `rendered=${b.rendered} inHost=${b.insideHost} inView=${b.insideView}`);
+    // ⛔ THE ZERO BOX FIRST, AND SEPARATELY — a `display:none` element passes every containment term
+    // vacuously, so reporting it as "clipped" would be the wrong sentence about the right defect.
+    if (!b.rendered) {
+      problems.push(`${at}: ${b.sel} has a ${b.w}×${b.h} box — it is in the DOM and DRAWS NOTHING. `
+        + 'Every width this rig sweeps is above the 818px point where the radar column is legitimately '
+        + 'dropped, so a zero box here is an affordance that is gone, and the containment checks '
+        + 'below it are vacuously true about a rectangle that does not exist.');
+      continue;
+    }
+    if (!b.insideHost || !b.insideView || b.visiblePx < b.h - 1) {
+      problems.push(`${at}: ${b.sel} renders ${b.visiblePx}px of ${b.h}px on screen (top=${b.top}, `
+        + `bottom=${b.bottom}, right=${b.right}; its column ends at ${b.hostBottom} / ${b.hostRight}). `
+        + 'An affordance clipped out of its own box is an affordance deleted — see D2 and the '
+        + 'always-visible ledger caveat.');
+    }
   }
 }
+const boxes = await json(onScreenExpr);
+log('\n── ON-SCREEN GEOMETRY (the pin dom-lite cannot carry) ──────────────');
+readBoxes(boxes, '1600px');
+
+// ⭐⭐ AND AT THREE NARROWER WIDTHS, BECAUSE THE OWNER'S GESTURE IS SHRINKING THE WINDOW. The readout
+// band's two right-hand tracks were hard pixels (`258px 150px`) with hard 28px gaps, so 490px of it
+// could not compress and only the two PROSE columns gave — measured at a 700px viewport,
+// `compartments` had 147px of content and `aboard` 120px while the instruments kept every pixel they
+// have at 1600. A single-viewport rig cannot see that, and it is the half of this band's design that
+// a player actually operates. Three widths, not a sweep: 1360 is where the radar column used to
+// vanish outright, 1100 is a laptop half-screen, 900 is the narrowest width that still shows all
+// four columns.
+//
+// ⛔⛔ THE RECEIPT FOR THIS SWEEP, CORRECTED — the first one was measured against a PARTIAL revert and
+// was therefore false. It said "with the band defect restored the rig exits 10 naming `.ov-radarsvg`
+// at all four widths"; that revert put back the radar's CSS and the svg's hard 150×150 but LEFT the
+// new 818px drop in place, so the scope still rendered at 1100/900 and overflowed there. Against the
+// REAL pre-fix tree (`@media (max-width:1359px)`) the column is `display:none` at 1100/900, and the
+// containment terms were vacuously true about a 0×0 rect — the reviewer measured 2 findings, not 4.
+// With the `rendered` term above, the WHOLE pre-fix band restored from `8e55f95^` now gives exit 10
+// and SIX band findings, in both shapes: `.ov-radarsvg` OVERFLOWS at 1600 (right 1581 vs a column
+// ending 1554) and at 1360 (1341 vs 1314), and `.ov-radarsvg` + `.ov-radarcap` are ZERO-BOX at 1100
+// and 900 — each logged `rendered=false inHost=true inView=true`, which is the vacuity itself,
+// printed. Re-measure with the fixture in `band-mutate2.py`'s shape, never quote this paragraph.
+for (const w of [1360, 1100, 900]) {
+  await call('Emulation.setDeviceMetricsOverride', { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(900);
+  const tracks = await evaluate(`getComputedStyle(document.querySelector('.ov-columns')).gridTemplateColumns`);
+  log(`\n── AT ${w}px — tracks ${tracks}`);
+  readBoxes(await json(onScreenExpr), `${w}px`);
+}
+await call('Emulation.clearDeviceMetricsOverride');
+await sleep(900);
 
 // ── THE CLICK MAP AGREES WITH THE DRAWING, measured in the running game ──
 //
