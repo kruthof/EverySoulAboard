@@ -61,8 +61,12 @@
   --moss-cell:calc((12ch + 12 * var(--moss-track) - 9 * var(--moss-cellgap)) / 10);
   --moss-cell-ring:var(--gauge-empty-ring);
   --moss-cell-hatch:rgba(20,18,15,.28);
+  /* an UNKNOWN load (`loadBar`'s -1 sentinel): a ring at well under half the weight and NO hatch,
+     so "no reading" cannot be mistaken for "a reading of zero" */
+  --moss-cell-absent:rgba(20,18,15,.16);
   --moss-oncell-ring:rgba(235,228,209,.4);
   --moss-oncell-hatch:rgba(235,228,209,.28);
+  --moss-oncell-absent:rgba(235,228,209,.18);
   /* what colour the △ mark is drawn in — see `.moss-warn` for why this is a property and not
      `currentColor` (the span's own colour has to be transparent to hide the glyph under it) */
   --moss-mark:var(--moss-attend);
@@ -170,9 +174,15 @@
    ten boxes are sized to fill exactly 12ch + 12 × track (see `--moss-cell`), the two gap characters
    take the rest, and the total is the fourteen characters the grid expects. Break either half and
    the columns after LOAD walk.
-   Measured in Chrome at 1440×900 (15.12px type) on the shipped sheet — see the VR-P6 report's
-   measurement table: every `.c-bar` reads 143.416px on a 100% row, a 61% row, a 0% row and the `--`
-   row, and 14 monospace characters of this type measure 143.416px. */
+   Measured in Chrome at 1440×900 (15.12px type) on the shipped sheet: every `.c-bar` reads
+   **142.234px** on all eight rows (100% / 88% / 83% / 61% / 55% / 34% / 12% / `--`), and a 14-
+   character probe of the same type in the same row measures **142.25px** — 0.016px apart, which is
+   `calc()`'s rounding of the same quantity.
+   ⚠️ THE FIRST VERSION OF THIS PARAGRAPH SAID 143.416px FOR BOTH NUMBERS AND NEITHER REPRODUCES.
+   It was written before the rig ran and never corrected against it; review caught it. Retracted here
+   rather than quietly overwritten, because a "measured" figure that was never measured is worse than
+   no figure — the next person re-deriving the pin would have chased a 1.2px discrepancy that does
+   not exist. */
 .moss-row .c-bar{display:inline-block;width:calc(14ch + 14 * var(--moss-track))}
 /* THE ENGRAVED GAUGE (charter §1). Filled = solid ink; empty = a hairline ring over a 45° micro
    hatch. One box per character of the model's bar string — the character is still there (the line is
@@ -188,15 +198,37 @@
   background-color:var(--moss-ink);background-image:none;
   box-shadow:inset 0 0 0 1px var(--moss-ink);
 }
+/* ⭐⭐ AN UNKNOWN LOAD IS NOT A ZERO LOAD, AND IT MUST NOT LOOK LIKE ONE (DA-M1 / VS-M4).
+   `loadBar(-1)` writes SPACES between the brackets where a real 0% writes `▒`, and the first draft
+   of this skin mapped both to the same empty cell — so `NAV / SENSORS`, whose load the wire never
+   carried, drew a gauge PIXEL-IDENTICAL to a system measured at 0%. That is the one thing this
+   screen exists not to do: an unreadable row dressed as a readable one. (The DOM guard could not
+   see it either — a genuine 0% row also has zero `.on` cells.)
+   So an unknown cell reads as ABSENT rather than as engraved-empty: no micro-hatch at all, and a
+   ring at less than half the weight. Nothing is engraved there because nothing was measured. */
+.moss-row .c-cell.unknown{background-image:none;box-shadow:inset 0 0 0 1px var(--moss-cell-absent)}
 /* the paper idiom draws no brackets — but `[` and `]` are two characters of the record, so they are
    present and drawn as nothing */
 .moss-row .c-bracket{display:none}
 .moss-row .c-fault{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--moss-fault)}
-/* VS-M8 — △ trails ATTEND/DEGRADED only; OFFLINE is dim (an absence, not an alarm). */
-.moss-row .c-state{letter-spacing:.08em}
+/* VS-M8 — △ trails ATTEND/DEGRADED only; OFFLINE is dim (an absence, not an alarm).
+   ⛔ NO `letter-spacing` HERE, AND THAT IS A RULE, NOT AN OVERSIGHT. The design sets the state cell
+   at .08em against the row's .06em, which it can afford because its columns are a px grid. Ours are
+   the characters: a cell with its own track advances differently from the head that names it, and at
+   .08em the measured drift was LAST FAULT −3.657px (12 characters × .02em × 15.12px), `.c-fault`'s
+   left edge took TWO values across the eight rows depending on whether the row warned, and the
+   `.moss-warn` pin measured `1ch` against the wrong track. Shipped in the first draft of this
+   package; caught by review. The guard is `moss-screen.test.js`'s metric sweep over every `.c-*`
+   cell — not just the head, which was the half that had one. */
 .moss-row .c-state.warn{color:var(--moss-attend)}
 .moss-row.offline .c-gutter,.moss-row.offline .c-label,
 .moss-row.offline .c-load,.moss-row.offline .c-state{color:var(--moss-off)}
+/* …AND THE GAUGE DIMS WITH THE ROW. Without this the offline row's boxes were byte-identical to a
+   live row's — the row's words said OFFLINE while its gauge went on looking like a reading.
+   `opacity` on the cell strip rather than a second set of colour tokens: it composes with all three
+   cell states (filled, empty, unknown) and with the inverted selection band, so there is no
+   combination that can fall out of step. */
+.moss-row.offline .c-cells{opacity:.5}
 /* THE △ MARK. Width-pinned to one monospace cell for the reason the ⚠ was (VS-M8a): the mark is not
    in Space Mono, so its fallback advance is not one cell and the state column's printable width
    would drift row to row. The glyph under it is `color:transparent` and clipped; the mark itself is
@@ -230,6 +262,9 @@
   background-color:var(--moss-paper);background-image:none;
   box-shadow:inset 0 0 0 1px var(--moss-paper);
 }
+/* the unknown cell inverts too — it is declared BEFORE `.moss-row.sel .c-cell` and carries the same
+   specificity, so without this the selection band would hand an unmeasured cell its hatch back */
+.moss-row.sel .c-cell.unknown{background-image:none;box-shadow:inset 0 0 0 1px var(--moss-oncell-absent)}
 .moss-row:not(.sel):hover{background:rgba(20,18,15,.055)}
 /* IX-M13 — the honest disconnected render (never an empty table reading as "all nominal") */
 .moss-nolink{padding:1.4em 0 .6em}

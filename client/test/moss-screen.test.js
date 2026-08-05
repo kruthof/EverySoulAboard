@@ -19,7 +19,7 @@ import { cssCodeOnly } from './code-only.js';
 import { stylesSource } from './styles-source.js';
 import * as FAKE from './moss-model-fake.js';
 import {
-  MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect,
+  MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect, barCell,
   isTextEntryTarget, SCROLL_KEYS, shouldFollowTail, TAIL_SLACK_PX, linesBelowFold, FOLD_SLACK_PX,
 } from '../src/ui/moss-screen.js';
 import { decode } from '../src/wire/messages.js';
@@ -638,6 +638,71 @@ test('VR-P6: every ledger row draws BAR_WIDTH engraved cells, and the filled run
     S(view.rows[7].bar).padEnd(COLS.bar) + ''.padEnd(COLS.gapBar));
 });
 
+/**
+ * ⭐⭐ AN UNKNOWN LOAD MUST NOT DRAW AS A ZERO LOAD — DA-M1's rule, on the pixels.
+ *
+ * ⛔ THIS IS THE DEFECT VR-P6'S FIRST COMMIT SHIPPED, and the reason the cell-count guard above
+ * could not see it: `loadBar(-1)` writes SPACES and `loadBar(0)` writes `▒`, but `barCell` mapped
+ * both to the bare `c-cell` class — so `NAV / SENSORS`, whose load the wire never carried, drew a
+ * gauge byte-identical to a system measured at 0%. Both rows have zero `.on` cells, so counting
+ * filled cells can never tell them apart. THE CLASS IS THE ONLY THING THAT CAN, and it has to be
+ * asserted against BOTH bars — a fixture with only one of them proves nothing.
+ *
+ * Driven directly through `barCell` rather than through the fixture, because the shipped `systems`
+ * fixture happens to carry no 0% row: the pair `[▒…]` vs `[ …]` is exactly what the model emits for
+ * `0` and for `-1` (`moss-model.test.js` pins both strings), and asking the renderer about both is
+ * what makes "a genuine 0% also has zero filled cells" a testable statement instead of an excuse.
+ */
+test('VR-P6: a `--` load draws ABSENT cells, a measured 0% draws ENGRAVED-EMPTY ones', () => {
+  const doc = new DocumentLite();
+  const kinds = (barText) => barCell(doc, barText).byClass('c-cell')
+    .filter((c) => !c.classList.contains('c-bracket'))
+    .map((c) => (c.classList.contains('on') ? 'on'
+      : c.classList.contains('unknown') ? 'unknown' : 'empty'));
+
+  const zero = kinds(FAKE.loadBar(0, FAKE.BAR_WIDTH).padEnd(COLS.bar) + ''.padEnd(COLS.gapBar));
+  const unknown = kinds(FAKE.loadBar(-1, FAKE.BAR_WIDTH).padEnd(COLS.bar) + ''.padEnd(COLS.gapBar));
+
+  assert.equal(zero.length, FAKE.BAR_WIDTH);
+  assert.equal(unknown.length, FAKE.BAR_WIDTH);
+  assert.deepEqual([...new Set(zero)], ['empty'], 'a measured 0% must draw engraved-empty cells');
+  assert.deepEqual([...new Set(unknown)], ['unknown'],
+    'a `--` row drew the SAME cell a measured 0% draws. That is DA-M1 on the pixels: the one row '
+    + 'whose load nobody read is dressed as the row that read zero. Counting filled cells cannot '
+    + 'see it — both are zero — so the class is the whole instrument.');
+  assert.notDeepEqual(zero, unknown);
+
+  // …and the fixture's own OFFLINE row really is the sentinel one, so the ledger exercises it
+  const s = openWithSystems();
+  const nav = rowsOf(s.root)[7];
+  assert.equal(nav.classList.contains('offline'), true, 'precondition: nav_sensors is the OFFLINE row');
+  assert.equal(nav.byClass('c-cell').filter((c) => c.classList.contains('unknown')).length,
+    FAKE.BAR_WIDTH, 'the ledger\'s `--` row is not drawing absent cells');
+
+  // The SKIN half: `unknown` must be a different treatment, and the offline row's gauge must dim
+  // with the rest of the row (without this its boxes were byte-identical to a live row's).
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  const unk = /\.moss-row \.c-cell\.unknown\{([^}]*)\}/.exec(moss);
+  assert.ok(unk, 'nothing styles an unknown cell, so the class is a label with no consequence');
+  assert.match(unk[1], /background-image:none/,
+    'an unknown cell keeps the micro-hatch — engraved means measured, and this was not measured');
+  assert.match(unk[1], /var\(--moss-cell-absent\)/, 'the unknown cell reuses the empty cell\'s ring');
+  assert.match(moss, /\.moss-row\.sel \.c-cell\.unknown\{/,
+    'the unknown cell does not invert, so the selection band hands it its hatch back');
+  // ⛔ THE VALUE, NOT THE PROPERTY — and this assertion was written the lazy way first and CAUGHT BY
+  // ITS OWN PROBE. `/\.moss-row\.offline \.c-cells\{[^}]*opacity/` is satisfied by `opacity:1`, so
+  // setting the dimming to "no dimming at all" left it green: a guard whose filter cannot exclude
+  // the violation it exists for (CLAUDE.md's 4th shape), inside the fix for a defect of exactly that
+  // family. The number is read and required to actually dim.
+  const off = /\.moss-row\.offline \.c-cells\{([^}]*)\}/.exec(moss);
+  assert.ok(off, 'the OFFLINE row\'s gauge is not dimmed with the row — its words say OFFLINE while '
+    + 'its boxes go on looking exactly like a live reading');
+  const alpha = parseFloat((/opacity:\s*([\d.]+)/.exec(off[1]) || [])[1]);
+  assert.ok(alpha > 0 && alpha < 1,
+    `the offline gauge's opacity is ${off[1]} — that is not a dimming. \`opacity:1\` satisfies a `
+    + 'scan for the property and changes nothing on screen.');
+});
+
 const S = (v) => (v == null ? '' : String(v));
 
 test('DA-M1: a row whose state the wire did not carry reads UNKNOWN, never NOMINAL', () => {
@@ -714,6 +779,13 @@ test('VS-M6: the header is the two title lines and the column head is the ledger
   assert.equal(thead.indexOf('LOAD'), COL_AT.bar);
   assert.equal(thead.indexOf('STATE'), COL_AT.state);
   assert.equal(thead.indexOf('LAST FAULT'), COL_AT.fault);
+  // FIVE heads, as the design draws them (`system · load · % · state · last fault`). VR-P6's first
+  // draft ran LOAD across the bar AND the number and left the percentage column unlabelled; `%` is
+  // right-aligned in its column because the numbers under it are.
+  assert.equal(thead.indexOf('%'), COL_AT.load + COLS.load - 1,
+    'the `%` head is not sitting over the right-aligned load numbers it names');
+  const pct = s.root.byClass('moss-row')[0].oneClass('c-load').textContent;
+  assert.equal(pct.indexOf('%'), COLS.load - 1, 'and the row\'s own `%` is in that same cell');
 });
 
 test('VS-M7: footer hints are per-screen bracket keys, joined with ` · `', () => {
@@ -1416,6 +1488,18 @@ test('VS-M10: reduced motion turns the block cursor steady', () => {
   const block = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.moss-cursor\s*\{([^}]*)\}/.exec(css);
   assert.ok(block, 'the MOSS reduced-motion block exists');
   assert.match(block[1], /animation\s*:\s*none/);
+
+  // ⛔ …AND THE ANIMATION IT TURNS OFF HAS TO EXIST AND HAVE A BODY. Driven by review: emptying
+  // `@keyframes j11blink{}` while leaving the `animation:` declaration in place left the suite GREEN
+  // and the caret PERMANENTLY INVISIBLE — an `animation` naming an empty keyframe list computes to
+  // the element's own `opacity`, which the blink was the only thing setting. A prompt with no caret
+  // is the invisible-feedback rule broken at the one place the player types.
+  const kf = /@keyframes\s+j11blink\s*\{([\s\S]*?)\}\s*(?:\/|\.|@|$)/.exec(css);
+  assert.ok(kf, 'the j11blink keyframes are gone but `.moss-cursor` still animates by that name');
+  assert.match(kf[1], /opacity\s*:\s*1/, 'j11blink has no visible phase — the caret never paints');
+  assert.match(kf[1], /opacity\s*:\s*0/, 'j11blink has no hidden phase — the caret does not blink');
+  assert.match(css, /\.moss-cursor\{[^}]*animation:j11blink/,
+    'the caret no longer runs charter §1\'s j11blink');
 });
 
 test('VS-M9: the responsive floor drops LAST FAULT before any other column, and never scrolls x', () => {
@@ -1456,14 +1540,67 @@ test('VS-M4a: the bar cell stays width-pinned, so a `--` row does not drift the 
     'the gauge cell is a chosen size again rather than one solved out of the character budget — '
     + 'that is the exact defect the render caught in this package');
   assert.match(css, /--moss-cellgap:\.12em/);
-  // the column head must share the rows' advance, or the same misalignment returns from the other end
+  // the column head must restate the rows' advance (the general sweep below is what enforces it
+  // everywhere else — this leg only pins that the head declares it at all)
   const thead = /\.moss-thead\{([^}]*)\}/.exec(css);
   assert.ok(thead);
   assert.match(thead[1], /letter-spacing:var\(--moss-track\)/,
     'the column head has its own letter-spacing, so its labels no longer sit on the rows\' grid');
-  assert.doesNotMatch(thead[1], /font-size/,
-    'the column head has its own font-size, so its character advance is not the rows\' — the design '
-    + 'can do that because its columns are a px grid; ours are the characters themselves');
+});
+
+/**
+ * ⭐⭐ ONE TRACK, ONE SIZE, ACROSS THE WHOLE GRID — BOTH HALVES OF IT.
+ *
+ * ⛔ THIS OBLIGATION USED TO BE ONE LINE POINTED AT `.moss-thead`, AND THE HALF IT COULD NOT SEE IS
+ * THE HALF THAT SHIPPED BROKEN. VR-P6's first commit put `letter-spacing:.08em` on
+ * `.moss-row .c-state` — straight off the design, where it is free because the columns are a px
+ * grid. Here the columns ARE the characters, so a cell with its own track advances differently from
+ * the head that names it. Measured in Chrome at 1440: LAST FAULT drifted −3.657px from its head
+ * (12 characters × .02em × 15.12px); `.c-fault`'s left edge took TWO DISTINCT VALUES across the
+ * eight rows, split by whether the row carried a △; and `.moss-warn`'s `calc(1ch + var(--moss-track))`
+ * pin was measuring a cell whose real track was .08em. All 95 tests stayed green, because the only
+ * metric assertion in the file was pointed at the head.
+ *
+ * So the sweep is over EVERY rule that paints a grid cell, whichever grid it belongs to: the
+ * ledger's `.c-*` columns, the POD BAY's, the PROGRAM directory's, the head, the △, and the row
+ * boxes themselves. NO LIST OF EXCEPTIONS — a rule that needs one is a rule that is about to break
+ * the grid. (`.moss-thaw` is deliberately out of scope and stays free: it is appended AFTER the last
+ * column of a pod row, so nothing follows it to shift.)
+ *
+ * MUTATION, driven: `.moss-row .c-state{letter-spacing:.30em}` ⇒ RED here, and nowhere else.
+ */
+test('VR-P6: nothing on the monospace grid sets its own font-size or letter-spacing', () => {
+  const moss = cssCodeOnly(readFileSync(join(CLIENT, 'styles/moss.css'), 'utf8'));
+  // @media wrappers are unwrapped so their inner rules are swept too; @keyframes bodies are dropped
+  const flat = moss
+    .replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\}\s*)*\}/g, ' ')
+    .replace(/@(media|supports)[^{]*\{/g, '\n');
+  const GRID = /(^|,|\s)(\.c-[a-z]|\.moss-row|\.moss-podrow|\.moss-thead|\.moss-warn)/;
+  const offenders = [];
+  let seen = 0;
+  for (const m of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sel = m[1].trim().replace(/\s+/g, ' ');
+    if (!GRID.test(sel)) continue;
+    seen++;
+    for (const d of m[2].split(';')) {
+      const [prop, val] = d.split(':').map((x) => (x || '').trim());
+      if (prop === 'font-size') offenders.push(`${sel} { font-size:${val} }`);
+      // the shared track RESTATED is fine — a DIFFERENT track is the defect
+      if (prop === 'letter-spacing' && val !== 'var(--moss-track)') {
+        offenders.push(`${sel} { letter-spacing:${val} }`);
+      }
+    }
+  }
+  // NON-VACUITY BY INCLUSION, and by name: the sweep must be reading the rules that matter.
+  assert.ok(seen >= 12, `only ${seen} grid rules swept — the selector filter is reading nothing`);
+  for (const need of ['.moss-thead{', '.moss-row .c-bar{', '.moss-row .c-cell{', '.moss-warn{']) {
+    assert.ok(flat.includes(need), `the sweep never saw \`${need}\` — check the filter`);
+  }
+  assert.deepEqual(offenders, [],
+    'a cell on the monospace grid carries its own metric:\n  ' + offenders.join('\n  ')
+    + '\nThe columns here ARE the characters. A different font-size or letter-spacing on one cell '
+    + 'moves every column after it, and by a different amount on the rows where that cell is wider '
+    + '— which is how `.c-state{letter-spacing:.08em}` shipped past 95 green tests.');
 });
 
 // ⭐⭐ VR-P6 / RULING E5 — THE SKIN IS INK ON PAPER, AND THE GUARD WATCHES THE DIRECTION OF TRAVEL.
@@ -1517,6 +1654,16 @@ test('VR-P6: the .moss token block is charter §1\'s paper ramp, derived and not
     '--moss-attend': 'var(--attend)',
     '--moss-off': 'var(--ink-offline)',
     '--moss-onink': 'var(--paper-plate)',
+    // ⭐ THE GAUGE TOKENS ARE PINNED BY VALUE TOO, and they were not until review drove it: setting
+    // `--moss-cell-ring:transparent` made every empty cell VANISH — the gauge went from "6 of 10" to
+    // "6 boxes floating in nothing" — and the whole suite stayed green, because the rules that read
+    // these names were scanned and the names themselves were not.
+    '--moss-cell-ring': 'var(--gauge-empty-ring)',
+    '--moss-cell-hatch': 'rgba(20,18,15,.28)',
+    '--moss-cell-absent': 'rgba(20,18,15,.16)',
+    '--moss-oncell-ring': 'rgba(235,228,209,.4)',
+    '--moss-oncell-hatch': 'rgba(235,228,209,.28)',
+    '--moss-oncell-absent': 'rgba(235,228,209,.18)',
   };
   for (const [name, value] of Object.entries(want)) {
     const m = new RegExp(name.replace(/-/g, '\\-') + ':\\s*([^;]+);').exec(block[1]);
@@ -1529,6 +1676,19 @@ test('VR-P6: the .moss token block is charter §1\'s paper ramp, derived and not
   const paper = readFileSync(join(CLIENT, 'src/theme/paper.css'), 'utf8');
   assert.match(paper, /--paper-plate:\s*#EBE4D1/i);
   assert.match(paper, /--attend:\s*#7B2C22/i);
+  assert.match(paper, /--gauge-empty-ring:\s*rgba\(20,18,15,\.4\)/,
+    '--moss-cell-ring points at --gauge-empty-ring, which paper.css no longer declares — the empty '
+    + 'gauge cell then has no ring at all and the whole reading disappears');
+
+  // ⭐ THE FREE ONE: no raw hex anywhere in the MOSS skin. Every colour is charter §1's ramp by
+  // reference or an alpha of ink; the census is ZERO today, so this costs nothing and it is the
+  // single cheapest way to catch a retint being half-reverted one literal at a time. The `%23`
+  // inside the two inline-SVG data URIs is URL-encoded, not a CSS hex, so `url(...)` is excluded.
+  const bare = moss.replace(/url\([^)]*\)/g, 'url()');
+  const hexes = bare.match(/#[0-9a-f]{3,8}\b/gi) || [];
+  assert.deepEqual(hexes, [],
+    'raw hex reached the MOSS skin: ' + hexes.join(', ') + '. Reference the paper token instead — '
+    + 'a literal here is a value no token layer controls and no other surface follows.');
 });
 
 // MUTATION (report row 3): give `.moss-row.sel` a paper background ⇒ RED.
@@ -1636,6 +1796,27 @@ test('applyTakeover is total and degenerate-safe', () => {
 
 import * as REAL from '../src/ui/moss-model.js';
 import { POD_COLS, POD_HEAD_LINE, POD_REFRESH_MS, POD_POLL_STALE } from '../src/ui/moss-screen.js';
+
+/**
+ * ⭐ THE DOUBLE MUST AGREE WITH THE SHIPPED MODEL ABOUT THE GAUGE'S WIDTH — the one number the two
+ * files both declare and neither checks.
+ *
+ * ⛔ DRIVEN BY REVIEW, and it is the fifth-trap shape wearing a fixture: `moss-model-fake.js`
+ * re-declares `BAR_WIDTH` independently, so reverting ONLY the real model to 8 left all 95 DOM
+ * tests in this file GREEN while the product drew eight cells against a twelve-character column and
+ * every heading after LOAD walked. The fake exists so this file tests the DOM in isolation from the
+ * model lane — that split is right and stays — but a fixture free to disagree about a SHARED
+ * GEOMETRY CONSTANT is a fixture that can certify a broken screen. `REAL` is already imported here
+ * for the POD BAY's join tests, so the check costs one line.
+ */
+test('VR-P6: the model double and the shipped model agree about BAR_WIDTH', () => {
+  assert.equal(typeof REAL.BAR_WIDTH, 'number');
+  assert.equal(FAKE.BAR_WIDTH, REAL.BAR_WIDTH,
+    `the DOM suite renders ${FAKE.BAR_WIDTH} gauge cells and the product renders ${REAL.BAR_WIDTH}. `
+    + 'Every assertion in this file is then about a screen nobody ships.');
+  // …and the geometry derived from it, so a change to one without the other cannot pass either
+  assert.equal(COLS.bar, REAL.BAR_WIDTH + 2, 'COLS.bar is `[` + BAR_WIDTH cells + `]`');
+});
 
 // ⚠️ `pod_ozawa`'s occupant is `Ozawa-Reyes` ON PURPOSE — see the same note over `PODS_MSG` in
 // moss-model.test.js. The click path's message assertion below is the one that has to bite when a

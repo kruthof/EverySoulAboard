@@ -54,11 +54,19 @@ export const COL_AT = (() => {
   return { label, bar, load, state, fault: state + COLS.state };
 })();
 
-/** The ledger's column header line (VS-M6 sits it under the rule, above the rows). */
+/**
+ * The ledger's column header line (VS-M6 sits it under the rule, above the rows).
+ *
+ * FIVE heads, not four — the design's Screen 03 labels `system · load · % · state · last fault`, and
+ * VR-P6's first draft ran LOAD across the bar AND the number, leaving the percentage column
+ * unlabelled. `%` is `padStart`ed into the load column so it sits over the RIGHT-ALIGNED numbers
+ * beneath it, which is where the design puts it (`text-align:right` on its own `%` head).
+ */
 export const HEAD_LINE =
   ''.padEnd(COLS.gutter) +
   'SYSTEM'.padEnd(COLS.label) +
-  'LOAD'.padEnd(COLS.bar + COLS.gapBar + COLS.load + COLS.gapLoad) +
+  'LOAD'.padEnd(COLS.bar + COLS.gapBar) +
+  '%'.padStart(COLS.load).padEnd(COLS.load + COLS.gapLoad) +
   'STATE'.padEnd(COLS.state) +
   'LAST FAULT';
 
@@ -416,6 +424,23 @@ const S = (v) => (v == null ? '' : String(v));
  * @param {string} barText  `_ledgerLine`'s `bar` field — `[` + cells + `]` + `COLS.gapBar` spaces
  * @returns {HTMLElement} the `.c-bar` span
  */
+/**
+ * ⭐⭐ WHICH OF THE THREE THINGS A GAUGE CELL IS, FROM THE ONE CHARACTER THE MODEL WROTE — and the
+ * THIRD one is the whole point. `loadBar` writes `█` for a filled cell, `▒` for an empty one, and a
+ * SPACE for every cell of the `-1` sentinel, because "no meaningful load" and "a load of zero" are
+ * different claims (its own comment says so, and `moss-model.test.js` pins `[          ]` ≠
+ * `[▒▒▒▒▒▒▒▒▒▒]`). The first draft of this file collapsed the last two into one class, so a row whose
+ * load the wire never carried drew a gauge indistinguishable from a system measured at 0% — DA-M1's
+ * defect, on the pixels, in the very screen written to refuse it. `.c-cell.unknown` is what keeps
+ * the model's distinction visible; see `moss.css`.
+ * @param {string} ch @returns {'on'|'unknown'|''}
+ */
+function cellKind(ch) {
+  if (ch === '█') return 'on';
+  if (ch === ' ') return 'unknown';   // loadBar's -1 sentinel — nothing was read here
+  return '';                          // '▒' — a measured cell that is empty
+}
+
 export function barCell(doc, barText) {
   const span = mk(doc, 'span', 'c-bar');
   const text = S(barText);
@@ -428,8 +453,7 @@ export function barCell(doc, barText) {
   for (let i = 0; i < bar.length; i++) {
     const ch = bar[i];
     const bracket = (i === 0 && ch === '[') || (i === bar.length - 1 && ch === ']');
-    cells.appendChild(mk(doc, 'i',
-      bracket ? 'c-cell c-bracket' : (ch === '█' ? 'c-cell on' : 'c-cell'), ch));
+    cells.appendChild(mk(doc, 'i', bracket ? 'c-cell c-bracket' : 'c-cell ' + cellKind(ch), ch));
   }
   span.appendChild(cells);
   if (gap) span.appendChild(doc.createTextNode(gap));
@@ -562,6 +586,15 @@ export class MossScreen {
     const prompt = mk(doc, 'div', 'moss-promptrow');
     // VR-P6: the design's prompt marker is a serif `›`, not the ASCII `>`. It is pure chrome —
     // nothing reads it, and the ECHO beside it is still the model's buffer verbatim.
+    //
+    // ⚠️ RECORDED DEVIATION, NOT FIXED HERE: THE TWO MARKERS DISAGREE ON PURPOSE. This prompt draws
+    // `›` while the TRANSCRIPT's echo lines above it still read `> pods`, `> help` — because that
+    // `> ` is TEXT THE MODEL WROTE (`pushConsole` stream 0 composes it, and `moss-model.test.js`
+    // pins the echoed string), not chrome this file owns. Changing it would be a model edit that
+    // moves an asserted string for a glyph, and a retint does not get to rewrite the transcript.
+    // The player therefore sees an ASCII `>` on history and a serif `›` on the live prompt; the
+    // honest reading is that the live prompt is a different thing from the record of one. FILED for
+    // whoever next opens `moss-model.js`.
     prompt.appendChild(mk(doc, 'span', 'moss-gt', '›'));
     this.echoEl = mk(doc, 'span', 'moss-echo', '');
     this.cursorEl = mk(doc, 'span', 'moss-cursor', '█');
