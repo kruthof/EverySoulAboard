@@ -38,7 +38,7 @@ import {
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
   zoomChrome, ZOOM_HINT_IDLE, ZOOM_HINT_ARMED,
   // The pawn-occlusion fallback (2026-08-05) — see its own section at the end of this file.
-  DEVICE_STATE_PIECE, itemForDeviceRow, DEVICE_KIND_NAMES, CITIZEN_GLYPH_CODE,
+  DEVICE_REST_GLYPH, DEVICE_OPEN_GLYPH, itemForDeviceRow, DEVICE_KIND_NAMES,
 } from '../src/ui/room-model.js';
 import { ITEMS, ITEM_IDS, isDeviceItem } from '../src/items/index.js';
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
@@ -5017,18 +5017,26 @@ test('VR-P3: the stat line is scaled to fit its own scene, and never grown past 
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// THE DEVICE-TILE FALLBACK — `itemForDeviceRow`, and the two DECLARED entries it rests on
+// THE DEVICE-TILE FALLBACK — `itemForDeviceRow`, swept over EVERY DeviceKind
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
-// ⚠️ WHAT THIS PINS IS THE ONE PLACE THE CLIENT NAMES A PIECE WITHOUT A GLYPH. Everything else on
-// both surfaces resolves art through `items/glyph-map.js`, which is derived from `ITEMS` and guarded
-// against `Glyphs.For*` by `device-sprite-coverage.test.js`. The pawn-occlusion fallback cannot use
-// that road — the glyph is exactly what a crew member overwrote — so it goes kind → piece, and TWO
-// kinds need a declared answer because they have several glyph-reachable pieces.
+// ⚠️ WHAT THIS PINS IS THE ONE PLACE THE CLIENT NAMES A PIECE WITHOUT A GLYPH ON THE TILE.
+// Everything else on both surfaces resolves art through `items/glyph-map.js`. The pawn-occlusion
+// fallback cannot read the tile's glyph — that is exactly what a crew member overwrote — so it goes
+// kind → REST GLYPH → `itemIdForGlyphChar`, and the two glyph tables it mirrors are pinned here
+// against the C# they mirror.
 //
-// ⇒ THE DECLARED ENTRIES ARE PINNED AGAINST THE SIM'S OWN SWITCH, PARSED FROM THE C#, so the table
-// is a MIRROR with a mechanical check and not a second authority. Same idiom as `STOCK_KINDS`.
+// ⛔⛔ THE FIRST DRAFT DERIVED kind → piece BY SCANNING `ITEMS` INSTEAD, AND SHIPPED THE SIXTH TRAP.
+// It required a `functional` row whose `deviceKind` matched AND whose own id was a value of
+// `GLYPH_TO_ITEM`, which is false for every device wearing BORROWED art — six of them — and
+// `wall-lamp` is `cosmetic` outright. Independent review drove it: a pawn on a Light deleted the
+// Light. The guard that stood here could not see it BY CONSTRUCTION: it counted how many kinds the
+// derivation resolved (21) and asserted the count, so the six failures were inside the number it was
+// asserting. ⇒ The replacement below is a SWEEP OVER EVERY KIND with a per-kind expectation, not a
+// count — a population count proves a matcher matched something, never that it matched the THING
+// (TRAPS 4th shape), and here it did not even prove that.
 const GLYPHS_CS = readFileSync(join(HERE, '..', '..', 'sim', 'Sim.Glyph', 'Glyphs.cs'), 'utf8');
+const MAPPER_CS = readFileSync(join(HERE, '..', '..', 'sim', 'Sim.Glyph', 'GlyphMapper.cs'), 'utf8');
 
 /** `DeviceKind.Foo => 'x',` and `DeviceKind.Foo => NamedConst,` out of `Glyphs.ForDevice`. */
 function parseForDevice(src) {
@@ -5043,66 +5051,137 @@ function parseForDevice(src) {
   return out;
 }
 
-test('the device-tile fallback: 21 kinds derive, exactly TWO are declared, and both agree with the sim', () => {
+/** `Glyphs.Xxx` named constants, so the mapper's `return Glyphs.CryoPodOpen` can be resolved. */
+function glyphConsts(src) {
+  const out = {};
+  for (const m of src.matchAll(/public const char (\w+) = '(.)';/g)) out[m[1]] = m[2];
+  return out;
+}
+
+test('the device-tile fallback MIRRORS Glyphs.ForDevice arm for arm — parsed from the C#', () => {
   const FOR_DEVICE = parseForDevice(GLYPHS_CS);
   const fails = [];   // BLINDED (TRAPS 5th shape)
 
-  // NON-VACUITY FIRST, as an INCLUSION test (TRAPS 4th shape): the parser must find the arms this
-  // test is about, or every comparison below is an agreement between two empty things.
-  for (const k of ['Door', 'Battery', 'CryoPod', 'Scrubber']) {
+  // NON-VACUITY FIRST, as an INCLUSION test: the parser must find the arms this test is about, or
+  // every comparison below is an agreement between two empty things.
+  for (const k of ['Door', 'Battery', 'CryoPod', 'Light', 'Heater', 'Conduit']) {
     if (!FOR_DEVICE[k]) fails.push(`the ForDevice parser did not find ${k} — it proves nothing`);
   }
   if (FOR_DEVICE.CryoPod !== 'K') fails.push(`ForDevice(CryoPod) parsed as ${FOR_DEVICE.CryoPod}, not 'K'`);
-  if (FOR_DEVICE.Door !== '+') fails.push(`ForDevice(Door) parsed as ${FOR_DEVICE.Door}, not '+'`);
+  if (FOR_DEVICE.Light !== '*') fails.push(`ForDevice(Light) parsed as ${FOR_DEVICE.Light}, not '*'`);
 
-  // 1 — EVERY DECLARED `shut` PIECE IS THE PIECE THE KIND'S *REST GLYPH* RESOLVES TO. That is the
-  // whole claim: a shut device under a pawn draws what the frame would have drawn for it.
-  for (const [kind, pair] of Object.entries(DEVICE_STATE_PIECE)) {
-    const rest = FOR_DEVICE[kind];
-    if (!rest) { fails.push(`${kind} is declared here but has no ForDevice arm at all`); continue; }
-    if (pair.shut !== itemIdForGlyphChar(rest)) {
-      fails.push(`DEVICE_STATE_PIECE.${kind}.shut is ${JSON.stringify(pair.shut)} but the kind's rest `
-        + `glyph ${JSON.stringify(rest)} resolves to ${JSON.stringify(itemIdForGlyphChar(rest))}. The `
-        + 'declared table has drifted from the sim it mirrors.');
+  // 1 — SAME POPULATION. A kind added to the sim and not to the mirror would otherwise resolve to
+  // `''` for ever, i.e. the original defect on the new kind, silently.
+  assert.deepEqual(Object.keys(DEVICE_REST_GLYPH).sort(), Object.keys(FOR_DEVICE).sort(),
+    'DEVICE_REST_GLYPH and Glyphs.ForDevice no longer cover the same DeviceKinds');
+
+  // 2 — SAME CHAR, arm for arm.
+  for (const kind of Object.keys(FOR_DEVICE)) {
+    if (DEVICE_REST_GLYPH[kind] !== FOR_DEVICE[kind]) {
+      fails.push(`DEVICE_REST_GLYPH.${kind} is ${JSON.stringify(DEVICE_REST_GLYPH[kind])} but the sim's `
+        + `ForDevice arm is ${JSON.stringify(FOR_DEVICE[kind])}`);
     }
   }
 
-  // 2 — AND THE TABLE IS EXACTLY THE AMBIGUOUS KINDS: no more (a kind that can be derived must not be
-  // declared, or the declaration silently outranks the registry) and no fewer (an ambiguous kind left
-  // undeclared resolves to '' and the device stays invisible under a pawn, which is the whole bug).
-  const reachable = new Set(Object.values(GLYPH_TO_ITEM));
-  const byKind = {};
-  for (const id of ITEM_IDS) {
-    const e = ITEMS[id];
-    if (e.kind !== 'functional' || !e.deviceKind || !reachable.has(id)) continue;
-    (byKind[e.deviceKind] = byKind[e.deviceKind] || []).push(id);
+  // 3 — AND THE STATE OVERRIDES ARE `GlyphMapper.DeviceGlyph`'s, read out of the mapper itself.
+  const C = glyphConsts(GLYPHS_CS);
+  const dg = MAPPER_CS.slice(MAPPER_CS.indexOf('private static char DeviceGlyph(Device device)'));
+  const dgBody = dg.slice(0, dg.indexOf('\n        }\n'));
+  if (!dgBody.includes('IsOpen')) fails.push('the DeviceGlyph parser found no IsOpen arm — it proves nothing');
+  for (const [kind, want] of [['CryoPod', C.CryoPodOpen], ['Door', C.DoorOpen]]) {
+    if (!want) { fails.push(`no Glyphs const for ${kind}'s open state`); continue; }
+    if (DEVICE_OPEN_GLYPH[kind] !== want) {
+      fails.push(`DEVICE_OPEN_GLYPH.${kind} is ${JSON.stringify(DEVICE_OPEN_GLYPH[kind])}, the mapper's `
+        + `open glyph is ${JSON.stringify(want)}`);
+    }
   }
-  const ambiguous = Object.keys(byKind).filter((k) => byKind[k].length > 1).sort();
-  assert.deepEqual(ambiguous, ['CryoPod', 'Door'],
-    'the set of DeviceKinds with several glyph-reachable pieces changed. Every kind here needs a\n'
-    + '`DEVICE_STATE_PIECE` entry keyed on the wire\'s `open` bit; every kind NOT here derives.');
-  assert.deepEqual(Object.keys(DEVICE_STATE_PIECE).sort(), ambiguous,
-    'DEVICE_STATE_PIECE is not exactly the ambiguous kinds');
-  const derived = Object.keys(byKind).filter((k) => byKind[k].length === 1);
-  if (derived.length !== 21) fails.push(`${derived.length} kinds derive, expected 21 — re-count`);
+  // …and the mirror claims no override the mapper does not have. `IsLocked` is deliberately absent:
+  // the wire has no locked bit (filed at DEVICE_OPEN_GLYPH), and a third entry here would be a lie
+  // about what the channel can tell us.
+  assert.deepEqual(Object.keys(DEVICE_OPEN_GLYPH).sort(), ['CryoPod', 'Door'],
+    'DEVICE_OPEN_GLYPH claims a state override for a kind GlyphMapper.DeviceGlyph does not branch on');
+  assert.deepEqual(fails, [], fails.join('\n'));
+});
 
-  // 3 — THE RESOLVER ITSELF, on the rows the wire really sends. Both capsule states, the Battery
-  // (the kind with ONE arm and THREE registered rows), an open doorway, and the tolerant answers.
-  const R = (kind, open) => itemForDeviceRow({ kind, open });
+test('the device-tile fallback resolves EVERY DeviceKind — the 29-kind round-trip sweep', () => {
+  const FOR_DEVICE = parseForDevice(GLYPHS_CS);
+  const fails = [];
+  let resolved = 0, borrowed = 0;
+
+  // ⭐ THE SWEEP. For every byte the `devices` channel can carry, the fallback must answer exactly
+  // what the tile's own glyph would have answered — `itemIdForGlyphChar(ForDevice(kind))` — because
+  // that IS the piece the frame drew a moment before the pawn stepped on it. Stated per kind, so a
+  // seventh borrowed piece (or a new kind with no art) cannot hide inside a total.
+  for (let byte = 0; byte < DEVICE_KIND_NAMES.length; byte += 1) {
+    const kind = DEVICE_KIND_NAMES[byte];
+    const rest = FOR_DEVICE[kind];
+    if (rest === undefined) { fails.push(`DEVICE_KIND_NAMES[${byte}] = ${kind} has no ForDevice arm`); continue; }
+    const want = itemIdForGlyphChar(rest);
+    const got = itemForDeviceRow({ kind: byte, open: 0 });
+    if (got !== want) {
+      fails.push(`kind ${byte} (${kind}): a pawn standing on it makes the surface draw ${JSON.stringify(got)}, `
+        + `but its glyph ${JSON.stringify(rest)} draws ${JSON.stringify(want)}. The fallback and the frame `
+        + 'disagree about what is on the tile.');
+    }
+    if (want) resolved += 1;
+    // BORROWED ART IS THE SUBJECT, so it is counted and asserted rather than merely swept over.
+    if (want && ITEMS[want] && ITEMS[want].deviceKind !== kind) borrowed += 1;
+  }
+
+  // ⛔ INCLUSION CONTROL, and it is the leg that would have caught the shipped hole. The sweep above
+  // is satisfied by BOTH sides being `''`; these six are named, with the piece each one wears, so
+  // "the fallback resolves nothing and neither does the glyph" cannot pass for agreement. Every one
+  // of them is a device whose art belongs to ANOTHER registry row — the sixth trap's own subject,
+  // and the exact set `GLYPH_SUBSTITUTE`'s header names.
+  const BORROWERS = [
+    ['Light', 'wall-lamp'], ['WaterTank', 'oxygen-tank'], ['SalvageRecycler', 'water-recycler'],
+    ['Radiator', 'space-heater'], ['MedCabinet', 'locker'], ['IceMelter', 'cooker'],
+  ];
+  for (const [kind, piece] of BORROWERS) {
+    const byte = DEVICE_KIND_NAMES.indexOf(kind);
+    if (byte < 0) { fails.push(`${kind} is not in DEVICE_KIND_NAMES`); continue; }
+    const got = itemForDeviceRow({ kind: byte, open: 0 });
+    if (got !== piece) {
+      fails.push(`A PAWN STILL UNBUILDS THE ${kind}. It must draw ${JSON.stringify(piece)} — borrowed art, `
+        + `${JSON.stringify(piece)} is not a ${kind} row — and the fallback answers ${JSON.stringify(got)}. `
+        + 'This is the exact hole independent review found: a derivation that reads the REGISTRY '
+        + 'cannot see a device whose piece belongs to someone else.');
+    }
+  }
+  if (borrowed < BORROWERS.length) {
+    fails.push(`the sweep saw ${borrowed} kinds wearing another row's art, expected at least `
+      + `${BORROWERS.length} — the borrow census is reading nothing`);
+  }
+
+  // 4 — THE TWO STATE KINDS, both directions.
   const POD = DEVICE_KIND_NAMES.indexOf('CryoPod');
-  const BATT = DEVICE_KIND_NAMES.indexOf('Battery');
   const DOOR = DEVICE_KIND_NAMES.indexOf('Door');
-  if (R(POD, 0) !== 'capsule-sealed') fails.push(`a shut pod resolves to ${R(POD, 0)}`);
-  if (R(POD, 1) !== 'capsule-open') fails.push(`an open pod resolves to ${R(POD, 1)}`);
-  if (R(BATT, 0) !== 'cell-sound') fails.push(`a Battery resolves to ${R(BATT, 0)}`);
-  if (R(DOOR, 0) !== 'sliding-door') fails.push(`a shut door resolves to ${R(DOOR, 0)}`);
-  if (R(DOOR, 1) !== '') {
+  if (itemForDeviceRow({ kind: POD, open: 0 }) !== 'capsule-sealed') fails.push('a shut pod is not card 31');
+  if (itemForDeviceRow({ kind: POD, open: 1 }) !== 'capsule-open') fails.push('an open pod is not card 32');
+  if (itemForDeviceRow({ kind: DOOR, open: 0 }) !== 'sliding-door') fails.push('a shut door is not a door');
+  if (itemForDeviceRow({ kind: DOOR, open: 1 }) !== '') {
     fails.push('an OPEN doorway resolves to a door leaf. An open doorway is a gap and both surfaces '
       + 'draw nothing for it — restoring a leaf because a pawn is walking through would be a new lie.');
   }
-  // TOLERANCE: a kind byte off the end of the table, a kind with no piece at all (Conduit is drawn
-  // by another layer), and no row at all must each answer '' rather than throw or guess.
-  for (const bad of [{ kind: 250, open: 0 }, { kind: DEVICE_KIND_NAMES.indexOf('Conduit'), open: 0 }, undefined, null]) {
+
+  // 5 — THE ARTLESS KINDS ARE NAMED, not lumped in with "resolves to ''". `Conduit`/`Pipe` share
+  // `'~'` in the C# and have no piece on either surface; that is the ONLY legitimate `''`, and
+  // saying so is what stops a future kind quietly joining them.
+  const artless = [];
+  for (let byte = 0; byte < DEVICE_KIND_NAMES.length; byte += 1)
+    if (!itemForDeviceRow({ kind: byte, open: 0 })) artless.push(DEVICE_KIND_NAMES[byte]);
+  assert.deepEqual(artless.sort(), ['Conduit', 'Pipe'],
+    'the set of DeviceKinds that draw NOTHING under a pawn changed. Conduit and Pipe share a glyph\n'
+    + 'no piece skins (the utility-overlay line); anything else here is a machine that vanishes when\n'
+    + 'somebody stands on it, which is the defect this whole seam exists to close.');
+  if (resolved !== DEVICE_KIND_NAMES.length - 2) {
+    fails.push(`${resolved} kinds resolve to a piece; ${DEVICE_KIND_NAMES.length} kinds minus the two `
+      + 'artless ones is the expected number — RE-COUNT rather than adjust');
+  }
+
+  // TOLERANCE: a kind byte off the end of the table, and no row at all, must answer '' rather than
+  // throw or guess.
+  for (const bad of [{ kind: 250, open: 0 }, undefined, null]) {
     if (itemForDeviceRow(bad) !== '') fails.push(`itemForDeviceRow(${JSON.stringify(bad)}) is not ''`);
   }
   assert.deepEqual(fails, [], fails.join('\n'));

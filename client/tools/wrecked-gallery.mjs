@@ -53,7 +53,7 @@ const log = (...a) => console.log(...a);
 mkdirSync(OUT, { recursive: true });
 
 const { ITEMS, ITEM_IDS, buildItem } = await import('../src/items/index.js');
-const { WRECKED, WRECKED_IDS, buildWrecked, wreckedItemId } = await import('../src/items/wrecked.js');
+const { WRECKED, WRECKED_IDS, NO_WRECKED_TWIN, buildWrecked, wreckedItemId } = await import('../src/items/wrecked.js');
 
 // ───────────────────────────────────────────────────────────── 0. the MOCK's own layers
 // ⚠️ THE MIDDLE COLUMN IS THE POINT OF THIS TOOL. Reading a builder against the mock by eye proves
@@ -83,33 +83,49 @@ const mockByLabel = new Map(brokenD.map((b) => [b.name, b]));
 
 // ───────────────────────────────────────────────────────────── 1. build every piece, up front
 //
-// ⛔ FILED, NOT FIXED (2026-08-05): THIS GUARD IS UNSATISFIABLE AND THE TOOL HAS EXITED 2 SINCE
-// `swarf` LANDED. It asserts a twin for EVERY registry row, but `client/src/items/wrecked.js` has
-// carried a deliberate `NO_WRECKED_TWIN` ledger since 2026-07-28 — `swarf` (already the wrecked
-// state of a machine), joined on 2026-08-05 by `cell-spent` (already the wrecked state of a
-// Battery). MEASURED on the parent commit as well as here: `main` prints "80 registry rows but 79
-// wrecked twins" and this tree prints "84 … but 82", so the capsules-and-cells package widened a
-// pre-existing gap from 1 to 2 rather than creating one. The correct predicate is
-// `WRECKED_IDS` vs `ITEM_IDS.length - Object.keys(NO_WRECKED_TWIN).length`, or simply
-// `itemsWithoutWreckedTwin()` — which is what `client/test/wrecked.test.js` already asserts, and is
-// why the suite is green while this rig is not. Left alone deliberately: it is a rig, not a gate,
-// and repairing it was outside the package that found it.
-if (WRECKED_IDS.length !== ITEM_IDS.length) {
-  console.error(`FAIL: ${ITEM_IDS.length} registry rows but ${WRECKED_IDS.length} wrecked twins`);
+// ⛔ THIS GUARD WAS UNSATISFIABLE AND THE TOOL EXITED 2 ON EVERY RUN SINCE `swarf` LANDED. It
+// asserted a twin for EVERY registry row, but `client/src/items/wrecked.js` has carried a deliberate
+// `NO_WRECKED_TWIN` ledger since 2026-07-28 — `swarf` (already the wrecked state of a machine),
+// joined 2026-08-05 by `cell-spent` (already the wrecked state of a Battery). MEASURED on the parent
+// commit as well as here: `main` printed "80 registry rows but 79 wrecked twins" and this tree "84 …
+// but 82", so the capsules-and-cells package WIDENED a pre-existing gap from 1 to 2 rather than
+// creating one. First filed and left alone as out-of-scope; fixed on review's second pass, because a
+// gallery that cannot render is a gallery whose re-pointed `bigCryo` panel below was never once
+// LOOKED AT — and the whole reason to re-point it was so somebody would look at it.
+//
+// The predicate is now the ledger's own invariant, stated in `wrecked.js` as: `WRECKED_IDS` is every
+// registry row MINUS `NO_WRECKED_TWIN`, in registry order. `wrecked.test.js` asserts the same thing
+// by strict deep-equality; this is the cheap arithmetic form, and it names the ledger so the next row
+// added to it does not resurrect the exit 2.
+const twinExempt = Object.keys(NO_WRECKED_TWIN).length;
+if (WRECKED_IDS.length !== ITEM_IDS.length - twinExempt) {
+  console.error(`FAIL: ${ITEM_IDS.length} registry rows − ${twinExempt} ledgered exempt `
+    + `(${Object.keys(NO_WRECKED_TWIN).join(', ')}) = ${ITEM_IDS.length - twinExempt}, but `
+    + `${WRECKED_IDS.length} wrecked twins`);
   process.exit(2);
 }
-const pieces = ITEM_IDS.map((id) => {
-  const mock = mockByLabel.get(WRECKED[id].mockLabel);
-  if (!mock) { console.error(`FAIL: no mock piece labelled ${JSON.stringify(WRECKED[id].mockLabel)} (for ${id})`); process.exit(2); }
+// ⚠️ `WRECKED_IDS`, NOT `ITEM_IDS` — AND THIS WAS ONLY EVER REACHABLE ONCE THE GUARD ABOVE STOPPED
+// EXITING. The loop read `WRECKED[id]` for every REGISTRY row, which is `undefined` for the ledgered
+// rows, so the first thing a repaired guard produced was `TypeError: Cannot read properties of
+// undefined (reading 'mockLabel')`. Two defects in a row that only the second could expose: the guard
+// had been shielding a crash for as long as it had been failing.
+//
+// ⚠️ AND `mockLabel` IS NULLABLE BY DESIGN. Rows drawn from the owner's own catalogue (`capsule-*`,
+// `cell-*`, `battery-bank`) have no MOCK to compare against — the mock is the old HTML spec sheet —
+// so they carry `catalogue` instead, and a missing mock is only a failure for a row that claims one.
+const pieces = WRECKED_IDS.map((id) => {
+  const want = WRECKED[id].mockLabel;
+  const mock = want ? mockByLabel.get(want) : null;
+  if (want && !mock) { console.error(`FAIL: no mock piece labelled ${JSON.stringify(want)} (for ${id})`); process.exit(2); }
   return {
     id,
-    label: WRECKED[id].mockLabel,
+    label: want || WRECKED[id].catalogue || id,
     state: WRECKED[id].state,
     kind: ITEMS[id].kind,
     pristine: buildItem(id, { w: CELL, h: CELL, idPrefix: `p-${id}` }),
     wrecked: buildWrecked(id, { w: CELL, h: CELL, idPrefix: `w-${id}` }),
-    mock: mock.layers.map((l) => `<div class="obj" style="${l.s}"></div>`).join(''),
-    mockState: mock.state,
+    mock: mock ? mock.layers.map((l) => `<div class="obj" style="${l.s}"></div>`).join('') : '',
+    mockState: mock ? mock.state : '(catalogue — no mock)',
   };
 });
 for (const p of pieces) {
@@ -223,7 +239,7 @@ drop shadows are dropped. NOT a screenshot of the game: nothing on the wire carr
 condition yet, so no surface can choose a twin. This proves the pieces DRAW; it does not prove they
 read correctly in a room. The badge is the mock's remaining-condition state (&mdash; for the eight
 loose resources, which cannot be repaired).</div>
-<section id="sec-0-cryo-new"><h2>NEW STATIC PIECES — CRYO CAPSULE (occupied / open), pristine and wrecked, at 300px</h2>
+<section id="sec-0-cryo-new"><h2>THE PIECES A PLAYER MEETS FIRST — capsule sealed / open and the sound cell, pristine and wrecked, at 300px</h2>
 <div class="wrap">${bigCryo}</div></section>
 ${SECTIONS.map(sectionHtml).join('')}
 `;

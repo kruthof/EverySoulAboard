@@ -65,12 +65,22 @@ await sleep(1200);
 const f0 = latest.get('frame');
 if (!f0 || (f0.deck | 0) !== 0) die(2, 'could not reach deck 0');
 
-// The target: a SEALED capsule, which is what the owner was looking at.
+// The target: by default a SEALED capsule, which is what the owner was looking at. `--glyph` picks
+// any device glyph instead — `--glyph '*'` is the LIGHT, the kind independent review used to show
+// that the first fallback deleted all six devices whose art is BORROWED from another registry row.
+const WANT = arg('glyph', 'K');
 let target = null;
-for (let y = 0; y < f0.h && !target; y++) {
-  for (let x = 0; x < f0.w && !target; x++) if (cellAt(f0, x, y) === 'K'.charCodeAt(0)) target = [x, y];
+const tx0 = +arg('tx', '-1'), ty0 = +arg('ty', '-1');
+if (tx0 >= 0 && ty0 >= 0) {
+  if (cellAt(f0, tx0, ty0) !== WANT.charCodeAt(0))
+    die(3, `tile ${tx0},${ty0} does not carry ${JSON.stringify(WANT)} — it carries `
+      + JSON.stringify(String.fromCharCode(cellAt(f0, tx0, ty0))));
+  target = [tx0, ty0];
 }
-if (!target) die(3, "no sealed capsule ('K') on deck 0 — is this --ship wreck?");
+for (let y = 0; y < f0.h && !target; y++) {
+  for (let x = 0; x < f0.w && !target; x++) if (cellAt(f0, x, y) === WANT.charCodeAt(0)) target = [x, y];
+}
+if (!target) die(3, `no ${JSON.stringify(WANT)} on deck 0 — is this --ship wreck?`);
 console.log(`target capsule tile ${target[0]},${target[1]}`);
 
 // ⛔ SELECT HER FIRST, AND THE FIRST DRAFT DID NOT. `GameSession.MoveOrder()` is
@@ -179,6 +189,11 @@ const present = await evalJs(
   `(document.getElementById('rz-layers')||{}).innerHTML?.includes('rz-f-${target[0]}-${target[1]}') || false`);
 const anyFitting = await evalJs(
   "(((document.getElementById('rz-layers')||{}).innerHTML||'').match(/rz-f-\\d+-\\d+/g)||[]).length");
+// THE CAPTION IS THE OTHER HALF OF THE DEFECT and is read from the DOM, not inferred: `_capPlaced`
+// calls `roomCells` a second time, so a fitting that drops out of the picture also drops out of
+// "N PLACED". Independent review measured 25 where the room holds 26.
+const caption = await evalJs("(document.getElementById('rz-caption')||{}).textContent||''");
+console.log('caption: ' + JSON.stringify(String(caption).replace(/\s+/g, ' ').trim()));
 console.log(`furniture layer carries rz-f-${target[0]}-${target[1]}: ${present}  (fittings drawn in this room: ${anyFitting})`);
 chrome.kill();
 process.exit(present ? 0 : 6);

@@ -12,12 +12,12 @@
 // The ONE glyph → itemId derivation, straight out of the `ITEMS` registry and SHARED verbatim with
 // the Level-1 Overview, so the two SVG surfaces cannot come to skin the same glyph differently.
 // (It used to be `SPRITE_FOR_GLYPH` from `../render/glyphs.js` plus a local hand mirror — see below.)
-import { itemIdForGlyphChar, GLYPH_TO_ITEM } from '../items/glyph-map.js';
+import { itemIdForGlyphChar } from '../items/glyph-map.js';
 // The registry itself, for the two questions a glyph char cannot answer: is this piece a RESOURCE
 // (a pile, drawn by the item layer and never demolishable), and which piece skins a given sim
 // `ItemKind` NAME. Derived from `ITEMS`, never transcribed.
 // (`isDeviceItem` is deliberately NOT imported — see `demolishTarget`, which must not ask it.)
-import { ITEMS, RESOURCE_ITEM_BY_KIND_NAME, isResourceItem, buildItem } from '../items/index.js';
+import { RESOURCE_ITEM_BY_KIND_NAME, isResourceItem, buildItem } from '../items/index.js';
 // ⚠️ `markForFg` is GONE (the `marks` channel): the kind arrives on the wire, decoded once by
 // `roomzoom-view.js` and handed to `roomMarkTiles`. The vocabulary itself is unchanged.
 import { markVariant, markCellSvg } from './mark-overlay.js';
@@ -1109,14 +1109,27 @@ export function itemForGlyph(code) {
 // furniture pass — to read `cond` and NOTHING ELSE. All that was missing was a way to name the
 // PIECE from a channel row, which is what the two functions below are.
 //
-// ⛔ WHY THIS IS NOT `wear.js`'s ROAD NOT TAKEN. That module refuses to key art off the wire's
-// `kind` byte because `DeviceKind → itemId` is not a function. TRUE, and MEASURED here rather than
-// assumed: of the 29 kinds, 21 have exactly one glyph-reachable piece and TWO have several — `Door`
-// (`sliding-door` + `blast-door`) and `CryoPod` (`capsule-sealed` + `capsule-open`). The 21 are
-// DERIVED below and need no table. The two are DECLARED, keyed on the wire's own `open` bit — which
-// is `Device.IsOpen`, THE SAME FIELD `GlyphMapper.DeviceGlyph` reads to choose `'k'` from `'K'`, so
-// this reads a published fact rather than re-deriving a rule. `room-model.test.js` pins each
-// declared entry against `Glyphs.ForDevice` parsed out of the C#, so the table cannot drift.
+// ⛔ WHY THIS IS NOT `wear.js`'s ROAD NOT TAKEN, AND WHY THE FIRST DRAFT WAS ANYWAY. That module
+// refuses to key art off the wire's `kind` byte because `DeviceKind → itemId` is not a function —
+// TRUE, and the fix threads that needle by going kind → REST GLYPH → piece, so the ONE join every
+// other tile on both surfaces uses (`itemIdForGlyphChar`) is the only thing that ever names a piece.
+// `Glyphs.ForDevice` IS a function; what is not a function is the reverse.
+//
+// ⛔⛔ THE FIRST DRAFT DID NOT DO THAT AND SHIPPED THE SIXTH TRAP IN ITS OWN COSTUME. It derived
+// kind → piece by scanning `ITEMS` for a `functional` row whose `deviceKind` matched AND whose own
+// id was a value of `GLYPH_TO_ITEM` — which silently returned `''` for every device whose art is
+// BORROWED, because a substituted piece is another kind's row and `wall-lamp` is `cosmetic`
+// outright. SIX kinds, found by independent review, driven at the seam and live on the wreck (Rell
+// on the Light at (1,1): `rz-f-1-1` absent, the caption reading "25 PLACED" instead of 26):
+//
+//     Light → wall-lamp · WaterTank → oxygen-tank · SalvageRecycler → water-recycler
+//     Radiator → space-heater · MedCabinet → locker · IceMelter → cooker
+//
+// ⇒ A fix for "a pawn deletes the machine she stands on" that deleted six kinds of machine when a
+// pawn stood on them. `GLYPH_SUBSTITUTE`'s own header names all six, and so does the `wear.js`
+// paragraph this package edited in the same commit: **borrowed art means the registry row is not a
+// fact about the device.** Going through the glyph removes the functional/cosmetic distinction
+// entirely, because `deriveGlyphToItem` has already folded the substitutions in.
 //
 // ⛔ AND IT IS NOT A CACHE, WHICH IS THE OTHER DESIGN THAT WOULD HAVE PASSED THE OWNER'S TEST. A
 // "remember the last glyph on this tile" memo also survives a pawn — and leaves a GHOST of a
@@ -1130,45 +1143,51 @@ export function itemForGlyph(code) {
 export const CITIZEN_GLYPH_CODE = 64;
 
 /**
- * THE TWO KINDS WHOSE PIECE DEPENDS ON STATE, declared because they cannot be derived — one kind,
- * several glyph-reachable pieces, and only the wire's `open` bit tells them apart.
+ * `Glyphs.ForDevice` MIRRORED BY KIND NAME — the rest glyph of every `DeviceKind`.
  *
- * ⚠️ `Door.open` IS THE EMPTY STRING AND THAT IS THE DECISION, not a gap: an open doorway is a hole
- * in a wall and both surfaces already draw nothing for `'/'` (`items/glyph-map.js` ledgers it by
- * name as `NO_DEVICE_GLYPH_ART`). Restoring a door leaf into an open doorway because a pawn is
- * walking through it would be a new lie, in the opposite direction.
+ * ⚠️ A MIRROR OF THE SIM, WITH A MECHANICAL PIN, NOT A SECOND AUTHORITY. `room-model.test.js`
+ * PARSES `sim/Sim.Glyph/Glyphs.cs`'s own switch and asserts this table matches it arm for arm, and
+ * that the two have the same length — so a 30th kind, or a moved char, fails by name instead of
+ * rotting. Same idiom as `DEVICE_KIND_NAMES` above (pinned against the C# enum by
+ * `prioritise-menu.test.js`) and `STOCK_KINDS`.
  *
- * ⚠️ FILED, NOT FIXED: A LOCKED DOOR UNDER A PAWN DRAWS AS A CLOSED ONE. `GlyphMapper.DeviceGlyph`
- * has three door states (`'X'` locked, `'/'` open, `'+'` shut) and the `devices` channel carries
- * only `open`, so the third is not on the wire and this fallback cannot see it. That is a
- * DEGRADATION of one frame's worth of art on an occluded tile, not a regression: today the door
- * vanishes entirely.
+ * ⚠️ IT LIVES HERE RATHER THAN IN `items/glyph-map.js` BECAUSE IT IS NOT ABOUT ART. Every value is a
+ * glyph; what each glyph DRAWS is `glyph-map.js`'s question, and this table deliberately does not
+ * know the answer — that is the whole point of routing through `itemIdForGlyphChar`. `Conduit` and
+ * `Pipe` share `'~'` (an intentional, documented collision in the C#), and neither has a piece; they
+ * resolve to `''` through the same join as everything else rather than through a special case.
  */
-export const DEVICE_STATE_PIECE = Object.freeze({
-  CryoPod: Object.freeze({ shut: 'capsule-sealed', open: 'capsule-open' }),
-  Door: Object.freeze({ shut: 'sliding-door', open: '' }),
+export const DEVICE_REST_GLYPH = Object.freeze({
+  Door: '+', AirVent: '^', Scrubber: 'S', Ladder: 'H', Terminal: 'T', SolarWing: 'G', Battery: 'B',
+  Conduit: '~', Light: '*', GrowBed: '"', WaterTank: 'O', Pipe: '~', Reclaimer: 'R', Fabricator: 'F',
+  MachineShop: 'M', SalvageRecycler: 'Y', Radiator: '=', Bed: 'b', Table: 't', Chair: 'h',
+  MedBed: 'd', MedCabinet: 'C', Locker: 'L', Desk: 'D', PlantPot: 'P', Telescope: 'x',
+  IceMelter: 'I', CryoPod: 'K', Heater: 'E',
 });
 
 /**
- * kind NAME → its one glyph-reachable piece, DERIVED from `ITEMS` × `GLYPH_TO_ITEM`. Kinds with
- * several reachable pieces are deliberately absent — `DEVICE_STATE_PIECE` answers for those, and a
- * kind in NEITHER map resolves to `''` and simply keeps today's behaviour.
+ * `GlyphMapper.DeviceGlyph`'s STATE OVERRIDES, for the one state bit the wire actually carries.
+ *
+ * `Device.IsOpen` is tuple element 6 of the `devices` channel and is the SAME field the mapper reads
+ * to choose `'k'` from `'K'` and `'/'` from `'+'` — so this reads a published fact rather than
+ * re-deriving a rule. `'/'` is here as itself, NOT as an empty string: an open doorway is a gap, and
+ * the decision that a gap draws nothing already lives in `items/glyph-map.js` (ledgered by name as
+ * `NO_DEVICE_GLYPH_ART`), where `itemIdForGlyphChar('/')` returns `''`. Writing `''` here would be a
+ * second copy of that decision in a second file, which is the hand-mirror defect this module's own
+ * `ROLE_TO_ITEM` note exists to warn about.
+ *
+ * ⚠️ FILED, NOT FIXED: A LOCKED DOOR UNDER A PAWN DRAWS AS A CLOSED ONE. `DeviceGlyph` has THREE
+ * door states (`'X'` locked, `'/'` open, `'+'` shut) and the channel carries only `open`, so the
+ * third is not on the wire and this fallback cannot see it. A degradation of one occluded tile's
+ * art, not a regression: before this fix the door vanished entirely.
  */
-/** Every itemId a glyph really resolves to — the population "reachable" means, read off the ONE
- *  derived table rather than re-derived here. */
-const REACHABLE_ITEM_IDS = new Set(Object.values(GLYPH_TO_ITEM));
+export const DEVICE_OPEN_GLYPH = Object.freeze({ CryoPod: 'k', Door: '/' });
 
-const DEVICE_REST_PIECE = Object.freeze(Object.keys(ITEMS).reduce((out, id) => {
-  const e = ITEMS[id];
-  if (e.kind !== 'functional' || typeof e.deviceKind !== 'string') return out;
-  if (!REACHABLE_ITEM_IDS.has(id)) return out;
-  out[e.deviceKind] = out[e.deviceKind] === undefined ? id : '';   // '' marks "several — declared"
-  return out;
-}, Object.create(null)));
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 /**
  * The itemId a `devices`-channel row's tile should wear, or `''` when nothing should be drawn.
- * PURE and tolerant: an unknown kind byte, a missing row and a state-less kind all answer `''`.
+ * PURE and tolerant: an unknown kind byte, a missing row and a glyph nothing skins all answer `''`.
  * @param {{kind:number, open:number}|undefined} row a `roomDeviceConditions` / `deckDeviceConditions` value
  * @returns {string} an itemId in `ITEMS`, or ''
  */
@@ -1176,10 +1195,10 @@ export function itemForDeviceRow(row) {
   if (!row) return '';
   const name = DEVICE_KIND_NAMES[row.kind | 0];
   if (!name) return '';
-  const state = DEVICE_STATE_PIECE[name];
-  if (state) return (row.open | 0) ? state.open : state.shut;
-  const rest = DEVICE_REST_PIECE[name];
-  return typeof rest === 'string' ? rest : '';
+  const glyph = (row.open | 0) && hasOwn(DEVICE_OPEN_GLYPH, name)
+    ? DEVICE_OPEN_GLYPH[name]
+    : DEVICE_REST_GLYPH[name];
+  return typeof glyph === 'string' ? itemIdForGlyphChar(glyph) : '';
 }
 
 /**
@@ -2216,6 +2235,24 @@ export function demolishTarget(tx, ty, designs, decor, frame) {
   // BORROWED piece's registry `kind` says nothing about the tile. The only kind that means "no
   // device stands here" is `resource`, so that is the one this asks about. Pinned both ways, over
   // the whole ledger rather than the one glyph, in `room-model.test.js`.
+  //
+  // ⛔⛔ FILED 2026-08-05, AND ITS SEVERITY WENT **UP** WHEN THE PAWN-OCCLUSION FALLBACK LANDED —
+  // WHICH IS THE WHOLE REASON THIS PARAGRAPH IS HERE RATHER THAN IN A BACKLOG. This branch still
+  // reads `itemForGlyph(code)` off the frame, so a device with a crew member standing on it
+  // classifies as `empty` and DEMOLISH is silently dropped (`roomzoom-view.js`'s `default: break`).
+  //   BEFORE the fallback that was SELF-CONSISTENT: the device was invisible, so refusing to
+  //   demolish something the player could not see was not a lie.
+  //   AFTER it, the surface DRAWS the capsule under her and the verb refuses it. Picture and verb
+  //   disagree, and the refusal is silent — the binding "invisible feedback is FUNCTIONAL" shape,
+  //   pointing the other way: the feedback is now visible and the VERB is the thing that is missing.
+  // ⇒ THE CLOSE: give this function the same `deviceCond` Map (`roomzoom-view.js` already holds it
+  // and already hands it to `roomCells` twice) and fall through to `itemForDeviceRow(dev.get(...))`
+  // when `code` is `CITIZEN_GLYPH_CODE`, exactly as `roomCells` does.
+  // ⛔ NOT DONE HERE, DELIBERATELY, AND THE REASON IS THAT IT IS NOT ONE LINE: it changes this
+  // function's signature, its caller, and the `WEAR_SEAM_CENSUS` reference count in
+  // `devices-model.test.js` (a fourth re-measure in one lane), and it needs its own driven
+  // press-through-to-`Cmd.remove` test — the seam `demolishTarget`'s Light tests already cover for
+  // borrowed art. A verb change belongs to a package that can drive the verb.
   const _id = itemForGlyph(code);
   if (code >= 0 && !NON_FURNITURE.has(code) && !STRUCTURE_CODES.has(code)
       && _id && !isResourceItem(_id)) {

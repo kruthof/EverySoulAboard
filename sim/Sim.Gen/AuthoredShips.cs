@@ -1333,10 +1333,20 @@ namespace Perilune.Gen
         // SIX recoverable crew. That was wrong and it is recorded rather than quietly corrected,
         // because the mistake has a shape worth naming: it read an answer about what the wrecked-pod
         // ART DEPICTS as an answer about how many crew are RECOVERABLE. The eight is the roster;
-        // the wrecked pods are set dressing with bodies in them.
+        // the wrecked pods are set dressing with somebody still inside.
         //
-        // Each dead sleeper carries an `ItemKind.Corpse` stack on the pod's own tile, named for the
-        // person. That is the only way the sim has to say someone died here.
+        // ⛔ EACH DEAD SLEEPER GETS A SHIP'S-LOG LINE AND NOTHING ELSE. Owner ruling, 2026-08-05,
+        // from a screenshot of this bay: "there are still old body bags — delete them." Until then
+        // this block also authored an `ItemKind.Corpse` stack on the pod's own tile, named for the
+        // person, and this paragraph called it "the only way the sim has to say someone died here."
+        // It never was the only way — the log line was already carrying the same name — and the
+        // capsule now says the rest by itself: all four dead pods are authored at Condition
+        // 0.03–0.07, far below `wear.wreck_threshold` 0.25, so all four draw the wrecked twin of
+        // `capsule-sealed`, which is a breached capsule with an occupant. The body bag was the same
+        // sentence a second time in the pre-redesign warm idiom.
+        // ⇒ `plan.LogLines` is now the whole of the record; see `ShipPlan.LogLines` for why a
+        // synthesised `CitizenDiedEvent` is still forbidden. `ItemKind.Corpse` itself is NOT retired
+        // — `NeedsSystem` drops one when a living Citizen dies in play.
         //
         // ---------------------------------------------------------------------------------------
         // THE SURVIVABLE CORE, AND WHY IT IS THREE SPACES AND NOT ONE
