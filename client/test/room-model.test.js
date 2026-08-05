@@ -4835,6 +4835,31 @@ test('VR-P3: the ground-stack count badge scales with the tile — measured, bec
 });
 
 /**
+ * ⭐ INTEGRATOR (P3 re-review residual) — THE GROUND-ITEM LAYER STANDS AT ITS TILE, and this leg
+ * exists because a mutation SURVIVED the whole revision: `itemStackSvg(_itemTiles, _focus, unit,
+ * place)` → `…, null)` was green across 1432 tests while the 40-Regolith pile moved from its tile's
+ * floor centre to ~3 tiles away (measured: scene (1027, 339.5) → (791.8, 541.8)). `scenePlacement`
+ * documents three idioms; `cell` and `foot`/`front` are pinned, `stand` was not, and `itemStackSvg`
+ * is its only consumer.
+ *
+ * The pin is PARITY WITH THE SHIPPED PLACEMENT, not a remembered coordinate: the mounted `.rz-item`
+ * group's transform must be byte-equal to `place.stand(tx, ty)` for the fixture's item tile, so the
+ * leg catches both the dropped `place` argument and a drifted `stand` derivation.
+ */
+test('VR-P3 (assembled): a ground-item pile STANDS at its own tile through the shipped placement', () => {
+  try {
+    const svg = vrMount();
+    const items = svg.slice(svg.indexOf('<g class="rz-items"'));
+    const m = /<g class="rz-item" transform="([^"]+)"/.exec(items);
+    assert.ok(m, 'the mounted item layer carries no transform at all — `place` is not being '
+      + 'threaded, so every pile draws at the layer origin instead of its tile');
+    assert.equal(m[1], vrPlace().stand(VR_ITEM.x, VR_ITEM.y),
+      'the pile\'s transform is not the shipped `place.stand` for its tile — the pile is drawn '
+      + 'tiles away from the floor cell its stacks are on, over other tiles\' contents');
+  } finally { vrRestore(); }
+});
+
+/**
  * ⭐ MAJOR 3(b) — A CREW MEMBER IS A PERSON-SIZED FIGURE, and this leg exists because a mutation
  * SURVIVED. `PAWN_M 1.66 → 1.0` drew every soul at 60 % of their height — a room of children,
  * standing in a compartment whose every other dimension is stated in metres on the drawing itself —
