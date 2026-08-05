@@ -153,7 +153,13 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
    ledger's floor and it stays a hard track. Everything else scales: `min(150px,11vw)` is exactly
    150 px at any viewport ≥ 1364 px (the design's own number, unchanged where the design was drawn)
    and shrinks below it, and the gap/padding clamps hit their 28/26 maxima at 1600. Measured at 1600
-   the four tracks come back 503 / 513 / 258 / 150 — the pre-fix numbers to the pixel. */
+   the four tracks come back 503 / 513 / 258 / 150 — the pre-fix numbers to the pixel.
+   ⚠️ AND THE FLOOR IS MEASURED RATHER THAN IMPLIED, so nobody re-measures it (independent review,
+   2026-08-05): the band is clean down to a 580 px viewport; at 540 px `#ov-compart` clips its own
+   content (scrollWidth 90 against clientWidth 80); at 500 px spans escape their columns. The cause is
+   the one incompressible track — 258 px of ledger plus 92 px of plate margin plus the gaps is ~380 px
+   before either prose column gets a pixel — and it is the price of keeping the ledger's numbers
+   legible. Below 580 px this band is honest about nothing; that is a KNOWN LIMIT, not a target. */
 .ov-columns{flex:none;height:auto;max-height:min(46vh,340px);
   display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.02fr) 258px min(150px,11vw);
   column-gap:clamp(14px,1.75vw,28px);

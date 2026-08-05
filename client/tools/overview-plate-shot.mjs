@@ -188,6 +188,18 @@ const onScreenExpr = `JSON.stringify((()=>{
       // content, so 27px -- 18% of the instrument -- hung out of the column and was cut off by
       // .ov-col{overflow:hidden} at EVERY viewport. Vertically it was perfectly placed, so a
       // top/bottom-only check called it fine. Owner-reported, then reproduced here.
+      //
+      // AND THE ZERO BOX IS ITS OWN FINDING, because the containment check above CANNOT TELL
+      // "contained" FROM "NOT RENDERED AT ALL" and the first draft of this widening shipped exactly
+      // that hole -- the 4th shape (a guard whose scope filter excludes the violation) inside the
+      // guard widened to close this class. Measured: with the shipped band defect restored, a
+      // display:none column gives a 0x0 rect, every containment term is vacuously true (0 >= -1,
+      // 0 <= +1), and visiblePx(0) < h-1(-1) is FALSE -- so two of the four swept widths passed
+      // while drawing nothing. Every width this rig sweeps (1600/1360/1100/900) is ABOVE the 818px
+      // point where the radar column is legitimately dropped, so "this affordance has a box" is a
+      // true, cheap assertion at all of them, and it is the assertion that makes the containment
+      // terms mean something.
+      rendered: r.width > 0 && r.height > 0,
       insideHost: r.top >= b.top - 1 && r.bottom <= b.bottom + 1
         && r.left >= b.left - 1 && r.right <= b.right + 1,
       insideView: r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw,
@@ -300,7 +312,16 @@ function readBoxes(boxes, at) {
     if (b.missing) { problems.push(`${at}: ${b.sel} is not in the DOM at all`); continue; }
     log(`  ${b.sel.padEnd(16)} ${b.w}×${b.h} top=${b.top} bottom=${b.bottom} right=${b.right} `
       + `hostBottom=${b.hostBottom} hostRight=${b.hostRight} visible=${b.visiblePx}px `
-      + `inHost=${b.insideHost} inView=${b.insideView}`);
+      + `rendered=${b.rendered} inHost=${b.insideHost} inView=${b.insideView}`);
+    // ⛔ THE ZERO BOX FIRST, AND SEPARATELY — a `display:none` element passes every containment term
+    // vacuously, so reporting it as "clipped" would be the wrong sentence about the right defect.
+    if (!b.rendered) {
+      problems.push(`${at}: ${b.sel} has a ${b.w}×${b.h} box — it is in the DOM and DRAWS NOTHING. `
+        + 'Every width this rig sweeps is above the 818px point where the radar column is legitimately '
+        + 'dropped, so a zero box here is an affordance that is gone, and the containment checks '
+        + 'below it are vacuously true about a rectangle that does not exist.');
+      continue;
+    }
     if (!b.insideHost || !b.insideView || b.visiblePx < b.h - 1) {
       problems.push(`${at}: ${b.sel} renders ${b.visiblePx}px of ${b.h}px on screen (top=${b.top}, `
         + `bottom=${b.bottom}, right=${b.right}; its column ends at ${b.hostBottom} / ${b.hostRight}). `
@@ -321,6 +342,18 @@ readBoxes(boxes, '1600px');
 // a player actually operates. Three widths, not a sweep: 1360 is where the radar column used to
 // vanish outright, 1100 is a laptop half-screen, 900 is the narrowest width that still shows all
 // four columns.
+//
+// ⛔⛔ THE RECEIPT FOR THIS SWEEP, CORRECTED — the first one was measured against a PARTIAL revert and
+// was therefore false. It said "with the band defect restored the rig exits 10 naming `.ov-radarsvg`
+// at all four widths"; that revert put back the radar's CSS and the svg's hard 150×150 but LEFT the
+// new 818px drop in place, so the scope still rendered at 1100/900 and overflowed there. Against the
+// REAL pre-fix tree (`@media (max-width:1359px)`) the column is `display:none` at 1100/900, and the
+// containment terms were vacuously true about a 0×0 rect — the reviewer measured 2 findings, not 4.
+// With the `rendered` term above, the WHOLE pre-fix band restored from `8e55f95^` now gives exit 10
+// and SIX band findings, in both shapes: `.ov-radarsvg` OVERFLOWS at 1600 (right 1581 vs a column
+// ending 1554) and at 1360 (1341 vs 1314), and `.ov-radarsvg` + `.ov-radarcap` are ZERO-BOX at 1100
+// and 900 — each logged `rendered=false inHost=true inView=true`, which is the vacuity itself,
+// printed. Re-measure with the fixture in `band-mutate2.py`'s shape, never quote this paragraph.
 for (const w of [1360, 1100, 900]) {
   await call('Emulation.setDeviceMetricsOverride', { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
   await sleep(900);

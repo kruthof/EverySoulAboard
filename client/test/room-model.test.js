@@ -3843,6 +3843,57 @@ test('VR-P3-a leg 1: every standing piece is EMITTED with the tile it was drawn 
   } finally { Hud.renderFrame(wreck); rzEnter('hold'); }
 });
 
+// ⛔ LEG 1 COVERED ONE OF THE THREE EMITTERS, AND THAT WAS A HOLE (independent review, 2026-08-05):
+// dropping `data-tile` from `itemStackSvg`'s `<g class="rz-item">` left the suite 1469/1469 GREEN, and
+// so did removing the wrapper from the UNKNOWN-CHIP branch alone. Both were covered only by a live
+// browser measurement, which no gate runs. ONE LEG PER EMITTER, because "the fitting branch emits it"
+// is not a fact about the other two — the 4th shape, applied to a family of call sites instead of to
+// a scope filter. The stack leg lives in `items-model.test.js`, on the PURE builder that owns it.
+test('VR-P3-a leg 1b: the UNKNOWN-GLYPH CHIP carries the tier too — a glyph with no art is still a '
+  + 'thing standing on a tile', () => {
+  const cells = wreck.cells.slice();
+  try {
+    cells[VR_FIT.y * wreck.w + VR_FIT.x] = ['z'.charCodeAt(0), 8, 0, 0];   // nothing skins `z`
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    const html = rzLayers.innerHTML;
+    assert.equal(chipAt(html, VR_FIT.x, VR_FIT.y), 'z',
+      'precondition: the VS-Z-25 dashed chip did not render, so this leg is asserting nothing');
+    assert.ok(html.includes('<g class="rz-fit" data-tile="' + VR_FIT.x + ',' + VR_FIT.y
+      + '" pointer-events="visiblePainted">'),
+      'the unknown chip is stood UP on its tile (`cy - side`) exactly as a fitting is, so without the '
+      + 'wrapper a press on it resolves to the floor behind it. An unskinned glyph is the case a '
+      + 'player most needs to be able to STRIP.');
+  } finally { Hud.renderFrame(wreck); rzEnter('hold'); }
+});
+
+// ⛔ THE FOURTH STANDING EMITTER, AND IT WAS LATENT-WRONG (independent review, 2026-08-05).
+// `decorSvg` stands its pieces with `standItem` exactly as `furnitureSvg` does, and the first cut of
+// this fix left it with `pointer-events="none"` and no tile — invisible on the wreck only because the
+// host's `BuildDecor()` returns a permanently empty list today. Latent is not fixed: `Cmd.decor` is
+// M4-6's open owner call, and the day the channel carries anything, every press on a decor piece's
+// ink would fall THROUGH it onto the wrong floor tile. Both builders now share `standingPiece`, and
+// this leg is what makes that sharing a fact rather than a convention — it drives the real `decor`
+// channel through the real dispatch and reads the real repaint.
+// MUTATION: `decorSvg` back to a bare `standItem(...)` push ⇒ RED.
+test('VR-P3-a leg 1c: a DECOR piece carries the tier too — the emitter the empty channel was hiding', () => {
+  try {
+    Hud.renderDecor({ type: 'decor', items: [[HOLD.deck, VR_FIT.x, VR_FIT.y, 'rug', 0, 0]] });
+    rzEnter('hold');
+    const html = rzLayers.innerHTML;
+    const at = html.indexOf('<g class="rz-decor"');
+    assert.ok(at >= 0,
+      'precondition: the decor layer did not render at all, so this leg is asserting nothing');
+    // ⚠️ READ INSIDE THE DECOR GROUP, not across the whole document: the furniture layer emits the
+    // same wrapper, and a leg that scanned the lot would pass on a decor layer that emits nothing.
+    const decorHtml = html.slice(at);
+    assert.ok(decorHtml.includes('<g class="rz-fit" data-tile="' + VR_FIT.x + ',' + VR_FIT.y
+      + '" pointer-events="visiblePainted">'),
+      'a decor piece stands UP on its tile with no `data-tile` and no pointer events, so a press on '
+      + 'its ink passes through it and the floor-plane inverse answers with the tile behind it.');
+  } finally { Hud.renderDecor(null); rzEnter('hold'); }
+});
+
 test('VR-P3-a leg 2: a STRIP sweep pressed on a piece marks the PIECE\'S tile, and the same '
   + 'coordinates on bare floor still mark the floor tile', () => {
   rzArm('strip');

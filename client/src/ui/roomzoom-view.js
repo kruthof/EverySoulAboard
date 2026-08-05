@@ -743,11 +743,31 @@ function previewSvg(scene, place) {
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
 }
 
+/**
+ * ⭐⭐ VR-P3-a — THE ONE WRAPPER EVERY STANDING PIECE WEARS. It says which tile the piece was DRAWN
+ * for and makes the piece's own INK the pressable part, which is what `tileAt` resolves a pointer
+ * against before it falls back to the floor-plane inverse (`room-model.js`'s `tileFromScenePoint`,
+ * which is right about the floor and wrong about anything with height).
+ *
+ * ⛔ IT IS A SHARED FUNCTION RATHER THAN A LINE COPIED INTO EACH BUILDER, and that is the review
+ * finding it exists to close: the first cut wrapped `furnitureSvg`'s pieces and left `decorSvg`
+ * standing its own with `pointer-events="none"` and no tile — LATENT, because the `decor` channel is
+ * empty on the wreck, and wrong the moment anything reaches it. A standing layer resolves to the
+ * wrong tile WHETHER OR NOT it takes pointer events: with events it answers with the floor behind it,
+ * without them its ink is a hole the player presses through. Both are "I clicked the thing and the
+ * order went somewhere else".
+ */
+function standingPiece(tx, ty, body) {
+  return '<g class="rz-fit" data-tile="' + (tx | 0) + ',' + (ty | 0)
+    + '" pointer-events="visiblePainted">' + body + '</g>';
+}
+
 /** Cosmetic decor pieces (VS-Z-34), standing on their tiles under the furniture layer. */
 function decorSvg(list, place) {
   const out = [];
   for (const d of list) {
-    out.push(standItem(d.itemId, d.x, d.y, place, 'rz-dc-' + d.x + '-' + d.y, undefined));
+    out.push(standingPiece(d.x, d.y,
+      standItem(d.itemId, d.x, d.y, place, 'rz-dc-' + d.x + '-' + d.y, undefined)));
   }
   return out.length ? '<g class="rz-decor" pointer-events="none">' + out.join('') + '</g>' : '';
 }
@@ -873,8 +893,9 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
   // piece standing in front of it is therefore not directly clickable, and that is the deliberate
   // half of the rule: pieces are drawn back to front, so the nearer piece is the one a player is
   // pointing at. The covered tile stays reachable by its own uncovered floor.
-  const fit = (tx, ty, body) => '<g class="rz-fit" data-tile="' + (tx | 0) + ',' + (ty | 0)
-    + '" pointer-events="visiblePainted">' + body + '</g>';
+  // The wrapper is `standingPiece`, SHARED with `decorSvg` rather than written twice — see its header
+  // for why a second copy is how the decor layer was left latent-wrong by the first cut of this fix.
+  const fit = standingPiece;
   for (const c of cells) {
     if (plated.has(c.tx + ',' + c.ty)) continue;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;

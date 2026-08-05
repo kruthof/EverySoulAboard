@@ -107,11 +107,27 @@ const BACKOFF_RING_W = ORDER_RING_WIDTH;
  * ⚠️ AND ONE SENTENCE OF THIS HEADER IS NOW STALE AND IS CORRECTED RATHER THAN DELETED. It read
  * *"they never read `e.target`"*. Since VR-P3-a they do: `roomzoom-view.js`'s `tileAt` resolves
  * `e.target.closest('[data-tile]')` FIRST and falls back to the `clientX/clientY` inverse only on
- * bare floor. That is still harmless HERE, and for a reason worth writing down rather than assuming:
- * a zone cell is drawn with `place.cell` — SHEARED INTO THE FLOOR PLANE, on its own tile — and it
- * carries no `data-tile`, so a press on it falls through to the inverse, which is exactly right about
- * the floor plane. A future layer that STANDS UP off the floor and takes pointer events must emit
- * `data-tile` or it re-opens the defect for its own ink.
+ * bare floor. That is still harmless for the TILE ANSWER here, and for a reason worth writing down
+ * rather than assuming: a zone cell is drawn with `place.cell` — SHEARED INTO THE FLOOR PLANE, on its
+ * own tile — and it carries no `data-tile`, so a press on it falls through to the inverse, which is
+ * exactly right about the floor plane.
+ *
+ * ⛔ THE FORWARD RULE, AND IT IS WIDER THAN THE FIRST WORDING (independent review, 2026-08-05). It
+ * said "a future layer that STANDS UP off the floor **and takes pointer events**", which lets a
+ * `pointer-events:none` standing layer past — and that layer is wrong too, just differently: with
+ * events it answers with the floor behind it, without them its ink is a hole the player presses
+ * through to whatever is underneath. So: ANY layer that stands a drawing UP off the floor plane must
+ * emit `data-tile`, whatever its pointer-events. `roomzoom-view.js`'s `standingPiece` is the one
+ * wrapper that does it; use it rather than a second copy.
+ *
+ * ⛔ AND THE COST THIS LAYER PAID, STATED RATHER THAN DISCOVERED LATER: THE `<title>` TOOLTIPS ABOVE
+ * ARE NOW SHADOWED WHERE A FITTING COVERS THEM. The furniture layer went per-piece
+ * `visiblePainted` and is painted ABOVE `rz-zones`, so `elementFromPoint` over a piece's ink returns
+ * `.rz-fit` and the zone cell underneath never sees the hover. A zoned tile with something standing
+ * on it therefore has no reachable tooltip on the covered part; its uncovered floor still does, and
+ * the visible KEY below (`blockedKeyHtml`'s sibling — a key exists precisely because a `<title>` can
+ * be disabled by one attribute three layers up) still says what the zone means with no hover at all.
+ * That trade is deliberate: an order landing on the tile the player pointed at outranks a tooltip.
  *
  * @param {{tx:number, ty:number, restricted:boolean, backedOff:boolean, label:string}[]} tiles
  *   roomZoneTiles output
