@@ -26,11 +26,18 @@ import {
   selectedCrewCid,
 } from '../wire/messages.js';
 import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from './zone-model.js';
+// VR-P3 — THE CABINET-OBLIQUE KIT. The room is drawn through it and through nothing else; the ONE
+// hatch def this surface emits is `fhDef('rz')` (`room-model.js roomHatchDef`), and `fhRef(RZ_ID)`
+// is how a face in THIS document references it. `haloText` is the design's label treatment.
+import { box as obliqueBox, fhRef, haloText, INK, PAPER, ATTEND, FONT } from '../render/oblique.js';
+// The ONE derivation of how a centimetre-specified fitting lands on a surface at that surface's
+// centimetre rule — see its header for why it lives beside the drawing scale rather than here.
+import { roomBox } from '../items/fittings.js';
 import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-model.js';
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
 import { blockedLayerSvg, blockedKeyHtml } from './blocked-overlay.js';
 import { acceptsRowHtml } from './accepts-row.js';
-import { decksView } from './decks-model.js';
+import { decksView, atmosByAnchor } from './decks-model.js';
 import { buildItem, isResourceItem } from '../items/index.js';
 // THE WEAR JOIN, and the ONLY door from a surface to the wrecked twins (client/src/items/wear.js
 // carries the threshold and its justification; `client/test/wrecked.test.js` pins that this file
@@ -40,12 +47,22 @@ import { buildTileItem } from '../items/wear.js';
 // the Overview's CREW WATCH rows use, so one person wears one face on both docks.
 import { pawnSprite, pawnChip } from '../render/pawn-svg.js';
 import { isTextEntryTarget } from '../input/controls.js';
-import { roomMaterial } from '../theme/warm-tokens.js';
+// ⛔ `roomMaterial` IS GONE WITH THE GRADIENT FLOOR. It answered "what colour is this room type's
+// deck", and under the paper dialect every compartment stands on the same paper — which is the
+// point of a dialect. The room is named in the in-SVG title instead, in words.
 import { deckMinimap } from './deck-minimap.js';
 import {
-  U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isSweepTool, roomDragMode,
+  // ⛔ `U` IS NO LONGER IMPORTED HERE. It was this surface's drawing unit; on the cutaway the layer
+  // unit is the TILE'S OWN WIDTH ON SCREEN (`scene.s * 100 * M_PER_TILE`, derived per repaint), and
+  // an unused import of the plan view's 32 is the next reader's invitation to draw at the wrong size.
+  ROOM_TOOLS, TOOL_LABEL, paletteCommand, isSweepTool, roomDragMode,
   nextRoomTool, roomTileRect,
-  deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
+  // VR-P3 — the cutaway's own derivations: the scene, the placement object every tile-addressed
+  // layer is drawn through, the pieces of the drawing, and the two inverses (pointer→tile, and
+  // tile→client box for the one transient that lives outside the SVG).
+  roomScene, scenePlacement, roomCutawaySvg, roomHatchDef, roomTitleSvg, roomDimensionsSvg,
+  roomDoorsSvg, roomDoorTiles, tileClientBox, M_PER_TILE, ROOM_HEIGHT_M, ROOM_SCALE, RZ_ID,
+  deckSlots, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   roomBlockedTiles,
   demolishTarget, removeDecor, escStackRung,
@@ -82,9 +99,25 @@ import { partsUnits } from './ledger-model.js';
 /* eslint-disable no-multi-spaces */
 
 const CTX_GAP = 6;              // clearance the right-click menu keeps from body-level chrome (openCtx)
-const ITEM_SIDE = U * 1.6;      // furniture box (logical) — reads a touch larger than its tile
-const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the tile edge-to-edge
-const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
+// ⛔ `ITEM_SIDE` / `MAT_SIDE` / `PAWN_H` ARE GONE WITH THE PLAN VIEW. All three were multiples of the
+// 32-unit tile — "a bit bigger than its tile", "fills the tile edge to edge" — i.e. sizes chosen
+// against a GRID rather than against the world. In the cutaway a thing's size is a fact about the
+// thing: a fitting is drawn at its own centimetres (`fittings.roomBox`) and a person at their own
+// height. The one number left is that height, and it is a number about people.
+/** The floor-material swatch's box, in the same unit the floor cells are drawn in. */
+const FLOOR_MAT_PX = 95;
+/** A crew member's height in metres. At the cutaway's 0.95 px/cm that is ~158 scene px, which is
+ *  what the design's own room figure measures (`scale(1.04)` on its 152-unit build).
+ *
+ *  ⚠️ IT IS PINNED IN `room-model.test.js` BECAUSE A MUTATION SURVIVED: `1.66 → 1.0` drew every
+ *  person at 60 % of their height — a room full of children, standing in a compartment whose every
+ *  other dimension is stated in metres on the drawing itself — and the whole node suite stayed green.
+ *  The pin is a BAND on the drawn figure's height in METRES, read back out of the assembled scene, so
+ *  it catches the value and the derivation together and needs no copy of this number. */
+const PAWN_M = 1.66;
+/** The shipped mono stack — the kit's, so an SVG label and the DOM text beside it cannot resolve to
+ *  two different faces on a box where the webfont is missing (`oblique.FONT`'s own warning). */
+const MONO_STACK = FONT.mono;
 // ⚠️ THE `HINT` CONSTANT THAT STOOD HERE IS GONE, not renamed: the hint line has TWO texts now
 // (`ZOOM_HINT_IDLE` / `ZOOM_HINT_ARMED`, both in the pure `zoomChrome`), and leaving a third copy
 // of one of them in this file is how the two would drift. The markup below seeds the node with the
@@ -582,237 +615,268 @@ function repaint() {
   paintCostRow();
 }
 
-// ── the framed floor (VS-Z-06..09) ──
+// ── THE CUTAWAY (visual redesign P3, charter §3) ──
+//
+// ⛔ THE CSS-GRADIENT FLOOR IS GONE, AND SO IS THE FLAT LAYER STACK THAT STOOD ON IT. The surface
+// used to be a PLAN: `.rz-canvas` painted a wood/steel gradient, and a `rw*U × rh*U` SVG drew
+// axis-aligned tile boxes over it. It is now ONE SVG SCENE in the design's cabinet oblique — floor
+// quad, back wall, hatched left wall, dashed cut edges, an in-SVG serif title over a mono stat line,
+// door plates with halo labels, and three dimension arrows — with every tile-addressed layer PLACED
+// onto that scene through `scenePlacement` (`room-model.js`) rather than through per-layer maths.
+//
+// `floorBackground` / `roomMaterial` went with the gradient: the floor is PAPER now, one ground for
+// every compartment, and a per-room-type floor hue was the warm dialect's way of saying "which room
+// is this" — a question the in-SVG title answers in words.
 
 function paintCanvas() {
-  _canvas.style.background = floorBackground(_focus.roomType);
   _canvas.style.cursor = _armed ? 'crosshair' : 'default';
 }
 
-/** Per-material floor fill (VS-Z-06): wood is the mock's warm plank; the rest a flat material hue. */
-function floorBackground(roomType) {
-  const mat = roomMaterial(roomType);
-  if (mat.material === 'wood') {
-    return 'repeating-linear-gradient(90deg,#bd9066 0 54px,#b0865a 54px 58px)';
-  }
-  return 'linear-gradient(0deg,' + mat.floor + ',' + mat.floor + ')';
+/** Is the focused compartment airless? From the `rooms` channel's own atmosphere row — the same
+ *  source the Overview's pressure lens grades (D4). A room with NO row answers `false`: "we have not
+ *  been told" is not "there is no air", and painting every unlisted compartment as a vacuum would be
+ *  the exact confident-wrong-number the vacuum package exists to remove.
+ *
+ *  ⚠️ DRIVEN, NOT CALLED, BY ITS PIN (`room-model.test.js`, the airless-compartment leg) — because
+ *  `return false` here survived the whole suite. `vacuum-visible.test.js` proves the MODEL grades a
+ *  vacuum; nothing proved the AIRLESS TREATMENT reached this surface's SVG, so the pin dispatches a
+ *  0 kPa row on the real `rooms` channel and reads the mounted scene back. */
+function focusIsVacuum() {
+  if (!_focus || !_focus.anchor) return false;
+  const a = atmosByAnchor(decodeRooms(Hud.getRooms())).get(_focus.anchor);
+  return !!(a && Number.isFinite(a.pressureKPa) && a.pressureKPa < 1);
 }
 
-// ── the SVG layer stack (VS-Z-13): grid → glow → decor → furniture → pawns → ghosts ──
+// ── the SVG scene: cutaway → floor paint → things that stand on it → pawns → orders ──
 
 function paintLayers(frame, crew, designs, decor, selCid) {
-  const rw = _focus.rw, rh = _focus.rh;
-  const logicalW = rw * U, logicalH = rh * U;
-  _layers.setAttribute('viewBox', '0 0 ' + logicalW + ' ' + logicalH);
+  const scene = roomScene(_focus);
+  // ⭐ THE LAYER UNIT IS THE TILE'S OWN WIDTH ON SCREEN, not the plan view's 32. Every tile-scoped
+  // builder (`markCellSvg`, `blockedCellSvg`, `itemStackSvg`) draws ONE CELL in a `unit × unit` box
+  // and `place` maps that box onto the tile — so a unit that is not the tile's real width draws a
+  // pile, a rubble chunk and a ⚠ at a THIRD of tile size, which is what the first render showed.
+  // `U` stays the pure model's default (the Level-1 Overview really does have 32-unit cells).
+  const unit = scene.s * 100 * M_PER_TILE;
+  const place = scenePlacement(scene, _focus, unit);
+  const vacuum = focusIsVacuum();
+  _layers.setAttribute('viewBox', scene.viewBoxAttr);
   _layers.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-  let body = gridSvg(rw, rh, logicalW, logicalH);
-  body += glowSvg(logicalW, logicalH);
-  body += materialLayerSvg(roomMaterialTiles(frame, _focus, decodeMaterials(Hud.getMaterials())));
-  // Zones sit ABOVE the material layer. The first draft put them under it "so a stored crate still
-  // reads as sitting ON the zone" — which was wrong twice over: the Room Zoom draws no loose item
-  // stacks at all (roomCells is furniture + devices), and materialLayerSvg paints an OPAQUE item at
-  // U * 1.2 — LARGER than the tile — for every floor whose material byte is non-zero. So the moment a
-  // player builds a floor with a chosen material, that skin would completely occlude the zone tint
-  // underneath it. Authored floors are material 0 and are skipped, which is the only reason the
-  // original order looked correct in a screenshot.
-  body += zoneLayerSvg(_zoneTiles, _focus);
-  body += decorSvg(roomDecor(decor, _focus));
-  // The tiles the item layer draws on. Handed to `furnitureSvg` so the frame-derived rendering of the
-  // same pile — the VS-Z-25 unknown chip, and, since the ground-item art landed, the RESOURCE PIECE
-  // itself — is not stacked underneath the authoritative one. Real furniture art is never suppressed,
-  // so a stack on a device tile keeps the device's sprite and gains its pile above it.
-  // `_deviceCond` — the `devices` channel's per-tile wear, derived in `repaint()` — is handed in so
-  // a machine at or below the wreck floor wears its post-raid twin. It is a THIRD argument rather
-  // than a module-level read so `furnitureSvg` stays a pure function of what it is given.
-  body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles), _deviceCond);
-  // WP-2 — debris + dig/strip marks. ⚠️ The old lead *"read off the frame's `cell[1]`"* is FALSE: the
-  // kinds come from the `marks` channel now, decoded in `repaint()` into `_markTiles`. ABOVE the
-  // material layer, which paints an opaque U*1.2 swatch over any built wall (so a strip mark under it
-  // would be invisible), and above the zone layer, whose tiles this one deliberately skips
-  // (room-model.js markLayerSvg).
+  const cells = roomCells(frame, _focus);
+  const here = roomCrew(crew, _focus);
+  const roster = Hud.getRoster();
+  const aboard = roster && Array.isArray(roster.crew) ? roster.crew.length : here.length;
+
+  // ⭐ ONE `<defs>`, ONE HATCH, ONE NAMESPACE (`rz-fh`) — the id-collision rule the kit exists for.
+  // `fhDef` is called ONCE per surface root; every hatched face in this document (the left wall, and
+  // every fitting's side face through its own `scene.pat()` ids) resolves against it or its own.
+  let body = roomHatchDef();
+  body += roomTitleSvg(scene, {
+    slotIndex: _focus.slotIndex, roomName: _focus.displayName, areaM2: scene.areaM2,
+    placed: cells.filter((c) => c.itemId).length, pending: roomDesigns(designs, _focus).length,
+    here: here.length, aboard, vacuum,
+  });
+  body += roomCutawaySvg(scene, { vacuum });
+  // ⛔ ONE DERIVATION OF "WHERE ARE THIS ROOM'S DOORS", CONSUMED TWICE. The cutaway draws the plate;
+  // the furniture pass must NOT also stand the door's own sprite in the same opening — see
+  // `furnitureSvg`'s header for the live symptom this closed.
+  const doorTiles = roomDoorTiles(frame, _focus, currentDeckView());
+  body += roomDoorsSvg(scene, _focus, doorTiles);
+  body += materialLayerSvg(roomMaterialTiles(frame, _focus, decodeMaterials(Hud.getMaterials())), place);
+  // Zones sit ABOVE the material layer, and that ordering is unchanged and still load-bearing: a
+  // FLOOR material lies in the floor plane exactly as a zone tint does, so drawn after it would
+  // occlude the tint on any floor the player has built with a chosen material. (Authored floors are
+  // material 0 and are skipped, which is the only reason the wrong order ever looked correct.)
+  body += zoneLayerSvg(_zoneTiles, _focus, place, unit);
+  body += decorSvg(roomDecor(decor, _focus), place);
+  body += furnitureSvg(cells, itemStackTileKeys(_itemTiles), _deviceCond, place, doorTiles);
+  // WP-2 — debris + dig/strip marks, IN THE FLOOR PLANE and ABOVE the furniture layer.
   //
-  // MOVED ABOVE `furnitureSvg` (and `decorSvg`) when the device-strip emitter landed, and the move is
-  // load-bearing, not tidying: a condemned DESK carries a strip mark, and drawn underneath its own
-  // furniture sprite the amber ✕ sits behind an opaque item — the player would have condemned it and
-  // still seen nothing, which is the very bug being fixed. THE REORDER IS PROVABLY INERT FOR EVERY
-  // PRE-EXISTING MARK: debris and dig tiles only ever ride glyph code 37 (`'%'`), which is in
-  // `NON_FURNITURE`, so `roomCells` never emits a furniture item on a marked tile and the two layers
-  // were disjoint; stockpile is skipped by `markLayerSvg` outright. `room-model.test.js` pins that
-  // disjointness on the real capture rather than leaving it as an argument.
-  //
+  // ⛔ THE ORDER IS THE ONE THING IN THIS STACK THAT IS NOT ABOUT THE PROJECTION, and it is kept
+  // exactly as it was: a condemned DESK carries a strip mark, and drawn underneath its own fitting
+  // the ✕ sits behind an opaque piece — the player would have condemned it and still seen nothing,
+  // which is the reported bug this ordering closes. On the cutaway that means the ring paints over
+  // the fitting's footprint rather than tucking under it; that is the correct trade, because a mark
+  // is a statement about a TILE and the fitting is what the statement is about.
   // STILL BELOW `pawnSvg`, deliberately: a crew member must never be hidden by a mark.
-  // ⚠️ AND THE PARENTHESIS THAT FOLLOWED IS NOW OBSOLETE — quoted, because it named the fix this
-  // package is: *"(The converse — a mark hidden UNDER a crew member — is not a layer problem and
-  // cannot be fixed here: pass 5 of `GlyphMapper` overwrites the fg byte, so the mark never reaches
-  // the client at all. That one needs the `strips`/`designations` channel, HANDOVER §4g.)"* That
-  // channel is built, it is called `marks`, and a mark under a crew member now reaches the client and
-  // is drawn under the pawn — visible around them, which is what "the pawn is on a condemned tile"
-  // should look like.
-  body += markLayerSvg(_markTiles, _focus);
-  // The ground-item stacks — the warm resource pieces plus their count badges. ABOVE the furniture
-  // layer, and that is the whole of loss 3 being fixed: `GlyphMapper` pass 4 paints the device glyph
-  // over pass 3's item, so a stack on a machine's tile reached the client nowhere at all — drawing it
-  // UNDER the device sprite would reproduce the erasure in the client after removing it from the
-  // wire. The badge is bottom-anchored and inset, so the count reads without covering what stands on
-  // the tile.
-  // STILL BELOW `pawnSvg`, for the same reason the marks are: a crew member is never hidden.
-  body += itemStackSvg(_itemTiles, _focus);
-  // The REFUSED-ORDER layer: a scrim + a fault badge on every tile the sim will not staff.
-  //
-  // ABOVE the mark and item layers, and that ordering is load-bearing rather than incidental. The
-  // scrim's whole job is to make an ORDER read as inert, and the order it is dimming is drawn by
-  // `markLayerSvg` twelve lines up — under the scrim it is dimmed (correct), over it the amber ring
-  // would sit at full brightness on a tile that is going nowhere, which is the misreading the layer
-  // exists to prevent. It is ADDITIVE, never a replacement: the rubble, the ring and the ✕ all
-  // survive, because telling the player their order VANISHED is a worse lie than the silence.
-  //
-  // STILL BELOW `pawnSvg`, for exactly the reason the marks and the stacks are: a crew member is
-  // never hidden by a layer that is explaining the floor.
-  //
-  // ⚠️ BOTH HALVES OF THAT SANDWICH ARE PINNED NOW, and the upper half was a send-back: moving this
-  // line below `pawnSvg` left all 27 node tests green while a near-black scrim washed over every
-  // pawn standing on a blocked tile — which they do, constantly, since the grid crew work the hold's
-  // dig field. `client/test/blocked-model.test.js` → "the blocked layer is ADDITIVE — over the mark,
-  // under the pawns" drives a roster into the room and asserts the index order both ways.
-  body += blockedLayerSvg(_blockedTiles, _focus);
-  body += pawnSvg(roomCrew(crew, _focus), _focus, selCid);
-  body += ghostSvg(roomDesigns(designs, _focus));
-  body += previewSvg();
+  body += markLayerSvg(_markTiles, _focus, unit, place);
+  // The ground-item stacks — the pieces plus their count badges — STANDING on their tiles, above the
+  // furniture layer (loss 3: a stack on a machine's tile reached the client nowhere at all).
+  body += itemStackSvg(_itemTiles, _focus, unit, place);
+  // The REFUSED-ORDER layer: a wash + an oxblood dashed outline on the floor, plus ONE upright
+  // leader label per distinct reason. ADDITIVE, never a replacement (the mark and its ring survive),
+  // above the mark and item layers so the thing being dimmed is under the dimming, and STILL BELOW
+  // `pawnSvg` — `blocked-model.test.js` drives a roster into the room and asserts both halves.
+  body += blockedLayerSvg(_blockedTiles, _focus, unit, place);
+  body += pawnSvg(here, _focus, selCid, place);
+  body += ghostSvg(roomDesigns(designs, _focus), scene, place);
+  body += previewSvg(scene, place);
+  body += roomDimensionsSvg(scene);
   _layers.innerHTML = body;
 }
 
-/** The live drag-build preview (VS-Z spirit of the ghost, but pre-commit): the tiles the current
- *  sweep WOULD designate, each skinned with the chosen material at low opacity + an amber dashed
- *  ring, plus a run caption near the drag end. Recomputed each repaint from the pure drag model. */
-function previewSvg() {
+/** The live drag-build preview: the tiles the current sweep WOULD designate.
+ *
+ *  ⭐ THE DIALECT, AND THE DISTINCTION IT NOW CARRIES (charter §1 / ruling E3). A preview is
+ *  PLANNED, not queued — nothing has been ordered yet — so it wears INK `6 5`, the charter's
+ *  UNBUILT/PLANNED spelling, and NOT the oxblood `8 5` a committed order wears. That is a stronger
+ *  statement than the old amber-vs-slate pair: it says "this is not an order yet" in the same
+ *  alphabet the committed ghost answers in, one line later.
+ *  ERASE previews in the same ink at a DOTTED `1 3` — a broken line for a thing being taken away —
+ *  because a drag that is about to remove four orders must not look like a fifth being painted. */
+function previewSvg(scene, place) {
   if (!_drag) return '';
   const res = buildDragTiles(_drag.start, _drag.end, _drag.mode, roomBounds());
   if (!res.tiles.length) return '';
   const tool = _drag.tool;
-  const itemId = materialItemId(tool, activeMaterial(_materials, tool)); // '' for door (no material)
-  // ERASE PREVIEWS IN A DIFFERENT COLOUR, and that is not decoration. Every other sweep on this
-  // surface ADDS something and the amber preview reads as "this is what you are about to put here";
-  // a drag that is about to take four orders OFF the floor, previewed in the identical amber, reads
-  // as painting a fifth. Slate — the same cool family the zone tint uses for "already spoken for".
   const isErase = paletteCommand(tool).cls === 'erase';
-  const ring = isErase ? '#9fb4cc' : '#f2b563';
-  const wash = isErase ? 'rgba(159,180,204,.18)' : 'rgba(232,147,74,.20)';
+  const dash = isErase ? '1 3' : '6 5';
   const out = [];
   for (const t of res.tiles) {
-    const [lx, ly] = localXY(t.x, t.y);
-    if (itemId) {
-      const g = buildItem(itemId, { w: MAT_SIDE, h: MAT_SIDE, idPrefix: 'rz-pv-' + t.x + '-' + t.y });
-      out.push('<g opacity="0.6" transform="translate(' + (lx + U / 2 - MAT_SIDE / 2).toFixed(1) +
-        ' ' + (ly + U / 2 - MAT_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
-    }
-    out.push('<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) + '" height="' +
-      (U - 1) + '" rx="2" fill="' + (itemId ? 'none' : wash) +
-      '" stroke="' + ring + '" stroke-width="1.5" stroke-dasharray="3 2"/>');
+    out.push('<path d="' + place.quad(t.x, t.y) + '" fill="' + (isErase ? 'none' : 'rgba(20,18,15,.06)')
+      + '" stroke="' + INK + '" stroke-width="1.4" stroke-dasharray="' + dash + '"/>');
   }
-  const [ex, ey] = localXY(_drag.end.x, _drag.end.y);
-  out.push('<text x="' + (ex + U / 2).toFixed(1) + '" y="' + (ey - 5).toFixed(1) +
-    '" font-size="9" text-anchor="middle" dominant-baseline="middle" ' +
-    'font-family="\'Space Mono\', ui-monospace, monospace" stroke="rgba(10,13,20,.9)" stroke-width="2.5" ' +
-    'paint-order="stroke" fill="' + ring + '">' + esc(dragCaption(res)) + '</text>');
+  const [ex, ey] = place.foot(_drag.end.x, _drag.end.y);
+  out.push(haloText(dragCaption(res), ex, ey - PAWN_M * 100 * scene.s * 0.35, {
+    size: 9, font: 'mono', tracking: 1.1, fill: INK, anchor: 'middle',
+  }));
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
 }
 
-/** The faint 32-unit build grid (VS-Z-10), drawn in logical space so a cell == a tile at any fit. */
-function gridSvg(rw, rh, logicalW, logicalH) {
-  let lines = '';
-  for (let x = U; x < logicalW; x += U) {
-    lines += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + logicalH + '" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
-  }
-  for (let y = U; y < logicalH; y += U) {
-    lines += '<line x1="0" y1="' + y + '" x2="' + logicalW + '" y2="' + y + '" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
-  }
-  return '<g class="rz-grid-lines" pointer-events="none">' + lines + '</g>';
-}
-
-/** The single ambient warmth glow-pool (VS-Z-11): one radial, behind all item layers. */
-function glowSvg(logicalW, logicalH) {
-  const cx = logicalW / 2, cy = logicalH / 2;
-  return '<defs><radialGradient id="rz-glow-grad" cx="50%" cy="50%" r="50%">' +
-    '<stop offset="0" stop-color="rgba(242,181,99,.16)"/>' +
-    '<stop offset="0.7" stop-color="rgba(242,181,99,0)"/></radialGradient></defs>' +
-    '<ellipse class="rz-glow" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" rx="' +
-    (logicalW * 0.5).toFixed(1) + '" ry="' + (logicalH * 0.55).toFixed(1) +
-    '" fill="url(#rz-glow-grad)" pointer-events="none"/>';
-}
-
-function localXY(tx, ty) {
-  return [(tx - _focus.rx) * U, (ty - _focus.ry) * U];
-}
-
-/** Cosmetic decor pieces (VS-Z-34), under the furniture layer. */
-function decorSvg(list) {
+/** Cosmetic decor pieces (VS-Z-34), standing on their tiles under the furniture layer. */
+function decorSvg(list, place) {
   const out = [];
   for (const d of list) {
-    const [lx, ly] = localXY(d.x, d.y);
-    const cx = lx + U / 2, cy = ly + U / 2;
-    const g = buildItem(d.itemId, { w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-dc-' + d.x + '-' + d.y });
-    out.push('<g transform="translate(' + (cx - ITEM_SIDE / 2).toFixed(1) + ' ' + (cy - ITEM_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
+    out.push(standItem(d.itemId, d.x, d.y, place, 'rz-dc-' + d.x + '-' + d.y, undefined));
   }
   return out.length ? '<g class="rz-decor" pointer-events="none">' + out.join('') + '</g>' : '';
 }
 
-/** Built walls + non-default floors → their item-set material skins (C4). A wall '#' inside the room
- *  is a player-built partition — rendered with its wall material (default steel when the sparse
- *  `materials` channel has no entry); a floor tile is skinned only when it carries a chosen material.
- *  Drawn under decor/furniture so items sit on top. */
-function materialLayerSvg(tiles) {
+/**
+ * ONE PIECE, PLACED IN THE ROOM AT TRUE SIZE.
+ *
+ * ⭐ A FITTING KNOWS HOW BIG IT IS IN CENTIMETRES, so it is drawn at the cutaway's own centimetre
+ * rule and NOT scaled to fit a tile: `fittings.roomBox(id, s)` returns the box side that makes the
+ * piece exactly `s` px per cm plus the offsets from its cm ORIGIN (its near-left floor corner) to
+ * the box's top-left. That is what makes the room a room — a 260 cm bench covers 2.6 tiles of floor,
+ * a 46 cm chair a fifth of one, and the drawing agrees with the catalogue it came from.
+ *
+ * ⚠️ THE FALLBACK IS HONEST AND IS NAMED. Twenty-odd device rows keep their pre-redesign warm art
+ * (charter §4: P2b is FILED, not this wave) and have no centimetre spec at all. Those are stood
+ * upright on their tile at ONE TILE of width — the size the plan view drew them at — rather than
+ * being given an invented footprint. They will read as a different hand until P2b lands, which is
+ * the truth about them.
+ *
+ * ⭐ EXPORTED (VR-P3 review, MINOR 6) so `client/tools/roomzoom-sheet.mjs` draws its page with THIS
+ * function rather than with its own copy of it. The sheet had re-derived the fitting placement
+ * verbatim — a second authority on the exact thing the sheet exists to photograph, so the page could
+ * look right while the shipping surface drew something else. It is pure of module state: `place` is
+ * an argument and `ROOM_SCALE` is a shared constant.
+ */
+export function standItem(itemId, tx, ty, place, idPrefix, cond) {
+  const rb = roomBox(itemId, ROOM_SCALE);
+  const [px, py] = place.front(tx, ty);
+  if (rb) {
+    const g = buildTileItem(itemId, { w: rb.side, h: rb.side, idPrefix }, cond);
+    return '<g transform="translate(' + (px + rb.dx).toFixed(2) + ' ' + (py + rb.dy).toFixed(2)
+      + ')">' + g + '</g>';
+  }
+  const side = ROOM_SCALE * 100 * M_PER_TILE * 1.15;
+  const [cx, cy] = place.foot(tx, ty);
+  const g = buildTileItem(itemId, { w: side, h: side, idPrefix }, cond);
+  return '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2)
+    + ')">' + g + '</g>';
+}
+
+/**
+ * Built walls + non-default floors → their material skins.
+ *
+ * ⛔⛔ TWO THINGS CHANGED HERE AT VR-P3 AND BOTH WERE FOUND BY LOOKING AT THE RUNNING GAME, not by a
+ * test. The first live render of the cryo bay came back with THIRTY dark slabs standing in a stepped
+ * ring around the compartment, and the room was unreadable behind them.
+ *
+ * 1 ⛔ A BOUNDARY `#` TILE IS THE COMPARTMENT'S OWN HULL, AND THE CUTAWAY ALREADY DREW IT. The room
+ *   rect INCLUDES its walls, so every tile on the ring carries glyph 35 — and `oblique.room()` has
+ *   just drawn those same walls as the back wall and the hatched left wall. Skinning them again put
+ *   a second, contradictory wall inside the first, and on the near and right edges it stood a solid
+ *   slab exactly where the drawing has CUT THE ROOM OPEN. Only INTERIOR walls are drawn now: those
+ *   are the partitions the player built, which is what this layer was for.
+ *
+ * 2 ⭐ A PARTITION IS A SLAB, IN THE ROOM'S OWN VOCABULARY. It used to be a `U * 1.2` swatch of
+ *   material art laid flat, which is what a plan view can say about a wall. Here it is a real
+ *   2.4 m oblique box — paper front, hatched side, ink stroke, the same three faces the room and
+ *   every fitting are made of — with the MATERIAL'S OWN ART inset on the front face, so "which
+ *   material" survives the change (ruling E4: nothing is dropped, everything is re-housed).
+ *
+ * A FLOOR material still LIES IN THE FLOOR PLANE, because that is what it is.
+ */
+function materialLayerSvg(tiles, place) {
   const floors = [], walls = [];
+  const rx = _focus.rx | 0, ry = _focus.ry | 0;
+  const x1 = rx + (_focus.rw | 0) - 1, y1 = ry + (_focus.rh | 0) - 1;
   for (const t of tiles) {
     const id = materialItemId(t.kind, t.mat);
     if (!id) continue;
-    const [lx, ly] = localXY(t.tx, t.ty);
-    const g = buildItem(id, { w: MAT_SIDE, h: MAT_SIDE, idPrefix: 'rz-mt-' + t.tx + '-' + t.ty });
-    const wrap = '<g transform="translate(' + (lx + U / 2 - MAT_SIDE / 2).toFixed(1) + ' ' +
-      (ly + U / 2 - MAT_SIDE / 2).toFixed(1) + ')">' + g + '</g>';
-    (t.kind === 'wall' ? walls : floors).push(wrap);
+    const idp = 'rz-mt-' + t.tx + '-' + t.ty;
+    if (t.kind === 'wall') {
+      if (t.tx === rx || t.tx === x1 || t.ty === ry || t.ty === y1) continue;   // the hull — see above
+      const [px, py] = place.front(t.tx, t.ty);
+      const cm = M_PER_TILE * 100;
+      const [cx, cy] = place.foot(t.tx, t.ty);
+      const sw = ROOM_SCALE * 62;
+      walls.push('<g class="rz-wall">'
+        + obliqueBox(px, py, cm, ROOM_HEIGHT_M * 100, cm, ROOM_SCALE,
+          { strokeWidth: 1.8, sideFill: 'hatch', hatch: fhRef(RZ_ID) })
+        + '<g transform="translate(' + (cx - sw / 2).toFixed(2) + ' '
+        + (cy - ROOM_SCALE * ROOM_HEIGHT_M * 100 * 0.62).toFixed(2) + ')">'
+        + buildItem(id, { w: sw, h: sw, idPrefix: idp }) + '</g></g>');
+    } else {
+      const g = buildItem(id, { w: FLOOR_MAT_PX, h: FLOOR_MAT_PX, idPrefix: idp });
+      floors.push('<g transform="' + place.cell(t.tx, t.ty) + '">' + g + '</g>');
+    }
   }
   return (floors.length ? '<g class="rz-floor-mat" pointer-events="none">' + floors.join('') + '</g>' : '') +
     (walls.length ? '<g class="rz-walls" pointer-events="none">' + walls.join('') + '</g>' : '');
 }
 
-/** The sim's own furniture cells → warm SVG items (VS-Z-19); unmapped glyph → the dashed chip.
+/** The sim's own furniture cells → the new three-face fittings, placed on their tiles through the
+ *  projection; an unmapped glyph → the ink "we do not skin this yet" chip, standing on its tile.
  *
- *  `stocked` is the set of `"tx,ty"` keys the `items` layer draws on. On those tiles TWO branches are
- *  skipped, and the second one is new with the ground-item art:
- *    • the unknown-glyph CHIP — its raw letter is the lossy rendering the channel replaces, and
- *      stacking the two would put a `,` and a pile of Regolith on one tile;
- *    • a RESOURCE piece — because `itemForGlyph(',')` now resolves to real art, the frame would draw
- *      the pile a SECOND time from a source that has no count, keeps only the topmost stack and is
- *      erased by any device on the tile. The `items` channel is the authority for what is lying on a
- *      floor; the projection is not.
- *  REAL FURNITURE ART IS NEVER SUPPRESSED: a device on a stocked tile still draws its sprite, because
- *  the pile is about what is LYING there and the sprite about what is INSTALLED there, and both are
- *  true. */
-function furnitureSvg(cells, stocked, deviceCond) {
+ *  `stocked` and `deviceCond` keep their contracts verbatim — see the pre-redesign header, which is
+ *  unchanged in every respect except where the piece is put.
+ *
+ *  ⛔⛔ A BOUNDARY DOOR IS DRAWN ONCE, BY THE CUTAWAY (VR-P3 review, MINOR 4), and this is the pass
+ *  that used to draw it a second time. Glyph `+`/`X` resolves through `itemForGlyph` to a real
+ *  sliding/blast door piece, so a door in the room's own wall got BOTH the cutaway's paper plate — in
+ *  the wall plane, at the wall's own angle — AND a warm door sprite stood upright in the same opening,
+ *  half a metre in front of it. Live on `hall_d0_s1`, where the two overlapped into an unreadable
+ *  smear. `doorTiles` is `roomDoorTiles`' own EDGE-ONLY list (its header argues that limit), so an
+ *  INTERIOR partition door keeps its sprite: the cutaway never drew that one, and dropping it would
+ *  delete a door from the room instead of de-duplicating one. */
+function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
   const out = [];
   const skip = stocked instanceof Set ? stocked : new Set();
   const cond = deviceCond instanceof Map ? deviceCond : new Map();
+  const plated = new Set((Array.isArray(doorTiles) ? doorTiles : []).map((d) => d.tx + ',' + d.ty));
   for (const c of cells) {
-    const [lx, ly] = localXY(c.tx, c.ty);
-    const cx = lx + U / 2, cy = ly + U / 2;
+    if (plated.has(c.tx + ',' + c.ty)) continue;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
-      // THE WEAR JOIN. `row` is the `devices` channel's entry for this exact tile — one device per
-      // tile by construction — or `undefined` where nothing tile-resident stands. `buildTileItem`
-      // treats "no row" as "not wrecked", so a ground stack, a decor piece and a frame that arrived
-      // before the channel did all render exactly as they did before this join existed.
       const row = cond.get(c.tx + ',' + c.ty);
-      const g = buildTileItem(c.itemId, { w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-f-' + c.tx + '-' + c.ty },
-                             row ? row.cond : undefined);
-      out.push('<g transform="translate(' + (cx - ITEM_SIDE / 2).toFixed(1) + ' ' + (cy - ITEM_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
+      out.push(standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
+        row ? row.cond : undefined));
     } else {
-      // VS-Z-25 unknown chip — legible "something here we don't skin yet", never faked.
-      out.push('<g transform="translate(' + lx + ' ' + ly + ')">' +
-        '<rect x="1" y="1" width="' + (U - 2) + '" height="' + (U - 2) + '" rx="2" fill="none" ' +
-        'stroke="#57503f" stroke-width="1.5" stroke-dasharray="3 2"/>' +
-        '<text x="' + (U / 2) + '" y="' + (U / 2) + '" font-size="9" fill="#57503f" text-anchor="middle" ' +
-        'dominant-baseline="central" font-family="\'Space Mono\', ui-monospace, monospace">' +
+      // VS-Z-25's unknown chip, in the paper dialect: an INK `6 5` dashed plate — the charter's
+      // UNBUILT/PLANNED spelling, which is the honest thing to say about a glyph with no art, and
+      // emphatically not the oxblood a queued order wears.
+      const [cx, cy] = place.foot(c.tx, c.ty);
+      const side = ROOM_SCALE * 100 * M_PER_TILE * 0.7;
+      out.push('<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2) + ')">' +
+        '<rect x="1" y="1" width="' + (side - 2).toFixed(2) + '" height="' + (side - 2).toFixed(2) +
+        '" rx="2" fill="' + PAPER + '" stroke="' + INK + '" stroke-width="1.2" stroke-dasharray="6 5"/>' +
+        '<text x="' + (side / 2).toFixed(2) + '" y="' + (side / 2).toFixed(2) + '" font-size="' +
+        (side * 0.34).toFixed(2) + '" fill="' + INK + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-family="' + MONO_STACK + '">' +
         esc(String.fromCharCode(c.code)) + '</text></g>');
     }
   }
@@ -820,144 +884,140 @@ function furnitureSvg(cells, stocked, deviceCond) {
 }
 
 /**
- * Occupant pawns (VS-Z-27..29): front-facing, feet on the tile, above furniture — each carrying the
- * WORK marker (IX-103, ported off the console at WP-8) when it holds a real job, its SURNAME on a
- * pill at its feet, and — for the selected crew member — the Overview's own selection glow.
+ * Occupant pawns — the P5 ink figures, standing on the floor plane.
  *
- * This is the surface where a player watches individual people work, so the console's honesty rule
- * belongs here too: a tag ONLY for a crew member doing a job at a place, nothing for idle, walking or
- * en-route crew (`taskTag` returns null for all three).
+ * ⭐ THE FEET CONTRACT IS (8,23) IN A 16×24 VIEWBOX (`render/pawn-svg.js`'s header), so a figure is
+ * placed by translating its foot point onto the tile's projected floor CENTRE and scaling. The scale
+ * is derived, not chosen: a crew member is `PAWN_M` metres tall, which at the cutaway's 0.95 px/cm
+ * is ~158 scene px — the design's own room figure is `scale(1.04)` on a 152-unit build, i.e. 158 px.
+ * The number agrees with the doc because both are the same person at the same centimetre rule.
  *
- * ⚠️ THE "NO NAME TAG" RULE (VS-Z-29) IS RETRACTED HERE, AND ITS JUSTIFICATION WAS FALSE THE DAY IT
- * WAS WRITTEN. The sentence that stood in this header was: *"Unlike the Overview's pawns these carry
- * NO name — the room view is already scoped to a handful of people and clicking one names it in the
- * readout, so adding a second line of text to a 32-unit tile would cost more than it tells."* THERE
- * IS NO READOUT ON THIS SURFACE. The readout the spec means (`perilune-roomzoom.interaction-spec.md`
- * IX-Z-30) lives in `.app`/`#panels`, and `client/styles.css` sets `#panels{display:none}` for
- * `body.roomzoom-open` — so the clause that paid for the missing name has never once executed. The
- * owner's report (*"in zoom mode we have no control over the pawn"*) is what that costs in play.
- * `docs/design/perilune-roomzoom.visual-spec.md` VS-Z-29 is amended in the same commit; a code
- * comment quietly disagreeing with a spec is how a surface ends up with two contracts.
+ * ⭐ SELECTION IS INK EMPHASIS, NOT A GLOW (charter §1 / ruling E3). The amber radial pool is gone
+ * with the warm dialect; the selected crew member stands in a LEVEL INK ELLIPSE at 2.2 stroke — the
+ * charter's own "selected" weight and the catalogue's round-objects rule (`ry = 0.6·rx`) — and their
+ * name plate inverts to SOLID INK with paper type, which is the design's own selected-row idiom.
+ * Everything else about this function's contract (a pill on EVERY pawn, at the feet, the RimWorld
+ * rule; a work tag ONLY for real work) is unchanged and its header argument stands.
  *
- * ⇒ THE RIMWORLD RULE BEING MIRRORED: RimWorld draws a colonist's name on a small label at the
- * pawn's FEET, for every colonist on the map, all the time (it is a settings toggle whose default
- * is on). So the pill is at the feet, on every pawn in the room, not on hover and not on selection
- * only — a name that appears only when you click is no help at all in answering "which of these is
- * she?", which is the question. ⚠️ FLAGGED AS AN INFERENCE: I am confident RimWorld labels colonists
- * by name at their feet and that it is defaulted on; I am NOT confident of the exact default of the
- * three-way "show pawn names" setting across versions, and `docs/design/rimworld-reference.md`
- * should be checked against this paragraph rather than the other way round.
- *
- * SELECTION IS THE OVERVIEW'S VOCABULARY, COPIED NOT INVENTED: the same amber radial-gradient pool
- * under the feet that `overview-scene.js`'s `pawnLayer` draws, at the same `S * 9` radius, plus the
- * same rule that the selected pawn's label reads amber and everyone else's reads dim. RimWorld's own
- * indicator is a set of white corner brackets; that was NOT copied, because the player has just come
- * from the Overview where the glow means "this one", and teaching two indicators for one state on
- * two halves of one surface is worse than diverging from RimWorld's shape.
- *
- * ⛔ KNOWN LIMIT, MEASURED IN A BROWSER AND STATED RATHER THAN BURIED — and the first version of this
- * paragraph got it wrong, which is why it is quoted: *"A room tile is wide enough for a 3–5 character
- * tag, so no de-clutter sweep is needed here … a room holds a handful."* **A pill is WIDER THAN ITS
- * TILE for any surname past ~4 characters** (`len * 5.2 + 8` against `U = 32`), so ADJACENT pawns —
- * not merely pawns sharing a tile — overlap. Photographed on `--ship grid` deck 1: eight crew line up
- * shoulder to shoulder on one dig row and the pills read `VEGA HALLOR( OKONJO NOVAK KAUR`
- * (`docs/design/shots/m1-k-grid-11-grid-second-pawn.png`). "A room holds a handful" is false on the
- * economy baseline.
- *
- * IT IS ACCEPTED, NOT PATCHED, and the argument is about what the label is FOR. On the shipping game
- * (`--ship wreck`) there is exactly ONE crew member, so the crowd case is not the case the owner
- * reported; where a crowd does occur, the CREW DOCK disambiguates by name, task and selection, which
- * a truncated pill would not do better. The two available fixes both cost more than they buy right
- * now: truncating the surname trades a crowd problem for a permanent one, and porting the Overview's
- * `layoutPawnLabels` de-clutter sweep is a real feature (leader lines, row assignment, a crowded
- * state) that belongs in its own package rather than bolted onto a selection fix.
- *
- * EXPORTED, and `focus` is injectable, purely so the honesty rule is testable. While this was a
- * private function the mutation that matters most — `taskTag(c.task) || 'IDLE'`, which tags idle crew
- * and destroys the rule on this surface — passed the whole node suite, because the only instrument
- * pointed at it was a source scan for the token `taskTag`. `focus` defaults to the live `_focus`, so
- * every in-app call site is unchanged; a test passes `{rx,ry}` and gets the same string.
- *
- * @param {Array<{cid:*, role:*, name:*, x:number, y:number, task:string}>} list
- * @param {{rx:number, ry:number}} [focus] the room's tile origin (defaults to the open room)
- * @param {number|null} [selCid] the selected crew id — glow + amber label for exactly this one
+ * @param {Array} list @param {{rx,ry}} [focus] @param {number|null} [selCid]
+ * @param {object} [place] the scene placement; absent ⇒ the plan-view fallback (tests of the
+ *   selection/label RULES that do not care where the figure stands)
  */
-export function pawnSvg(list, focus, selCid) {
+export function pawnSvg(list, focus, selCid, place) {
   const out = [];
-  const S = PAWN_H / 24;
   const org = focus || _focus;
+  const pl = place || scenePlacement(roomScene(org), org, ROOM_SCALE * 100 * M_PER_TILE);
+  const H = PAWN_M * 100 * ROOM_SCALE;   // the figure's drawn height in scene px
+  const S = H / 24;                      // …over the sprite's 24-unit viewBox
   const sel = selCid == null ? null : String(selCid);
   for (const c of list) {
-    const [lx, ly] = [(c.x - org.rx) * U, (c.y - org.ry) * U];
-    const fx = lx + U / 2, fy = ly + U; // feet on the tile bottom-centre
+    const [fx, fy] = pl.foot(c.x, c.y);
     const selected = sel !== null && String(c.cid) === sel;
     if (selected) {
-      // The Overview's selection pool, formula for formula (`overview-scene.js` pawnLayer): a radial
-      // gradient from 65% amber at the centre to nothing at 70% of the radius, centred two units
-      // above the feet, radius `S * 9`. UNDER the pawn — it is a pool the person stands in, and
-      // drawing it over them would put a wash across the face that identifies them.
-      const sgid = 'rz-sel-' + esc(c.cid);
-      out.push('<defs><radialGradient id="' + sgid + '" cx="50%" cy="50%" r="50%">' +
-        '<stop offset="0" stop-color="rgba(242,181,99,.65)"/>' +
-        '<stop offset="0.7" stop-color="rgba(242,181,99,0)"/></radialGradient></defs>' +
-        '<ellipse class="rz-sel-pool" cx="' + fx.toFixed(1) + '" cy="' + (fy - 2).toFixed(1) +
-        '" rx="' + (S * 9).toFixed(1) + '" ry="' + (S * 9).toFixed(1) + '" fill="url(#' + sgid + ')"/>');
+      // A LEVEL ellipse lying in the floor plane at the feet — the catalogue's round-objects rule,
+      // drawn UNDER the figure so it is a mark on the deck the person stands in rather than a wash
+      // across the face that identifies them.
+      const rx = ROOM_SCALE * 45;
+      // The class carries the CID as well as the state: a pool keyed to nobody would draw the same
+      // mark under whoever happened to be first, which is the defect `zoom-pawn.test.js` pins.
+      out.push('<ellipse class="rz-sel-pool rz-sel-' + esc(c.cid) + '" cx="' + fx.toFixed(1) + '" cy="' + fy.toFixed(1) +
+        '" rx="' + rx.toFixed(1) + '" ry="' + (rx * 0.6).toFixed(1) + '" fill="none" stroke="' + INK +
+        '" stroke-width="2.2"/>');
     }
-    const body = pawnSprite({ cid: c.cid, role: c.role }, { idPrefix: 'rz-pw-' + esc(c.cid), className: 'pawn' });
+    const bodyArt = pawnSprite({ cid: c.cid, role: c.role }, { idPrefix: 'rz-pw-' + esc(c.cid), className: 'pawn' });
     out.push('<g class="rz-pawn" transform="translate(' + (fx - 8 * S).toFixed(1) + ' ' +
-      (fy - 23 * S).toFixed(1) + ') scale(' + S.toFixed(3) + ')">' + body + '</g>');
-    // THE NAME PILL, at the feet and INSIDE the tile. `fy` is the tile's bottom edge, so the pill
-    // spans `fy-8 … fy+1` — over the pawn's shins, one unit past the tile line, never into the row
-    // below. Hanging it BELOW the feet (the first draft) reads better on a sparse room and is wrong
-    // on a full one: the layer's viewBox ends at the room's last row, so the bottom row's names
-    // would be pushed outside it and clipped away exactly where the player needs them most.
+      (fy - 23 * S).toFixed(1) + ') scale(' + S.toFixed(3) + ')">' + bodyArt + '</g>');
+    // THE NAME PLATE, at the feet. Paper plate + ink hairline + ink mono; the SELECTED one inverts
+    // to solid ink with paper type, which is a channel colour alone never had.
     const sur = surnameOf(c.name);
     if (sur) {
-      const nw = Math.max(16, sur.length * 5.2 + 8);
+      const fs = 9;
+      const nw = Math.max(26, sur.length * fs * 0.62 + 10);
+      const py = fy + 4;
       out.push('<g class="rz-nametag' + (selected ? ' sel' : '') + '">' +
-        '<rect x="' + (fx - nw / 2).toFixed(1) + '" y="' + (fy - 8).toFixed(1) + '" width="' + nw.toFixed(1) +
-          '" height="9" rx="2" fill="rgba(12,10,8,.78)"/>' +
-        '<text x="' + fx.toFixed(1) + '" y="' + (fy - 3.5).toFixed(1) + '" font-size="7.5" letter-spacing=".5" ' +
-          'fill="' + (selected ? '#f2b563' : 'rgba(220,210,195,.72)') + '" text-anchor="middle" ' +
-          'dominant-baseline="central" ' +
-          'font-family="\'Space Mono\', ui-monospace, monospace">' + esc(sur) + '</text></g>');
+        '<rect x="' + (fx - nw / 2).toFixed(1) + '" y="' + py.toFixed(1) + '" width="' + nw.toFixed(1) +
+          '" height="13" rx="1.5" fill="' + (selected ? INK : PAPER) + '" stroke="' + INK +
+          '" stroke-width="' + (selected ? '1.4' : '0.9') + '"/>' +
+        '<text x="' + fx.toFixed(1) + '" y="' + (py + 6.5).toFixed(1) + '" font-size="' + fs +
+          '" letter-spacing="1.1" fill="' + (selected ? PAPER : INK) + '" text-anchor="middle" ' +
+          'dominant-baseline="central" font-family="' + MONO_STACK + '">' + esc(sur) + '</text></g>');
     }
     const tag = taskTag(c.task);
     if (tag) {
-      const w = Math.max(16, tag.length * 5.6 + 8);
-      const ty = fy - PAWN_H - 3;                     // just above the head, never over the face
+      // The WORK TAG, above the head. It says a person is DOING something right now, which is the
+      // one pawn fact that competes with an order for the player's eye — so it stays ink-on-paper
+      // and spends no accent; `blockedLayerSvg` owns the oxblood in this room.
+      const fs = 8.5;
+      const w = Math.max(26, tag.length * fs * 0.62 + 10);
+      const ty = fy - H - 8;
       out.push('<g class="rz-worktag">' +
-        '<rect x="' + (fx - w / 2).toFixed(1) + '" y="' + (ty - 9).toFixed(1) + '" width="' + w.toFixed(1) +
-          '" height="11" rx="2" fill="rgba(12,10,8,.86)" stroke="rgba(232,147,74,.5)" stroke-width="0.75"/>' +
-        '<text x="' + fx.toFixed(1) + '" y="' + (ty - 3.5).toFixed(1) + '" font-size="8" letter-spacing=".6" ' +
-          'fill="#f2b563" text-anchor="middle" dominant-baseline="central" ' +
-          'font-family="\'Space Mono\', ui-monospace, monospace">' + esc(tag) + '</text></g>');
+        '<rect x="' + (fx - w / 2).toFixed(1) + '" y="' + (ty - 12).toFixed(1) + '" width="' + w.toFixed(1) +
+          '" height="12.5" rx="1.5" fill="' + PAPER + '" stroke="' + INK + '" stroke-width="0.9"/>' +
+        '<text x="' + fx.toFixed(1) + '" y="' + (ty - 5.5).toFixed(1) + '" font-size="' + fs +
+          '" letter-spacing="1.1" fill="' + INK + '" text-anchor="middle" dominant-baseline="central" ' +
+          'font-family="' + MONO_STACK + '">' + esc(tag) + '</text></g>');
     }
   }
   return out.length ? '<g class="rz-pawns" pointer-events="none">' + out.join('') + '</g>' : '';
 }
 
-/** Authoritative build ghosts (VS-Z-30..32) with the supply-ledger look. */
-function ghostSvg(list) {
+/**
+ * ⭐⭐ THE QUEUED ORDER — the design's own bench ghost, and the showpiece of the dash dialect.
+ *
+ * `stroke #7B2C22 stroke-dasharray "8 5"` on a THREE-FACE EXTRUSION, an oxblood leader line, and an
+ * oxblood mono label naming the thing and its PRICE (`WALL · 3 PARTS`) — measured off Screen 02's
+ * `BENCH · 3 PARTS`, which is the one annotation in that document carrying data rather than prose.
+ *
+ * ⛔ THE PRICE COMES OFF THE WIRE AND IS NEVER WRITTEN HERE. `roomDesigns` carries `required` (what
+ * the order asks for) and `delivered` (what has arrived), straight from the `designs` channel. A
+ * design with `required === 0` says `NO PARTS`, which is what a floor costs; nothing is invented,
+ * per ruling E11.
+ *
+ * ⛔ AND THE THREE STATES STAY THREE, IN THE NEW ALPHABET rather than in three hues:
+ *   queued (waiting)   oxblood `8 5` — the charter's QUEUED ORDER
+ *   STARVED            oxblood SOLID — the charter's ATTENTION/FAULT: nothing has been delivered
+ *   ready              INK `6 5`     — UNBUILT/PLANNED: it is paid for and simply not built yet
+ * Colour alone no longer separates them and the dash does, which is the whole of E3.
+ *
+ * ⭐ EXPORTED for `roomzoom-sheet.mjs` — same reason as `standItem` above (VR-P3 review, MINOR 6).
+ * Pure of module state: the list, the scene and the placement are all arguments.
+ */
+export function ghostSvg(list, scene, place) {
   const out = [];
+  const s = scene.s;
   for (const g of list) {
-    const [lx, ly] = localXY(g.x, g.y);
-    const abbr = g.kind === 1 ? GHOST_ABBR.door : g.kind === 2 ? GHOST_ABBR.floor : GHOST_ABBR.wall;
+    const toolName = g.kind === 1 ? 'door' : g.kind === 2 ? 'floor' : 'wall';
     const starved = g.required > 0 && g.delivered <= 0;
     const ready = g.required > 0 && g.delivered >= g.required;
-    let stroke = '#f2b563', dash = ' stroke-dasharray="3 2"', fill = 'rgba(232,147,74,.22)', op = '1';
-    if (starved) { stroke = '#c25a3f'; fill = 'rgba(194,90,63,.08)'; op = '.45'; }
-    else if (ready) { stroke = '#5aa77f'; dash = ''; fill = 'rgba(90,167,127,.14)'; }
-    let cell = '<g class="rz-ghost" transform="translate(' + lx + ' ' + ly + ')">' +
-      '<rect x="1" y="1" width="' + (U - 2) + '" height="' + (U - 2) + '" rx="2" fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.5"' + dash + '/>' +
-      '<text x="' + (U / 2) + '" y="' + (U / 2) + '" font-size="9" fill="#f2b563" opacity="' + op + '" text-anchor="middle" ' +
-      'dominant-baseline="central" font-family="\'Space Mono\', ui-monospace, monospace">' + abbr + '</text>';
-    if (g.required > 0) {
-      const cc = starved ? '#e07a5f' : ready ? '#5aa77f' : '#8c8377';
-      cell += '<text x="' + (U - 3) + '" y="' + (U - 4) + '" font-size="7" fill="' + cc + '" text-anchor="end" ' +
-        'font-family="\'Space Mono\', ui-monospace, monospace">' + g.delivered + '/' + g.required + '</text>';
+    const stroke = ready ? INK : ATTEND;
+    const dash = starved ? null : (ready ? '6 5' : '8 5');
+    const [px, py] = place.front(g.x, g.y);
+    const cm = M_PER_TILE * 100;
+    let art;
+    if (g.kind === 2) {
+      // A FLOOR has no height: it is the tile's own quad, dashed. Extruding it would draw a slab
+      // where the player ordered a surface.
+      art = '<path d="' + place.quad(g.x, g.y) + '" fill="none" stroke="' + stroke +
+        '" stroke-width="1.5"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>';
+    } else {
+      const h = g.kind === 1 ? 200 : ROOM_HEIGHT_M * 100;   // a 2.0 m door in a 2.4 m wall
+      art = obliqueBox(px, py, cm, h, cm, s, {
+        stroke, strokeWidth: 1.5, dash, sideFill: 'hatch', hatch: fhRef(RZ_ID), opacity: 0.92,
+      });
     }
-    out.push(cell + '</g>');
+    // The leader + the label, up and to the left of the tile — the design's own annotation geometry
+    // (a thin 0.65-opacity oxblood line from the object to a label set clear of the drawing).
+    const [cx, cy] = place.foot(g.x, g.y);
+    const lx = cx - 120, ly = cy + 46;
+    const price = g.required > 0
+      ? (g.delivered > 0 && !ready ? g.delivered + '/' + g.required + ' PARTS' : g.required + ' PARTS')
+      : 'NO PARTS';
+    const label = (TOOL_LABEL[toolName] || 'BUILD') + ' · ' + price;
+    out.push('<g class="rz-ghost">' + art +
+      '<path d="M' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' L' + lx.toFixed(1) + ' ' + ly.toFixed(1) +
+      '" fill="none" stroke="' + stroke + '" stroke-width="0.8" opacity="0.65"/>' +
+      haloText(label, lx, ly + 10, { size: 8.5, font: 'mono', tracking: 1.3, fill: stroke, anchor: 'start' }) +
+      '</g>');
   }
   return out.length ? '<g class="rz-ghosts" pointer-events="none">' + out.join('') + '</g>' : '';
 }
@@ -1934,19 +1994,25 @@ function onCanvasUp(e) {
   scheduleRepaint();
 }
 
-/** The one transient (IX-Z-27): a ≤150ms fading tile outline at the clicked tile. */
+/** The one transient (IX-Z-27): a ≤150ms fading outline at the clicked tile.
+ *
+ *  ⚠️ IT IS THE **BOUNDING BOX** OF THE TILE'S PROJECTED PARALLELOGRAM, and it is a `div` for the
+ *  reason it always was: the pulse must survive `_layers.innerHTML =` being replaced under it by the
+ *  very repaint the click caused. A parallelogram would be truer to the floor, and it would need the
+ *  transient to live INSIDE the layer that is torn down. `tileClientBox` is the one inverse that
+ *  crosses from scene px to client px, and it shares `roomScene`/`sceneFit` with the click math, so
+ *  the box a player sees flash and the tile the command went to cannot drift apart. */
 function pulse(tile, isDemolish) {
   const rect = _layers.getBoundingClientRect();
   if (!rect.width) return;
-  const fit = roomFit(_focus, rect.width, rect.height);
-  const side = U * fit.s;
-  const left = fit.offX + (tile.x - _focus.rx) * U * fit.s;
-  const top = fit.offY + (tile.y - _focus.ry) * U * fit.s;
+  const box = tileClientBox(tile.x, tile.y, rect, _focus);
+  if (!box) return;
   const d = document.createElement('div');
   d.className = 'rz-pulse-tile' + (isDemolish ? ' red' : '');
-  d.style.left = left.toFixed(1) + 'px';
-  d.style.top = top.toFixed(1) + 'px';
-  d.style.width = d.style.height = side.toFixed(1) + 'px';
+  d.style.left = box.left.toFixed(1) + 'px';
+  d.style.top = box.top.toFixed(1) + 'px';
+  d.style.width = box.width.toFixed(1) + 'px';
+  d.style.height = box.height.toFixed(1) + 'px';
   _pulseLayer.appendChild(d);
   setTimeout(() => d.remove(), 160);
 }

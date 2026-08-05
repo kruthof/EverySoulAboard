@@ -57,7 +57,9 @@ import { join, resolve } from 'node:path';
 
 import { decodeDecks, decodeRooms, decodeDevices } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { deckSlots, roomTileRect, roomFit } from '../src/ui/room-model.js';
+import {
+  deckSlots, roomTileRect, roomScene, sceneFit, scenePlacement,
+} from '../src/ui/room-model.js';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8470');
@@ -227,17 +229,22 @@ if (!NO_BUNK) {
   if (!bunkBtn) { console.error('FAIL: no BUNK tool'); process.exit(7); }
   await png('02-bunk-tool.png');
 
-  // ⚠️ THE TILE→SCREEN MAP IS `roomFit`'s, INVERTED — the client's OWN function, never a
-  // re-derivation (heater-shot.mjs paid for that lesson: a click that misses its tile looks exactly
-  // like a placement the sim refused).
+  // ⭐⭐ THE TILE→SCREEN MAP IS THE SURFACE'S OWN PROJECTION, INVERTED — `roomScene` + `sceneFit` +
+  // `scenePlacement`, the three functions `tileFromCanvasXY` itself composes. It is NOT `roomFit`:
+  // that function described the PLAN view's `rw*U x rh*U` box and VR-P3 deleted it with the plan.
+  // ⛔ AND THE OLD ARITHMETIC HERE WAS THE PLAN'S TOO — `(tx - rx) * U + U/2` names a point in a space
+  // nothing draws in any more, so a tool that kept it would aim several metres from the tile it named.
+  // A placement that never happened looks exactly like a placement the sim refused, which is the
+  // lesson this file's own header already records; this is the same lesson at the next projection.
   const focus = roomTileRect(dView, HOME);
   const L = await evalJson(`(()=>{const e=document.getElementById('rz-layers');const r=e.getBoundingClientRect();return {left:r.left,top:r.top,w:r.width,h:r.height};})()`);
-  const U = 32;
-  const fit = roomFit(focus, L.w, L.h);
-  const screenOf = (tx, ty) => ({
-    x: L.left + fit.offX + ((tx - focus.rx) * U + U / 2) * fit.s,
-    y: L.top + fit.offY + ((ty - focus.ry) * U + U / 2) * fit.s,
-  });
+  const scene = roomScene(focus);
+  const fit = sceneFit(scene, L.w, L.h);
+  const place = scenePlacement(scene, focus);
+  const screenOf = (tx, ty) => {
+    const [sx, sy] = place.foot(tx, ty);
+    return { x: L.left + fit.offX + sx * fit.s, y: L.top + fit.offY + sy * fit.s };
+  };
 
   const rect = herSlot.rect;
   const occupied = new Set((decodeDevices(latest.get('devices')) || [])

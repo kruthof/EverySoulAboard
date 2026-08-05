@@ -20,7 +20,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ACCEPT_ALL } from '../src/ui/stock-filter-model.js';
-import { U } from '../src/ui/room-model.js';
+import { U, roomScene, scenePlacement } from '../src/ui/room-model.js';
+// VR-P3 REVISION — the ORDER RING itself, so "a zone is quieter than an order" is measured against
+// the shipped mark rather than against a copy of its weight (review MINOR 1).
+import { markCellSvg } from '../src/ui/mark-overlay.js';
 import { ZONE_FLAG_BACKED_OFF } from '../src/wire/messages.js';
 import { BACKED_OFF_LABEL, roomZoneTiles, zoneLegendRows } from '../src/ui/zone-model.js';
 import { zoneKeyHtml, zoneLayerSvg } from '../src/ui/zone-overlay.js';
@@ -115,12 +118,18 @@ test('a backed-off tile is DIMMED as well as hatched, under its own alarm marks'
   const svg = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, ZONE_FLAG_BACKED_OFF)), FOCUS);
   const dim = /<rect class="rz-zone-dim"[^>]*fill="([^"]+)"/.exec(svg);
   assert.ok(dim, 'a backed-off tile draws no dimming scrim at all');
-  // It must actually be DARK and actually be translucent — a transparent or opaque scrim is not a
-  // dim. Parsed out of the emitted colour rather than restated as a constant both sides import.
+  // ⭐ VR-P3 — THE SCRIM WASHES **TOWARDS THE GROUND**, AND THE GROUND MOVED. This leg used to read
+  // `r + g + b < 150` ("it must be DARK"), which was the correct statement of "reads as inert"
+  // against a near-black canvas. The Level-2 floor is PAPER now, so a dark scrim would make the one
+  // tile nothing is happening on the LOUDEST thing in the room — the assertion's subject is
+  // unchanged and its direction is inverted. Parsed out of the emitted colour rather than restated
+  // as a constant both sides import, exactly as before.
   const rgba = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(dim[1]);
   assert.ok(rgba, `the scrim fill ${JSON.stringify(dim[1])} is not an rgba() colour`);
   const [r, g, b, a] = rgba.slice(1).map(Number);
-  assert.ok(r + g + b < 150, `the scrim is not dark (rgb ${r},${g},${b}) — it would BRIGHTEN the tile`);
+  assert.ok(r + g + b > 600,
+    `the scrim is not a PAPER wash (rgb ${r},${g},${b}) — against a paper floor a dark scrim makes `
+    + 'the inert tile the loudest thing in the room, which is the opposite of what it is for');
   assert.ok(a > 0.15 && a < 0.85, `the scrim alpha ${a} is either invisible or opaque`);
   // ORDER: under the alarm marks, over the zone tint. The dim says "inert"; the hatch and the wedge
   // say what to DO about it, and muting those would be the wrong half of the tile to darken.
@@ -138,7 +147,10 @@ test('a backed-off tile is DIMMED as well as hatched, under its own alarm marks'
 // WORLD tile coordinates (the roomCells rule), so this conversion is the overlay's job to get right.
 test('tiles are placed in ROOM-LOCAL space, one U per tile', () => {
   const svg = zoneLayerSvg(tilesFor(row(10, 5, ACCEPT_ALL, 0), row(12, 7, ACCEPT_ALL, 0)), FOCUS);
-  const rects = [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)"/g)].map((m) => [+m[1], +m[2]]);
+  // TRANSLATED at the VR-P3 review: the zone's boundary rect carries `class="rz-zone-edge"` (the
+  // weight it is drawn at is now a pinned RELATION against the order ring, so it needs a name).
+  // Narrower than the old bare `<rect x=` scan, which would have counted the dim/hatch/wedge rects.
+  const rects = [...svg.matchAll(/<rect class="rz-zone-edge" x="([\d.]+)" y="([\d.]+)"/g)].map((m) => [+m[1], +m[2]]);
   // (10,5) is the room's origin ⇒ (0,0)+0.5 inset; (12,7) is +2,+2 tiles ⇒ 2U,2U.
   assert.deepEqual(rects, [[0.5, 0.5], [2 * U + 0.5, 2 * U + 0.5]]);
 });
@@ -157,6 +169,33 @@ test('the hatch pattern it references is actually defined', () => {
   assert.match(svg, /<pattern id="rz-zone-hatch"/, 'the referenced pattern must be defined');
   assert.ok(svg.indexOf('<pattern id="rz-zone-hatch"') < svg.indexOf('url(#rz-zone-hatch)'),
     'and defined before it is used');
+});
+
+// ⭐ VR-P3 — THE CELL FILLS THE UNIT IT IS HANDED, and this leg exists because a mutation SURVIVED.
+//
+// The Room Zoom's tile is ~95 scene px on the cutaway and 32 logical px in the plan view this
+// replaced, so every extent in the builder takes `unit`. Reverting ONE of them to the `U` constant
+// paints the top-left THIRD of each tile and leaves the whole suite green — found by RENDER, not by
+// assertion, which is exactly the gap `marks-shot.mjs`'s header warns about ("a perfectly formed SVG
+// string paints nothing if its box is empty"). It is closed here rather than filed.
+//
+// MUTATION: `const side = unit - 1` → `U - 1` in zoneLayerSvg ⇒ RED.
+// MUTATION: hard-code the wedge back to 10/9 units ⇒ RED on the second leg.
+test('VR-P3: a zone cell fills the UNIT it is drawn in, at any tile size', () => {
+  const big = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, 0)), FOCUS, null, 96);
+  const small = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, 0)), FOCUS, null, 32);
+  const widthOf = (svg) => Number((/width="([\d.]+)"/.exec(svg) || [])[1]);
+  assert.equal(widthOf(big), 95, 'the zone tint does not fill a 96-unit cell — on the cutaway it '
+    + 'would paint the top-left corner of every tile it is supposed to cover');
+  assert.equal(widthOf(small), 31, 'and it must still fill a 32-unit cell — the Overview\'s size');
+  // The RESTRICTED wedge scales too, or the one mark that says "this zone refuses things" becomes a
+  // speck at room scale.
+  const wedge = (svg) => (/class="rz-zone-wedge" d="M([\d.]+) [\d.]+h([\d.]+)v([\d.]+)z"/.exec(svg) || []);
+  const wb = wedge(big), ws = wedge(small);
+  assert.ok(wb.length && ws.length, 'the wedge could not be parsed — this leg reads nothing');
+  assert.ok(Number(wb[2]) > Number(ws[2]) * 2.5,
+    'the restricted wedge does not grow with the cell — at room scale it is a speck the player '
+    + 'cannot tell from a stray pixel of grid');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════ the key
@@ -218,4 +257,106 @@ test('the fixture really produces tiles', () => {
   assert.equal(tiles.length, 1, 'the FOCUS rect must actually contain the fixture rows');
   assert.deepEqual([tiles[0].restricted, tiles[0].backedOff], [true, true]);
   assert.ok(U > 1, 'the tile pitch must be a real logical size');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// VR-P3 REVISION — the two properties this layer had that nothing could see (review MINOR 1 + 8)
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ⭐⭐ A ZONE IS QUIETER THAN AN ORDER — the ranking this file's own header claims and the layer
+ * inverted.
+ *
+ * ⛔ MEASURED: the boundary was drawn at `1 * (unit / U)`, which on the cutaway's ~95 px tile is
+ * **2.97 px**, against the **1.5 px** the shared order ring is drawn at on the tile beside it. So the
+ * quietest thing on the floor out-shouted every queued order in the room by 2×, and under ruling E3 —
+ * one accent, nothing distinguished by hue — WEIGHT was the only signal the player had left.
+ *
+ * BOTH SIDES ARE READ OUT OF THE SHIPPED BUILDERS at the SAME unit, never from a literal, so raising
+ * the order ring cannot silently re-invert the pair.
+ *
+ * MUTATION: `ZONE_EDGE_W` → `1 * k` (the old expression) ⇒ RED at any unit above 48.
+ */
+test('VR-P3: the zone boundary is drawn no heavier than the order ring beside it, at any tile size', () => {
+  const strokeOf = (svg, re) => Number(re.exec(svg)[1]);
+  const fails = [];
+  for (const unit of [32, 64, 95, 128]) {
+    const zone = zoneLayerSvg(tilesFor(row(10, 5, ACCEPT_ALL, 0)), FOCUS, null, unit);
+    const order = markCellSvg('dig', 0, 0, unit, unit, 0);
+    const zw = strokeOf(zone, /<rect class="rz-zone-edge"[^>]*stroke-width="([\d.]+)"/);
+    const ow = strokeOf(order, /class="mk-order-ring"[^>]*stroke-width="([\d.]+)"/);
+    if (!(zw <= ow)) {
+      fails.push(`unit ${unit}: the zone boundary is ${zw} px against the order ring's ${ow} px. A `
+        + 'zone is not an order; it carries no accent at all under E3, so if it is also the heavier '
+        + 'line there is nothing left to tell the player which mark is the one to act on.');
+    }
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
+  // NON-VACUITY, an INCLUSION test: the two parses really found two different numbers, so `zw <= ow`
+  // is not being satisfied by both sides reading NaN or by both reading the same constant.
+  const z = zoneLayerSvg(tilesFor(row(10, 5, ACCEPT_ALL, 0)), FOCUS, null, 95);
+  assert.match(z, /<rect class="rz-zone-edge"[^>]*stroke-width="[\d.]+"/, 'the boundary parse found nothing');
+  assert.match(markCellSvg('dig', 0, 0, 95, 95, 0), /class="mk-order-ring"[^>]*stroke-width="[\d.]+"/,
+    'the order-ring parse found nothing');
+});
+
+/**
+ * ⭐⭐ THE BACKED-OFF HATCH IS 45° ON SCREEN, **UNDER THE CABINET SHEAR** — measured, and the finding
+ * that sent this here did NOT reproduce.
+ *
+ * The review filed *"the backed-off RESTRICTED hatch is no longer 45° after the matrix shear"*. It is:
+ * the pattern is `patternUnits="userSpaceOnUse"`, so it is painted in the sheared user space, and
+ * composing the two transforms by hand gives EXACTLY 45°. The hatch line is vertical `(0,1)`;
+ * `patternTransform="rotate(45)"` takes it to `(-1,1)/√2`; the cell matrix `[1 0; 0.4 −0.6]` takes
+ * `(-1,1)` to `(-0.6,-0.6)`. Equal components ⇒ a 45° line.
+ *
+ * ⛔ IT IS A COINCIDENCE OF THE SHIPPED DEPTH RATIO, NOT A LAW — it holds because
+ * `DEPTH_RATIO.x − 1 === DEPTH_RATIO.y` (0.4 − 1 = −0.6) — so it is worth exactly one test. Move
+ * either constant in `render/oblique.js` and the room's back-off hatch goes off 45° silently, with
+ * every other assertion in this file green.
+ *
+ * The RESTRICTED wedge's hypotenuse rides the same direction and is asserted alongside it.
+ *
+ * MUTATION: `patternTransform="rotate(45)"` → `rotate(0)` ⇒ RED (the composed angle becomes ~59°).
+ * MUTATION: `DEPTH_RATIO.x` 0.4 → 0.5 in oblique.js ⇒ RED (the composed angle becomes ~40°).
+ */
+test('VR-P3: the back-off hatch composes to 45° THROUGH the cabinet shear (measured, not assumed)', () => {
+  const focus = { deck: 0, rx: 0, ry: 0, rw: 4, rh: 3 };
+  const scene = roomScene(focus);
+  const unit = scene.s * 100;
+  const place = scenePlacement(scene, focus, unit);
+  const svg = zoneLayerSvg(roomZoneTiles([{ x: 1, y: 1, deck: 0, mask: 1 << 3, flags: ZONE_FLAG_BACKED_OFF }], focus),
+    focus, place, unit);
+
+  // THE TWO TRANSFORMS, both read out of the SHIPPED markup rather than restated.
+  const rot = Number(/patternTransform="rotate\(([-\d.]+)\)"/.exec(svg)[1]);
+  const m = /<g class="rz-zone[^"]*" transform="matrix\(([^)]*)\)"/.exec(svg);
+  assert.ok(m, 'the cell carries no matrix — the layer is not in the floor plane at all');
+  const [a, b, c, d] = m[1].split(' ').map(Number);
+  const line = /<line x1="0" y1="0" x2="0" y2="([\d.]+)"/.exec(svg);
+  assert.ok(line, 'the hatch pattern draws no line — there is no angle to measure');
+
+  const th = (rot * Math.PI) / 180;
+  // the hatch line's own direction (0,1), turned by patternTransform, then by the cell matrix
+  const [lx, ly] = [-Math.sin(th), Math.cos(th)];
+  const [sx, sy] = [a * lx + c * ly, b * lx + d * ly];
+  const deg = ((Math.atan2(sy, sx) * 180) / Math.PI + 360) % 180;
+  assert.ok(Math.abs(deg - 45) < 0.05,
+    `the back-off hatch draws at ${deg.toFixed(2)}° on screen, not 45°. It is painted in the user `
+    + 'space the cell matrix has sheared, so the `rotate(45)` in the def is not the angle the player '
+    + 'sees — and a hatch that is not 45° reads as a different mark from the wall hatch beside it.');
+
+  // …and the RESTRICTED wedge's hypotenuse rides the same direction (its `h9k v9k z` close).
+  const [wx, wy] = [a * -1 + c * 1, b * -1 + d * 1];
+  const wdeg = ((Math.atan2(wy, wx) * 180) / Math.PI + 360) % 180;
+  assert.ok(Math.abs(wdeg - 45) < 0.05,
+    `the RESTRICTED corner wedge's hypotenuse draws at ${wdeg.toFixed(2)}° — the cut corner is the `
+    + 'SHAPE that carries the state under E3, and a sheared one is a different shape');
+
+  // NON-VACUITY: the composition really is doing work — an UNROTATED pattern would NOT land on 45°.
+  const [ux, uy] = [a * 0 + c * 1, b * 0 + d * 1];
+  const udeg = ((Math.atan2(uy, ux) * 180) / Math.PI + 360) % 180;
+  assert.ok(Math.abs(udeg - 45) > 5,
+    'a hatch with no patternTransform at all would already read 45° through this matrix, so the '
+    + 'assertion above is not measuring the composition');
 });

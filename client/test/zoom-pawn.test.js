@@ -39,7 +39,7 @@ import { dirname, join } from 'node:path';
 import { decode, decodeDecks, decodeRooms, selectedCrewCid } from '../src/wire/messages.js';
 import {
   roomTileRect, ROOM_TOOLS, TOOL_LABEL, paletteCommand, isSweepTool,
-  crewRoomSlot, shipCrewRows,
+  crewRoomSlot, shipCrewRows, roomScene, scenePlacement,
 } from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { installInput } from '../src/input/controls.js';
@@ -316,7 +316,7 @@ function prime(selCid) {
     const root = el('roomzoom-view');
     for (const id of ['rz-canvas', 'rz-crewdock', 'rz-palette', 'rz-toast']) el(id).parentNode = root;
     el('rz-layers').parentNode = el('rz-canvas');
-    el('rz-layers')._rect = { left: 0, top: 0, width: QUARTERS.rw * 32, height: QUARTERS.rh * 32 };
+    el('rz-layers')._rect = sceneRectFor(QUARTERS);
     Hud.renderDecks(decode(DECKS_JSON));
     Hud.renderRooms(decode(ROOMS_JSON));
   }
@@ -346,11 +346,21 @@ function fire(target, type, extra) {
   return e;
 }
 
-/** Click the canvas at the CENTRE of an absolute sim tile, through the real hit-test math. */
+// ⭐ VR-P3 — TILE → POINTER, THROUGH THE SHIPPED PROJECTION. The surface is a cabinet-oblique
+// cutaway now, so `(tx - rx) * 32 + 16` points at a tile metres from the one it names. Both helpers
+// go through `roomScene`/`scenePlacement` — the objects the layers are drawn with — so the point a
+// test clicks IS the point the pawn is drawn at. The rect is the scene's own viewBox at 1:1, which
+// makes `sceneFit` the identity (the old rig's one-unit-per-px trick, restated in the new space).
+function sceneRectFor(focus) {
+  const vb = roomScene(focus).viewBox;
+  return { left: 0, top: 0, width: vb.w, height: vb.h };
+}
+
+/** Click the canvas at the projected FLOOR CENTRE of an absolute sim tile, through the real
+ *  hit-test math. */
 function clickTile(tx, ty) {
-  const px = (tx - QUARTERS.rx) * 32 + 16;
-  const py = (ty - QUARTERS.ry) * 32 + 16;
-  return fire(el('rz-canvas'), 'click', { clientX: px, clientY: py });
+  const [px, py] = scenePlacement(roomScene(QUARTERS), QUARTERS).foot(tx, ty);
+  return fire(el('rz-canvas'), 'click', { clientX: Math.round(px), clientY: Math.round(py) });
 }
 
 /** The crew dock's row button for a cid, straight out of the live DOM (never rebuilt by hand). */
@@ -465,7 +475,7 @@ test('SELECTION SURVIVES ROOM ENTRY — and the Room Zoom SHOWS it', () => {
 
 // MUTATION: `surnameOf(c.name)` → `''` ⇒ no pill is drawn ⇒ RED. MUTATION: paint every label amber
 // ⇒ the "only one reads amber" leg ⇒ RED.
-test('EVERY pawn in the room carries its NAME, and only the selected one reads amber', () => {
+test('EVERY pawn in the room carries its NAME, and exactly one plate reads SELECTED', () => {
   prime(null);
   const plain = layers();
   assert.ok(plain.includes('VALE'), 'the occupant has no name on this surface — VS-Z-29\'s "no name '
@@ -477,21 +487,31 @@ test('EVERY pawn in the room carries its NAME, and only the selected one reads a
   prime(ADA.cid);
   const lit = layers();
   assert.equal((lit.match(/rz-nametag sel/g) || []).length, 1,
-    'exactly one label must read selected — the amber is how a player tells which pawn the dock row '
-    + 'is talking about');
-  assert.ok(lit.includes('#f2b563'), 'the selected label is not amber');
+    'exactly one label must read selected — it is how a player tells which pawn the dock row is '
+    + 'talking about');
+  // ⭐ VR-P3 — THE SELECTED PLATE IS **INVERTED**, NOT AMBER. This leg used to read
+  // `lit.includes('#f2b563')`; under ruling E3 there is one accent and it is spent on orders and
+  // faults, so "this is the one you picked" is said the way the design says it — a SOLID INK plate
+  // with PAPER type, the inverted selected row. That is a channel a hue check could not see and a
+  // recolour cannot fake: it asserts the plate's fill AND the type's, which must swap together.
+  const selPlate = /<g class="rz-nametag sel">\s*<rect[^>]*fill="#14120F"[^>]*\/><text[^>]*fill="#EBE4D1"/;
+  assert.match(lit, selPlate,
+    'the selected name plate is not the inverted ink plate — either its fill or its type is still '
+    + 'reading the unselected way round');
+  // …and an UNSELECTED plate is the other way round, or "inverted" means nothing.
+  assert.match(lit, /<g class="rz-nametag">\s*<rect[^>]*fill="#EBE4D1"[^>]*\/><text[^>]*fill="#14120F"/,
+    'an unselected name plate is not paper-with-ink — every plate looks selected');
 
-  // The pill must sit INSIDE the room's tile rect, not below it: the layer's viewBox ends at the
-  // room's last row, so a label hung under the feet is clipped away on the bottom row — which is
-  // where a player is most likely to be looking for it. Ada is at row `ry+1` of a 5-row room; her
-  // pill's `y` must be less than the viewBox height.
-  const ys = [...lit.matchAll(/<rect x="[-\d.]+" y="([-\d.]+)" width="[\d.]+" height="9"/g)]
+  // The plate must sit INSIDE the scene's own viewBox, not past its bottom edge: the scene reserves
+  // a bottom margin for the floor-front dimension arrow, and a plate hung below that is clipped away
+  // exactly where the player is most likely to be looking for it (the front row).
+  const vbH = roomScene(QUARTERS).viewBox.h;
+  const ys = [...lit.matchAll(/<rect x="[-\d.]+" y="([-\d.]+)" width="[\d.]+" height="13"/g)]
     .map((m) => Number(m[1]));
-  assert.ok(ys.length > 0, 'the name-pill rect could not be located — this leg is reading nothing');
+  assert.ok(ys.length > 0, 'the name-plate rect could not be located — this leg is reading nothing');
   for (const y of ys) {
-    assert.ok(y + 9 <= QUARTERS.rh * 32,
-      `a name pill ends at ${y + 9}, past the layer's ${QUARTERS.rh * 32}-unit viewBox — it would be `
-      + 'clipped for any pawn on the room\'s bottom row');
+    assert.ok(y + 13 <= vbH,
+      `a name plate ends at ${y + 13}, past the scene's ${vbH}-unit viewBox — it would be clipped`);
   }
 });
 

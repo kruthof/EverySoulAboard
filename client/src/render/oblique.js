@@ -375,7 +375,7 @@ export function room(wM, dM, hM, s, opts = {}) {
  *   anchor('start') · italic(false) · weight · tracking (letter-spacing) · stroke · strokeWidth ·
  *   baseline (dominant-baseline) · opacity
  */
-export function haloText(t, x, y, opts = {}) {
+function haloOpenTag(x, y, opts) {
   const o = opts || {};
   const font = o.font === 'mono' ? FONT.mono
     : o.font === 'serif' || o.font == null ? FONT.serif
@@ -394,8 +394,58 @@ export function haloText(t, x, y, opts = {}) {
     attr('stroke-width', o.strokeWidth == null ? HALO.width : o.strokeWidth) +
     ` paint-order="${esc(HALO.paintOrder)}"` +
     attr('opacity', o.opacity) +
-    `>${esc(t)}</text>`
+    '>'
   );
+}
+
+export function haloText(t, x, y, opts = {}) {
+  return haloOpenTag(x, y, opts) + esc(t) + '</text>';
+}
+
+/**
+ * THE SAME LABEL, IN RUNS THAT CAN CARRY DIFFERENT INK — one `<text>`, one `<tspan>` per run.
+ *
+ * ⭐ IT EXISTS BECAUSE OF ONE CHARTER RULE: there is ONE accent (§1), and a label whose LAST CLAUSE
+ * is the attention (`… · NO AIR`) must spend the oxblood on that clause and nowhere else. Setting
+ * `fill` on the whole `<text>` tints every word — which is what the Room Zoom's stat line did while
+ * its own comments claimed otherwise, and no assertion could see the difference because both spellings
+ * contain the accent somewhere.
+ *
+ * A run with no `fill` inherits the `<text>`'s, so a two-clause line costs exactly one `<tspan>`.
+ * Runs are ESCAPED, exactly as `haloText`'s single string is: this takes DATA, never markup.
+ * PURE.
+ *
+ * @param {{t:string, fill?:string}[]} runs
+ * @param {number} x @param {number} y
+ * @param {object} [opts] same as `haloText` — `fill` is the BASE ink every unfilled run takes
+ */
+export function haloRuns(runs, x, y, opts = {}) {
+  const body = (Array.isArray(runs) ? runs : []).map((r) => {
+    const t = esc(r && r.t != null ? r.t : '');
+    return r && r.fill != null ? `<tspan fill="${esc(r.fill)}">${t}</tspan>` : t;
+  }).join('');
+  return haloOpenTag(x, y, opts) + body + '</text>';
+}
+
+/**
+ * The advance width, in px, of `t` set in the kit's MONOSPACE face at `size` with `tracking` letter
+ * spacing — the one place this surface estimates how wide a label is going to be.
+ *
+ * ⚠️ IT IS AN ESTIMATE AND IT IS THE ONLY KIND AVAILABLE HERE: a pure string module cannot measure a
+ * font. `ADVANCE` is the Space Mono advance the rest of the client already assumes
+ * (`room-model.js`'s count badge, `blocked-overlay.js`'s leader label), declared once so a label that
+ * is CLAMPED into a viewBox and a badge that is FITTED to its digits cannot come to disagree about
+ * how wide the same eight characters are. SVG's `letter-spacing` adds one advance AFTER every glyph
+ * including the last, which is why the term is `len * tracking` and not `(len - 1) * tracking`.
+ * PURE.
+ */
+export const MONO_ADVANCE = 0.62;
+export function monoTextWidth(t, size, tracking = 0) {
+  const len = String(t == null ? '' : t).length;
+  if (!len) return 0;
+  const fs = Number.isFinite(size) ? size : 0;
+  const tr = Number.isFinite(tracking) ? tracking : 0;
+  return n(len * (fs * MONO_ADVANCE + tr));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

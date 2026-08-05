@@ -243,7 +243,7 @@ function lastDeclaration(css, selector, prop) {
 }
 
 /** The three-way colour check for one dock's task line, plus the blinding control for `.waiting`. */
-function assertThreeWayDistinct(prefix, nextSelector) {
+function assertThreeWayDistinct(prefix, nextSelector, tokens) {
   const idle = lastDeclaration(CODE_CSS, prefix, 'color');
   const waiting = lastDeclaration(CODE_CSS, prefix + '.waiting', 'color');
   const working = lastDeclaration(CODE_CSS, prefix + '.working', 'color');
@@ -262,19 +262,18 @@ function assertThreeWayDistinct(prefix, nextSelector) {
 
   // DIRECTION, not merely difference (the B2 shape in `console-carryover.test.js`): each side is
   // pinned to its own token, so a swap cannot pass.
-  // ⭐ VR-P4 — THE TOKENS MOVED FROM THE WARM RAMP TO THE PAPER ONE AND THE PROPERTY DID NOT. The
-  // Overview is ink on paper now, so "dim / one step out / the work signal" is a ladder of INKS
-  // rather than grey-grey-amber: `--ink-section` (faintest that still reads) → `--ink-prose` (one
-  // step out, plus the italic) → `--ink` (the darkest ink there is, which is what WORK now takes).
+  //
+  // ⚠️ THE TOKENS ARE A PARAMETER (P3's form, kept at the merge). Both docks are on the paper
+  // dialect now — P4 landed the Overview's triple in the same wave — but the two surfaces keep
+  // their OWN ink ladders (the Overview's faintest readable ink is `--ink-section`, the Room
+  // Zoom's is `--ink-micro`), so the triple stays a per-caller argument rather than a constant.
+  // The property this test is about — three states, three colours, each pinned to its OWN token
+  // so a swap cannot pass — is asserted on both.
   // ⛔ THE ACCENT IS STILL NOT FOR SALE — it went to the BLOCKED state, which is a fault; painting
   // ordinary work in oxblood would spend the surface's only accent on its commonest state.
-  // The Room Zoom is P3's and is still on the warm ramp, so each side names its own tokens.
-  const T = prefix.startsWith('.ov-')
-    ? { idle: /ink-section|#?8A7F6C/i, working: /--ink\)|#?14120F/i, waiting: /ink-prose|#?4E463A/i }
-    : { idle: /ink-mute|#?8c8377/i, working: /amber-light|#?f2b563/i, waiting: /ink-body|#?b3aa9c/i };
-  assert.match(idle, T.idle, `${prefix} is no longer the faintest ink`);
-  assert.match(working, T.working, `${prefix}.working is no longer the work signal`);
-  assert.match(waiting, T.waiting,
+  assert.match(idle, tokens.idle, `${prefix} is no longer the faintest ink`);
+  assert.match(working, tokens.working, `${prefix}.working is no longer the work signal`);
+  assert.match(waiting, tokens.waiting,
     `${prefix}.waiting resolves to "${waiting}" — it should lift ONE step out of the faint ink. `
     + '⛔ Not the accent either: that is reserved for a FAULT (the blocked state).');
 
@@ -296,9 +295,18 @@ function assertThreeWayDistinct(prefix, nextSelector) {
 }
 
 test('MUTATION 6 — on the OVERVIEW, waiting is a different colour from BOTH idle and working', () => {
-  assertThreeWayDistinct('.ov-crewtask', '.ov-crewtask.working{');
+  assertThreeWayDistinct('.ov-crewtask', '.ov-crewtask.working{', {
+    // The paper dialect (VR-P4): the Overview's ladder of inks — `--ink-section` (faintest that
+    // still reads) → `--ink-prose` (one step out, plus the italic) → `--ink` (WORK takes the
+    // darkest ink there is).
+    idle: /ink-section|#?8A7F6C/i, working: /--ink[,)]|#?14120F/i, waiting: /ink-prose|#?4E463A/i,
+  });
 });
 
 test('MUTATION 6 — and the same on the ROOM ZOOM dock (its own leg, so it can fail alone)', () => {
-  assertThreeWayDistinct('.rz-crewtask', '.rz-crewtask.working{');
+  assertThreeWayDistinct('.rz-crewtask', '.rz-crewtask.working{', {
+    // The paper dialect (VR-P3): idle is the micro-label ink, WORK is full ink, and waiting lifts
+    // one step to the prose ink — the same three-step ladder, in the ground the surface now has.
+    idle: /ink-micro|#?6B6252/i, working: /--ink[,)]|#?14120F/i, waiting: /ink-prose|#?4E463A/i,
+  });
 });

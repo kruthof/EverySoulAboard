@@ -304,16 +304,22 @@ log('  cryo bay rect (the surface\'s own):', JSON.stringify(rect));
 
 // ⭐⭐ THE TILE→SCREEN MAP IS THE SURFACE'S OWN, INVERTED IN THE PAGE — not a second copy here.
 // `onCanvasContext` resolves a point with `tileFromCanvasXY(x, y, #rz-layers.getBoundingClientRect(),
-// _focus)`, which letterboxes through `roomFit(focus, w, h, U)`. A tool that re-derived that from the
-// SVG's `viewBox` would be a SECOND authority on the mapping — and the first draft of this file was
-// exactly that, and missed every tile.
+// _focus)`, and since VR-P3 that composes `roomScene` → `sceneFit` (the viewBox letterbox) →
+// `scenePlacement` (the cabinet oblique). A tool that re-derived that from the SVG's `viewBox` would
+// be a SECOND authority on the mapping — and the first draft of this file was exactly that, and
+// missed every tile.
+// ⛔ IT USED TO CALL `RM.roomFit(...)`, WHICH VR-P3 DELETED WITH THE PLAN VIEW IT DESCRIBED — a
+// runtime TypeError inside a page-eval string, i.e. a `null` point and a step that reports "the
+// gesture did not fire" for a reason that has nothing to do with the gesture.
 const screenOf = (tx, ty) => jsonAsync(`(async()=>{
   const RM = await import('/src/ui/room-model.js');
   const l = document.getElementById('rz-layers'); if (!l) return null;
   const r = l.getBoundingClientRect();
-  const f = RM.roomFit(${JSON.stringify(rect)}, r.width, r.height);
-  return { x: r.left + f.offX + ((${tx} - ${rect.rx}) + 0.5) * f.unit * f.s,
-           y: r.top  + f.offY + ((${ty} - ${rect.ry}) + 0.5) * f.unit * f.s };
+  const focus = ${JSON.stringify(rect)};
+  const scene = RM.roomScene(focus);
+  const f = RM.sceneFit(scene, r.width, r.height);
+  const p = RM.scenePlacement(scene, focus).foot(${tx}, ${ty});
+  return { x: r.left + f.offX + p[0] * f.s, y: r.top + f.offY + p[1] * f.s };
 })()`);
 
 /** ⭐ THE SURFACE'S OWN ANSWER for the tile a screen point lands on, asked through the module the

@@ -21,10 +21,19 @@ import { join, dirname } from 'node:path';
 
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
+// VR-P3 — the ONE derivation of how a centimetre-specified fitting lands on a surface at that
+// surface's centimetre rule. Imported rather than re-derived: a second copy of the drawing scale is
+// the defect `fittings.frameFor` exists to prevent.
+import { roomBox } from '../src/items/fittings.js';
 import {
   U, ROOM_TOOLS, TOOL_LABEL, paletteCommand, isStructuralTool, isOrderTool, isEraseTool, isSweepTool,
   roomDragMode, ERASE_PRECEDENCE, tileOrders, eraseTarget, roomMarkNameAt, roomTileZoned,
-  roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
+  roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, sceneFit, tileFromCanvasXY,
+  roomScene, scenePlacement, tileFromScenePoint, tileClientBox, M_PER_TILE, ROOM_HEIGHT_M,
+  roomStatLine, roomCutawaySvg, roomDoorsSvg,
+  // VR-P3 REVISION — the assembly seam's own parity sources: the surface's id namespace, its
+  // drawing scale, its margins, the title builder and the ground-stack layer.
+  RZ_ID, ROOM_SCALE, SCENE_PAD, roomTitleSvg, itemStackSvg,
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
   zoomChrome, ZOOM_HINT_IDLE, ZOOM_HINT_ARMED,
@@ -35,7 +44,18 @@ import { dragModeForTool } from '../src/ui/build-drag-model.js';
 import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
 import { APPLIES_NEXT_LABEL, mismatchLabel } from '../src/ui/accepts-row.js';
-import { ZONE_FLAG_BACKED_OFF, MARK_KIND_NAMES, markKindName, decodeMarks } from '../src/wire/messages.js';
+import {
+  ZONE_FLAG_BACKED_OFF, MARK_KIND_NAMES, markKindName, decodeMarks,
+  // VR-P3 REVISION — the ONE reason→sentence table, so the blocked-badge leg asserts the words the
+  // WIRE produces rather than a copy of them (MAJOR 2).
+  blockedReasonSentence,
+} from '../src/wire/messages.js';
+// VR-P3 REVISION — the kit's own id namespacing + its mono metric, imported so the assembly legs
+// compare the mounted scene against the SHIPPED derivation and never against a literal.
+import { fhId, monoTextWidth } from '../src/render/oblique.js';
+// The design footprint every piece's art is normalised against (`helpers.render` scales by
+// `min(w,h)/TILE`) — how the true-size leg recovers the box side the surface asked for.
+import { TILE } from '../src/items/helpers.js';
 import { codeOnly } from './code-only.js';
 import { Cmd } from '../src/wire/session.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
@@ -80,31 +100,161 @@ test('deckSlots returns a deck\'s slots (for the minimap) or []', () => {
   assert.deepEqual(deckSlots(view, 9), []);
 });
 
-// ---- fit transform + click hit-testing ----
+// ---- THE CUTAWAY: the scene, the fit and the INVERSE that resolves a click ----
+//
+// ⚠️ EVERY NUMBER IN THIS SECTION MOVED AT VR-P3, AND NONE OF THEM WAS LOOSENED. The surface used to
+// be a PLAN — a `rw*U × rh*U` box fitted into the canvas — so a click inverted ONE transform and the
+// pins were `s=2, offY=128`. It is the design's cabinet-oblique CUTAWAY now, so a click inverts TWO
+// (the viewBox fit, then the oblique on the floor plane) and the pins are the projection's own. They
+// are DERIVED here rather than copied: a literal `{x:10,y:10}` would pass just as happily against a
+// broken inverse, so every leg below goes through the FORWARD projection and asks the inverse to
+// come back — which is the property that matters and the only one that cannot be faked.
 
-const room = { rx: 4, ry: 6, rw: 12, rh: 8, deck: 1 }; // 12×8 tiles → 384×256 logical
+const room = { rx: 4, ry: 6, rw: 12, rh: 8, deck: 1 }; // 12×8 tiles → 12.0 × 8.0 m of floor
 
-test('roomFit scales the room to the interior and letterboxes the short axis', () => {
-  // A 384×256-logical room in a 768×768 interior fits at s=2 (width-bound), letterboxed vertically.
-  const fit = roomFit(room, 768, 768);
+test('the metre mapping is ONE TILE = ONE METRE, and the ceiling is the design\'s 2.4 m', () => {
+  assert.equal(M_PER_TILE, 1, 'the tile→metre mapping moved; every fitting in every room is now '
+    + 'drawn at the wrong size against its own centimetre spec');
+  assert.equal(ROOM_HEIGHT_M, 2.4);
+  const scene = roomScene(room);
+  assert.equal(scene.wM, 12);
+  assert.equal(scene.dM, 8);
+  assert.equal(scene.hM, 2.4);
+  assert.equal(scene.areaM2, 96, 'the stat line\'s area clause is derived from this');
+  // The scene is BIGGER than the room it holds — margins for the title band, the dimension arrows
+  // and their halo labels. A viewBox equal to the room's own extent clips all three away.
+  assert.ok(scene.viewBox.w > scene.s * scene.wM * 100, 'the viewBox has no horizontal margin');
+  assert.ok(scene.viewBox.h > scene.s * scene.hM * 100, 'the viewBox has no vertical margin');
+});
+
+test('sceneFit is `xMidYMid meet` — ONE scale, centred on both axes', () => {
+  const scene = roomScene(room);
+  const vb = scene.viewBox;
+  // A viewport twice the viewBox's width and four times its height is HEIGHT-bound at neither: meet
+  // takes the SMALLER scale, so it is width-bound at 2 and letterboxes vertically.
+  const fit = sceneFit(scene, vb.w * 2, vb.h * 4);
   assert.equal(fit.s, 2);
   assert.equal(fit.offX, 0);
-  assert.equal(fit.offY, (768 - 256 * 2) / 2); // 128
+  assert.equal(fit.offY, (vb.h * 4 - vb.h * 2) / 2);
+  // …and a degenerate box answers a zero scale rather than an Infinity that poisons every coordinate.
+  assert.equal(sceneFit(scene, 0, 0).s, 0);
 });
 
-test('tileFromCanvasXY inverts the fit to an absolute tile, respecting the origin', () => {
-  const rect = { left: 0, top: 0, width: 768, height: 768 }; // s=2, offY=128
-  // Click near the top-left interior corner of the room → tile (rx, ry).
-  assert.deepEqual(tileFromCanvasXY(2, 130, rect, room), { x: 4, y: 6 });
-  // Centre of the room's logical space (192,128 logical → px 384, 128*2+128=384) → mid tile.
-  assert.deepEqual(tileFromCanvasXY(384, 384, rect, room), { x: 4 + 6, y: 6 + 4 });
+test('THE INVERSE ROUND-TRIPS: every tile\'s own floor centre resolves back to that tile', () => {
+  const scene = roomScene(room);
+  const place = scenePlacement(scene, room);
+  const bad = [];
+  for (let ty = room.ry; ty < room.ry + room.rh; ty += 1) {
+    for (let tx = room.rx; tx < room.rx + room.rw; tx += 1) {
+      const [px, py] = place.foot(tx, ty);
+      const back = tileFromScenePoint(px, py, scene, room);
+      if (!back || back.x !== tx || back.y !== ty) {
+        bad.push(`${tx},${ty} → ${back ? back.x + ',' + back.y : 'null'}`);
+      }
+    }
+  }
+  assert.deepEqual(bad, [], 'the projection and its inverse disagree about these tiles:\n  '
+    + bad.join('\n  '));
+  // NON-VACUITY, an INCLUSION test: the sweep must actually distinguish tiles rather than answering
+  // the same one 96 times.
+  const seen = new Set();
+  for (let ty = room.ry; ty < room.ry + room.rh; ty += 1) {
+    for (let tx = room.rx; tx < room.rx + room.rw; tx += 1) {
+      const [px, py] = place.foot(tx, ty);
+      const b = tileFromScenePoint(px, py, scene, room);
+      seen.add(b.x + ',' + b.y);
+    }
+  }
+  assert.equal(seen.size, room.rw * room.rh, 'the inverse collapses distinct tiles onto one another');
 });
 
-test('tileFromCanvasXY rejects the letterbox margin and out-of-room clicks (IX-Z-11)', () => {
-  const rect = { left: 0, top: 0, width: 768, height: 768 };
-  assert.equal(tileFromCanvasXY(384, 10, rect, room), null);   // above the letterboxed room
-  assert.equal(tileFromCanvasXY(384, 760, rect, room), null);  // below it
-  assert.equal(tileFromCanvasXY(-5, 384, rect, room), null);   // left of the canvas
+test('THE INVERSE IS THE **OBLIQUE**, not a plan: depth SHEARS the answer', () => {
+  const scene = roomScene(room);
+  const place = scenePlacement(scene, room);
+  // Two tiles in the same COLUMN, one metre apart in depth. In a plan view they share an x; in the
+  // cabinet oblique the deeper one is displaced right by 0.4·s·100 and up by 0.6·s·100.
+  const near = place.foot(room.rx, room.ry);
+  const far = place.foot(room.rx, room.ry + 1);
+  assert.ok(Math.abs((far[0] - near[0]) - 0.4 * scene.s * 100) < 0.02,
+    'the depth step does not carry the oblique\'s +0.4 x term — this is a plan view wearing a '
+    + 'cutaway\'s name');
+  assert.ok(Math.abs((far[1] - near[1]) + 0.6 * scene.s * 100) < 0.02,
+    'the depth step does not carry the oblique\'s −0.6 y term');
+  // …and the inverse un-shears it: the FAR tile's centre must not resolve to the near one.
+  assert.deepEqual(tileFromScenePoint(far[0], far[1], scene, room), { x: room.rx, y: room.ry + 1 });
+  // MUTATION: drop the `0.4·s·y` term from `tileFromScenePoint` ⇒ this leg goes red, because the
+  // shear is exactly what an un-projected click would ignore.
+  const unprojected = (sx, sy) => {
+    // what a plan-view inverse would answer for the same point: x straight off the scale
+    const xCm = (sx - scene.frame.x0) / scene.s;
+    return Math.floor(xCm / 100) + room.rx;
+  };
+  assert.notEqual(unprojected(far[0], far[1]), room.rx,
+    'a plan-view inverse happens to agree here, so this test could not tell the two apart');
+});
+
+test('tileFromCanvasXY inverts BOTH transforms — the viewBox fit and the oblique', () => {
+  const scene = roomScene(room);
+  const place = scenePlacement(scene, room);
+  const vb = scene.viewBox;
+  const rect = { left: 17, top: 23, width: vb.w * 2, height: vb.h * 4 }; // s=2, letterboxed, offset
+  const fit = sceneFit(scene, rect.width, rect.height);
+  const client = (tx, ty) => {
+    const [px, py] = place.foot(tx, ty);
+    return [rect.left + fit.offX + px * fit.s, rect.top + fit.offY + py * fit.s];
+  };
+  assert.deepEqual(tileFromCanvasXY(...client(room.rx, room.ry), rect, room), { x: 4, y: 6 });
+  assert.deepEqual(tileFromCanvasXY(...client(room.rx + 6, room.ry + 4), rect, room), { x: 10, y: 10 });
+  assert.deepEqual(tileFromCanvasXY(...client(room.rx + 11, room.ry + 7), rect, room), { x: 15, y: 13 });
+});
+
+test('tileFromCanvasXY rejects the margin and everything outside the room (IX-Z-11)', () => {
+  const scene = roomScene(room);
+  const vb = scene.viewBox;
+  const rect = { left: 0, top: 0, width: vb.w, height: vb.h }; // s=1, no letterbox
+  // The four scene margins: the title band above, the dimension arrow below, and both sides.
+  assert.equal(tileFromCanvasXY(vb.w / 2, 4, rect, room), null);         // the title band
+  assert.equal(tileFromCanvasXY(vb.w / 2, vb.h - 4, rect, room), null);  // under the floor edge
+  assert.equal(tileFromCanvasXY(2, vb.h / 2, rect, room), null);         // left of the left wall
+  assert.equal(tileFromCanvasXY(vb.w - 2, vb.h / 2, rect, room), null);  // right of the cut edge
+  assert.equal(tileFromCanvasXY(10, 10, { left: 0, top: 0, width: 0, height: 0 }, room), null);
+  assert.equal(tileFromCanvasXY(10, 10, rect, null), null);
+});
+
+test('tileClientBox brackets a tile\'s projected quad, in the SAME fit the click inverts', () => {
+  const scene = roomScene(room);
+  const place = scenePlacement(scene, room);
+  const vb = scene.viewBox;
+  const rect = { left: 0, top: 0, width: vb.w, height: vb.h };
+  const box = tileClientBox(room.rx + 3, room.ry + 3, rect, room);
+  assert.ok(box && box.width > 0 && box.height > 0);
+  const c = place.corners(room.rx + 3, room.ry + 3);
+  for (const pt of [c.nearLeft, c.nearRight, c.farLeft, c.farRight]) {
+    assert.ok(pt[0] >= box.left - 0.01 && pt[0] <= box.left + box.width + 0.01
+      && pt[1] >= box.top - 0.01 && pt[1] <= box.top + box.height + 0.01,
+    'a corner of the tile\'s parallelogram falls outside the pulse box that is supposed to bracket it');
+  }
+  // A parallelogram is WIDER than one tile's front edge: the box is the bracket, not the quad.
+  assert.ok(box.width > scene.s * 100 * 0.99, 'the pulse box is narrower than the tile itself');
+  assert.equal(tileClientBox(room.rx, room.ry, { left: 0, top: 0, width: 0, height: 0 }, room), null);
+});
+
+test('scenePlacement: floor paint is SHEARED into the plane, a standing thing is UPRIGHT', () => {
+  const scene = roomScene(room);
+  const place = scenePlacement(scene, room, 32);
+  const m = place.cell(room.rx, room.ry);
+  assert.match(m, /^matrix\(/, 'the floor-plane placement is not a matrix — a translate cannot '
+    + 'shear a cell onto a projected parallelogram');
+  const [a, b, c, d] = m.slice(7, -1).split(' ').map(Number);
+  // The unit cell's X axis maps to the tile's near edge: pure horizontal, one tile wide.
+  assert.ok(Math.abs(a * 32 - scene.s * 100) < 0.5 && Math.abs(b) < 0.5,
+    'the cell\'s x axis is not the tile\'s front edge');
+  // …and its Y axis maps to the DEPTH direction, which has BOTH components — that is the shear.
+  assert.ok(Math.abs(c * 32 - 0.4 * scene.s * 100) < 0.5 && Math.abs(d * 32 + 0.6 * scene.s * 100) < 0.5,
+    'the cell\'s y axis is not the oblique\'s depth vector — the layer is being laid out flat');
+  // A STANDING thing gets a plain translate: sheared, mirrored type is unreadable, which is the one
+  // failure mode a count badge and a name plate cannot have.
+  assert.match(place.stand(room.rx, room.ry), /^translate\(/);
 });
 
 test('clampTileToRoom is the half-open rect test', () => {
@@ -922,26 +1072,41 @@ test('the Room Zoom draws each mark with ITS OWN tile\'s variant', () => {
 // borrowed from the build ghosts — is unasserted: repainting the order ring rubble-grey survived the
 // entire suite. The stockpile swatch is checked against the string `zone-overlay.js` actually emits,
 // so "reused verbatim from WP-3" is a measured claim rather than a comment.
-test('WP-2: amber means an order; rubble does not; the zone swatch is WP-3\'s own', () => {
-  const AMBER = '#f2b563';
+test('VR-P3: the QUEUED-ORDER DASH means an order; rubble does not; the zone swatch is WP-3\'s own', () => {
+  // ⚠️ THIS TEST WAS `amber means an order` AND ITS SUBJECT MOVED RATHER THAN WEAKENED. Under the
+  // redesign's ruling E3 colour alone distinguishes nothing: there is ONE accent, oxblood `#7B2C22`,
+  // and the DASH is what separates a queued order (`8 5`) from a fault (solid) from something
+  // unbuilt (ink `6 5`). So the property asserted is no longer "the ring is #f2b563" but the pair —
+  // the accent AND the queued-order dash, on the ring and on the condemn ✕, and NEITHER on plain
+  // rubble. Repainting the ring rubble-ink, or spelling it solid (which is the FAULT spelling), both
+  // redden here; that is strictly more than the old hue pin could see.
+  const ATTEND = '#7B2C22';
+  const ORDER_DASH = '8 5';
   const dig = markCellSvg('dig', 0, 0, 32, 32);
   const debris = markCellSvg('debris', 0, 0, 32, 32);
   const strip = markCellSvg('strip', 0, 0, 32, 32);
 
-  assert.match(dig, new RegExp(`class="mk-order-ring"[^/]*stroke="${AMBER}"`),
-    'the dig order ring is not amber — the "an order is queued here" dialect it shares with the '
-    + 'build ghosts is what makes a designated tile legible as an ORDER rather than as more rubble');
-  assert.match(strip, new RegExp(`class="mk-condemn"[^/]*stroke="${AMBER}"`));
-  assert.ok(!debris.includes(AMBER),
-    'an UNDESIGNATED debris tile carries the order colour — a player would read a queued order that '
+  assert.match(dig, new RegExp(`class="mk-order-ring"[^/]*stroke="${ATTEND}"`),
+    'the dig order ring does not wear the ONE ACCENT — the "an order is queued here" dialect it '
+    + 'shares with the build ghosts is what makes a designated tile legible as an ORDER rather than '
+    + 'as more rubble');
+  assert.match(dig, new RegExp(`class="mk-order-ring"[^/]*stroke-dasharray="${ORDER_DASH}"`),
+    'the dig ring is not in the charter\'s QUEUED ORDER spelling (`8 5`). Solid oxblood is '
+    + 'ATTENTION/FAULT and ink `6 5` is UNBUILT — either would say something the tile does not mean');
+  assert.match(strip, new RegExp(`class="mk-condemn"[^/]*stroke="${ATTEND}"`));
+  assert.ok(!debris.includes(ATTEND),
+    'an UNDESIGNATED debris tile carries the order accent — a player would read a queued order that '
     + 'does not exist');
-  // the rubble itself is the warm grey, on both the plain and the designated tile
-  assert.ok(debris.includes('fill="#8a7d6e"') && dig.includes('fill="#8a7d6e"'));
+  assert.ok(!debris.includes('stroke-dasharray'),
+    'plain rubble is dashed — the dash is the dialect\'s verb for "an order", and rubble is a noun');
+  // the rubble itself is ink on paper, on both the plain and the designated tile
+  assert.ok(debris.includes('fill="#EBE4D1"') && dig.includes('fill="#EBE4D1"'));
+  assert.ok(debris.includes('stroke="#14120F"') && dig.includes('stroke="#14120F"'));
 
   // The stockpile swatch, compared against zoneLayerSvg's real output rather than a copied literal.
   const zoneSvg = zoneLayerSvg([{ tx: 0, ty: 0, restricted: false, backedOff: false, label: 'x' }],
     { rx: 0, ry: 0 });
-  const attrs = (s) => (/fill="(rgba\([^"]+\))" stroke="(rgba\([^"]+\))"/.exec(s) || []).slice(1, 3);
+  const attrs = (str) => (/fill="(rgba\([^"]+\))" stroke="(rgba\([^"]+\))"/.exec(str) || []).slice(1, 3);
   assert.deepEqual(attrs(markCellSvg('stockpile', 0, 0, 32, 32)), attrs(zoneSvg));
   assert.equal(attrs(zoneSvg).length, 2, 'the zone-overlay parse rotted — the comparison is vacuous');
 });
@@ -1070,8 +1235,8 @@ test('WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body
   const iMat = src.indexOf('materialLayerSvg(');
   const iZone = src.indexOf('zoneLayerSvg(');
   const iMark = src.indexOf('markLayerSvg(');
-  const iPawn = src.indexOf('pawnSvg(roomCrew(');
-  const iFurn = src.indexOf('furnitureSvg(roomCells(');
+  const iPawn = src.indexOf('body += pawnSvg(');
+  const iFurn = src.indexOf('body += furnitureSvg(');
   assert.ok(iMat > 0 && iZone > 0 && iMark > iMat && iMark > iZone, 'the mark layer must draw last of the floor layers');
   assert.ok(iPawn > iMark, 'the mark layer must draw UNDER the pawns');
   // …and ABOVE the furniture, since the device-strip fix landed: a condemned DESK now carries fg 26,
@@ -1296,6 +1461,30 @@ const HOLD = slotFocus('hold');
 // so a notification schedules one already-coalesced repaint. Idempotent, and worth naming.
 const probeDoc = makeRzDoc();
 const probeWinListeners = {};
+// ⭐ VR-P3 — THE DRIVEN RIG'S TILE→POINTER HELPER, RE-DERIVED THROUGH THE PROJECTION.
+//
+// It used to be `(tx - rx) * U + U/2` — the plan view's own arithmetic, restated in the test. That
+// worked because the surface WAS a plan; on the cutaway the same expression points at a tile several
+// metres away, so every driven click below would land somewhere the test never named and the whole
+// section would pass or fail for the wrong reason (TRAPS 3: a red for the wrong reason is worse than
+// a green). It goes through `scenePlacement` — the SHIPPED placement object, the one the layers are
+// drawn with — so the point a test clicks is by construction the point the tile is drawn at.
+//
+// The rect is the scene's own viewBox at 1:1, so `sceneFit` is the identity and a scene coordinate
+// IS a client coordinate; that is the same trick the old rig used (`s = 1`), stated against the new
+// space.
+const sceneRectFor = (focus) => {
+  const vb = roomScene(focus).viewBox;
+  return { left: 0, top: 0, width: vb.w, height: vb.h };
+};
+const scenePointFor = (focus, tx, ty) => {
+  const pl = scenePlacement(roomScene(focus), focus);
+  const [x, y] = pl.foot(tx, ty);
+  // ROUNDED — see the sibling rigs: a projected floor centre is fractional, and half a pixel at the
+  // centre of a ~95-px tile cannot change which tile the inverse answers.
+  return { clientX: Math.round(x), clientY: Math.round(y) };
+};
+
 globalThis.document = probeDoc;
 globalThis.window = makeRzWindow(probeWinListeners);
 const probeSent = [];
@@ -1305,11 +1494,11 @@ Hud.renderRooms(FIX.rooms);
 Hud.renderFrame(wreck);
 Hud.renderMarks(WRECK_MARKS_MSG);   // the mark layer is wire-fed now, not derived from the frame
 probeApi.enter('hold');
-probeDoc.getElementById('rz-layers')._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
+probeDoc.getElementById('rz-layers')._rect = sceneRectFor(HOLD);
 {
   const probeCanvas = probeDoc.getElementById('rz-canvas');
   const probeRoot = probeDoc.getElementById('roomzoom-view');
-  const at = (tx, ty) => ({ clientX: (tx - HOLD.rx) * U + U / 2, clientY: (ty - HOLD.ry) * U + U / 2 });
+  const at = (tx, ty) => scenePointFor(HOLD, tx, ty);
   const btn = new RzEl(probeDoc, 'button');
   btn.dataset.rztool = 'stockpile';
   btn.setAttribute('data-rztool', 'stockpile');
@@ -1353,8 +1542,8 @@ const rzLayers = rzDoc.getElementById('rz-layers');
 const rzCanvas = rzDoc.getElementById('rz-canvas');
 const rzRoot = rzDoc.getElementById('roomzoom-view');
 const rzPalette = rzDoc.getElementById('rz-palette');
-// One logical unit per CSS px (fit scale s = 1), so a tile's centre is trivially invertible.
-rzLayers._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
+// The scene's own viewBox at 1:1 (fit scale s = 1), so a scene coordinate IS a client coordinate.
+rzLayers._rect = sceneRectFor(HOLD);
 // `makeRzDoc` registers every chrome node by id and parents NONE of them, so a click on a real
 // palette button would die at the palette instead of reaching the delegated handler on the root.
 // Parenting it is what the shipped DOM already does (`#rz-palette` lives inside `.rz-palette-wrap`
@@ -1362,8 +1551,9 @@ rzLayers._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
 // than a stand-in it built itself.
 rzPalette.parentNode = rzRoot;
 
-/** The client-space point at the centre of tile (tx,ty), under the rect above. */
-const atTile = (tx, ty) => ({ clientX: (tx - HOLD.rx) * U + U / 2, clientY: (ty - HOLD.ry) * U + U / 2 });
+/** The client-space point at the FLOOR CENTRE of tile (tx,ty), under the rect above — through the
+ *  shipped projection, never through a restatement of it. */
+const atTile = (tx, ty) => scenePointFor(HOLD, tx, ty);
 
 function rzFire(el, type, extra) {
   const e = {
@@ -2708,7 +2898,7 @@ test('WP-4: an ORDER never routes through Cmd.build — and WALL still does', ()
 // transform in the test. An order tool carries no material, so the preview is the bare amber dashed
 // ring — `materialItemId('dig', …)` is '' — which is exactly right for a designation.
 // MUTATION: `previewSvg` returning '' for an order tool ⇒ RED, and no wire assertion would notice.
-test('WP-4: an order sweep PREVIEWS, in room-local units, while the button is still down', async () => {
+test('WP-4: an order sweep PREVIEWS in the FLOOR PLANE, while the button is still down', async () => {
   rzArm('dig');
   rzSent.length = 0;
   rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(28, 15) });
@@ -2717,11 +2907,27 @@ test('WP-4: an order sweep PREVIEWS, in room-local units, while the button is st
   const svg = rzLayers.innerHTML;
   assert.match(svg, /class="rz-preview"/, 'nothing was drawn for a sweep in progress');
   const preview = svg.slice(svg.indexOf('class="rz-preview"'));
-  const rects = [...preview.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)"/g)];
-  assert.equal(rects.length, 6, 'one preview cell per swept tile (the 3×2 fill)');
-  // Room-local: tile (28,15) in a room anchored at (22,10) sits at ((28-22)*U + .5, (15-10)*U + .5).
-  assert.deepEqual(rects[0].slice(1, 4), ['192.5', '160.5', String(U - 1)]);
-  assert.deepEqual(rects[5].slice(1, 3), ['256.5', '192.5']);     // the far corner, tile (30,16)
+  // ⭐ VR-P3 — A PREVIEWED TILE IS A **QUAD**, NOT A RECT, and that is the assertion moving rather
+  // than loosening: on the cutaway a tile is a projected parallelogram, so a `<rect>` here would mean
+  // the preview had gone back to being drawn in a plan the surface no longer has.
+  // Bounded to the DASHED cells: the dimension arrows further down the document are `<path … Z>`
+  // too (their barbs), and an unbounded scan would count them as previewed tiles.
+  const quads = [...preview.matchAll(/<path d="(M[^"]+Z)"[^>]*stroke-dasharray/g)].map((m) => m[1]);
+  assert.equal(quads.length, 6, 'one preview quad per swept tile (the 3×2 fill)');
+  // The quads are the SHIPPED placement's own, tile for tile — derived, never transcribed.
+  const pl = scenePlacement(roomScene(HOLD), HOLD);
+  assert.equal(quads[0], pl.quad(28, 15), 'the first previewed quad is not tile (28,15)\'s floor');
+  assert.equal(quads[5], pl.quad(30, 16), 'the last previewed quad is not tile (30,16)\'s floor');
+  // …and a quad really is sheared: its four corners do not share two x values, which is what would
+  // make this leg pass against an axis-aligned box wearing a `<path>`.
+  const xs = new Set(quads[0].match(/[-\d.]+(?= )/g));
+  assert.ok(xs.size > 2, 'the previewed quad is axis-aligned — it is not in the floor plane');
+  // THE DIALECT: a preview is PLANNED, not queued. Ink `6 5`, never the queued order's oxblood `8 5`.
+  assert.match(preview, /stroke="#14120F"[^/]*stroke-dasharray="6 5"/,
+    'the build preview is not in the charter\'s UNBUILT/PLANNED spelling (ink, dash `6 5`)');
+  assert.ok(!/#7B2C22/.test(preview),
+    'the preview wears the ONE ACCENT — oxblood is for orders that have been GIVEN, and a sweep in '
+    + 'progress has ordered nothing yet');
   assert.match(preview, /3×2 · 6 TILES/, 'the run caption must count the tiles the sweep will order');
   rzMouseUp();
   rzArm('dig');
@@ -3302,10 +3508,18 @@ const NO_ITEMS = { type: 'items', cells: [] };
  * `fill="#57503f" text-anchor` is unique to the chip's text node.
  */
 function chipAt(html, tx, ty) {
-  const key = '<g transform="translate(' + (tx - HOLD.rx) * U + ' ' + (ty - HOLD.ry) * U + ')">';
+  // ⭐ VR-P3 — THE CHIP STANDS ON ITS TILE NOW, so it is located by the SHIPPED placement's own
+  // translate rather than by `(tx-rx)*U`. Its ink is the charter's UNBUILT/PLANNED spelling — an
+  // ink `6 5` dashed plate — which is the honest thing to say about a glyph with no art and is
+  // emphatically not the oxblood a queued order wears; the reader keys on the dashed plate's own
+  // text node, which nothing else in this layer emits.
+  const pl = scenePlacement(roomScene(HOLD), HOLD);
+  const [cx, cy] = pl.foot(tx, ty);
+  const side = 0.95 * 100 * 0.7;
+  const key = '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2) + ')">';
   const i = html.indexOf(key);
   if (i < 0) return null;
-  const m = /fill="#57503f" text-anchor="middle"[^>]*>([^<]*)</.exec(html.slice(i, i + 500));
+  const m = /fill="#14120F" text-anchor="middle"[^>]*>([^<]*)</.exec(html.slice(i, i + 700));
   return m ? m[1] : null;
 }
 
@@ -3314,7 +3528,11 @@ function chipAt(html, tx, ty) {
 const stackId = (tx, ty, slot = 0) => 'rz-it-' + tx + '-' + ty + '-' + slot;
 const furnId = (tx, ty) => 'rz-f-' + tx + '-' + ty;
 /** The badge/chip texts the item layer drew, in emission order (anchored on the badge text colour). */
-const badges = (html) => [...html.matchAll(/fill="#d8cbb4"[^>]*>([^<]*)</g)].map((m) => m[1]);
+// ⭐ VR-P3 — the badge's ink moved to the paper dialect: the count plate is PAPER with an INK
+// hairline and INK digits, and it spends NO accent (charter §1's "no accent = nothing to see" — a
+// pile of regolith is a thing with nothing to decide about). The reader is anchored on the badge's
+// own `text-anchor="middle"` + ink fill, which is unique to it in this layer.
+const badges = (html) => [...html.matchAll(/fill="#14120F" text-anchor="middle"[^>]*>([^<]*)</g)].map((m) => m[1]);
 
 // ⚠️ THIS TEST WAS CALLED "THE LETTER BOX IS REPLACED" AND ITS PRECONDITION HAS EXPIRED, which is
 // worth stating rather than quietly rewriting: it asserted that a `,` tile with no `items` data drew
@@ -3542,13 +3760,13 @@ test('THE RETRACTION: every door tile on the captured grid ship is INSIDE a room
 });
 
 /** The client-space point at the centre of (tx,ty) for an arbitrary focus rect. */
-const atTileIn = (focus, tx, ty) => ({ clientX: (tx - focus.rx) * U + U / 2, clientY: (ty - focus.ry) * U + U / 2 });
+const atTileIn = (focus, tx, ty) => scenePointFor(focus, tx, ty);
 /** Enter `anchor`, size the layer rect to it, and return the focus. */
 function rzEnter(anchor) {
   const f = slotFocus(anchor);
   rzApi.exit();
   rzApi.enter(anchor);
-  rzLayers._rect = { left: 0, top: 0, width: f.rw * U, height: f.rh * U };
+  rzLayers._rect = sceneRectFor(f);
   return f;
 }
 
@@ -3896,4 +4114,902 @@ test('DEMOLISH on a CLOSED DOOR sends NOTHING — art did not make it removable'
     Hud.renderFrame(wreck);
     rzEnter('hold');
   }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// VR-P3 — THE CUTAWAY'S OWN CONTRACTS: the dash dialect on a queued order, the honest stat line,
+// the airless idiom, and a fitting placed at TRUE SIZE through the projection.
+//
+// Every one of these is a property nothing else in the suite can see. The dialect legs assert the
+// PAIR (accent + dash) rather than a hue, because ruling E3 is that colour alone distinguishes
+// nothing; the stat-line leg asserts what the surface may NOT say, which is the half ruling E11
+// exists for; and the fitting leg asserts a CENTIMETRE, because "true dimensions" is the whole
+// argument for the metre mapping and a size fitted to a tile would satisfy every other test here.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const VRP3_FOCUS = { deck: 0, rx: 0, ry: 0, rw: 10, rh: 6, slotIndex: 5, displayName: 'GALLEY' };
+
+// MUTATION: `roomStatLine` emitting the design's literal `SEATS 5 OF 3 ABOARD` ⇒ RED on the honesty
+// leg. MUTATION: dropping the FITTINGS clause ⇒ RED on the derivation leg.
+test('VR-P3: the stat line states only what the wire carries — no invented sentence (E11)', () => {
+  const line = roomStatLine({ areaM2: 60, placed: 5, pending: 4, here: 2, aboard: 3 });
+  assert.equal(line, '60.0 M² · 5 OF 9 FITTINGS BUILT · 2 OF 3 ABOARD, HERE');
+  // ⛔ THE DESIGN'S OWN THIRD CLAUSE IS `SEATS 5 OF 3 ABOARD` AND IT IS NOT AVAILABLE. No channel
+  // carries a seat count, and ruling E11 forbids a UI lane writing the sentence itself. This is the
+  // assertion that keeps it out: a later lane reaching for the doc's words has to add the data first.
+  assert.ok(!/SEAT/i.test(line),
+    'the stat line claims a SEAT count. Nothing on the wire carries one — that clause is the design '
+    + 'document\'s prose, and inventing it client-side is exactly what ruling E11 forbids.');
+  // The FITTINGS clause is DERIVED, both halves: built, and built-plus-pending.
+  assert.match(roomStatLine({ areaM2: 1, placed: 0, pending: 0, here: 0, aboard: 0 }),
+    /0 OF 0 FITTINGS BUILT/, 'an empty room must still state the clause rather than hide it');
+  assert.match(roomStatLine({ areaM2: 1, placed: 3, pending: 0, here: 1, aboard: 1 }),
+    /3 OF 3 FITTINGS BUILT/, 'a fully-built room reads N OF N — the denominator is built + pending');
+});
+
+// MUTATION: drop the `vacuum` branch from `roomCutawaySvg` ⇒ RED. MUTATION: drop `NO AIR` from
+// `roomStatLine` ⇒ RED on the second half. The two are asserted separately because a room can lose
+// either one and still look plausible.
+test('VR-P3: an AIRLESS compartment reads as airless — the drawing AND the words', () => {
+  const scene = roomScene(VRP3_FOCUS);
+  const air = roomCutawaySvg(scene, { vacuum: false });
+  const vac = roomCutawaySvg(scene, { vacuum: true });
+  assert.notEqual(vac, air, 'a vacuum draws the identical room — the compartment is indistinguishable '
+    + 'from a pressurised one, which is the D4 defect one altitude down');
+  assert.match(vac, /stroke-width="0.5"[^/]*stroke-dasharray="3 4"/,
+    'the airless floor grid is not DASHED — the deck a player cannot stand on looks like one they can');
+  assert.ok(/stroke-opacity="0.62"/.test(vac) && !/stroke-opacity/.test(air),
+    'the airless room\'s walls are not held back — and a pressurised one must NOT be, or "airless" '
+    + 'is what every room looks like');
+  // …and the WORDS, because a treatment of the drawing alone is a cue a player has to learn.
+  const words = roomStatLine({ areaM2: 60, placed: 1, pending: 0, here: 0, aboard: 3, vacuum: true });
+  assert.match(words, /NO AIR/, 'the stat line does not SAY the compartment is airless');
+  assert.ok(!/NO AIR/.test(roomStatLine({ areaM2: 60, placed: 1, pending: 0, here: 0, aboard: 3 })),
+    'every room says NO AIR — the clause is unconditional and therefore says nothing');
+});
+
+// MUTATION: `roomBox` sized to the tile instead of to the piece ⇒ RED. MUTATION: drop the `dx/dy`
+// origin offsets ⇒ RED on the anchor leg.
+test('VR-P3: a fitting is placed at TRUE CENTIMETRES, not fitted to its tile', () => {
+  const scene = roomScene(VRP3_FOCUS);
+  const s = scene.s;
+  const bench = roomBox('bench', s);      // 260 cm across
+  const stool = roomBox('stool', s);      // ∅34 cm
+  assert.ok(bench && stool, 'the room-placement derivation is gone from fittings.js');
+  const fails = [];   // BLINDED (TRAPS 5th shape): `assert` throws, so a hard leg hides its siblings
+
+  // ⚠️ THE DRAWN WIDTH IS RECOVERED FROM `roomBox`'S OWN OUTPUT, not recomputed beside it. The first
+  // draft wrote `s * (wCm + 0.4·dCm)` from the SPEC — the right number, reading nothing the function
+  // returned, so a `roomBox` that sized every piece to a tile passed. `dx = -side/2 + s·ex/2`, so
+  // `s·ex = 2·dx + side`.
+  const drawnW = (rb) => 2 * rb.dx + rb.side;
+  const tilePx = s * 100;
+
+  // 1 — THE METRE MAPPING. A 260 cm bench covers 2.6 tiles of a 1 m grid; a 34 cm stool a third of
+  // one. That is what "furnished at true dimensions" means and it is the whole argument for
+  // `M_PER_TILE`. (⚠️ THIS PAIR IS INVARIANT UNDER A BROKEN *SIZER* — see leg 2, which is not.)
+  if (!(drawnW(bench) / tilePx > 2.5)) fails.push('the bench does not span two and a half tiles');
+  if (!(drawnW(stool) / tilePx < 0.6)) fails.push('the stool fills more than half a tile');
+
+  // 2 — THE SIZER ITSELF, and this leg exists because the one above SURVIVED the mutation it was
+  // written for. `side` must be `TILE·s/k` where `k` fits the catalogue's `BOX` to the piece's
+  // LARGER extent — so `side / max(drawnWidth, drawnHeight)` is the CONSTANT `TILE/BOX` for every
+  // piece in the set. A sizer that hands every piece one tile makes that ratio a function of the
+  // piece's own proportions, which is the defect exactly.
+  // (⚠️ The first draft of this leg divided by the WIDTH alone and went red on correct code: for a
+  // tall piece the box is fitted to its HEIGHT. Measured, not reasoned — both pieces here have no
+  // `z0`, so `s·ey = −2·dy − side` recovers the vertical the same algebraic way `dx` recovers the
+  // horizontal.)
+  const drawnH = (rb) => -2 * rb.dy - rb.side;
+  const ratio = (rb) => rb.side / Math.max(drawnW(rb), drawnH(rb));
+  if (Math.abs(ratio(bench) - ratio(stool)) > 0.001) {
+    fails.push(`the box ratio differs between pieces (${ratio(bench).toFixed(3)} vs `
+      + `${ratio(stool).toFixed(3)}) — the sizer is normalising each piece to its own box instead of `
+      + 'putting every piece on ONE centimetre rule, so the catalogue\'s dimensions stop meaning '
+      + 'anything the moment two pieces stand side by side');
+  }
+
+  // 3 — THE ANCHOR: the piece is pinned by its own cm ORIGIN, so it stands where the tile is rather
+  // than being centred on it.
+  if (!(bench.dx < 0 && bench.dy < 0)) {
+    fails.push('the placement offsets do not pull the box back onto its own origin — a fitting would '
+      + 'sit half a box away from the tile it belongs to');
+  }
+
+  if (roomBox('not-a-fitting', s) !== undefined) {
+    fails.push('a piece with no centimetre spec must answer UNDEFINED so the caller can fall back '
+      + 'honestly, never a guessed footprint');
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
+});
+
+// MUTATION: draw the door plate on the RIGHT wall ⇒ RED. MUTATION: drop the halo ⇒ RED.
+test('VR-P3: door plates go on the walls the cutaway KEEPS; the cut side gets a label only', () => {
+  const scene = roomScene(VRP3_FOCUS);
+  const left = roomDoorsSvg(scene, VRP3_FOCUS, [{ tx: 0, ty: 2, side: 'left', label: '‹ 5 · CORRIDOR' }]);
+  const right = roomDoorsSvg(scene, VRP3_FOCUS, [{ tx: 9, ty: 2, side: 'right', label: '7 · HOLD ›' }]);
+  const back = roomDoorsSvg(scene, VRP3_FOCUS, [{ tx: 4, ty: 5, side: 'back', label: 'AFT BULKHEAD' }]);
+  // TRANSLATED, NOT WEAKENED (VR-P3 review): the plate carries `class="rz-door-plate"` now, so this
+  // counts THE PLATE rather than "any paper-filled ink-stroked path", which the old shape did — and
+  // which would have counted a fitting's front face on a room that had one.
+  const plates = (svg) => (svg.match(/<path class="rz-door-plate" d="M[^"]+" fill="#EBE4D1" stroke="#14120F"/g) || []).length;
+  assert.equal(plates(left), 1, 'the left wall is DRAWN in the cutaway and its door must be too');
+  assert.equal(plates(back), 1, 'the back wall is drawn and its door must be too');
+  assert.equal(plates(right), 0,
+    'a plate was drawn on the RIGHT wall — the wall the cutaway has cut away, which is what its two '
+    + 'dashed edges say. A solid door hanging in that empty space contradicts them.');
+  assert.match(right, />7 · HOLD ›</, 'the cut-side door is not SAID at all — it is a way out of the '
+    + 'room and the player has to know it is there');
+  for (const svg of [left, right, back]) {
+    assert.match(svg, /paint-order="stroke"/,
+      'a door label carries no halo, so it is unreadable the moment it crosses the wall hatch');
+  }
+  // …and the NEAR wall is cut away too, so it takes the same treatment as the right: said, not
+  // plated. A door the drawing simply omits is a way out of the room the player is never told about.
+  const front = roomDoorsSvg(scene, VRP3_FOCUS, [{ tx: 4, ty: 0, side: 'front', label: '3 · HALL' }]);
+  assert.equal(plates(front), 0, 'a plate was drawn on the NEAR wall — the other one the cutaway cuts');
+  assert.match(front, />3 · HALL</, 'the near-wall door is not said at all');
+  assert.equal(roomDoorsSvg(scene, VRP3_FOCUS, []), '', 'a room with no doors draws no group at all');
+});
+
+// ⭐⭐ THE DASH DIALECT ON A QUEUED ORDER — driven through the SHIPPING controller, because the ghost
+// builder is private and the property is about what reaches the layer.
+//
+// MUTATION: spell the queued ghost SOLID oxblood (the FAULT spelling) ⇒ RED. MUTATION: spell it with
+// the ink `6 5` (the UNBUILT spelling) ⇒ RED. MUTATION: drop the leader ⇒ RED. MUTATION: drop the
+// PARTS price ⇒ RED.
+test('VR-P3 (driven): a queued order is OXBLOOD `8 5` with a leader and its PRICE', () => {
+  const f = HOLD;   // the driven rig's own room, from the fixture's geometry
+  Hud.renderDesigns({
+    type: 'designs',
+    // [x, y, deck, kind, delivered, required] — a queued WALL, a STARVED one, and a READY one.
+    cells: [
+      [f.rx + 1, f.ry + 1, f.deck, 0, 2, 3],
+      [f.rx + 3, f.ry + 1, f.deck, 0, 0, 3],
+      [f.rx + 5, f.ry + 1, f.deck, 0, 3, 3],
+    ],
+  });
+  try {
+    rzEnter('hold');
+    const svg = rzLayers.innerHTML;
+    const ghosts = svg.slice(svg.indexOf('class="rz-ghost"'));
+    assert.ok(svg.includes('class="rz-ghosts"'), 'no ghost layer was drawn at all');
+    // THE QUEUED ONE: the charter's queued-order spelling, and nothing else.
+    assert.match(ghosts, /stroke="#7B2C22"[^>]*stroke-dasharray="8 5"/,
+      'a queued build ghost is not oxblood `8 5` — that pair IS the charter\'s QUEUED ORDER, and it '
+      + 'is what tells a player the difference between an order and a fault');
+    // THE STARVED ONE: SOLID oxblood — the ATTENTION/FAULT spelling, because nothing has arrived.
+    // Asserted as an absence of the dash on at least one oxblood ghost rather than by hunting a
+    // colour, so a mutation that spells every state `8 5` reddens.
+    const solid = (ghosts.match(/stroke="#7B2C22" stroke-width="1.5"(?![^>]*dasharray)/g) || []).length;
+    assert.ok(solid >= 1, 'no ghost is drawn SOLID oxblood — a STARVED order (nothing delivered) is a '
+      + 'FAULT, and spelling it like a healthy queued one hides the one the player has to act on');
+    // THE READY ONE: ink `6 5` — UNBUILT/PLANNED. It is paid for; it is simply not built.
+    assert.match(ghosts, /stroke="#14120F"[^>]*stroke-dasharray="6 5"/,
+      'a fully-delivered ghost is not in the UNBUILT/PLANNED spelling — it still shouts for parts it '
+      + 'already has');
+    // THE LEADER AND THE PRICE — the design's own annotation idiom, carrying WIRE data.
+    assert.match(ghosts, /stroke-width="0.8" opacity="0.65"/,
+      'the ghost has no leader line — the label floats over the room with nothing tying it to a tile');
+    assert.match(ghosts, /WALL · 3 PARTS|WALL · 2\/3 PARTS/,
+      'the ghost does not NAME its price. `required` is on the `designs` channel; a ghost that will '
+      + 'not say what it costs is the silence `palette-honesty` exists to end, one layer in.');
+  } finally {
+    Hud.renderDesigns({ type: 'designs', cells: [] });
+    rzEnter('hold');
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// VR-P3 REVISION — THE ASSEMBLY SEAM (review MAJOR 1/2/3, MINOR 4/8/9)
+//
+// ⛔⛔ WHY THIS SECTION EXISTS, IN ONE SENTENCE: an independent review applied TWELVE mutations to
+// the shipped assembly and every one of them was GREEN. The title and stat line not concatenated;
+// the CUTAWAY ITSELF not concatenated; the door plates dropped; `roomDimensionsSvg` dropped (that
+// function was imported by no test at all); `focusIsVacuum()` hard-`false`; `roomBox` → null, so
+// every fitting in every room is fitted to one tile; the blocked and zone layers laid out FLAT with
+// the shear dropped; the interior-wall hull filter removed, so thirty dark slabs stand back up
+// inside the drawing; the floor grid unhooked from the build grid; the hatch namespace collided; the
+// click pulse frozen at the plan view's 32 px. Each of those is a picture the player would see
+// change, and the whole suite stayed green — because every VR-P3 leg above tests a BUILDER in
+// isolation, and nothing tested that the builders are ASSEMBLED.
+//
+// THE SHAPE IS `WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body`,
+// generalised from one layer to the whole scene, and it is DRIVEN rather than scanned: the census
+// reads the markup the SHIPPING controller mounted into `#rz-layers` for a real fixture room, so a
+// call that is present in the source and produces nothing cannot satisfy it.
+//
+// PARITY BY IMPORT, NEVER BY LITERAL. Every geometric expectation below is compared against the
+// SHIPPED derivation (`scenePlacement`, `roomBox`, `tileClientBox`, `buildTileItem`), which is the
+// `paletteOrders` rule this file already runs the WP-4 section on: a copied number could not tell
+// the mounted scene and the model apart, and the model is what the mutations move.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** The room every leg below drives: the rig's own live wreck hold, 12 × 8 on deck 1. */
+const VR = HOLD;
+/** A door on the BACK wall — one of the two walls the cutaway KEEPS, so it earns a plate. */
+const VR_BACK_DOOR = { x: VR.rx + 5, y: VR.ry + VR.rh - 1 };
+/** …and a door INSIDE the room: a partition, which the cutaway never drew and which therefore keeps
+ *  its own furniture sprite. The two together are the HOLE-vs-LIMIT pair for MINOR 4. */
+const VR_IN_DOOR = { x: VR.rx + 3, y: VR.ry + 2 };
+/** An INTERIOR partition wall — the one thing the material layer may still stand a slab on. */
+const VR_WALL = { x: VR.rx + 2, y: VR.ry + 4 };
+/** Two tiles in ONE COLUMN, one metre apart in DEPTH — the shear pair every floor layer is read on. */
+const VR_NEAR = { x: VR.rx + 7, y: VR.ry + 2 };
+const VR_FAR = { x: VR.rx + 7, y: VR.ry + 3 };
+const VR_ZONE_A = { x: VR.rx + 9, y: VR.ry + 2 };
+const VR_ZONE_B = { x: VR.rx + 9, y: VR.ry + 3 };
+const VR_BLOCK_A = { x: VR.rx + 6, y: VR.ry + 5 };
+const VR_BLOCK_B = { x: VR.rx + 6, y: VR.ry + 6 };
+const VR_ITEM = { x: VR.rx + 4, y: VR.ry + 1 };
+const VR_GHOST = { x: VR.rx + 10, y: VR.ry + 5 };
+/** A 260 cm bench and a 34 cm stool, on the floor of the same room — the true-size pair. */
+const VR_BENCH = { x: VR.rx + 1, y: VR.ry + 6 };
+const VR_STOOL = { x: VR.rx + 8, y: VR.ry + 6 };
+const VR_CID = 90210;
+const VR_REASON_NO_ROUTE = 5;   // BLOCKED_REASON_NAMES index for `no_route`
+
+/** The wreck frame with the two doors and the one interior partition planted in the hold. */
+function vrFrame() {
+  const cells = wreck.cells.slice();
+  const put = (t, ch) => { cells[t.y * wreck.w + t.x] = [ch.charCodeAt(0), 0, 0, 0]; };
+  put(VR_BACK_DOOR, '+');
+  put(VR_IN_DOOR, '+');
+  put(VR_WALL, '#');
+  return { ...wreck, cells };
+}
+
+/** Put every channel this section drives back the way the rig left it. Called from a `finally`, so a
+ *  failing leg cannot leak a doctored frame or an airless room into the next test. */
+function vrRestore() {
+  Hud.renderZones({ type: 'zones', cells: [] });
+  Hud.renderBlocked({ type: 'blocked', cells: [] });
+  Hud.renderItems(NO_ITEMS);
+  Hud.renderDesigns({ type: 'designs', cells: [] });
+  Hud.renderDecor({ type: 'decor', items: [] });
+  Hud.renderRoster({ type: 'roster', crew: [] });
+  Hud.renderRooms(FIX.rooms);
+  Hud.renderFrame(wreck);
+  Hud.renderMarks(WRECK_MARKS_MSG);
+  rzEnter('hold');
+}
+
+/**
+ * DRIVE THE WHOLE SCENE and hand back the markup the controller mounted.
+ *
+ * Every channel the cutaway consumes is dispatched through the SHIPPING `Hud.render*` entry points —
+ * the same functions the socket calls — and the room is entered through `rzApi.enter`, so what comes
+ * back is the assembled `#rz-layers` innerHTML and not a string this test built.
+ */
+function vrMount({ vacuum = false } = {}) {
+  Hud.renderFrame(vrFrame());
+  Hud.renderMarks({ type: 'marks', cells: [
+    [VR_NEAR.x, VR_NEAR.y, DECK1, 1], [VR_FAR.x, VR_FAR.y, DECK1, 1],
+  ] });
+  Hud.renderZones({ type: 'zones', cells: [
+    [VR_ZONE_A.x, VR_ZONE_A.y, DECK1, ACCEPT_ALL, 0],
+    [VR_ZONE_B.x, VR_ZONE_B.y, DECK1, ACCEPT_ALL, ZONE_FLAG_BACKED_OFF],
+  ] });
+  Hud.renderBlocked({ type: 'blocked', cells: [
+    [VR_BLOCK_A.x, VR_BLOCK_A.y, DECK1, 0, VR_REASON_NO_ROUTE],
+    [VR_BLOCK_B.x, VR_BLOCK_B.y, DECK1, 0, VR_REASON_NO_ROUTE],
+  ] });
+  Hud.renderItems({ type: 'items', cells: [[VR_ITEM.x, VR_ITEM.y, DECK1, 0, 40]] });
+  Hud.renderDesigns({ type: 'designs', cells: [[VR_GHOST.x, VR_GHOST.y, DECK1, 0, 2, 3]] });
+  Hud.renderDecor({ type: 'decor', items: [
+    [DECK1, VR_BENCH.x, VR_BENCH.y, 'bench', 0, 0],
+    [DECK1, VR_STOOL.x, VR_STOOL.y, 'stool', 0, 0],
+  ] });
+  Hud.renderRoster({ type: 'roster', crew: [
+    { cid: VR_CID, name: 'Ada Ozawa', role: 'engineer', deck: DECK1, x: VR.rx + 5, y: VR.ry + 3, task: '' },
+  ] });
+  Hud.renderRooms(vacuum
+    ? { type: 'rooms', rooms: FIX.rooms.rooms.concat([['hold', DECK1, 0, 0, 0, 293, 96]]) }
+    : FIX.rooms);
+  rzEnter('hold');
+  return rzLayers.innerHTML;
+}
+
+/** The scene + placement the controller itself derives for the hold — the parity source. */
+const vrScene = () => roomScene(VR);
+const vrPlace = () => scenePlacement(vrScene(), VR, vrScene().s * 100 * M_PER_TILE);
+/** One tile's width on the cutaway, in scene px. */
+const vrTilePx = () => vrScene().s * 100 * M_PER_TILE;
+
+/** Parse `matrix(a b c d e f)` out of a transform attribute. */
+const mat = (s) => s.slice(s.indexOf('matrix(') + 7, s.indexOf(')', s.indexOf('matrix('))).split(' ').map(Number);
+
+/**
+ * ⭐⭐ THE CENSUS — every piece of the cutaway, present in the ASSEMBLED markup, by a marker that
+ * only that piece can produce.
+ *
+ * BLINDED (TRAPS, fifth shape): every row is collected and ONE assertion reports them all, because
+ * `assert` throws and a dozen legs behind a dead first one look exactly like a dozen live ones.
+ *
+ * MUTATIONS, ALL TWELVE OF WHICH WERE GREEN BEFORE THIS TEST EXISTED: drop `body += roomTitleSvg(…)`
+ * ⇒ RED; drop `body += roomCutawaySvg(…)` ⇒ RED; drop `roomDoorsSvg` ⇒ RED; drop
+ * `roomDimensionsSvg(scene)` ⇒ RED; and one row each for the eight tile-addressed layers.
+ */
+test('VR-P3 (assembled): every piece of the cutaway is CONCATENATED into the mounted scene', () => {
+  try {
+    const svg = vrMount();
+    // ⭐ THE FLOOR QUAD'S MARKER IS THE QUAD ITSELF, derived from the scene rather than named by a
+    // class: `oblique.room` gives the drawing no class hooks, and "some path exists" would be
+    // satisfied by any layer in the stack. This is the one row that is parity-by-import.
+    const c = vrScene().frame.corners;
+    const floorQuad = 'd="M' + c.frontLeft.join(' ') + ' L' + c.frontRight.join(' ')
+      + ' L' + c.backRight.join(' ') + ' L' + c.backLeft.join(' ') + ' Z"';
+    const rows = [
+      ['the shared hatch def', (s) => s.includes('<pattern id="rz-fh"')],
+      ['the in-SVG title + stat line', (s) => s.includes('<g class="rz-title">')],
+      ['the room title in words', (s) => s.includes('>Compartment 7 · STORAGE<')],
+      ['the stat line', (s) => s.includes('96.0 M²')],
+      ['the cutaway floor quad', (s) => s.includes(floorQuad)],
+      ['the door plates', (s) => s.includes('<path class="rz-door-plate"')],
+      ['the door labels', (s) => s.includes('<g class="rz-doors">')],
+      ['the dimension arrows', (s) => s.includes('<g class="rz-dims">')],
+      ['the interior-wall material layer', (s) => s.includes('class="rz-walls"')],
+      ['the zone layer', (s) => s.includes('class="rz-zones"')],
+      ['the decor (fittings at true size)', (s) => s.includes('class="rz-decor"')],
+      ['the furniture layer', (s) => s.includes('class="rz-furniture"')],
+      ['the mark layer', (s) => s.includes('class="rz-marks"')],
+      ['the ground-item layer', (s) => s.includes('class="rz-items"')],
+      ['the blocked layer', (s) => s.includes('class="rz-blockeds"')],
+      ['the blocked reason SENTENCE', (s) => s.includes('NO WAY TO WALK TO IT')],
+      ['the pawn layer', (s) => s.includes('class="rz-pawns"')],
+      ['the queued-order ghost layer', (s) => s.includes('class="rz-ghosts"')],
+    ];
+    const missing = rows.filter(([, hit]) => !hit(svg)).map(([name]) => name);
+    assert.deepEqual(missing, [],
+      'these pieces of the Level-2 cutaway never reached the mounted SVG:\n  ' + missing.join('\n  ')
+      + '\nA builder that is perfect and never concatenated draws NOTHING on screen and satisfies '
+      + 'every isolated leg above it — the exact hole `zone-overlay.js` was extracted to close, and '
+      + 'the hole twelve VR-P3 mutations walked through.');
+    // NON-VACUITY, an INCLUSION test: the census must be able to MISS. A marker no scene can produce
+    // has to come back missing, or a regex that matched anything would report a full house.
+    assert.ok(!/class="rz-there-is-no-such-layer"/.test(svg),
+      'the census is matching markup that is not there — every row above is then vacuous');
+  } finally { vrRestore(); }
+});
+
+/**
+ * THE DRAWING ITSELF, geometrically: the floor quad in the mounted scene IS the quad `roomScene`
+ * describes, and the floor grid IS the build grid.
+ *
+ * MUTATION: `body += roomCutawaySvg(scene, { vacuum })` deleted ⇒ RED (the quad is gone).
+ * MUTATION: `gridCm: M_PER_TILE * 100` → 60 ⇒ RED (19 verticals instead of 11).
+ * MUTATION: `depthDivs: scene.rh` → 5 ⇒ RED (4 depth bands instead of 7).
+ */
+test('VR-P3 (assembled): the floor quad is the SCENE\'s, and the floor grid IS the build grid', () => {
+  try {
+    const svg = vrMount();
+    const scene = vrScene(), place = vrPlace();
+    const c = scene.frame.corners;
+    const quad = 'M' + c.frontLeft.join(' ') + ' L' + c.frontRight.join(' ')
+      + ' L' + c.backRight.join(' ') + ' L' + c.backLeft.join(' ') + ' Z';
+    assert.ok(svg.includes('d="' + quad + '"'),
+      'the mounted scene does not contain the floor quad `roomScene` describes. Every layer below is '
+      + 'painted on a floor that is not being drawn:\n  wanted ' + quad);
+
+    // THE GRID. One line per METRE across and one band per TILE back — which is the claim
+    // `roomCutawaySvg`'s header makes, and the reason it overrides `oblique.room`'s drawing defaults.
+    const grid = /<g fill="none" stroke="#14120F" stroke-width="0\.5"[^>]*><path d="([^"]+)"/.exec(svg);
+    assert.ok(grid, 'the cutaway drew no floor grid at all — the surface a player designates on');
+    const segs = grid[1].split(' M').length;
+    assert.equal(segs, (VR.rw - 1) + (VR.rh - 1),
+      'the floor grid does not have one line per TILE. It is the BUILD grid, not a drawing '
+      + 'convention: a 60 cm grid over a 1 m tile puts a line where no tile boundary is, and a '
+      + 'player aiming a wall at it misses.');
+    // …and the lines LAND on the tile boundaries, which counting alone cannot see.
+    const first = /^M([-\d.]+) ([-\d.]+)/.exec(grid[1]);
+    const want = place.front(VR.rx + 1, VR.ry);
+    assert.ok(Math.abs(Number(first[1]) - want[0]) < 0.02 && Math.abs(Number(first[2]) - want[1]) < 0.02,
+      `the first grid line is at ${first[1]},${first[2]} and the first tile boundary is at ${want}`);
+  } finally { vrRestore(); }
+});
+
+/**
+ * THE DOOR PLATES, AND MINOR 4's DE-DUPLICATION: a boundary door is drawn ONCE.
+ *
+ * MUTATION: `body += roomDoorsSvg(…)` deleted ⇒ RED on the plate leg.
+ * MUTATION: drop the `plated` filter in `furnitureSvg` ⇒ RED on the de-duplication leg (the door
+ * gets a plate AND a warm sprite in the same opening — live on `hall_d0_s1`).
+ */
+test('VR-P3 (assembled): a boundary door gets ONE plate and NO second sprite; an interior door keeps its own', () => {
+  try {
+    const svg = vrMount();
+    const plates = (svg.match(/<path class="rz-door-plate"/g) || []).length;
+    assert.equal(plates, 1, 'the hold has exactly one door on a wall the cutaway KEEPS (the back '
+      + 'wall), so it must draw exactly one plate');
+    // ⛔ AND NOT TWICE. `rz-f-<tx>-<ty>` is the id prefix `furnitureSvg` gives a piece on that tile,
+    // so the two layers are locatable independently and the absence is about THIS door, not about
+    // the furniture layer being missing (which the census above already refuses).
+    assert.ok(!svg.includes('rz-f-' + VR_BACK_DOOR.x + '-' + VR_BACK_DOOR.y),
+      'the boundary door is ALSO stood up as a furniture sprite. The cutaway has just drawn that '
+      + 'door in the wall plane; a second, warm, upright door half a metre in front of it is the '
+      + 'smear the owner sees on hall_d0_s1.');
+    // THE INCLUSION HALF — without it, "no sprite" is satisfied by a furniture layer that draws
+    // nothing at all, or by a filter that swallows every door in the room.
+    assert.ok(svg.includes('rz-f-' + VR_IN_DOOR.x + '-' + VR_IN_DOOR.y),
+      'an INTERIOR partition door lost its sprite too. The cutaway never drew that one — it is not '
+      + 'in a wall the drawing renders — so filtering it deletes a door from the room.');
+  } finally { vrRestore(); }
+});
+
+/**
+ * THE DIMENSION ARROWS. `roomDimensionsSvg` was imported by NO test in the suite when VR-P3 landed:
+ * deleting the call left the drawing silent about its own size and nothing anywhere noticed.
+ *
+ * MUTATION: `body += roomDimensionsSvg(scene)` deleted ⇒ RED.
+ * MUTATION: any of the three labels derived from a constant instead of from the scene ⇒ RED.
+ */
+test('VR-P3 (assembled): the drawing STATES its own metres — all three dimension arrows', () => {
+  try {
+    const svg = vrMount();
+    assert.match(svg, /<g class="rz-dims">/, 'the dimension arrows never reached the mounted scene');
+    const dims = svg.slice(svg.indexOf('<g class="rz-dims">'));
+    for (const [what, want] of [['width', VR.rw], ['depth', VR.rh], ['height', ROOM_HEIGHT_M]]) {
+      assert.ok(dims.includes('>' + want.toFixed(1) + ' M<'),
+        `the ${what} arrow does not read ${want.toFixed(1)} M. Every number on this drawing comes `
+        + 'from `roomScene`, so a room that is ' + VR.rw + ' tiles across cannot say anything else.');
+    }
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐⭐ THE AIRLESS COMPARTMENT, DRIVEN THROUGH THE REAL `rooms` CHANNEL rather than by calling the
+ * branch. `focusIsVacuum() { return false; }` was GREEN across the whole suite: `vacuum-visible.test.js`
+ * proves the MODEL grades a vacuum, and nothing proved the treatment reached this surface's SVG.
+ *
+ * MUTATION: `focusIsVacuum` → `false` ⇒ RED. MUTATION: pass `{ vacuum: false }` to `roomCutawaySvg`
+ * while keeping it in the stat line ⇒ RED on the drawing leg alone (they are asserted separately
+ * because a room can lose either one and still look plausible).
+ */
+test('VR-P3 (assembled): a 0 kPa compartment reads AIRLESS in the mounted scene — drawing and words', () => {
+  try {
+    const air = vrMount({ vacuum: false });
+    assert.ok(!/NO AIR/.test(air), 'the PRESSURISED control already says NO AIR — every room does, so '
+      + 'the clause says nothing');
+    assert.ok(!/stroke-dasharray="3 4"/.test(air), 'the pressurised control already draws the airless '
+      + 'dashed grid');
+
+    const vac = vrMount({ vacuum: true });
+    assert.match(vac, /NO AIR/, 'a compartment the `rooms` channel reports at 0 kPa does not SAY it is '
+      + 'airless. This is D4 one altitude up: the order that killed a pawn was accepted with nothing '
+      + 'anywhere on this surface using the word AIR.');
+    assert.match(vac, /stroke-dasharray="3 4"/,
+      'the airless floor grid is not dashed in the MOUNTED scene — the treatment exists in the '
+      + 'builder and never reaches the room');
+    assert.match(vac, /stroke-opacity="0\.62"/, 'the airless walls are not held back in the mounted scene');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐⭐ MAJOR 4 — THE ONE ACCENT IS SPENT ON ONE CLAUSE. `roomTitleSvg` set `fill` on the whole
+ * `<text>`, so an airless room printed its AREA and its CREW COUNT in oxblood as well as its `NO AIR`
+ * — while both of the nearby comments claimed only the trailing clause took it.
+ *
+ * MUTATION: put `OB_ATTEND` back on the whole `<text>` ⇒ RED. MUTATION: drop the tspan's own fill
+ * ⇒ RED (nothing is accented at all).
+ */
+test('VR-P3 (assembled): only the NO AIR clause takes the accent — the rest stays micro-ink', () => {
+  try {
+    const vac = vrMount({ vacuum: true });
+    const stat = /<text [^>]*font-size="[\d.]+"[^>]*>((?:(?!<\/text>).)*NO AIR(?:(?!<\/text>).)*)<\/text>/.exec(vac);
+    assert.ok(stat, 'the stat line carrying NO AIR is not one `<text>` in the mounted scene');
+    const open = vac.slice(vac.lastIndexOf('<text', vac.indexOf(stat[1])), vac.indexOf(stat[1]));
+    assert.ok(open.includes('fill="#6B6252"'),
+      'the stat line\'s BASE ink is not the charter\'s micro-label grey. It said: ' + open);
+    assert.ok(!open.includes('fill="#7B2C22"'),
+      'the WHOLE stat line is tinted oxblood on an airless room. Charter §1 allows ONE accent and '
+      + 'spends it on attention; a line that prints the floor area in the attention colour says the '
+      + 'area is an emergency, and it is the exact defect this file\'s own comments denied.');
+    assert.match(stat[1], /<tspan fill="#7B2C22">NO AIR<\/tspan>/,
+      'the NO AIR clause is not the one carrying the accent');
+    // …and the clauses either side of it are OUTSIDE the tspan, i.e. really do keep the base ink.
+    assert.ok(/96\.0 M²/.test(stat[1].split('<tspan')[0]),
+      'the area clause has been swept inside the accented run');
+    // The PRESSURISED room spends no accent on this line at all.
+    const air = vrMount({ vacuum: false });
+    const title = air.slice(air.indexOf('<g class="rz-title">'), air.indexOf('</g>', air.indexOf('<g class="rz-title">')));
+    assert.ok(!title.includes('#7B2C22'),
+      'a pressurised compartment\'s title band spends the accent — on nothing at all');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐⭐ MAJOR 1 / N10 — A FITTING IS DRAWN AT ITS OWN CENTIMETRES IN THE ASSEMBLED SCENE.
+ *
+ * `const rb = roomBox(itemId, ROOM_SCALE)` → `null` makes every fitting in every room fall to the
+ * one-tile fallback: a 260 cm bench and a 34 cm stool come out the SAME SIZE, which is the plan view
+ * the cutaway replaced. It was GREEN — `roomBox` itself is pinned, and nothing pinned that the
+ * SURFACE consumes it.
+ *
+ * PARITY BY IMPORT on the ratio, ABSOLUTE FLOOR on the scale (TRAPS, 7th shape: a ratio suite cannot
+ * see a 2× scale error, so the ratio leg alone would pass on a room drawn at half size).
+ */
+test('VR-P3 (assembled): a 260 cm bench spans 2.6 tiles of floor and a 34 cm stool a third of one', () => {
+  try {
+    const svg = vrMount();
+    const decor = svg.slice(svg.indexOf('<g class="rz-decor"'), svg.indexOf('<g class="rz-furniture"'));
+    // `helpers.render` wraps each piece in `translate(w/2 h/2) scale(min(w,h)/TILE)`, so the box side
+    // the surface asked for is recoverable from the mounted markup: `scale × TILE`. TILE is IMPORTED.
+    const sides = [...decor.matchAll(/scale\(([\d.]+)\)/g)].map((m) => Number(m[1]) * TILE);
+    assert.equal(sides.length, 2, 'the two decor fittings did not both reach the scene — the legs '
+      + 'below would be vacuous');
+    const [bench, stool] = sides;
+    const want = (id) => roomBox(id, ROOM_SCALE).side;
+
+    // 1 — THE RATIO, against the SHIPPED sizer. A fallback draws both at one tile, i.e. ratio 1.
+    assert.ok(Math.abs(bench / stool - want('bench') / want('stool')) < 0.01,
+      `a bench and a stool are drawn at ${(bench / stool).toFixed(2)}× each other and their own `
+      + `centimetre specs differ by ${(want('bench') / want('stool')).toFixed(2)}×. The room is a `
+      + 'diagram of nothing if a 260 cm bench and a 34 cm stool are the same object.');
+    // 2 — THE ABSOLUTE FLOOR. A 260 cm bench needs 2.6 m of floor and cannot be drawn in less; the
+    // one-tile fallback gives it 1.15. This is the leg a ratio cannot supply.
+    assert.ok(bench / vrTilePx() >= 2.6,
+      `the bench's drawn box is ${(bench / vrTilePx()).toFixed(2)} tiles across. It is 260 cm of `
+      + 'bench — 2.6 tiles at one tile per metre — so anything less is a piece scaled to its cell.');
+    assert.ok(stool / vrTilePx() < 1,
+      'the stool is drawn WIDER than its tile. It is 34 cm; a third of a tile is the whole point of '
+      + 'putting the catalogue in centimetres.');
+    // 3 — and the ANCHOR: each piece is pulled back onto its own cm origin, not centred on the tile.
+    const place = vrPlace();
+    const [bx, by] = place.front(VR_BENCH.x, VR_BENCH.y);
+    const rb = roomBox('bench', ROOM_SCALE);
+    assert.ok(decor.includes('translate(' + (bx + rb.dx).toFixed(2) + ' ' + (by + rb.dy).toFixed(2) + ')'),
+      'the bench is not anchored on its own projected cm origin — it sits half a box away from the '
+      + 'tile it belongs to');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐⭐ MAJOR 1 / N5 + N7 + MINOR 9 — EVERY FLOOR LAYER IS SHEARED INTO THE FLOOR PLANE.
+ *
+ * A designation, a zone and a refused-order outline are PAINT ON THE FLOOR. Laid out flat they are
+ * axis-aligned rectangles floating over a cabinet-oblique room — the plan view showing through the
+ * cutaway — and the marks land on tiles other than the ones they describe. All three mutations
+ * (`place` dropped from the blocked layer, from the zone layer, and — the raw-text-only case the
+ * review filed as MINOR 9 — from the mark layer) were GREEN.
+ *
+ * THE PROPERTY IS MEASURED, NOT NAMED: two tiles that differ ONLY in `ty` must be placed a DEPTH STEP
+ * apart, and the depth step is the projection's own `(+0.4·s·100, −0.6·s·100)`. A flat layer places
+ * them one tile straight DOWN, which fails both components.
+ */
+test('VR-P3 (assembled): the mark, zone and blocked layers are SHEARED into the floor plane', () => {
+  try {
+    const svg = vrMount();
+    const scene = vrScene();
+    const dx = 0.4 * scene.s * 100, dy = -0.6 * scene.s * 100;
+    const fails = [];
+    const pair = (label, matrices) => {
+      if (matrices.length !== 2) { fails.push(`${label}: found ${matrices.length} placed cells, not 2 — this leg is vacuous`); return; }
+      const [a, b] = matrices;
+      // The LINEAR part must carry the oblique's depth vector: a flat layout has c = 0, d = 1.
+      if (Math.abs(a[2] * vrTilePx() - dx) > 0.5 || Math.abs(a[3] * vrTilePx() - dy) > 0.5) {
+        fails.push(`${label}: the cell's y axis is (${a[2]}, ${a[3]}) — not the oblique's depth vector, `
+          + 'so the layer is laid out FLAT over a projected room');
+      }
+      // …and the two tiles are one DEPTH STEP apart, which is what "same column, one metre back" means.
+      if (Math.abs((b[4] - a[4]) - dx) > 0.5 || Math.abs((b[5] - a[5]) - dy) > 0.5) {
+        fails.push(`${label}: two tiles differing only in ty are placed (${(b[4] - a[4]).toFixed(1)}, `
+          + `${(b[5] - a[5]).toFixed(1)}) apart; the projection's depth step is (${dx.toFixed(1)}, ${dy.toFixed(1)})`);
+      }
+    };
+    const marksLayer = svg.slice(svg.indexOf('<g class="rz-marks"'), svg.indexOf('<g class="rz-items"'));
+    pair('the MARK layer', [...marksLayer.matchAll(/<g transform="(matrix\([^)]*\))"><g class="mk /g)].map((m) => mat(m[1])));
+    const zoneLayer = svg.slice(svg.indexOf('<g class="rz-zones"'), svg.indexOf('<g class="rz-decor"'));
+    pair('the ZONE layer', [...zoneLayer.matchAll(/<g class="rz-zone[^"]*" transform="(matrix\([^)]*\))"/g)].map((m) => mat(m[1])));
+    const blockedLayer = svg.slice(svg.indexOf('<g class="rz-blockeds"'), svg.indexOf('<g class="rz-pawns"'));
+    pair('the BLOCKED layer', [...blockedLayer.matchAll(/<g transform="(matrix\([^)]*\))"><g class="rz-blocked /g)].map((m) => mat(m[1])));
+    assert.deepEqual(fails, [], fails.join('\n'));
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐ MAJOR 2 — THE REFUSED ORDER'S SENTENCE REACHES THE SCENE, threaded from the wire.
+ *
+ * `blockedLayerSvg` passing `say = ''` to `blockedBadgeSvg` was GREEN: the badge still draws, the
+ * scrim still draws, the outline still draws, and the WORDS — which are the whole of D5, the thing
+ * the channel was built to say — silently vanish. The leg drives a real `blocked` row with a real
+ * reason code and asserts the SENTENCE the wire's own table produces, imported rather than typed.
+ */
+test('VR-P3 (assembled): a blocked tile carries its reason SENTENCE, from the wire\'s own table', () => {
+  try {
+    const svg = vrMount();
+    const want = blockedReasonSentence('no_route');
+    assert.ok(want, 'the wire no longer has a sentence for `no_route` — this leg is vacuous');
+    assert.match(svg, /class="rz-blocked-say"/,
+      'the blocked layer drew no reason text at all. The badge and the outline say "stuck"; the '
+      + 'SENTENCE is what says what to do about it, and it is the entire product of the D5 package.');
+    assert.ok(svg.includes('>' + want + '<'),
+      `the blocked badge does not carry ${JSON.stringify(want)} — the sentence the wire produced for `
+      + 'this row. A layer that renders the badge with an empty label reproduces the silence exactly.');
+    // ONE sentence for two tiles sharing a reason (the layer's own de-duplication rule), and it must
+    // still be ONE and not ZERO — the count is what separates "de-duplicated" from "dropped".
+    assert.equal((svg.match(/class="rz-blocked-say"/g) || []).length, 1,
+      'two tiles stuck for the same reason must produce ONE leader sentence, not none and not two');
+    assert.equal((svg.match(/class="rz-blocked-ring"/g) || []).length, 2,
+      'every stuck tile keeps its own outline — the de-duplication is of the WORDS, not of the marks');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐⭐ MAJOR 1 / N11 — THE HULL FILTER: a boundary `#` is the compartment's own wall and the cutaway
+ * has already drawn it.
+ *
+ * Dropping the filter stands THIRTY-FIVE 2.4 m slabs back up in a stepped ring around this room —
+ * the first live render of the cryo bay, where the room was unreadable behind them — and on the near
+ * and right edges it puts a solid wall exactly where the drawing has cut the room open. GREEN before
+ * this leg: nothing counted the slabs.
+ *
+ * HOLE-vs-LIMIT: the room's 35 boundary walls draw NOTHING, and the one INTERIOR partition draws
+ * exactly one slab. Either half alone is satisfiable by a layer that draws nothing ever.
+ */
+test('VR-P3 (assembled): boundary walls draw no slab; an INTERIOR partition draws exactly one', () => {
+  try {
+    const svg = vrMount();
+    // NON-VACUITY, from the shipped model: the room really is ringed with wall glyphs, so "no slab"
+    // is a decision this layer made rather than an absence of input.
+    const tiles = roomMaterialTiles(vrFrame(), VR, null).filter((t) => t.kind === 'wall');
+    const x1 = VR.rx + VR.rw - 1, y1 = VR.ry + VR.rh - 1;
+    const onHull = tiles.filter((t) => t.tx === VR.rx || t.tx === x1 || t.ty === VR.ry || t.ty === y1);
+    assert.ok(onHull.length >= 30,
+      `the fixture room is no longer ringed with wall glyphs (${onHull.length}) — this leg cannot see `
+      + 'the thirty-slab regression it exists for');
+    assert.equal(tiles.length - onHull.length, 1, 'the planted interior partition is missing');
+
+    assert.equal((svg.match(/<g class="rz-wall">/g) || []).length, 1,
+      'the material layer stood a slab on every tile of the room\'s own hull. The cutaway has ALREADY '
+      + 'drawn those walls — as the back wall and the hatched left wall — so this is a second, '
+      + 'contradictory wall inside the first, and on the cut edges it is a solid slab standing where '
+      + 'the drawing says the room is open.');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐ MAJOR 1 / N15 — ONE ID NAMESPACE FOR THE WHOLE SURFACE.
+ *
+ * `RZ_ID` may be anything at all today and no test notices; the Room Zoom is a body-level sibling of
+ * the Overview, so both scenes live in ONE document and an id that is not namespaced to this surface
+ * is a collision waiting for the next `<defs>`. The pin is the invariant rather than the literal:
+ * EVERY id the assembled scene emits begins with this surface's own `rz-` prefix.
+ *
+ * MUTATION: `RZ_ID = 'rz'` → `'fh'` ⇒ RED (`id="fh-fh"`). MUTATION: take the kit default ⇒ RED
+ * (`id="ob-fh"`, which is the id `overview-scene.js`'s own boxes reference).
+ */
+test('VR-P3 (assembled): every id the scene emits is in the ROOM ZOOM\'s own namespace', () => {
+  try {
+    const svg = vrMount();
+    const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(ids.length >= 3, `only ${ids.length} ids in the whole scene — this census is vacuous`);
+    const stray = [...new Set(ids.filter((id) => !id.startsWith('rz-')))];
+    assert.deepEqual(stray, [],
+      'these ids are not in the Room Zoom\'s `rz-` namespace: ' + stray.join(', ')
+      + '\nThe Overview and the Room Zoom are body-level siblings in ONE document, so an id outside '
+      + 'this surface\'s prefix is a collision with whatever the other surface defines — and a '
+      + 'colliding <defs> resolves silently to the wrong paint, never to an error.');
+    // …and the hatch really is the surface's, not the kit's default (the id every early P2 fitting
+    // would have taken by accident).
+    assert.ok(svg.includes('id="' + fhId(RZ_ID) + '"'), 'the surface hatch def is missing');
+    assert.notEqual(fhId(RZ_ID), fhId(),
+      'the Room Zoom emits the KIT DEFAULT hatch id. Every surface that takes the default writes the '
+      + 'same id into the same document.');
+    // ONE def, emitted once per surface root — the rule `roomHatchDef`'s own comment states.
+    assert.equal((svg.match(new RegExp('<pattern id="' + fhId(RZ_ID) + '"', 'g')) || []).length, 1,
+      'the shared hatch def is emitted more than once in one document');
+    // NO DANGLING REFERENCE: every `url(#…)` this scene paints with resolves to a def IN this scene.
+    const refs = [...new Set([...svg.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]))];
+    const dangling = refs.filter((r) => !ids.includes(r));
+    assert.deepEqual(dangling, [], 'these paints reference ids nothing in the scene defines: '
+      + dangling.join(', ') + ' — an unresolved pattern renders as NOTHING, silently');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐ MAJOR 3(a) — THE COUNT BADGE SCALES WITH THE TILE, and this leg exists because a mutation
+ * SURVIVED. `const k = unit / U` → `1` in `chipSvg` draws the badge and its digits at the plan view's
+ * 32-unit size inside a ~95 px cutaway tile: a third of the size it should be, unreadable, and the
+ * defect the code's own comment says it fixes. Green across 1412 tests.
+ *
+ * Ratio through the SHIPPED builder at two units, plus an absolute floor read out of the ASSEMBLED
+ * scene (TRAPS, 7th shape).
+ */
+test('VR-P3: the ground-stack count badge scales with the tile — measured, because `k = 1` survived', () => {
+  const rows = [{ tx: VR_ITEM.x, ty: VR_ITEM.y, stacks: [{ kind: 0, count: 40 }] }];
+  const heightOf = (svg) => Number(/<rect class="rz-chip"[^>]*height="([\d.]+)"/.exec(svg)[1]);
+  const small = heightOf(itemStackSvg(rows, VR, U));
+  const big = heightOf(itemStackSvg(rows, VR, U * 3));
+  assert.ok(Math.abs(big / small - 3) < 0.01,
+    `the badge is ${(big / small).toFixed(2)}× taller in a 3× tile. A badge whose height is fixed at `
+    + 'the plan view\'s 32-unit cell renders a third of the size it should on the cutaway and the '
+    + 'count is unreadable — measured on the first render, and re-measured here because a mutation '
+    + 'back to `k = 1` was green.');
+  try {
+    const svg = vrMount();
+    const mounted = heightOf(svg.slice(svg.indexOf('<g class="rz-items"')));
+    assert.ok(mounted >= small * 2,
+      `the badge in the MOUNTED scene is ${mounted.toFixed(1)} px against ${small.toFixed(1)} px at `
+      + 'the plan unit — the surface is drawing its counts at the old grid\'s size');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐ INTEGRATOR (P3 re-review residual) — THE GROUND-ITEM LAYER STANDS AT ITS TILE, and this leg
+ * exists because a mutation SURVIVED the whole revision: `itemStackSvg(_itemTiles, _focus, unit,
+ * place)` → `…, null)` was green across 1432 tests while the 40-Regolith pile moved from its tile's
+ * floor centre to ~3 tiles away (measured: scene (1027, 339.5) → (791.8, 541.8)). `scenePlacement`
+ * documents three idioms; `cell` and `foot`/`front` are pinned, `stand` was not, and `itemStackSvg`
+ * is its only consumer.
+ *
+ * The pin is PARITY WITH THE SHIPPED PLACEMENT, not a remembered coordinate: the mounted `.rz-item`
+ * group's transform must be byte-equal to `place.stand(tx, ty)` for the fixture's item tile, so the
+ * leg catches both the dropped `place` argument and a drifted `stand` derivation.
+ */
+test('VR-P3 (assembled): a ground-item pile STANDS at its own tile through the shipped placement', () => {
+  try {
+    const svg = vrMount();
+    const items = svg.slice(svg.indexOf('<g class="rz-items"'));
+    const m = /<g class="rz-item" transform="([^"]+)"/.exec(items);
+    assert.ok(m, 'the mounted item layer carries no transform at all — `place` is not being '
+      + 'threaded, so every pile draws at the layer origin instead of its tile');
+    assert.equal(m[1], vrPlace().stand(VR_ITEM.x, VR_ITEM.y),
+      'the pile\'s transform is not the shipped `place.stand` for its tile — the pile is drawn '
+      + 'tiles away from the floor cell its stacks are on, over other tiles\' contents');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐ MAJOR 3(b) — A CREW MEMBER IS A PERSON-SIZED FIGURE, and this leg exists because a mutation
+ * SURVIVED. `PAWN_M 1.66 → 1.0` drew every soul at 60 % of their height — a room of children,
+ * standing in a compartment whose every other dimension is stated in metres on the drawing itself —
+ * and the whole suite stayed green.
+ *
+ * The pin is a BAND ON METRES read back out of the assembled scene, so it needs no copy of the
+ * constant and catches the derivation as well as the value.
+ */
+test('VR-P3 (assembled): a crew member is drawn between 1.5 m and 1.9 m tall', () => {
+  try {
+    const svg = vrMount();
+    const pawns = svg.slice(svg.indexOf('<g class="rz-pawns"'));
+    const m = /<g class="rz-pawn" transform="translate\([-\d.]+ [-\d.]+\) scale\(([\d.]+)\)">/.exec(pawns);
+    assert.ok(m, 'no pawn was drawn in the mounted scene — this leg is vacuous');
+    // The sprite's own viewBox is 24 units tall (`render/pawn-svg.js`'s feet contract), so the drawn
+    // height in scene px is `scale × 24`, and the surface's rule is `ROOM_SCALE` px per centimetre.
+    const metres = (Number(m[1]) * 24) / (100 * ROOM_SCALE);
+    assert.ok(metres > 1.5 && metres < 1.9,
+      `a crew member is drawn ${metres.toFixed(2)} m tall. The room states its own width, depth and `
+      + '2.4 m ceiling in metres on three arrows; a person drawn at 1.0 m in it is a child, and it '
+      + 'is the ONE size on this surface a player can check against their own intuition.');
+    // …and they are taller than a tile is wide, which is the same fact a player reads at a glance.
+    assert.ok(Number(m[1]) * 24 > vrTilePx(),
+      'a person is drawn shorter than one metre of floor is wide');
+  } finally { vrRestore(); }
+});
+
+/**
+ * ⭐ MAJOR 1 / N16 — THE CLICK PULSE BRACKETS THE PROJECTED TILE.
+ *
+ * The transient lives OUTSIDE the SVG (it must survive `innerHTML =` being replaced under it), so it
+ * is the one place a plan-view box could be left behind: a fixed 32-px square flashes at the top-left
+ * of a ~133 px projected parallelogram, i.e. beside the tile the command went to. GREEN before this.
+ *
+ * Parity by import against `tileClientBox`, which the click math and the pulse share.
+ */
+test('VR-P3 (driven): the click pulse is the PROJECTED tile\'s box, not a 32-px plan square', () => {
+  const tile = { x: VR.rx + 4, y: VR.ry + 4 };
+  const pulseLayer = rzDoc.getElementById('rz-pulse');
+  try {
+    rzEnter('hold');
+    pulseLayer.childNodes = [];
+    rzArm('dig');
+    rzSweep(tile, tile);
+    const d = pulseLayer.childNodes[pulseLayer.childNodes.length - 1];
+    assert.ok(d && String(d.className).includes('rz-pulse-tile'),
+      'a DIG that landed produced no pulse at all — the one transient that tells the player the '
+      + 'click was received');
+    const want = tileClientBox(tile.x, tile.y, rzLayers._rect, VR);
+    const got = { left: parseFloat(d.style.left), top: parseFloat(d.style.top), width: parseFloat(d.style.width), height: parseFloat(d.style.height) };
+    for (const k of ['left', 'top', 'width', 'height']) {
+      assert.ok(Math.abs(got[k] - want[k]) < 0.15,
+        `the pulse's ${k} is ${got[k]} and the tile's projected box is ${want[k].toFixed(1)}. The `
+        + 'flash and the command must land on the same tile, or the player is told their click went '
+        + 'somewhere it did not.');
+    }
+    // ABSOLUTE, so a 32-unit plan box cannot pass by being "close enough" on a small room.
+    assert.ok(got.width > vrTilePx(),
+      `the pulse is ${got.width} px wide against a ${vrTilePx()} px tile — a projected tile's `
+      + 'bounding box is WIDER than the tile itself, because it brackets a parallelogram');
+  } finally {
+    rzArm('dig');
+    pulseLayer.childNodes = [];
+    vrRestore();
+  }
+});
+
+/**
+ * ⭐ MINOR 2 — A DOOR LABEL STAYS INSIDE THE PICTURE.
+ *
+ * `SCENE_PAD.left` is 58 px and a left-hand door's label is anchored at its END, so it runs LEFT: a
+ * `‹ 12 · ENGINEERING` on the front row of the wreck's 12 × 8 hold was set at x ≈ −60 and the player
+ * read the tail of a sentence with no beginning. Worst case is a 1 × 1 compartment, which loses the
+ * `‹ N ·` prefix that says WHICH compartment the door opens onto.
+ *
+ * MUTATION: drop the `clampLabelX` call ⇒ RED on both legs.
+ */
+test('VR-P3: no door label is clipped out of the scene — including the 1×1 worst case', () => {
+  const long = '‹ 12 · ENGINEERING SPACES';
+  const fails = [];
+  for (const focus of [{ deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 }, { deck: 0, rx: 0, ry: 0, rw: 12, rh: 8 }]) {
+    const scene = roomScene(focus);
+    const doors = [
+      { tx: 0, ty: 0, side: 'left', label: long },
+      { tx: focus.rw - 1, ty: focus.rh - 1, side: 'right', label: '7 · HOLD AND WORKSHOP ›' },
+      { tx: 0, ty: 0, side: 'front', label: '3 · THE LONG HALL FORWARD' },
+      { tx: 0, ty: focus.rh - 1, side: 'back', label: '9 · AFT BULKHEAD PASSAGE' },
+    ];
+    const svg = roomDoorsSvg(scene, focus, doors);
+    for (const m of svg.matchAll(/<text x="([-\d.]+)" y="[-\d.]+" text-anchor="([a-z]+)"[^>]*>([^<]+)</g)) {
+      const x = Number(m[1]), anchor = m[2], text = m[3];
+      const w = monoTextWidth(text, 8.5, 1.3);
+      const left = anchor === 'end' ? x - w : anchor === 'middle' ? x - w / 2 : x;
+      if (left < 0) {
+        fails.push(`${focus.rw}×${focus.rh}: "${text}" starts at x=${left.toFixed(1)}, outside the `
+          + 'viewBox — the player reads the tail of a label with no beginning');
+      }
+      if (left + w > scene.viewBox.w) {
+        fails.push(`${focus.rw}×${focus.rh}: "${text}" ends at x=${(left + w).toFixed(1)} past the `
+          + `viewBox's ${scene.viewBox.w}`);
+      }
+    }
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
+  // NON-VACUITY, an INCLUSION test: the parse really finds the labels, and the worst case really is
+  // one the UNCLAMPED geometry would have failed.
+  const scene1 = roomScene({ deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 });
+  const svg1 = roomDoorsSvg(scene1, { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 },
+    [{ tx: 0, ty: 0, side: 'left', label: long }]);
+  assert.ok(svg1.includes('>' + long + '<'), 'the label is not in the markup — the sweep found nothing');
+  assert.ok(monoTextWidth(long, 8.5, 1.3) > SCENE_PAD.left,
+    'the worst-case label now fits inside the left pad on its own, so this test proves nothing about '
+    + 'clipping. Lengthen it.');
+});
+
+/**
+ * ⭐ MINOR 3 — THE STAT LINE FITS THE SCENE IT IS WRITTEN IN.
+ *
+ * At the design's fixed 9 px the line is ~366 px of type and a 1 × 1 compartment's whole viewBox is
+ * 295 px, so the sentence ran off the right edge: the player read `… 1 OF 3 A`. It is FITTED rather
+ * than truncated because every clause is a fact about the room and the last one is the airless
+ * warning.
+ *
+ * MUTATION: drop the `k` scale (fix the size at 9) ⇒ RED on the narrow room. MUTATION: scale it
+ * UNCONDITIONALLY (drop the `full > avail` guard) ⇒ RED on the wide room, where the type would grow.
+ */
+test('VR-P3: the stat line is scaled to fit its own scene, and never grown past the design\'s 9 px', () => {
+  const read = (focus) => {
+    const scene = roomScene(focus);
+    const svg = roomTitleSvg(scene, { slotIndex: 0, roomName: 'STORAGE', areaM2: focus.rw * focus.rh, placed: 1, pending: 2, here: 1, aboard: 3, vacuum: true });
+    const t = /<text x="9"[^>]*font-size="([\d.]+)"[^>]*letter-spacing="([\d.]+)"[^>]*>([\s\S]*?)<\/text>/.exec(svg);
+    assert.ok(t, 'the stat line is not in the title group at all');
+    return { size: Number(t[1]), track: Number(t[2]), text: t[3].replace(/<[^>]+>/g, ''), vb: scene.viewBox.w };
+  };
+  const fails = [];
+  for (const focus of [{ deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 }, { deck: 0, rx: 0, ry: 0, rw: 12, rh: 8 }, { deck: 0, rx: 0, ry: 0, rw: 3, rh: 3 }]) {
+    const r = read(focus);
+    if (r.size > 9) fails.push(`${focus.rw}×${focus.rh}: the stat line is set at ${r.size} px, past the design's 9`);
+    if (9 + monoTextWidth(r.text, r.size, r.track) > r.vb) {
+      fails.push(`${focus.rw}×${focus.rh}: the stat line runs to `
+        + `${(9 + monoTextWidth(r.text, r.size, r.track)).toFixed(1)} px in a ${r.vb} px scene — the `
+        + 'player reads a sentence with its end cut off');
+    }
+    if (!/NO AIR$/.test(r.text)) fails.push(`${focus.rw}×${focus.rh}: the airless clause was truncated away`);
+  }
+  assert.deepEqual(fails, [], fails.join('\n'));
+  // The WIDE room is the control: it has room for the design's own size, so it must keep it.
+  assert.equal(read({ deck: 0, rx: 0, ry: 0, rw: 12, rh: 8 }).size, 9,
+    'a room with room to spare is shrinking its stat line anyway — the fit is unconditional');
+  // …and the NARROW room really is the case that needs the fit, or the leg above is vacuous.
+  assert.ok(read({ deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 }).size < 9,
+    'a 1×1 compartment fits the full stat line at 9 px on its own — this test proves nothing');
 });

@@ -33,10 +33,24 @@ import { STOCK_KINDS } from './stock-filter-model.js';
 // ⭐ M3-13 — `blockedReasonSentence`, NOT `BLOCKED_REASON_TEXT`: a row can carry a `detail` that
 // changes the sentence (`no_consumable` names the item), and the table alone cannot see it.
 import { blockedReasonSentence, SPEND_UNKNOWN } from '../wire/messages.js';
+// VR-P3 — THE CABINET-OBLIQUE KIT. The Level-2 surface is a perspective CUTAWAY now, and every
+// number in it comes through this module: one projection, shared with the fittings (P2), the plate
+// miniatures (P4) and the catalogue. Two derivations of one projection is exactly how the Overview
+// and the Room Zoom came to skin the same glyph two different ways (`oblique.js`'s own header).
+import {
+  PX_PER_CM, roomFrame, room as obliqueRoom, fhDef, fhRef, haloText, haloRuns, monoTextWidth, poly,
+  INK as OB_INK, PAPER as OB_PAPER, ATTEND as OB_ATTEND, n as obN,
+} from '../render/oblique.js';
 
 /* eslint-disable no-multi-spaces */
 
-/** The logical tile unit (VS-Z-15): one grid cell = one tile = 32 logical units. */
+/** The logical tile unit (VS-Z-15): one grid cell = one tile = 32 logical units.
+ *
+ *  ⚠️ SINCE VR-P3 IT IS NO LONGER THE SURFACE'S DRAWING UNIT — it is the unit the tile-scoped
+ *  LAYER BUILDERS (`markCellSvg`, `blockedCellSvg`, `itemStackSvg`) still draw one cell in, which is
+ *  then MAPPED onto that tile's projected floor parallelogram (or stood upright on it) by the
+ *  `scenePlacement` object. Keeping the builders in a square unit cell is what lets `mark-overlay.js`
+ *  stay SHARED with the Level-1 Overview, whose tiles really are axis-aligned boxes. */
 export const U = 32;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -114,11 +128,11 @@ export const TOOL_LABEL = Object.freeze({
   move: '➤ MOVE', demolish: '⌫ DEMOLISH',
 });
 
-/** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
-export const GHOST_ABBR = Object.freeze({
-  wall: 'WA', floor: 'FL', door: 'DO', bunk: 'BU', desk: 'DE', chair: 'CH', locker: 'LO',
-  plant: 'PL', lamp: 'LA', heater: 'HE',
-});
+// ⛔ `GHOST_ABBR` IS DELETED (VR-P3 review). It was VS-Z-31's two-letter ghost badge — `WA`, `FL`,
+// `DO` stamped inside a queued order's box — and the cutaway's ghost says the whole word plus its
+// PRICE on an oxblood leader (`roomzoom-view.js ghostSvg`: `WALL · 3 PARTS`, off the wire). The
+// table had no importer anywhere in `client/` at the moment VR-P3 landed, and an exported constant
+// that nothing reads is the next reader's invitation to draw the old badge back.
 
 const PALETTE_CMD = Object.freeze({
   wall:  { cls: 'structural', verb: 'build',  kind: 'wall' },
@@ -427,53 +441,578 @@ export function deckSlots(dView, deck) {
   return d && Array.isArray(d.slots) ? d.slots : [];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// Fit transform + click hit-testing (VS-Z-16 / IX-Z-10/11). The logical rw*U × rh*U space is scaled
-// by ONE factor `s` to fit the canvas interior, centred (letterboxed on the short axis) — the same
-// contract an SVG viewBox with preserveAspectRatio="xMidYMid meet" applies, so the rendered layers
-// and the click math share one transform and never drift.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// VR-P3 — THE ROOM CUTAWAY: the scene, its placements, and the INVERSE that resolves a click.
+//
+// The Level-2 surface used to be a PLAN: a CSS-gradient floor with a flat stack of axis-aligned
+// tile boxes drawn over it, in a `rw*U × rh*U` logical space. It is now the design's cabinet-oblique
+// CUTAWAY — floor quad, back wall, hatched left wall, dashed cut edges — and every tile-addressed
+// layer is placed onto it through ONE object (`scenePlacement`) rather than through per-layer maths.
+//
+// ── THE METRE MAPPING, DECIDED AND STATED ────────────────────────────────────────────────────
+// The wire carries a room's TILE RECT and nothing else: no metres, no ceiling. The design draws one
+// room, an 8.6 × 2.8 × 2.4 m galley, and it is furnished "at true dimensions" from a catalogue whose
+// thirty pieces are specified in CENTIMETRES (`items/fittings.js` SPECS) — so a scale is not
+// optional here: a 260 cm bench has to be 260 cm of floor or the room is a diagram of nothing.
+//
+//   ⭐ ONE TILE IS ONE METRE (`M_PER_TILE`), which is RimWorld's own cell size and therefore the
+//     analogue this repo is bound to (CLAUDE.md: "for every mechanism decision, RimWorld's
+//     implementation is the analogue"). It is also what makes the catalogue land: a 200 cm cot fills
+//     two tiles, a 46 cm chair a fifth of one, and the wreck's 12 × 8 compartments come out
+//     12.0 × 8.0 m — a real ship's compartment rather than a doll's house.
+//   ⭐ THE CEILING IS 2.4 m (`ROOM_HEIGHT_M`), MEASURED OFF THE DESIGN and not invented: the doc's
+//     own prose says "the room is now 2.4 m to the ceiling and the larder reaches most of the way up
+//     it", and its dimension arrow reads `2.4 M`. It is a CONSTANT because the sim has no per-room
+//     height to read; the day one exists this is the single place that changes.
+//
+// ── THE INVERSE ──────────────────────────────────────────────────────────────────────────────
+// The projection is x-is-x, height-is-height plus one depth vector, so it inverts in closed form on
+// the FLOOR PLANE (z = 0) — see `tileFromScenePoint`. A pointer is a 2-D point and the plane is the
+// assumption that makes it a tile; that assumption is stated rather than hidden, and its one honest
+// consequence is recorded there: clicking the TOP of a tall fitting resolves to the floor tile the
+// top face covers, not to the tile the fitting stands on. Every other reading of a 2-D point in a
+// 3-D scene needs a depth buffer, which an SVG string does not have.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** One sim tile is one METRE of floor — see the section header for why. */
+export const M_PER_TILE = 1;
+/** The compartment's ceiling, in metres. Measured off the design; the wire carries no height. */
+export const ROOM_HEIGHT_M = 2.4;
+/** px per cm for the Level-2 cutaway — the charter's `room` scale, read from the kit, never typed. */
+export const ROOM_SCALE = PX_PER_CM.room;
+/** The ONE `#fh` hatch namespace this surface emits (`fhDef('rz')` → `<pattern id="rz-fh">`). */
+export const RZ_ID = 'rz';
+/**
+ * The scene's margins around the cutaway, in scene px.
+ *  `top` reserves the in-SVG title + stat line (the design sets them at y=24 and y=42, with the
+ *  room's highest ink at y=64.4 — so 64 is the doc's own number, not a guess).
+ *  `right` holds the right-hand cut-edge dimension arrow and its halo label (the design's `2.4 M`
+ *  sits at x=909 against a room whose right-most ink is 981 — the arrow is INSIDE, the label past
+ *  it, so the margin is the label's own width).
+ *  `bottom` holds the floor-front dimension arrow (`8.6 M` at y=456 under a floor edge at y=452).
+ */
+export const SCENE_PAD = Object.freeze({ left: 58, right: 104, top: 64, bottom: 74 });
+
+/** Round to 2 dp, −0 normalised — the kit's own `n()`, re-exported through one name so this file
+ *  never grows a second rounding rule. */
+const nn = obN;
 
 /**
- * The fit descriptor for a room in an interior of `w`×`h` px. `s` scales logical→px; `offX/offY`
- * centre the room (letterbox). PURE.
- * @param {{rw:number, rh:number}} focusRoom
- * @param {number} w @param {number} h   the interior size in px
- * @param {number} [unit]                the logical tile unit (default U)
- * @returns {{s:number, offX:number, offY:number, logicalW:number, logicalH:number, unit:number}}
+ * THE SCENE for a focused room: its metres, its frame, and the viewBox that holds all of it.
+ *
+ * The viewBox is DERIVED from the room rather than fixed at the design's 1076×510, because rooms
+ * vary and the design draws exactly one. `preserveAspectRatio="xMidYMid meet"` then scales the whole
+ * scene into whatever box the canvas offers — the same contract the flat layer stack used, so the
+ * responsive behaviour is unchanged and the click math (below) inverts the same two transforms.
+ *
+ * @param {{rx:number, ry:number, rw:number, rh:number}|null} focusRoom
+ * @returns {{wM:number, dM:number, hM:number, s:number, frame:object, areaM2:number,
+ *            viewBox:{x:number,y:number,w:number,h:number}, viewBoxAttr:string}}
  */
-export function roomFit(focusRoom, w, h, unit = U) {
+export function roomScene(focusRoom) {
   const rw = Math.max(1, focusRoom ? focusRoom.rw | 0 : 1);
   const rh = Math.max(1, focusRoom ? focusRoom.rh | 0 : 1);
-  const logicalW = rw * unit;
-  const logicalH = rh * unit;
-  const s = Math.min(w / logicalW, h / logicalH) || 0;
-  return {
-    s, offX: (w - logicalW * s) / 2, offY: (h - logicalH * s) / 2, logicalW, logicalH, unit,
-  };
+  const s = ROOM_SCALE;
+  const wM = rw * M_PER_TILE, dM = rh * M_PER_TILE, hM = ROOM_HEIGHT_M;
+  const wPx = s * wM * 100, hPx = s * hM * 100;
+  const [depthX, depthY] = [0.4 * s * dM * 100, 0.6 * s * dM * 100];
+  // The front-left floor corner: far enough right for the left wall's depth run, far enough down
+  // that the back wall's TOP (the scene's highest ink) clears the title band.
+  const x0 = SCENE_PAD.left;
+  const y0 = SCENE_PAD.top + hPx + depthY;
+  const frame = roomFrame(wM, dM, hM, s, { x: x0, y: y0 });
+  return Object.freeze({
+    wM, dM, hM, s, frame, rw, rh,
+    areaM2: rw * rh * M_PER_TILE * M_PER_TILE,
+    viewBox: Object.freeze({
+      x: 0, y: 0,
+      w: nn(x0 + wPx + depthX + SCENE_PAD.right),
+      h: nn(y0 + SCENE_PAD.bottom),
+    }),
+    viewBoxAttr: '0 0 ' + nn(x0 + wPx + depthX + SCENE_PAD.right) + ' ' + nn(y0 + SCENE_PAD.bottom),
+  });
 }
 
 /**
- * Resolve a client-space click to an absolute sim tile, or null when it falls on the letterbox
- * margin or outside the room (IX-Z-10/11). `rect` is the canvas element's bounding box
- * `{left, top, width, height}`; `focusRoom` supplies the rect origin + fit. This is the responsive
- * generalisation of the mock's fixed `floor((cx-left)*(1488/width)/32)*32` math. PURE.
+ * THE ONE PLACEMENT OBJECT every tile-addressed layer is drawn through.
+ *
+ * Three idioms, and which one a layer takes is a statement about WHAT IT IS:
+ *   • `cell(tx,ty)`  — a `matrix(...)` that maps a `unit × unit` UPRIGHT cell onto the tile's
+ *     projected floor parallelogram. For PAINT ON THE FLOOR: a designation, a zone, a scrim. The
+ *     unit cell's TOP edge maps to the tile's NEAR edge, because the plan view looked down the
+ *     +y axis and the cutaway looks along it — low `ty` is nearest the viewer.
+ *   • `stand(tx,ty)` — a `translate(...)` that stands a `unit × unit` cell UPRIGHT with its bottom
+ *     centre on the tile's floor centre. For THINGS THAT STAND ON THE FLOOR: a pile, a wall skin, a
+ *     label plate. Text goes here and never in `cell` — sheared, mirrored type is unreadable.
+ *   • `foot(tx,ty)` / `front(tx,ty)` — the raw projected floor points (tile centre, tile front-left),
+ *     for anything that does its own drawing (a pawn, a fitting, a leader line).
+ *
+ * `unit` is the cell size the LAYER BUILDERS draw in (`U`), NOT a room dimension; the matrix is what
+ * carries it to the tile's real size on screen.
+ *
+ * @param {object} scene `roomScene` output
+ * @param {{rx:number, ry:number}} focusRoom
+ * @param {number} [unit]
+ */
+export function scenePlacement(scene, focusRoom, unit = U) {
+  const P = scene.frame.project;
+  const rx = focusRoom ? focusRoom.rx | 0 : 0;
+  const ry = focusRoom ? focusRoom.ry | 0 : 0;
+  const cm = M_PER_TILE * 100;
+  const corners = (tx, ty) => {
+    const x = ((tx | 0) - rx) * cm, y = ((ty | 0) - ry) * cm;
+    return {
+      // NEAR edge = the LOW-`ty` side, which is the tile's own `y` in room space.
+      nearLeft: P(x, y, 0), nearRight: P(x + cm, y, 0),
+      farLeft: P(x, y + cm, 0), farRight: P(x + cm, y + cm, 0),
+      centre: P(x + cm / 2, y + cm / 2, 0),
+      frontCentre: P(x + cm / 2, y, 0),
+    };
+  };
+  return Object.freeze({
+    unit,
+    corners,
+    /** The unit cell → this tile's floor parallelogram, as an SVG `matrix(a b c d e f)`. */
+    cell(tx, ty) {
+      const c = corners(tx, ty);
+      const a = (c.nearRight[0] - c.nearLeft[0]) / unit, b = (c.nearRight[1] - c.nearLeft[1]) / unit;
+      const cc = (c.farLeft[0] - c.nearLeft[0]) / unit, d = (c.farLeft[1] - c.nearLeft[1]) / unit;
+      return 'matrix(' + nn(a) + ' ' + nn(b) + ' ' + nn(cc) + ' ' + nn(d) + ' '
+        + nn(c.nearLeft[0]) + ' ' + nn(c.nearLeft[1]) + ')';
+    },
+    /** The unit cell, UPRIGHT, bottom-centre on the tile's floor centre. */
+    stand(tx, ty) {
+      const c = corners(tx, ty).centre;
+      return 'translate(' + nn(c[0] - unit / 2) + ' ' + nn(c[1] - unit) + ')';
+    },
+    /** The tile's floor CENTRE in scene px — where a person's feet or a fitting's anchor go. */
+    foot(tx, ty) { return corners(tx, ty).centre; },
+    /** The tile's NEAR-LEFT floor corner in scene px — a fitting's own cm origin. */
+    front(tx, ty) { return corners(tx, ty).nearLeft; },
+    /** The tile's floor quad as a closed `d`, for an outline that lies in the plane. */
+    quad(tx, ty) {
+      const c = corners(tx, ty);
+      return poly([c.nearLeft, c.nearRight, c.farRight, c.farLeft]);
+    },
+  });
+}
+
+/**
+ * THE INVERSE — a point in SCENE coordinates → the absolute sim tile whose FLOOR it lands on, or
+ * null when it falls outside the room.
+ *
+ * Closed form, because the projection is two multiplications and no matrix:
+ *     px = x0 + s·x + 0.4·s·y          py = y0 − s·z − 0.6·s·y
+ * On the floor plane z = 0, so `y = (y0 − py) / (0.6·s)` and then `x = (px − x0 − 0.4·s·y) / s`.
+ *
+ * ⚠️ THE PLANE IS AN ASSUMPTION AND IT HAS ONE MEASURED CONSEQUENCE: a click on the TOP FACE of a
+ * tall fitting resolves to the floor tile that face covers, which is further BACK than the tile the
+ * fitting stands on. At the cutaway's 2.4 m ceiling that is up to ~3 tiles of error on the tallest
+ * pieces — a real miss, not a rounding one, and it is FILED rather than closed here.
+ *
+ * ⚠️ THE JUSTIFICATION THAT STOOD HERE WAS OVERSTATED AND IS CORRECTED (VR-P3 review, MINOR 7). It
+ * read: *"the alternative (hit-test every drawn face in paint order) needs the browser's own picking,
+ * which a pure model cannot have."* The first half is true of THIS FUNCTION and false of the SURFACE:
+ * the pieces are real SVG elements in a real document, so `roomzoom-view.js` could resolve a pointer
+ * from `e.target` (or `elementFromPoint`) and fall back to this inverse only on the floor itself —
+ * every fitting already carries an id naming its tile (`rz-f-<tx>-<ty>`). What a PURE model cannot
+ * have is a depth buffer; what the VIEW cannot have is an excuse. The old plan view had no such case
+ * because nothing had height.
+ * PURE.
+ */
+export function tileFromScenePoint(sx, sy, scene, focusRoom) {
+  if (!scene || !focusRoom) return null;
+  const s = scene.s;
+  if (!(s > 0)) return null;
+  const f = scene.frame;
+  const yCm = (f.y0 - sy) / (0.6 * s);
+  const xCm = (sx - f.x0 - 0.4 * s * yCm) / s;
+  const cm = M_PER_TILE * 100;
+  if (xCm < 0 || yCm < 0 || xCm >= scene.rw * cm || yCm >= scene.rh * cm) return null;
+  const tx = Math.floor(xCm / cm) + (focusRoom.rx | 0);
+  const ty = Math.floor(yCm / cm) + (focusRoom.ry | 0);
+  return clampTileToRoom(tx, ty, focusRoom) ? { x: tx, y: ty } : null;
+}
+
+/**
+ * The `preserveAspectRatio="xMidYMid meet"` fit of a scene viewBox into a `w × h` px element: ONE
+ * scale, centred on both axes. The rendered SVG and the click math share this derivation, so they
+ * cannot drift — which is the property `roomFit` had and this replaces.
+ *
+ * ⚠️ IT REPLACES `roomFit`, WHICH IS DELETED RATHER THAN KEPT ALONGSIDE. `roomFit` described the
+ * PLAN's `rw*U × rh*U` box; that box no longer exists, and a second fit descriptor for a space
+ * nothing draws in is the shape of stale model this file's own headers keep retracting.
+ * PURE.
+ */
+export function sceneFit(scene, w, h) {
+  const vb = scene && scene.viewBox;
+  if (!vb || !(vb.w > 0) || !(vb.h > 0) || !(w > 0) || !(h > 0)) {
+    return { s: 0, offX: 0, offY: 0, vbW: vb ? vb.w : 0, vbH: vb ? vb.h : 0 };
+  }
+  const s = Math.min(w / vb.w, h / vb.h);
+  return { s, offX: (w - vb.w * s) / 2, offY: (h - vb.h * s) / 2, vbW: vb.w, vbH: vb.h };
+}
+
+/**
+ * Resolve a client-space pointer to an absolute sim tile, or null (IX-Z-10/11). Same SIGNATURE and
+ * same contract as the plan-view version it replaces — `rect` is the SVG element's bounding box —
+ * but the two transforms it inverts are now the viewBox fit and the cabinet oblique.
+ * PURE.
  * @param {number} clientX @param {number} clientY
  * @param {{left:number, top:number, width:number, height:number}} rect
  * @param {{rx:number, ry:number, rw:number, rh:number}} focusRoom
- * @param {number} [unit]
  * @returns {{x:number, y:number}|null}
  */
-export function tileFromCanvasXY(clientX, clientY, rect, focusRoom, unit = U) {
+export function tileFromCanvasXY(clientX, clientY, rect, focusRoom) {
   if (!rect || !focusRoom || !rect.width || !rect.height) return null;
-  const fit = roomFit(focusRoom, rect.width, rect.height, unit);
+  const scene = roomScene(focusRoom);
+  const fit = sceneFit(scene, rect.width, rect.height);
   if (!(fit.s > 0)) return null;
-  const lx = (clientX - rect.left - fit.offX) / fit.s; // logical px within rw*U × rh*U
-  const ly = (clientY - rect.top - fit.offY) / fit.s;
-  if (lx < 0 || ly < 0 || lx >= fit.logicalW || ly >= fit.logicalH) return null; // letterbox margin
-  const tx = Math.floor(lx / unit) + (focusRoom.rx | 0);
-  const ty = Math.floor(ly / unit) + (focusRoom.ry | 0);
-  return clampTileToRoom(tx, ty, focusRoom) ? { x: tx, y: ty } : null;
+  const sx = (clientX - rect.left - fit.offX) / fit.s;
+  const sy = (clientY - rect.top - fit.offY) / fit.s;
+  return tileFromScenePoint(sx, sy, scene, focusRoom);
+}
+
+/** The scene point (in CLIENT px) a tile's floor centre sits at — the inverse direction of
+ *  `tileFromCanvasXY`, for the one transient that lives outside the SVG (`.rz-pulse-tile`). PURE. */
+export function tileClientBox(tx, ty, rect, focusRoom) {
+  if (!rect || !focusRoom || !rect.width || !rect.height) return null;
+  const scene = roomScene(focusRoom);
+  const fit = sceneFit(scene, rect.width, rect.height);
+  if (!(fit.s > 0)) return null;
+  const p = scenePlacement(scene, focusRoom);
+  const c = p.corners(tx, ty);
+  const xs = [c.nearLeft[0], c.nearRight[0], c.farLeft[0], c.farRight[0]];
+  const ys = [c.nearLeft[1], c.nearRight[1], c.farLeft[1], c.farRight[1]];
+  const toX = (v) => fit.offX + v * fit.s;
+  const toY = (v) => fit.offY + v * fit.s;
+  const left = toX(Math.min(...xs)), right = toX(Math.max(...xs));
+  const top = toY(Math.min(...ys)), bottom = toY(Math.max(...ys));
+  return { left, top, width: right - left, height: bottom - top };
+}
+
+/**
+ * THE CUTAWAY ITSELF: the shared hatch def, then the room — floor quad, floor grid, back wall,
+ * hatched left wall, solid front edge and the two dashed cut edges — straight out of `oblique.room`.
+ *
+ * ⭐ THE FLOOR GRID **IS** THE BUILD GRID, and that is the one place this call diverges from the
+ * design's defaults. `oblique.room` defaults to a 60 cm grid and 5 depth bands, which is a drawing
+ * convention; here the grid has a job — it is the surface a player designates tiles on — so it is
+ * asked for one line per METRE across and one band per TILE back. The old `gridSvg`'s
+ * `rgba(255,255,255,.05)` hairlines are deleted with the plan they belonged to: the grid is the
+ * design's own 0.5-wide ink at 0.2 opacity now, and it lands exactly on the tiles.
+ *
+ * `vacuum` swaps the floor's grid for a DASHED one and dims the wall faces — the airless idiom, see
+ * `roomStatLine`.
+ */
+export function roomCutawaySvg(scene, opts = {}) {
+  const o = opts || {};
+  const body = obliqueRoom(scene.wM, scene.dM, scene.hM, scene.s, {
+    x: scene.frame.x0, y: scene.frame.y0,
+    hatch: fhRef(RZ_ID),
+    gridCm: M_PER_TILE * 100,
+    depthDivs: Math.max(1, scene.rh),
+  });
+  if (!o.vacuum) return body;
+  // THE AIRLESS ROOM. The floor grid becomes a DASHED grid and the walls lose a third of their ink:
+  // a compartment with no air is a compartment that is not really a room yet. It is a treatment of
+  // the DRAWING rather than a wash over it, because a scrim over the whole floor would dim every
+  // order, mark and zone painted on it — the exact misreading `blocked-overlay.js` refuses to make.
+  return body
+    .replace(/(<g fill="none" stroke="[^"]*" stroke-width="0.5")/, '$1 stroke-dasharray="3 4"')
+    .replace(/stroke-width="2.2"/g, 'stroke-width="2.2" stroke-opacity="0.62"');
+}
+
+/** The shared `#rz-fh` hatch def — emitted ONCE per surface root (the id-collision pin). */
+export function roomHatchDef() { return '<defs>' + fhDef(RZ_ID) + '</defs>'; }
+
+/**
+ * THE IN-SVG TITLE AND STAT LINE — the design's serif 24px headline over its mono 9px stat line.
+ *
+ * ⛔ EVERY CLAUSE IS WIRE DATA. The design's own stat line reads
+ * `24.1 M² · 5 OF 9 FITTINGS BUILT · SEATS 5 OF 3 ABOARD`, and the third clause is the emotional
+ * payload of the whole screen. **`SEATS` IS NOT AVAILABLE AND IS NOT INVENTED** — no channel carries
+ * a seat count, and ruling E11 forbids a UI lane writing the sentence itself. The clause this
+ * surface CAN say truthfully has the same shape and the same payload: how many of the souls aboard
+ * are standing in this compartment right now (`roomCrew` against the roster). `N OF M ABOARD, HERE`.
+ *
+ * The FITTINGS clause is `placed OF placed+pending`, both derived (`roomCells` with an itemId, plus
+ * `roomDesigns`) — the design's "5 OF 9 FITTINGS BUILT" exactly.
+ *
+ * @param {{areaM2:number, placed:number, pending:number, here:number, aboard:number,
+ *          vacuum?:boolean}} s
+ */
+export function roomStatLine(s) {
+  return roomStatClauses(s).map((c) => c.t).join(STAT_SEP);
+}
+
+/** The separator between stat clauses — declared once, because the SPLIT builder below and the
+ *  joined string above must agree about it to the character. */
+const STAT_SEP = ' · ';
+/** The stat line's ordinary ink (charter §1 micro-label) and the ONE clause allowed the accent. */
+const STAT_INK = '#6B6252';
+/** The stat line's design type: mono 9 / 1.6 tracking, at x = 9 in the scene's title band. */
+const STAT_X = 9, STAT_Y = 42, STAT_SIZE = 9, STAT_TRACK = 1.6;
+
+/**
+ * THE STAT LINE AS CLAUSES, each with the ink it is entitled to — the split `roomStatLine` joins.
+ *
+ * ⛔⛔ THIS EXISTS BECAUSE THE ONE-STRING VERSION SPENT THE ACCENT ON EVERYTHING (VR-P3 review,
+ * MAJOR 4). `roomTitleSvg` set `fill: vacuum ? OB_ATTEND : …` on the WHOLE `<text>`, so an airless
+ * compartment printed its area, its fitting count and its crew count in oxblood as well as its
+ * `NO AIR` — while this function's own comment and `roomTitleSvg`'s own comment both said only the
+ * trailing clause took it. Charter §1 allows ONE accent and spends it on attention; a stat line
+ * entirely in the attention colour says the area is an emergency.
+ *
+ * The returned array is the ONLY place the clause list is written; `roomStatLine` joins it and
+ * `roomTitleSvg` sets each run's ink. PURE.
+ *
+ * @param {{areaM2:number, placed:number, pending:number, here:number, aboard:number,
+ *          vacuum?:boolean}} s
+ * @returns {{t:string, fill?:string}[]}
+ */
+export function roomStatClauses(s) {
+  const o = s || {};
+  const area = (o.areaM2 | 0);
+  const placed = o.placed | 0, pending = o.pending | 0;
+  const here = o.here | 0, aboard = o.aboard | 0;
+  const parts = [
+    { t: area + '.0 M²' },
+    { t: placed + ' OF ' + (placed + pending) + ' FITTINGS BUILT' },
+    { t: here + ' OF ' + aboard + ' ABOARD, HERE' },
+  ];
+  // The airless clause rides the stat line rather than a badge of its own: it is a fact about the
+  // compartment, in the row that states facts about the compartment, and it is the ONE clause here
+  // that is allowed the accent (charter §1 — oxblood is attention).
+  if (o.vacuum) parts.push({ t: 'NO AIR', fill: OB_ATTEND });
+  return parts;
+}
+
+/**
+ * The in-SVG headline + stat line as one `<g>`.
+ *
+ * ⭐ ONLY THE `NO AIR` CLAUSE TAKES THE ACCENT — see `roomStatClauses`. The line is one `<text>` with
+ * one `<tspan>` for the accented clause, so the words still sit on one baseline with one halo.
+ *
+ * ⭐ AND IT IS SCALED TO FIT (VR-P3 review, MINOR 3). At the design's fixed 9 px the line is ~366 px
+ * of type; a 1 × 1 compartment's whole viewBox is 295 px, so the sentence ran off the right edge and
+ * the player read `… 1 OF 3 A`. It is FITTED instead of TRUNCATED because every clause is a fact
+ * about the room and the last one is the airless warning — dropping characters off the end drops the
+ * one clause that matters most. The size never grows past the design's 9.
+ */
+export function roomTitleSvg(scene, s) {
+  const o = s || {};
+  const title = 'Compartment ' + ((o.slotIndex | 0) + 1) + ' · ' + String(o.roomName == null ? '' : o.roomName);
+  const runs = roomStatClauses(o).flatMap((c, i) => (i ? [{ t: STAT_SEP }, c] : [c]));
+  const stat = runs.map((r) => r.t).join('');
+  const avail = Math.max(1, (scene && scene.viewBox ? scene.viewBox.w : 0) - STAT_X * 2);
+  const full = monoTextWidth(stat, STAT_SIZE, STAT_TRACK);
+  const k = full > avail ? avail / full : 1;
+  return '<g class="rz-title">'
+    + haloText(title, 8, 24, { size: 24, font: 'serif', fill: OB_INK, stroke: OB_PAPER, anchor: 'start' })
+    + haloRuns(runs, STAT_X, STAT_Y, {
+      size: nn(STAT_SIZE * k), font: 'mono', tracking: nn(STAT_TRACK * k), fill: STAT_INK,
+      stroke: OB_PAPER, anchor: 'start',
+    })
+    + '</g>';
+}
+
+/**
+ * THE DIMENSION ARROWS — the design's three: the width along the floor front, the depth up the left
+ * wall (rotated to lie along it) and the ceiling height on the right cut edge.
+ *
+ * They are what makes the drawing a DRAWING rather than a picture, and they are the cheapest honest
+ * statement of the metre mapping: a player who wonders how big the bench is can read the room.
+ * Every number comes from `roomScene`, so a room that is 12 tiles across says `12.0 M` and cannot
+ * say anything else.
+ */
+export function roomDimensionsSvg(scene) {
+  const f = scene.frame, s = scene.s;
+  const c = f.corners;
+  const one = (d) => (Math.round(d * 10) / 10).toFixed(1) + ' M';
+  const tick = (x1, y1, x2, y2) => '<path d="M' + nn(x1) + ' ' + nn(y1) + ' L' + nn(x2) + ' ' + nn(y2)
+    + '" fill="none" stroke="' + OB_INK + '" stroke-width="0.5" opacity="0.5"/>';
+  const line = (x1, y1, x2, y2) => '<path d="M' + nn(x1) + ' ' + nn(y1) + ' L' + nn(x2) + ' ' + nn(y2)
+    + '" stroke="' + OB_INK + '" stroke-width="0.9"/>';
+  const head = (x, y, dx, dy) => {
+    // A 7-px barb, square to the run — the design's own `l7.0 -2.6 l0.0 5.2 Z` generalised.
+    const L = Math.hypot(dx, dy) || 1;
+    const ux = dx / L, uy = dy / L, px = -uy, py = ux;
+    return '<path d="M' + nn(x) + ' ' + nn(y) + ' L' + nn(x + ux * 7 + px * 2.6) + ' ' + nn(y + uy * 7 + py * 2.6)
+      + ' L' + nn(x + ux * 7 - px * 2.6) + ' ' + nn(y + uy * 7 - py * 2.6) + ' Z" fill="' + OB_INK + '"/>';
+  };
+  const lab = (t, x, y, rot, anchor) => '<g transform="rotate(' + nn(rot) + ' ' + nn(x) + ' ' + nn(y) + ')">'
+    + haloText(t, x, y, { size: 9, font: 'mono', tracking: 1.3, fill: OB_INK, anchor }) + '</g>';
+
+  // 1 — WIDTH, under the floor's front edge.
+  const wy = c.frontLeft[1] + 22;
+  const w = tick(c.frontLeft[0], c.frontLeft[1], c.frontLeft[0] - 9.1, wy + 3.4)
+    + tick(c.frontRight[0], c.frontRight[1], c.frontRight[0] - 9.1, wy + 3.4)
+    + line(c.frontLeft[0] - 6.8, wy, c.frontRight[0] - 6.8, wy)
+    + head(c.frontLeft[0] - 6.8, wy, 1, 0) + head(c.frontRight[0] - 6.8, wy, -1, 0)
+    + lab(one(scene.wM), (c.frontLeft[0] + c.frontRight[0]) / 2 - 6.8, wy - 6, 0, 'middle');
+  // 2 — DEPTH, rotated to run along the left wall's floor line.
+  const dx0 = c.frontLeft[0] - 24, dy0 = c.frontLeft[1] + 10;
+  const dx1 = c.backLeft[0] - 24, dy1 = c.backLeft[1] + 10;
+  const ang = Math.atan2(dy1 - dy0, dx1 - dx0) * 180 / Math.PI;
+  const d = tick(c.frontLeft[0], c.frontLeft[1], dx0, dy0) + tick(c.backLeft[0], c.backLeft[1], dx1, dy1)
+    + line(dx0, dy0, dx1, dy1) + head(dx0, dy0, dx1 - dx0, dy1 - dy0) + head(dx1, dy1, dx0 - dx1, dy0 - dy1)
+    + lab(one(scene.dM), (dx0 + dx1) / 2 - 15, (dy0 + dy1) / 2, ang, 'middle');
+  // 3 — HEIGHT, on the right cut edge.
+  const hx = c.frontRight[0] + 22;
+  const h = tick(c.frontRight[0], c.frontRight[1], c.frontRight[0] + 30, c.frontRight[1])
+    + tick(c.frontRightTop[0], c.frontRightTop[1], c.frontRightTop[0] + 30, c.frontRightTop[1])
+    + line(hx, c.frontRight[1], hx, c.frontRightTop[1])
+    + head(hx, c.frontRight[1], 0, -1) + head(hx, c.frontRightTop[1], 0, 1)
+    + lab(one(scene.hM), hx + 12, (c.frontRight[1] + c.frontRightTop[1]) / 2, 0, 'start');
+  return '<g class="rz-dims">' + w + d + h + '</g>';
+}
+
+/**
+ * THE DOOR PLATES + HALO LABELS. Every tile of the room's boundary that carries a door glyph gets a
+ * plate on the wall it sits in and a mono label outside it naming where it goes.
+ *
+ * ⚠️ IT NAMES ONLY WHAT THE WIRE KNOWS. The design's labels read `‹ 5 · CORRIDOR` and `7 · HOLD ›`
+ * — a compartment NUMBER and its NAME on the other side of the door. The `decks` channel carries
+ * both for every slot, so the neighbour is LOOKED UP (`neighbourAt`), never invented; a door onto
+ * nothing this client can name gets the bare `DOOR` and no arrow, which is the honest answer.
+ *
+ * @param {object} scene @param {{rx,ry,rw,rh}} focusRoom
+ * @param {{tx:number,ty:number,side:'left'|'right'|'back'|'front',label:string}[]} doors
+ */
+export function roomDoorsSvg(scene, focusRoom, doors) {
+  if (!Array.isArray(doors) || !doors.length) return '';
+  const P = scene.frame.project;
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const cm = M_PER_TILE * 100, dh = 200; // a 2.0 m doorway in a 2.4 m wall
+  const vbW = scene.viewBox ? scene.viewBox.w : 0;
+  const out = [];
+  for (const d of doors) {
+    if (!d) continue;
+    const x = ((d.tx | 0) - rx) * cm, y = ((d.ty | 0) - ry) * cm;
+    let pts, lx, ly, anchor;
+    if (d.side === 'left') {
+      pts = [P(0, y, 0), P(0, y + cm, 0), P(0, y + cm, dh), P(0, y, dh)];
+      const a = P(0, y + cm / 2, dh);
+      lx = a[0] - 22; ly = a[1] - 8; anchor = 'end';
+    } else if (d.side === 'right') {
+      // ⛔ NO PLATE ON THE RIGHT, AND THAT IS THE CUTAWAY BEING HONEST. The right wall is the one the
+      // drawing has CUT AWAY — that is what its dashed edge says — so a solid door plate hanging in
+      // that empty space would contradict the two dashed lines beside it. The door is still SAID:
+      // the label goes at the cut edge, with the design's `›` pointing out of the room.
+      pts = null;
+      const a = P(scene.rw * cm, y + cm / 2, dh);
+      lx = a[0] + 10; ly = a[1] - 8; anchor = 'start';
+    } else if (d.side === 'front') {
+      // ⛔ THE NEAR WALL IS CUT AWAY TOO — same rule as the right, same reason. It is still SAID: the
+      // label goes UNDER the floor's front edge, where the width dimension already lives, so a way
+      // out of the room is never silently missing from the drawing.
+      pts = null;
+      const a = P(x + cm / 2, 0, 0);
+      lx = a[0]; ly = a[1] + 34; anchor = 'middle';
+    } else { // back (or an unclassified door — drawn on the back wall, which is the one we can see)
+      pts = [P(x, scene.rh * cm, 0), P(x + cm, scene.rh * cm, 0),
+        P(x + cm, scene.rh * cm, dh), P(x, scene.rh * cm, dh)];
+      const a = P(x + cm / 2, scene.rh * cm, dh);
+      lx = a[0]; ly = a[1] - 12; anchor = 'middle';
+    }
+    if (pts) {
+      // The CLASS is a test + stylesheet hook and it is the only thing that separates "a door plate
+      // was drawn" from "a door label was written": on the right and front walls the cutaway draws
+      // NO plate on purpose (see above), so a census that could not tell the two apart would read a
+      // label-only door as a plate and never see the plate layer disappear.
+      out.push('<path class="rz-door-plate" d="' + poly(pts) + '" fill="' + OB_PAPER + '" stroke="'
+        + OB_INK + '" stroke-width="1.5"/>');
+    }
+    out.push(haloText(d.label, clampLabelX(lx, d.label, anchor, vbW), ly, {
+      size: DOOR_LABEL_SIZE, font: 'mono', tracking: DOOR_LABEL_TRACK, fill: '#6B6252', anchor,
+    }));
+  }
+  return '<g class="rz-doors">' + out.join('') + '</g>';
+}
+
+/** The door labels' type — one place, so the clamp below and the label agree about their width. */
+const DOOR_LABEL_SIZE = 8.5, DOOR_LABEL_TRACK = 1.3;
+/** How close to the viewBox edge a clamped label is allowed to sit, in scene px. */
+const LABEL_MARGIN = 2;
+
+/**
+ * KEEP A DOOR LABEL INSIDE THE SCENE (VR-P3 review, MINOR 2).
+ *
+ * ⛔ THE DEFECT, MEASURED. `SCENE_PAD.left` is 58 px and a left-hand door's label is set at the wall
+ * with `text-anchor="end"`, so it runs LEFT from its anchor: `‹ 2 · CORRIDOR` at 8.5/1.3 is ~92 px of
+ * type against ~55 px of room to the left of it, and the first characters fell outside the viewBox
+ * and were CLIPPED — a 1 × 1 compartment lost the whole `‹ 2 ·` prefix, and the wreck's 12 × 8 front
+ * row put a left label at x ≈ −60. A door the player cannot read is a way out of the room the drawing
+ * does not mention, which is the exact silence `roomDoorsSvg`'s own header refuses on the right wall.
+ *
+ * ⭐ IT CLAMPS RATHER THAN GROWING THE PAD, and that is a choice with a reason: the pad is part of the
+ * SCENE (it sizes the viewBox, which sizes every tile on screen), so deriving it from the longest
+ * neighbour NAME would let one compartment's caption shrink the room next door. A clamped label may
+ * ride over the hatched left wall; it is haloed (`paint-order="stroke"`, a 3.4 px paper knockout), so
+ * it stays readable there, and it is INSIDE the picture, which is the property that was missing.
+ * PURE.
+ */
+function clampLabelX(x, label, anchor, vbW) {
+  const w = monoTextWidth(label, DOOR_LABEL_SIZE, DOOR_LABEL_TRACK);
+  // Where the label's LEFT edge sits relative to its anchor, per `text-anchor`.
+  const lead = anchor === 'end' ? -w : anchor === 'middle' ? -w / 2 : 0;
+  let v = x;
+  if (vbW > 0 && v + lead + w > vbW - LABEL_MARGIN) v = vbW - LABEL_MARGIN - w - lead;
+  // LEFT LAST, so it wins when a label is wider than the whole scene: a caption that starts at the
+  // left edge and overruns the right is readable from its first character; one pushed off the left
+  // loses the `‹ N ·` prefix that says WHICH compartment it opens onto, which is the payload.
+  if (v + lead < LABEL_MARGIN) v = LABEL_MARGIN - lead;
+  return nn(v);
+}
+
+/**
+ * The room's boundary doors, from the frame's own glyphs. A door glyph (`'+'` closed, `'X'` blast,
+ * `'/'` open doorway) on the room's edge row/column is a way out; the label names the neighbouring
+ * slot when `decks` describes one.
+ *
+ * ⚠️ EDGE ONLY, and that is not a shortcut: an interior door is a partition inside one compartment
+ * and has no "where does it go" to state, so labelling it would be inventing a destination.
+ * PURE.
+ */
+export function roomDoorTiles(frame, focusRoom, dView) {
+  const out = [];
+  if (!frame || !focusRoom || !Array.isArray(frame.cells)) return out;
+  if ((frame.deck | 0) !== (focusRoom.deck | 0)) return out;
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const rw = focusRoom.rw | 0, rh = focusRoom.rh | 0;
+  const slots = Array.isArray(dView) ? deckSlots(dView, focusRoom.deck) : [];
+  const nameAt = (tx, ty) => {
+    for (const s of slots) {
+      if (!s || !s.anchorName || s.slotIndex === (focusRoom.slotIndex | 0)) continue;
+      const r = s.rect || {};
+      if (tx >= (r.x | 0) && tx < (r.x | 0) + (r.w | 0) && ty >= (r.y | 0) && ty < (r.y | 0) + (r.h | 0)) {
+        return { n: (s.slotIndex | 0) + 1, name: s.displayName || '' };
+      }
+    }
+    return null;
+  };
+  for (let ty = ry; ty < ry + rh; ty++) {
+    for (let tx = rx; tx < rx + rw; tx++) {
+      const onLeft = tx === rx, onRight = tx === rx + rw - 1;
+      const onBack = ty === ry + rh - 1, onFront = ty === ry;
+      if (!onLeft && !onRight && !onBack && !onFront) continue;
+      const cell = frame.cells[ty * (frame.w | 0) + tx];
+      if (!Array.isArray(cell)) continue;
+      const code = cell[0] | 0;
+      if (code !== 43 && code !== 88 && code !== 47) continue; // + X /
+      const side = onLeft ? 'left' : onRight ? 'right' : onBack ? 'back' : 'front';
+      const nb = nameAt(side === 'left' ? tx - 1 : side === 'right' ? tx + 1 : tx,
+        side === 'back' ? ty + 1 : side === 'front' ? ty - 1 : ty);
+      const label = nb && nb.name
+        ? (side === 'left' ? '‹ ' + nb.n + ' · ' + nb.name
+          : side === 'right' ? nb.n + ' · ' + nb.name + ' ›'
+            : nb.n + ' · ' + nb.name)
+        : 'DOOR';
+      out.push({ tx, ty, side, label });
+    }
+  }
+  return out;
 }
 
 /** True when (tx,ty) is inside the room's tile-rect (IX-Z-11). PURE. */
@@ -886,15 +1425,21 @@ export function roomMarkTiles(marks, focusRoom) {
  * @param {number} [unit]
  * @returns {string}
  */
-export function markLayerSvg(marks, focusRoom, unit = U) {
+export function markLayerSvg(marks, focusRoom, unit = U, place = null) {
   if (!Array.isArray(marks) || !marks.length || !focusRoom) return '';
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
   const out = [];
   for (const m of marks) {
     if (!m || m.mark === 'stockpile') continue; // WP-3's zoneLayerSvg owns this tile — see above
-    const cell = markCellSvg(m.mark, (m.tx - rx) * unit, (m.ty - ry) * unit, unit, unit,
-      markVariant(m.tx, m.ty));
-    if (cell) out.push(cell);
+    // VR-P3 — A MARK IS PAINT ON THE FLOOR, so it goes in the FLOOR PLANE: the unit cell is built at
+    // the origin and mapped onto the tile's projected parallelogram by `place.cell`. With no `place`
+    // the cell is laid out plan-style at its tile offset, which is what the Level-1 Overview's own
+    // `markCellSvg` call does and what every isolated model test drives — the two are the same
+    // vocabulary at two altitudes, which is the whole reason `mark-overlay.js` is a shared module.
+    const at = place ? [0, 0] : [(m.tx - rx) * unit, (m.ty - ry) * unit];
+    const cell = markCellSvg(m.mark, at[0], at[1], unit, unit, markVariant(m.tx, m.ty));
+    if (!cell) continue;
+    out.push(place ? '<g transform="' + place.cell(m.tx, m.ty) + '">' + cell + '</g>' : cell);
   }
   return out.length ? '<g class="rz-marks" pointer-events="none">' + out.join('') + '</g>' : '';
 }
@@ -1318,9 +1863,14 @@ const SPRITE_SIDE_1 = 1.15;     // sprite box as a multiple of `unit`, one kind 
 const SPRITE_SIDE_N = 0.72;     // …and two. (Furniture uses 1.6; a pile reads smaller than a machine.)
 const BADGE_H = 8;
 const BADGE_INSET = 1.5;        // margin from the tile edge
-const BADGE_FILL = 'rgba(10,13,20,.72)';
-const BADGE_EDGE = '#8a7d6e';   // the rubble grey from mark-overlay.js: loose matter, not an order
-const BADGE_TEXT = '#d8cbb4';
+// VR-P3 — THE COUNT BADGE IN THE PAPER DIALECT. It was a dark plate with a rubble-grey edge and
+// cream digits, which was the warm set's way of saying "loose matter, not an order". On paper the
+// same statement is the DEFAULT ink-on-paper plate and NO ACCENT AT ALL: charter §1's last dialect
+// rule is *"no accent = nothing to see"*, and a pile of regolith is precisely a thing with nothing
+// to decide about it. Spending oxblood or a dash on it would make every full floor shout.
+const BADGE_FILL = '#EBE4D1';   // PAPER
+const BADGE_EDGE = '#14120F';   // INK, hairline
+const BADGE_TEXT = '#14120F';   // INK
 const ADVANCE = 0.62;           // the advance width of this surface's monospace stack, in em
 
 /**
@@ -1343,15 +1893,24 @@ export function itemStackSlots(stacks) {
 
 /** A dark fitted text chip centred on (cx, bottom-anchored at `bottom`), at most `maxW` wide. The
  *  count badge and the no-art label chip are the same object at two lengths. PURE. */
-function chipSvg(text, cx, bottom, maxW) {
+function chipSvg(text, cx, bottom, maxW, k = 1) {
   const len = text.length || 1;
-  const fs = Math.min(6.5, (maxW - 2.5) / (ADVANCE * len));
-  const w = Math.min(maxW, len * ADVANCE * fs + 2.5);
+  // ⚠️ `k` IS THE CELL'S SCALE AGAINST `U`, and it is not decoration. The cutaway draws a tile ~95
+  // scene px wide; a badge whose height and font cap are hard-coded to the plan view's 32-unit tile
+  // renders a third the size it should and the count is unreadable — measured on the first render.
+  // The FIT is unchanged and is still the load-bearing half: the font is computed from `maxW`, so a
+  // four-digit count can never spill onto the neighbouring tile at any `k`.
+  const H = BADGE_H * k;
+  const fs = Math.min(6.5 * k, (maxW - 2.5 * k) / (ADVANCE * len));
+  const w = Math.min(maxW, len * ADVANCE * fs + 2.5 * k);
   const x = cx - w / 2;
-  const y = bottom - BADGE_H;
-  return '<rect x="' + n2(x) + '" y="' + n2(y) + '" width="' + n2(w) + '" height="' + BADGE_H
-    + '" rx="2" fill="' + BADGE_FILL + '" stroke="' + BADGE_EDGE + '" stroke-width="1"/>'
-    + '<text x="' + n2(cx) + '" y="' + n2(y + BADGE_H / 2) + '" font-size="' + n2(fs)
+  const y = bottom - H;
+  // The class is a test hook and nothing else styles it: `k` is the ONE thing this function scales by
+  // and it survived a mutation to `1` with the whole suite green, so the plate has to be findable in
+  // the ASSEMBLED scene to be measured there (`room-model.test.js`, the count-badge scale leg).
+  return '<rect class="rz-chip" x="' + n2(x) + '" y="' + n2(y) + '" width="' + n2(w) + '" height="' + n2(H)
+    + '" rx="2" fill="' + BADGE_FILL + '" stroke="' + BADGE_EDGE + '" stroke-width="' + n2(k) + '"/>'
+    + '<text class="rz-chip-text" x="' + n2(cx) + '" y="' + n2(y + H / 2) + '" font-size="' + n2(fs)
     + '" fill="' + BADGE_TEXT + '" text-anchor="middle" dominant-baseline="central" '
     + 'font-family="\'Space Mono\', ui-monospace, monospace">' + text + '</text>';
 }
@@ -1376,27 +1935,33 @@ function chipSvg(text, cx, bottom, maxW) {
  * @param {number} [unit]
  * @returns {string}
  */
-export function itemStackSvg(tiles, focusRoom, unit = U) {
+export function itemStackSvg(tiles, focusRoom, unit = U, place = null) {
   if (!Array.isArray(tiles) || !tiles.length || !focusRoom || !(unit > 0)) return '';
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
   const out = [];
   for (const t of tiles) {
     const slots = itemStackSlots(t && t.stacks);
     if (!slots.length) continue;
-    const lx = ((t.tx | 0) - rx) * unit, ly = ((t.ty | 0) - ry) * unit;
+    // VR-P3 — A PILE **STANDS ON** THE FLOOR, so it is drawn UPRIGHT at the tile's floor centre and
+    // emphatically NOT sheared into the floor plane the way a mark is. The badge carries DIGITS, and
+    // digits laid into a cabinet-oblique parallelogram are mirrored and slanted — unreadable, which
+    // is the one failure mode a count badge cannot have.
+    const lx = place ? 0 : ((t.tx | 0) - rx) * unit;
+    const ly = place ? 0 : ((t.ty | 0) - ry) * unit;
     const n = slots.length;
+    const k = unit / U;                       // the badge's own scale — see `chipSvg`
     const side = unit * (n === 1 ? SPRITE_SIDE_1 : SPRITE_SIDE_N);
     const slotW = unit / n;
-    const bottom = ly + unit - BADGE_INSET;
+    const bottom = ly + unit - BADGE_INSET * k;
     let body = '';
     for (let i = 0; i < n; i += 1) {
       const slot = slots[i];
       const cx = lx + slotW * (i + 0.5);
       const cy = ly + unit * (n === 1 ? 0.46 : 0.42);
-      const maxW = slotW - BADGE_INSET * 2;
+      const maxW = slotW - BADGE_INSET * 2 * k;
       if (slot.more) {
         body += '<g class="rz-stack" data-kind="more">'
-          + chipSvg('+' + slot.more + ' KINDS', cx, bottom, maxW) + '</g>';
+          + chipSvg('+' + slot.more + ' KINDS', cx, bottom, maxW, k) + '</g>';
         continue;
       }
       const itemId = itemIdForStockKind(slot.kind);
@@ -1411,16 +1976,17 @@ export function itemStackSvg(tiles, focusRoom, unit = U) {
           + '</g>';
         // THE COUNT. Only past 1: a single unit is what the sprite already says, and a `1` on every
         // stack in a hold is noise over the numbers that matter.
-        if ((slot.count | 0) > 1) body += chipSvg(String(slot.count | 0), cx, bottom, maxW);
+        if ((slot.count | 0) > 1) body += chipSvg(String(slot.count | 0), cx, bottom, maxW, k);
       } else {
         // No piece for this kind — the old label plate, kept as the honest fallback.
-        body += chipSvg(itemKindLabel(slot.kind) + ' ' + (slot.count | 0), cx, bottom, maxW);
+        body += chipSvg(itemKindLabel(slot.kind) + ' ' + (slot.count | 0), cx, bottom, maxW, k);
       }
       body += '</g>';
     }
     // No escaping: every character here comes from ITEM_LABEL (our own ASCII table), from `| 0`
     // arithmetic, or from a pure builder. Nothing on this layer is player- or host-authored text.
-    out.push('<g class="rz-item">' + body + '</g>');
+    out.push('<g class="rz-item"'
+      + (place ? ' transform="' + place.stand(t.tx | 0, t.ty | 0) + '"' : '') + '>' + body + '</g>');
   }
   return out.length ? '<g class="rz-items" pointer-events="none">' + out.join('') + '</g>' : '';
 }

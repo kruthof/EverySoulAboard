@@ -30,6 +30,11 @@
 /** Logical units per tile in the Room Zoom's layer space (room-model.js `U`). Imported rather than
  *  re-declared so a change to the grid pitch cannot silently halve this layer. */
 import { U } from './room-model.js';
+// The weight the shared order ring is drawn at (`markCellSvg`'s dig/strip mark). Imported rather than
+// restated, because the RELATION below — a zone must never be drawn heavier than an order — is the
+// point, and a second copy of `1.5` is how the two come to disagree. `mark-overlay.js` imports
+// nothing, so this cannot be cyclic.
+import { ORDER_RING_WIDTH } from './mark-overlay.js';
 
 /** XML/HTML text escape. Local rather than imported: both builders emit markup and must never depend
  *  on a caller having sanitised a label. The kind names are ASCII today, but a `<title>` and a key row
@@ -40,17 +45,55 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-const ZONE_FILL = 'rgba(126,158,196,.16)';   // slate: the zone itself
-const ZONE_EDGE = 'rgba(126,158,196,.55)';
-const WEDGE = '#dbe6f2';                     // pale cool: RESTRICTED
-const WEDGE_EDGE = 'rgba(16,22,32,.85)';
-const ALARM = '#f2b563';                     // amber: BACKED OFF
-// The DIM half of "dim + hatched" (WP-6). A near-black scrim rather than a lowered fill-opacity on
-// ZONE_FILL: the tile has to read as inert against the FLOOR, and the floor is painted by the canvas
-// background under this whole SVG, so lightening the tint would leave the tile exactly as bright as
-// its neighbours. It is drawn UNDER the hatch and the ring so the alarm marks stay at full contrast —
-// dimming the thing that is shouting would be the wrong half of the tile to mute.
-const DIM = 'rgba(9,12,18,.46)';
+// ── THE PAPER DIALECT (visual redesign, charter §1 ruling E3) ──
+//
+// ⚠️ THE THREE-HUE PALETTE IS RETIRED. It was slate for the zone, pale cool for RESTRICTED, amber
+// for BACKED OFF; under E3 colour alone distinguishes nothing and there is ONE accent. What
+// separates the three states now is SHAPE and DASH, which is what the header above already claimed
+// was doing the work ("different hue, different shape") — the hue half has simply gone.
+//
+//   zone        the faintest INK tint + a `2 2` DOTTED ink boundary — a zone is not an order, so it
+//               carries no accent and no queued-order `8 5` dash. It must read as quieter than the
+//               dig ring painted on the tile beside it.
+//   RESTRICTED  a paper corner wedge with a heavy ink edge — a cut corner, unmistakably a SHAPE
+//   BACKED OFF  an INK 45° hatch + an OXBLOOD SOLID ring. Solid oxblood is the charter's
+//               ATTENTION/FAULT spelling and a backed-off zone is exactly that: the haulers have
+//               given up on it. It is deliberately NOT the `8 5` queued-order dash.
+const ZONE_FILL = 'rgba(20,18,15,.10)';      // the zone itself: the faintest ink tint
+const ZONE_EDGE = 'rgba(20,18,15,.55)';
+const WEDGE = '#EBE4D1';                     // paper: RESTRICTED reads as a cut corner
+const WEDGE_EDGE = '#14120F';
+const ALARM = '#7B2C22';                     // THE ONE ACCENT, SOLID: attention/fault — BACKED OFF
+const HATCH_INK = '#14120F';                 // the back-off hatch is INK, so the ring stays the shout
+// The DIM half of "dim + hatched" (WP-6). ⚠️ IT IS A PAPER WASH NOW, NOT A NEAR-BLACK SCRIM: the
+// ground under this layer is paper `#E7E0D2`, so a dark scrim would make an inert tile the LOUDEST
+// thing in the room — the opposite of "reads as inert". Washing back TOWARDS the paper is the same
+// statement in the new ground's terms.
+const DIM = 'rgba(235,228,209,.55)';
+
+/**
+ * ⛔⛔ THE ZONE BOUNDARY IS QUIETER THAN AN ORDER, AND IT WAS LOUDER (VR-P3 review, MINOR 1).
+ *
+ * The boundary used to be drawn at `1 * k` where `k = unit / U` — a proportion, which on the
+ * cutaway's ~95-px tile is **2.97 px**, against the 1.5 px the shared order ring is drawn at on the
+ * tile beside it. So a STOCKPILE — a zone, which the header above says in so many words "must read as
+ * quieter than the dig ring painted on the tile beside it" — out-shouted every queued order in the
+ * room by 2×. Colour could not correct it either: under E3 the zone carries no accent at all, so the
+ * only thing the player had to rank the two marks by was exactly the weight that was inverted.
+ *
+ * ⭐ THE FIX IS A RELATION, NOT A NUMBER: the boundary is drawn at a FIXED weight that is `<=` the
+ * order ring's, and `zone-overlay.test.js` pins the inequality against the shipped `markCellSvg`
+ * output rather than against a literal — so raising the order ring can never silently un-invert it.
+ * The DASH stays proportional (`2 2` at 32 units is invisible at 95), because a dot pattern is
+ * spacing rather than weight.
+ *
+ * ⚠️ THE BACKED-OFF RING IS DELIBERATELY LEFT AT THE ORDER RING'S OWN WEIGHT AND NOT BELOW IT. Solid
+ * oxblood is the charter's ATTENTION/FAULT spelling: a zone the haulers have given up on is not a
+ * quieter thing than a queued order, it is a louder one, and it is the only mark on this layer that
+ * spends the accent.
+ */
+const ZONE_EDGE_W = 1;
+const BACKOFF_RING_W = ORDER_RING_WIDTH;
 
 /**
  * The SVG floor layer for one room's zoned tiles.
@@ -68,37 +111,60 @@ const DIM = 'rgba(9,12,18,.46)';
  * @param {{rx:number, ry:number}} focus the focused room rect's origin, for the local transform
  * @returns {string} SVG markup, or '' when the room has no zoned tile
  */
-export function zoneLayerSvg(tiles, focus) {
+export function zoneLayerSvg(tiles, focus, place = null, unit = U) {
   if (!Array.isArray(tiles) || !tiles.length || !focus) return '';
   // The hatch pattern is emitted ONLY when some tile needs it — an unused <defs> in every room is
   // dead markup, and (found by zone-overlay.test.js) it also makes "does this room draw a hatch?"
   // unanswerable by inspection, since the pattern's own id matches any scan for the class.
   const out = [];
   if (tiles.some((t) => t && t.backedOff)) {
+    // ⭐ THE `rotate(45)` SURVIVES THE CABINET SHEAR AT EXACTLY 45°, AND THAT IS MEASURED RATHER THAN
+    // ASSUMED (VR-P3 review, MINOR 8 — the finding did NOT reproduce, and the measurement is why).
+    // The pattern is `patternUnits="userSpaceOnUse"`, so it is painted in the user space of the
+    // `<g>` this cell sits in — which `scenePlacement.cell` has sheared by `matrix(1 0 0.4 -0.6 e f)`.
+    // The hatch LINE is vertical `(0,1)`; `rotate(45)` turns it to `(-1,1)/√2`; the cell matrix takes
+    // `(-1,1)` to `(-1 + 0.4, -0.6) = (-0.6,-0.6)` — a 45° line on screen, to the digit.
+    // ⚠️ IT IS A PROPERTY OF THE SHIPPED DEPTH RATIO, NOT A LAW: the composed angle is 45° because
+    // `DEPTH_RATIO.x - 1 === DEPTH_RATIO.y` (0.4 − 1 = −0.6). Move either constant in
+    // `render/oblique.js` and this hatch goes off 45° silently — which is why `zone-overlay.test.js`
+    // composes the two transforms and asserts the ANGLE rather than the literal `rotate(45)`.
+    // (The line SPACING is distorted by the same shear and is left alone: a hatch is a texture, and
+    // the angle is the thing that reads as "this surface has been struck out".)
     out.push('<defs><pattern id="rz-zone-hatch" width="6" height="6" patternUnits="userSpaceOnUse" ' +
-      'patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="' + ALARM +
-      '" stroke-opacity="0.55" stroke-width="1.5"/></pattern></defs>');
+      'patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="' + HATCH_INK +
+      '" stroke-opacity="0.4" stroke-width="1.2"/></pattern></defs>');
   }
   for (const t of tiles) {
-    const lx = (t.tx - focus.rx) * U;
-    const ly = (t.ty - focus.ry) * U;
-    let cell = '<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) +
-      '" height="' + (U - 1) + '" rx="2" fill="' + ZONE_FILL + '" stroke="' + ZONE_EDGE +
-      '" stroke-width="1" stroke-dasharray="2 2"/>';
+    // VR-P3 — A ZONE IS PAINT ON THE FLOOR, so the cell is built at the origin and mapped onto the
+    // tile's projected floor parallelogram by `place.cell`. With no `place` it falls back to the
+    // plan-view offset, which is what every isolated model test drives.
+    const lx = place ? 0 : (t.tx - focus.rx) * unit;
+    const ly = place ? 0 : (t.ty - focus.ry) * unit;
+    // ⚠️ EVERY EXTENT BELOW IS IN `unit`, NOT IN `U`. The Room Zoom's tile is ~95 scene px on the
+    // cutaway and 32 logical px in the plan view this replaced; a cell hard-coded to `U` inside a
+    // 95-unit box paints the top-left THIRD of its tile — measured on the first render, where the
+    // zones read as three small squares floating inside their own tiles.
+    const k = unit / U;                       // the wedge and the dashes keep their proportions
+    const side = unit - 1;
+    let cell = '<rect class="rz-zone-edge" x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + side +
+      '" height="' + side + '" rx="2" fill="' + ZONE_FILL + '" stroke="' + ZONE_EDGE +
+      '" stroke-width="' + ZONE_EDGE_W + '" stroke-dasharray="' + (2 * k) + ' ' + (2 * k) + '"/>';
     if (t.backedOff) {
       cell += '<rect class="rz-zone-dim" x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' +
-        (U - 1) + '" height="' + (U - 1) + '" rx="2" fill="' + DIM + '"/>';
+        side + '" height="' + side + '" rx="2" fill="' + DIM + '"/>';
       cell += '<rect class="rz-zone-hatch" x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' +
-        (U - 1) + '" height="' + (U - 1) + '" rx="2" fill="url(#rz-zone-hatch)" stroke="' + ALARM +
-        '" stroke-width="1.5"/>';
+        side + '" height="' + side + '" rx="2" fill="url(#rz-zone-hatch)" stroke="' + ALARM +
+        '" stroke-width="' + BACKOFF_RING_W + '"/>';
     }
     if (t.restricted) {
-      cell += '<path class="rz-zone-wedge" d="M' + (lx + U - 10) + ' ' + (ly + 1) + 'h9v9z" fill="' +
-        WEDGE + '" stroke="' + WEDGE_EDGE + '" stroke-width="0.75"/>';
+      cell += '<path class="rz-zone-wedge" d="M' + (lx + unit - 10 * k) + ' ' + (ly + 1) + 'h'
+        + (9 * k) + 'v' + (9 * k) + 'z" fill="'
+        + WEDGE + '" stroke="' + WEDGE_EDGE + '" stroke-width="' + (0.75 * k) + '"/>';
     }
     out.push('<g class="rz-zone' + (t.restricted ? ' rz-zone-restricted' : '') +
-      (t.backedOff ? ' rz-zone-backedoff' : '') + '"><title>' + esc(t.label) + '</title>' +
-      cell + '</g>');
+      (t.backedOff ? ' rz-zone-backedoff' : '') + '"'
+      + (place ? ' transform="' + place.cell(t.tx, t.ty) + '"' : '')
+      + '><title>' + esc(t.label) + '</title>' + cell + '</g>');
   }
   return '<g class="rz-zones" pointer-events="visiblePainted" cursor="inherit">' + out.join('') + '</g>';
 }

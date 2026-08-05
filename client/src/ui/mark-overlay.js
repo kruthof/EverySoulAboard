@@ -93,13 +93,32 @@ export function markVariant(tx, ty) {
   return v < 0 ? v + 3 : v;
 }
 
-// ── colours ──
-const RUBBLE = '#8a7d6e';                    // warm mid-grey: the rubble itself
-const RUBBLE_EDGE = 'rgba(12,10,8,.7)';
-const RUBBLE_BED = 'rgba(12,10,8,.28)';      // the dark bed the chunks sit in, so a pile reads as a pile
-const ORDER = '#f2b563';                     // amber: "an order is queued here" (the ghost colour)
-const ZONE_FILL = 'rgba(126,158,196,.16)';   // slate: WP-3's zone colours, reused verbatim
-const ZONE_EDGE = 'rgba(126,158,196,.55)';
+// ── colours — THE PAPER DIALECT (visual redesign, charter §1 ruling E3) ──
+//
+// ⚠️ THE OLD FOUR-HUE PALETTE IS GONE AND ITS RULE WITH IT. It read: warm rubble grey `#8a7d6e` for
+// debris, amber `#f2b563` for "an order is queued here", slate for a zone. Colour alone no longer
+// distinguishes anything on either surface (E3): there is ONE accent, oxblood `#7B2C22`, and the
+// separation is carried by DASH and by SHAPE.
+//
+//   debris     ink chunks on a paper bed, NO accent, NO dash — a thing in the world, nothing to do
+//   dig        the same chunks + an OXBLOOD `8 5` DASHED RING — the charter's QUEUED ORDER spelling
+//   stockpile  ink `2 2` dashed boundary + a faint ink tint — a zone, not an order
+//   strip      the oxblood queued-order ring + an oxblood ✕ — a condemned wall or device
+//
+// ⛔ THE ORDER RING'S DASH IS `8 5` AND THAT IS NOT DECORATION. `8 5` is the charter's QUEUED-ORDER
+// pattern; SOLID oxblood is ATTENTION/FAULT and `6 5` ink is UNBUILT/PLANNED. Painting a dig ring
+// solid would spell "this tile is faulted", which is the opposite of what a queued order means.
+const RUBBLE = '#EBE4D1';                    // paper: the chunk faces, so they read as objects
+const RUBBLE_EDGE = '#14120F';               // ink: every stroke in this dialect
+const RUBBLE_BED = 'rgba(20,18,15,.14)';     // the bed the chunks sit in, so a pile reads as a pile
+const ORDER = '#7B2C22';                     // THE ONE ACCENT: "an order is queued here"
+const ORDER_DASH = '8 5';                    // charter §1 — the QUEUED ORDER dash, never `6 5`
+/** The order ring's stroke weight. EXPORTED because it is the loudness other floor marks are ranked
+ *  against: `zone-overlay.js` imports it to keep a zone's boundary at or below it (a zone is not an
+ *  order — see that file's `ZONE_EDGE_W`). A copied `1.5` there is how the two came to invert. */
+export const ORDER_RING_WIDTH = 1.5;
+const ZONE_FILL = 'rgba(20,18,15,.10)';      // a zone is the faintest ink tint…
+const ZONE_EDGE = 'rgba(20,18,15,.55)';      // …with an ink dotted boundary (WP-3's, retinted)
 
 // Three rubble arrangements as [cx, cy, r] in TILE FRACTIONS, so they scale to any tile box (the
 // Overview's tile is a non-uniform ~15×13 design-px squeeze; the Room Zoom's is a square 32).
@@ -119,7 +138,7 @@ function chunk(cx, cy, r) {
     + 'L' + n(cx - r * 0.45) + ' ' + n(cy - r)
     + 'L' + n(cx + r) + ' ' + n(cy - r * 0.3)
     + 'L' + n(cx + r * 0.35) + ' ' + n(cy + r)
-    + 'Z" fill="' + RUBBLE + '" stroke="' + RUBBLE_EDGE + '" stroke-width="0.6"/>';
+    + 'Z" fill="' + RUBBLE + '" stroke="' + RUBBLE_EDGE + '" stroke-width="0.9"/>';
 }
 
 /** The rubble pile for a tile box, in one of the three arrangements. */
@@ -132,12 +151,13 @@ function rubble(x, y, w, h, variant) {
   return out;
 }
 
-/** The amber dashed order ring — the shared "an order is queued on this tile" mark. */
+/** The OXBLOOD `8 5` DASHED order ring — the shared "an order is queued on this tile" mark, in the
+ *  charter's own queued-order spelling. */
 function orderRing(x, y, w, h) {
   const i = Math.min(1, Math.min(w, h) * 0.06); // inset, so the ring never spills onto a neighbour
   return '<rect class="mk-order-ring" x="' + n(x + i) + '" y="' + n(y + i) + '" width="' + n(w - i * 2)
     + '" height="' + n(h - i * 2) + '" rx="1.5" fill="none" stroke="' + ORDER
-    + '" stroke-width="1.2" stroke-dasharray="3 2"/>';
+    + '" stroke-width="' + ORDER_RING_WIDTH + '" stroke-dasharray="' + ORDER_DASH + '"/>';
 }
 
 /**
@@ -171,7 +191,7 @@ export function markCellSvg(mark, x, y, w, h, variant = 0) {
     body = orderRing(x, y, w, h)
       + '<path class="mk-condemn" d="M' + n(ix) + ' ' + n(iy) + 'L' + n(ax) + ' ' + n(ay)
       + 'M' + n(ax) + ' ' + n(iy) + 'L' + n(ix) + ' ' + n(ay)
-      + '" stroke="' + ORDER + '" stroke-width="1.4" fill="none"/>';
+      + '" stroke="' + ORDER + '" stroke-width="1.6" fill="none"/>';
   } else {
     return '';
   }

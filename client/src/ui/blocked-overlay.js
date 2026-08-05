@@ -56,36 +56,31 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-const SCRIM = 'rgba(9,12,18,.46)';   // the DIM half — byte-identical to zone-overlay.js's backed-off scrim
-const FAULT = '#c25a3f';             // STATUS.bad (theme/warm-tokens.js §2.5) — fault, never queue-amber
-const PLATE = 'rgba(10,13,20,.82)';  // the badge's own dark plate, so the mark reads over rubble
-
-const BADGE = 11;                    // badge box side, logical units (tile is U = 32)
-const BADGE_INSET = 1.5;             // margin from the tile's top-left corner
+// ── THE PAPER DIALECT (visual redesign, charter §1, rulings E3 + E4) ──
+//
+// ⚠️ THE TWO OLD COLOURS ARE RETIRED AND THE ARGUMENT THAT PICKED THEM SURVIVES INTACT. The badge
+// was `#c25a3f` *"deliberately not the queue-amber"*, over a near-black scrim. Under E3 there is ONE
+// accent, so "fault, not queue" can no longer be said in hue — it is said in DASH: a queued order
+// wears oxblood `8 5`, and a REFUSED one wears the same oxblood in the FAULT spelling. Here that is
+// the dashed outline plus a SOLID oxblood leader and label, which is the design's own annotation
+// idiom (`Perilune Game.dc.html` Screen 02: an oxblood leader line to an oxblood mono label).
+//
+// ⚠️ AND THE SCRIM IS A PAPER WASH NOW, FOR `zone-overlay.js`'s reason: the ground under this layer
+// is paper, so a near-black scrim would make the inert tile the LOUDEST thing in the room. Washing
+// back TOWARDS the paper is "nothing is happening here" in the new ground's terms.
+const SCRIM = 'rgba(235,228,209,.55)';  // the DIM half — byte-identical to zone-overlay.js's
+const FAULT = '#7B2C22';                // THE ONE ACCENT (charter §1) — attention/fault
+const PLATE = '#EBE4D1';                // paper, so the badge reads over hatch, rubble and grid
+const ORDER_DASH = '8 5';               // charter §1 — the queued-order dash the refusal outlines
 
 /** Round to 2dp with no `-0` — the `n()` discipline both surfaces already use (InvariantCulture-safe:
  *  arithmetic + ASCII concat only, no locale API, so a de-DE machine emits the same bytes). */
 function n(v) { const r = Math.round(v * 100) / 100; return Object.is(r, -0) ? 0 : r; }
 
-/**
- * The warning badge for one tile box: a dark plate carrying a bar-and-dot exclamation.
- *
- * DRAWN AS PATHS, NOT AS A TEXT NODE. The item layer's count badge legitimately uses `<text>` because
- * it renders DIGITS whose width it has to fit; a fixed glyph does not need a font, and a font is one
- * more thing that can be missing, substituted or hinted differently between the browser the owner
- * photographs in and the one a player runs. PURE.
- */
-function badge(x, y) {
-  const bx = x + BADGE_INSET, by = y + BADGE_INSET;
-  const cx = bx + BADGE / 2;
-  return '<g class="rz-blocked-badge">'
-    + '<rect x="' + n(bx) + '" y="' + n(by) + '" width="' + BADGE + '" height="' + BADGE
-    + '" rx="2.5" fill="' + PLATE + '" stroke="' + FAULT + '" stroke-width="1.2"/>'
-    + '<path d="M' + n(cx) + ' ' + n(by + 2.4) + 'V' + n(by + 6.6)
-    + '" stroke="' + FAULT + '" stroke-width="1.6" stroke-linecap="round"/>'
-    + '<circle cx="' + n(cx) + '" cy="' + n(by + 8.6) + '" r="0.9" fill="' + FAULT + '"/>'
-    + '</g>';
-}
+/** The shipped mono stack, byte-identical to `oblique.FONT.mono` — declared literally here for the
+ *  reason every colour in this module is: it imports geometry, not the theme. The ⚠ itself is never
+ *  set in it (it is drawn as paths, below); only the reason SENTENCE is, and that is ASCII. */
+const MONO = "'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace";
 
 /**
  * One blocked tile as an SVG group filling the box (x,y,w,h) in the CALLER's units. PURE.
@@ -107,7 +102,63 @@ export function blockedCellSvg(reason, label, x, y, w, h) {
     + '<rect class="rz-blocked-scrim" x="' + n(x + 0.5) + '" y="' + n(y + 0.5)
     + '" width="' + n(Math.max(0, w - 1)) + '" height="' + n(Math.max(0, h - 1))
     + '" rx="2" fill="' + SCRIM + '"/>'
-    + badge(x, y)
+    // ⭐ VR-P3 — THE DASHED OUTLINE IS THE SECOND MARK NOW, IN PLACE OF THE IN-CELL BADGE. It rides
+    // the FLOOR PLANE with the scrim (it is paint on the tile), and the ⚠ plate that used to sit in
+    // the tile's top-left has moved OUT of the cell into `blockedBadgeSvg`, upright, with a leader —
+    // because a ⚠ sheared into a cabinet-oblique parallelogram is a smear, and because the design's
+    // own way of pointing at a thing is a leader line to a label beside the drawing.
+    + '<rect class="rz-blocked-ring" x="' + n(x + 0.5) + '" y="' + n(y + 0.5)
+    + '" width="' + n(Math.max(0, w - 1)) + '" height="' + n(Math.max(0, h - 1))
+    + '" rx="2" fill="none" stroke="' + FAULT + '" stroke-width="1.5" stroke-dasharray="'
+    + ORDER_DASH + '"/>'
+    + '</g>';
+}
+
+/**
+ * THE UPRIGHT BADGE + LEADER + LABEL — E4's "blocked/D5 badge → oxblood dashed outline + leader
+ * label (bench-ghost idiom)", drawn in a `unit × unit` box whose BOTTOM CENTRE stands on the tile.
+ *
+ * The ⚠ is still a DRAWN PATH and never a font glyph (charter §1: a fallback face has different
+ * advances and this box is width-pinned nowhere, but the rule is the repo's and it is cheap to keep).
+ * The label is the reason SENTENCE — the words D5 exists to put on screen ("NO WAY TO WALK TO IT") —
+ * haloed so it survives the hatch, the grid and whatever is standing on the tile.
+ *
+ * @param {string} reason the reason vocabulary name, for the class hook
+ * @param {string} text   the player-facing sentence
+ * @param {number} unit   the box side (the cell unit)
+ */
+export function blockedBadgeSvg(reason, text, unit) {
+  if (!(unit > 0)) return '';
+  const cx = unit / 2;
+  const topY = -unit * 0.55;            // the label sits ABOVE the tile, clear of what stands on it
+  const cls = 'rz-blocked-badge' + (reason ? ' rz-blocked-badge-' + reason : '');
+  // ⚠️ THE PLATE AND THE TYPE ARE IN THE **DOCUMENT'S** SCALE, NOT THE TILE'S, and both directions of
+  // that were measured on a render rather than reasoned about. Fixed at the plan view's 12 units the
+  // plate is a speck inside a ~95-unit cutaway tile; scaled by `unit/32` the sentence comes out at
+  // 22 px and shouts down the room it is explaining. A LABEL BELONGS TO THE PAGE: the scene sets its
+  // type once (serif 24 title, mono 9 stat line, mono 8.5 leader labels) and this is one of those
+  // labels. Only the LEADER is in cell units, because the leader is geometry — it has to reach the
+  // tile. `k` is therefore a gentle floor, not the cell ratio: it lets a small-tile caller keep the
+  // plate proportionate without letting a large-tile one inflate the words.
+  const k = Math.min(1.6, Math.max(1, unit / 32));
+  const bh = 12 * k, bw = 12 * k;
+  const bx = cx - bw / 2, by = topY - bh;
+  return '<g class="' + cls + '">'
+    // the leader: from the tile's floor centre up to the plate
+    + '<path class="rz-blocked-leader" d="M' + n(cx) + ' ' + n(unit) + ' L' + n(cx) + ' ' + n(topY)
+    + '" fill="none" stroke="' + FAULT + '" stroke-width="' + n(0.9 * k) + '" opacity="0.75"/>'
+    + '<rect x="' + n(bx) + '" y="' + n(by) + '" width="' + n(bw) + '" height="' + n(bh)
+    + '" rx="' + n(2.5 * k) + '" fill="' + PLATE + '" stroke="' + FAULT + '" stroke-width="' + n(1.2 * k) + '"/>'
+    + '<path d="M' + n(cx) + ' ' + n(by + 2.6 * k) + 'V' + n(by + 7.2 * k)
+    + '" stroke="' + FAULT + '" stroke-width="' + n(1.6 * k) + '" stroke-linecap="round"/>'
+    + '<circle cx="' + n(cx) + '" cy="' + n(by + 9.4 * k) + '" r="' + n(0.9 * k) + '" fill="' + FAULT + '"/>'
+    + (text
+      ? '<text class="rz-blocked-say" x="' + n(cx + bw) + '" y="' + n(by + bh - 2.5 * k)
+        + '" text-anchor="start" font-family="' + MONO + '" font-size="' + n(7.5 * k)
+        + '" letter-spacing="' + n(0.9 * k) + '"'
+        + ' fill="' + FAULT + '" stroke="' + PLATE + '" stroke-width="' + n(3.4 * k) + '" paint-order="stroke">'
+        + esc(text) + '</text>'
+      : '')
     + '</g>';
 }
 
@@ -126,15 +177,28 @@ export function blockedCellSvg(reason, label, x, y, w, h) {
  * @param {number} [unit]
  * @returns {string}
  */
-export function blockedLayerSvg(tiles, focus, unit = U) {
+export function blockedLayerSvg(tiles, focus, unit = U, place = null) {
   if (!Array.isArray(tiles) || !tiles.length || !focus) return '';
   const rx = focus.rx | 0, ry = focus.ry | 0;
   const out = [];
+  // ⭐ ONE LEADER LABEL PER DISTINCT SENTENCE, and every tile keeps its outline. Twelve leaders
+  // saying NO AIR over twelve adjacent tiles is a wall of type that hides the room it is explaining;
+  // twelve dashed outlines and ONE sentence is the same information and is readable. It is the
+  // `blockedKeyHtml` rule (one row per distinct sentence) applied to the floor, so the badge on the
+  // tile and the words beside it are chosen by the same predicate and cannot disagree.
+  const said = new Set();
   for (const t of tiles) {
     if (!t) continue;
-    const cell = blockedCellSvg(t.reasonName, t.label,
-      (t.tx - rx) * unit, (t.ty - ry) * unit, unit, unit);
-    if (cell) out.push(cell);
+    const at = place ? [0, 0] : [(t.tx - rx) * unit, (t.ty - ry) * unit];
+    const cell = blockedCellSvg(t.reasonName, t.label, at[0], at[1], unit, unit);
+    if (!cell) continue;
+    out.push(place ? '<g transform="' + place.cell(t.tx, t.ty) + '">' + cell + '</g>' : cell);
+    const say = t.reasonText || '';
+    const key = (t.reasonName || '?') + ' ' + say;
+    if (said.has(key)) continue;
+    said.add(key);
+    const badge = blockedBadgeSvg(t.reasonName, say, unit);
+    if (badge) out.push(place ? '<g transform="' + place.stand(t.tx, t.ty) + '">' + badge + '</g>' : badge);
   }
   return out.length
     ? '<g class="rz-blockeds" pointer-events="visiblePainted" cursor="inherit">' + out.join('') + '</g>'

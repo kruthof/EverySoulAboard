@@ -39,7 +39,7 @@ import {
   BLOCKED_DETAIL_NONE, BLOCKED_CID_NONE, ITEM_WORDS, itemWords, blockedReasonSentence,
 } from '../src/wire/messages.js';
 import { roomBlockedTiles, roomTileRect } from '../src/ui/room-model.js';
-import { blockedCellSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/blocked-overlay.js';
+import { blockedCellSvg, blockedBadgeSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/blocked-overlay.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { codeOnly } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
@@ -511,12 +511,42 @@ test('a row this client cannot name is still DRAWN, with an honest text', () => 
 
 // ═══════════════════════════════════════════════════════════════════ the SVG, to the character
 
-test('blockedCellSvg draws BOTH marks and carries the reason in a class and a title', () => {
+test('blockedCellSvg draws BOTH FLOOR marks and carries the reason in a class and a title', () => {
   const svg = blockedCellSvg('air', 'DIG BLOCKED — NO AIR', 0, 0, 32, 32);
   assert.match(svg, /class="rz-blocked rz-blocked-air"/, 'the reason class hook is missing');
   assert.match(svg, /<title>DIG BLOCKED — NO AIR<\/title>/, 'the tooltip text is missing');
   assert.match(svg, /class="rz-blocked-scrim"/, 'the DIM half is missing — the tile would not read as inert');
-  assert.match(svg, /class="rz-blocked-badge"/, 'the badge is missing — the tile would not say WHY');
+  // ⭐ VR-P3 — THE SECOND FLOOR MARK IS THE OXBLOOD DASHED OUTLINE (ruling E4: "blocked/D5 badge →
+  // oxblood dashed outline + leader label, bench-ghost idiom"). The ⚠ plate left the cell entirely —
+  // it stands UPRIGHT with a leader now (`blockedBadgeSvg`), because a ⚠ sheared into a
+  // cabinet-oblique parallelogram is a smear. Both halves are asserted, here and one test down.
+  assert.match(svg, /class="rz-blocked-ring"[^/]*stroke="#7B2C22"/,
+    'the refusal outline is missing or is not the ONE ACCENT — a blocked order would look like an '
+    + 'ordinary one');
+  assert.match(svg, /class="rz-blocked-ring"[^/]*stroke-dasharray="8 5"/,
+    'the refusal outline is not in the charter\'s queued-order dash');
+  assert.ok(!svg.includes('rz-blocked-badge'),
+    'the ⚠ plate is still inside the FLOOR cell — sheared into the floor plane it is unreadable, '
+    + 'which is why it moved to `blockedBadgeSvg`');
+});
+
+// MUTATION: drop the leader `<path class="rz-blocked-leader">` ⇒ RED. That is the half ruling E4
+// names by hand: a badge with no leader is a mark floating over a room, and the player has to guess
+// which tile it is about.
+test('blockedBadgeSvg stands UPRIGHT, draws its ⚠ as PATHS, and leads back to its tile', () => {
+  const svg = blockedBadgeSvg('no_route', 'NO WAY TO WALK TO IT', 32);
+  assert.match(svg, /class="rz-blocked-badge rz-blocked-badge-no_route"/, 'the reason class hook is missing');
+  assert.match(svg, /class="rz-blocked-leader"[^/]*stroke="#7B2C22"/,
+    'the badge has no oxblood leader — nothing ties the words to the tile they are about');
+  assert.match(svg, /class="rz-blocked-say"[^>]*>NO WAY TO WALK TO IT</,
+    'D5\'s own sentence is not on the floor — the whole point of the badge is that the player is TOLD');
+  assert.match(svg, /paint-order="stroke"/,
+    'the label carries no halo, so it is unreadable over the hatch, the grid and the fitting it '
+    + 'stands beside');
+  // The ⚠ is DRAWN, never set: a fallback face has different advances and a glyph that is missing
+  // renders as a box (charter §1).
+  assert.ok(!/[\u26A0\u25B3]/.test(svg), 'the ⚠ is a font glyph — it must be paths');
+  assert.equal(blockedBadgeSvg('air', 'X', 0), '', 'a degenerate box draws nothing');
 });
 
 test('blockedCellSvg escapes its label — a title is markup', () => {

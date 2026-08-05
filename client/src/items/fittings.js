@@ -71,7 +71,7 @@
 // it also buys the set a silhouette: chair = pedestal disc, stool = tripod, at any tile size.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-import { item, r3, INK, PAPER, ATTEND } from './helpers.js';
+import { item, r3, TILE, INK, PAPER, ATTEND } from './helpers.js';
 import {
   box as obox, roomFrame, HATCH, PAPER_FLAT, n as nn, DEPTH_RATIO, PX_PER_CM,
 } from '../render/oblique.js';
@@ -393,6 +393,44 @@ export function frameFor(id) {
   const k = scaleOf(spec);
   return roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
     { x: -(k * ex) / 2, y: k * (ey / 2 + (spec.z0 == null ? 0 : spec.z0)) });
+}
+
+/**
+ * ⭐ VR-P3 — HOW A FITTING DROPS INTO A ROOM AT TRUE SIZE. The ONE derivation of that, here, beside
+ * the drawing scale it depends on.
+ *
+ * `buildItem(id, {w, h})` normalises through `helpers.render`: the art is centred in the w×h box at
+ * `min(w,h)/TILE`, so a piece drawn at `scaleOf(spec)` px/cm ends up at `scaleOf · min(w,h)/128`.
+ * Asking for a box side of `128·s/scaleOf` therefore puts the piece on screen at EXACTLY `s` px per
+ * centimetre — the room cutaway's own rule — and a 260 cm bench is 260 cm of floor.
+ *
+ * The returned `dx`/`dy` are what a caller adds to the piece's cm ORIGIN (its near-left floor corner,
+ * projected) to get the box's top-left: `frameFor`'s origin sits at `(-(k·ex)/2, k·(ey/2 + z0))`
+ * inside a box centred on `(side/2, side/2)`, and scaling by `side/128 = s/k` turns those into the
+ * offsets below.
+ *
+ * ⛔ IT LIVES IN THIS FILE AND NOT IN THE ROOM ZOOM, for `frameFor`'s stated reason: a second
+ * derivation of the drawing scale is how the harness and the caller come to disagree about how big a
+ * bench is. A caller gets `{side, dx, dy}` and never sees `BOX`, `scaleOf` or `extents`.
+ *
+ * @param {string} id a fitting id
+ * @param {number} s  px per cm of the destination surface (PX_PER_CM.room for the cutaway)
+ * @returns {{side:number, dx:number, dy:number, wCm:number, dCm:number, hCm:number}|undefined}
+ */
+export function roomBox(id, s) {
+  const spec = SPECS[id];
+  if (!spec || !(s > 0)) return undefined;
+  const [ex, ey] = extents(spec);
+  const k = scaleOf(spec);
+  if (!(k > 0)) return undefined;
+  const side = (TILE * s) / k;
+  const z0 = spec.z0 == null ? 0 : spec.z0;
+  return {
+    side,
+    dx: -side / 2 + (s * ex) / 2,
+    dy: -side / 2 - s * (ey / 2 + z0),
+    wCm: spec.w, dCm: spec.d, hCm: spec.h,
+  };
 }
 
 /**
