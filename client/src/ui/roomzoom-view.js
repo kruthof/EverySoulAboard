@@ -107,7 +107,13 @@ const CTX_GAP = 6;              // clearance the right-click menu keeps from bod
 /** The floor-material swatch's box, in the same unit the floor cells are drawn in. */
 const FLOOR_MAT_PX = 95;
 /** A crew member's height in metres. At the cutaway's 0.95 px/cm that is ~158 scene px, which is
- *  what the design's own room figure measures (`scale(1.04)` on its 152-unit build). */
+ *  what the design's own room figure measures (`scale(1.04)` on its 152-unit build).
+ *
+ *  ⚠️ IT IS PINNED IN `room-model.test.js` BECAUSE A MUTATION SURVIVED: `1.66 → 1.0` drew every
+ *  person at 60 % of their height — a room full of children, standing in a compartment whose every
+ *  other dimension is stated in metres on the drawing itself — and the whole node suite stayed green.
+ *  The pin is a BAND on the drawn figure's height in METRES, read back out of the assembled scene, so
+ *  it catches the value and the derivation together and needs no copy of this number. */
 const PAWN_M = 1.66;
 /** The shipped mono stack — the kit's, so an SVG label and the DOM text beside it cannot resolve to
  *  two different faces on a box where the webfont is missing (`oblique.FONT`'s own warning). */
@@ -629,7 +635,12 @@ function paintCanvas() {
 /** Is the focused compartment airless? From the `rooms` channel's own atmosphere row — the same
  *  source the Overview's pressure lens grades (D4). A room with NO row answers `false`: "we have not
  *  been told" is not "there is no air", and painting every unlisted compartment as a vacuum would be
- *  the exact confident-wrong-number the vacuum package exists to remove. */
+ *  the exact confident-wrong-number the vacuum package exists to remove.
+ *
+ *  ⚠️ DRIVEN, NOT CALLED, BY ITS PIN (`room-model.test.js`, the airless-compartment leg) — because
+ *  `return false` here survived the whole suite. `vacuum-visible.test.js` proves the MODEL grades a
+ *  vacuum; nothing proved the AIRLESS TREATMENT reached this surface's SVG, so the pin dispatches a
+ *  0 kPa row on the real `rooms` channel and reads the mounted scene back. */
 function focusIsVacuum() {
   if (!_focus || !_focus.anchor) return false;
   const a = atmosByAnchor(decodeRooms(Hud.getRooms())).get(_focus.anchor);
@@ -666,7 +677,11 @@ function paintLayers(frame, crew, designs, decor, selCid) {
     here: here.length, aboard, vacuum,
   });
   body += roomCutawaySvg(scene, { vacuum });
-  body += roomDoorsSvg(scene, _focus, roomDoorTiles(frame, _focus, currentDeckView()));
+  // ⛔ ONE DERIVATION OF "WHERE ARE THIS ROOM'S DOORS", CONSUMED TWICE. The cutaway draws the plate;
+  // the furniture pass must NOT also stand the door's own sprite in the same opening — see
+  // `furnitureSvg`'s header for the live symptom this closed.
+  const doorTiles = roomDoorTiles(frame, _focus, currentDeckView());
+  body += roomDoorsSvg(scene, _focus, doorTiles);
   body += materialLayerSvg(roomMaterialTiles(frame, _focus, decodeMaterials(Hud.getMaterials())), place);
   // Zones sit ABOVE the material layer, and that ordering is unchanged and still load-bearing: a
   // FLOOR material lies in the floor plane exactly as a zone tint does, so drawn after it would
@@ -674,7 +689,7 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   // material 0 and are skipped, which is the only reason the wrong order ever looked correct.)
   body += zoneLayerSvg(_zoneTiles, _focus, place, unit);
   body += decorSvg(roomDecor(decor, _focus), place);
-  body += furnitureSvg(cells, itemStackTileKeys(_itemTiles), _deviceCond, place);
+  body += furnitureSvg(cells, itemStackTileKeys(_itemTiles), _deviceCond, place, doorTiles);
   // WP-2 — debris + dig/strip marks, IN THE FLOOR PLANE and ABOVE the furniture layer.
   //
   // ⛔ THE ORDER IS THE ONE THING IN THIS STACK THAT IS NOT ABOUT THE PROJECTION, and it is kept
@@ -751,8 +766,14 @@ function decorSvg(list, place) {
  * upright on their tile at ONE TILE of width — the size the plan view drew them at — rather than
  * being given an invented footprint. They will read as a different hand until P2b lands, which is
  * the truth about them.
+ *
+ * ⭐ EXPORTED (VR-P3 review, MINOR 6) so `client/tools/roomzoom-sheet.mjs` draws its page with THIS
+ * function rather than with its own copy of it. The sheet had re-derived the fitting placement
+ * verbatim — a second authority on the exact thing the sheet exists to photograph, so the page could
+ * look right while the shipping surface drew something else. It is pure of module state: `place` is
+ * an argument and `ROOM_SCALE` is a shared constant.
  */
-function standItem(itemId, tx, ty, place, idPrefix, cond) {
+export function standItem(itemId, tx, ty, place, idPrefix, cond) {
   const rb = roomBox(itemId, ROOM_SCALE);
   const [px, py] = place.front(tx, ty);
   if (rb) {
@@ -822,12 +843,23 @@ function materialLayerSvg(tiles, place) {
  *  projection; an unmapped glyph → the ink "we do not skin this yet" chip, standing on its tile.
  *
  *  `stocked` and `deviceCond` keep their contracts verbatim — see the pre-redesign header, which is
- *  unchanged in every respect except where the piece is put. */
-function furnitureSvg(cells, stocked, deviceCond, place) {
+ *  unchanged in every respect except where the piece is put.
+ *
+ *  ⛔⛔ A BOUNDARY DOOR IS DRAWN ONCE, BY THE CUTAWAY (VR-P3 review, MINOR 4), and this is the pass
+ *  that used to draw it a second time. Glyph `+`/`X` resolves through `itemForGlyph` to a real
+ *  sliding/blast door piece, so a door in the room's own wall got BOTH the cutaway's paper plate — in
+ *  the wall plane, at the wall's own angle — AND a warm door sprite stood upright in the same opening,
+ *  half a metre in front of it. Live on `hall_d0_s1`, where the two overlapped into an unreadable
+ *  smear. `doorTiles` is `roomDoorTiles`' own EDGE-ONLY list (its header argues that limit), so an
+ *  INTERIOR partition door keeps its sprite: the cutaway never drew that one, and dropping it would
+ *  delete a door from the room instead of de-duplicating one. */
+function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
   const out = [];
   const skip = stocked instanceof Set ? stocked : new Set();
   const cond = deviceCond instanceof Map ? deviceCond : new Map();
+  const plated = new Set((Array.isArray(doorTiles) ? doorTiles : []).map((d) => d.tx + ',' + d.ty));
   for (const c of cells) {
+    if (plated.has(c.tx + ',' + c.ty)) continue;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
       const row = cond.get(c.tx + ',' + c.ty);
@@ -946,8 +978,11 @@ export function pawnSvg(list, focus, selCid, place) {
  *   STARVED            oxblood SOLID — the charter's ATTENTION/FAULT: nothing has been delivered
  *   ready              INK `6 5`     — UNBUILT/PLANNED: it is paid for and simply not built yet
  * Colour alone no longer separates them and the dash does, which is the whole of E3.
+ *
+ * ⭐ EXPORTED for `roomzoom-sheet.mjs` — same reason as `standItem` above (VR-P3 review, MINOR 6).
+ * Pure of module state: the list, the scene and the placement are all arguments.
  */
-function ghostSvg(list, scene, place) {
+export function ghostSvg(list, scene, place) {
   const out = [];
   const s = scene.s;
   for (const g of list) {

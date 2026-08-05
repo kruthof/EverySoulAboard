@@ -113,6 +113,10 @@ const RUBBLE_EDGE = '#14120F';               // ink: every stroke in this dialec
 const RUBBLE_BED = 'rgba(20,18,15,.14)';     // the bed the chunks sit in, so a pile reads as a pile
 const ORDER = '#7B2C22';                     // THE ONE ACCENT: "an order is queued here"
 const ORDER_DASH = '8 5';                    // charter §1 — the QUEUED ORDER dash, never `6 5`
+/** The order ring's stroke weight. EXPORTED because it is the loudness other floor marks are ranked
+ *  against: `zone-overlay.js` imports it to keep a zone's boundary at or below it (a zone is not an
+ *  order — see that file's `ZONE_EDGE_W`). A copied `1.5` there is how the two came to invert. */
+export const ORDER_RING_WIDTH = 1.5;
 const ZONE_FILL = 'rgba(20,18,15,.10)';      // a zone is the faintest ink tint…
 const ZONE_EDGE = 'rgba(20,18,15,.55)';      // …with an ink dotted boundary (WP-3's, retinted)
 
@@ -153,7 +157,7 @@ function orderRing(x, y, w, h) {
   const i = Math.min(1, Math.min(w, h) * 0.06); // inset, so the ring never spills onto a neighbour
   return '<rect class="mk-order-ring" x="' + n(x + i) + '" y="' + n(y + i) + '" width="' + n(w - i * 2)
     + '" height="' + n(h - i * 2) + '" rx="1.5" fill="none" stroke="' + ORDER
-    + '" stroke-width="1.5" stroke-dasharray="' + ORDER_DASH + '"/>';
+    + '" stroke-width="' + ORDER_RING_WIDTH + '" stroke-dasharray="' + ORDER_DASH + '"/>';
 }
 
 /**

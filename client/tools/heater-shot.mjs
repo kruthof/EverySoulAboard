@@ -76,7 +76,9 @@ import { join, resolve } from 'node:path';
 // Decoded by the CLIENT'S OWN modules — this tool cannot drift from what the surface believes.
 import { decodeDecks, decodeRooms, decodeDevices } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { deckSlots, roomTileRect, roomFit } from '../src/ui/room-model.js';
+import {
+  deckSlots, roomTileRect, roomScene, sceneFit, scenePlacement,
+} from '../src/ui/room-model.js';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const HOST_PORT = +arg('host-port', '8460');
@@ -321,21 +323,24 @@ if (palCrop) await png('03-palette-with-heater.png', palCrop);
 
 const room = roomRects.find((r) => r.anchor === WORK);
 if (!room) { console.error('FAIL: no room rect for ' + WORK); process.exit(9); }
-// ⚠️ THE TILE→SCREEN MAP IS `roomFit`'s, INVERTED — the client's OWN function, not a re-derivation.
-// `tileFromCanvasXY` reads `roomFit(focus, w, h)` for {s, offX, offY}; this harness's first draft
-// assumed plain `xMidYMid meet` letterboxing off the viewBox (the Overview's rule, copied from
-// erase-shot's OVERVIEW leg) and every click missed its tile silently — a placement that never
-// happened looks exactly like a placement the sim refused. Importing the real function makes the
-// two impossible to disagree.
+// ⭐⭐ THE TILE→SCREEN MAP IS THE SURFACE'S OWN PROJECTION, INVERTED — `roomScene` + `sceneFit` +
+// `scenePlacement`, the three functions `tileFromCanvasXY` itself composes. It is NOT `roomFit`:
+// that function described the PLAN view's `rw*U x rh*U` box and VR-P3 deleted it with the plan.
+// ⛔ AND THE OLD ARITHMETIC HERE WAS THE PLAN'S TOO — `(tx - rx) * U + U/2` names a point in a space
+// nothing draws in any more, so a tool that kept it would aim several metres from the tile it named.
+// A placement that never happened looks exactly like a placement the sim refused, which is the
+// lesson this file's own header already records; this is the same lesson at the next projection.
 const focus = roomTileRect(dView, WORK);
 if (!focus) { console.error('FAIL: no roomTileRect for ' + WORK); process.exit(9); }
 const L = await evalJson(`(()=>{const e=document.getElementById('rz-layers');const r=e.getBoundingClientRect();return {left:r.left,top:r.top,w:r.width,h:r.height};})()`);
-const U = 32;
-const fit = roomFit(focus, L.w, L.h);
-const screenOf = (tx, ty) => ({
-  x: L.left + fit.offX + ((tx - focus.rx) * U + U / 2) * fit.s,
-  y: L.top + fit.offY + ((ty - focus.ry) * U + U / 2) * fit.s,
-});
+const scene = roomScene(focus);
+const fit = sceneFit(scene, L.w, L.h);
+const place = scenePlacement(scene, focus);
+/** The CLIENT point at a tile's projected FLOOR CENTRE — the point the tile is drawn at. */
+const screenOf = (tx, ty) => {
+  const [sx, sy] = place.foot(tx, ty);
+  return { x: L.left + fit.offX + sx * fit.s, y: L.top + fit.offY + sy * fit.s };
+};
 
 const devsIn = () => (decodeDevices(latest.get('devices')) || [])
   .filter((d) => d.deck === 0 && d.x >= room.x && d.x < room.x + room.w && d.y >= room.y && d.y < room.y + room.h);

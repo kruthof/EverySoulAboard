@@ -29,16 +29,24 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   roomScene, scenePlacement, roomCutawaySvg, roomHatchDef, roomTitleSvg, roomDimensionsSvg,
-  roomDoorsSvg, roomTileRect, markLayerSvg, itemStackSvg, U,
+  roomDoorsSvg, roomTileRect, markLayerSvg, itemStackSvg, ROOM_SCALE, M_PER_TILE,
 } from '../src/ui/room-model.js';
+// ⛔⛔ THE THREE PRIVATE COPIES ARE GONE (VR-P3 review, MINOR 6). This file used to carry its own
+// `fittingAt` / `pawnAt` / `ghostAt` — a verbatim re-derivation of the placement, the figure height
+// and the dash dialect. That is a SECOND AUTHORITY on the exact thing the page exists to photograph:
+// the sheet could be pixel-perfect while the shipping surface drew something else, which is the
+// failure mode this tool was written to catch and would have been blind to. The builders are
+// EXPORTED from the surface now and consumed here.
+//
+// ⚠️ IMPORTING THE VIEW IN NODE IS SAFE AND IS CHECKED: `roomzoom-view.js` touches no DOM at module
+// scope (it resolves its nodes inside `initRoomZoom`, which this file never calls), and all three
+// builders take every input as an argument. If that ever stops being true this tool throws on import
+// rather than drawing something stale.
+import { standItem, ghostSvg, pawnSvg } from '../src/ui/roomzoom-view.js';
 import { blockedLayerSvg } from '../src/ui/blocked-overlay.js';
 import { zoneLayerSvg } from '../src/ui/zone-overlay.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { decodeDecks, decodeRooms } from '../src/wire/messages.js';
-import { roomBox } from '../src/items/fittings.js';
-import { buildItem } from '../src/items/index.js';
-import { pawnSprite } from '../src/render/pawn-svg.js';
-import { box as obliqueBox, fhRef, haloText, INK, PAPER, ATTEND } from '../src/render/oblique.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
@@ -47,91 +55,85 @@ mkdirSync(OUT, { recursive: true });
 
 const FIX = JSON.parse(readFileSync(join(here, '../test/fixtures/decks-wreck.json'), 'utf8'));
 const view = decksView(decodeDecks(FIX.decks), decodeRooms(FIX.rooms));
-const FOCUS = roomTileRect(view, 'cryobay');
 
-const scene = roomScene(FOCUS);
-const TILE_PX = scene.s * 100;
-const place = scenePlacement(scene, FOCUS, TILE_PX);
-const S = scene.s;
+/**
+ * ONE PLATE: a room, drawn with the SHIPPING builders and nothing else.
+ *
+ * ⭐ TWO SHAPES ARE RENDERED, NOT ONE (VR-P3 review, MINOR 6). A single 12 × 8 compartment cannot
+ * show what a NARROW room does to the title band, the stat line or the door labels — and both of
+ * those clipped in the shipped draft, invisibly, because every leg in the suite drove one wide room.
+ */
+function plate(focus, opts = {}) {
+  const scene = roomScene(focus);
+  const TILE_PX = scene.s * 100 * M_PER_TILE;
+  const place = scenePlacement(scene, focus, TILE_PX);
+  const rx = focus.rx, ry = focus.ry;
+  const at = (dx, dy) => ({ x: rx + dx, y: ry + dy });
+  const inRoom = (dx, dy) => dx < focus.rw && dy < focus.rh;
 
-/** A fitting at TRUE SIZE on a tile, through the shipped placement + the shipped size derivation. */
-function fittingAt(id, tx, ty) {
-  const rb = roomBox(id, S);
-  const [px, py] = place.front(tx, ty);
-  if (!rb) return '';
-  return `<g transform="translate(${(px + rb.dx).toFixed(2)} ${(py + rb.dy).toFixed(2)})">`
-    + buildItem(id, { w: rb.side, h: rb.side, idPrefix: `sheet-${id}-${tx}-${ty}` }) + '</g>';
+  const doors = [
+    { tx: rx, ty: ry + Math.min(3, focus.rh - 1), side: 'left', label: '‹ 12 · ENGINEERING SPACES' },
+    { tx: rx + focus.rw - 1, ty: ry + Math.min(4, focus.rh - 1), side: 'right', label: '2 · ROOM A1 ›' },
+    { tx: rx + Math.min(5, focus.rw - 1), ty: ry + focus.rh - 1, side: 'back', label: 'AFT BULKHEAD' },
+  ];
+  const marks = [
+    [8, 1, 'debris'], [9, 1, 'debris'], [8, 2, 'dig'], [9, 2, 'dig'], [10, 3, 'strip'],
+  ].filter(([dx, dy]) => inRoom(dx, dy)).map(([dx, dy, mark]) => ({ tx: rx + dx, ty: ry + dy, mark }));
+  const zones = [
+    [1, 5, false, false, 'STOCKPILE · ALL'],
+    [2, 5, true, false, 'STOCKPILE · PARTS'],
+    [3, 5, false, true, 'STOCKPILE · BACKED OFF'],
+  ].filter(([dx, dy]) => inRoom(dx, dy))
+    .map(([dx, dy, restricted, backedOff, label]) => ({ tx: rx + dx, ty: ry + dy, restricted, backedOff, label }));
+  const blocked = inRoom(6, 6) ? [{
+    tx: rx + 6, ty: ry + 6, reasonName: 'no_route', reasonText: 'NO WAY TO WALK TO IT',
+    label: 'DIG BLOCKED — NO WAY TO WALK TO IT',
+  }] : [];
+  const items = inRoom(4, 2) ? [{ tx: rx + 4, ty: ry + 2, stacks: [{ kind: 0, count: 40 }] }] : [];
+  // the catalogue, at true dimensions, along the room — through the SHIPPED placer
+  const fittings = [
+    ['bench', 1, 1], ['dining-table', 4, 4], ['cooker', 7, 5], ['shelf-rack', 2, 7],
+    ['locker', 10, 6], ['stool', 5, 3], ['chair', 6, 3],
+  ].filter(([, dx, dy]) => inRoom(dx, dy));
+  const crew = [
+    { cid: 627, role: 'engineer', name: 'Ada Ozawa', task: 'Hauling parts', ...at(5, 2) },
+    { cid: 913, role: 'grower', name: 'Jun Okonjo', task: '', ...at(8, 4) },
+  ].filter((c) => inRoom(c.x - rx, c.y - ry));
+  const ghosts = inRoom(3, 3)
+    ? [{ x: rx + 3, y: ry + 3, kind: 0, delivered: 2, required: 3 }] : [];
+
+  const body = roomHatchDef()
+    + roomTitleSvg(scene, {
+      slotIndex: focus.slotIndex, roomName: focus.displayName, areaM2: scene.areaM2,
+      placed: 5, pending: 4, here: crew.length, aboard: 3, vacuum: !!opts.vacuum,
+    })
+    + roomCutawaySvg(scene, { vacuum: !!opts.vacuum })
+    + roomDoorsSvg(scene, focus, doors)
+    + zoneLayerSvg(zones, focus, place, TILE_PX)
+    + fittings.map(([id, dx, dy]) =>
+      standItem(id, rx + dx, ry + dy, place, `sheet-${id}-${dx}-${dy}`, undefined)).join('')
+    + markLayerSvg(marks, focus, TILE_PX, place)
+    + itemStackSvg(items, focus, TILE_PX, place)
+    + blockedLayerSvg(blocked, focus, TILE_PX, place)
+    + pawnSvg(crew, focus, 627, place)
+    + ghostSvg(ghosts, scene, place)
+    + roomDimensionsSvg(scene);
+
+  const svg = `<svg width="${scene.viewBox.w}" height="${scene.viewBox.h}" `
+    + `viewBox="${scene.viewBoxAttr}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+  return { scene, svg };
 }
 
-/** A pawn standing on a tile — the P5 figure at the room's own centimetre rule. */
-function pawnAt(cid, role, tx, ty) {
-  const H = 1.66 * 100 * S, sc = H / 24;
-  const [fx, fy] = place.foot(tx, ty);
-  return `<g transform="translate(${(fx - 8 * sc).toFixed(1)} ${(fy - 23 * sc).toFixed(1)}) `
-    + `scale(${sc.toFixed(3)})">${pawnSprite({ cid, role }, { idPrefix: `sheet-pw-${cid}` })}</g>`;
-}
+const WIDE = roomTileRect(view, 'cryobay');
+/** A 3 × 3 compartment carved out of the same room — the NARROW shape, where the title band, the
+ *  stat line and the left door label all have to survive a viewBox barely wider than the room. */
+const NARROW = { ...WIDE, rw: 3, rh: 3, slotIndex: WIDE.slotIndex, displayName: 'LOCKER FLAT' };
 
-/** The queued-order ghost, in the dash dialect, with its leader and its price. */
-function ghostAt(tx, ty, label) {
-  const [px, py] = place.front(tx, ty);
-  const [cx, cy] = place.foot(tx, ty);
-  const lx = cx - 120, ly = cy + 46;
-  return `<g>${obliqueBox(px, py, 100, 240, 100, S, {
-    stroke: ATTEND, strokeWidth: 1.5, dash: '8 5', sideFill: 'hatch', hatch: fhRef('rz'), opacity: 0.92,
-  })}<path d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${lx.toFixed(1)} ${ly.toFixed(1)}" fill="none" `
-    + `stroke="${ATTEND}" stroke-width="0.8" opacity="0.65"/>`
-    + haloText(label, lx, ly + 10, { size: 8.5, font: 'mono', tracking: 1.3, fill: ATTEND, anchor: 'start' })
-    + '</g>';
-}
-
-const rx = FOCUS.rx, ry = FOCUS.ry;
-const doors = [
-  { tx: rx, ty: ry + 3, side: 'left', label: '‹ 2 · ROOM A1' },
-  { tx: rx + FOCUS.rw - 1, ty: ry + 4, side: 'right', label: '2 · ROOM A1 ›' },
-  { tx: rx + 5, ty: ry + FOCUS.rh - 1, side: 'back', label: 'AFT BULKHEAD' },
+const plates = [
+  ['the wreck cryo bay', plate(WIDE)],
+  ['the same drawing, AIRLESS', plate(WIDE, { vacuum: true })],
+  ['a 3 × 3 compartment — the narrow shape', plate(NARROW, { vacuum: true })],
 ];
-const marks = [
-  { tx: rx + 8, ty: ry + 1, mark: 'debris' }, { tx: rx + 9, ty: ry + 1, mark: 'debris' },
-  { tx: rx + 8, ty: ry + 2, mark: 'dig' }, { tx: rx + 9, ty: ry + 2, mark: 'dig' },
-  { tx: rx + 10, ty: ry + 3, mark: 'strip' },
-];
-const zones = [
-  { tx: rx + 1, ty: ry + 5, restricted: false, backedOff: false, label: 'STOCKPILE · ALL' },
-  { tx: rx + 2, ty: ry + 5, restricted: true, backedOff: false, label: 'STOCKPILE · PARTS' },
-  { tx: rx + 3, ty: ry + 5, restricted: false, backedOff: true, label: 'STOCKPILE · BACKED OFF' },
-];
-const blocked = [{
-  tx: rx + 6, ty: ry + 6, reasonName: 'no_route', reasonText: 'NO WAY TO WALK TO IT',
-  label: 'DIG BLOCKED — NO WAY TO WALK TO IT',
-}];
-const items = [{ tx: rx + 4, ty: ry + 2, stacks: [{ kind: 0, count: 40 }] }];
-
-const body = roomHatchDef()
-  + roomTitleSvg(scene, {
-    slotIndex: FOCUS.slotIndex, roomName: FOCUS.displayName, areaM2: scene.areaM2,
-    placed: 5, pending: 4, here: 2, aboard: 3, vacuum: false,
-  })
-  + roomCutawaySvg(scene, { vacuum: false })
-  + roomDoorsSvg(scene, FOCUS, doors)
-  + zoneLayerSvg(zones, FOCUS, place, TILE_PX)
-  // the catalogue, at true dimensions, along the room
-  + fittingAt('bench', rx + 1, ry + 1)
-  + fittingAt('dining-table', rx + 4, ry + 4)
-  + fittingAt('cooker', rx + 7, ry + 5)
-  + fittingAt('shelf-rack', rx + 2, ry + 7)
-  + fittingAt('locker', rx + 10, ry + 6)
-  + fittingAt('stool', rx + 5, ry + 3)
-  + fittingAt('chair', rx + 6, ry + 3)
-  + markLayerSvg(marks, FOCUS, TILE_PX, place)
-  + itemStackSvg(items, FOCUS, TILE_PX, place)
-  + blockedLayerSvg(blocked, FOCUS, TILE_PX, place)
-  + pawnAt(627, 'engineer', rx + 5, ry + 2)
-  + pawnAt(913, 'grower', rx + 8, ry + 4)
-  + ghostAt(rx + 3, ry + 3, 'WALL · 3 PARTS')
-  + roomDimensionsSvg(scene);
-
-const svg = `<svg width="${scene.viewBox.w}" height="${scene.viewBox.h}" `
-  + `viewBox="${scene.viewBoxAttr}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 
 const html = `<!doctype html><meta charset="utf-8">
 <link rel="stylesheet" href="../../src/theme/paper.css">
@@ -141,14 +143,16 @@ const html = `<!doctype html><meta charset="utf-8">
   h1{font-family:'Instrument Serif',serif;font-size:34px;color:#14120F;margin:0 0 4px}
   .lead{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#8A7F6C;margin-bottom:22px}
   .plate{background:#EBE4D1;border:1px solid #C6BBA2;box-shadow:0 18px 40px -28px rgba(28,26,23,.55);
-    padding:22px;width:max-content}
+    padding:22px;width:max-content;margin-bottom:34px}
   svg{display:block;max-width:100%;height:auto}
 </style>
 <h1>Level-2 · the room cutaway</h1>
-<div class="lead">${FOCUS.displayName} · ${scene.wM} × ${scene.dM} × ${scene.hM} M · s=${S} px/cm</div>
-<div class="plate">${svg}</div>
+${plates.map(([caption, p]) => `<div class="lead">${caption} · ${p.scene.wM} × ${p.scene.dM} × ${p.scene.hM} M `
+  + `· s=${p.scene.s} px/cm · viewBox ${p.scene.viewBox.w}×${p.scene.viewBox.h}</div>`
+  + `<div class="plate">${p.svg}</div>`).join('\n')}
 `;
 
 writeFileSync(join(OUT, 'roomzoom-sheet.html'), html);
-writeFileSync(join(OUT, 'roomzoom-sheet.svg'), svg);
-process.stdout.write(`wrote ${join(OUT, 'roomzoom-sheet.html')} (${scene.viewBox.w}×${scene.viewBox.h})\n`);
+writeFileSync(join(OUT, 'roomzoom-sheet.svg'), plates[0][1].svg);
+process.stdout.write(`wrote ${join(OUT, 'roomzoom-sheet.html')} — ${plates.length} plates, `
+  + `drawn with the SHIPPED standItem/ghostSvg/pawnSvg (ROOM_SCALE=${ROOM_SCALE})\n`);

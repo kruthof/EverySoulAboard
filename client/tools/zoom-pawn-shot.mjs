@@ -120,7 +120,14 @@ await sleep(3000);
 
 const { decodeDecks, decodeRooms, selectedCrewCid } = await import('../src/wire/messages.js');
 const { decksView } = await import('../src/ui/decks-model.js');
-const { deckSlots, roomTileRect, roomFit, U } = await import('../src/ui/room-model.js');
+// ⭐⭐ THE SURFACE'S OWN PROJECTION, not the plan view's. `roomFit` + `U` described the pre-VR-P3
+// `rw*U x rh*U` plan box and were deleted with it; the cutaway's tile→screen map is
+// `roomScene` → `sceneFit` → `scenePlacement.foot`, which is exactly what `tileFromCanvasXY`
+// inverts. A tool that kept the old arithmetic would aim metres from the tile it named, and a
+// click that misses its tile is indistinguishable from a gesture the surface refused.
+const {
+  deckSlots, roomTileRect, roomScene, sceneFit, scenePlacement,
+} = await import('../src/ui/room-model.js');
 
 // THE DECK IS A FLAG, not a constant, because a rig that hard-coded one reported "no crew member on
 // deck 0 at all" and would have looked like a finding about the surface. (On `--ship wreck`, deck 0
@@ -406,12 +413,14 @@ await png('04-roomzoom-selected-pawn.png');
 const layerBox = await evalJson(`(()=>{const e=document.getElementById('rz-layers');const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};})()`);
 // A tight crop around her tile, so a human can see the glow + the pill without hunting.
 const focus = roomTileRect(dView, HER_SLOT.anchorName);
-const fit = roomFit(focus, layerBox.w, layerBox.h);
+const scene1 = roomScene(focus);
+const fit = sceneFit(scene1, layerBox.w, layerBox.h);
+const place1 = scenePlacement(scene1, focus);
 const her = crewOf(SUBJECT.cid);
-const screenOf = (tx, ty) => ({
-  x: layerBox.x + fit.offX + (tx - focus.rx) * U * fit.s + (U / 2) * fit.s,
-  y: layerBox.y + fit.offY + (ty - focus.ry) * U * fit.s + (U / 2) * fit.s,
-});
+const screenOf = (tx, ty) => {
+  const [sx, sy] = place1.foot(tx, ty);
+  return { x: layerBox.x + fit.offX + sx * fit.s, y: layerBox.y + fit.offY + sy * fit.s };
+};
 {
   const p = screenOf(her.x, her.y);
   const pad = 90;
@@ -630,11 +639,13 @@ if (!MULTI || roster().length < 2) {
     }
     const f2 = roomTileRect(dView, room.s.anchorName);
     const lb = await evalJson(`(()=>{const e=document.getElementById('rz-layers');const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};})()`);
-    const fit2 = roomFit(f2, lb.w, lb.h);
-    const at = (c) => ({
-      x: lb.x + fit2.offX + (c.x - f2.rx) * U * fit2.s + (U / 2) * fit2.s,
-      y: lb.y + fit2.offY + (c.y - f2.ry) * U * fit2.s + (U / 2) * fit2.s,
-    });
+    const scene2 = roomScene(f2);
+    const fit2 = sceneFit(scene2, lb.w, lb.h);
+    const place2 = scenePlacement(scene2, f2);
+    const at = (c) => {
+      const [sx, sy] = place2.foot(c.x, c.y);
+      return { x: lb.x + fit2.offX + sx * fit2.s, y: lb.y + fit2.offY + sy * fit2.s };
+    };
     const [a, b] = room.in;
     // ⚠️ THE TILE IS RE-DERIVED FROM THE LIVE ROSTER ON EVERY ATTEMPT, not from the `room.in` snapshot
     // taken seconds ago. On `--ship grid` these two took a DIG job while the browser was starting —

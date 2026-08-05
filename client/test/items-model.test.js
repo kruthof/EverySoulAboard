@@ -279,14 +279,17 @@ test('a tile with more kinds than fit says HOW MANY are hidden, rather than pick
 function badgeRects(svg) {
   return [...svg.matchAll(
     // ⭐ VR-P3 — the badge is a PAPER plate with an INK hairline now (charter §1: "no accent =
-    // nothing to see" — a pile of regolith is a thing with nothing to decide about). The parse is
-    // anchored on the plate's own fill+stroke pair, which is unique to it in this layer.
-    /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" rx="2" fill="#EBE4D1" stroke="#14120F"/g,
+    // nothing to see" — a pile of regolith is a thing with nothing to decide about). TRANSLATED at
+    // the VR-P3 review: the plate carries `class="rz-chip"`, so this is anchored on the CLASS as well
+    // as on the fill+stroke pair — strictly narrower than before, since a future paper-on-ink rect in
+    // this layer can no longer be mistaken for a count badge.
+    /<rect class="rz-chip" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" rx="2" fill="#EBE4D1" stroke="#14120F"/g,
   )].map((m) => ({ x: +m[1], y: +m[2], width: +m[3], height: +m[4] }));
 }
-/** Every badge/chip text, in emission order (anchored on the badge's own text colour). */
+/** Every badge/chip text, in emission order (anchored on the chip's own class + text colour). */
 function badgeTexts(svg) {
-  return [...svg.matchAll(/fill="#14120F" text-anchor="middle"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  return [...svg.matchAll(/<text class="rz-chip-text"[^>]*fill="#14120F" text-anchor="middle"[^>]*>([^<]*)</g)]
+    .map((m) => m[1]);
 }
 /** The sprite `<g>` wrappers the layer emitted, as their translate offsets, in emission order. */
 function spriteAt(svg) {

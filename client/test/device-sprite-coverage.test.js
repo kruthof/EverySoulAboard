@@ -1035,7 +1035,21 @@ test('THE OWNER\'S BUG, driven through the SHIPPING Room Zoom: no dashed letter 
     'the VS-Z-25 unknown chip did not render for an unskinned glyph — this rig cannot see the bug');
 
   // …and now the three the owner photographed, plus every other covered kind, on real tiles.
-  const placements = COVERED.map((k, i) => [QUARTERS.rx + (i % 10), QUARTERS.ry + Math.floor(i / 10), FOR_DEVICE[k]]);
+  // ⚠️ STRICTLY INSIDE THE ROOM'S OWN WALLS (VR-P3 review, MINOR 4). The row used to start ON the
+  // rect's front edge, and the cutaway now PLATES a door glyph that sits on the room's boundary and
+  // drops it from the furniture pass — one drawing per door, which is the fix. A device census laid
+  // along the boundary would therefore lose `sliding-door`/`blast-door` for a reason that has nothing
+  // to do with sprite coverage, and read as a coverage regression. The offset is +1 on both axes; the
+  // non-vacuity check below is what keeps it honest if the room ever shrinks.
+  const placements = COVERED.map((k, i) => [
+    QUARTERS.rx + 1 + (i % 10), QUARTERS.ry + 1 + Math.floor(i / 10), FOR_DEVICE[k],
+  ]);
+  for (const [x, y] of placements) {
+    assert.ok(x > QUARTERS.rx && x < QUARTERS.rx + QUARTERS.rw - 1
+      && y > QUARTERS.ry && y < QUARTERS.ry + QUARTERS.rh - 1,
+    `the census placed a device on the room BOUNDARY at ${x},${y} — the cutaway plates a door there `
+    + 'and this test would then read a de-duplication as a coverage hole. Grow the fixture room.');
+  }
   Hud.renderFrame(frameWith(placements, QUARTERS.deck));
   api.exit(); api.enter('quarters');
   const html = rzDoc.getElementById('rz-layers').innerHTML;

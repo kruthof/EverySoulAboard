@@ -23,6 +23,8 @@ import {
   PX_PER_CM, DEPTH_RATIO, INK, PAPER, PAPER_FLAT, ATTEND, HATCH, HALO, GHOST, ROOM_WEIGHT,
   FONT, DEFAULT_ID_PREFIX,
   n, esc, poly, depth, fhDef, fhId, fhRef, box, boxFaces, room, roomFrame, haloText, ghost,
+  // VR-P3 REVISION — the multi-ink label and the shared mono metric it made necessary.
+  haloRuns, monoTextWidth, MONO_ADVANCE,
 } from '../src/render/oblique.js';
 import * as tokens from '../src/theme/paper-tokens.js';
 import {
@@ -368,6 +370,76 @@ test('haloText() paints the stroke UNDER the fill, in paper, at the measured 3.4
   assert.ok(!haloText('<script>', 0, 0).includes('<script>'));
   // deterministic
   assert.equal(haloText('A', 1, 2, { size: 9 }), haloText('A', 1, 2, { size: 9 }));
+});
+
+/**
+ * ⭐⭐ `haloRuns()` — ONE label, ONE baseline, ONE halo, and the accent spent on ONE CLAUSE.
+ *
+ * ⛔ IT EXISTS BECAUSE OF A MEASURED DEFECT: the Room Zoom's stat line set `fill` on the whole
+ * `<text>` when a compartment was airless, so `24.1 M² · 5 OF 9 FITTINGS BUILT · 2 OF 3 ABOARD` all
+ * printed in oxblood beside the `NO AIR` that had earned it — while the code's own comments said only
+ * the trailing clause took the accent. Charter §1 allows ONE accent and spends it on ATTENTION; a
+ * whole line in the attention colour says the floor area is an emergency.
+ *
+ * The tag is `haloText`'s, character for character — same halo, same face, same paint-order — because
+ * both now open through one builder. That equality is the assertion that keeps them from drifting.
+ */
+test('haloRuns() emits ONE haloed text whose runs can carry their own ink', () => {
+  const opts = { size: 9, font: 'mono', tracking: 1.6, fill: '#6B6252', stroke: PAPER, anchor: 'start' };
+  const plain = haloRuns([{ t: 'A · B' }], 9, 42, opts);
+  // 1 — THE TAG IS `haloText`'S. A second spelling of the halo is how two labels on one surface come
+  // to wear two different knockouts.
+  assert.equal(plain, haloText('A · B', 9, 42, opts),
+    'a single unfilled run must be byte-identical to haloText — they open through one builder');
+
+  // 2 — ONLY THE FILLED RUN CARRIES THE ACCENT, and the base ink stays on the <text>.
+  const mixed = haloRuns([{ t: '24.1 M² · ' }, { t: 'NO AIR', fill: ATTEND }], 9, 42, opts);
+  assert.equal((mixed.match(/<tspan/g) || []).length, 1, 'exactly one run needed a tspan');
+  assert.ok(mixed.includes(`<tspan fill="${ATTEND}">NO AIR</tspan>`), 'the accented run is not tinted');
+  const open = mixed.slice(0, mixed.indexOf('>') + 1);
+  assert.ok(open.includes('fill="#6B6252"'), 'the base ink left the <text> element');
+  assert.ok(!open.includes(ATTEND), 'the whole line is tinted with the accent — the exact defect');
+  assert.ok(!mixed.slice(0, mixed.indexOf('<tspan')).includes(ATTEND),
+    'the clauses BEFORE the accented one are inside the accented ink');
+
+  // 3 — RUNS ARE DATA, NEVER MARKUP. `haloRuns` takes text and escapes it, exactly as haloText does;
+  // a builder that let a caller pass markup through would be an injection seam on every label.
+  const evil = haloRuns([{ t: '<script>x</script>', fill: ATTEND }], 0, 0, {});
+  assert.ok(!evil.includes('<script>'), 'a run is interpolated raw — this is a markup injection seam');
+  assert.ok(evil.includes('&lt;script&gt;'), 'the run was dropped rather than escaped');
+  // 4 — degenerate inputs draw an empty label rather than throwing or emitting `undefined`.
+  for (const bad of [null, undefined, [], [null], [{}]]) {
+    const s = haloRuns(bad, 0, 0, {});
+    assert.ok(s.startsWith('<text') && s.endsWith('</text>') && !/undefined|null|NaN/.test(s),
+      `haloRuns(${JSON.stringify(bad)}) emitted ${JSON.stringify(s)}`);
+  }
+  // 5 — deterministic
+  assert.equal(haloRuns([{ t: 'A' }], 1, 2, opts), haloRuns([{ t: 'A' }], 1, 2, opts));
+});
+
+/**
+ * `monoTextWidth()` — the ONE estimate of how wide a mono label is going to be, and the reason it is
+ * shared: the Room Zoom CLAMPS door labels into its viewBox with it and SCALES its stat line to fit
+ * with it, and the count badge FITS its digits with the same advance. Two estimates would let a label
+ * be clamped to a width nothing else agreed with.
+ *
+ * A pure string module cannot measure a font, so this is an estimate and is named as one. What it
+ * must be is MONOTONIC and PROPORTIONAL — the two properties every caller relies on.
+ */
+test('monoTextWidth() is proportional in length, size and tracking, and zero for nothing', () => {
+  assert.equal(monoTextWidth('', 9, 1.6), 0);
+  assert.equal(monoTextWidth(null, 9, 1.6), 0);
+  // proportional in LENGTH
+  assert.ok(Math.abs(monoTextWidth('AAAA', 9, 0) - 4 * monoTextWidth('A', 9, 0)) < 1e-9);
+  // proportional in SIZE (with tracking held at 0, where size is the only term)
+  assert.ok(Math.abs(monoTextWidth('ABC', 18, 0) - 2 * monoTextWidth('ABC', 9, 0)) < 1e-9);
+  // TRACKING widens it — SVG adds one advance after every glyph, including the last
+  assert.ok(monoTextWidth('ABC', 9, 1.6) > monoTextWidth('ABC', 9, 0));
+  assert.equal(monoTextWidth('ABC', 9, 1.6), n(3 * (9 * MONO_ADVANCE + 1.6)));
+  // …and it is the advance the count badge already fits its digits with (`room-model.js ADVANCE`).
+  assert.equal(MONO_ADVANCE, 0.62);
+  // non-finite inputs read as 0 rather than poisoning a clamp with NaN
+  assert.equal(monoTextWidth('ABC', NaN, NaN), 0);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

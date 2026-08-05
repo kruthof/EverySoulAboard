@@ -38,7 +38,7 @@ import { blockedReasonSentence, SPEND_UNKNOWN } from '../wire/messages.js';
 // miniatures (P4) and the catalogue. Two derivations of one projection is exactly how the Overview
 // and the Room Zoom came to skin the same glyph two different ways (`oblique.js`'s own header).
 import {
-  PX_PER_CM, roomFrame, room as obliqueRoom, fhDef, fhRef, haloText, poly,
+  PX_PER_CM, roomFrame, room as obliqueRoom, fhDef, fhRef, haloText, haloRuns, monoTextWidth, poly,
   INK as OB_INK, PAPER as OB_PAPER, ATTEND as OB_ATTEND, n as obN,
 } from '../render/oblique.js';
 
@@ -128,11 +128,11 @@ export const TOOL_LABEL = Object.freeze({
   move: '➤ MOVE', demolish: '⌫ DEMOLISH',
 });
 
-/** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
-export const GHOST_ABBR = Object.freeze({
-  wall: 'WA', floor: 'FL', door: 'DO', bunk: 'BU', desk: 'DE', chair: 'CH', locker: 'LO',
-  plant: 'PL', lamp: 'LA', heater: 'HE',
-});
+// ⛔ `GHOST_ABBR` IS DELETED (VR-P3 review). It was VS-Z-31's two-letter ghost badge — `WA`, `FL`,
+// `DO` stamped inside a queued order's box — and the cutaway's ghost says the whole word plus its
+// PRICE on an oxblood leader (`roomzoom-view.js ghostSvg`: `WALL · 3 PARTS`, off the wire). The
+// table had no importer anywhere in `client/` at the moment VR-P3 landed, and an exported constant
+// that nothing reads is the next reader's invitation to draw the old badge back.
 
 const PALETTE_CMD = Object.freeze({
   wall:  { cls: 'structural', verb: 'build',  kind: 'wall' },
@@ -605,11 +605,19 @@ export function scenePlacement(scene, focusRoom, unit = U) {
  *     px = x0 + s·x + 0.4·s·y          py = y0 − s·z − 0.6·s·y
  * On the floor plane z = 0, so `y = (y0 − py) / (0.6·s)` and then `x = (px − x0 − 0.4·s·y) / s`.
  *
- * ⚠️ THE PLANE IS AN ASSUMPTION AND IT HAS ONE HONEST CONSEQUENCE: a click on the TOP FACE of a tall
- * fitting resolves to the floor tile that face covers, which is further BACK than the tile the
- * fitting stands on. That is inherent to reading a 2-D point in a 3-D scene without a depth buffer;
- * the alternative (hit-test every drawn face in paint order) needs the browser's own picking, which
- * a pure model cannot have. The old plan view had no such case because nothing had height.
+ * ⚠️ THE PLANE IS AN ASSUMPTION AND IT HAS ONE MEASURED CONSEQUENCE: a click on the TOP FACE of a
+ * tall fitting resolves to the floor tile that face covers, which is further BACK than the tile the
+ * fitting stands on. At the cutaway's 2.4 m ceiling that is up to ~3 tiles of error on the tallest
+ * pieces — a real miss, not a rounding one, and it is FILED rather than closed here.
+ *
+ * ⚠️ THE JUSTIFICATION THAT STOOD HERE WAS OVERSTATED AND IS CORRECTED (VR-P3 review, MINOR 7). It
+ * read: *"the alternative (hit-test every drawn face in paint order) needs the browser's own picking,
+ * which a pure model cannot have."* The first half is true of THIS FUNCTION and false of the SURFACE:
+ * the pieces are real SVG elements in a real document, so `roomzoom-view.js` could resolve a pointer
+ * from `e.target` (or `elementFromPoint`) and fall back to this inverse only on the floor itself —
+ * every fitting already carries an id naming its tile (`rz-f-<tx>-<ty>`). What a PURE model cannot
+ * have is a depth buffer; what the VIEW cannot have is an excuse. The old plan view had no such case
+ * because nothing had height.
  * PURE.
  */
 export function tileFromScenePoint(sx, sy, scene, focusRoom) {
@@ -735,31 +743,75 @@ export function roomHatchDef() { return '<defs>' + fhDef(RZ_ID) + '</defs>'; }
  *          vacuum?:boolean}} s
  */
 export function roomStatLine(s) {
+  return roomStatClauses(s).map((c) => c.t).join(STAT_SEP);
+}
+
+/** The separator between stat clauses — declared once, because the SPLIT builder below and the
+ *  joined string above must agree about it to the character. */
+const STAT_SEP = ' · ';
+/** The stat line's ordinary ink (charter §1 micro-label) and the ONE clause allowed the accent. */
+const STAT_INK = '#6B6252';
+/** The stat line's design type: mono 9 / 1.6 tracking, at x = 9 in the scene's title band. */
+const STAT_X = 9, STAT_Y = 42, STAT_SIZE = 9, STAT_TRACK = 1.6;
+
+/**
+ * THE STAT LINE AS CLAUSES, each with the ink it is entitled to — the split `roomStatLine` joins.
+ *
+ * ⛔⛔ THIS EXISTS BECAUSE THE ONE-STRING VERSION SPENT THE ACCENT ON EVERYTHING (VR-P3 review,
+ * MAJOR 4). `roomTitleSvg` set `fill: vacuum ? OB_ATTEND : …` on the WHOLE `<text>`, so an airless
+ * compartment printed its area, its fitting count and its crew count in oxblood as well as its
+ * `NO AIR` — while this function's own comment and `roomTitleSvg`'s own comment both said only the
+ * trailing clause took it. Charter §1 allows ONE accent and spends it on attention; a stat line
+ * entirely in the attention colour says the area is an emergency.
+ *
+ * The returned array is the ONLY place the clause list is written; `roomStatLine` joins it and
+ * `roomTitleSvg` sets each run's ink. PURE.
+ *
+ * @param {{areaM2:number, placed:number, pending:number, here:number, aboard:number,
+ *          vacuum?:boolean}} s
+ * @returns {{t:string, fill?:string}[]}
+ */
+export function roomStatClauses(s) {
   const o = s || {};
   const area = (o.areaM2 | 0);
   const placed = o.placed | 0, pending = o.pending | 0;
   const here = o.here | 0, aboard = o.aboard | 0;
   const parts = [
-    area + '.0 M²',
-    placed + ' OF ' + (placed + pending) + ' FITTINGS BUILT',
-    here + ' OF ' + aboard + ' ABOARD, HERE',
+    { t: area + '.0 M²' },
+    { t: placed + ' OF ' + (placed + pending) + ' FITTINGS BUILT' },
+    { t: here + ' OF ' + aboard + ' ABOARD, HERE' },
   ];
   // The airless clause rides the stat line rather than a badge of its own: it is a fact about the
   // compartment, in the row that states facts about the compartment, and it is the ONE clause here
   // that is allowed the accent (charter §1 — oxblood is attention).
-  if (o.vacuum) parts.push('NO AIR');
-  return parts.join(' · ');
+  if (o.vacuum) parts.push({ t: 'NO AIR', fill: OB_ATTEND });
+  return parts;
 }
 
-/** The in-SVG headline + stat line as one `<g>`. `vacuum` tints the trailing clause oxblood. */
+/**
+ * The in-SVG headline + stat line as one `<g>`.
+ *
+ * ⭐ ONLY THE `NO AIR` CLAUSE TAKES THE ACCENT — see `roomStatClauses`. The line is one `<text>` with
+ * one `<tspan>` for the accented clause, so the words still sit on one baseline with one halo.
+ *
+ * ⭐ AND IT IS SCALED TO FIT (VR-P3 review, MINOR 3). At the design's fixed 9 px the line is ~366 px
+ * of type; a 1 × 1 compartment's whole viewBox is 295 px, so the sentence ran off the right edge and
+ * the player read `… 1 OF 3 A`. It is FITTED instead of TRUNCATED because every clause is a fact
+ * about the room and the last one is the airless warning — dropping characters off the end drops the
+ * one clause that matters most. The size never grows past the design's 9.
+ */
 export function roomTitleSvg(scene, s) {
   const o = s || {};
   const title = 'Compartment ' + ((o.slotIndex | 0) + 1) + ' · ' + String(o.roomName == null ? '' : o.roomName);
-  const stat = roomStatLine(o);
+  const runs = roomStatClauses(o).flatMap((c, i) => (i ? [{ t: STAT_SEP }, c] : [c]));
+  const stat = runs.map((r) => r.t).join('');
+  const avail = Math.max(1, (scene && scene.viewBox ? scene.viewBox.w : 0) - STAT_X * 2);
+  const full = monoTextWidth(stat, STAT_SIZE, STAT_TRACK);
+  const k = full > avail ? avail / full : 1;
   return '<g class="rz-title">'
     + haloText(title, 8, 24, { size: 24, font: 'serif', fill: OB_INK, stroke: OB_PAPER, anchor: 'start' })
-    + haloText(stat, 9, 42, {
-      size: 9, font: 'mono', tracking: 1.6, fill: o.vacuum ? OB_ATTEND : '#6B6252',
+    + haloRuns(runs, STAT_X, STAT_Y, {
+      size: nn(STAT_SIZE * k), font: 'mono', tracking: nn(STAT_TRACK * k), fill: STAT_INK,
       stroke: OB_PAPER, anchor: 'start',
     })
     + '</g>';
@@ -833,6 +885,7 @@ export function roomDoorsSvg(scene, focusRoom, doors) {
   const P = scene.frame.project;
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
   const cm = M_PER_TILE * 100, dh = 200; // a 2.0 m doorway in a 2.4 m wall
+  const vbW = scene.viewBox ? scene.viewBox.w : 0;
   const out = [];
   for (const d of doors) {
     if (!d) continue;
@@ -864,14 +917,53 @@ export function roomDoorsSvg(scene, focusRoom, doors) {
       lx = a[0]; ly = a[1] - 12; anchor = 'middle';
     }
     if (pts) {
-      out.push('<path d="' + poly(pts) + '" fill="' + OB_PAPER + '" stroke="' + OB_INK
-        + '" stroke-width="1.5"/>');
+      // The CLASS is a test + stylesheet hook and it is the only thing that separates "a door plate
+      // was drawn" from "a door label was written": on the right and front walls the cutaway draws
+      // NO plate on purpose (see above), so a census that could not tell the two apart would read a
+      // label-only door as a plate and never see the plate layer disappear.
+      out.push('<path class="rz-door-plate" d="' + poly(pts) + '" fill="' + OB_PAPER + '" stroke="'
+        + OB_INK + '" stroke-width="1.5"/>');
     }
-    out.push(haloText(d.label, lx, ly, {
-      size: 8.5, font: 'mono', tracking: 1.3, fill: '#6B6252', anchor,
+    out.push(haloText(d.label, clampLabelX(lx, d.label, anchor, vbW), ly, {
+      size: DOOR_LABEL_SIZE, font: 'mono', tracking: DOOR_LABEL_TRACK, fill: '#6B6252', anchor,
     }));
   }
   return '<g class="rz-doors">' + out.join('') + '</g>';
+}
+
+/** The door labels' type — one place, so the clamp below and the label agree about their width. */
+const DOOR_LABEL_SIZE = 8.5, DOOR_LABEL_TRACK = 1.3;
+/** How close to the viewBox edge a clamped label is allowed to sit, in scene px. */
+const LABEL_MARGIN = 2;
+
+/**
+ * KEEP A DOOR LABEL INSIDE THE SCENE (VR-P3 review, MINOR 2).
+ *
+ * ⛔ THE DEFECT, MEASURED. `SCENE_PAD.left` is 58 px and a left-hand door's label is set at the wall
+ * with `text-anchor="end"`, so it runs LEFT from its anchor: `‹ 2 · CORRIDOR` at 8.5/1.3 is ~92 px of
+ * type against ~55 px of room to the left of it, and the first characters fell outside the viewBox
+ * and were CLIPPED — a 1 × 1 compartment lost the whole `‹ 2 ·` prefix, and the wreck's 12 × 8 front
+ * row put a left label at x ≈ −60. A door the player cannot read is a way out of the room the drawing
+ * does not mention, which is the exact silence `roomDoorsSvg`'s own header refuses on the right wall.
+ *
+ * ⭐ IT CLAMPS RATHER THAN GROWING THE PAD, and that is a choice with a reason: the pad is part of the
+ * SCENE (it sizes the viewBox, which sizes every tile on screen), so deriving it from the longest
+ * neighbour NAME would let one compartment's caption shrink the room next door. A clamped label may
+ * ride over the hatched left wall; it is haloed (`paint-order="stroke"`, a 3.4 px paper knockout), so
+ * it stays readable there, and it is INSIDE the picture, which is the property that was missing.
+ * PURE.
+ */
+function clampLabelX(x, label, anchor, vbW) {
+  const w = monoTextWidth(label, DOOR_LABEL_SIZE, DOOR_LABEL_TRACK);
+  // Where the label's LEFT edge sits relative to its anchor, per `text-anchor`.
+  const lead = anchor === 'end' ? -w : anchor === 'middle' ? -w / 2 : 0;
+  let v = x;
+  if (vbW > 0 && v + lead + w > vbW - LABEL_MARGIN) v = vbW - LABEL_MARGIN - w - lead;
+  // LEFT LAST, so it wins when a label is wider than the whole scene: a caption that starts at the
+  // left edge and overruns the right is readable from its first character; one pushed off the left
+  // loses the `‹ N ·` prefix that says WHICH compartment it opens onto, which is the payload.
+  if (v + lead < LABEL_MARGIN) v = LABEL_MARGIN - lead;
+  return nn(v);
 }
 
 /**
@@ -1813,9 +1905,12 @@ function chipSvg(text, cx, bottom, maxW, k = 1) {
   const w = Math.min(maxW, len * ADVANCE * fs + 2.5 * k);
   const x = cx - w / 2;
   const y = bottom - H;
-  return '<rect x="' + n2(x) + '" y="' + n2(y) + '" width="' + n2(w) + '" height="' + n2(H)
+  // The class is a test hook and nothing else styles it: `k` is the ONE thing this function scales by
+  // and it survived a mutation to `1` with the whole suite green, so the plate has to be findable in
+  // the ASSEMBLED scene to be measured there (`room-model.test.js`, the count-badge scale leg).
+  return '<rect class="rz-chip" x="' + n2(x) + '" y="' + n2(y) + '" width="' + n2(w) + '" height="' + n2(H)
     + '" rx="2" fill="' + BADGE_FILL + '" stroke="' + BADGE_EDGE + '" stroke-width="' + n2(k) + '"/>'
-    + '<text x="' + n2(cx) + '" y="' + n2(y + H / 2) + '" font-size="' + n2(fs)
+    + '<text class="rz-chip-text" x="' + n2(cx) + '" y="' + n2(y + H / 2) + '" font-size="' + n2(fs)
     + '" fill="' + BADGE_TEXT + '" text-anchor="middle" dominant-baseline="central" '
     + 'font-family="\'Space Mono\', ui-monospace, monospace">' + text + '</text>';
 }

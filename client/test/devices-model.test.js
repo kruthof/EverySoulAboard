@@ -420,8 +420,12 @@ const PLANTED_LAYERS = [
   // a SECOND, independent wear read threaded into the same call — because the violation this file
   // must now catch is not "the data got drawn" but "the data got drawn TWICE, two different ways".
   ['a SECOND wear source threaded into furnitureSvg beside the real one',
-    (s) => s.replace('itemStackTileKeys(_itemTiles), _deviceCond, place);',
-      'itemStackTileKeys(_itemTiles), roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus), place);')],
+    // ⚠️ THE ANCHOR MOVED WITH THE CALL (VR-P3 review): `furnitureSvg` takes a fifth argument now —
+    // the boundary-door tiles the cutaway has already plated — so the plant is re-aimed at the
+    // `_deviceCond, place, doorTiles)` tail rather than deleted. Re-aiming is the whole instruction
+    // this control's own failure message gives.
+    (s) => s.replace('itemStackTileKeys(_itemTiles), _deviceCond, place, doorTiles);',
+      'itemStackTileKeys(_itemTiles), roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus), place, doorTiles);')],
   ['a bare threshold comparison in this file — a SECOND answer to "which picture"',
     (s) => s.replace(DRAW_ANCHOR,
       DRAW_ANCHOR + "\n  body += wearSvg(deviceConditionAt(0, 0), buildTileItem);")],
