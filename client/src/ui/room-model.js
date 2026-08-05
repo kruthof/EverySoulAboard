@@ -585,8 +585,19 @@ export function scenePlacement(scene, focusRoom, unit = U) {
       const c = corners(tx, ty).centre;
       return 'translate(' + nn(c[0] - unit / 2) + ' ' + nn(c[1] - unit) + ')';
     },
-    /** The tile's floor CENTRE in scene px — where a person's feet or a fitting's anchor go. */
-    foot(tx, ty) { return corners(tx, ty).centre; },
+    /**
+     * The tile's floor CENTRE in scene px — where a person's feet or a fitting's anchor go.
+     *
+     * ⭐ FRACTIONAL-TOLERANT, for the pawn glide: `corners` floors its inputs with `| 0` (it must —
+     * `cell`/`stand`/`quad` describe a whole tile's parallelogram), so this one computes the centre
+     * DIRECTLY instead of going through it. For an INTEGER `tx`/`ty` the arithmetic is the same
+     * expression `corners` evaluates and the result is identical to the digit; a fractional argument
+     * now lands between the two tile centres instead of snapping back to the lower one.
+     */
+    foot(tx, ty) {
+      const fx = Number.isFinite(tx) ? tx : 0, fy = Number.isFinite(ty) ? ty : 0;
+      return P((fx - rx) * cm + cm / 2, (fy - ry) * cm + cm / 2, 0);
+    },
     /** The tile's NEAR-LEFT floor corner in scene px — a fitting's own cm origin. */
     front(tx, ty) { return corners(tx, ty).nearLeft; },
     /** The tile's floor quad as a closed `d`, for an outline that lies in the plane. */
@@ -1124,6 +1135,48 @@ export function roomCrew(crew, focusRoom) {
     if (clampTileToRoom(c.x | 0, c.y | 0, focusRoom)) out.push(c);
   }
   return out;
+}
+
+/**
+ * The tile a crew member's FEET ARE DRAWN IN — `Math.round` of the glide position, because
+ * `scenePlacement.foot(fx,·)` puts the feet at the CENTRE of the virtual tile `fx`, and the real
+ * tile containing that point is `floor(fx + 0.5)`. Falls back to the integer tile. PURE.
+ */
+export function drawnTile(c) {
+  if (!c) return { x: 0, y: 0 };
+  return {
+    x: Math.round(Number.isFinite(c.fx) ? c.fx : (c.x | 0)),
+    y: Math.round(Number.isFinite(c.fy) ? c.fy : (c.y | 0)),
+  };
+}
+
+/**
+ * ⭐ WHO DID THE PLAYER JUST CLICK — the Room Zoom's pawn hit test, which resolves a FLOOR TILE
+ * (`tileFromCanvasXY`) rather than a DOM element, and therefore had to learn about the glide.
+ *
+ * <p>⚠️ IT WAS A REGRESSION THE MOMENT THE FIGURES STARTED SLIDING, and the affordance it breaks is
+ * the one the owner reported by name at the 2026-07-29 playtest (<i>"we cannot select a pawn by
+ * clicking on him"</i>). The sim takes a tile step FIRST and pays for it over the next
+ * `ticksPerTile` ticks, so mid-walk `c.x`/`c.y` is ALREADY the destination while the body is still
+ * drawn on the tile behind it. A hit test that only asked `c.x === tile.x` therefore missed the
+ * figure the player was aiming at for up to a full second per tile, and selected her by clicking
+ * the empty tile ahead of her. Measured live on `--ship wreck`: the roster published
+ * `tile=(7,2) frac=(8,2)` — a whole tile apart.</p>
+ *
+ * <p>THE DRAWN TILE WINS AND THE SIM TILE IS THE FALLBACK, in that order: the player is pointing at
+ * a figure, so what is under the cursor decides, and the sim tile still answers for anyone the
+ * glide has no opinion about (an older host, a standing crew member). Everything that is NOT a hit
+ * test keeps the sim tile — membership, the CREW WATCH rows, the order target. PURE.</p>
+ *
+ * @param {Array|null} crew roster crew list @param {object} focusRoom the room rect
+ * @param {number} tx @param {number} ty absolute sim tile under the pointer
+ */
+export function crewHitAtTile(crew, focusRoom, tx, ty) {
+  const here = roomCrew(crew, focusRoom);
+  const x = tx | 0, y = ty | 0;
+  for (const c of here) { const d = drawnTile(c); if (d.x === x && d.y === y) return c; }
+  for (const c of here) if ((c.x | 0) === x && (c.y | 0) === y) return c;
+  return null;
 }
 
 /**

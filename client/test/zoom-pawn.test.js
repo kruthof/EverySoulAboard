@@ -437,6 +437,48 @@ test('BASELINE: a click on a pawn with NO tool armed selects THAT crew member, b
   pressKey('g');                       // disarm
 });
 
+// ⭐ SMOOTH PAWN MOVEMENT (option B) — AND THE REGRESSION IT WOULD HAVE INTRODUCED HERE.
+//
+// The sim takes a tile step FIRST and pays for it over the next `ticksPerTile` ticks, so mid-walk
+// `Citizen.Pos` — and therefore the roster's `x`/`y` — is ALREADY the destination while the figure
+// is still drawn on the tile behind it. Measured live on `--ship wreck`: one roster row published
+// `x=7, fx=8.0`, a whole tile apart. This canvas hit test resolves a FLOOR TILE (the pawn layer is
+// `pointer-events="none"`), so `c.x === tile.x` would have missed the body the player is pointing
+// at for up to a full second per tile — and selected her by clicking the empty tile ahead. That is
+// exactly the affordance the owner reported at the 2026-07-29 playtest, so it is fixed, not filed.
+//
+// MUTATION: drop `crewHitAtTile`'s drawn-tile pass (back to the sim tile only) ⇒ RED on leg 1.
+// MUTATION: `crewHitAtTile` → the old `roomCrew(...).find((c) => c.x === tile.x …)` in the view
+//           (the WIRING, not the model)                                        ⇒ RED on leg 1.
+test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the sim has her', () => {
+  prime(null);
+  // She has stepped to her tile in the sim; the body is still a tile back and sliding.
+  const behind = { x: RYN.x - 1, y: RYN.y };
+  assert.ok(crewRoomSlot(DVIEW, behind).anchor === 'quarters',
+    'precondition: the tile she is drawn on is inside the focused room');
+
+  // CONTROL — with nobody drawn there, that tile selects nobody. Without this the leg below could
+  // pass on a hit test that simply selects the room's first occupant from any click.
+  hudSent.length = 0;
+  clickTile(behind.x, behind.y);
+  assert.deepEqual(hudSent, [], 'bare floor selected someone before the glide was even published');
+
+  Hud.renderRoster({ type: 'roster', crew: CREW.map((c) => (c.cid === RYN.cid
+    ? { ...c, fx: RYN.x - 0.9, fy: RYN.y } : { ...c, fx: c.x, fy: c.y })) });
+
+  hudSent.length = 0;
+  clickTile(behind.x, behind.y);
+  assert.deepEqual(hudSent, [{ cmd: 'click', x: RYN.x, y: RYN.y }],
+    'clicking the drawn figure did not select her — the hit test is reading the sim tile only');
+
+  // …and her SIM tile still answers, so nothing that worked before this package stopped working.
+  hudSent.length = 0;
+  clickTile(RYN.x, RYN.y);
+  assert.deepEqual(hudSent, [{ cmd: 'click', x: RYN.x, y: RYN.y }], 'the sim tile stopped answering');
+
+  Hud.renderRoster({ type: 'roster', crew: CREW });   // leave the rig as the other tests expect
+});
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 3. ⭐ THE OWNER'S ACTUAL COMPLAINT: the selection must be VISIBLE after room entry.
 //    Asserted against DRAWN OUTPUT. A state-inspection version of this passes on `main`.

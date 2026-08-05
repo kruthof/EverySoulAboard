@@ -62,7 +62,7 @@ import {
   // tile→client box for the one transient that lives outside the SVG).
   roomScene, scenePlacement, roomCutawaySvg, roomHatchDef, roomTitleSvg, roomDimensionsSvg,
   roomDoorsSvg, roomDoorTiles, tileClientBox, M_PER_TILE, ROOM_HEIGHT_M, ROOM_SCALE, RZ_ID,
-  deckSlots, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
+  deckSlots, tileFromCanvasXY, roomCells, roomCrew, crewHitAtTile, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   roomBlockedTiles,
   demolishTarget, removeDecor, escStackRung,
@@ -911,7 +911,15 @@ export function pawnSvg(list, focus, selCid, place) {
   const S = H / 24;                      // …over the sprite's 24-unit viewBox
   const sel = selCid == null ? null : String(selCid);
   for (const c of list) {
-    const [fx, fy] = pl.foot(c.x, c.y);
+    // ⭐ THE GLIDE — the same wire fields and the same fallback the Overview's `pawnLayer` uses
+    // (`WireFormat.RosterEntry.Fx` owns the convention: a tile coordinate, no centre offset, so it
+    // drops straight into `foot`, which is fractional-tolerant for exactly this). ROOM MEMBERSHIP
+    // is NOT affected: `roomCrew` decided who is in this list off the integer tile, and the name
+    // plate + work tag below hang off `fx`/`fy`, so a label never detaches from its figure.
+    const [fx, fy] = pl.foot(
+      Number.isFinite(c.fx) ? c.fx : c.x,
+      Number.isFinite(c.fy) ? c.fy : c.y,
+    );
     const selected = sel !== null && String(c.cid) === sel;
     if (selected) {
       // A LEVEL ellipse lying in the floor plane at the feet — the catalogue's round-objects rule,
@@ -1081,7 +1089,12 @@ function mkEl(tag, cls) {
  *
  * ⚠️ THE ROW NODES ARE REBUILT ONLY WHEN THE CID SET CHANGES. Everything else — the task line, the
  * WHERE line, the `.sel` class — is a guarded in-place write. That is §4h's lesson, not tidiness: the
- * roster rebroadcasts on every crew tile-step (~2/s at 1×, faster at speed), and a node torn down
+ * roster rebroadcasts on every crew tile-step — ⭐ AND THE GLIDE MADE THAT ~5× MORE OFTEN: `fx`/`fy`
+ * move every sim tick while anyone is walking, so the channel's dedup no longer collapses the frames
+ * between two tiles and the dock is re-driven at the render cap (~10/s) rather than ~2/s at 1×. The
+ * in-place write is what makes that free; it was already the rule and it is now load-bearing at five
+ * times the rate. (An all-idle ship still sends nothing: standing crew serialize `fx === x`, so the
+ * dedup collapses those frames exactly as before.) A node torn down
  * between mousedown and mouseup fires no `click` in Chrome at all. A dock you have to click twice is
  * indistinguishable from a dock that does not work, and this dock exists because the owner reported
  * having no way to reach a pawn.
@@ -1451,7 +1464,10 @@ function onCanvasClick(e) {
     // Pawn click = select, only when no tool is armed (IX-Z-30). Resolve crew from the tile.
     const roster = Hud.getRoster();
     const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
-    const hit = roomCrew(crew, _focus).find((c) => (c.x | 0) === tile.x && (c.y | 0) === tile.y);
+    // ⭐ THE GLIDE MADE THIS A TILE TEST ABOUT A MOVING TARGET — `crewHitAtTile` prefers the tile
+    // the figure is DRAWN in and falls back to the sim tile (see its header; the sim tile leads the
+    // body by up to a full tile mid-walk, so the old `c.x === tile.x` missed the pawn being aimed at).
+    const hit = crewHitAtTile(crew, _focus, tile.x, tile.y);
     if (hit) Hud.selectCrewByCid(hit.cid);
     return;
   }

@@ -954,7 +954,15 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
   const pawns = [];
   for (const c of list) {
     if (!c || c.deck !== deck) continue; // off-deck / fogged crew simply do not render
-    const [fx, fy] = t.project(c.x + 0.5, c.y + 0.5); // feet on the tile centre
+    // ⭐ THE GLIDE. `fx`/`fy` are the wire's sub-tile walk position in the SAME coordinate space as
+    // `x`/`y` (a tile coordinate, no centre offset — the convention is written down once, at
+    // `WireFormat.RosterEntry.Fx`), so the `+ 0.5` that puts the feet on the tile CENTRE is applied
+    // here exactly as it always was. An older host omits them and the integer tile is used, which is
+    // also what a standing crew member serializes (`fx === x`), so the fallback is never a jump.
+    // Membership (`c.deck !== deck` above), selection and click targets keep the INTEGER tile.
+    const gx = Number.isFinite(c.fx) ? c.fx : c.x;
+    const gy = Number.isFinite(c.fy) ? c.fy : c.y;
+    const [fx, fy] = t.project(gx + 0.5, gy + 0.5); // feet on the tile centre
     const S = Math.max(0.5, t.tileSize * 2.2 / 24);   // pawn box ≈ 2.2 tiles tall (viewBox 24)
     const sur = surnameOf(c.name);
     const tag = taskTag(c.task);                      // null ⇒ idle / walking / en route (no tag)

@@ -2472,6 +2472,7 @@ namespace Perilune.Web
         {
             var citizens = _sim.Citizens.Items;
             var rows = new List<WireFormat.RosterEntry>(citizens.Count);
+            int tpt = _sim.Defs.Citizen.TicksPerTile;   // the TUNED cadence, never the display const
             for (int i = 0; i < citizens.Count; i++)
             {
                 var c = citizens[i];
@@ -2488,10 +2489,84 @@ namespace Perilune.Web
                         traits = mind.Persona.Traits ?? (IReadOnlyList<string>)Array.Empty<string>();
                     }
                 }
+                var (wx, wy) = WalkFraction(c, tpt);
                 rows.Add(new WireFormat.RosterEntry(c.Id, Name(c), role, mood, TaskLabel(c),
-                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y, traits));
+                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y, traits, wx, wy));
             }
             return rows;
+        }
+
+        /// <summary>
+        /// ⭐ SMOOTH PAWN MOVEMENT (option B) — where a walking crew member is BETWEEN two tiles,
+        /// as a continuous tile coordinate. Derived at RENDER time from state the sim already
+        /// keeps; the sim itself stays discrete and nothing here is ever called from a tick path.
+        ///
+        /// <para><b>THE DIRECTION, READ OFF <c>CitizenSystem.Tick</c> RATHER THAN GUESSED — and it
+        /// is the opposite of the obvious reading.</b> The step is taken FIRST and paid for
+        /// AFTERWARDS: on the tick a crew member moves, <c>CitizenSystem</c> writes
+        /// <c>PrevPos = Pos; Pos = next; MoveCooldown = ticksPerTile</c> (lines 51–54). So during
+        /// the whole cooldown window <c>Pos</c> is ALREADY the destination and <c>PrevPos</c> is
+        /// the tile she is walking out of, and <c>MoveCooldown</c> COUNTS DOWN
+        /// (<c>if (--citizen.MoveCooldown > 0) continue;</c>). The elapsed fraction is therefore
+        /// <c>(ticksPerTile − MoveCooldown) / ticksPerTile</c>: at a FRESH counter
+        /// (<c>MoveCooldown == ticksPerTile</c>) it is 0 and the figure stands on <c>PrevPos</c>,
+        /// the DEPARTED tile — not on <c>Pos</c>. Interpolating <c>Pos → Path[PathIndex]</c>
+        /// instead would run a whole tile ahead of the truth.</para>
+        ///
+        /// <para>The final step settles through the same field: with no path left,
+        /// <c>CitizenSystem</c> runs the cooldown out and only then writes <c>PrevPos = Pos</c>
+        /// (lines 65–68), which is exactly this function's "standing still" case. So a walk reads
+        /// as an unbroken run of <c>ticksPerTile</c> even steps per tile with no seam at a tile
+        /// boundary (segment k ends at <c>A + 0.9·(B−A)</c> and segment k+1 opens at <c>B</c>).</para>
+        ///
+        /// <para>⚠️ <b>THE LERP IS A STRAIGHT LINE BETWEEN TILE CENTRES AND MAY CUT A CORNER.</b>
+        /// Where a path steps diagonally, or squeezes past a door jamb, the drawn figure can pass
+        /// through up to half a tile of wall mid-glide. ACCEPTED for this first look (owner:
+        /// "lets do B first to see how it looks") and deliberately NOT engineered around — routing
+        /// the glide along the walkable path would be a second, larger package. Nothing downstream
+        /// depends on it: membership, selection and click targets all keep using the integer tile.</para>
+        ///
+        /// <para>⛔ READ-ONLY. <c>Pos</c>, <c>PrevPos</c> and <c>MoveCooldown</c> are pre-existing
+        /// public saved fields (<c>SaveWriter.cs:246</c>, <c>Simulation.cs:522</c>) — no sim state
+        /// is added, changed or ordered differently, so no determinism pin can move.</para>
+        ///
+        /// <para>⚠️ <b>THE CONSEQUENCE WORTH KNOWING, MEASURED LIVE RATHER THAN REASONED ABOUT:
+        /// THE SIM TILE LEADS THE DRAWN BODY BY UP TO A FULL TILE.</b> Because the step is taken
+        /// first, <c>Pos</c> arrives a whole <c>ticksPerTile</c> window before the figure does — on
+        /// <c>--ship wreck</c> the roster published <c>x=7 fx=8.0</c> in one row. Everything that
+        /// reads the INTEGER tile therefore commits early: room membership, the CREW WATCH's HERE
+        /// flag, `currentRoom`. That is the correct reading (she IS on that tile as far as the sim
+        /// is concerned) and it is the owner-approved design. But it DID break one thing, and it is
+        /// fixed rather than filed because it is the affordance the owner reported by name: the
+        /// Room Zoom resolves a pawn click through the floor TILE, so clicking the drawn figure
+        /// selected nobody. See `room-model.js`'s <c>crewHitAtTile</c>. The Overview is unaffected —
+        /// it hit-tests the drawn element's own <c>data-cid</c>.</para>
+        ///
+        /// <para><b>COORDINATE SPACE:</b> the SAME space as <c>Citizen.Pos</c> and the roster's
+        /// integer <c>x</c>/<c>y</c> — a TILE coordinate with no half-tile centre offset. Standing
+        /// still ⇒ exactly <c>(Pos.X, Pos.Y)</c>. Each view adds its own centre offset just as it
+        /// does for <c>x</c>/<c>y</c> today.</para>
+        /// </summary>
+        public static (float X, float Y) WalkFraction(Citizen c, int ticksPerTile)
+        {
+            if (c == null) return (0f, 0f);
+            // Standing still: PrevPos == Pos is the settled stance CitizenSystem writes, and a
+            // spent counter means no step is in flight. A deck change is never interpolated —
+            // there is no continuous path between two decks' x/y planes.
+            if (ticksPerTile <= 0 || c.MoveCooldown <= 0 || c.PrevPos == c.Pos || c.PrevPos.Z != c.Pos.Z)
+                return (c.Pos.X, c.Pos.Y);
+            int elapsed = ticksPerTile - c.MoveCooldown;
+            // Fresh counter ⇒ the DEPARTED tile. `<=` rather than `==` covers the one way this can
+            // go negative: `TicksPerTile` is a DEF FIELD, so a save taken mid-step and loaded after
+            // the def shrank carries a counter larger than the new tile time.
+            if (elapsed <= 0) return (c.PrevPos.X, c.PrevPos.Y);
+            // No upper clamp is written because none is reachable: the branch above guarantees
+            // MoveCooldown > 0, so elapsed < ticksPerTile and t < 1 — the segment always ENDS
+            // short of the destination, and the next step opens there. A clamp here would be a
+            // guard nothing can make bite.
+            float t = (float)elapsed / ticksPerTile;
+            return (c.PrevPos.X + (c.Pos.X - c.PrevPos.X) * t,
+                    c.PrevPos.Y + (c.Pos.Y - c.PrevPos.Y) * t);
         }
 
         /// <summary>The pending build designations for the BUILD ghosts — a READ-ONLY mirror of the

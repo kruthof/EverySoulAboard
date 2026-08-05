@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -27,7 +28,8 @@ namespace Perilune.Web
     ///   citizen {"type":"citizen","cid":..,"name":"..","role":"..","mood":"..","traits":[..],"portrait":"..","log":[[who,text],..]}
     ///   device  {"type":"device","kind":"terminal","tid":".."}
     ///   roster  {"type":"roster","crew":[{"cid":..,"name":"..","role":"..","mood":"..","morale":0.8,
-    ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4,"traits":["..",".."]},..]}
+    ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4,"traits":["..",".."],"fx":3.4,"fy":4},..]}
+    ///            (fx/fy = the sub-tile GLIDE position, same coordinate space as x/y — see RosterEntry)
     ///   designs {"type":"designs","cells":[[x,y,deck,kind],..]}   (pending build ghosts; kind 0 wall / 1 door)
     ///   terminals {"type":"terminals","list":[[tid,deck,x,y],..]} (MOSS terminal directory)
     ///   relations {"type":"relations","edges":[[fromCid,toCid,opinion,tier,note,secret],..]}
@@ -243,14 +245,32 @@ namespace Perilune.Web
             // Persona traits (APPEND-ONLY trailing field): the CREW tab's TRAITS column. Host-owned
             // mind-persona knowledge, same source as the citizen card; empty when the mind is absent.
             public readonly IReadOnlyList<string> Traits;
+            /// <summary>
+            /// ⭐ THE GLIDE (APPEND-ONLY trailing fields <c>fx</c>/<c>fy</c>) — where the figure is
+            /// DRAWN while a step is in flight. <b>SAME COORDINATE SPACE AS <c>X</c>/<c>Y</c>: a
+            /// tile coordinate with NO half-tile centre offset</b>, so a crew member standing still
+            /// serializes <c>fx == x</c> and <c>fy == y</c> exactly, and each view adds its own
+            /// centre offset exactly as it does for <c>x</c>/<c>y</c> today. This is the one place
+            /// the convention is written down; both client views (`overview-scene.js` pawnLayer,
+            /// `roomzoom-view.js` pawnSvg) read it and fall back to <c>x</c>/<c>y</c> when absent.
+            /// <para>THE INTEGER TILE STAYS AUTHORITATIVE for everything that is not a drawing
+            /// position — deck/room membership, selection, click targets, the CREW WATCH rows: a
+            /// crew member belongs to the tile the SIM says she is on, mid-glide or not. Derived
+            /// read-only at render time by <c>GameSession.WalkFraction</c> (see its header for the
+            /// counter's direction and the corner-cutting caveat); no sim state is added.</para>
+            /// </summary>
+            public readonly float Fx, Fy;
 
             public RosterEntry(uint cid, string name, string role, string mood, string task,
                                string portrait, float morale, int deck, int x, int y,
-                               IReadOnlyList<string> traits = null)
+                               IReadOnlyList<string> traits = null, float? fx = null, float? fy = null)
             {
                 Cid = cid; Name = name; Role = role; Mood = mood; Task = task;
                 Portrait = portrait; Morale = morale; Deck = deck; X = x; Y = y;
                 Traits = traits;
+                // Callers that do not know about the glide (tests of the older shape) get the tile
+                // centre-of-record, so `fx`/`fy` are never a silently wrong (0,0).
+                Fx = fx ?? x; Fy = fy ?? y;
             }
         }
 
@@ -285,6 +305,14 @@ namespace Perilune.Web
                             AppendString(sb, traits[t] ?? "");
                         }
                     sb.Append(']');
+                    // APPEND-ONLY trailing fields: the sub-tile glide position (see RosterEntry.Fx).
+                    // Rounded to 2 dp — at the shipped 10 ticks/tile every value is an exact tenth,
+                    // so this is lossless there and keeps the payload small if the cadence changes.
+                    // `Num` is InvariantCulture (dev machine is de-DE; a locale comma would be
+                    // invalid JSON, and the culture leg of Roster_Serialization_Is_InvariantCulture
+                    // now covers these two fields as well as `morale`).
+                    sb.Append(",\"fx\":").Append(Num(Math.Round((double)e.Fx, 2)));
+                    sb.Append(",\"fy\":").Append(Num(Math.Round((double)e.Fy, 2)));
                     sb.Append('}');
                 }
             sb.Append("]}");
