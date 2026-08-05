@@ -30,4 +30,8 @@ client/tools/shots-pawns/
 client/tools/shots-fittings/
 client/tools/shots-overview/
 client/tools/shots-roomzoom/
+client/tools/shots-capsules/
+# — lane/paper-materials —
+client/tools/shots-paper-materials/
+# — lane/paper-resources —
 client/tools/shots-paper-resources/

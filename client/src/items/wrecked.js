@@ -1,7 +1,7 @@
 // The 70 WRECKED builders — the POST-RAID twin of every static piece in the warm item set
 // (docs/design/perilune-item-set.dc.html, section "Wrecked — post-raid state", imported 2026-07-28).
 // Pure `(opts) -> string` SVG-`<g>`-fragment builders in the same centred mock-px space as
-// objects.js / structures.js / fixtures.js / resources.js / cryo.js; see helpers.js for the
+// objects.js / fixtures.js / resources.js / cryo.js; see helpers.js for the
 // coordinate model.
 //
 // The mock's own premise, verbatim: *"Day 1: the raid left every system dead. Every item above has a
@@ -1018,6 +1018,37 @@ const curtainRail = (s) => paintFitting(s, 'curtain-rail', (_s, { F }) => {
   inkScorch(s, F, 110, 14, 172, 14);
 });
 
+// ── THE TWO CAPSULES (2026-08-05) — post-raid twins for catalogue 31 and 32 ──
+// Same construction as the nine above: re-run the pristine painter, then ink damage on its own frame.
+// The marks are chosen to say what a raid does to a life-support box rather than to a chair — the
+// sealed one is holed THROUGH ITS GLASS (the one part of it that cannot be holed and leave an
+// occupant alive), the open one is torn along the lid it was already showing.
+const capsuleSealed = (s) => paintFitting(s, 'capsule-sealed', (_s, { F }) => {
+  inkCrack(s, F, [[96, 0, 44], [132, 0, 18]]);            // across the pane
+  inkHole(s, F, 60, 0, 30, 8);                            // through it, over the sleeper
+  inkScorch(s, F, 168, 12, 56, 20);                       // the lid, beside the port
+  inkCrack(s, F, [[195, 10, 4], [204, 10, 0]]);           // the far foot, kicked out
+});
+
+const capsuleOpen = (s) => paintFitting(s, 'capsule-open', (_s, { F }) => {
+  // ⚠️ EVERY MARK ON THE LID IS ON THE LID'S OWN PLANE, and the first draft's was not. The raised lid
+  // runs from (y 70, z 56) to (y 31, z 123.5), so a point on it satisfies y = 70 − 0.5778·(z − 56);
+  // a hole authored at (150, 40, 116) sat 5 cm off that plane and rendered as a black disc floating
+  // beside the lid — visible in a 420 px probe, invisible to every string assertion in the suite.
+  inkTear(s, F, [[46, 56.9, 78.8], [98, 47.6, 94.9], [146, 40.7, 106.9]]);   // across the raised lid
+  inkHole(s, F, 150, 35.3, 116, 7);                       // punched through it
+  inkScorch(s, F, 100, 30, 56, 22);                       // into the empty tub
+  inkWire(s, F, [54, 34, 56], [40, 46, 40], [24, 60, 30]);  // a strap, torn loose and hanging
+});
+
+// ⭐ THE ONE TWIN THAT IS A DRAWING RATHER THAN A DAMAGE PASS — see its row in `WRECKED` for why.
+// It is named `cellSound` and not `cellSpent` ON PURPOSE: the painter-name guard in
+// `client/test/wrecked.test.js` asks that `WRECKED[id].paint.name === camelCase(id)`, i.e. that a
+// painter is named after the ROW IT SERVES. This one serves `cell-sound` (a Battery, wrecked) and
+// paints card 34. Naming it after what it draws would read better in one line and would defeat the
+// only guard in this repo that can see a twin pointing at another row's picture.
+const cellSound = (s) => paintFitting(s, 'cell-spent');
+
 const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
   inkCrack(s, F, [[14, 12, 166], [26, 12, 146]]);         // across the frame
   inkHole(s, F, 46, 16, 150, 5);                          // the cup, holed
@@ -1257,6 +1288,26 @@ export const WRECKED = Object.freeze({
   'curtain-rail':     { paint: curtainRail,  state: '2%',  mockLabel: null, catalogue: '29 CURTAIN RAIL' },
   'shrine-shelf':     { paint: shrineShelf,  state: '31%', mockLabel: null, catalogue: '30 SHRINE SHELF' },
 
+  // ── CAPSULES AND CELLS (3, 2026-08-05) — REPO-AUTHORED FROM THE CATALOGUE, NOT FROM THE MOCK ──
+  //
+  // ⭐ `cell-sound`'s TWIN IS NOT INK DAMAGE ON THE PRISTINE PIECE, AND IT IS THE ONLY ONE IN THIS
+  // FILE THAT IS NOT. It is catalogue 34, CELL SPENT — a drawing the OWNER made of exactly this
+  // state: one terminal sunk, one band of four, both walls bowed, a crack and a weep, the whole thing
+  // in the accent. Every other twin re-runs its pristine painter because "the twin is the same
+  // object, damaged" has no other author; here it has one, and inventing a second set of ink marks
+  // over the sound cell would put a repo-authored wreck on screen while the design's own went
+  // unreachable. ⇒ THE STANDING RULE IS UNCHANGED AND WORTH RESTATING: re-run the pristine painter
+  // UNLESS the design ships the damaged drawing itself, which so far it has done exactly once.
+  //
+  // ⚠️ `cell-spent` HAS NO ROW HERE OF ITS OWN — it is in `NO_WRECKED_TWIN` below, for `swarf`'s
+  // reason. And `wreckedInfo` takes a twin's `size` from its PRISTINE row, so the spent cell reports
+  // `cell-sound`'s footprint (73 × 112) rather than its own (94 × 112, the swell). That is the
+  // existing contract, not a defect: `size` is a placement HINT nothing lays out on today, and a twin
+  // claiming a different footprint from the thing it replaces is the drift the shared field prevents.
+  'capsule-sealed':   { paint: capsuleSealed, state: '5%',  mockLabel: null, catalogue: '31 CAPSULE, SEALED' },
+  'capsule-open':     { paint: capsuleOpen,   state: '17%', mockLabel: null, catalogue: '32 CAPSULE, OPEN' },
+  'cell-sound':       { paint: cellSound,     state: '0%',  mockLabel: null, catalogue: '34 CELL, SPENT' },
+
   // ── PAPER GROUND STACKS (8) — lane/paper-resources, REPO-AUTHORED, NOT FROM THE MOCK ──────────
   //
   // ⚠️ `state: '—'` ON ALL EIGHT, AND IT IS THE SAME CLAIM THE MOCK MAKES about the warm resources
@@ -1298,6 +1349,15 @@ export const NO_WRECKED_TWIN = Object.freeze({
     + 'one mechanism that would ever give a RESOURCE two states — is unbuilt and, when it lands, '
     + 'covers the 8 spoilable resources and not this one. The mock, which is the authority for the '
     + 'twin set and the thing the bijection test measures against, has no SWARF piece at all.',
+  'cell-spent':
+    'A SPENT CELL IS ALREADY THE WRECKED STATE — `swarf`\'s argument, in its second instance and on '
+    + 'a FUNCTIONAL row this time. Catalogue 34 is the drawing of a Battery below '
+    + '`wear.WRECK_THRESHOLD`, and it is reached as `WRECKED[\'cell-sound\']` rather than by any '
+    + 'glyph: `DeviceKind.Battery` has one `ForDevice` arm (`\'B\'`) and condition rides the '
+    + '`devices` channel as a byte. So "a wrecked spent cell" names no state the sim can be in, and '
+    + 'a twin for it would be a second wreck drawing behind a door with no key. The catalogue ships '
+    + 'no fifth cell card either.',
+
   // — lane/paper-resources —
   turnings:
     'TURNINGS IS `swarf` REDRAWN, AND THE ARGUMENT COMES WITH IT UNCHANGED. It is what a machine '
@@ -1332,6 +1392,11 @@ export const NON_MOCK_TWIN = Object.freeze({
   bench: '01 BENCH', stool: '05 STOOL', cot: '07 COT', footlocker: '09 FOOTLOCKER', sink: '11 SINK',
   'compost-bin': '21 COMPOST BIN', 'vice-post': '23 VICE POST', 'curtain-rail': '29 CURTAIN RAIL',
   'shrine-shelf': '30 SHRINE SHELF',
+  // 2026-08-05, the capsules and cells. `cell-sound`'s entry names 34 rather than 33 ON PURPOSE:
+  // this ledger's value is the catalogue entry the TWIN comes from, and that twin is card 34.
+  'capsule-sealed': '31 CAPSULE, SEALED', 'capsule-open': '32 CAPSULE, OPEN',
+  'cell-sound': '34 CELL, SPENT',
+
   // — lane/paper-resources — the eight redrawn ground stacks. ⚠️ THE VALUE IS NOT A CARD NUMBER, and
   // the shape difference is the point: the nine above name a card in the owner's catalogue, these
   // eight name a module, because there IS no card for a pile. `wrecked.test.js` checks each row
