@@ -243,7 +243,7 @@ function lastDeclaration(css, selector, prop) {
 }
 
 /** The three-way colour check for one dock's task line, plus the blinding control for `.waiting`. */
-function assertThreeWayDistinct(prefix, nextSelector) {
+function assertThreeWayDistinct(prefix, nextSelector, tokens) {
   const idle = lastDeclaration(CODE_CSS, prefix, 'color');
   const waiting = lastDeclaration(CODE_CSS, prefix + '.waiting', 'color');
   const working = lastDeclaration(CODE_CSS, prefix + '.working', 'color');
@@ -262,9 +262,19 @@ function assertThreeWayDistinct(prefix, nextSelector) {
 
   // DIRECTION, not merely difference (the B2 shape in `console-carryover.test.js`): each side is
   // pinned to its own token, so a swap cannot pass.
-  assert.match(idle, /ink-mute|#?8c8377/i, `${prefix} is no longer the dim ink`);
-  assert.match(working, /amber-light|#?f2b563/i, `${prefix}.working is no longer the amber accent`);
-  assert.match(waiting, /ink-body|#?b3aa9c/i,
+  //
+  // ⚠️ THE TOKENS ARE A PARAMETER NOW, AND THE REASON IS SAID OUT LOUD RATHER THAN AVERAGED AWAY.
+  // The visual redesign lands one surface per package (charter §3), so during the wave the two docks
+  // speak two dialects: the Overview is still the warm one (amber = work, dim cream = idle) and the
+  // Room Zoom is the paper one (full INK = work, micro-label ink = idle, prose ink = waiting). The
+  // property this test is about — three states, three colours, each pinned to its OWN token so a
+  // swap cannot pass — is unchanged and is asserted on both. Loosening the direction pins to a
+  // regex that accepts either dialect is what would have weakened it; taking the triple as an
+  // argument does not. ⇒ WHEN P4 LANDS, the Overview row becomes the paper triple too and this
+  // parameter can go back to being a constant.
+  assert.match(idle, tokens.idle, `${prefix} is no longer the dim ink`);
+  assert.match(working, tokens.working, `${prefix}.working is no longer the WORK colour`);
+  assert.match(waiting, tokens.waiting,
     `${prefix}.waiting resolves to "${waiting}" — it should lift ONE step out of the dim ink. `
     + '⛔ Not --cold either: that hue is reserved for cryo/coolant (H-2).');
 
@@ -286,9 +296,15 @@ function assertThreeWayDistinct(prefix, nextSelector) {
 }
 
 test('MUTATION 6 — on the OVERVIEW, waiting is a different colour from BOTH idle and working', () => {
-  assertThreeWayDistinct('.ov-crewtask', '.ov-crewtask.working{');
+  assertThreeWayDistinct('.ov-crewtask', '.ov-crewtask.working{', {
+    idle: /ink-mute|#?8c8377/i, working: /amber-light|#?f2b563/i, waiting: /ink-body|#?b3aa9c/i,
+  });
 });
 
 test('MUTATION 6 — and the same on the ROOM ZOOM dock (its own leg, so it can fail alone)', () => {
-  assertThreeWayDistinct('.rz-crewtask', '.rz-crewtask.working{');
+  assertThreeWayDistinct('.rz-crewtask', '.rz-crewtask.working{', {
+    // The paper dialect (VR-P3): idle is the micro-label ink, WORK is full ink, and waiting lifts
+    // one step to the prose ink — the same three-step ladder, in the ground the surface now has.
+    idle: /ink-micro|#?6B6252/i, working: /--ink[,)]|#?14120F/i, waiting: /ink-prose|#?4E463A/i,
+  });
 });

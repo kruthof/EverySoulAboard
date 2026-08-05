@@ -278,12 +278,15 @@ test('a tile with more kinds than fit says HOW MANY are hidden, rather than pick
  *  builders emit `<rect …>` in the identical attribute order and would otherwise be counted. */
 function badgeRects(svg) {
   return [...svg.matchAll(
-    /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" rx="2" fill="rgba\(10,13,20,\.72\)"/g,
+    // ⭐ VR-P3 — the badge is a PAPER plate with an INK hairline now (charter §1: "no accent =
+    // nothing to see" — a pile of regolith is a thing with nothing to decide about). The parse is
+    // anchored on the plate's own fill+stroke pair, which is unique to it in this layer.
+    /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" rx="2" fill="#EBE4D1" stroke="#14120F"/g,
   )].map((m) => ({ x: +m[1], y: +m[2], width: +m[3], height: +m[4] }));
 }
 /** Every badge/chip text, in emission order (anchored on the badge's own text colour). */
 function badgeTexts(svg) {
-  return [...svg.matchAll(/fill="#d8cbb4"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  return [...svg.matchAll(/fill="#14120F" text-anchor="middle"[^>]*>([^<]*)</g)].map((m) => m[1]);
 }
 /** The sprite `<g>` wrappers the layer emitted, as their translate offsets, in emission order. */
 function spriteAt(svg) {
@@ -519,14 +522,23 @@ test('the Room Zoom draws the item layer, and main.js dispatches the channel', (
     'roomzoom-view.js must derive its item tiles from the decoded `items` channel — not from the '
     + 'frame, whose glyph byte carries no count, keeps only the last stack, and is overwritten by '
     + 'any device on the tile');
-  assert.match(ROOMZOOM, /body \+= itemStackSvg\(_itemTiles, _focus\);/,
+  // ⚠️ A PREFIX, NOT AN ANCHORED CALL — the same correction W0b made to the `furnitureSvg` pattern
+  // below, and for the same reason: VR-P3 gave the layer the cutaway's `place` object (a stack
+  // STANDS on its tile now rather than lying in a plan), and an anchored `_focus)` would have gone
+  // red for a change that does not touch this guard's subject. The subject is that the layer is
+  // concatenated at all, off `_itemTiles`.
+  assert.match(ROOMZOOM, /body \+= itemStackSvg\(_itemTiles, _focus/,
     'roomzoom-view.js must concatenate itemStackSvg(_itemTiles, …) into the layer stack');
   // ⚠️ THE TRAILING `\)` WAS DROPPED FROM THIS PATTERN BY W0b, DELIBERATELY, and saying so is the
   // point: `furnitureSvg` grew a THIRD argument (`_deviceCond`, the wear join) and the old anchored
   // pattern would have gone red for a change that does not touch this guard's subject at all. What
   // this guard is about is the SECOND argument — that the furniture layer is told which tiles the
   // item layer draws on. It is now pinned as a prefix, so a fourth argument does not re-break it.
-  assert.match(ROOMZOOM, /furnitureSvg\(roomCells\(frame, _focus\), itemStackTileKeys\(_itemTiles\)/,
+  // ⚠️ `roomCells(frame, _focus)` IS NOW DERIVED ONCE PER REPAINT into `cells` — the title's own
+  // FITTINGS clause counts the same list, and deriving it twice is how a stat line and a drawing
+  // come to disagree about one room. The subject is unchanged: the furniture layer is told which
+  // tiles the item layer draws on.
+  assert.match(ROOMZOOM, /furnitureSvg\(cells, itemStackTileKeys\(_itemTiles\)/,
     'the furniture layer must be told which tiles the item layer draws on, or the frame-derived '
     + 'rendering of the same pile — the unknown chip, and now the RESOURCE PIECE itself — is stacked '
     + 'underneath the authoritative one');

@@ -35,7 +35,7 @@ import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { Cmd } from '../src/wire/session.js';
 import {
   roomTileRect, U, DEVICE_KIND_NAMES, deviceKindName, itemForGlyph,
-  ROOM_TOOLS, paletteCommand,
+  ROOM_TOOLS, paletteCommand, roomScene, scenePlacement,
 } from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { deviceDisplayName, prioritiseCrew, prioritiseOffer } from '../src/ui/prioritise-model.js';
@@ -469,6 +469,23 @@ function frameMsg(crew, selCid) {
   };
 }
 
+// ⭐ VR-P3 — TILE → POINTER, THROUGH THE SHIPPED PROJECTION. The Level-2 surface is a cabinet-oblique
+// cutaway now, so the plan view's `(tx - rx) * U + U/2` points at a tile several metres from the one
+// it names. These two go through `roomScene`/`scenePlacement` — the same objects the layers are
+// drawn with — so the point a test clicks IS the point the tile is drawn at. The rect is the scene's
+// own viewBox at 1:1, which makes `sceneFit` the identity (the old rig's `s = 1` trick, restated).
+const sceneRectFor = (focus) => {
+  const vb = roomScene(focus).viewBox;
+  return { left: 0, top: 0, width: vb.w, height: vb.h };
+};
+const scenePointFor = (focus, tx, ty) => {
+  const [x, y] = scenePlacement(roomScene(focus), focus).foot(tx, ty);
+  // ROUNDED, because a projected floor centre is fractional and several legs below compare a
+  // pixel string the view wrote with `toFixed(0)` against arithmetic done on this point. Half a
+  // pixel at the centre of a ~95-px tile cannot change which tile the inverse answers.
+  return { clientX: Math.round(x), clientY: Math.round(y) };
+};
+
 const sent = [];
 let primed = false;
 /** Mount once, then re-drive into a known state per test. Returns nothing; every test re-primes. */
@@ -482,7 +499,7 @@ function prime(crew, selCid) {
       doc.getElementById(id).parentNode = root;
     }
     doc.getElementById('rz-layers').parentNode = doc.getElementById('rz-canvas');
-    doc.getElementById('rz-layers')._rect = { left: 0, top: 0, width: RECT.rw * U, height: RECT.rh * U };
+    doc.getElementById('rz-layers')._rect = sceneRectFor(RECT);
     Hud.renderDecks(decode(DECKS_JSON));
     Hud.renderRooms(decode(ROOMS_JSON));
     // The `devices` channel — WING and CELL only. FOG and BARE are deliberately absent.
@@ -529,7 +546,7 @@ function fire(target, type, extra) {
 const canvas = () => doc.getElementById('rz-canvas');
 const menu = () => doc.getElementById('rz-ctx');
 const toastText = () => doc.getElementById('rz-toast').textContent;
-const atTile = (t) => ({ clientX: (t[0] - RECT.rx) * U + U / 2, clientY: (t[1] - RECT.ry) * U + U / 2 });
+const atTile = (t) => scenePointFor(RECT, t[0], t[1]);
 /** The player's gesture: right-click the canvas over an absolute sim tile. */
 const rightClick = (t) => fire(canvas(), 'contextmenu', atTile(t));
 /** The menu's ONE row — found through the real DOM the controller built, never fabricated. */
@@ -1053,7 +1070,11 @@ test('the menu never opens under the `?` help circle — it STEPS ASIDE, as .ov-
 test('…and when there is no room to the left, it drops BELOW the circle instead', () => {
   prime([ADA], null);
   const at = atTile(WING);
-  const W = 220, H = 34;
+  // ⚠️ THE BOX WIDTH IS DERIVED FROM THE POINTER, not a literal 220. The fixture's whole job is "no
+  // room to the LEFT", i.e. `rect.left - CTX_GAP - W < 0`, and at VR-P3 the same tile projects
+  // further right in the scene than it sat in the plan — so a fixed 220 quietly stopped exercising
+  // the branch it names and the guard below caught it. Derived, it cannot drift again.
+  const W = at.clientX + 40, H = 34;
   const rect = { left: at.clientX + 10, top: at.clientY - 4, right: at.clientX + 42,
                  bottom: at.clientY + 28, width: 32, height: 32 };
   const restore = withHelpCircle(rect, W, H);

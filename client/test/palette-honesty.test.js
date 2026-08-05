@@ -44,7 +44,9 @@ import { dirname, join } from 'node:path';
 
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { U, deckSlots, ROOM_TOOLS, TOOL_LABEL, paletteCommand } from '../src/ui/room-model.js';
+import {
+  U, deckSlots, ROOM_TOOLS, TOOL_LABEL, paletteCommand, roomScene, scenePlacement,
+} from '../src/ui/room-model.js';
 import {
   DEVICE_PLACE_COST_PARTS, PLACE_CURRENCY_WORD, DECOR_NOT_WIRED, DECOR_CHIP_TEXT,
   chipCostText, paletteCostRow, placeRefusalText, decorRefusalText,
@@ -448,7 +450,24 @@ Hud.renderDecks(FIX.decks);
 Hud.renderRooms(FIX.rooms);
 Hud.renderFrame(wreck);
 api.enter('hold');
-doc.getElementById('rz-layers')._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
+// ⭐ VR-P3 — TILE → POINTER, THROUGH THE SHIPPED PROJECTION. The Level-2 surface is a cabinet-oblique
+// cutaway now, so the plan view's `(tx - rx) * U + U/2` points at a tile several metres from the one
+// it names. These two go through `roomScene`/`scenePlacement` — the same objects the layers are
+// drawn with — so the point a test clicks IS the point the tile is drawn at. The rect is the scene's
+// own viewBox at 1:1, which makes `sceneFit` the identity (the old rig's `s = 1` trick, restated).
+const sceneRectFor = (focus) => {
+  const vb = roomScene(focus).viewBox;
+  return { left: 0, top: 0, width: vb.w, height: vb.h };
+};
+const scenePointFor = (focus, tx, ty) => {
+  const [x, y] = scenePlacement(roomScene(focus), focus).foot(tx, ty);
+  // ROUNDED, because a projected floor centre is fractional and several legs below compare a
+  // pixel string the view wrote with `toFixed(0)` against arithmetic done on this point. Half a
+  // pixel at the centre of a ~95-px tile cannot change which tile the inverse answers.
+  return { clientX: Math.round(x), clientY: Math.round(y) };
+};
+
+doc.getElementById('rz-layers')._rect = sceneRectFor(HOLD);
 
 const canvas = doc.getElementById('rz-canvas');
 const root = doc.getElementById('roomzoom-view');
@@ -484,7 +503,7 @@ function fire(el, type, ev) {
  *  a rig that read it would report every sentence as absent and every absence as proven. */
 const stripTags = (html) => String(html || '').replace(/<[^>]*>/g, '').trim();
 /** Canvas coordinates for a tile in the focused room. */
-const at = (tx, ty) => ({ clientX: (tx - HOLD.rx) * U + U / 2, clientY: (ty - HOLD.ry) * U + U / 2 });
+const at = (tx, ty) => scenePointFor(HOLD, tx, ty);
 /** Arm a tool by clicking its SHIPPED palette button. */
 function armViaButton(tool) {
   const b = palette.querySelectorAll('.rz-tool').find((x) => x.dataset.rztool === tool);

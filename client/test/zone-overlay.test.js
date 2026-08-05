@@ -115,12 +115,18 @@ test('a backed-off tile is DIMMED as well as hatched, under its own alarm marks'
   const svg = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, ZONE_FLAG_BACKED_OFF)), FOCUS);
   const dim = /<rect class="rz-zone-dim"[^>]*fill="([^"]+)"/.exec(svg);
   assert.ok(dim, 'a backed-off tile draws no dimming scrim at all');
-  // It must actually be DARK and actually be translucent — a transparent or opaque scrim is not a
-  // dim. Parsed out of the emitted colour rather than restated as a constant both sides import.
+  // ⭐ VR-P3 — THE SCRIM WASHES **TOWARDS THE GROUND**, AND THE GROUND MOVED. This leg used to read
+  // `r + g + b < 150` ("it must be DARK"), which was the correct statement of "reads as inert"
+  // against a near-black canvas. The Level-2 floor is PAPER now, so a dark scrim would make the one
+  // tile nothing is happening on the LOUDEST thing in the room — the assertion's subject is
+  // unchanged and its direction is inverted. Parsed out of the emitted colour rather than restated
+  // as a constant both sides import, exactly as before.
   const rgba = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(dim[1]);
   assert.ok(rgba, `the scrim fill ${JSON.stringify(dim[1])} is not an rgba() colour`);
   const [r, g, b, a] = rgba.slice(1).map(Number);
-  assert.ok(r + g + b < 150, `the scrim is not dark (rgb ${r},${g},${b}) — it would BRIGHTEN the tile`);
+  assert.ok(r + g + b > 600,
+    `the scrim is not a PAPER wash (rgb ${r},${g},${b}) — against a paper floor a dark scrim makes `
+    + 'the inert tile the loudest thing in the room, which is the opposite of what it is for');
   assert.ok(a > 0.15 && a < 0.85, `the scrim alpha ${a} is either invisible or opaque`);
   // ORDER: under the alarm marks, over the zone tint. The dim says "inert"; the hatch and the wedge
   // say what to DO about it, and muting those would be the wrong half of the tile to darken.
@@ -157,6 +163,33 @@ test('the hatch pattern it references is actually defined', () => {
   assert.match(svg, /<pattern id="rz-zone-hatch"/, 'the referenced pattern must be defined');
   assert.ok(svg.indexOf('<pattern id="rz-zone-hatch"') < svg.indexOf('url(#rz-zone-hatch)'),
     'and defined before it is used');
+});
+
+// ⭐ VR-P3 — THE CELL FILLS THE UNIT IT IS HANDED, and this leg exists because a mutation SURVIVED.
+//
+// The Room Zoom's tile is ~95 scene px on the cutaway and 32 logical px in the plan view this
+// replaced, so every extent in the builder takes `unit`. Reverting ONE of them to the `U` constant
+// paints the top-left THIRD of each tile and leaves the whole suite green — found by RENDER, not by
+// assertion, which is exactly the gap `marks-shot.mjs`'s header warns about ("a perfectly formed SVG
+// string paints nothing if its box is empty"). It is closed here rather than filed.
+//
+// MUTATION: `const side = unit - 1` → `U - 1` in zoneLayerSvg ⇒ RED.
+// MUTATION: hard-code the wedge back to 10/9 units ⇒ RED on the second leg.
+test('VR-P3: a zone cell fills the UNIT it is drawn in, at any tile size', () => {
+  const big = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, 0)), FOCUS, null, 96);
+  const small = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, 0)), FOCUS, null, 32);
+  const widthOf = (svg) => Number((/width="([\d.]+)"/.exec(svg) || [])[1]);
+  assert.equal(widthOf(big), 95, 'the zone tint does not fill a 96-unit cell — on the cutaway it '
+    + 'would paint the top-left corner of every tile it is supposed to cover');
+  assert.equal(widthOf(small), 31, 'and it must still fill a 32-unit cell — the Overview\'s size');
+  // The RESTRICTED wedge scales too, or the one mark that says "this zone refuses things" becomes a
+  // speck at room scale.
+  const wedge = (svg) => (/class="rz-zone-wedge" d="M([\d.]+) [\d.]+h([\d.]+)v([\d.]+)z"/.exec(svg) || []);
+  const wb = wedge(big), ws = wedge(small);
+  assert.ok(wb.length && ws.length, 'the wedge could not be parsed — this leg reads nothing');
+  assert.ok(Number(wb[2]) > Number(ws[2]) * 2.5,
+    'the restricted wedge does not grow with the cell — at room scale it is a speck the player '
+    + 'cannot tell from a stray pixel of grid');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════ the key

@@ -1027,7 +1027,11 @@ test('THE OWNER\'S BUG, driven through the SHIPPING Room Zoom: no dashed letter 
   Hud.renderFrame(frameWith([[QUARTERS.rx, QUARTERS.ry, 'z']], QUARTERS.deck));
   api.exit(); api.enter('quarters');
   const control = rzDoc.getElementById('rz-layers').innerHTML;
-  assert.ok(control.includes('stroke-dasharray="3 2"') && control.includes('>z</text>'),
+  // ⭐ VR-P3 — THE CHIP'S DASH MOVED WITH THE DIALECT: it is the charter's UNBUILT/PLANNED spelling
+  // (ink `6 5`) now, which is the honest thing to say about a glyph with no art and is emphatically
+  // not the oxblood `8 5` a queued order wears. The LETTER — the thing the owner photographed — is
+  // unchanged and is still what every assertion below hunts for.
+  assert.ok(control.includes('stroke-dasharray="6 5"') && control.includes('>z</text>'),
     'the VS-Z-25 unknown chip did not render for an unskinned glyph — this rig cannot see the bug');
 
   // …and now the three the owner photographed, plus every other covered kind, on real tiles.

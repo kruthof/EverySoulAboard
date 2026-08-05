@@ -175,3 +175,46 @@ test('D4: the PRIORITISE offer names the hazard and still offers the order', () 
 
   assert.deepEqual(fails, [], fails.join('\n'));
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 5 — ⭐ VR-P3: THE **ROOM ZOOM** SAYS IT TOO, and until the visual redesign it never did.
+//
+// ⚠️ THIS FILE HAD NO ROOM-ZOOM LEG AT ALL, and that is the gap being closed rather than a
+// translation. Every section above is the LEVEL-1 surface: the pressure lens, the slot tint, the
+// readout, the prioritise offer. D4's own finding was a direct order *into a hall that was still
+// depressurising* — and the surface a player gives that order from, with the room filling the
+// screen, had no vacuum treatment of any kind. A compartment with no air was drawn exactly like one
+// with air, one altitude below the lens that was fixed.
+//
+// THE IDIOM IS INK, NOT A HUE (charter §1 ruling E3): the floor grid goes DASHED and the walls hold
+// back, because a deck nobody can stand on is not really a room yet — and the stat line SAYS the
+// words, because a treatment of the drawing alone is a cue the player has to be taught.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const { roomScene, roomCutawaySvg, roomStatLine } = await import('../src/ui/room-model.js');
+
+test('D4 · VR-P3: the ROOM ZOOM draws an airless compartment differently — and says so', () => {
+  const scene = roomScene({ deck: 0, rx: 0, ry: 0, rw: 8, rh: 5 });
+  const fails = [];
+
+  const air = roomCutawaySvg(scene, { vacuum: false });
+  const vac = roomCutawaySvg(scene, { vacuum: true });
+  if (vac === air) fails.push('the airless room is drawn IDENTICALLY to a pressurised one — this is '
+    + 'D4 exactly, on the surface the order is given from');
+  if (!/stroke-dasharray="3 4"/.test(vac)) fails.push('the airless floor grid is not dashed');
+  // THE CONTROL that makes the leg above mean something: a PRESSURISED room must NOT wear it, or
+  // "airless" is what every compartment on the ship looks like.
+  if (/stroke-dasharray="3 4"/.test(air)) fails.push('a PRESSURISED room wears the airless grid');
+  if (!/stroke-opacity/.test(vac)) fails.push('the airless walls are not held back');
+  if (/stroke-opacity/.test(air)) fails.push('a pressurised room\'s walls are held back too');
+
+  // AND THE WORDS. `fmtPressure` is the Overview's number; this surface has no readout (the M4
+  // Persona gap), so the stat line is where the fact has to land.
+  const said = roomStatLine({ areaM2: 40, placed: 0, pending: 0, here: 1, aboard: 3, vacuum: true });
+  if (!/NO AIR/.test(said)) fails.push('the stat line does not say NO AIR');
+  if (/NO AIR/.test(roomStatLine({ areaM2: 40, placed: 0, pending: 0, here: 1, aboard: 3 }))) {
+    fails.push('EVERY room says NO AIR — the clause is unconditional and therefore says nothing');
+  }
+
+  assert.deepEqual(fails, [], fails.join('\n'));
+});

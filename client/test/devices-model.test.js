@@ -367,7 +367,14 @@ const WEAR_SEAM_CENSUS = Object.freeze({
   roomDeviceConditions: 2,  // the import + the one repaint call
   decodeDevices: 2,         // the import + the one repaint call
   getDevices: 1,            // the single `Hud.getDevices()` inside that same repaint call
-  buildTileItem: 2,         // the import from items/wear.js + the ONE call in furnitureSvg
+  // ⭐ VR-P3 — RE-DERIVED ON THIS TREE, NOT INCREMENTED: 3. The import from items/wear.js, plus the
+  // TWO calls inside `standItem` — the ONE placement helper every piece in the room goes through
+  // (a fitting at its own centimetres, or the fallback tile box for a row that has no centimetre
+  // spec). ⛔ THE SEAM IS STILL ONE: both calls are in the same function, on the same `cond`
+  // argument, and `furnitureSvg` is `standItem`'s only wear-carrying caller. If this number grows
+  // again, ask whether a SECOND function has started asking "which picture" — that is the
+  // hand-mirror defect the census exists for, and it is not what a second branch of one helper is.
+  buildTileItem: 3,
 });
 
 /** How many times each wear-seam identifier appears in `src` (which must already be comment-free). */
@@ -395,7 +402,11 @@ test('the wear layer draws through exactly ONE seam — pinned by REFERENCE COUN
 // regex could not see — and each must move the census. The `furnitureSvg` row is a SUBSTITUTION into
 // the real call site, not an inserted line, because that is how the likeliest violation would arrive.
 const RAW_ROOMZOOM = read(join(CLIENT, 'src/ui/roomzoom-view.js'));
-const DRAW_ANCHOR = "  body += markLayerSvg(_markTiles, _focus);";
+// ⚠️ RE-FOUND AT VR-P3 RATHER THAN LEFT TO ROT: the mark layer takes the cutaway's placement object
+// now, so the old anchor text no longer exists in the file and every plant below would have applied
+// to nothing while reporting success. The `assert.notEqual(mutated, RAW_ROOMZOOM)` guard in each row
+// is what caught it.
+const DRAW_ANCHOR = "  body += markLayerSvg(_markTiles, _focus, unit, place);";
 const PLANTED_LAYERS = [
   ['body += wearLayerSvg(...) — the ONE shape the old regex caught',
     (s) => s.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += wearLayerSvg(_deviceCond, _focus);")],
@@ -409,8 +420,8 @@ const PLANTED_LAYERS = [
   // a SECOND, independent wear read threaded into the same call — because the violation this file
   // must now catch is not "the data got drawn" but "the data got drawn TWICE, two different ways".
   ['a SECOND wear source threaded into furnitureSvg beside the real one',
-    (s) => s.replace('itemStackTileKeys(_itemTiles), _deviceCond);',
-      'itemStackTileKeys(_itemTiles), roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus));')],
+    (s) => s.replace('itemStackTileKeys(_itemTiles), _deviceCond, place);',
+      'itemStackTileKeys(_itemTiles), roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus), place);')],
   ['a bare threshold comparison in this file — a SECOND answer to "which picture"',
     (s) => s.replace(DRAW_ANCHOR,
       DRAW_ANCHOR + "\n  body += wearSvg(deviceConditionAt(0, 0), buildTileItem);")],
@@ -440,7 +451,10 @@ for (const [name, plant] of PLANTED_LAYERS) {
 test('CONTROL: the census does NOT fire on an unrelated edit to roomzoom-view.js', () => {
   // Without this, the seven controls above are equally satisfied by a census that flags EVERYTHING,
   // which would make the pin unmaintainable and would train the next lane to delete it.
-  const noise = RAW_ROOMZOOM.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += glowSvg(1, 2);");
+  // ⚠️ THE NOISE LINE MOVED WITH THE SURFACE: `glowSvg` was the warm dialect's ambient amber pool
+  // and VR-P3 deleted it with the plan view, so planting a call to it is planting a call to nothing.
+  // Any real, unrelated draw does — this one is the cutaway's own dimension arrows.
+  const noise = RAW_ROOMZOOM.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += roomDimensionsSvg(scene);");
   assert.notEqual(noise, RAW_ROOMZOOM, 'the anchor text has moved — this control asserts nothing');
   assert.deepEqual(wearSeamCensus(codeOnly(noise)), { ...WEAR_SEAM_CENSUS },
     'the census moved for an edit that does not touch the wear seam at all');
