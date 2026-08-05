@@ -143,7 +143,19 @@ const PALETTE_CMD = Object.freeze({
   chair: { cls: 'functional', verb: 'place',  kind: 'chair',  deviceKind: 'Chair' },
   locker:{ cls: 'functional', verb: 'place',  kind: 'locker', deviceKind: 'Locker' },
   plant: { cls: 'functional', verb: 'place',  kind: 'plant',  deviceKind: 'PlantPot' },
-  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light' },
+  // ⚠️ THE ONE FUNCTIONAL ROW THAT ALSO STATES ITS `itemId`, AND IT IS NOT A THIRD VOCABULARY — it is
+  // the SAME `itemId` column the two cosmetic rows below already carry, spent here for a hole in the
+  // registry. Every other functional tool's art is DERIVED (the build ghost matches this row's
+  // `deviceKind` against `ITEMS`' own `deviceKind` column — `roomzoom-view.js ghostArtId`), but
+  // `DeviceKind.Light` has NO functional `ITEMS` row at all: its art is `GLYPH_SUBSTITUTE['*'] →
+  // 'wall-lamp'` (`items/glyph-map.js`), a borrow reachable only from the glyph CHARACTER, and no
+  // client module maps a DeviceKind to a glyph — that switch is `sim/Sim.Glyph/Glyphs.cs`.
+  // ⇒ FILED, not fixed here: the general closure is either a real luminaire in the warm/paper set (a
+  // `functional` row with `deviceKind:'Light'`, whereupon this field is deleted and the derivation
+  // covers it) or a client mirror of `Glyphs.ForDevice` — and a hand mirror of a sim switch is
+  // precisely the class of table `glyph-map.js`'s header spends forty lines retracting, so it is a
+  // decision for the owner rather than a chore for this lane.
+  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light', itemId: 'wall-lamp' },
   // M3-10. `kind: 'heater'` is the wire string `GameSession.TryFurnitureKind` switches on, and
   // `deviceKind: 'Heater'` is the sim enum member the ghost/erase paths name; the two are different
   // vocabularies on purpose and every row here carries both.

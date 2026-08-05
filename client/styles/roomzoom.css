@@ -44,6 +44,17 @@ body.moss-open #roomzoom-view{display:none !important}
   border:1px solid var(--paper-border,#C6BBA2);box-shadow:var(--plate-shadow)}
 .rz-layers{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);display:block}
 .rz-layers svg.pawn,.rz-layers .pl-item{shape-rendering:auto}
+/* ⭐⭐ THE BUILD GHOST'S OWN SVG — a SECOND root over `.rz-layers`, at the IDENTICAL box, so the two
+   share one viewBox and one `xMidYMid meet` fit and a scene coordinate means the same thing in both.
+   ⛔ IT IS A SEPARATE ROOT AND NOT A LAYER IN THE STACK, for the reason `.rz-pulse` is a div: the
+   stack is rebuilt wholesale (`_layers.innerHTML =`) on every coalesced wire repaint, and a ghost
+   that rode that write would either force a full-stack rebuild on EVERY mousemove or flicker with
+   the ship's own 5–10 Hz. Here the hover writes ~28 elements into a node nothing else touches.
+   `pointer-events:none` is load-bearing rather than tidy — the ghost stands ON the tile whose
+   resolution it previews, so a pressable ghost would shadow `tileAt`'s own `data-tile` tier and the
+   preview would start answering for the click. */
+.rz-ghostlayer{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);
+  display:block;pointer-events:none}
 /* The caption keeps its corner and its job. The room's NAME, area and company are stated IN the SVG
    now (the design's serif title + mono stat line), so this line is the MODE and the count — the two
    facts about what the player is doing rather than about where they are. */
