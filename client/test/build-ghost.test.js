@@ -29,10 +29,15 @@ import { dirname, join } from 'node:path';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
-  deckSlots, roomScene, scenePlacement, paletteCommand, ROOM_TOOLS,
+  deckSlots, roomScene, scenePlacement, paletteCommand, ROOM_TOOLS, ROOM_SCALE, ROOM_HEIGHT_M,
 } from '../src/ui/room-model.js';
-import { ITEMS } from '../src/items/index.js';
+// The built layer's own floor-swatch size, read from the surface rather than restated here.
+import { FLOOR_MAT_PX } from '../src/ui/roomzoom-view.js';
+import { ITEMS, buildItem } from '../src/items/index.js';
+import { itemIdForGlyphChar } from '../src/items/glyph-map.js';
+import { materialItemId } from '../src/ui/build-material-model.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
+import { codeOnly } from './code-only.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIX = JSON.parse(readFileSync(join(HERE, 'fixtures/overview-grid.json'), 'utf8'));
@@ -309,12 +314,55 @@ test('every tool that PLACES A THING previews one; the tile verbs preview none',
   assert.ok(drew.length >= 15 && verbs.length === 6, 'non-vacuity: ' + drew.length + ' / ' + verbs.length);
 });
 
-test('WALL and FLOOR ghosts carry the ACTIVE MATERIAL swatch, and it follows the picker', () => {
+test('⭐⭐ WALL and FLOOR ghosts DRAW THE SWATCH THE BUILT LAYER DRAWS — same art, same placement', () => {
+  // ⛔⛔ THE INSTRUMENT THIS REPLACES BROKE ON A MERGE WITHOUT THE FEATURE BREAKING (review, M1).
+  // It asserted `html.includes('rz-gh-wall-mat')` — a string search for an idPrefix-bearing `<defs>`
+  // id — and main's paper materials stopped emitting a `<pattern>` at all. The swatch was still
+  // drawn; the GUARD was reading a byte the art no longer had to produce. A test that goes red when
+  // the art is restyled and green when the placement is wrong is worse than no test.
+  //
+  // ⇒ THE CLAIM IS NOW EQUALITY WITH THE BUILT LAYER'S OWN OUTPUT, which is the thing that actually
+  // has to hold: `materialLayerSvg` puts a wall's skin on the slab's FRONT FACE (`px, py − faceH`,
+  // faceW × faceH) and a floor's IN THE FLOOR PLANE (`place.cell`, `FLOOR_MAT_PX`). The ghost must
+  // spend the same two expressions or one material draws two ways at two centimetres.
+  const scene = roomScene(HOLD);
+  const unit = scene.s * 100;
+  const place = scenePlacement(scene, HOLD, unit);
+  const cm = 100;
+  const faceW = ROOM_SCALE * cm;
+  const faceH = ROOM_SCALE * ROOM_HEIGHT_M * 100;
+  const [px, py] = place.front(FLOOR.x, FLOOR.y);
+
+  armTool('wall');
+  hover(FLOOR.x, FLOOR.y);
+  const wallHtml = ghost.innerHTML;
+  const wantWall = '<g transform="translate(' + px.toFixed(2) + ' ' + (py - faceH).toFixed(2) + ')">'
+    + buildItem(materialItemId('wall', 0), { w: faceW, h: faceH, idPrefix: 'rz-gh-wall-mat' }) + '</g>';
+  assert.ok(wantWall.length > 120, 'non-vacuity: the built wall skin is real markup, not an empty g');
+  assert.ok(wallHtml.includes(wantWall),
+    'the WALL ghost does not draw the built wall\'s own front-face skin. The preview and the thing '
+    + 'it previews would show one material two ways.');
+
+  armTool('wall');            // disarm
+  armTool('floor');
+  hover(FLOOR.x, FLOOR.y);
+  const wantFloor = '<g transform="' + place.cell(FLOOR.x, FLOOR.y) + '">'
+    + buildItem(materialItemId('floor', 0), { w: FLOOR_MAT_PX, h: FLOOR_MAT_PX, idPrefix: 'rz-gh-floor-mat' }) + '</g>';
+  assert.ok(wantFloor.length > 120, 'non-vacuity: the built floor skin is real markup');
+  assert.ok(ghost.innerHTML.includes(wantFloor),
+    'the FLOOR ghost does not lie in the floor plane the way a built floor material does — it was '
+    + 'drawing an upright square, which never matched the built idiom even before the merge');
+
+  // …and a NEGATIVE CONTROL for both: the OLD 62-px floated-square idiom must not survive anywhere.
+  const oldIdiom = ROOM_SCALE * 62;
+  assert.ok(!ghost.innerHTML.includes('w: ' + oldIdiom) && !ghost.innerHTML.includes(oldIdiom.toFixed(2) + '"'),
+    'the superseded 62-px swatch idiom is still being emitted somewhere');
+});
+
+test('the swatch FOLLOWS THE PICKER — the signature guard carries the material term', () => {
   armTool('wall');
   hover(FLOOR.x, FLOOR.y);
   const first = ghost.innerHTML;
-  assert.ok(first.includes('rz-gh-wall-mat'), 'the material swatch is inset on the wall ghost');
-  // Flip the picker the way a player does — a click on a real `[data-rzmat]` chip.
   const chip = new GhEl(doc, 'button');
   chip.dataset.rzmat = '2';
   chip.setAttribute('data-rzmat', '2');
@@ -322,6 +370,18 @@ test('WALL and FLOOR ghosts carry the ACTIVE MATERIAL swatch, and it follows the
   fire(chip, 'click', {});
   assert.notEqual(ghost.innerHTML, first,
     'a material change must re-draw the ghost — the signature guard has to carry the material term');
+  // NON-VACUITY: the two materials really are different art, so the inequality above means something.
+  assert.notEqual(buildItem(materialItemId('wall', 2), { w: 40, h: 40, idPrefix: 'x' }),
+    buildItem(materialItemId('wall', 0), { w: 40, h: 40, idPrefix: 'x' }));
+});
+
+test('DOOR is structural but owns no picker — its ghost invents no material', () => {
+  armTool('door');
+  hover(FLOOR.x, FLOOR.y);
+  assert.ok(ghost.innerHTML.includes('rz-buildghost'), 'the door ghost is drawn');
+  assert.ok(!ghost.innerHTML.includes('-mat'),
+    'the DOOR ghost drew a material swatch. `toolHasMaterial` is wall/floor; answering for a tool '
+    + 'that has no picker is this surface inventing a fact about the tool.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -461,13 +521,23 @@ test('the refusal is the PALETTE\'s answer, reused — not a client-side tile-le
   // A ghost that decided for itself which SQUARES are legal would put a preview saying NO in front
   // of a command the sim would have accepted (the client never gates the send — `onCanvasClick`).
   // The only refusals it may state are the two the palette already proves: cannot pay, not wired.
-  const src = readFileSync(join(HERE, '../src/ui/roomzoom-view.js'), 'utf8');
+  // ⛔ COMMENT-STRIPPED WITH THE SHARED `codeOnly` (CLAUDE.md trap 1: a raw-text guard is satisfied
+  // by commented-out code — a tile predicate sitting behind `//` would pass the negative below while
+  // being one keystroke from live), and with a NEGATIVE CONTROL, because a scan that finds nothing
+  // and a scan that CANNOT find anything read identically.
+  const src = codeOnly(readFileSync(join(HERE, '../src/ui/roomzoom-view.js'), 'utf8'));
   const body = /function ghostRefused\(tool\) \{([\s\S]*?)\n\}/.exec(src);
   assert.ok(body, 'ghostRefused exists');
   assert.match(body[1], /isDecorTool\(tool\)/);
   assert.match(body[1], /placeIsUnaffordable\(tool, partsAboard\(\)\)/);
-  assert.ok(!/Walkable|getFlags|cells\[/.test(body[1]),
+  const TILE_PREDICATE = /Walkable|getFlags|cells\[/;
+  assert.ok(!TILE_PREDICATE.test(body[1]),
     'it must not grow a tile predicate — the sim is the only authority on which square is legal');
+  // NEGATIVE CONTROL: the same predicate, applied to a body that DOES contain the forbidden shape,
+  // must fire. Without this, a rotted regex (a renamed function, a changed brace style) would make
+  // the assertion above vacuously true forever.
+  assert.ok(TILE_PREDICATE.test('  return world.getFlags(t) & Walkable;'),
+    'the tile-predicate detector cannot detect a tile predicate — this guard is inspecting nothing');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -540,6 +610,43 @@ test('a functional tool\'s ghost art is DERIVED from the registry\'s own deviceK
     derived++;
   }
   assert.ok(derived >= 9, 'non-vacuity: ' + derived + ' tools derived');
+});
+
+test('⭐⭐ THE GHOST\'S ART AND THE PLACED PIECE\'S ART ARE CHOSEN BY TWO ROUTES THAT MUST AGREE', () => {
+  // ⛔ THE ASYMMETRY, NAMED (review MINOR 5). The GHOST resolves art by scanning `ITEMS` for a row
+  // whose `deviceKind` matches the palette row (`ghostArtId`). The PLACED piece resolves it from the
+  // frame's GLYPH BYTE (`roomCells` → `itemForGlyph` → `GLYPH_TO_ITEM`, which is derived from the
+  // registry's `glyph` column plus `GLYPH_SUBSTITUTE`). Two different columns of the same table, and
+  // NOTHING required them to answer the same id — so a registry row could grow a glyph that resolves
+  // elsewhere and the player would preview one piece and get another, silently.
+  //
+  // They agree on all ten placeable tools today. This pins the agreement per PALETTE_CMD row, which
+  // is the cheap version: it needs no new table and it fails by naming the tool that split.
+  const glyphOfKind = new Map();          // deviceKind → the glyph char its registry row carries
+  for (const id of Object.keys(ITEMS)) {
+    const e = ITEMS[id];
+    if (e && e.kind === 'functional' && e.deviceKind && typeof e.glyph === 'string') glyphOfKind.set(e.deviceKind, e.glyph);
+  }
+  let checked = 0;
+  for (const tool of ROOM_TOOLS) {
+    const pc = paletteCommand(tool);
+    if (pc.cls !== 'functional') continue;
+    const ghostId = RoomZoom.ghostArtId(tool);
+    assert.ok(ghostId, tool + ': the ghost resolves no art at all');
+    const glyph = glyphOfKind.get(pc.deviceKind);
+    if (!glyph) {
+      // LAMP: DeviceKind.Light has no functional registry row, so there IS no glyph column to
+      // compare against — the documented exception, asserted as such rather than skipped silently.
+      assert.equal(tool, 'lamp', tool + ' has no registry glyph for ' + pc.deviceKind);
+      continue;
+    }
+    const placedId = itemIdForGlyphChar(glyph);
+    assert.equal(ghostId, placedId,
+      tool + ': the GHOST previews `' + ghostId + '` but a placed one draws `' + placedId + '`. The '
+      + 'deviceKind scan and the glyph route have split — the player sees one piece and gets another.');
+    checked++;
+  }
+  assert.ok(checked >= 8, 'non-vacuity: only ' + checked + ' tools compared');
 });
 
 test('the ghost is the SAME BUILDER the placed piece uses — one drawing, restyled', () => {

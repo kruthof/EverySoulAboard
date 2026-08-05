@@ -134,7 +134,10 @@ const SUBSTITUTED = Object.freeze([
   ['=', 16, 'space-heater'],     // Radiator
   ['Y', 15, 'water-recycler'],   // SalvageRecycler
   ['C', 21, 'locker'],           // MedCabinet
-  ['*', 8, 'wall-lamp'],         // Light
+  // — lane/paper-fixtures — the Light borrow moved from `wall-lamp` to `lamp-sconce` on 2026-08-05.
+  // The SHAPE is unchanged and that is what this row is here for: it is still the one COSMETIC
+  // borrow, so the `fnFn.length >= 5` floor below still means what it says.
+  ['*', 8, 'lamp-sconce'],       // Light
   ['I', 26, 'cooker'],           // IceMelter
 ]);
 
@@ -160,7 +163,7 @@ test('the substitution fixture is REAL — every row is a live borrow in the shi
   assert.ok(fnFn.length >= 5,
     `only ${fnFn.length} of the borrows are FUNCTIONAL→FUNCTIONAL. That is the population the first `
     + 'draft\'s resource/cosmetic fixture structurally excluded, and the one this guard exists for.');
-  assert.equal(ITEMS['wall-lamp'].kind, 'cosmetic',
+  assert.equal(ITEMS['lamp-sconce'].kind, 'cosmetic',
     'the one COSMETIC borrow moved. It is named here because it is the exception that makes the '
     + 'count above meaningful, not because anything depends on it.');
 });

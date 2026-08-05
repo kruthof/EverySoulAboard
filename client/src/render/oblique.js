@@ -333,7 +333,11 @@ export function roomFrame(wM, dM, hM, s, opts = {}) {
     };
   };
   return Object.freeze({
-    s: k, wCm, dCm, hCm, x0, y0, project, plan, boxAt, facing: f,
+    // ⚠️ `wCm`/`dCm` are the FACED footprint — what the drawing occupies. `wIn`/`dIn` are the
+    // AUTHORED box, and anything feeding coordinates BACK THROUGH `project` (which applies the plan
+    // map itself) must use those: passing the faced pair runs the map twice. `corners` and
+    // `room()`'s floor grid are both on the second side of that line — see their notes.
+    s: k, wCm, dCm, hCm, wIn, dIn, x0, y0, project, plan, boxAt, facing: f,
     // ⚠️ THE CORNERS ARE THE **AUTHORED** BOX'S, PUT THROUGH `project` — `wIn`/`dIn`, never the
     // faced `wCm`/`dCm`. Feeding the faced extents back into `project` would apply the plan map
     // TWICE and put three of the four corners somewhere that is not a corner of anything. At
@@ -394,14 +398,23 @@ export function room(wM, dM, hM, s, opts = {}) {
   const cutD = poly([c.frontRightTop, c.backRightTop], false);
 
   let gridEl = '';
-  if (o.grid !== false && gridCm > 0 && f.wCm > 0 && f.dCm > 0) {
+  // ⛔ THE GRID WALKS THE **AUTHORED** BOX, NOT THE FACED ONE — `wIn`/`dIn`, exactly as `corners`
+  // does one function up, and for exactly the same reason: every coordinate here is handed to
+  // `P` = `project`, which applies the plan map ITSELF. Feeding it the faced extents runs the map
+  // twice and the grid lands somewhere that is not the floor.
+  // ⚠️ IT IS LATENT TODAY AND IS CLOSED ANYWAY (review, 2026-08-05): `room()`'s single caller
+  // (`room-model.roomCutawaySvg`) passes no facing, so at `facing` 0 the two spellings are the same
+  // number and nothing could have observed the difference. A hazard that only wakes when someone
+  // passes a facing to `room()` is a trap for the next reader, not a bug for this one — and the
+  // whole cost of closing it is choosing the right pair of properties.
+  if (o.grid !== false && gridCm > 0 && f.wIn > 0 && f.dIn > 0) {
     const segs = [];
-    for (let x = gridCm; x < f.wCm; x += gridCm) {
-      segs.push(poly([P(x, 0, 0), P(x, f.dCm, 0)], false));
+    for (let x = gridCm; x < f.wIn; x += gridCm) {
+      segs.push(poly([P(x, 0, 0), P(x, f.dIn, 0)], false));
     }
     for (let j = 1; j < divs; j++) {
-      const y = (f.dCm * j) / divs;
-      segs.push(poly([P(0, y, 0), P(f.wCm, y, 0)], false));
+      const y = (f.dIn * j) / divs;
+      segs.push(poly([P(0, y, 0), P(f.wIn, y, 0)], false));
     }
     if (segs.length) {
       gridEl =

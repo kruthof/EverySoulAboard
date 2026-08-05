@@ -327,8 +327,9 @@ namespace Perilune.Sim
                 w.Write(d.LockOwner);       // v4
                 w.Write(d.Scriptable);      // v5 (E0-6)
                 w.Write(d.Faulted);         // v6 (OD-O / M3-16 — the authored dead board)
-            w.Write((byte)(d.Facing & 3)); // v7 — masked at the WRITER too, so a corrupt in-memory
-                                          // value cannot be persisted and then read back as truth
+                // v7 — masked at the WRITER too, so a corrupt in-memory value cannot be persisted
+                // and then read back as truth on the next load.
+                w.Write((byte)(d.Facing & 3));
             }
         }
 

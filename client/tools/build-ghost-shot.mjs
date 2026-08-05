@@ -175,7 +175,8 @@ const ghostState = () => evalJson(
   + "return {node:1,present:e?1:0,tile:e?e.getAttribute('data-ghost-tile'):null,"
   + "tool:e?e.getAttribute('data-ghost-tool'):null,refused:e?(e.getAttribute('class').indexOf('refused')>=0?1:0):0,"
   + "facing:e?Number(e.getAttribute('data-ghost-facing')):null,"
-  + "ink:e?[...g.querySelectorAll('path')].map(n=>n.getAttribute('d')).join('|').length:0,"
+  + "ink:e?(()=>{const d=[...g.querySelectorAll('path')].map(n=>n.getAttribute('d')).join('|');"
+  + "let h=5381;for(let i=0;i<d.length;i++){h=((h*33)^d.charCodeAt(i))>>>0;}return h+':'+d.length;})():0,"
   + "paths:g.querySelectorAll('path,ellipse,rect').length};})()");
 
 const g0 = await ghostState();
@@ -254,8 +255,14 @@ check(JSON.stringify(faceAt) === '[0,1,2,3,0]',
 check(inkAt[1] !== inkAt[0] && inkAt[2] !== inkAt[1] && inkAt[3] !== inkAt[2],
   'each quarter-turn actually REDREW the piece — a facing counter that the drawing ignores would '
   + 'pass the cycle check above on its own');
+// ⚠️ `ink` IS A CONTENT DIGEST (djb2 over the concatenated path data, plus its length), NOT a bare
+// LENGTH — the first draft compared lengths, and two different drawings of the same piece can easily
+// be the same number of characters, so "returned to where it started" could have passed over a
+// picture that had not. The digest makes the check about the DRAWING; the authoritative byte-identity
+// claim still lives in `client/test/rotation.test.js`, where the markup is compared in full and this
+// rig is only the live witness that the same thing happens in a real browser.
 check(inkAt[4] === inkAt[0],
-  'four quarter-turns returned the drawing to exactly where it started (the "4×" in the owner\'s ask)');
+  'four quarter-turns returned the drawing to exactly where it started (the "4x" in the owner\'s ask)');
 
 // ───────────────────────────────────────────────────────────── 7. THE PLACEMENT — turned, and it sticks
 // Turn to 1 and place there, so the facing that lands is NOT the default and a dropped field shows.

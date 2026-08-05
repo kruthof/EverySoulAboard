@@ -1883,7 +1883,7 @@ Chapters, in write order (`:108-134`):
 | `TILE` | 1 | per deck: `Floor[]`, `Wall[]`, `Flags[]`, `RoomId[]`. **Flags saved verbatim** (incl. `HasDevice`/`Designated`) — the reader never re-derives them |
 | `ROOM` | 3 | per room: `TileCount`, O2/CO2/N2 moles, `TemperatureK`; then anchors (name, probe, `RoomType` at v3) |
 | `CITZ` | 8 | v2 +Thirst, v3 +ReservedItemId, v4 +RevealsFog, v5 +Faction/Health/Morale/Archetype, v6 +HoldPosition, v7 +OrderedMove, **v8 +work-priority grid / WorkIncapable / Skill / HeldByOrder (M2-1)** |
-| `DEVC` | 4 | v2 +StoredLiters/Progress/FluidNetworkId, v3 +Condition, v4 +LockOwner |
+| `DEVC` | 7 | v2 +StoredLiters/Progress/FluidNetworkId, v3 +Condition, v4 +LockOwner, v5 +Scriptable (E0-6), v6 +Faulted (OD-O / M3-16), **v7 +Facing (2026-08-05 — drawing-only, §13.50)** |
 | `ITEM` | 2 | v2 +Label |
 | `DSLS` | 1 | MOSS sources per terminal |
 | `DEFS` | 1 | the active `SimDefs.Checksum` — a **fingerprint only**; the loader's defs always win, a mismatch is an advisory warning (`SaveReader.cs:34-39`) |
@@ -8013,7 +8013,11 @@ leave the pins still*. `AllFourFacingsFoldDistinctly` is the second half: a one-
 
 **⚠️ THE DRAWING HALF HAS A NAMED HOLE AND IT IS NOT A DEFECT IN THE FIELD.** The turn happens in the
 ENV FRAME (`oblique.roomFrame`'s `plan`: the piece's own centimetres are swapped and mirrored BEFORE
-projection), so all thirty catalogue fittings rotate without one builder knowing rotation exists. The
+projection), so **all 48 catalogue pieces across BOTH paper catalogues** — 34 in `fittings.js` and 14
+in `paper-fixtures.js`, counts RE-DERIVED off the merged tree rather than carried forward — rotate
+without one builder knowing rotation exists. (The number read "thirty" when this section was written
+against a pre-merge tree; both catalogues reach the drawing scale through the one shared
+`geometryFor(spec, facing)` door, which is what makes the second one turn at all.) The
 ~20 device rows still wearing PRE-REDESIGN WARM ART have no centimetre spec at all (charter §4, P2b
 FILED), so **MEDBED, PLANT and LAMP carry a facing through sim, save and wire and draw the same
 picture at all four.** That is P2b's boundary, not a new gap.

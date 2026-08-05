@@ -1,7 +1,7 @@
 // The 70 WRECKED builders — the POST-RAID twin of every static piece in the warm item set
 // (docs/design/perilune-item-set.dc.html, section "Wrecked — post-raid state", imported 2026-07-28).
 // Pure `(opts) -> string` SVG-`<g>`-fragment builders in the same centred mock-px space as
-// objects.js / structures.js / fixtures.js / resources.js / cryo.js; see helpers.js for the
+// objects.js / fixtures.js / resources.js / cryo.js; see helpers.js for the
 // coordinate model.
 //
 // The mock's own premise, verbatim: *"Day 1: the raid left every system dead. Every item above has a
@@ -113,6 +113,11 @@ import { ITEMS, ITEM_IDS, placeholderItem } from './index.js';
 import {
   paintFitting, line as fLine, disc as fDisc, curve as fCurve,
 } from './fittings.js';
+// — lane/paper-resources — the eight redrawn ground stacks re-run their own pristine painter, the
+// same way the nine fittings twins re-run theirs. One import, one direction.
+import { paintResource } from './paper-resources.js';
+// — lane/paper-fixtures —
+import { paintPaperFixture } from './paper-fixtures.js';
 
 // ── the layer primitive ──────────────────────────────────────────────────────────────────────
 
@@ -1015,6 +1020,37 @@ const curtainRail = (s) => paintFitting(s, 'curtain-rail', (_s, { F }) => {
   inkScorch(s, F, 110, 14, 172, 14);
 });
 
+// ── THE TWO CAPSULES (2026-08-05) — post-raid twins for catalogue 31 and 32 ──
+// Same construction as the nine above: re-run the pristine painter, then ink damage on its own frame.
+// The marks are chosen to say what a raid does to a life-support box rather than to a chair — the
+// sealed one is holed THROUGH ITS GLASS (the one part of it that cannot be holed and leave an
+// occupant alive), the open one is torn along the lid it was already showing.
+const capsuleSealed = (s) => paintFitting(s, 'capsule-sealed', (_s, { F }) => {
+  inkCrack(s, F, [[96, 0, 44], [132, 0, 18]]);            // across the pane
+  inkHole(s, F, 60, 0, 30, 8);                            // through it, over the sleeper
+  inkScorch(s, F, 168, 12, 56, 20);                       // the lid, beside the port
+  inkCrack(s, F, [[195, 10, 4], [204, 10, 0]]);           // the far foot, kicked out
+});
+
+const capsuleOpen = (s) => paintFitting(s, 'capsule-open', (_s, { F }) => {
+  // ⚠️ EVERY MARK ON THE LID IS ON THE LID'S OWN PLANE, and the first draft's was not. The raised lid
+  // runs from (y 70, z 56) to (y 31, z 123.5), so a point on it satisfies y = 70 − 0.5778·(z − 56);
+  // a hole authored at (150, 40, 116) sat 5 cm off that plane and rendered as a black disc floating
+  // beside the lid — visible in a 420 px probe, invisible to every string assertion in the suite.
+  inkTear(s, F, [[46, 56.9, 78.8], [98, 47.6, 94.9], [146, 40.7, 106.9]]);   // across the raised lid
+  inkHole(s, F, 150, 35.3, 116, 7);                       // punched through it
+  inkScorch(s, F, 100, 30, 56, 22);                       // into the empty tub
+  inkWire(s, F, [54, 34, 56], [40, 46, 40], [24, 60, 30]);  // a strap, torn loose and hanging
+});
+
+// ⭐ THE ONE TWIN THAT IS A DRAWING RATHER THAN A DAMAGE PASS — see its row in `WRECKED` for why.
+// It is named `cellSound` and not `cellSpent` ON PURPOSE: the painter-name guard in
+// `client/test/wrecked.test.js` asks that `WRECKED[id].paint.name === camelCase(id)`, i.e. that a
+// painter is named after the ROW IT SERVES. This one serves `cell-sound` (a Battery, wrecked) and
+// paints card 34. Naming it after what it draws would read better in one line and would defeat the
+// only guard in this repo that can see a twin pointing at another row's picture.
+const cellSound = (s) => paintFitting(s, 'cell-spent');
+
 const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
   inkCrack(s, F, [[14, 12, 166], [26, 12, 146]]);         // across the frame
   inkHole(s, F, 46, 16, 150, 5);                          // the cup, holed
@@ -1024,6 +1060,248 @@ const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
   // were invisible, so the twin lost a mark and nothing said so. The bracket now falls from the
   // plate's front-bottom edge to the wall, and the crack crosses it just under the shelf.
   inkCrack(s, F, [[11, 8, 133], [18, 10, 133]]);          // the near bracket, cracked at the mount
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// — lane/paper-resources —
+// THE EIGHT PAPER GROUND STACKS — damaged twins for the redrawn resources
+//
+// ⚠️ SAME CONSTRUCTION AS THE NINE FITTINGS ABOVE, AND FOR THE SAME REASON: each twin RE-RUNS its
+// own pristine painter (`paperResources.paintResource`) and then adds ink damage on the same frame,
+// in the same centimetres. That is the only construction under which "the twin is the same pile,
+// spoiled" survives a redraw of the pile. `design-import/Perilune Fittings.dc.html` has no card for
+// any of these nine, so — exactly as with the nine fittings — there is nothing to transcribe and
+// nothing to check against: they are repo-authored and ledgered as such in `NON_MOCK_TWIN`, which is
+// what keeps the mock join measuring exactly seventy.
+//
+// ⚠️ THE STATES ARE THE MOCK'S OWN EIGHT, KEPT DELIBERATELY. The warm resources' twins are labelled
+// CONTAMINATED · SPOILED · SLAGGED · SEIZED · FRIED · PERISHED · MELTED · UNSHROUDED, and those are
+// facts about what happens to matter rather than about a drawing. Each twin below expresses ITS OWN
+// state and no other — a spoiled crate is not a scorched one — so the eight remain eight different
+// answers instead of one damage pass applied eight times.
+//
+// ⛔ AND NO OXBLOOD, IN ANY OF THEM, which is `paper-resources.js`'s header rule extended to the
+// damage. A pile that has gone bad is not an alert either; the accent belongs to the marks that are
+// ABOUT a tile (a queued order, a fault), never to the matter on it. The body bag's twin is the one
+// that could most easily have argued for it, and it is the one that most clearly must not.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** A DASHED LEVEL RING on the deck — "this area is affected", in the room cutaway's own cut-edge
+ *  dialect. A 16-gon rather than an ellipse because the shared `disc` carries no dash term, and a
+ *  16-gon at this scale is under a pixel of chord error. PURE: every point goes through `F.project`. */
+function inkArea(s, F, x, y, r) {
+  const pts = [];
+  for (let i = 0; i <= 16; i += 1) {
+    const a = (i / 16) * Math.PI * 2;
+    pts.push([x + r * Math.cos(a), y + r * Math.sin(a), 0]);
+  }
+  fLine(s, F, pts, { sw: 1.0, dash: '3 3', opacity: 0.75 });
+}
+
+const spoilHeap = (s) => paintResource(s, 'spoil-heap', (_s, { F }) => {
+  inkArea(s, F, 40, 40, 46);                              // CONTAMINATED: the deck around it, marked off
+  inkHole(s, F, 36, 40, 30, 4);                           // a core sample taken out of the crown
+  inkScorch(s, F, 24, 40, 12, 12);
+  inkCrack(s, F, [[52, 40, 14], [60, 40, 6]]);            // the flank, slumped
+});
+
+const tuberCrate = (s) => paintResource(s, 'tuber-crate', (_s, { F }) => {
+  inkTear(s, F, [[20, 0, 10], [34, 0, 6], [48, 0, 11]]);  // SPOILED: the near slat, sprung
+  inkCrack(s, F, [[17, 0, 20], [17, 0, 8]]);              // …and the corner post it hung on
+  inkScorch(s, F, 26, 12, 25, 8);                         // the blotches, on two tubers
+  inkScorch(s, F, 40, 9, 27, 9);
+  inkDead(s, F, [[45, 14, 25], [57, 14, 25], [56, 14, 21], [46, 14, 21]]);   // one collapsed entirely
+});
+
+const plateOffcut = (s) => paintResource(s, 'plate-offcut', (_s, { F }) => {
+  inkHole(s, F, 40, 26, 8.5, 6);                          // SLAGGED: burnt clean through the top plate
+  inkScorch(s, F, 20, 12, 2, 16);
+  inkWire(s, F, [54, 16, 2], [60, 22, 6], [64, 30, 2]);   // an edge run soft and drawn out
+  inkCrack(s, F, [[10, 38, 24], [20, 36, 14]]);           // the standing sheet, split from the top
+});
+
+const gearSet = (s) => paintResource(s, 'gear-set', (_s, { F }) => {
+  inkCrack(s, F, [[32, 1, 21], [32, 1, 14]]);             // SEIZED: two teeth off the standing gear
+  inkCrack(s, F, [[41, 12, 13], [35, 12, 12]]);
+  inkCrack(s, F, [[6, 20, 0], [17, 20, 0], [24, 26, 0]]); // and the flat one, cracked through its hub
+  inkScorch(s, F, 17, 20, 0, 11);
+  inkTear(s, F, [[9, 3, 0.5], [20, 5, 3], [34, 4, 0.5]]); // the spanner, bent
+});
+
+const controlCard = (s) => paintResource(s, 'control-card', (_s, { F }) => {
+  inkHole(s, F, 20, 10, 11, 4);                           // FRIED: the chip, blown out
+  inkScorch(s, F, 20, 11, 8, 9);
+  inkCrack(s, F, [[6, 20, 8], [18, 12, 8], [32, 14, 8]]); // the board, cracked across
+  inkTear(s, F, [[9.6, 0, 8], [10.6, 5, 9.5]]);           // two pins, bent out of the comb
+  inkTear(s, F, [[24, 0, 8], [23, 5, 9.5]]);
+});
+
+const sealSet = (s) => paintResource(s, 'seal-set', (_s, { F }) => {
+  inkCrack(s, F, [[6, 20, 0], [16, 14, 0], [24, 6, 0]]);  // PERISHED: the big ring, split across
+  inkCrack(s, F, [[25, 30, 0], [31, 25, 0], [38, 22, 0]]); // and the small one
+  inkScorch(s, F, 16, 14, 0, 10);
+  inkTear(s, F, [[7, 34, 14], [15, 33, 11], [23, 34, 13]]);  // the card, curled off its edge
+});
+
+const iceBlock = (s) => paintResource(s, 'ice-block', (_s, { F }) => {
+  inkArea(s, F, 24, 18, 22);                              // MELTED: the meltwater, spreading
+  // ⭐ THE ONE ARC PERMITTED IN THIS PIECE, and it is permitted for exactly the reason the pristine
+  // drawing bans them: melting is what turns a facet into a curve. It is the whole difference
+  // between the two states, so it is the mark that carries the state.
+  inkWire(s, F, [12, 13, 15], [26, 11, 22], [38, 9, 21]); // the top edge, run round
+  inkWire(s, F, [33, 8, 0], [36, 8.5, 11], [38, 9, 21]);  // the near arris, gone soft
+  inkTear(s, F, [[20, 11, 8], [20, 11, 0]]);              // a run down the face
+  inkScorch(s, F, 24, 12, 4, 9);
+});
+
+// ⭐ THE ONE THE OWNER WILL LOOK AT. UNSHROUDED, and NOTHING IS UNCOVERED: the bag is opened along
+// its own seam and the mark stops there. There is no body in this drawing and there will not be one
+// — the state the mock names is a fact about the BAG, and the bag is the whole of what this package
+// is willing to draw. No oxblood, for the pristine piece's reason: death is not an alert.
+const bodyBag = (s) => paintResource(s, 'body-bag', (_s, { F }) => {
+  // ⚠️ THE FIRST DRAFT OF THIS TWIN WAS INVISIBLE, and it was found by looking at the sheet rather
+  // than by any assertion: four dashed hairlines at 0.85 opacity, laid over a hatched face, are the
+  // hatch. A state that cannot be seen is not a state. The seam is now an OPEN SLIT — a filled ink
+  // sliver, the mock's own `dead()` mark — with the tear line above it.
+  inkDead(s, F, [[44, 0, 25], [78, 0, 21], [116, 0, 23], [148, 0, 18],
+    [116, 0, 20], [78, 0, 18], [44, 0, 22]]);             // the seam, opened
+  inkCrack(s, F, [[44, 0, 25], [78, 0, 21], [116, 0, 23], [148, 0, 18]]);
+  inkCrack(s, F, [[52, 0, 29], [52, 0, 18]]);             // the near strap, cut
+  inkWire(s, F, [52, 0, 18], [46, 0, 10], [44, 0, 0]);    // …and hanging
+  inkCrack(s, F, [[152, 0, 17], [150, 0, 6], [166, 0, 4]]);  // the tag, off its lanyard
+});
+
+// — lane/paper-fixtures —
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE FOURTEEN PAPER FIXTURES — post-raid twins for the ship's redrawn architecture
+//
+// Same construction as the nine fittings twins above and for the same stated reason: each re-runs
+// its PRISTINE painter (`paper-fixtures.paintPaperFixture`) and then adds ink damage on the same
+// frame, in the same centimetres. That is the only construction under which "the twin is the same
+// object, damaged" survives a redraw of the object — and it is what keeps the mock's own premise for
+// its seventy ("each keeps one identifying feature so it still reads as the same object") true here
+// by force rather than by care. `design-import/Perilune Fittings.dc.html` has no card for any of
+// these fourteen and no wrecked drawing for them either, so all fourteen are REPO-AUTHORED and
+// ledgered in `NON_MOCK_TWIN` below.
+//
+// ⚠️ THE IDENTIFYING FEATURE IS NAMED IN EACH PAINTER'S MARKS AND IS DELIBERATELY LEFT WHOLE: the
+// sliding door's meeting seam, the airlock's undogging wheel, the blast door's two hazard bands, the
+// deck hatch's ring, the conduit's three nodes, the grille's louvres, the fan's impeller, the port's
+// ink glass, the rack's three arms, the sign's arrow, and each luminaire's own outline. A wrecked
+// piece that no longer reads as the same object is the one failure `wrecked.test.js` cannot see — its
+// join is by itemId, and a wrong drawing keyed correctly is still a wrong drawing. That is what
+// `client/tools/paper-fixtures-sheet.mjs` renders side by side.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const doorSliding = (s) => paintPaperFixture(s, 'door-sliding', (_s, { F }) => {
+  inkTear(s, F, [[24, 6, 150], [48, 6, 120], [36, 6, 86]]);   // the near leaf, buckled
+  inkHole(s, F, 88, 6, 140, 8);                               // the far leaf, punched
+  inkScorch(s, F, 60, 6, 60, 20);
+  inkCrack(s, F, [[116, 0, 216], [128, 0, 230]]);             // the head, split at the jamb
+});
+
+const doorAirlock = (s) => paintPaperFixture(s, 'door-airlock', (_s, { F }) => {
+  inkCrack(s, F, [[40, 5, 120], [70, 5, 96]]);                // across the leaf, past the wheel
+  inkHole(s, F, 86, 5, 70, 7);
+  inkScorch(s, F, 40, 6, 66, 16);
+  inkCrack(s, F, [[24, 4, 20], [14, 4, 26]]);                 // the sill, kicked off its lip
+});
+
+const doorBlast = (s) => paintPaperFixture(s, 'door-blast', (_s, { F }) => {
+  inkTear(s, F, [[30, 6, 120], [70, 6, 150], [110, 6, 124]]);
+  inkHole(s, F, 60, 6, 100, 9);
+  inkScorch(s, F, 100, 6, 70, 22);
+  inkCrack(s, F, [[45, 4, 220], [38, 4, 232]]);               // a roller, torn off the track
+});
+
+const deckHatch = (s) => paintPaperFixture(s, 'deck-hatch', (_s, { F }) => {
+  inkCrack(s, F, [[20, 59, 4], [44, 59, 14]]);                // the coaming, split
+  inkHole(s, F, 75, 59, 14, 7);
+  inkScorch(s, F, 40, 59, 14, 16);
+  inkCrack(s, F, [[78, 112, 40], [86, 112, 26]]);             // a stanchion, bent out
+  inkWire(s, F, [43, 88, -20], [30, 80, -30], [24, 70, -44]); // a cable down the well
+});
+
+const conduitRun = (s) => paintPaperFixture(s, 'conduit-run', (_s, { F }) => {
+  inkWire(s, F, [132, 0, 228], [120, 0, 212], [104, 0, 208]);  // a cable, torn out of the tray
+  inkHole(s, F, 176, 0, 228, 5);
+  inkScorch(s, F, 44, 0, 228, 12);
+  inkCrack(s, F, [[224, 14, 234], [232, 20, 240]]);            // a bracket, pulled off the wall
+});
+
+const ventGrille = (s) => paintPaperFixture(s, 'vent-grille', (_s, { F }) => {
+  inkCrack(s, F, [[10, 4, 240], [30, 4, 222]]);
+  inkHole(s, F, 40, 4, 216, 6);
+  inkScorch(s, F, 20, 4, 208, 12);
+  inkTear(s, F, [[7, 0, 236], [20, 0, 232]]);                 // a blade, sprung out of the frame
+});
+
+const extractorFan = (s) => paintPaperFixture(s, 'extractor-fan', (_s, { F }) => {
+  inkCrack(s, F, [[16, 8, 246], [34, 8, 232]]);
+  inkHole(s, F, 52, 8, 212, 7);
+  inkScorch(s, F, 24, 8, 206, 14);
+  inkWire(s, F, [38, 5, 226], [28, 4, 206], [20, 4, 196]);    // the motor lead, hanging
+});
+
+// ⭐ THE ONE TWIN WHOSE MARKS ARE PLACED BY WHAT THE PRISTINE PIECE IS *FILLED* WITH, and the first
+// draft got it wrong in a way no assertion in this repo can see. The porthole's glass is the set's
+// only INK-FILLED area; an `inkCrack` and an `inkHole` authored across it are black on black and
+// contribute nothing — invisible damage on the one piece whose identity is that black disc. Seen on
+// `client/tools/shots-paper-fixtures/paper-fixtures-twins.png`, not reasoned out. Every mark now
+// lands on PAPER: the frame's annulus (r 29–39 from the port's centre) and the hull around it, so the
+// glass stays whole — which is also the better story, since a porthole that has cracked its frame and
+// held is exactly what a post-raid deck looks like.
+const hullPort = (s) => paintPaperFixture(s, 'hull-port', (_s, { F }) => {
+  inkCrack(s, F, [[8, 3, 132], [20, 3, 142]]);                // out of the hull, across the frame
+  inkHole(s, F, 78, 4, 178, 6);                               // punched through the frame's far side
+  inkScorch(s, F, 86, 6, 132, 11);                            // on the hull, clear of the glass
+  inkCrack(s, F, [[16, 2, 113], [6, 2, 120]]);                // the drip rail, torn
+});
+
+const bulkheadScreen = (s) => paintPaperFixture(s, 'bulkhead-screen', (_s, { F }) => {
+  inkCrack(s, F, [[16, 4, 176], [50, 4, 150], [92, 4, 160]]);
+  inkCrack(s, F, [[50, 4, 150], [44, 4, 134]]);
+  inkHole(s, F, 64, 4, 168, 7);
+  inkScorch(s, F, 26, 4, 142, 14);
+  inkWire(s, F, [20, 6, 126], [10, 6, 118], [8, 4, 114]);     // the feed, torn out of the bezel
+});
+
+const armsRack = (s) => paintPaperFixture(s, 'arms-rack', (_s, { F }) => {
+  inkCrack(s, F, [[3, 4, 106], [40, 4, 114]]);                // the retaining rail, bent
+  inkHole(s, F, 52, 10, 64, 7);
+  inkScorch(s, F, 84, 12, 92, 16);
+  inkTear(s, F, [[81, 12, 78], [88, 12, 112]]);               // the short arm, out of its rest
+});
+
+const deckMarker = (s) => paintPaperFixture(s, 'deck-marker', (_s, { F }) => {
+  inkCrack(s, F, [[8, 4, 214], [30, 4, 200]]);
+  inkHole(s, F, 20, 4, 206, 5);
+  inkScorch(s, F, 60, 4, 200, 10);
+  inkCrack(s, F, [[60, 4, 196], [68, 4, 192]]);               // the far stud, out of the wall
+});
+
+const lampSconce = (s) => paintPaperFixture(s, 'lamp-sconce', (_s, { F }) => {
+  inkCrack(s, F, [[13, 6, 194], [26, 6, 202]]);               // the shade, split along a rib
+  // ⚠️ ON THE CONE AND NOT AT THE MOUTH: the lit mouth is an INK disc, so a hole drawn over it merges
+  // with the light and reads as a bigger lamp rather than as damage — the same ink-on-ink trap the
+  // porthole's twin above records, in its milder form.
+  inkHole(s, F, 23, 6, 198, 3);
+  inkScorch(s, F, 23, 14, 218, 10);
+  inkWire(s, F, [16, 14, 206], [12, 10, 196], [8, 6, 190]);   // the flex, hanging out of the plate
+});
+
+const growLamp = (s) => paintPaperFixture(s, 'grow-lamp', (_s, { F }) => {
+  inkCrack(s, F, [[10, 4, 205], [40, 4, 196]]);
+  inkHole(s, F, 66, 4, 200, 6);
+  inkScorch(s, F, 24, 4, 198, 12);
+  inkTear(s, F, [[14, 8, 224], [18, 8, 212]]);                // a suspension rod, parted
+});
+
+const floodLamp = (s) => paintPaperFixture(s, 'flood-lamp', (_s, { F }) => {
+  inkCrack(s, F, [[10, 4, 262], [30, 4, 248]]);
+  inkHole(s, F, 34, 4, 254, 6);
+  inkScorch(s, F, 20, 4, 246, 12);
+  inkCrack(s, F, [[46, 30, 272], [52, 33, 268]]);             // the knuckle, sheared
 });
 
 // ── the registry ─────────────────────────────────────────────────────────────────────────────
@@ -1144,6 +1422,75 @@ export const WRECKED = Object.freeze({
   'vice-post':        { paint: vicePost,     state: '15%', mockLabel: null, catalogue: '23 VICE POST' },
   'curtain-rail':     { paint: curtainRail,  state: '2%',  mockLabel: null, catalogue: '29 CURTAIN RAIL' },
   'shrine-shelf':     { paint: shrineShelf,  state: '31%', mockLabel: null, catalogue: '30 SHRINE SHELF' },
+
+  // ── CAPSULES AND CELLS (3, 2026-08-05) — REPO-AUTHORED FROM THE CATALOGUE, NOT FROM THE MOCK ──
+  //
+  // ⭐ `cell-sound`'s TWIN IS NOT INK DAMAGE ON THE PRISTINE PIECE, AND IT IS THE ONLY ONE IN THIS
+  // FILE THAT IS NOT. It is catalogue 34, CELL SPENT — a drawing the OWNER made of exactly this
+  // state: one terminal sunk, one band of four, both walls bowed, a crack and a weep, the whole thing
+  // in the accent. Every other twin re-runs its pristine painter because "the twin is the same
+  // object, damaged" has no other author; here it has one, and inventing a second set of ink marks
+  // over the sound cell would put a repo-authored wreck on screen while the design's own went
+  // unreachable. ⇒ THE STANDING RULE IS UNCHANGED AND WORTH RESTATING: re-run the pristine painter
+  // UNLESS the design ships the damaged drawing itself, which so far it has done exactly once.
+  //
+  // ⚠️ `cell-spent` HAS NO ROW HERE OF ITS OWN — it is in `NO_WRECKED_TWIN` below, for `swarf`'s
+  // reason. And `wreckedInfo` takes a twin's `size` from its PRISTINE row, so the spent cell reports
+  // `cell-sound`'s footprint (73 × 112) rather than its own (94 × 112, the swell). That is the
+  // existing contract, not a defect: `size` is a placement HINT nothing lays out on today, and a twin
+  // claiming a different footprint from the thing it replaces is the drift the shared field prevents.
+  'capsule-sealed':   { paint: capsuleSealed, state: '5%',  mockLabel: null, catalogue: '31 CAPSULE, SEALED' },
+  'capsule-open':     { paint: capsuleOpen,   state: '17%', mockLabel: null, catalogue: '32 CAPSULE, OPEN' },
+  'cell-sound':       { paint: cellSound,     state: '0%',  mockLabel: null, catalogue: '34 CELL, SPENT' },
+
+  // ── PAPER GROUND STACKS (8) — lane/paper-resources, REPO-AUTHORED, NOT FROM THE MOCK ──────────
+  //
+  // ⚠️ `state: '—'` ON ALL EIGHT, AND IT IS THE SAME CLAIM THE MOCK MAKES about the warm resources
+  // it replaced: the em-dash means "cannot be repaired, only written off", which is true of matter
+  // and false of machinery. A percentage here would promise a repair verb that does not exist for a
+  // pile. ⇒ The state census in `wrecked.test.js` therefore moves on the DASH side and not on the
+  // percentage side, which is the tell that this package added resources and not devices.
+  //
+  // `catalogue` carries `PAPER RESOURCE · <NAME>` rather than a `NN NAME` card reference: these nine
+  // have no card in `design-import/Perilune Fittings.dc.html` at all, and writing a number that does
+  // not exist would be worse than saying where the drawing really came from.
+  'spoil-heap':       { paint: spoilHeap,    state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · SPOIL HEAP' },
+  'tuber-crate':      { paint: tuberCrate,   state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · TUBER CRATE' },
+  'plate-offcut':     { paint: plateOffcut,  state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · PLATE OFFCUT' },
+  'gear-set':         { paint: gearSet,      state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · GEAR SET' },
+  'control-card':     { paint: controlCard,  state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · CONTROL CARD' },
+  'seal-set':         { paint: sealSet,      state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · SEAL SET' },
+  'ice-block':        { paint: iceBlock,     state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · ICE BLOCK' },
+  'body-bag':         { paint: bodyBag,      state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · BODY BAG' },
+
+  // — lane/paper-fixtures —
+  // ── THE PAPER FIXTURES (14, 2026-08-05) — REPO-AUTHORED, AND NOT FROM A CARD EITHER ──
+  //
+  // The nine above are repo-authored twins of pieces the owner's CATALOGUE draws pristine; these
+  // fourteen are repo-authored twins of pieces the catalogue does not draw at all (see
+  // `client/src/items/paper-fixtures.js`'s header for why they are designed here rather than ported).
+  // So `catalogue` names the SECTION of that module rather than a card number — writing a card number
+  // that does not exist would be the exact kind of citation the next reader cannot follow.
+  // `mockLabel: null` is again the load-bearing field: it is what keeps these out of the mock's
+  // label/badge bijection, which must go on measuring exactly seventy.
+  //
+  // Their `state` badges are AUTHORED and spread across the mock's own 0–35% band, for the reason the
+  // nine above give: a badge is a fact about a device, not about a document, and nothing on screen
+  // should be able to tell a repo-authored badge from a transcribed one.
+  'door-sliding':     { paint: doorSliding,    state: '21%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'door-airlock':     { paint: doorAirlock,    state: '3%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'door-blast':       { paint: doorBlast,      state: '13%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'deck-hatch':       { paint: deckHatch,      state: '26%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'conduit-run':      { paint: conduitRun,     state: '7%',  mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
+  'vent-grille':      { paint: ventGrille,     state: '30%', mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
+  'extractor-fan':    { paint: extractorFan,   state: '9%',  mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
+  'hull-port':        { paint: hullPort,       state: '5%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'bulkhead-screen':  { paint: bulkheadScreen, state: '0%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'arms-rack':        { paint: armsRack,       state: '17%', mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'deck-marker':      { paint: deckMarker,     state: '24%', mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'lamp-sconce':      { paint: lampSconce,     state: '4%',  mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
+  'grow-lamp':        { paint: growLamp,       state: '11%', mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
+  'flood-lamp':       { paint: floodLamp,      state: '6%',  mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
 });
 
 /**
@@ -1166,6 +1513,23 @@ export const NO_WRECKED_TWIN = Object.freeze({
     + 'one mechanism that would ever give a RESOURCE two states — is unbuilt and, when it lands, '
     + 'covers the 8 spoilable resources and not this one. The mock, which is the authority for the '
     + 'twin set and the thing the bijection test measures against, has no SWARF piece at all.',
+  'cell-spent':
+    'A SPENT CELL IS ALREADY THE WRECKED STATE — `swarf`\'s argument, in its second instance and on '
+    + 'a FUNCTIONAL row this time. Catalogue 34 is the drawing of a Battery below '
+    + '`wear.WRECK_THRESHOLD`, and it is reached as `WRECKED[\'cell-sound\']` rather than by any '
+    + 'glyph: `DeviceKind.Battery` has one `ForDevice` arm (`\'B\'`) and condition rides the '
+    + '`devices` channel as a byte. So "a wrecked spent cell" names no state the sim can be in, and '
+    + 'a twin for it would be a second wreck drawing behind a door with no key. The catalogue ships '
+    + 'no fifth cell card either.',
+
+  // — lane/paper-resources —
+  turnings:
+    'TURNINGS IS `swarf` REDRAWN, AND THE ARGUMENT COMES WITH IT UNCHANGED. It is what a machine '
+    + 'BECOMES when it is stripped below the Parts floor (`deconstruct.device_swarf`), so "damaged '
+    + 'turnings" names nothing the sim can reach — there is no second condition for a nest of '
+    + 'cuttings to be in. ⇒ THIS ENTRY IS NOT A SECOND DECISION: it is the SAME decision following '
+    + 'its piece onto new art, and the moment `swarf` retires so does its line above. Drawing a twin '
+    + 'here to make the eight into nine would be inventing a state the game does not have.',
 });
 
 /**
@@ -1192,6 +1556,41 @@ export const NON_MOCK_TWIN = Object.freeze({
   bench: '01 BENCH', stool: '05 STOOL', cot: '07 COT', footlocker: '09 FOOTLOCKER', sink: '11 SINK',
   'compost-bin': '21 COMPOST BIN', 'vice-post': '23 VICE POST', 'curtain-rail': '29 CURTAIN RAIL',
   'shrine-shelf': '30 SHRINE SHELF',
+  // 2026-08-05, the capsules and cells. `cell-sound`'s entry names 34 rather than 33 ON PURPOSE:
+  // this ledger's value is the catalogue entry the TWIN comes from, and that twin is card 34.
+  'capsule-sealed': '31 CAPSULE, SEALED', 'capsule-open': '32 CAPSULE, OPEN',
+  'cell-sound': '34 CELL, SPENT',
+
+  // — lane/paper-resources — the eight redrawn ground stacks. ⚠️ THE VALUE IS NOT A CARD NUMBER, and
+  // the shape difference is the point: the nine above name a card in the owner's catalogue, these
+  // eight name a module, because there IS no card for a pile. `wrecked.test.js` checks each row
+  // against the shape its own source implies rather than forcing one pattern on both.
+  'spoil-heap': 'PAPER RESOURCE · SPOIL HEAP',
+  'tuber-crate': 'PAPER RESOURCE · TUBER CRATE',
+  'plate-offcut': 'PAPER RESOURCE · PLATE OFFCUT',
+  'gear-set': 'PAPER RESOURCE · GEAR SET',
+  'control-card': 'PAPER RESOURCE · CONTROL CARD',
+  'seal-set': 'PAPER RESOURCE · SEAL SET',
+  'ice-block': 'PAPER RESOURCE · ICE BLOCK',
+  'body-bag': 'PAPER RESOURCE · BODY BAG',
+
+  // — lane/paper-fixtures — 2026-08-05, the ship's architecture. These fourteen have no CARD, so the
+  // value names the section of `client/src/items/paper-fixtures.js` the piece is drawn in, matching
+  // the `catalogue` field on their `WRECKED` rows.
+  'door-sliding': 'PAPER FIXTURES · WAYS THROUGH',
+  'door-airlock': 'PAPER FIXTURES · WAYS THROUGH',
+  'door-blast': 'PAPER FIXTURES · WAYS THROUGH',
+  'deck-hatch': 'PAPER FIXTURES · WAYS THROUGH',
+  'conduit-run': 'PAPER FIXTURES · SERVICES',
+  'vent-grille': 'PAPER FIXTURES · SERVICES',
+  'extractor-fan': 'PAPER FIXTURES · SERVICES',
+  'hull-port': 'PAPER FIXTURES · WALL FURNITURE',
+  'bulkhead-screen': 'PAPER FIXTURES · WALL FURNITURE',
+  'arms-rack': 'PAPER FIXTURES · WALL FURNITURE',
+  'deck-marker': 'PAPER FIXTURES · WALL FURNITURE',
+  'lamp-sconce': 'PAPER FIXTURES · LIGHT',
+  'grow-lamp': 'PAPER FIXTURES · LIGHT',
+  'flood-lamp': 'PAPER FIXTURES · LIGHT',
 });
 
 /** The pristine itemIds that have a wrecked twin, in registry order. */

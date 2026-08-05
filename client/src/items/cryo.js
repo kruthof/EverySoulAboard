@@ -1,6 +1,6 @@
 // The 2 CRYO CAPSULE builders (#69–70) — the pieces the 2026-07-28 mock re-import added to the
 // static catalog. Pure `(opts) -> string` SVG-`<g>`-fragment builders in the same centred mock-px
-// space as objects.js / structures.js / fixtures.js / resources.js; see helpers.js for the
+// space as objects.js / fixtures.js / resources.js; see helpers.js for the
 // coordinate model. Geometry + colour translated from docs/design/perilune-item-set.dc.html.
 //
 // WHY THESE ARE A FILE OF THEIR OWN, and not two more rows in objects.js: they are ONE OBJECT IN

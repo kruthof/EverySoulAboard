@@ -72,14 +72,25 @@ namespace Perilune.Gen
         /// that does not use them (Perilune/slice/grid), so this list is a no-op by construction.
         ///
         /// ⚠️ IT EXISTS BECAUSE OF A HOLE, AND THE HOLE IS WORTH RECORDING RATHER THAN ROUTING
-        /// ROUND. The wreck start authors two DEAD sleepers, and the sim has no way to say someone
-        /// died before the game began: <see cref="ItemKind.Corpse"/> has art, a label and ZERO
-        /// consumers, and the eulogy/Chronicle path fires on <c>CitizenDiedEvent</c>, which a
-        /// sleeper who was never a <see cref="Citizen"/> cannot raise. Synthesising one would put a
-        /// false death into the hashed event stream and would make <see cref="EulogySystem"/> try to
-        /// quote a mind that does not exist. A log line is a FACT and needs neither; a eulogy is a
-        /// RELATIONSHIP and these people never existed as entities. So the body is an item and the
-        /// death is one line, and nothing pretends to be more than that.
+        /// ROUND. The wreck start authors FOUR dead sleepers (Vance, Sokolov, Iqbal, Osei — the
+        /// count said TWO here for months and was simply wrong; the ship has authored four since
+        /// M1), and the sim has no way to say someone died before the game began: the
+        /// eulogy/Chronicle path fires on <c>CitizenDiedEvent</c>, which a sleeper who was never a
+        /// <see cref="Citizen"/> cannot raise. Synthesising one would put a false death into the
+        /// hashed event stream and would make <see cref="EulogySystem"/> try to quote a mind that
+        /// does not exist. A log line is a FACT and needs neither; a eulogy is a RELATIONSHIP and
+        /// these people never existed as entities.
+        ///
+        /// ⛔ AND SINCE 2026-08-05 THE LOG LINE IS THE WHOLE RECORD — OWNER RULING. This paragraph
+        /// used to end "so the body is an item and the death is one line". The wreck also authored
+        /// an <see cref="ItemKind.Corpse"/> stack per dead sleeper; the owner saw the cryo bay and
+        /// said "there are still old body bags — delete them", so the item half is gone and every
+        /// clause above about the EULOGY still stands and still forbids a synthesised death. The
+        /// capsule's own wrecked art now carries what the bag carried. ⇒ These four lines are the
+        /// only thing on the ship that says somebody died, which is why two tests in
+        /// <c>WreckShipTests</c> count souls and name sleepers through THIS list.
+        /// (<see cref="ItemKind.Corpse"/> is not retired: <c>NeedsSystem</c> drops one when a living
+        /// Citizen dies in play. It has art, a label and ZERO consumers, and that is unchanged.)
         ///
         /// Routed exactly as <see cref="Goals"/> is: <see cref="ShipPlanBuilder"/> finds the
         /// <see cref="HistorySystem"/> in the system stack and throws if a plan carries lines and

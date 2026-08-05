@@ -112,7 +112,11 @@ const CTX_GAP = 6;              // clearance the right-click menu keeps from bod
 // thing: a fitting is drawn at its own centimetres (`fittings.roomBox`) and a person at their own
 // height. The one number left is that height, and it is a number about people.
 /** The floor-material swatch's box, in the same unit the floor cells are drawn in. */
-const FLOOR_MAT_PX = 95;
+/** The built floor-material swatch's own size. ⭐ EXPORTED so `build-ghost.test.js` can pin the
+ *  GHOST's floor swatch against the BUILT one by equality rather than by restating 95 in the test —
+ *  a restated constant is a second authority, and this pair is exactly where one drifted (review
+ *  MINOR 8: the ghost's floor swatch never matched the built idiom at all). */
+export const FLOOR_MAT_PX = 95;
 /** A crew member's height in metres. At the cutaway's 0.95 px/cm that is ~158 scene px, which is
  *  what the design's own room figure measures (`scale(1.04)` on its 152-unit build).
  *
@@ -643,8 +647,13 @@ function repaint() {
 
   // The two caption facts, derived here because here is where a frame is: how much is placed or
   // pending in this room, and how many souls are standing in it (VS-Z-12).
+  // ⭐ `_deviceCond` HERE TOO, AND FOR THE SAME DEFECT IN ITS OTHER COSTUME. This is the caption's
+  // "N OF M FITTINGS BUILT" count; left reading the frame alone it would tick DOWN by one every time
+  // a crew member walked over a fitting, because the glyph she overwrites is the only evidence the
+  // count had. The number and the picture must not be able to disagree about how many things are in
+  // the room — so they are derived from the same call, with the same arguments.
   _capPlaced = roomDesigns(designs, _focus).length
-    + roomCells(frame, _focus).filter((c) => c.itemId).length;
+    + roomCells(frame, _focus, _deviceCond).filter((c) => c.itemId).length;
   _capHere = roomCrew(crew, _focus).length;
 
   paintCanvas(frame);
@@ -715,7 +724,12 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   _layers.setAttribute('viewBox', scene.viewBoxAttr);
   _layers.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-  const cells = roomCells(frame, _focus);
+  // ⭐ `_deviceCond` IS PASSED HERE SO A PAWN CANNOT UNBUILD A MACHINE (the owner's 2026-08-05
+  // defect). `roomCells` reads the frame's ONE glyph byte per tile, and `GlyphMapper` pass 5
+  // writes `Glyphs.Citizen` over it — so a device with someone standing on it left the drawing.
+  // The channel is the same Map this view already built for `cond`; see `room-model.js`'s
+  // `itemForDeviceRow` for why this is a reading of the wire and not a cache or a re-derived rule.
+  const cells = roomCells(frame, _focus, _deviceCond);
   const here = roomCrew(crew, _focus);
   const roster = Hud.getRoster();
   const aboard = roster && Array.isArray(roster.crew) ? roster.crew.length : here.length;
@@ -848,7 +862,10 @@ function previewSvg(scene, place) {
  * `Glyphs.ForDevice`, which is a hand mirror and therefore a decision, not a chore.
  * PURE of DOM; reads only the frozen tables.
  */
-function ghostArtId(tool) {
+/* ⭐ EXPORTED so `build-ghost.test.js` can pin the GHOST's route against the PLACED piece's glyph
+   route by calling THIS function rather than restating its body — a restated derivation is the
+   second authority the whole `glyph-map.js` header exists to refuse. */
+export function ghostArtId(tool) {
   const pc = paletteCommand(tool);
   if (pc.itemId) return pc.itemId;
   if (pc.cls !== 'functional' || !pc.deviceKind) return '';
@@ -903,15 +920,36 @@ function ghostPieceSvg(tool, tile, scene, place, refused) {
       art = obliqueBox(px, py, cm, h, cm, scene.s,
         { stroke: INK, strokeWidth: 1.5, dash: '6 5', sideFill: 'hatch', hatch: fhRef(GHOST_ID) });
     }
-    // The swatch, on the same two tools that own a material picker. `materialItemId` is the shared
-    // derivation the built layer and the picker chips both take their art from.
-    const mid = materialItemId(pc.kind === 'floor' ? 'floor' : 'wall', activeMaterial(_materials, tool));
-    if (mid) {
-      const [cx, cy] = place.foot(tile.x, tile.y);
-      const sw = ROOM_SCALE * 62;
-      const oy = pc.kind === 'floor' ? cy - sw / 2 : cy - ROOM_SCALE * ROOM_HEIGHT_M * 100 * 0.62;
-      art += '<g transform="translate(' + (cx - sw / 2).toFixed(2) + ' ' + oy.toFixed(2) + ')">'
-        + buildItem(mid, { w: sw, h: sw, idPrefix: idp + '-mat' }) + '</g>';
+    // ⭐⭐ THE SWATCH IS PLACED BY THE **BUILT** LAYER'S OWN IDIOM, NOT AN IDIOM OF ITS OWN.
+    //
+    // ⛔ THE DEFECT THIS CLOSES WAS A MERGE, NOT A TYPO (2026-08-05, review): this ghost was written
+    // against the old built-wall skin — a 62 px square floated at 0.62 of the ceiling height — and
+    // main then moved the BUILT wall's skin onto the slab's FRONT FACE (`px, py − faceH`, one tile of
+    // run by one ceiling of height; `materialLayerSvg` above). Neither side conflicted textually, so
+    // the auto-merge produced a tree where ONE material draws TWO different ways at TWO different
+    // centimetres — the preview and the thing it previews. That is the 8th trap shape (a clean
+    // auto-merge is not a clean merge) landing on a picture rather than on a number.
+    // ⚠️ THE FLOOR HALF NEVER MATCHED EITHER, and that was true BEFORE the merge (review MINOR 8):
+    // a built floor material lies IN THE FLOOR PLANE through `place.cell` at `FLOOR_MAT_PX`, and the
+    // ghost drew it as an upright square. Both halves are now the built layer's expressions verbatim,
+    // and `build-ghost.test.js` pins GHOST-vs-BUILT equality so the class cannot reopen quietly.
+    //
+    // GATED ON `toolHasMaterial`, not on the class: DOOR is structural and owns NO material picker,
+    // so `activeMaterial` has nothing to answer for it and a wall swatch on a door ghost would be
+    // this file inventing a fact about the tool.
+    if (toolHasMaterial(tool)) {
+      const mid = materialItemId(pc.kind === 'floor' ? 'floor' : 'wall', activeMaterial(_materials, tool));
+      if (mid) {
+        if (pc.kind === 'floor') {
+          art += '<g transform="' + place.cell(tile.x, tile.y) + '">'
+            + buildItem(mid, { w: FLOOR_MAT_PX, h: FLOOR_MAT_PX, idPrefix: idp + '-mat' }) + '</g>';
+        } else {
+          const faceW = ROOM_SCALE * cm;
+          const faceH = ROOM_SCALE * ROOM_HEIGHT_M * 100;
+          art += '<g transform="translate(' + px.toFixed(2) + ' ' + (py - faceH).toFixed(2) + ')">'
+            + buildItem(mid, { w: faceW, h: faceH, idPrefix: idp + '-mat' }) + '</g>';
+        }
+      }
     }
   } else {
     const itemId = ghostArtId(tool);
@@ -1081,11 +1119,29 @@ export function standItem(itemId, tx, ty, place, idPrefix, cond, facing) {
  *   material" survives the change (ruling E4: nothing is dropped, everything is re-housed).
  *
  * A FLOOR material still LIES IN THE FLOOR PLANE, because that is what it is.
+ *
+ * — lane/paper-materials —
+ * 3 ⭐⭐ THE SKIN IS THE FRONT FACE NOW, NOT A BADGE STUCK ON IT, and that is a DIMENSIONAL fix
+ *   rather than a bigger picture. The slab is 1 m of wall run at the compartment's 2.4 m ceiling, so
+ *   its front face is `ROOM_SCALE·100 × ROOM_SCALE·240` px — and the material art used to be handed a
+ *   `ROOM_SCALE · 62` SQUARE, centred on the tile's foot and floated at 0.62 of the wall height. Two
+ *   things were wrong with that and only the second is about taste: the box was square, so a wall
+ *   material could not be drawn at its own 1 : 2.4 proportion at all; and 58.9 px stood for a metre
+ *   where the slab beside it draws a metre as 95, so every pattern on it was at 0.62 of the room's
+ *   own scale — a rivet pitch, a plank width and a hazard band that all disagreed with the drawing
+ *   they sat on. The skin is now placed on the front face exactly (`place.front` is that face's
+ *   bottom-left corner, which is where `obliqueBox` starts it), at the face's own w × h, and
+ *   `paper-materials.js` reads the BOX ASPECT to decide how many centimetres it is drawing.
+ *
+ * ⭐ EXPORTED so `client/tools/paper-materials-sheet.mjs` photographs THIS function rather than a
+ * copy of it — VR-P3's MINOR 6 verbatim: a sheet that re-derives the placement is a second authority
+ * on the exact thing the sheet exists to check, so the page could look right while the shipping
+ * surface drew something else.
  */
-function materialLayerSvg(tiles, place) {
+export function materialLayerSvg(tiles, place, focus = _focus) {
   const floors = [], walls = [];
-  const rx = _focus.rx | 0, ry = _focus.ry | 0;
-  const x1 = rx + (_focus.rw | 0) - 1, y1 = ry + (_focus.rh | 0) - 1;
+  const rx = focus.rx | 0, ry = focus.ry | 0;
+  const x1 = rx + (focus.rw | 0) - 1, y1 = ry + (focus.rh | 0) - 1;
   for (const t of tiles) {
     const id = materialItemId(t.kind, t.mat);
     if (!id) continue;
@@ -1094,14 +1150,16 @@ function materialLayerSvg(tiles, place) {
       if (t.tx === rx || t.tx === x1 || t.ty === ry || t.ty === y1) continue;   // the hull — see above
       const [px, py] = place.front(t.tx, t.ty);
       const cm = M_PER_TILE * 100;
-      const [cx, cy] = place.foot(t.tx, t.ty);
-      const sw = ROOM_SCALE * 62;
+      // The slab's FRONT FACE, in the px `obliqueBox` draws it at: one tile of run, one ceiling of
+      // height. `place.front` IS that face's bottom-left corner, so the skin's own top-left is one
+      // face-height above it. See this function's header for what this replaced and why.
+      const faceW = ROOM_SCALE * cm;
+      const faceH = ROOM_SCALE * ROOM_HEIGHT_M * 100;
       walls.push('<g class="rz-wall">'
         + obliqueBox(px, py, cm, ROOM_HEIGHT_M * 100, cm, ROOM_SCALE,
           { strokeWidth: 1.8, sideFill: 'hatch', hatch: fhRef(RZ_ID) })
-        + '<g transform="translate(' + (cx - sw / 2).toFixed(2) + ' '
-        + (cy - ROOM_SCALE * ROOM_HEIGHT_M * 100 * 0.62).toFixed(2) + ')">'
-        + buildItem(id, { w: sw, h: sw, idPrefix: idp }) + '</g></g>');
+        + '<g transform="translate(' + px.toFixed(2) + ' ' + (py - faceH).toFixed(2) + ')">'
+        + buildItem(id, { w: faceW, h: faceH, idPrefix: idp }) + '</g></g>');
     } else {
       const g = buildItem(id, { w: FLOOR_MAT_PX, h: FLOOR_MAT_PX, idPrefix: idp });
       floors.push('<g transform="' + place.cell(t.tx, t.ty) + '">' + g + '</g>');

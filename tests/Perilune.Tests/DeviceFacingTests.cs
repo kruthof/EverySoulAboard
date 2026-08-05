@@ -174,6 +174,70 @@ namespace Perilune.Tests
                 "quarter-turn is unsaveable and a reload silently un-rotates the piece.");
         }
 
+        /// <summary>
+        /// ⛔⛔ <b>THE BITS THE FACING SITS BETWEEN — AND THIS TEST EXISTS BECAUSE A REVIEWER'S FRESH
+        /// MUTATION CAME BACK GREEN.</b>
+        ///
+        /// <para><b>FRESH-C, reproduced 2026-08-05:</b> changing the fold's shift from
+        /// <c>&lt;&lt; 13</c> to <c>&lt;&lt; 12</c> — straight on top of <see cref="Device.Faulted"/> —
+        /// left the ENTIRE suite green, <see cref="AllFourFacingsFoldDistinctly"/> included. The
+        /// reason is exact and worth writing down: with <c>Faulted == false</c> bit 12 is clear, so
+        /// <c>f &lt;&lt; 12</c> still yields four distinct words, and every non-zero facing in the
+        /// suite lived on an unfaulted device. <b>The fold's VALUE was pinned; its LAYOUT was pinned
+        /// by nothing.</b></para>
+        ///
+        /// <para>⇒ THE COLLISION IS ONLY OBSERVABLE WHEN THE NEIGHBOUR'S BIT IS SET. With
+        /// <c>Faulted == true</c>, <c>(1UL &lt;&lt; 12) | (1UL &lt;&lt; 12)</c> is <c>1UL &lt;&lt; 12</c> —
+        /// facing 0 and facing 1 fold IDENTICALLY, a quarter-turn becomes unsaveable on exactly the
+        /// machines the M3-16 puzzle is about, and no pin anywhere would see it. This is CLAUDE.md's
+        /// 4th trap shape (a guard whose scope filter excludes the violation): the sweep was real,
+        /// its FIXTURE just could not express the failure.</para>
+        ///
+        /// <para>NAMED MUTATION: <c>&lt;&lt; 13</c> → <c>&lt;&lt; 12</c> ⇒ THIS goes red (and the
+        /// value-only sweep stays green, which is the point).</para>
+        /// </summary>
+        [Test]
+        public void TheFacingBitsDoNotCollideWithTheFaultedBitBelowThem()
+        {
+            var sim = Bench();
+            var d = sim.Devices.Items.First(x => x.Name == "solar");
+            d.Faulted = true;                       // the neighbour's bit, SET — the whole point
+            Assert.That(d.Faulted, Is.True, "premise: the lower neighbour's bit is set");
+
+            var seen = new System.Collections.Generic.HashSet<ulong>();
+            for (byte f = 0; f < 4; f++) { d.Facing = f; seen.Add(sim.StateHash()); }
+            Assert.That(seen.Count, Is.EqualTo(4),
+                "TWO FACINGS FOLD IDENTICALLY ON A FAULTED DEVICE. The facing's low bit is sharing a "
+                + "position with Device.Faulted, so a quarter-turn is unsaveable on any machine that "
+                + "carries a board fault — and the value-only sweep cannot see it, because on an "
+                + "UNfaulted device the same broken shift still yields four distinct words.");
+        }
+
+        /// <summary>
+        /// ⛔ THE OTHER SIDE OF THE SAME HAZARD — the facing's HIGH bit against <c>NetworkId</c> at 16.
+        /// <c>&lt;&lt; 13</c> leaves exactly one spare bit (15) above the pair; a shift to
+        /// <c>&lt;&lt; 15</c> puts facing 2 on bit 16 and it aliases into the network id. Same
+        /// mechanism as the leg above and the same blindness: only observable when the neighbour is
+        /// non-zero, which on this bench it is not by default.
+        ///
+        /// <para>NAMED MUTATION: <c>&lt;&lt; 13</c> → <c>&lt;&lt; 15</c> ⇒ this goes red.</para>
+        /// </summary>
+        [Test]
+        public void TheFacingBitsDoNotCollideWithNetworkIdAboveThem()
+        {
+            var sim = Bench();
+            var d = sim.Devices.Items.First(x => x.Name == "solar");
+            d.NetworkId = 1;                        // the upper neighbour's low bit, SET
+            Assert.That(d.NetworkId, Is.Not.EqualTo(0), "premise: the upper neighbour is non-zero");
+
+            var seen = new System.Collections.Generic.HashSet<ulong>();
+            for (byte f = 0; f < 4; f++) { d.Facing = f; seen.Add(sim.StateHash()); }
+            Assert.That(seen.Count, Is.EqualTo(4),
+                "TWO FACINGS FOLD IDENTICALLY ON A NETWORKED DEVICE. The facing's high bit has "
+                + "reached NetworkId's range — the RoomType.Cryo = 16 alias this repo already shipped "
+                + "once, in a different shared word.");
+        }
+
         // ═════════════════════════════════════════════════════════════════════════════════════
         // 3. THE SAVE — DEVC v7
         // ═════════════════════════════════════════════════════════════════════════════════════

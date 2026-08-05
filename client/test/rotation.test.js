@@ -26,7 +26,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { roomFrame, PX_PER_CM } from '../src/render/oblique.js';
-import { SPECS, FITTING_IDS, frameFor, roomBox } from '../src/items/fittings.js';
+import { SPECS, FITTING_IDS, frameFor, roomBox, geometryFor, BOX } from '../src/items/fittings.js';
+import * as PaperFixtures from '../src/items/paper-fixtures.js';
 import { buildItem, ITEMS } from '../src/items/index.js';
 import { decode, decodeDecks, decodeRooms, decodeDevices } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
@@ -268,6 +269,93 @@ test('⭐⭐ THE DRAWN INK REALLY TURNS — a turned bench runs the OTHER WAY, n
     assert.ok(Math.abs(r1 - r0) / r0 > 0.25, `${id}: the drawn aspect barely moved (${r0} → ${r1})`);
   }
   assert.equal(checked, 8, 'non-vacuity: the sweep ran');
+});
+
+/** The bounding box of everything a builder actually drew, in the builder's OWN units (the path data
+ *  is emitted pre-transform, so these are directly comparable to `geometryFor(...).extent`). */
+function inkBox(svg) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const m of svg.matchAll(/ d="([^"]+)"/g)) {
+    const nums = m[1].match(/-?\d+(?:\.\d+)?/g) || [];
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      const x = Number(nums[i]), y = Number(nums[i + 1]);
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  return { w: x1 - x0, h: y1 - y0 };
+}
+
+test('⭐⭐ A TURNED PIECE STILL FILLS ITS BOX — the drawn ink matches the FACED extent it declares', () => {
+  // ⛔⛔ THIS TEST EXISTS BECAUSE A MUTATION CAME BACK GREEN ON THE MERGED TREE (J2, 2026-08-05):
+  // `geometryFor` deriving `ex`/`ey`/`k` from the UNFACED spec while still handing `roomFrame` the
+  // facing. Everything downstream stayed SELF-CONSISTENT and therefore silent — `roomBox` inverts
+  // the same wrong `k`, so the absolute px/cm leg still reads exactly `s`; `extent` is `k·ex` with
+  // BOTH terms unfaced, so its larger axis is still `BOX`; and the aspect-ratio leg still passes
+  // because the plan map really did turn. The piece was simply drawn at the wrong scale INSIDE its
+  // own tile: measured, a turned bench came out 56 units wide where it declares 77, and a turned
+  // locker came out 126 tall in a 112 box — i.e. UNDER-FILLED on one piece and CLIPPING on another.
+  //
+  // ⇒ THE CLAIM IS THE ONE RELATION NOTHING ELSE COMPARES: what the builder DREW against what
+  // `geometryFor` SAYS it should occupy, at the same facing. Those are the two halves the split
+  // separates, and comparing either to itself is what let the split hide.
+  // ⇒ THE STATISTIC IS THE **FILL RATIO** — how much of its declared box a piece's ink actually
+  // occupies in its dominant axis — and it is compared ACROSS FACINGS of the same piece. That is the
+  // one number the split moves and nothing else does: a piece's ink-inside-box fraction is a
+  // property of the DRAWING, so it must not care which way the drawing is turned. An absolute
+  // per-piece tolerance was tried first and rejected — it has to be loose enough for the workbench's
+  // pegboard (which legitimately fills 86 of its 112) and that same looseness lets the mutation
+  // through, so it would have been a guard tuned until it stopped working.
+  //
+  // MEASURED, both trees, to pick the band rather than guess it:
+  //   shipped : every piece, every facing → 0.904 … 1.000
+  //   with J2 : odd facings → 0.680 / 0.706 / 0.815 (under-filled) and 1.092 … 1.273 (CLIPPING)
+  const LO = 0.88, HI = 1.02;
+  let checked = 0;
+  for (const id of ['bench', 'dining-table', 'cot', 'locker', 'shelf-rack', 'workbench']) {
+    for (const f of [0, 1, 2, 3]) {
+      const want = geometryFor(SPECS[id], f).extent;
+      const got = inkBox(buildItem(id, { w: 128, h: 128, idPrefix: 'e', facing: f }));
+      const fill = Math.max(got.w, got.h) / Math.max(want.w, want.h);
+      assert.ok(fill >= LO && fill <= HI,
+        `${id} facing ${f}: fills ${fill.toFixed(3)} of its declared box (band ${LO}..${HI}). The `
+        + 'drawing scale and the declared extent disagree — the piece is mis-sized inside its own '
+        + 'tile, and every SELF-consistent check (px/cm, aspect ratio, extent) stays green through '
+        + `it. Drew ${got.w.toFixed(0)}x${got.h.toFixed(0)}, declares ${want.w}x${want.h}.`);
+      // …and the clipping half, stated absolutely: nothing may overflow the box it normalises into.
+      assert.ok(Math.max(got.w, got.h) <= BOX * HI,
+        `${id} facing ${f}: ink ${got.w.toFixed(0)}x${got.h.toFixed(0)} overflows BOX=${BOX} — it clips`);
+      checked++;
+    }
+  }
+  assert.equal(checked, 24, 'non-vacuity: the sweep ran');
+});
+
+test('⭐⭐ THE SECOND CATALOGUE TURNS TOO — paper-fixtures reaches the facing through the shared door', () => {
+  // ⛔⛔ AND THIS ONE EXISTS BECAUSE J11 CAME BACK GREEN. Dropping the facing from
+  // `paper-fixtures.frameFor` left every suite passing: main's `paper-fixtures.test.js` predates
+  // rotation and this file's own sweeps walked `FITTING_IDS` only. The result would have been ONE
+  // rotation verb that works on 34 pieces and silently does nothing on the other 14 — the exact
+  // asymmetry the merge resolution threaded `facing` through `geometryFor` to prevent, left unpinned.
+  const ids = PaperFixtures.FIXTURE_IDS || Object.keys(PaperFixtures.SPECS);
+  assert.ok(ids.length >= 10, 'non-vacuity: the second catalogue has pieces (' + ids.length + ')');
+  let turned = 0, square = 0;
+  for (const id of ids) {
+    const sp = PaperFixtures.SPECS[id];
+    const at = (f) => buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: f });
+    assert.equal(at(1), buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: 1 }),
+      id + ' is not deterministic at facing 1');
+    assert.ok(!/NaN|undefined/.test(at(0) + at(1) + at(2) + at(3)), id + ' emitted NaN at some facing');
+    // Facing 0 must remain byte-identical to no facing at all — the compatibility half.
+    assert.equal(at(0), buildItem(id, { w: 240, h: 240, idPrefix: 'pf' }),
+      id + ': passing facing 0 is not the same as passing no facing');
+    if (sp.w !== sp.d) {
+      assert.notEqual(at(1), at(0), id + ': a quarter-turn draws the same picture as facing 0');
+      assert.notEqual(at(3), at(0), id + ': a three-quarter turn draws the same picture as facing 0');
+      turned++;
+    } else square++;
+  }
+  assert.ok(turned >= 10, `non-vacuity: only ${turned} non-square fixtures were swept (${square} square)`);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

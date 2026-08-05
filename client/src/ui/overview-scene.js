@@ -85,7 +85,7 @@ import { taskTag } from './console-model.js';
 import { markVariant, markCellSvg } from './mark-overlay.js';
 // The glyph codes that are NOT an item on a tile, OWNED by room-model.js and imported rather than
 // re-declared — see the NON_FURNITURE note below for the bug the second copy hid.
-import { NON_FURNITURE_CODES } from './room-model.js';
+import { NON_FURNITURE_CODES, itemForDeviceRow, CITIZEN_GLYPH_CODE } from './room-model.js';
 // THE OBLIQUE KIT (charter §1). The miniature interiors are built on it DIRECTLY — `roomFrame` for
 // the projection, `boxFaces`/`poly` for geometry — rather than through `oblique.room()`, because a
 // tile is drawn at ~1/7 scale and every stroke in it must carry `vector-effect="non-scaling-stroke"`
@@ -648,9 +648,16 @@ function miniContents(slot, frame, deck, deviceCond, marks, idPrefix) {
       const cell = frame.cells[ty * frame.w + tx];
       if (!Array.isArray(cell)) continue;
       const code = cell[0];
-      if (NON_FURNITURE.has(code)) continue;
-      const itemId = itemIdForGlyphChar(String.fromCharCode(code));
-      if (!itemId) continue; // glyph nothing skins → graceful skip
+      // ⭐ THE SAME PAWN-OCCLUSION REPAIR THE ROOM ZOOM MAKES, and it is here because the defect is
+      // the FRAME's, not the cutaway's: `GlyphMapper` pass 5 writes `Glyphs.Citizen` over the device
+      // glyph, so a plate miniature lost its machine the moment a crew member stood on it too.
+      // MEASURED on this surface, not assumed from the other one — `overview-scene.test.js` drives it.
+      // `cond` is the `deckDeviceConditions` Map this function is ALREADY handed; it was read for the
+      // wear byte and for nothing else.
+      const itemId = NON_FURNITURE.has(code)
+        ? (code === CITIZEN_GLYPH_CODE ? itemForDeviceRow(cond.get(tx + ',' + ty)) : '')
+        : itemIdForGlyphChar(String.fromCharCode(code));
+      if (!itemId) continue; // glyph nothing skins (or a floor/wall/doorway) → graceful skip
       const u = (tx + 0.5 - rect.x) / rect.w;
       const v = (ty + 0.5 - rect.y) / rect.h;
       // ⭐ THE SAME FUNCTION THE CLICK MAP INVERTS. A piece stands on the floor point its own tile
