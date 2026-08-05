@@ -4,8 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PERILUNE</title>
-<link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="src/theme/warm.css">
+<!-- THE STYLESHEET CASCADE, IN ORDER. `client/styles.css` was one 1917-line file until the VR-A
+     split (2026-08-04); these six are that file, moved VERBATIM by surface, and THIS LINK ORDER IS
+     THE CASCADE — it reproduces the old source order exactly (the console `breakpoints` block is
+     the one chunk that moved, and it is inert where it landed; console.css's header says why).
+     `paper.css` comes last and pulls the retired `warm.css` in behind it. Adding a file here means
+     adding it to `client/tools/moss-preview.html` too — `stylesheet-split.test.js` pins the set,
+     the order and the agreement between the two pages. -->
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/console.css">
+<link rel="stylesheet" href="styles/moss.css">
+<link rel="stylesheet" href="styles/overview.css">
+<link rel="stylesheet" href="styles/roomzoom.css">
+<link rel="stylesheet" href="styles/relations.css">
+<link rel="stylesheet" href="src/theme/paper.css">
 </head>
 <body>
 <div class="app">

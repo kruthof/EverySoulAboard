@@ -18,6 +18,24 @@
 /** The design footprint (mock px) a builder's centred body is scaled against. */
 export const TILE = 128;
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// The paper idiom's three colours (visual redesign, charter §1)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// P2 rebuilds the thirty fittings on `render/oblique.js` and needs ink, paper and the one accent at
+// this seam. They are LITERALS, not an import, because this module is deliberately dependency-free:
+// every item builder is a pure `(opts) -> string` and the whole `items/*` tree imports nothing but
+// this file. The same three strings are `theme/paper-tokens.js`'s `INK.ink`, `PAPER.plate` and
+// `ATTEND`, and `client/test/oblique.test.js` pins the two copies to each other — a duplicated
+// literal nothing compares is how two modules come to disagree about black.
+
+/** Every stroke and every dark fill. */
+export const INK = '#14120F';
+/** A plate, a sheet of paper — the fill of every front and top face. */
+export const PAPER = '#EBE4D1';
+/** THE ONE ACCENT — oxblood. Attention, faults, queued orders, emotional beats. There is no second. */
+export const ATTEND = '#7B2C22';
+
 /** Round to 3 dp and normalise -0 → 0 so output is stable and compact. */
 export function r3(n) {
   const v = Math.round(n * 1000) / 1000;
@@ -177,12 +195,21 @@ export function scene(idPrefix) {
       body.push(`<path d="${d}"${paintAttrs(o)}${o.dash ? attr('stroke-dasharray', o.dash) : ''}/>`);
       return api;
     },
+    /**
+     * A text node. `stroke` + `strokeWidth` + `paintOrder` are the HALO TEXT IDIOM (charter §1):
+     * `paint-order="stroke"` paints the stroke UNDER the fill, so a 3.4px `#EBE4D1` stroke reads as
+     * a knockout halo that lets a label survive being drawn over art. Omit all three and the
+     * emitted string is byte-identical to what this helper wrote before the redesign — the
+     * attributes are appended, never interleaved, so no existing golden moves.
+     */
     text(t, o) {
       body.push(
         `<text${attr('x', o.x)}${attr('y', o.y)} text-anchor="middle" dominant-baseline="central"` +
           ` font-family="'Space Mono', ui-monospace, monospace"${attr('font-size', o.size)}${
             o.weight ? attr('font-weight', o.weight) : ''
-          }${attr('fill', o.fill)}>${t}</text>`,
+          }${attr('fill', o.fill)}${attr('stroke', o.stroke)}${
+            o.stroke ? attr('stroke-width', o.strokeWidth == null ? 3.4 : o.strokeWidth) : ''
+          }${attr('paint-order', o.paintOrder)}>${t}</text>`,
       );
       return api;
     },

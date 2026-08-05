@@ -43,6 +43,7 @@ import { blockedCellSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/block
 import { decksView } from '../src/ui/decks-model.js';
 import { codeOnly } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
+import { stylesSource } from './styles-source.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
@@ -663,7 +664,7 @@ test('the key title escapes the order kinds and omits an unnameable one', () => 
 // The stylesheet must actually carry the swatch classes the key emits, or the legend rows are
 // invisible boxes. Read from the SHIPPED css, code-only so a commented-out rule cannot satisfy it.
 test('every reason the key can emit has a swatch rule in the shipped stylesheet', () => {
-  const css = codeOnly(read(join(CLIENT, 'styles.css')));
+  const css = codeOnly(stylesSource());
   for (const name of BLOCKED_REASON_NAMES) {
     assert.ok(css.includes('.rz-key-sw-blocked-' + name),
       `styles.css has no swatch for reason '${name}' — its key row would draw a blank box`);

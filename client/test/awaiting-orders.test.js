@@ -45,11 +45,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { codeOnly, cssCodeOnly } from './code-only.js';
 import { watchTask, taskTag } from '../src/ui/console-model.js';
+import { stylesSource } from './styles-source.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
 const src = (rel) => readFileSync(join(CLIENT, rel), 'utf8');
-const CSS = src('styles.css');
+const CSS = stylesSource();
 // ⚠️ READ THROUGH THE SHARED CSS COMMENT STRIPPER, and this is not tidiness. The block walker below
 // captures everything between the previous `}` and the next `{` as the selector, so a rule with an
 // explanatory comment above it — which every rule this package adds has — resolves to a "selector"

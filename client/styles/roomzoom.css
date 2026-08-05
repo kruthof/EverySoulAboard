@@ -1,0 +1,477 @@
+/* LEVEL-2 ROOM ZOOM — the single-room build/decorate takeover. Moved VERBATIM out of the old
+   single `client/styles.css` at the VR-A split (2026-08-04); cascade position unchanged. */
+
+/* ==== LEVEL-2 ROOM ZOOM (perilune-roomzoom.visual-spec VS-Z-*) ==== */
+/* A sibling takeover like the Overview / MOSS: `body.roomzoom-open` covers the Overview + console
+   beneath it; MOSS still wins (moss-open hides it). */
+#roomzoom-view{position:fixed;inset:0;display:none;z-index:20;
+  font-family:var(--font-mono);color:var(--ink-body,#b3aa9c);overflow:hidden}
+body.roomzoom-open #roomzoom-view{display:block}
+body.roomzoom-open .app{display:none !important}
+body.roomzoom-open #overview-view{display:none !important}
+body.roomzoom-open #panels{display:none !important}
+body.moss-open #roomzoom-view{display:none !important}
+
+.rz-space{position:absolute;inset:0;background:var(--void-gradient)}
+
+/* the build canvas — the framed floor (VS-Z-05..09) */
+.rz-canvas{position:absolute;left:40px;right:40px;top:74px;bottom:150px;border-radius:8px;
+  overflow:hidden;background:repeating-linear-gradient(90deg,#bd9066 0 54px,#b0865a 54px 58px);
+  box-shadow:inset 0 0 0 6px #2b3742,inset 0 9px 0 rgba(232,147,74,.42),inset 0 0 90px rgba(0,0,0,.5)}
+.rz-layers{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);display:block}
+.rz-layers svg.pawn,.rz-layers .pl-item{shape-rendering:auto}
+.rz-caption{position:absolute;left:20px;bottom:16px;pointer-events:none;font-size:9.5px;
+  letter-spacing:.16em;color:rgba(255,240,220,.5)}
+.rz-placed{color:#f2b563}
+/* WP-3 — THE ZONE KEY (console-retirement plan §5 gaps 1+3). What the marks on the floor MEAN, in
+   words, with no hover required.
+   PLACEMENT, MEASURED IN A BROWSER RATHER THAN REASONED ABOUT. BOTTOM-right of the framed floor. The
+   first attempt was TOP-right "so it never collides with the caption (bottom-left) or the breadcrumb
+   (top-left)" — which was wrong, and the screenshot said so immediately: `#rz-minimap` also lives
+   top-right and covered two of the key's three rows, so the wording was unreadable again, one layer up
+   from the <title> bug this box exists to fix. Bottom-right is the one free corner (the caption is
+   bottom-LEFT, the palette/material strip sit BELOW the floor frame), and the overlap is now asserted
+   against all four neighbours by the browser check in the package report.
+   `pointer-events:none` is safe HERE — nothing in it is interactive — unlike on the zone group itself,
+   where it silently killed the only wording that existed.
+   Swatch colours MUST track zone-overlay.js: slate zone, pale cool wedge, amber hatch. */
+.rz-zonekey{position:absolute;right:20px;bottom:14px;display:flex;flex-direction:column;gap:4px;
+  pointer-events:none;font-size:9px;letter-spacing:.14em;color:rgba(255,240,220,.62);
+  background:rgba(14,18,26,.62);border:1px solid rgba(255,240,220,.10);border-radius:4px;
+  padding:7px 10px;max-width:34ch}
+.rz-zonekey[hidden]{display:none}
+.rz-key-title{color:#f2b563;letter-spacing:.2em}
+/* `flex-start`, not `center`: the back-off wording wraps to two lines, and centring aligned the swatch
+   against the middle of a two-line block. With the text in its OWN flex item its second line hangs
+   under the first instead of running back to the swatch column. */
+.rz-key-row{display:flex;align-items:flex-start;gap:7px}
+.rz-key-sw{width:9px;height:9px;flex:0 0 auto;border-radius:2px;display:inline-block;margin-top:2px}
+.rz-key-text{flex:1 1 auto}
+.rz-key-sw-zone{background:rgba(126,158,196,.30);border:1px dashed rgba(126,158,196,.75)}
+.rz-key-sw-restricted{background:#dbe6f2;border:1px solid rgba(16,22,32,.85)}
+.rz-key-sw-backedoff{background:repeating-linear-gradient(45deg,#f2b563 0 1.5px,transparent 1.5px 4px);
+  border:1px solid #f2b563}
+/* The `blocked` channel's key swatches — the refused-order legend. One class per reason NAME
+   (blocked-air / blocked-no_approach / …), so a reason this stylesheet has never heard of falls back
+   to the bare `.rz-key-sw` box and its row still reads: the wording is the payload, the swatch is the
+   colour cue. #c25a3f is STATUS.bad (theme/warm-tokens.js §2.5) — the FAULT colour, deliberately not
+   the queue-amber the zone key's back-off swatch uses. */
+.rz-key-sw-blocked-air,.rz-key-sw-blocked-no_approach,.rz-key-sw-blocked-no_consumable,
+.rz-key-sw-blocked-unreachable,.rz-key-sw-blocked-work_type_off,.rz-key-sw-blocked-no_route{
+  background:rgba(10,13,20,.82);border:1px solid #c25a3f}
+.rz-key-sw-blocked-no_approach{background:repeating-linear-gradient(45deg,#c25a3f 0 1.5px,transparent 1.5px 4px)}
+/* `work_type_off` is a HOLLOW box with a dashed edge: the only reason in the set whose fix is a
+   switch the player has not thrown rather than something wrong with the ship, and an unfilled
+   outline reads as "not taken up" beside air's solid plate. Under OD-H it is the badge a new player
+   meets first, so it must not look like a fault with the world. */
+.rz-key-sw-blocked-work_type_off{background:transparent;border-style:dashed}
+/* `unreachable` is a DOTTED edge, not a hatch: it is the reason that says the route is the problem,
+   and a broken line reads as a broken route. It must stay distinguishable from no_approach's hatch
+   at swatch size — the two are adjacent in meaning and would otherwise be one smear. */
+.rz-key-sw-blocked-unreachable{border-style:dotted;border-width:2px}
+/* ⭐ D5 — `no_route` is the SOLID-EDGED BAR: the route question answered strongly (the pathfinder was
+   run and said no), against `unreachable`'s dotted edge, which is the same question answered weakly
+   (somebody tried once and failed). A filled bar across an otherwise empty box reads as "the way is
+   shut" and stays distinct at swatch size from no_approach's 45° hatch and unreachable's dots — the
+   three route-family swatches are the set most at risk of becoming one smear. */
+.rz-key-sw-blocked-no_route{
+  background:linear-gradient(to bottom,transparent 0 38%,#c25a3f 38% 62%,transparent 62% 100%)}
+.rz-pulse{position:absolute;inset:6px;pointer-events:none}
+.rz-pulse-tile{position:absolute;box-sizing:border-box;border:2px solid #f2b563;border-radius:3px;
+  animation:rzPulse .16s ease-out forwards;pointer-events:none}
+.rz-pulse-tile.red{border-color:#e07a5f}
+@keyframes rzPulse{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.15)}}
+
+/* the `.hud` glass token — every floating island (VS-Z-37/41/45) */
+#roomzoom-view .hud{background:var(--hud-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:var(--hud-border);box-shadow:var(--hud-shadow)}
+
+/* breadcrumb (VS-Z-37..39) */
+.rz-breadcrumb{position:absolute;left:32px;top:24px;display:flex;align-items:center;gap:9px;
+  padding:9px 14px;border-radius:10px;font-size:11px;letter-spacing:.1em;z-index:21}
+.rz-crumb-link{color:var(--ink-mute,#8c8377);cursor:pointer}
+.rz-crumb-link:hover{color:var(--ink-highlight,#f2b563)}
+.rz-crumb-sep{color:var(--ink-faint,#57503f)}
+.rz-crumb-leaf{color:#f2b563;font-weight:700}
+
+/* crew dock (M1-K, VS-Z-52..54) — the RimWorld colonist bar's analogue on the Level-2 surface, in
+   the same corner and the same blur-glass island the Overview's CREW WATCH uses, because it is the
+   same list the player was reading one gesture ago. It FLOATS over the canvas (which letterboxes its
+   room, so the left margin is usually empty) rather than shrinking `.rz-canvas`, which would rescale
+   every room in the game to make space for a dock. `max-height` + scroll so a full crew never pushes
+   rows behind the palette; `z-index` matches the breadcrumb/minimap islands beside it. */
+.rz-crewdock{position:absolute;left:32px;top:74px;width:190px;max-height:calc(100vh - 260px);
+  display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:12px;z-index:21;
+  overflow-y:auto}
+.rz-crewhdr{flex:none;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-faint,#57503f)}
+.rz-crewlist{display:contents} /* rows join the dock's flex column directly (the ov-crewlist idiom) */
+/* ⚠️ THE PALETTE'S COLLISION, THIRD INSTANCE — fixed 2026-08-04 on the same grammar
+   `.rz-tool`/`.rz-mat-chip`/`.rz-acc-chip` carry (see the block comment over `.rz-mat-chip` for the
+   whole argument, which is not repeated here). It was FILED by the chip lane rather than chased, and
+   re-measured in real Chrome on `--ship grid` before this edit. The rows carried
+
+       .rz-crew:hover{border-color:#cf7a33}
+       .rz-crew.sel  {border-color:#cf7a33;background:rgba(34,27,18,.8)}
+
+   — the IDENTICAL border on both. Read off a live EIGHT-ROW dock by `zoom-pawn-shot.mjs` §5b (rest
+   and hover are one unselected row with the pointer off it and on it; selected is the row beside it,
+   in the same session):
+
+       rest      bg rgba(18,15,11,.55)  border 1px rgb(46,40,32)/.6  shadow none
+       hover     bg rgba(18,15,11,.55)  border 1px rgb(207,122,51)   shadow none   ← the selected edge
+       selected  bg rgba(34,27,18,.8)   border 1px rgb(207,122,51)   shadow none
+
+   ⛔ AND THIS CONTROL IS THE WORST MEMBER OF THE CLASS TO HAVE IT ON, not merely another one. A chip
+   is armed by the click already under the pointer, so its collision costs one control; a crew dock is
+   a LIST the player runs their cursor down to read, so every row they touched drew the selected row's
+   edge and the dock answered "who is selected" wrongly for as long as the mouse was near it. The
+   readings above are why the fix is not a colour tweak: the only channel that separated the two was a
+   dark-on-dark fill over a blurred glass island — a difference the instrument could read and the
+   player could not (`sameLook(hover, selected)` was FALSE on the defect, so a byte-comparison would
+   have passed it).
+
+   Shipped: hover is a warm neutral that says "clickable", `:active` is a darker press (this row had
+   NO press state at all), and SELECTED owns a channel neither pointer state touches — an inset depth
+   plus an outer ring — on top of the lit border and fill. `:hover`/`:active` are repeated on the
+   `.sel` selector so the cursor that follows a click can never wash the state back out; that is not
+   theoretical here, because selecting a crew member MOVES THE CAMERA to her and the pointer stays on
+   her row. The ring is a `box-shadow` for the palette's reason and one of this dock's own: shadows do
+   not participate in layout, and these rows are a scrolling flex column under a `max-height` — a
+   thicker border would shove every row below it while the player is reading them.
+   Swept by `palette-layout.test.js` (`ARMABLE`, discovered from this file). */
+.rz-crew{display:flex;gap:8px;align-items:center;padding:5px 6px;border:1px solid rgba(46,40,32,.6);
+  border-radius:8px;background:rgba(18,15,11,.55);color:inherit;font:inherit;text-align:left;
+  cursor:pointer;flex:none;
+  transition:background-color .09s ease,border-color .09s ease,box-shadow .09s ease}
+/* "you can click this row" — deliberately NOT the lit amber. */
+.rz-crew:hover{border-color:#6b5c45;background:rgba(46,39,29,.62)}
+.rz-crew:active{background:#241b11;border-color:#8a6c3f}
+.rz-crew.sel,.rz-crew.sel:hover,.rz-crew.sel:active{border-color:#f2b563;background:rgba(58,42,18,.86);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.6),0 0 0 2px rgba(207,122,51,.34)}
+.rz-bust{width:28px;height:28px;border-radius:5px;overflow:hidden;flex:none;
+  background:rgba(10,8,6,.6);display:block}
+.rz-bust svg{width:100%;height:100%;display:block}
+.rz-crewcol{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
+.rz-crewname{font-size:10px;color:var(--ink-bright,#e8dcc9);letter-spacing:.06em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.rz-crewtask{font-size:8px;color:var(--ink-mute,#8c8377);letter-spacing:.04em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+/* M2-20 — the same third state as `.ov-crewtask.waiting`, with the same reasoning and the same two
+   cues. The two docks must not disagree: a player who steps into a room to look for their crew
+   member has not stopped needing to be told the ship is waiting on them. */
+.rz-crewtask.waiting{color:var(--ink-body,#b3aa9c);font-style:italic}
+.rz-crewtask.working{color:var(--amber-light,#f2b563)}
+/* WHERE they are. Dim by default and amber for HERE: the eye should be able to find, without
+   reading, which rows belong to the room on screen. */
+.rz-crewwhere{font-size:7.5px;letter-spacing:.12em;color:var(--ink-faint,#57503f);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.rz-crewwhere.here{color:var(--amber-light,#f2b563)}
+
+/* deck minimap (VS-Z-40..44) */
+.rz-minimap{position:absolute;right:32px;top:24px;display:flex;flex-direction:column;gap:6px;
+  padding:11px;border-radius:12px;z-index:21}
+.rz-mini-head{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.rz-mini-ship{font-size:8px;letter-spacing:.16em;color:var(--ink-faint,#57503f)}
+.rz-mini-room{font-size:8px;letter-spacing:.12em;color:#f2b563}
+.rz-mini-plan{position:relative;line-height:0}
+.rz-mini-slot{cursor:pointer}
+.rz-mini-slot.cur{cursor:default}
+.rz-yah{position:absolute;width:12px;height:12px;border-radius:50%;background:#f2b563;
+  box-shadow:0 0 10px 3px rgba(242,181,99,.7);animation:pulse 1.4s ease-in-out infinite;pointer-events:none}
+@keyframes pulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+
+/* construction palette (VS-Z-45..49) */
+/*
+ * ⚠️ THE PALETTE AND ITS TWO OPTION ROWS **WRAP**. THEY MUST NEVER GO BACK TO SCROLLING.
+ *
+ * What stood here was `overflow-x:auto` + `scrollbar-width:none` + a `::-webkit-scrollbar{display:
+ * none}` rule, on all three rows. That combination does not make a row narrower; it makes the tools
+ * past the right edge INVISIBLE AND UNCLICKABLE, with no scrollbar, no fade and no arrow to say they
+ * exist. Measured in Chrome on `--ship grid` before the change (client/tools/palette-shot.mjs):
+ *
+ *     viewport   reachable tools   lost
+ *     1600       15/15             —
+ *     1440       15/15             —
+ *     1280       15/15             —          (content overflowed by 11px, all of it padding)
+ *     1140       13/15             STRIP, DEMOLISH
+ *     1024       12/15             STOCKPILE, STRIP, DEMOLISH
+ *      900       10/15             PLANT, DIG, STOCKPILE, STRIP, DEMOLISH
+ *
+ * — measured in the room QUARTERS, whose row is 1225px wide. ⚠️ THE ONSET IS ROOM-NAME DEPENDENT:
+ * the row's first item reads `BUILD ▸ <ROOM>`, so a shorter name buys a few pixels. In MESS (1197px)
+ * the first tool went at exactly 1249px, found by sweeping in 2px steps. The `~1140px` figure this
+ * bug was filed under is therefore optimistic by a hundred pixels or more.
+ *
+ * i.e. on a 13-inch laptop the game silently had no STRIP verb, while its own hint line went on
+ * naming `STRIP [V]`. That is HANDOVER §4g's lesson — a control the player cannot see is
+ * indistinguishable from a verb that does not work — applied to the controls themselves.
+ *
+ * `flex-wrap:wrap` was chosen over a scroll affordance (fade + arrows), a compact icon-only mode and
+ * a MORE overflow menu because it is the only one of the four in which NOTHING IS EVER HIDDEN: the
+ * other three all keep a hidden set and merely advertise it, so they trade a discoverability bug for
+ * a discoverability tax, and each needs state a player has to operate before they can reach a verb.
+ * The price is height once it does wrap: the fifteen tools take TWO rows (95px against 54px) all the
+ * way down to 768px, paid into the gap between the room canvas and the screen edge. Above the wrap
+ * point the row is byte-identical to what shipped — measured 1 row / palH 54 / 1225px of content at
+ * both 1600 and 1440, the same numbers as before the change.
+ *
+ * ⚠️ THE TWO SENTENCES ABOVE ARE STALE IN THEIR NUMBERS AND SOUND IN THEIR RULE, and are kept rather
+ * than rewritten because they are the measurement that justified `flex-wrap:wrap`. The palette has
+ * grown twice since: OPERATE (16th, 2026-07-28) and ERASE (17th, M1-C). Re-measured on the shipped
+ * tree with `client/tools/palette-shot.mjs` (2026-07-29, CRYO BAY, 17 tools, 1404px of content):
+ *
+ *     1600px  1 row   palH  54     1440px  2 rows  palH  95     1280px  2 rows  palH  95
+ *     1140px  2 rows  palH  95     1024px  2 rows  palH  95      900px  2 rows  palH  95
+ *      768px  3 rows  palH 136
+ *
+ * So "TWO rows all the way down to 768px" is now THREE at 768, and 1440 — which the old measurement
+ * records as one row — is two. **17/17 tools were reachable at every one of those widths**, which is
+ * the property that actually matters and the one the wrap was chosen for: adding tools costs HEIGHT
+ * and never HIDES one. That is why a growing palette needs no CSS change, and why the numbers above
+ * are a record rather than a bound. The 12px overshoot band measured below moves with the content
+ * width like everything else here; it was not re-measured for 17 tools and is not claimed to be.
+ *
+ * ⚠️ ONE HONEST OVERSHOOT, disclosed rather than tuned away, and MEASURED rather than estimated: the
+ * wrap fires when the content is wider than the wrapper, and the content includes the row's own 12px
+ * of trailing padding. So there is a narrow band where the palette now takes two rows at a width
+ * where the old one still showed all fifteen tools and clipped only padding. Swept in 2px steps in
+ * ONE room (MESS, 1197px) with both builds in the same browser session:
+ *
+ *     this build     1 row down to 1264px, two rows from 1262px
+ *     pre-fix build  15/15 down to 1250px, loses DEMOLISH at 1248px
+ *     ⇒ the band is 1250–1262px: TWELVE pixels.
+ *
+ * ⚠️ AND IT TRAVELS RATHER THAN WIDENING. An earlier draft of this comment quoted "roughly 1250 to
+ * 1290px", i.e. ~40px — that was two DIFFERENT rooms' onsets subtracted from each other. Both
+ * numbers move together with the length of `BUILD ▸ <ROOM>`, so the band stays ~12px wherever it
+ * sits. Two rows instead of one is a layout the player can see and act on; a missing STRIP button is
+ * not, so the overshoot is the right side to err on — and it is a twelfth of what was first written
+ * down, which is worth correcting even though the error was in the unflattering direction.
+ *
+ * `justify-content:center` so a short trailing row sits under the middle of the one above it rather
+ * than hanging off the left.
+ *
+ * ⚠️ `width:max-content` IS LOAD-BEARING AND WAS MEASURED, NOT REASONED. `flex-wrap:wrap` alone
+ * made the palette wrap at EVERY width — two rows at 1600px, where the single row had always fitted
+ * — because a wrapping flex container in this shrink-to-fit slot no longer offers its single-line
+ * sum as its preferred width (798px offered against 1225px of content). `max-content` states that
+ * sum explicitly, and `max-width:100%` is what still forces the wrap once the wrapper is narrower
+ * than it. Removing either one is a visible regression at a width that was never broken.
+ */
+.rz-palette-wrap{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;
+  flex-direction:column;align-items:center;gap:8px;z-index:21;max-width:calc(100vw - 64px)}
+.rz-palette{display:flex;flex-wrap:wrap;justify-content:center;gap:7px;align-items:center;
+  padding:9px 12px;border-radius:12px;width:max-content;max-width:100%}
+.rz-place-label{font-size:9px;letter-spacing:.16em;color:var(--ink-faint,#57503f);flex:none;padding-right:2px;
+  white-space:nowrap}
+/* THE TOOL BUTTONS, AND THEIR THREE STATES — rest, hover, ARMED.
+ *
+ * ⚠️ WHY THE ARMED RULE IS SO LOUD, and why `:hover` was made QUIETER to pay for it. The owner's
+ * 2026-08-03 live-play note was that the palette "reads as an INERT placeholder": clicking a tool
+ * announced itself in the label, the hint and the caption, but "the BUTTON itself never changes
+ * state, so the row does not feel clickable". The arming was never broken — `paintPalette` has
+ * always toggled `.on` off `_armed`, measured in real Chrome (`cls="rz-tool on"`, `aria-pressed=
+ * "true"`, the moment the click lands). The defect was entirely HERE, and it was one shared colour:
+ *
+ *     .rz-tool:hover{color:#b3aa9c;border-color:#cf7a33}   ← the ARMED border colour
+ *     .rz-tool.on   {background:#3a2a12;color:#f2b563;border-color:#cf7a33}
+ *
+ * Hover borrowed `#cf7a33`, the armed border. A player's cursor is ALWAYS on the button they just
+ * clicked, so the strongest edge signal on the control was already amber BEFORE the click, and
+ * arming moved only a dim fill and a text hue — both dark-on-dark. Measured side by side at the
+ * same pixels, hovered-and-unarmed and armed were very nearly the same picture. So the state was
+ * painted and still invisible, which is this repo's "invisible feedback is FUNCTIONAL" rule with the
+ * cause in the stylesheet rather than in the model.
+ *
+ * The fix gives the armed state a signal `:hover` cannot produce at all — a bright fill, a lit
+ * border, an INSET shadow (pressed-in depth) and an outer ring — and demotes hover to a warm
+ * neutral that says "clickable" without saying "armed".
+ *
+ * ⭐ THE RING IS A `box-shadow`, NOT A WIDER BORDER, AND THAT IS LOAD-BEARING RATHER THAN TASTE.
+ * Shadows do not participate in layout. A thicker border, a bolder `font-weight` or extra
+ * `letter-spacing` would all re-measure the button on arm and reflow the EIGHTEEN-tool wrapping row —
+ * which is `palette-shot.mjs`'s whole subject, a tool pushed off the end where the player cannot
+ * reach it. The armed button here occupies exactly the same box it did at rest. */
+.rz-tool{flex:none;padding:8px 13px;border-radius:7px;font-size:10.5px;letter-spacing:.04em;cursor:pointer;
+  background:rgba(26,22,17,.5);color:var(--ink-mute,#8c8377);border:1px solid #3a332a;white-space:nowrap;
+  transition:background-color .09s ease,border-color .09s ease,color .09s ease,box-shadow .09s ease}
+/* "you can click this" — deliberately NOT the armed amber. See the block comment above. */
+.rz-tool:hover{color:#cdc3b2;border-color:#6b5c45;background:rgba(46,39,29,.62)}
+/* the press itself, so the row answers under the finger as well as after it */
+.rz-tool:active{background:#241b11;border-color:#8a6c3f}
+/* ARMED — pressed-in and lit. `:hover`/`:active` are repeated so the cursor that armed the tool can
+   never wash the state back out; without them the player would disarm the look by not moving. */
+.rz-tool.on,.rz-tool.on:hover,.rz-tool.on:active{background:#5a3f14;color:#ffd489;border-color:#f2b563;
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.62),0 0 0 2px rgba(207,122,51,.34)}
+.rz-tool.demo.on,.rz-tool.demo.on:hover,.rz-tool.demo.on:active{background:#6a2410;color:#ffb59d;
+  border-color:#e07a5f;box-shadow:inset 0 2px 4px rgba(0,0,0,.62),0 0 0 2px rgba(165,58,37,.4)}
+/* ⭐⭐ THE PRICE ON THE CHIP (palette-honesty, 2026-08-03). A furniture button carries a second line
+   — `3 PARTS`, or `NOT YET` for the two cosmetic tools — so the cost is on the surface before the
+   player arms anything. The button becomes a two-row column; nothing else about it moves.
+
+   ⚠️ THE COST LINE MUST NEVER BECOME AN ARMED-STATE RULE. `client/test/palette-layout.test.js`
+   censuses the rules whose selector contains `.rz-tool` AND `.on` and requires EXACTLY TWO
+   (`.rz-tool.on`, `.rz-tool.demo.on`); it then rejects any property in them that re-measures the
+   button, because arming must not reflow the eighteen-tool wrapping row. These rules deliberately
+   carry neither `.on` nor `:hover` in their selectors, so they join neither census: they change the
+   button's box ONCE, at build time, and never again.
+
+   ⛔ `.cant` IS PAINT-ONLY, for that same reason — colour and opacity, no border, no padding, no
+   font metric. It says "the ship cannot do this right now" (too few Parts) or, for SHELF/RUG,
+   "the ship cannot do this at all yet". It is deliberately NOT `disabled`: the button still arms,
+   still sends, and the sim still answers — see `build-cost-model.js` on why this client never gates
+   the wire off a ≤1 Hz census.
+
+   ⭐ THE COST LINE TAKES ITS COLOUR BY INHERITANCE (`currentColor` + `opacity`), NEVER BY AN ARMED
+   OVERRIDE, and that is the mechanism the census above forces rather than a stylistic choice: any
+   rule spelled `.rz-tool.on .rz-tool-cost` would land in the armed census as a THIRD armed rule and
+   redden it. Inheriting means the price tracks rest → hover → armed → demolish for free, in every
+   combination, with no selector that mentions `.on` at all. */
+.rz-tool.costed{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 9px 5px;
+  line-height:1.15}
+.rz-tool-name{display:block}
+.rz-tool-cost{display:block;font-size:8px;letter-spacing:.05em;opacity:.66}
+/* The one colour the price states for itself: a ship that cannot pay. Chosen to read against BOTH
+   the resting fill and the armed amber, because it must survive arming without an `.on` rule. */
+.rz-tool.cant .rz-tool-cost{color:#e8836a;opacity:1}
+.rz-tool.cant .rz-tool-name{opacity:.72}
+/* THE COST ROW — price + stock for the armed tool, third sibling of `.rz-matstrip`/`.rz-accepts` in
+   `.rz-palette-wrap` and mutually exclusive with both, so the reveal costs zero net height. */
+.rz-cost{display:flex;justify-content:center;align-items:center;padding:6px 11px;border-radius:11px;
+  width:max-content;max-width:100%}
+.rz-cost[hidden]{display:none}
+.rz-cost-line{font-size:9.5px;letter-spacing:.1em;color:var(--ink-mute,#8c8377);white-space:normal;
+  text-align:center}
+/* The refusal wears the fault colour the alerts bar and the blocked badge already use, so "the ship
+   cannot" reads the same everywhere it is said. */
+.rz-cost-line.fault{color:#e07a5f}
+.rz-hint{font-size:9.5px;letter-spacing:.06em;color:var(--ink-mute,#8c8377)}
+
+/* material picker strip (shown when WALL/FLOOR armed) — item-set swatches, active one lit.
+   Wraps for the reason above: it is narrower than the palette and so was never observed clipping,
+   but it carried the identical hide-the-scrollbar idiom, and "narrower today" is not a property a
+   sixth material or a longer label preserves. */
+.rz-matstrip{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;align-items:center;
+  padding:7px 10px;border-radius:11px;width:max-content;max-width:100%}
+.rz-matstrip[hidden]{display:none}
+.rz-mat-label{font-size:9px;letter-spacing:.14em;color:var(--ink-faint,#57503f);flex:none;
+  padding-right:2px;white-space:nowrap}
+/* ⚠️ THE SAME COLLISION THE TOOL BUTTONS HAD, ON THE ROW DIRECTLY UNDER THEM — see the `.rz-tool`
+   block comment above for the whole argument, which is not repeated here. Filed by the palette
+   lane's own reviewer on 2026-08-03 and re-measured before this fix: the chips carried
+
+       .rz-mat-chip:hover{border-color:#cf7a33}
+       .rz-mat-chip.on   {background:#3a2a12;border-color:#f2b563}
+
+   a NEAR-collision (hover wore `#cf7a33`, the colour the tool's armed border used to wear and the
+   one the whole palette reads as "lit"), while `.rz-acc-chip` below had the IDENTICAL defect —
+   `:hover` and `.on` both `#cf7a33` on the border, so the chip under the cursor was already wearing
+   the armed edge before the click. The player's pointer is always on the chip they just picked.
+
+   ⭐ FIXED AS A CLASS, NOT AS TWO RULES. `.rz-tool`, `.rz-mat-chip` and `.rz-acc-chip` are the three
+   Room Zoom controls that spell their armed state `.on` (`paintPalette`'s `setCls(b,'on',on)`,
+   `paintMatStrip`, `accepts-row.js`), and they now share one grammar: hover is a warm neutral that
+   says "clickable", `:active` is a darker press, and ARMED owns a channel neither can touch — an
+   inset shadow plus an outer ring — on top of the bright fill and lit border. `:hover`/`:active` are
+   repeated on the armed selector so the cursor that armed a chip can never wash the state back out.
+   `palette-layout.test.js` sweeps that set and pins its membership COUNT.
+
+   ⛔ AND THE SWEEP'S REACH IS NARROWER THAN "EVERY ARMABLE CONTROL" — say it here rather than let
+   the next reader assume it. Its predicate is literal: a rule whose SUBJECT compound carries both a
+   `.rz-` class and a CHOSEN-STATE class it knows the spelling of. A control that spells its state
+   anything else, or that is not `.rz-`-prefixed, is INVISIBLE to it — the blind spots are driven,
+   and they stay green. ⭐ THE SPELLINGS IT KNOWS ARE NOW TWO, `.on` AND `.sel`, because the third
+   instance this comment used to FILE has been fixed (2026-08-04): `.rz-crew` at the top of this file
+   spells selection `.sel`, and `.rz-crew:hover` and `.rz-crew.sel` shared `border-color:#cf7a33`
+   with no shadow on either side. It is a swept member now — see its own block comment.
+
+   ⭐ THE RING IS A `box-shadow` FOR THE REASON THE TOOL ROW'S IS: shadows do not participate in
+   layout, and these two rows wrap under exactly the same clipping rule the palette does. The inset
+   is 1px/3px rather than the tool's 2px/4px — the same grammar at the chip's smaller size (a ~22px
+   chip cannot carry a 4px well without going muddy); it is depth, not a different signal. */
+.rz-mat-chip{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 7px 4px;
+  border-radius:8px;cursor:pointer;background:rgba(26,22,17,.5);border:1px solid #3a332a;
+  transition:background-color .09s ease,border-color .09s ease,box-shadow .09s ease}
+/* "you can click this" — deliberately NOT the lit amber. */
+.rz-mat-chip:hover{border-color:#6b5c45;background:rgba(46,39,29,.62)}
+.rz-mat-chip:active{background:#241b11;border-color:#8a6c3f}
+.rz-mat-chip.on,.rz-mat-chip.on:hover,.rz-mat-chip.on:active{background:#5a3f14;border-color:#f2b563;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.6),0 0 0 2px rgba(207,122,51,.34)}
+.rz-mat-sw{display:block;border-radius:4px;overflow:hidden}
+.rz-mat-name{font-size:8px;letter-spacing:.03em;color:var(--ink-mute,#8c8377);white-space:nowrap}
+.rz-mat-chip.on .rz-mat-name{color:#ffd489}
+
+/* ACCEPTS chip row (WP-6) — shown when STOCKPILE is armed. A SIBLING of .rz-matstrip in the same
+   wrapper and by the same rule: the options belonging to the armed tool. The two are mutually
+   exclusive (materials are wall/floor, this is stockpile), so it costs no net height on a palette
+   that already clips below ~1140px. Column, because the row carries a caption the chips do not: the
+   chips apply to tiles painted NEXT, and that has to be readable without hovering anything. */
+.rz-accepts{display:flex;flex-direction:column;gap:5px;align-items:stretch;padding:7px 10px;
+  border-radius:11px;max-width:100%}
+.rz-accepts[hidden]{display:none}
+/* Wraps, like the palette and the material strip — the seven chips fit one row on a wide screen and
+   must not silently lose ORE or PARTS off the right edge on a narrow one. */
+.rz-acc-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:100%}
+.rz-acc-label{font-size:9px;letter-spacing:.14em;color:var(--ink-faint,#57503f);flex:none;
+  padding-right:2px;white-space:nowrap}
+/* Lit = accepted, dark = kept out. Same on/off vocabulary as .rz-tool and .rz-mat-chip, because a
+   filter toggle IS an on/off tool — the reason hud.js reused .tool for the console's own chips.
+
+   ⚠️ THIS ROW CARRIED THE PALETTE'S DEFECT EXACTLY, not a variant of it: `:hover` and `.on` BOTH set
+   `border-color:#cf7a33`, so a hovered-and-kept-out chip and an accepted one drew the same edge, and
+   the click a player makes lands under their own cursor. Fixed on the shared grammar — see the block
+   comment over `.rz-mat-chip` above. */
+.rz-acc-chip{flex:none;padding:5px 9px;border-radius:7px;font-size:9.5px;letter-spacing:.06em;
+  cursor:pointer;background:rgba(26,22,17,.5);color:var(--ink-faint,#57503f);border:1px solid #3a332a;
+  white-space:nowrap;transition:background-color .09s ease,border-color .09s ease,color .09s ease,
+  box-shadow .09s ease}
+.rz-acc-chip:hover{color:#cdc3b2;border-color:#6b5c45;background:rgba(46,39,29,.62)}
+.rz-acc-chip:active{background:#241b11;border-color:#8a6c3f}
+.rz-acc-chip.on,.rz-acc-chip.on:hover,.rz-acc-chip.on:active{background:#5a3f14;color:#ffd489;
+  border-color:#f2b563;box-shadow:inset 0 1px 3px rgba(0,0,0,.6),0 0 0 2px rgba(207,122,51,.34)}
+.rz-acc-note{font-size:8.5px;letter-spacing:.08em;color:var(--ink-faint,#57503f);white-space:normal}
+/* The count of already-painted tiles that DISAGREE gets the alarm colour the back-off hatch uses:
+   it is the one line in this row that is about the map rather than about the brush. */
+.rz-acc-diff{color:#f2b563}
+
+/* ⭐ M2-10 — the right-click PRIORITISE menu. `position:fixed`, NOT absolute like its neighbours: the
+   box is placed from the pointer event's own `clientX/clientY`, and those are viewport coordinates —
+   an absolutely-positioned box would be offset by whatever `#roomzoom-view`'s box happens to be, i.e.
+   correct today and wrong the day the surface grows a margin. `white-space:nowrap` because the row
+   names a machine and a wrapped verb reads as two rows in a menu that only has one.
+
+   ⚠️ THE z-index IS 26 AND IT ONLY CLAIMS WHAT IT CAN DELIVER: topmost WITHIN THIS SURFACE, over the
+   nudge (24), the toast (22) and the crew dock (21). It cannot claim more, and the comment that stood
+   here claimed more — QUOTED AND RETRACTED, because it stated a measurement that is false:
+   *"z-index 130 IS MEASURED, NOT PICKED … `.onb-help` … is `z-index:120` GLOBAL chrome … It is 130
+   now — above persistent chrome."* **130 was INERT.** `#roomzoom-view` is `position:fixed;
+   z-index:20` (above), which makes it a STACKING CONTEXT, and `.onb-help` is appended to
+   `document.body` (`client/src/ui/onboarding.js:325`). A descendant is ordered only inside its own
+   context, so NO value here — 26, 130, 9999 — can outrank a body-level sibling context. Independent
+   review measured it in headless Chrome: with 130 shipped, `elementFromPoint` over a ~240×24 px strip
+   at the top-right still answered `onb-help`. The bug the number was supposed to fix was still live
+   and the comment said it was fixed, which is worse than the occlusion.
+   ⇒ THE COLLISION IS SOLVED GEOMETRICALLY, in `roomzoom-view.js`'s `openCtx`: the box is clamped so
+   it never opens over the circle's measured rect. That is the remedy this stylesheet ALREADY chose
+   for the identical collision — `.ov-nudge` is `right:74px`, NOT `26px`, for exactly this reason
+   (see its own comment above). Geometry crosses stacking contexts; z-index does not. Raising
+   `#roomzoom-view`'s own z-index would also work and is refused: it lifts the whole surface over
+   body-level chrome and trades one occlusion for another. */
+.rz-ctx{position:fixed;z-index:26;padding:4px;border-radius:8px;display:flex;flex-direction:column;
+  gap:2px}
+.rz-ctx[hidden]{display:none}
+.rz-ctx-item{padding:6px 12px;border-radius:6px;border:1px solid rgba(46,40,32,.6);
+  background:rgba(18,15,11,.55);color:var(--amber-light,#f2b563);font:inherit;font-size:10.5px;
+  letter-spacing:.08em;text-align:left;white-space:nowrap;cursor:pointer}
+.rz-ctx-item:hover{border-color:#cf7a33;background:rgba(34,27,18,.8)}
+
+/* transient toast (deferrals / honest limits) */
+.rz-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:22;
+  padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);
+  color:var(--amber-light,#f2b563);font-size:11px;letter-spacing:.06em;box-shadow:var(--hud-shadow)}
+
+@media (prefers-reduced-motion:reduce){
+  .rz-yah{animation:none;opacity:1}
+  .rz-pulse-tile{animation:none;opacity:0}
+}

@@ -28,6 +28,7 @@ import { ACCEPT_ALL, stockFilterLabel } from '../src/ui/stock-filter-model.js';
 import { MARK_KIND_NAMES } from '../src/wire/messages.js';
 import { LEDGER_ROW_IDS } from '../src/ui/ledger-model.js';
 import { codeOnly, callBlocks } from './code-only.js';
+import { stylesSource } from './styles-source.js';
 import { DocumentLite as DomDocument, Element as DomEl, fire } from './dom-lite.js';
 
 const FIX = JSON.parse(
@@ -2286,7 +2287,7 @@ test('M3-12: an INCAPABLE type has NO CELL; the same type merely OFF has a BLANK
 // headers — HAUL drawn beneath MINE. The player would click the box under HAUL and get MINE, and
 // `ovSent` would say the click was right.
 test('M3-12: the surviving cells keep their COLUMN — the gap stays under its own header', () => {
-  const CSS = codeOnly(readFileSync(fileURLToPath(new URL('../styles.css', import.meta.url)), 'utf8'));
+  const CSS = codeOnly(stylesSource());
   // ⛔ THE PREMISE FIRST, AND IT IS THE HALF A RULE CENSUS CANNOT SEE. `grid-column` is inert on a
   // child of anything that is not a grid, so switching `.ov-workrow` to `display:flex` leaves all six
   // rules below present and matching while making every one of them do NOTHING — the survivors pack

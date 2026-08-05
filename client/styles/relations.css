@@ -1,0 +1,131 @@
+/* RELATIONS — the crew relationship web, a sibling takeover. Moved VERBATIM out of the old single
+   `client/styles.css` at the VR-A split (2026-08-04); cascade position unchanged.
+   NOT one of the five files the visual-redesign charter §A names: the charter lists
+   {base,overview,roomzoom,moss,console} and RELATIONS is a sixth surface with ~125 lines of its
+   own. Folding it into any of the five would have been a lie about which surface owns it. */
+
+/* ==== RELATIONS surface (relations-spec IX-R* / VS-R*) ==== */
+/* A sibling takeover like MOSS / the Overview / the Room Zoom, and for the same reason: it replaces
+   the game window instead of covering part of one surface. It used to be an overlay INSIDE the
+   console's `.stage`, un-hidden by the RELATIONS tab — which on the standard ship dropped
+   `body.overview-open`, so `body.overview-open .app{display:none}` stopped applying and the whole
+   deprecated console came back on screen over the modern game. `body.relations-open` now hides both
+   the console frame and the Overview outright, so no other surface's switch is load-bearing.
+   Precedence, fixed here and nowhere else: MOSS > Room Zoom > RELATIONS > Overview > console. */
+#relations-view{position:fixed;inset:0;display:none;z-index:15;
+  font-family:var(--font-mono);color:var(--ink-body,#b3aa9c);overflow:hidden}
+body.relations-open #relations-view{display:block}
+body.relations-open .app{display:none !important}
+body.relations-open #overview-view{display:none !important}
+body.moss-open #relations-view{display:none !important}
+body.roomzoom-open #relations-view{display:none !important}
+/* #panels is deliberately NOT hidden: the dossier card opens over RELATIONS exactly as it opens
+   over the Overview, and the escape stack already closes an open dossier before this surface. */
+
+.rl-space{position:absolute;inset:0;background:var(--void-gradient)}
+/* the `.hud` glass token — every floating island (matches VS-O-53 / VS-Z-37) */
+#relations-view .hud{background:var(--hud-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:var(--hud-border);box-shadow:var(--hud-shadow)}
+.rl-hdr{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint,#57503f)}
+.rl-guide{color:var(--ink-mute,#8c8377);font-size:9.5px;letter-spacing:.06em}
+
+.rl-topbar{position:absolute;left:26px;right:26px;top:22px;display:flex;align-items:center;gap:14px;
+  padding:9px 16px;border-radius:11px;font-size:11px;letter-spacing:.08em}
+.rl-ship{color:var(--amber-deep,#cf7a33);font-weight:700}
+.rl-title{color:var(--ink-mute,#8c8377)}
+.rl-spacer{flex:1}
+.rl-close{border:1px solid #3a332a;border-radius:8px;padding:5px 12px;background:transparent;
+  color:var(--ink-body,#b3aa9c);font:inherit;letter-spacing:.08em;cursor:pointer}
+.rl-close:hover{color:var(--amber-light,#f2b563);border-color:#cf7a33}
+
+/* left CREW list — the console CREW WATCH's job on this surface (IX-R2: click a name to focus) */
+.rl-crew{position:absolute;left:26px;top:96px;width:236px;max-height:calc(100vh - 220px);
+  overflow-y:auto;padding:12px;border-radius:14px;display:flex;flex-direction:column;gap:7px;z-index:16}
+.rl-crewlist{display:contents}
+.rl-crewrow{display:flex;gap:9px;align-items:center;padding:7px;border:1px solid rgba(46,40,32,.6);
+  border-radius:8px;background:transparent;cursor:pointer;width:100%;text-align:left}
+.rl-crewrow:hover{border-color:#57503f}
+.rl-crewrow.sel{border-color:#cf7a33;background:rgba(34,27,18,.8)}
+.rl-bust{width:34px;height:34px;border-radius:6px;overflow:hidden;flex:none;
+  background:radial-gradient(circle at 50% 30%,#2a2018,#12100d);box-shadow:inset 0 0 0 1px rgba(232,147,74,.18)}
+.rl-bust svg{width:100%;height:100%;display:block}
+.rl-crewcol{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.rl-crewname{font-size:11px;color:var(--ink-bright,#e8dcc9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl-crewrole{font-size:8.5px;color:var(--ink-mute,#8c8377);text-transform:uppercase;letter-spacing:.08em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* the web itself, inset between the islands (the SVG meets its box, so it simply shrinks) */
+.rl-stage{position:absolute;left:296px;right:336px;top:96px;bottom:104px}
+
+/* right readout — the focused crew + the two DIRECTED regard sections (IX-R7) */
+.rl-readout{position:absolute;right:26px;top:96px;width:298px;max-height:calc(100vh - 220px);
+  overflow-y:auto;padding:16px;border-radius:14px;display:flex;flex-direction:column;gap:8px;
+  font-size:11px;z-index:16}
+.rl-selname{color:var(--amber-light,#f2b563);font-size:14px;font-weight:700}
+.rl-selrole{color:var(--ink-mute,#8c8377);text-transform:uppercase;letter-spacing:.08em;font-size:9.5px}
+.rl-empty{color:var(--ink-mute,#8c8377);letter-spacing:.06em}
+
+.rl-legend{position:absolute;left:50%;transform:translateX(-50%);bottom:26px;z-index:16;
+  display:flex;gap:18px;flex-wrap:wrap;justify-content:center;padding:9px 16px;border-radius:11px;
+  font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-mute,#8c8377)}
+
+/* the crew web (VS-R) — unchanged from its console home; only the container around it moved */
+.rel-svg{width:100%;height:100%;display:block;overflow:visible}
+.rel-key{display:inline-flex;align-items:center;gap:7px}
+.rel-key .sw{width:16px;height:0;border-top:2px solid var(--ln-chip)}
+.rel-key .sw.close{border-top-color:var(--good)}
+.rel-key .sw.warm{border-top-color:var(--amber-2)}
+.rel-key .sw.neutral{border-top-color:var(--txt-dim)}
+.rel-key .sw.hostile{border-top-color:var(--bad-txt)}
+.rel-key .sw.secret{border-top-style:dashed;border-top-color:var(--txt-dim)}
+/* edges: mutual tier = color, dashed = secret; unfocused recede, focused brighten/thicken */
+.rel-edge{stroke:var(--ln-chip);stroke-width:1.5;opacity:.55;fill:none}
+.rel-edge.tier-close{stroke:var(--good)}
+.rel-edge.tier-warm{stroke:var(--amber-2)}
+.rel-edge.tier-neutral{stroke:var(--txt-dim)}
+.rel-edge.tier-hostile{stroke:var(--bad-txt)}
+.rel-edge.secret{stroke-dasharray:7 5}
+.rel-svg.has-focus .rel-edge:not(.focus){opacity:.2}
+.rel-edge.focus{opacity:1;stroke-width:3.5}
+/* boxed uppercase tag at a focused edge midpoint */
+.rel-tag rect{fill:var(--bg-bar);stroke:var(--ln-chip);stroke-width:1}
+.rel-tag text{
+  fill:var(--amber-3);font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;
+  text-anchor:middle;text-transform:uppercase;
+}
+/* nodes: initials badge (crew hue) + surname; focused gets a bright ring */
+.rel-node{cursor:pointer}
+.rel-badge{stroke:var(--ln-chip);stroke-width:1}
+.rel-node.focus .rel-badge{stroke:var(--txt-peak);stroke-width:1.5}
+.rel-ring{fill:none;stroke:var(--txt-peak);stroke-width:2}
+.rel-initials{
+  fill:var(--txt-onacc);font-family:var(--font-mono);font-weight:700;font-size:17px;
+  letter-spacing:.02em;text-anchor:middle;
+}
+.rel-surname{
+  fill:var(--txt-hi);font-family:var(--font-mono);font-size:13px;letter-spacing:.04em;
+  text-anchor:middle;text-transform:uppercase;
+}
+.rel-node.focus .rel-surname{fill:var(--amber-2)}
+
+/* the two directed regard sections (VS-R) — both directions, signed values right-aligned. Moved
+   here from the console readout block so the console's deletion cannot take them with it. */
+.rr-section{
+  border-top:1px dashed #2b241c;padding-top:10px;display:flex;flex-direction:column;gap:6px;
+}
+.rr-section .rl-hdr{margin-bottom:2px}
+.rr-row{display:flex;flex-direction:column;gap:2px}
+.rr-line{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px}
+.rr-name{color:var(--ink-bright,#e8dcc9)}
+.rr-val{font-weight:700}
+.rr-val.pos{color:var(--good)}
+.rr-val.neg{color:var(--bad-txt)}
+.rr-val.zero{color:var(--ink-mute,#8c8377)}
+.rr-note{color:var(--ink-mute,#8c8377);font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+
+/* Below 1024 the side islands narrow and the web takes the slack; the page never scrolls sideways. */
+@media (max-width:1023px){
+  .rl-crew{width:180px}
+  .rl-readout{width:230px}
+  .rl-stage{left:230px;right:268px}
+}

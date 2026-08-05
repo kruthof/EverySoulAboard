@@ -1,0 +1,227 @@
+// THE STYLESHEET SPLIT — the pins that keep six files behaving like the one file they came from.
+//
+// `client/styles.css` was a single 1917-line stylesheet until VR-A (2026-08-04). It is now
+// `client/styles/{base,console,moss,overview,roomzoom,relations}.css` plus the `src/theme/paper.css`
+// token layer, moved VERBATIM by surface. A split is cheap to do and expensive to get wrong in ways
+// nothing sees:
+//
+//   (1) THE CASCADE IS NOW A LINK ORDER. It used to be the source order of one file and could not
+//       drift. Now a stylesheet can be written, saved, and simply never linked — the rules are gone
+//       and every DOM test that scans TEXT still passes, because the text is still on disk.
+//   (2) THE DEV PREVIEW CAN FALL BEHIND. `tools/moss-preview.html` renders the REAL MOSS screen
+//       against the REAL stylesheets; if it links five of six, the preview lies about the skin.
+//   (3) RELATIVE URLS MOVED. Every `url('assets/…')` in the old file resolved against `client/`;
+//       the split files sit one directory deeper. A stale font URL 404s SILENTLY — the browser
+//       falls back to a system mono, and every width pin in the MOSS suite drifts.
+//   (4) THE `var(--x, fallback)` FALLBACKS WERE ALREADY LYING. Seven of them quoted a colour the
+//       cascade does not resolve to (`var(--good,#9ccf6a)` where `--good` is `#5aa77f`;
+//       `var(--amber-1,#ffdcb0)` where the live value is `#e8934a`). Harmless while the variable is
+//       declared — and a silent restyle the moment a token layer is dropped or renamed, which is
+//       exactly what the visual redesign is going to do to `warm.css`, surface by surface.
+//
+// Every one of the four is pinned below.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+
+import { CLIENT_DIR, INDEX_HTML, styleLinks, stylesSource } from './styles-source.js';
+
+/** The six surface files, in the cascade order the page must link them in. */
+const SURFACES = ['base', 'console', 'moss', 'overview', 'roomzoom', 'relations'];
+const EXPECTED_LINKS = [...SURFACES.map((s) => `styles/${s}.css`), 'src/theme/paper.css'];
+const PREVIEW = join(CLIENT_DIR, 'tools/moss-preview.html');
+
+const codeOnly = (css) => css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 1. THE SET AND THE ORDER — every file is linked, in the right place, by every page that needs it
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('index.html links every split stylesheet, in cascade order, and nothing else', () => {
+  assert.deepEqual(styleLinks(INDEX_HTML), EXPECTED_LINKS);
+});
+
+test('every .css file under client/styles/ is LINKED — an unlinked file is dead rules', () => {
+  const onDisk = readdirSync(join(CLIENT_DIR, 'styles')).filter((f) => f.endsWith('.css')).sort();
+  assert.deepEqual(onDisk, SURFACES.map((s) => `${s}.css`).sort(),
+    'a file appeared in client/styles/ that index.html does not link (or vice versa)');
+  // …and the reverse direction: every href actually exists. A typo'd link is a 404 the game shows
+  // as "the Room Zoom lost its skin", never as an error.
+  for (const href of styleLinks(INDEX_HTML)) {
+    assert.ok(existsSync(join(CLIENT_DIR, href)), `index.html links ${href}, which is not on disk`);
+  }
+});
+
+test('tools/moss-preview.html links the SAME cascade — the preview cannot lie about the skin', () => {
+  assert.deepEqual(
+    styleLinks(PREVIEW).map((h) => h.replace(/^\.\.\//, '')),
+    EXPECTED_LINKS,
+    'the MOSS design harness and the shipping page disagree about which stylesheets exist',
+  );
+});
+
+test('warm.css is RETIRED BEHIND paper.css — no page links it directly any more', () => {
+  for (const page of [INDEX_HTML, PREVIEW]) {
+    for (const href of styleLinks(page)) {
+      assert.ok(!/warm\.css$/.test(href), `${page} still links warm.css directly`);
+    }
+  }
+  // it is retired, not deleted: paper.css pulls it in, and the paint it carries is still live
+  const paper = readFileSync(join(CLIENT_DIR, 'src/theme/paper.css'), 'utf8');
+  assert.match(paper, /@import\s+url\(\s*'warm\.css'\s*\)/,
+    'paper.css no longer imports warm.css — every var(--ink-…)/var(--hud-…) in the split files just died');
+  // and the helper really does expand it, so the scans below see the warm names
+  assert.match(stylesSource(), /--hud-bg/, 'the @import expansion is not reaching warm.css');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 2. RELATIVE URLS — the split moved every file one directory deeper
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('every url() in a split stylesheet resolves to a file that exists', () => {
+  let checked = 0;
+  for (const s of SURFACES) {
+    const file = join(CLIENT_DIR, 'styles', `${s}.css`);
+    const css = codeOnly(readFileSync(file, 'utf8'));
+    for (const m of css.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
+      const ref = m[1].trim();
+      if (/^(data:|https?:|#)/i.test(ref)) continue;
+      checked++;
+      assert.ok(existsSync(join(dirname(file), ref)),
+        `${s}.css references ${ref}, which does not exist relative to client/styles/ — `
+        + 'this is the failure mode the split creates, and the browser reports it as silence');
+    }
+  }
+  // NON-VACUITY BY INCLUSION: the four bundled font faces must be among what was checked.
+  assert.ok(checked >= 4, `only ${checked} url() references resolved — the scan is reading nothing`);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 3. ⭐ NO SHADOW THEME — every var() fallback quotes the value the cascade resolves to
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** `--name` → the LAST value declared for it across the whole linked cascade (as CSS resolves). */
+function declaredVars() {
+  const out = new Map();
+  for (const m of codeOnly(stylesSource()).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/gi)) {
+    out.set(m[1], m[2].trim().replace(/\s+/g, ' '));
+  }
+  return out;
+}
+
+test('⭐ no var() fallback disagrees with the value the cascade actually resolves to', () => {
+  const vars = declaredVars();
+  assert.ok(vars.size >= 60, `only ${vars.size} custom properties parsed — the declaration scan is blind`);
+  const fails = [];
+  let checked = 0;
+  for (const s of SURFACES) {
+    const css = codeOnly(readFileSync(join(CLIENT_DIR, 'styles', `${s}.css`), 'utf8'));
+    css.split('\n').forEach((line, i) => {
+      for (const m of line.matchAll(/var\(\s*(--[a-z0-9-]+)\s*,\s*([^)]+)\)/gi)) {
+        const [, name, fb] = m;
+        checked++;
+        const live = vars.get(name);
+        if (live === undefined) {
+          // A fallback for a variable NOBODY declares is not a fallback — it IS the paint, wearing
+          // a costume that says a token layer controls it. `--amber` was exactly that until VR-A
+          // replaced it with its literal.
+          fails.push(`${s}.css:${i + 1} var(${name}) is declared nowhere — the fallback ${fb.trim()} `
+            + 'IS the paint. Write the literal, or declare the token.');
+        } else if (live.toLowerCase() !== fb.trim().toLowerCase()) {
+          fails.push(`${s}.css:${i + 1} var(${name}, ${fb.trim()}) — the cascade resolves ${name} to `
+            + `${live}. The fallback is a second, disagreeing theme.`);
+        }
+      }
+    });
+  }
+  // NON-VACUITY BY INCLUSION: the surface files really are full of these.
+  assert.ok(checked >= 80, `only ${checked} var() fallbacks scanned — the scan is reading nothing`);
+  assert.deepEqual(fails, [], fails.join('\n'));
+});
+
+test('the paper token names are DISJOINT from the warm ones — the new layer overrides nothing', () => {
+  const own = (file, dropImports) => {
+    let css = codeOnly(readFileSync(join(CLIENT_DIR, file), 'utf8'));
+    if (dropImports) css = css.replace(/@import[^;]+;/g, ' ');
+    return new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map((m) => m[1]));
+  };
+  const paper = own('src/theme/paper.css', true);
+  const warm = own('src/theme/warm.css', false);
+  const base = own('styles/base.css', false);
+  assert.ok(paper.size >= 25 && warm.size >= 25 && base.size >= 20, 'a token scan came back empty');
+  const clash = [...paper].filter((k) => warm.has(k) || base.has(k));
+  assert.deepEqual(clash, [],
+    `paper.css redeclares ${clash.join(', ')} — it is linked LAST, so it would silently restyle `
+    + 'every surface that still reads the warm value. Rename the paper token.');
+  // The ONE deliberate overlap is `--font-mono`, and it is deliberate because it is RECONCILED:
+  // base.css and warm.css both declare it and they now say the same thing. Before VR-A they did
+  // not, and warm's (the later one) had been the live stack all along.
+  assert.equal(base.has('--font-mono') && warm.has('--font-mono'), true);
+  const val = (file, name) => codeOnly(readFileSync(join(CLIENT_DIR, file), 'utf8'))
+    .match(new RegExp(`${name}\\s*:\\s*([^;}]+)`))[1].trim().replace(/\s+/g, ' ');
+  assert.equal(val('styles/base.css', '--font-mono'), val('src/theme/warm.css', '--font-mono'),
+    'the two --font-mono declarations disagree again — the loser is what the next reader will believe');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 4. THE SPLIT IS A PARTITION — no rule was copied into two files
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('no selector block appears in two different split files — the move was a MOVE', () => {
+  // A split done by copy-then-delete leaves duplicates that are invisible while the two copies
+  // agree, and become a cascade puzzle the first time one of them is edited.
+  const owner = new Map();
+  const dupes = [];
+  for (const s of SURFACES) {
+    const css = codeOnly(readFileSync(join(CLIENT_DIR, 'styles', `${s}.css`), 'utf8'));
+    // top-level rules only: skip anything inside an @media/@supports block, whose selectors
+    // legitimately repeat a base rule.
+    const flat = css.replace(/@(media|supports|keyframes)[^{]*\{(?:[^{}]*\{[^{}]*\}\s*)*\}/g, ' ');
+    for (const m of flat.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
+      const sel = m[1].trim().replace(/\s+/g, ' ');
+      if (!sel || sel.startsWith('@')) continue;
+      if (owner.has(sel) && owner.get(sel) !== s) dupes.push(`${sel} — in both ${owner.get(sel)}.css and ${s}.css`);
+      else owner.set(sel, s);
+    }
+  }
+  assert.ok(owner.size > 300, `only ${owner.size} top-level rules parsed across six files — the parse is blind`);
+  assert.deepEqual(dupes, [], dupes.join('\n'));
+});
+
+test('each surface file carries the selectors it is named for, and not another surface\'s', () => {
+  // The split is by SURFACE, so the prefixes are the check: `.ov-` belongs to the Overview, `.rz-`
+  // to the Room Zoom, `.rl-` to Relations, `.moss`/`.c-` to MOSS. Getting this wrong is how P3 comes
+  // to edit `overview.css` looking for a Room Zoom rule and conclude it does not exist.
+  const read = (s) => codeOnly(readFileSync(join(CLIENT_DIR, 'styles', `${s}.css`), 'utf8'));
+  const count = (css, re) => (css.match(re) || []).length;
+  const ov = read('overview'); const rz = read('roomzoom'); const rl = read('relations'); const moss = read('moss');
+  assert.ok(count(ov, /\.ov-/g) > 100, 'overview.css lost the Overview');
+  assert.ok(count(rz, /\.rz-/g) > 100, 'roomzoom.css lost the Room Zoom');
+  assert.ok(count(rl, /\.rl-/g) > 20, 'relations.css lost the Relations web');
+  assert.ok(count(moss, /\.moss|\.c-/g) > 50, 'moss.css lost MOSS');
+  // and no surface owns another's vocabulary
+  assert.equal(count(rz, /\.ov-[a-z]/g), 0, 'roomzoom.css carries Overview rules');
+  assert.equal(count(rl, /\.rz-[a-z]/g), 0, 'relations.css carries Room Zoom rules');
+  assert.equal(count(moss, /\.ov-[a-z]|\.rz-[a-z]/g), 0, 'moss.css carries another surface\'s rules');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 5. THE TAKEOVER PRECEDENCE — the one thing the split could break without any test noticing
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('the surface precedence MOSS > Room Zoom > Relations > Overview > console still resolves', () => {
+  // These `display:none` rules are the whole surface-switching mechanism and they live in FOUR
+  // different files now. Order matters only where two of them fight; they are pinned here as a set
+  // so a future re-order of the <link> tags cannot quietly change which surface wins.
+  const all = codeOnly(stylesSource()).replace(/\s+/g, '');
+  for (const rule of [
+    'body.moss-open.app{display:none!important}',
+    'body.roomzoom-open.app{display:none!important}',
+    'body.roomzoom-open#overview-view{display:none!important}',
+    'body.relations-open.app{display:none!important}',
+  ]) {
+    assert.ok(all.includes(rule), `the cascade lost \`${rule}\` — a surface takeover is now partial`);
+  }
+});

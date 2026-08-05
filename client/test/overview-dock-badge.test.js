@@ -32,6 +32,7 @@ import { decodeBlocked, BLOCKED_ORDER_REPAIR, BLOCKED_ORDER_DIG, BLOCKED_REASON_
   BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE, BLOCKED_REASON_AIR,
   BLOCKED_DETAIL_NONE, BLOCKED_CID_NONE } from '../src/wire/messages.js';
 import { crewBlockedOrder, watchTask, OV_DOCK_TASK_CHARS } from '../src/ui/console-model.js';
+import { stylesSource } from './styles-source.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = (rel) => readFileSync(join(here, '..', rel), 'utf8');
@@ -214,7 +215,7 @@ test('the readout line\'s class is the SAME string in the built HTML and in the 
     + 'error anywhere');
   // The CSS rule that colours it is the third member of the same string, and it is cheap to include:
   // an element that is built and resolved but never styled is a fault sentence in body ink.
-  assert.ok(codeOnly(src('styles.css')).includes('.ov-roblocked'),
+  assert.ok(codeOnly(stylesSource()).includes('.ov-roblocked'),
     'styles.css has no rule for .ov-roblocked — the line renders in default ink and stops reading '
     + 'as a fault');
   for (const token of [BUILT, RESOLVED])

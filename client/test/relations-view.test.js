@@ -36,6 +36,7 @@ import { dirname, join } from 'node:path';
 
 import { DocumentLite, Element, fire } from './dom-lite.js';
 import { edgesOf } from '../src/ui/relations-model.js';
+import { stylesSource } from './styles-source.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
@@ -75,7 +76,7 @@ const OVIEW = js('src/ui/overview-view.js');
 const OMODEL = js('src/ui/overview-model.js');
 
 /** The stylesheet with `/* … *\/` stripped, for the same reason. */
-const CSS = src('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+const CSS = stylesSource().replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
  * The value `prop` ends up with for exactly this selector, or null if never declared.

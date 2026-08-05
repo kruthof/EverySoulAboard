@@ -1,0 +1,71 @@
+/* PAPER TOKENS — the DOM mirror of client/src/theme/paper-tokens.js.
+ *
+ * ADDITIVE ONLY. This file declares variables; it styles nothing on its own and must never be
+ * edited to override a surface stylesheet. Every value is verbatim from the visual-redesign
+ * charter §1 (measured off design-import/Perilune {Game,Fittings}.dc.html) and matches the JS
+ * token module value-for-value — `client/test/paper-tokens.test.js` walks paper-tokens.js's
+ * `CSS_VAR` map and PROVES it, which nothing did for the warm layer.
+ *
+ * THE RETIRED WARM LAYER comes in below, and it comes in FIRST so that a name declared in both
+ * resolves to the paper value. `warm.css` is no longer linked by client/index.html: it is reached
+ * only through this file, which is what "retired behind a re-export" means for a stylesheet. It
+ * still carries live paint — every `var(--ink-*)`, `var(--hud-*)`, `var(--trim-*)`, `var(--void-*)`
+ * and `var(--mat-*)` in the split surface files resolves through it — so dropping the @import is a
+ * visual change, not a cleanup. The two name sets are DISJOINT (pinned by
+ * `client/test/stylesheet-split.test.js`); the paper block below overrides nothing.
+ */
+
+@import url('warm.css');
+
+:root {
+  /* §1  Paper — grounds, plates, insets, rules */
+  --paper-ground:   #E7E0D2;
+  --paper-plate:    #EBE4D1;
+  --paper-border:   #C6BBA2;
+  --paper-hairline: #CFC3A9;
+  --paper-inset-1:  #DED6C2;
+  --paper-inset-2:  #DCD3BE;
+  --paper-inset-3:  #E1D9C5;
+  --plate-shadow:   0 18px 40px -28px rgba(28,26,23,.55);
+
+  /* §1  Ink — one black and the greys that descend from it */
+  --ink:           #14120F;
+  --ink-display:   #241E17;
+  --ink-serif:     #2E2A23;
+  --ink-prose:     #4E463A;
+  --ink-annot:     #3A342A;
+  --ink-micro:     #6B6252;
+  --ink-section:   #8A7F6C;
+  --ink-faintest:  #A79C86;
+  --ink-offline:   #8A8272;
+
+  /* §1  Links */
+  --link:       #B0662A;
+  --link-hover: #8A4E1E;
+
+  /* §1  THE ONE ACCENT — oxblood. Attention, faults, queued orders, emotional beats. */
+  --attend: #7B2C22;
+
+  /* §1  The dash dialect (ruling E3): the STROKE PATTERN carries the meaning, the accent the
+     urgency. `--dash-order` is a queued order, `--dash-unbuilt` a plan, `--dash-cut` a cut edge
+     of the room cutaway. A solid stroke in `--attend` is ATTENTION/FAULT; `--ink-offline` is an
+     absence and never an alarm. */
+  --dash-order:   8 5;
+  --dash-unbuilt: 6 5;
+  --dash-cut:     7 5;
+
+  /* §1  The shared 45° hatch (the `#fh` pattern def, emitted by src/render/oblique.js) */
+  --hatch-period:  7;
+  --hatch-ground:  #EBE4D1;
+  --hatch-ink:     #14120F;
+  --hatch-width:   0.7;
+  --hatch-opacity: 0.28;
+
+  /* §1  Halo text — a label drawn over art */
+  --halo-stroke: #EBE4D1;
+  --halo-width:  3.4;
+
+  /* §1  The engraved cell gauge */
+  --gauge-filled:      #14120F;
+  --gauge-empty-ring:  rgba(20,18,15,.4);
+}

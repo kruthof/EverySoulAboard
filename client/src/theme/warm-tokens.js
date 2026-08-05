@@ -1,3 +1,10 @@
+// ⛔ RETIRED (VR-A, 2026-08-04) — BEHIND `paper-tokens.js`, WHICH RE-EXPORTS EVERY NAME BELOW.
+// Import `./paper-tokens.js` from here on; this module's `INK` is re-exported there as `WARM_INK`
+// because the paper layer claims that name for the opposite meaning (black on paper, not cream on
+// navy). Nothing here is deleted this wave — seventeen consumers still read it and the visual
+// redesign restyles surface by surface (P3 room zoom, P4 overview, P5 pawns, P6 moss). Its tests
+// moved with it: `warm-tokens.test.js` is now `paper-tokens.test.js` and covers BOTH layers.
+//
 // Warm-theme token module — the SINGLE source of the warm palette + material/role tables for the
 // SVG visual rework. The SVG item library, the pawn generator, and the two SVG views (all built in
 // later phases) import from here; nothing else defines a warm colour. Pure ES module: no DOM, no

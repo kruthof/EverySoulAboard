@@ -1,0 +1,566 @@
+/* THE DEPRECATED CONSOLE `.app` SHELL — moved VERBATIM out of the old single `client/styles.css`
+   at the VR-A split (2026-08-04). CLOSED TO NEW WORK (CLAUDE.md "THE STANDARD SURFACE"): the one
+   standard UI is the Level-1 Overview + the Level-2 Room Zoom. This file also carries the floating
+   `#panels` layer (dialogue window / citizen card / crew DOSSIER / MOSS terminal drawer) and the
+   disconnect overlay, which sit between the console rules in the original source order and are
+   kept there so the cascade is byte-for-byte what it was.
+   The `breakpoints (VS-18)` block at the end used to sit at styles.css:1302-1317, between the
+   Overview and the Room Zoom. It is the ONLY chunk the split reorders; it is inert there because
+   every selector it carries (.console-lens/.console-sensor/.tab/.lens-row/.mid/.readout) appears
+   nowhere in moss.css or overview.css, so no rule it could ever tie with moved across it. */
+
+/* ==== app frame (VS-17) ==== */
+.app{
+  display:grid;grid-template-rows:46px 1fr 170px;height:100vh;min-width:1180px;min-height:700px;
+  background:var(--bg-deck);
+}
+.mid{display:grid;grid-template-columns:250px 1fr 310px;min-height:0}
+
+/* ==== top bar (VS-27) ==== */
+.topbar{
+  display:flex;align-items:center;gap:22px;padding:0 20px;background:var(--bg-bar);
+  border-bottom:1px solid var(--ln-hair);font-size:11px;letter-spacing:.10em;min-width:0;
+  position:relative; /* anchor for the transient paused nudge (below the bar) */
+}
+/* paused-ship nudge (transient; hangs just under the top bar's right chip cluster, no reflow) */
+.nudge{
+  position:absolute;top:calc(100% + 5px);right:20px;z-index:20;
+  padding:5px 12px;border:1px solid var(--sel-bd);border-radius:3px;
+  background:var(--sel-bg);color:var(--amber-3);font-weight:700;letter-spacing:.10em;
+  font-size:10.5px;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.4);
+  animation:plnBlink 1.6s infinite;
+}
+.topbar .ship{color:var(--amber-1);font-weight:700;flex:none}
+.deck-group,.speed-group{display:inline-flex;align-items:center;gap:6px;flex:none}
+.deck-label{color:var(--txt-dim)}  /* VS-64a: load-bearing info, not decorative */
+.mini{
+  padding:3px 6px;border:1px solid var(--ln-chip);border-radius:3px;color:var(--txt-dim);
+  line-height:1;transition:color .12s linear,border-color .12s linear;
+}
+.mini:hover{color:var(--txt-hi);border-color:var(--txt-faint)}
+.topbar .msg{
+  color:var(--amber-2);flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;
+}
+.topbar-spacer{margin-left:auto}
+
+/* chips (VS-28) */
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 10px;flex:none;
+  border:1px solid var(--ln-chip);border-radius:3px;color:var(--txt);background:transparent;
+  font-size:11px;white-space:nowrap;
+}
+.chip b{color:var(--txt-hi);font-weight:700}
+.chip-btn{cursor:pointer;transition:color .12s linear,border-color .12s linear}
+.chip-btn:hover{border-color:var(--txt-faint);color:var(--txt-hi)}
+.chip.degraded{border-color:var(--demo-bd);color:var(--bad-txt)}
+.chip.degraded b{color:var(--bad-txt)}
+/* speed chip while paused: the wire label ("paused"), dimmed — the pause chip carries the glyph */
+.chip.dim,.chip.dim b{color:var(--txt-faint)}
+/* pause chip states (VS-29) */
+#b-pause{color:var(--txt-dim)}
+#b-pause.paused{color:var(--warn-txt)}
+.run-dot{width:7px;height:7px;border-radius:50%;background:var(--good);flex:none}
+.paused-dot{width:7px;height:7px;border-radius:50%;background:var(--warn-txt);flex:none}
+
+/* caution chip (VS-5/VS-32) */
+.caution{
+  padding:3px 12px;border-radius:3px;font-weight:700;flex:none;white-space:nowrap;
+  border:1px solid transparent;
+}
+.caution.idle{background:transparent;color:var(--txt-dim);border-color:var(--ln-hair);font-weight:400}
+.caution.warn{background:var(--sel-bg);color:var(--warn-txt);animation:plnBlink 1.6s infinite}
+.caution.alert{background:var(--bad-deep);color:var(--txt-peak);animation:plnBlink 1.6s infinite}
+
+/* ==== crew watch (VS-23, VS-33..35) ==== */
+.crewwatch{
+  background:var(--bg-side);border-right:1px solid var(--ln-hair);padding:14px;
+  display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0;
+}
+.crewlist{display:flex;flex-direction:column;gap:8px;overflow-y:auto;overflow-x:hidden;min-height:0}
+.empty-line{color:var(--txt-dim);font-size:10.5px;letter-spacing:.04em;padding:4px 0}
+.crew-row{
+  display:flex;gap:10px;align-items:center;padding:8px;flex:none;width:100%;
+  border:1px solid var(--ln-row);border-radius:4px;background:transparent;cursor:pointer;
+  transition:background-color .12s linear,border-color .12s linear;
+}
+.crew-row:hover{background:var(--bg-inset);border-color:var(--ln-chip)}
+.crew-row.sel,.crew-row.sel:hover{background:var(--bg-selrow);border-color:var(--sel-bd)}
+.crew-row.pending{border-color:var(--amber-2);animation:plnPulse 1.2s ease-in-out infinite}
+.avatar{width:34px;height:34px;border-radius:3px;flex:none;object-fit:cover;border:1px solid var(--ln-chip)}
+.avatar-initials{
+  display:flex;align-items:center;justify-content:center;border:none;
+  color:var(--txt-onacc);font-weight:700;font-size:12px;
+}
+.crew-col{min-width:0;flex:1}
+.crew-surname{font-size:11px;color:var(--txt-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crew-role{
+  font-size:9px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.08em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* VS-66 — CREW WATCH task line: what this person is doing, always visible. Dim by default;
+   .working lifts it to the amber accent so real work is legible at a glance and idleness is not. */
+.crew-task{
+  font-size:9px;color:var(--txt-dim);letter-spacing:.04em;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.crew-task.working{color:var(--amber-2)}
+.morale-track{height:3px;background:var(--ln-hair);border-radius:2px;margin-top:4px}
+.morale-fill{height:3px;border-radius:2px;transition:width .25s ease}
+
+/* ==== stage (VS-19..22 — padding 14px is LOAD-BEARING: layout() subtracts 28) ==== */
+.stage{
+  position:relative;padding:14px;min-width:0;min-height:0;overflow:hidden;
+  background:var(--bg-void);cursor:crosshair;
+}
+.stage.panning{cursor:grabbing}
+.stage.arming{cursor:crosshair}
+canvas{
+  display:block;image-rendering:auto;width:100%;height:100%;border-radius:0;
+  box-shadow:0 0 0 1px var(--ln-hair);
+}
+.stage-card{
+  position:absolute;left:16px;top:16px;max-width:300px;pointer-events:none;z-index:4;
+  background:rgba(12,10,8,.80);border:1px solid var(--ln-hair);padding:6px 10px;
+  font-size:9.5px;letter-spacing:.06em;line-height:1.5;color:var(--txt);
+}
+.stage-card:empty{display:none}
+#inspect{white-space:pre}
+#inspect:empty{display:none}
+#inspect .l0{color:var(--amber-2)}
+#inspect div,#legend div{white-space:pre}
+.legend-card{left:auto;right:16px;text-align:left}
+#legend div:first-child{color:var(--amber-2);letter-spacing:.12em}
+.stage-hint{
+  position:absolute;left:16px;right:16px;bottom:2px;pointer-events:none;z-index:4;
+  font-size:9.5px;letter-spacing:.14em;color:var(--txt-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.stage-hint.armed{color:var(--amber-3)}
+/* placement acknowledgment pulse (IX-36): ≤150ms, input-not-outcome, HUD layer only */
+.pulse{
+  position:absolute;pointer-events:none;z-index:5;border:2px solid var(--amber-3);
+  animation:plnFade .15s ease-out forwards;
+}
+.pulse-red{border-color:var(--bad-txt)}
+/* persistent build-designation ghosts (wire-backed via the `designs` channel): dashed dim tile
+   outlines with a small glyph, glued to the camera transform, shown until the sim resolves them */
+.design-layer{position:absolute;inset:0;pointer-events:none;z-index:5}
+.design-layer:empty{display:none}
+.ghost{
+  position:absolute;box-sizing:border-box;border:1.5px dashed var(--amber-1);
+  background:rgba(207,122,51,.10);display:flex;align-items:center;justify-content:center;
+}
+.ghost-door{border-style:dotted;border-color:var(--amber-2);background:rgba(232,147,74,.10)}
+.ghost-glyph{color:var(--amber-3);line-height:1;opacity:.85;font-family:var(--font-mono)}
+/* VS-67 / IX-39 — the material ledger: a site nothing is being hauled to must not look like one under
+   construction. STARVED reads as a warning, SUPPLIED as normal amber, READY as good. */
+.ghost-count{
+  position:absolute;bottom:1px;right:2px;line-height:1;font-family:var(--font-mono);
+  letter-spacing:.02em;color:var(--txt-dim);
+}
+.ghost-starved{border-color:var(--bad);background:rgba(194,90,63,.08)}
+.ghost-starved .ghost-glyph{opacity:.45}
+.ghost-starved .ghost-count{color:var(--bad-txt)}
+.ghost-ready{border-style:solid;border-color:var(--good)}
+.ghost-ready .ghost-count{color:var(--good)}
+
+/* IX-103 — on-map WORK markers: a small tag floating over every crew member who really is on a
+   job (roster deck/x/y/task). Idle/walking crew get none — the absence is the information. */
+/* z-index 5: the layer is appended to .stage lazily, so it must not outrank the stage cards
+   (.stage-card is 4, .design-layer is 5). It no longer competes with RELATIONS — that surface
+   left .stage entirely and is now a body-level takeover (see "RELATIONS surface" at the bottom). */
+.work-layer{position:absolute;inset:0;pointer-events:none;z-index:5}
+.work-layer:empty{display:none}
+.work-mark{
+  position:absolute;transform:translate(-50%,-100%);white-space:nowrap;
+  font-family:var(--font-mono);letter-spacing:.10em;line-height:1;
+  color:var(--txt-onacc);background:var(--amber-1);border-radius:2px;padding:2px 4px;
+  box-shadow:0 0 0 1px rgba(12,10,8,.65);
+}
+
+/* ==== readout (VS-24/25, VS-36..44) ==== */
+.readout{
+  background:var(--bg-side);border-left:1px solid var(--ln-hair);padding:16px;
+  display:flex;flex-direction:column;gap:10px;font-size:11px;min-height:0;overflow-y:auto;
+}
+#ro-body{display:flex;flex-direction:column;gap:10px}
+.ro-name{color:var(--amber-1);font-size:13px;font-weight:700;letter-spacing:.02em}
+.ro-role{color:var(--txt-dim);text-transform:uppercase;letter-spacing:.1em;font-size:9.5px}
+.ro-traits{display:flex;gap:6px;flex-wrap:wrap}
+.trait{border:1px solid var(--ln-chip);border-radius:3px;padding:2px 7px;font-size:9.5px;color:var(--txt)}
+.ro-task{border-top:1px dashed var(--ln-hair);padding-top:10px;color:var(--txt-hi);font-size:11px}
+.ro-morale{color:var(--txt-dim);font-size:10.5px;line-height:1.6}
+.ro-empty{color:var(--txt-dim);font-size:11px;letter-spacing:.06em}
+.ro-guide{color:var(--txt-faint);font-size:9.5px;letter-spacing:.06em}
+/* ship vitals block sits directly above the action buttons (VS-24/25) */
+.ro-ship{margin-top:auto;border-top:1px dashed var(--ln-hair);padding-top:10px}
+.metric{margin:5px 0}
+.metric .row{display:flex;justify-content:space-between;font-size:9.5px;letter-spacing:.06em;margin-bottom:3px}
+.metric .row span:first-child{color:var(--txt-dim)}
+.metric .row span:last-child{color:var(--txt)}
+.track{height:3px;border-radius:2px;background:var(--ln-hair);overflow:hidden}
+.fill{height:3px;border-radius:2px;transition:width .25s ease,background .25s ease}
+/* action buttons (VS-41..44) */
+.ro-actions{display:flex;flex-direction:column;gap:6px}
+.ro-actions button{
+  text-align:center;padding:7px;border-radius:3px;font-size:11px;cursor:pointer;
+  background:transparent;
+  transition:background-color .12s linear,color .12s linear,border-color .12s linear;
+}
+.btn-primary{border:1px solid var(--amber-1);color:var(--amber-3)}
+.btn-primary:hover{background:var(--bg-hover)}
+.btn-primary:active{background:var(--sel-bg)}
+.btn-secondary{border:1px solid var(--ln-chip);color:var(--txt)}
+.btn-secondary:hover{background:var(--bg-inset);color:var(--txt-hi);border-color:var(--txt-faint)}
+#b-move.armed,#b-move.armed:hover{background:var(--sel-bg);color:var(--sel-fg);border-color:var(--sel-bd)}
+.ro-actions button:disabled{
+  color:var(--txt-faint);border-color:var(--ln-hair);cursor:default;pointer-events:none;
+}
+
+/* ==== bottom console (VS-26) ==== */
+.console{
+  display:flex;align-items:stretch;border-top:1px solid var(--ln-hair);background:var(--bg-bar);
+  min-height:0;min-width:0; /* the grid track must not adopt this row's content min-content */
+}
+.console-menu{
+  flex:1;min-width:560px;padding:14px 20px;border-right:1px solid var(--ln-hair);
+  display:flex;flex-direction:column;gap:10px;overflow:hidden;
+  contain:inline-size; /* nowrap children (hotkey line) must not propagate min-content
+                          and widen the app grid past the viewport (1360–1505px rail clip) */
+}
+.console-lens{width:440px;flex:none;padding:14px 20px;border-right:1px solid var(--ln-hair)}
+.console-sensor{width:400px;flex:none;padding:14px 20px;overflow:hidden;display:flex;flex-direction:column}
+
+/* tabs (VS-45) */
+.tabrow{
+  display:flex;gap:8px;flex:none;overflow-x:auto;scrollbar-width:none;
+}
+.tabrow::-webkit-scrollbar{display:none}
+.tab{
+  padding:9px 16px;border-radius:3px;font-size:11px;letter-spacing:.08em;cursor:pointer;
+  background:var(--bg-inset);color:var(--txt-dim);border:1px solid var(--ln-chip);flex:none;
+  transition:background-color .12s linear,color .12s linear,border-color .12s linear;
+}
+.tab:hover{color:var(--txt);border-color:var(--txt-faint)}
+.tab.on,.tab.on:hover{background:var(--sel-bg);color:var(--sel-fg);border-color:var(--sel-bd)}
+
+/* the pane region takes the zone's leftover height and scrolls inside it, so a tall CREW/
+   CHRONICLE pane can never push the hotkey line out of the 170px console (VS-26 stacking) */
+.menu-content{flex:1 1 0;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.menu-content > *{min-height:0}
+/* build palette (VS-47) */
+.palette-row{display:flex;gap:8px;align-items:center}
+.place-label{flex:none}
+.palette{display:flex;gap:8px;align-items:center}
+.tool{
+  padding:8px 14px;border-radius:3px;font-size:10.5px;cursor:pointer;background:transparent;
+  color:var(--txt-dim);border:1px solid var(--ln-hair);flex:none;
+  transition:background-color .12s linear,color .12s linear,border-color .12s linear;
+}
+.tool:hover{color:var(--txt);border-color:var(--ln-chip)}
+.tool.on,.tool.on:hover{background:var(--sel-bg);color:var(--sel-fg);border-color:var(--sel-bd)}
+/* E0-4 stockpile accept-filter chips — the same .tool on/off chip (a filter toggle IS an on/off
+   tool), on their own row under PLACE and tighter, because the console row is a hard 170px and the
+   two rows plus the hotkey line have to live inside it. */
+.build-tab{display:flex;flex-direction:column;gap:6px;min-height:0}
+.stock-filter{gap:4px}
+.stock-filter .tool{padding:5px 8px;font-size:9.5px}
+.tool-cancel:hover{color:var(--bad-txt);border-color:var(--demo-bd)}
+.tool-cancel.on,.tool-cancel.on:hover{background:var(--demo-bg);color:var(--demo-fg);border-color:var(--demo-bd)}
+/* tab content blocks */
+.tab-block{overflow-y:auto;min-height:0}
+.menu-msg{font-size:10.5px;color:var(--txt-dim);letter-spacing:.04em;padding:8px 0}
+.moss-live{color:var(--warn-txt);padding-top:0}
+/* MOSS tab terminal directory (polish): clickable [TID · DECK n] rows → open that IDE */
+.term-list{display:flex;flex-direction:column;gap:4px;overflow-y:auto;min-height:0}
+.term-row{
+  padding:5px 10px;border:1px solid var(--ln-chip);border-radius:3px;background:var(--bg-inset);
+  color:var(--txt);font-size:10.5px;letter-spacing:.04em;width:100%;flex:none;
+  transition:background-color .12s linear,color .12s linear,border-color .12s linear;
+}
+.term-row:hover{background:var(--bg-hover);color:var(--txt-hi);border-color:var(--txt-faint)}
+.term-row.open,.term-row.open:hover{background:var(--sel-bg);color:var(--sel-fg);border-color:var(--sel-bd)}
+.chron-block{padding-right:6px}
+.chron-day{font-size:10.5px;color:var(--amber-2);letter-spacing:.06em;padding:6px 0 2px}
+.chron-line{font-size:10.5px;color:var(--txt);line-height:1.6}
+/* CREW tab table (IX-72 + polish TRAITS column + scroll affordance) */
+.crew-tab-wrap{position:relative;min-height:0;display:flex;flex-direction:column;flex:1 1 0}
+.crew-table{overflow-y:auto;min-height:0;flex:1 1 0;display:flex;flex-direction:column;gap:4px}
+/* a visible scrollbar thumb for the table (the shared * rule is near-invisible on the dark bar) */
+.crew-table{scrollbar-color:var(--ln-chip) var(--bg-inset)}
+.crew-table::-webkit-scrollbar{width:9px}
+.crew-table::-webkit-scrollbar-track{background:var(--bg-inset);border-radius:4px}
+.crew-table::-webkit-scrollbar-thumb{background:var(--ln-chip);border-radius:4px;border:2px solid var(--bg-inset)}
+.crew-table::-webkit-scrollbar-thumb:hover{background:var(--txt-faint)}
+.crew-trow{
+  display:grid;grid-template-columns:minmax(96px,1.15fr) .8fr .7fr minmax(112px,1.7fr) 44px 1fr 52px;
+  gap:9px;align-items:center;padding:3px 8px;border:1px solid transparent;border-radius:3px;
+  font-size:10.5px;color:var(--txt);cursor:pointer;width:100%;
+  transition:background-color .12s linear,border-color .12s linear;
+}
+.crew-trow:hover{background:var(--bg-inset);border-color:var(--ln-chip)}
+.crew-trow.sel,.crew-trow.sel:hover{background:var(--bg-selrow);border-color:var(--sel-bd)}
+.crew-trow.pending{border-color:var(--amber-2)}
+.crew-trow span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crew-trow .tc-name{color:var(--txt-hi)}
+.crew-trow .tc-role{color:var(--txt-dim);text-transform:uppercase;letter-spacing:.06em;font-size:9.5px}
+.crew-trow .tc-mood{color:var(--txt-dim)}
+.crew-trow .tc-morale{text-align:right}
+.crew-trow .tc-deck{color:var(--txt-dim);text-align:right}
+/* traits chips in the table — truncate gracefully (row clips overflow) */
+.crew-trow .tc-traits{display:flex;gap:4px;overflow:hidden}
+.tchip{
+  flex:none;border:1px solid var(--ln-chip);border-radius:3px;padding:1px 5px;font-size:9px;
+  color:var(--txt-dim);letter-spacing:.02em;white-space:nowrap;
+}
+.tchip-none{color:var(--txt-faint)}
+/* "▾ N MORE" indicator + bottom fade — signals rows exist below the fold */
+.crew-more{
+  position:absolute;left:0;right:0;bottom:0;z-index:2;pointer-events:none;text-align:center;
+  padding:3px 0 2px;font-size:9px;letter-spacing:.14em;color:var(--amber-2);
+  background:linear-gradient(to top,var(--bg-bar) 40%,rgba(22,19,16,0));
+}
+.crew-tab-wrap.has-more .crew-table{padding-bottom:14px}
+/* hotkey line (IX-14; decorative tier — redundant with visible controls) */
+.hotkeys{font-size:9.5px;color:var(--txt-faint);letter-spacing:.06em;margin-top:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lens-foot{margin-top:12px}
+
+/* lens select (VS-50) */
+.lens-row{display:flex;gap:6px;margin-top:10px}
+.lens-row button{
+  flex:1;text-align:center;padding:10px 2px;border-radius:3px;font-size:10.5px;cursor:pointer;
+  background:var(--bg-inset);color:var(--txt-dim);border:1px solid var(--ln-chip);
+  transition:background-color .12s linear,color .12s linear,border-color .12s linear;
+  white-space:nowrap;overflow:hidden;
+}
+.lens-row button:hover{color:var(--txt);border-color:var(--txt-faint)}
+.lens-row button.on,.lens-row button.on:hover{background:var(--sel-bg);color:var(--sel-fg);border-color:var(--sel-bd)}
+
+/* sensor log (VS-51..53; IX-90 last 5, newest at the bottom) */
+.loglines{
+  flex:1;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;margin-top:8px;
+}
+.loglines .line{
+  font-size:10.5px;line-height:1.7;color:var(--txt-dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.loglines .line .ts{color:var(--txt-dim)}
+.loglines .line:last-child{color:var(--txt)}
+.loglines .line:last-child .ts{color:var(--amber-2)}
+
+/* mono helper (inspect/legend content) */
+.mono{font-family:var(--font-mono);font-size:9.5px;line-height:1.5}
+
+/* ==== disconnect overlay (VS-61 / IX-95) ==== */
+.disconnected{
+  position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(12,10,8,.88);z-index:50;
+}
+.disc-chip{
+  display:inline-flex;align-items:center;gap:10px;border:1px solid var(--demo-bd);
+  background:var(--bg-bar);padding:14px 22px;border-radius:3px;color:var(--warn-txt);
+  font-size:11px;letter-spacing:.18em;
+}
+.disc-dot{width:7px;height:7px;border-radius:50%;background:var(--bad-txt);animation:plnBlink 1.6s infinite;flex:none}
+
+/* ==== floating panels (VS-56) ==== */
+#panels{position:fixed;inset:0;pointer-events:none;z-index:30}
+.panel{
+  position:absolute;pointer-events:auto;min-width:280px;max-width:420px;
+  background:var(--bg-side);border:1px solid var(--ln-chip);border-radius:4px;
+  box-shadow:0 12px 32px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden;
+}
+.panel-dialogue{top:64px;right:332px;width:360px;max-height:60vh}
+.panel-citizen{top:5vh;right:36px;width:min(560px,94vw);max-width:min(560px,94vw);max-height:90vh}
+.panel-terminal{left:20px;bottom:190px;width:min(560px,60vw);max-height:44vh}
+.panel-bar{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-bar);
+  border-bottom:1px solid var(--ln-hair);cursor:grab;user-select:none;touch-action:none;
+}
+.panel-bar:active{cursor:grabbing}
+.panel-title{
+  flex:1;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber-1);
+  font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.panel-x{
+  padding:1px 7px;font-size:13px;line-height:1;color:var(--txt-dim);background:transparent;
+  border:1px solid transparent;border-radius:3px;cursor:pointer;flex:none;
+}
+.panel-x:hover{color:var(--bad-txt);border-color:var(--ln-chip)}
+.panel-body{padding:11px 12px;overflow:auto;display:flex;flex-direction:column;gap:10px;min-height:0}
+
+/* dialogue window (VS-57) */
+.chat-transcript{display:flex;flex-direction:column;gap:8px;overflow:auto;max-height:34vh}
+.chat-line{font-size:12px;line-height:1.5}
+.chat-who{color:var(--amber-2);font-weight:700;margin-right:6px}
+.chat-who:empty{display:none}
+.chat-said{color:var(--txt-hi)}
+/* B1: player's own lines read as a muted echo; the crew's voice keeps the bright default. */
+.chat-line-you .chat-who{color:var(--txt-dim)}
+.chat-line-you .chat-said{color:var(--txt)}
+.chat-effect{
+  font-size:11px;font-style:italic;color:var(--warn-txt);
+  border-left:2px solid var(--amber-1);padding-left:8px;
+}
+.chat-stream{font-size:12px;color:var(--txt-dim);border-left:2px solid var(--ln-chip);padding-left:8px}
+.chat-input{display:flex;align-items:center;gap:7px;border-top:1px solid var(--ln-hair);padding-top:9px}
+.chat-indicator{width:8px;height:8px;border-radius:50%;background:var(--txt-faint);flex:none}
+.chat-indicator.streaming{background:var(--amber-2);animation:plnPulse 1.2s ease-in-out infinite}
+.chat-indicator.idle{background:var(--good)}
+.chat-indicator.ended{background:var(--txt-faint)}
+.chat-text{
+  flex:1;min-width:0;font:inherit;font-size:12px;color:var(--txt-hi);background:var(--bg-void);
+  border:1px solid var(--ln-chip);border-radius:3px;padding:5px 8px;
+}
+.chat-text:focus{border-color:var(--amber-1)}
+.chat-text:disabled{opacity:.5}
+.chat-send{
+  flex:none;border:1px solid var(--ln-chip);color:var(--txt);border-radius:3px;padding:5px 12px;
+  font-size:11px;text-align:center;
+  transition:background-color .12s linear,color .12s linear,border-color .12s linear;
+}
+.chat-send:hover{background:var(--bg-inset);color:var(--txt-hi);border-color:var(--txt-faint)}
+
+/* citizen card (VS-58) */
+.cit-head{display:flex;gap:12px;align-items:flex-start}
+.portrait{width:64px;height:64px;border-radius:3px;flex:none;border:1px solid var(--ln-chip);object-fit:cover}
+.portrait.silhouette{
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;
+  letter-spacing:.04em;color:var(--txt-onacc);
+}
+.cit-ident{min-width:0;display:flex;flex-direction:column;gap:5px}
+.cit-name{font-size:13px;font-weight:700;color:var(--amber-1)}
+.cit-role{font-size:9.5px;color:var(--txt-dim);letter-spacing:.1em;text-transform:uppercase}
+.cit-traits{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.cit-trait{border:1px solid var(--ln-chip);border-radius:3px;padding:2px 7px;font-size:9.5px;color:var(--txt)}
+/* conversation log in the citizen card (B3) */
+.cit-log{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--ln-hair);padding-top:9px}
+.cit-log-title{font-size:9.5px;letter-spacing:.14em;font-weight:700;color:var(--txt-dim)}
+.cit-log-empty{font-size:11px;font-style:italic;color:var(--txt-faint)}
+.cit-log-scroll{display:flex;flex-direction:column;gap:5px;overflow:auto;max-height:24vh}
+.cit-log-line{font-size:11px;line-height:1.45}
+.cit-log-who{font-weight:700;font-size:9px;letter-spacing:.08em;margin-right:6px}
+.cit-log-you .cit-log-who{color:var(--txt-dim)}
+.cit-log-you .cit-log-text{color:var(--txt)}
+.cit-log-crew .cit-log-who{color:var(--amber-2)}
+.cit-log-crew .cit-log-text{color:var(--txt-hi)}
+
+/* ==== crew DOSSIER (the enlarged person-detail surface) ==== */
+.panel-citizen .panel-body{gap:12px;padding:14px 15px}
+/* identity band */
+.dsr-head{display:flex;gap:14px;align-items:flex-start}
+.dsr-portrait{flex:none;width:104px;height:104px;border-radius:6px;overflow:hidden;
+  border:1px solid var(--ln-chip);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.dsr-portrait .portrait{width:104px;height:104px;border-radius:0;border:0}
+.dsr-ident{min-width:0;flex:1;display:flex;flex-direction:column;gap:7px}
+.dsr-name{font-size:18px;font-weight:700;color:var(--amber-1);letter-spacing:.02em;line-height:1.1}
+.dsr-role{font-size:10px;color:var(--txt-dim);letter-spacing:.09em;text-transform:uppercase}
+.dsr-chips{display:flex;flex-wrap:wrap;gap:6px}
+.dsr-emo{align-self:flex-start;font-size:10px;padding:3px 9px;border-radius:20px;
+  background:rgba(224,163,90,.14);border:1px solid rgba(224,163,90,.4);color:var(--amber-2);
+  letter-spacing:.04em}
+.dsr-legend{font-size:9.5px;font-style:italic;color:var(--txt-faint);line-height:1.4;
+  border-left:2px solid var(--ln-chip);padding-left:9px}
+/* two-column section grid */
+.dsr-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+@media (max-width:520px){.dsr-grid{grid-template-columns:1fr}}
+.dsr-sec{display:flex;flex-direction:column;gap:7px;padding:10px 11px;border-radius:7px;
+  background:rgba(255,255,255,.02);border:1px solid var(--ln-hair)}
+.dsr-sample{background:rgba(255,196,128,.03);border-style:dashed;border-color:rgba(224,163,90,.28)}
+.dsr-sec-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dsr-sec-title{font-size:9.5px;letter-spacing:.14em;font-weight:700;color:var(--txt-dim)}
+.dsr-badge{font-size:8px;letter-spacing:.1em;font-weight:700;color:var(--amber-2);
+  border:1px solid rgba(224,163,90,.4);border-radius:3px;padding:1px 5px;opacity:.85}
+/* meters (needs / standing — the MORALE meter went at M1-F) */
+.dsr-meter{display:flex;align-items:center;gap:8px;font-size:10px}
+.dsr-meter-lbl{flex:none;width:58px;color:var(--txt-dim)}
+.dsr-bar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}
+.dsr-bar-fill{height:100%;border-radius:4px;background:var(--good);transition:width .3s ease}
+.dsr-meter-val{flex:none;width:40px;text-align:right;font-weight:700;color:var(--txt-hi);
+  font-variant-numeric:tabular-nums}
+.dsr-hint{font-size:9.5px;font-style:italic;color:var(--txt-faint);line-height:1.4}
+/* tag rows (traits/values/fears) */
+.dsr-tags{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.dsr-tag-lbl{font-size:8.5px;letter-spacing:.1em;color:var(--txt-faint);margin-right:2px}
+.dsr-tag{font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid var(--ln-chip);
+  color:var(--txt-dim)}
+.dsr-tag.real{color:var(--txt-hi);border-color:rgba(224,163,90,.4)}
+/* relationships */
+.dsr-rel{display:flex;align-items:center;gap:7px;font-size:10px}
+.dsr-rel-dir{flex:none;width:12px;color:var(--txt-faint);text-align:center}
+.dsr-rel-name{flex:1;min-width:0;color:var(--txt-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsr-rel-op{flex:none;font-weight:700;font-variant-numeric:tabular-nums}
+.dsr-rel-note{flex:none;font-size:8.5px;color:var(--txt-faint);font-style:italic}
+/* backstory + memories (full width) */
+.dsr-prose{font-size:11px;line-height:1.5;color:var(--txt);font-style:italic}
+.dsr-mem{display:flex;align-items:baseline;gap:9px;font-size:10px;line-height:1.4}
+.dsr-mem-dots{flex:none;font-size:7px;letter-spacing:1px;color:var(--amber-2)}
+.dsr-mem-text{color:var(--txt)}
+
+/* MOSS terminal drawer (VS-59 — .term-code 12px/18px is LOAD-BEARING) */
+.term-banner{
+  font-size:10.5px;color:var(--bad-txt);background:rgba(194,90,63,.12);
+  border:1px solid var(--demo-bd);border-radius:3px;padding:6px 9px;font-family:var(--font-mono);
+}
+.term-editor{
+  display:flex;height:200px;border:1px solid var(--ln-chip);border-radius:3px;overflow:hidden;
+  background:var(--bg-void);
+}
+.term-gutter{position:relative;flex:0 0 auto;overflow:hidden;background:var(--bg-deck);border-right:1px solid var(--ln-hair)}
+.term-gutter-nums{
+  margin:0;padding:6px 8px;font:400 12px/18px var(--font-mono);color:var(--txt-faint);
+  text-align:right;min-width:26px;user-select:none;
+}
+.term-markers{position:absolute;inset:0;pointer-events:none}
+.term-marker{position:absolute;right:2px;width:7px;height:7px;margin-top:6px;border-radius:50%}
+.term-marker.sev-error{background:var(--bad-txt)}
+.term-marker.sev-warning{background:var(--warn-txt)}
+.term-code{
+  flex:1;resize:none;border:0;outline:none;background:transparent;color:var(--txt-hi);
+  font:400 12px/18px var(--font-mono);padding:6px 8px;white-space:pre;overflow:auto;
+}
+.term-actions{display:flex;align-items:center;gap:10px}
+.term-state{
+  font-size:10px;letter-spacing:.18em;text-transform:uppercase;padding:2px 8px;
+  border-radius:3px;border:1px solid var(--ln-chip);color:var(--txt-dim);
+}
+.term-state.st-dirty{color:var(--warn-txt);border-color:var(--warn-txt)}
+.term-state.st-compiling{color:var(--amber-3);border-color:var(--amber-1)}
+.term-state.st-installed{color:var(--good);border-color:var(--good)}
+.term-state.st-error{color:var(--bad-txt);border-color:var(--demo-bd)}
+.term-install{
+  margin-left:auto;padding:4px 14px;border:1px solid var(--amber-1);color:var(--amber-3);
+  border-radius:3px;font-size:11px;text-align:center;
+  transition:background-color .12s linear;
+}
+.term-install:hover{background:var(--bg-hover)}
+.term-install:disabled{opacity:.4;cursor:default;pointer-events:none}
+.term-diags{display:flex;flex-direction:column;gap:3px;font-family:var(--font-mono);font-size:10.5px}
+.term-diag{color:var(--txt)}
+.term-diag.sev-warning{color:var(--warn-txt)}
+.term-diag.sev-error{color:var(--bad-txt)}
+.term-audit-head{display:flex;align-items:center;gap:8px}
+.term-audit-title{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber-1);font-weight:700}
+.term-audit-refresh{
+  margin-left:auto;padding:1px 8px;font-size:12px;border:1px solid var(--ln-chip);color:var(--txt);
+  border-radius:3px;
+}
+.term-audit-refresh:hover{background:var(--bg-inset);color:var(--txt-hi);border-color:var(--txt-faint)}
+.term-audit{max-height:96px;overflow:auto;display:flex;flex-direction:column;gap:2px;font-family:var(--font-mono);font-size:10.5px;color:var(--txt-dim)}
+
+/* ==== breakpoints (VS-18) ==== */
+@media (max-width:1679px){
+  .console-lens{width:340px}
+  .console-sensor{width:320px}
+  .tab{padding:9px 10px}
+  /* 340px zone: 7 buttons must keep whole labels — shrink type, never clip mid-glyph */
+  .lens-row button{font-size:9.5px;padding:10px 0;letter-spacing:0}
+}
+@media (max-width:1439px){
+  .mid{grid-template-columns:220px 1fr 280px}
+  .readout{padding:12px}
+}
+@media (max-width:1359px){
+  .console-sensor{display:none}
+}

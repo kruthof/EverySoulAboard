@@ -55,6 +55,7 @@ import {
 } from '../src/ui/build-material-model.js';
 import { codeOnly } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
+import { stylesSource } from './styles-source.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
@@ -166,7 +167,7 @@ test('the sparse `materials` channel omits exactly the DEFAULT byte — the clie
 // "is this rule alive" is exactly what a reader of the file cannot tell.
 // MUTATION: delete the final `*/` of that block comment ⇒ RED on both legs.
 test('the chip\'s price rules are actually PARSED — a stray comment cannot swallow them', () => {
-  const css = repoSrc('client/styles.css');
+  const css = stylesSource();
   const fails = [];
 
   // (a) balance, scanned as a stream so a stray closer is caught as well as a missing one.

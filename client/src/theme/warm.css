@@ -1,5 +1,14 @@
 /* Warm-theme CSS custom properties — the DOM/HUD mirror of client/src/theme/warm-tokens.js.
  *
+ * ⛔ RETIRED (VR-A, 2026-08-04) — BEHIND `paper.css`, WHICH @IMPORTS IT. No page links this file
+ * any more; `client/index.html` links `src/theme/paper.css` in the slot this used to hold. It is
+ * NOT dead: every `var(--ink-*)`, `var(--hud-*)`, `var(--trim-*)`, `var(--void-*)` and
+ * `var(--mat-…)` in the six split surface stylesheets still resolves through it, and the redesign
+ * retires those surface by surface (P3 room zoom, P4 overview, P6 moss). Do not add to it; new
+ * tokens go in `paper.css` + `paper-tokens.js`, which are pinned to each other value-for-value.
+ * (The three dev galleries — items-gallery / pawns-gallery / overview-preview — still link this
+ * file directly and are deliberately NOT chased this wave.)
+ *
  * ADDITIVE ONLY. This file defines variables; it styles nothing on its own and must never be
  * edited to override client/styles.css. Later phases (the floating HUD, the `.hud` glass panels)
  * consume these vars; until then this is inert.

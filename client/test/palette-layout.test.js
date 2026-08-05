@@ -32,9 +32,18 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { cssCodeOnly } from './code-only.js';
+import { stylesSource } from './styles-source.js';
 
+// ⚠️ "styles.css" IN THIS FILE'S PROSE IS NOW SIX FILES. The single `client/styles.css` was split by
+// surface at VR-A (2026-08-04) into `client/styles/{base,console,moss,overview,roomzoom,relations}
+// .css` plus the `src/theme/paper.css` token layer. `stylesSource()` reads `client/index.html`, takes
+// its `<link rel=stylesheet>` hrefs IN ORDER and follows each file's `@import`, so `RAW` below is the
+// same text this file always scanned — the whole cascade the browser loads, concatenated in cascade
+// order. Every mutation note, every "delete this rule from styles.css", every `*/`-balance claim
+// still applies; it applies to the cascade rather than to one file. `stylesheet-split.test.js` pins
+// that the set of files, the link order and the dev preview's copy of it stay in step.
 const here = dirname(fileURLToPath(import.meta.url));
-const RAW = readFileSync(join(here, '../styles.css'), 'utf8');
+const RAW = stylesSource();
 const CSS = cssCodeOnly(RAW);
 
 /**

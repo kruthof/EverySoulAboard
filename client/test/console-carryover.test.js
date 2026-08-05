@@ -36,6 +36,7 @@ import { NUDGE_MS } from '../src/ui/console-model.js';
 // rather than read out of the source. Importing the module is DOM-free: it touches `document` only
 // inside its init/paint functions.
 import { pawnSvg } from '../src/ui/roomzoom-view.js';
+import { stylesSource } from './styles-source.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
@@ -72,7 +73,7 @@ function commentOutLines(text, needle) {
 }
 
 /** The CSS with `/* … *\/` stripped, and the LAST declaration of `prop` for exactly `selector`. */
-const CSS = src('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+const CSS = stylesSource().replace(/\/\*[\s\S]*?\*\//g, '');
 function lastDeclaration(css, selector, prop) {
   const want = selector.replace(/\s+/g, ' ').trim();
   const re = new RegExp(prop + '\\s*:\\s*([^;}]+)', 'g');
@@ -240,7 +241,7 @@ test('B2: the task line is styled dim, and `.working` lifts it — the honesty r
   // for entirely the wrong reason. That is `CLAUDE.md` trap 1's vacuous-control shape. The anchor now
   // points at the rule that really does follow `.ov-crewtask.working`, and the sanity check below
   // proves the substitution happened at all rather than trusting it.
-  const blinded = src('styles.css').replace('.ov-crewtask.working{', '/*.ov-crewtask.working{')
+  const blinded = stylesSource().replace('.ov-crewtask.working{', '/*.ov-crewtask.working{')
     .replace('}\n.ov-empty{', '}*/\n.ov-empty{');
   assert.ok(blinded.includes('}*/\n.ov-empty{'),
     'the blinding substitution did not apply — its closing anchor no longer exists in styles.css, so '
@@ -420,7 +421,7 @@ test('C4: the crowded-label de-clutter is BOTH rules — hidden, and revealed on
     + 'the pawn is the only way it comes back.');
   // NEGATIVE CONTROL, the shape `B2` uses: comment each rule out in memory and the reader must go
   // blind. Without this the assertions could be satisfied by the rules appearing in a comment.
-  const raw = src('styles.css');
+  const raw = stylesSource();
   const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
   const noHide = strip(raw.replace('.pl-tag-crowded{opacity:0', '/*.pl-tag-crowded{opacity:0*/ .x{a:b'));
   assert.equal(lastDeclaration(noHide, '.pl-tag-crowded', 'opacity'), null,

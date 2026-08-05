@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path';
 
 import { DocumentLite, makeWindow, keyEvent, dispatchKey, fire, editable } from './dom-lite.js';
 import { cssCodeOnly } from './code-only.js';
+import { stylesSource } from './styles-source.js';
 import * as FAKE from './moss-model-fake.js';
 import {
   MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect,
@@ -132,7 +133,7 @@ test('IX-M1: EVERY top-level game-chrome root index.html declares is display:non
   // index.html, not hand-listed here — so adding a new top-level chrome root without covering it
   // in the takeover rules turns this test red, whatever tag it uses and however it is indented.
   const html = readFileSync(join(CLIENT, 'index.html'), 'utf8');
-  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
+  const css = cssCodeOnly(stylesSource());
   const roots = topLevelBodyRoots(html);
   const tags = roots.map((r) => r.tag);
   assert.ok(tags.includes('script'), 'the scanner sees the module script, i.e. it reached the end');
@@ -1239,7 +1240,7 @@ test('IX-M12: a row set that changes length must not move the cursor under the p
  * survive byte-for-byte.
  */
 test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes do not blind it', () => {
-  const raw = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const raw = stylesSource();
   const CRT = /\.moss-crt\{([^}]*)\}/;
 
   // NON-VACUITY FIRST: the matcher must find the rule in the real sheet, or leg 1 proves nothing.
@@ -1340,7 +1341,7 @@ test('the CSS stripper: a comment leaves WHITESPACE behind, and keeps its own li
   // 2. LINE FIDELITY. The stripped sheet must keep the raw sheet's line numbering, or every
   //    `file:line` a guard quotes off it is wrong. Measured on the real styles.css, where the
   //    space-only implementation lost 156 lines.
-  const raw = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const raw = stylesSource();
   const nl = (s) => (s.match(/\n/g) || []).length;
   assert.equal(nl(cssCodeOnly(raw)), nl(raw),
     `the stripped stylesheet has ${nl(cssCodeOnly(raw))} newlines against the raw file's ${nl(raw)}. ` +
@@ -1353,14 +1354,14 @@ test('the CSS stripper: a comment leaves WHITESPACE behind, and keeps its own li
 });
 
 test('VS-M10: reduced motion turns the block cursor steady', () => {
-  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
+  const css = cssCodeOnly(stylesSource());
   const block = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.moss-cursor\s*\{([^}]*)\}/.exec(css);
   assert.ok(block, 'the MOSS reduced-motion block exists');
   assert.match(block[1], /animation\s*:\s*none/);
 });
 
 test('VS-M9: the responsive floor drops LAST FAULT before any other column, and never scrolls x', () => {
-  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
+  const css = cssCodeOnly(stylesSource());
   const mq = /@media\s*\(max-width:\s*1023px\)\s*\{([\s\S]*?)\n\}/.exec(css);
   assert.ok(mq, 'a below-1024 breakpoint exists');
   assert.match(mq[1], /\.c-fault\s*\{[^}]*display\s*:\s*none/, 'the fault column is what drops');
@@ -1372,7 +1373,7 @@ test('VS-M9: the responsive floor drops LAST FAULT before any other column, and 
 });
 
 test('VS-M4a: the bar cell stays width-pinned, so a `--` row does not drift the columns after it', () => {
-  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
+  const css = cssCodeOnly(stylesSource());
   // The block/stipple glyphs come from a fallback face, so `[████▒▒▒▒]` and `[        ]` do not
   // advance identically; without this pin every column after the bar sat ~1.2px out on the `load:-1`
   // row. Measured, not reasoned — and it was the one recorded deviation with no guard, so a future
@@ -1382,7 +1383,7 @@ test('VS-M4a: the bar cell stays width-pinned, so a `--` row does not drift the 
 });
 
 test('VS-M5: the CRT treatment is ONE non-interactive overlay, never a per-character effect', () => {
-  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
+  const css = cssCodeOnly(stylesSource());
   const crt = /\.moss-crt\{([^}]*)\}/.exec(css);
   assert.ok(crt);
   assert.match(crt[1], /pointer-events:none/);
@@ -2362,7 +2363,7 @@ test('OD-P: the affordance is a SIGN, not a control — nothing about it adds na
   // 3. and the stylesheet takes the pointer away, so even a stray click lands on the pane behind it.
   //    Read through the SHARED stripper with a non-vacuity precondition (trap 1): a commented-out
   //    rule must not satisfy this.
-  const raw = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const raw = stylesSource();
   const RULE = /\.moss-more\{([^}]*)\}/;
   const live = RULE.exec(cssCodeOnly(raw));
   assert.ok(live, 'precondition: `.moss-more` is a real rule in the shipped sheet');

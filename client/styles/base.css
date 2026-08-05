@@ -1,0 +1,125 @@
+/* BASE — the shared ground every surface stands on: the legacy console token block, the bundled
+   @font-face rules, the element resets and the one shared `.zone-label`.
+   Lines 1-71 of the old single `client/styles.css`, moved VERBATIM at the VR-A split (2026-08-04);
+   the only edits are the two font URLs (now `../assets/…`, because this file lives one directory
+   deeper than the old one did) and the added Instrument Serif faces + `--font-serif`.
+   THIS IS THE FIRST STYLESHEET `client/index.html` LINKS — cascade position 1. The paper/ink token
+   layer (`src/theme/paper.css`, which pulls the retired `warm.css` in behind it) is linked LAST, so
+   a token declared in both places resolves to the PAPER value. That is not a shadow theme, it is
+   the transition: nothing in this file's `:root` block is deleted this wave, and every
+   `var(--x, fallback)` in the split files now quotes the value the cascade actually resolves to
+   (seven disagreed at the split — see the VR-A commit; `stylesheet-split.test.js` keeps them honest).
+
+   ⛔ THE OLD LINE NUMBERS. `docs/` cites `styles.css:NNN` in about fifteen places — MECHANICS.md,
+   four design specs, and (load-bearing, because the milestone is chartered) `perilune-m4.packages.md`,
+   which names `styles.css:428,874,1326,1808` as the Persona window's mount and its two hide rules.
+   Those citations are now stale, and this is the table that translates them. FILED for the
+   integrator, not silently fixed here: package A is client-only.
+
+       old styles.css   →  file                     what
+       1-71             →  styles/base.css          tokens, @font-face, resets, .zone-label
+       72-611           →  styles/console.css       the `.app` console + #panels + dossier + .term-*
+       612-876          →  styles/moss.css          the MOSS full-window takeover
+       877-1301         →  styles/overview.css      Level-1 Overview, onboarding, motion keyframes
+       1302-1317        →  styles/console.css (end) the console breakpoints — THE ONE MOVED CHUNK
+       1318-1792        →  styles/roomzoom.css      Level-2 Room Zoom
+       1793-1917        →  styles/relations.css     the RELATIONS web
+
+   The four M4 citations land as: :428 → console.css (`#panels`), :874 → moss.css
+   (`body.moss-open .app`), :1326 → roomzoom.css (`body.roomzoom-open`), :1808 → relations.css.
+
+   "The Console" — warm Space Mono console skin (P2.1 UI rebuild).
+   Visual contract: VISUAL-SPEC v1 (docs/design/perilune-game-ui.dc.html is the mock).
+   Load-bearing couplings kept intact: .stage padding 14px (main.js layout() subtracts 28),
+   .term-code line-height 18px (terminal.js LINE_HEIGHT), every JS-set id/class restyled here. */
+
+/* ==== tokens (VS-1) ==== */
+:root{
+  /* backgrounds */
+  --bg-void:#0c0a08; --bg-deck:#12100d; --bg-bar:#161310; --bg-side:#14110e;
+  --bg-inset:#1a1611; --bg-hover:#2a2013; --bg-selrow:#221b12;
+  /* lines */
+  --ln-hair:#2b241c; --ln-chip:#3a332a; --ln-row:#2e2820;
+  /* amber accent ramp */
+  --amber-1:#cf7a33; --amber-2:#e8934a; --amber-3:#f2b563; --amber-4:#b5652a;
+  /* text ramp */
+  --txt-hi:#e8dcc9; --txt:#b3aa9c; --txt-dim:#8c8377; --txt-faint:#57503f;
+  --txt-onacc:#12100d; --txt-peak:#fefbf6;
+  /* semantic */
+  --good:#5aa77f; --warn:#cf7a33; --warn-txt:#e8934a;
+  --bad:#c25a3f; --bad-txt:#e07a5f; --bad-deep:#a53a25;
+  /* selected-state trio (tabs, tools, lenses, .on) */
+  --sel-bg:#3a2a12; --sel-fg:#f2b563; --sel-bd:#cf7a33;
+  /* demolish-red trio (armed CANCEL) */
+  --demo-bg:#3a1a10; --demo-fg:#e07a5f; --demo-bd:#a53a25;
+  /* legacy aliases hud.js writes inline — keep these names (VS-2) */
+  --faint:#57503f;
+  /* type */
+  /* ⚠️ SHADOW THEME, RECONCILED AT VR-A — and this one was live. This declaration read
+     `'Space Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace` while `warm.css` declared
+     `--font-mono:'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace`, and warm.css has been
+     linked AFTER this file since the day it landed — so the stack every surface has actually been
+     rendering with is warm's, and the one written here has never once been used. Making them the
+     same string is a NO-OP in the browser (the later declaration wins either way; no page loads
+     this file without the theme layer) and it stops the next reader reasoning from the loser.
+     `paper-tokens.test.js`'s mirror is what found it. */
+  --font-mono:'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* VR-A: the redesign's display/prose face. Space Mono keeps every micro-label, number and stat;
+     Instrument Serif takes headlines, body prose and italic captions (charter §1). Declared here,
+     beside --font-mono, so a surface never has to know which token file it came from. */
+  --font-serif:'Instrument Serif',ui-serif,Georgia,serif;
+}
+
+/* ==== fonts (VS-10/11 — bundled, offline; latin subset committed at these paths) ==== */
+/* The URLs are relative to THIS FILE (client/styles/), not to the page — hence `../assets/…`.
+   They read `assets/…` while this block lived in client/styles.css; the split moved the file one
+   directory deeper and a stale URL here fails SILENTLY (the browser falls back to a system mono
+   and every width pin in the MOSS suite drifts). */
+@font-face{ font-family:'Space Mono'; src:url('../assets/fonts/space-mono-400.woff2') format('woff2');
+  font-weight:400; font-style:normal; font-display:swap; }
+@font-face{ font-family:'Space Mono'; src:url('../assets/fonts/space-mono-700.woff2') format('woff2');
+  font-weight:700; font-style:normal; font-display:swap; }
+/* VR-A (charter §1, ruling E9): serif + mono only — Inter is NOT shipped. Two subsets, authored
+   here rather than copied from the Vorsatz DS `fonts.css`, which references seven subset files
+   (cyrillic, greek, vietnamese, …) this repo does not commit and would 404 on every boot. */
+@font-face{ font-family:'Instrument Serif'; src:url('../assets/fonts/instrument-serif-latin-400-normal.woff2') format('woff2');
+  font-weight:400; font-style:normal; font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face{ font-family:'Instrument Serif'; src:url('../assets/fonts/instrument-serif-latin-ext-400-normal.woff2') format('woff2');
+  font-weight:400; font-style:normal; font-display:swap;
+  unicode-range:U+0100-02AF,U+0304,U+0308,U+0329,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+
+/* ==== base ==== */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg-void)}
+/* hud.js hides tab panes via the `hidden` attribute; component display rules
+   (.palette-row{display:flex} etc.) would otherwise beat the UA's [hidden] default. */
+[hidden]{display:none !important}
+body{
+  color:var(--txt); font-family:var(--font-mono); font-size:11px;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--sel-bg);color:var(--sel-fg)}
+
+/* scrollbars (VS-54) */
+*{scrollbar-width:thin;scrollbar-color:var(--ln-chip) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--ln-hair);border-radius:4px;border:2px solid var(--bg-side)}
+::-webkit-scrollbar-thumb:hover{background:var(--ln-chip)}
+
+/* focus (VS-55) */
+:focus{outline:none}
+:focus-visible{outline:1px solid var(--warn-txt);outline-offset:2px;border-radius:3px}
+
+/* button reset — every control styles itself below */
+button{
+  font:inherit;font-family:var(--font-mono);color:inherit;background:transparent;
+  border:none;padding:0;margin:0;cursor:pointer;text-align:left;
+}
+
+/* section headers */
+.zone-label{
+  font-size:10px;font-weight:400;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--txt-faint);
+}
