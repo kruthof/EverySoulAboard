@@ -51,8 +51,18 @@ export const NO_PODS = 'NO CAPSULES ABOARD';
 export const TICKS_PER_DAY = 864000;
 /** Sim ticks per second (`Simulation.TicksPerSecond`). */
 export const TICKS_PER_SECOND = 10;
-/** VS-M4: the load bar is exactly 8 cells wide. */
-export const BAR_WIDTH = 8;
+/**
+ * VS-M4: how many cells the load bar has.
+ *
+ * ⭐ WIDENED 8 → 10 AT VR-P6 (the paper retint), and it is a VISUAL constant living in the model
+ * because the model is where the bar STRING is composed. The redesign draws the bar as ten ENGRAVED
+ * CELLS (`design-import/Perilune Game.dc.html` Screen 03, ten 15×15 boxes at a 3px gap; the visual
+ * charter §1 says "8 cells (ship gauges) / 10 cells (MOSS load)"), and `moss-screen.js` renders one
+ * cell per character of this string — so the cell count IS this number. The character record is
+ * unchanged in KIND: `[` + width cells + `]`, still fixed-width, still the thing the ledger line's
+ * `textContent` is made of.
+ */
+export const BAR_WIDTH = 10;
 /** IX-M42: the prompt is bounded (the host caps at the same number — this is the client half). */
 export const PROMPT_MAX = 240;
 /** IX-M9: the command-history ring. */

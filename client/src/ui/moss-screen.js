@@ -17,7 +17,16 @@
 // built as ONE fixed-width string (space-padded to the COLS geometry below) and rendered in a
 // `white-space:pre` element, so a `--` load or a missing fault shifts nothing. A row's
 // `textContent` is therefore a well-formed fixed-width line, which is exactly what the node tests
-// assert. The load bar is text (`[████▒▒▒▒]`), never a DOM widget.
+// assert.
+//
+// ⭐ THE LOAD BAR IS STILL THAT RECORD, AND SINCE VR-P6 IT IS ALSO TEN ENGRAVED CELLS. The paper
+// retint (visual charter §1 / design Screen 03) draws the bar as ten boxes — filled = solid ink,
+// empty = a hairline ring over a 45° micro-hatch — and there is no way to make a run of `█`/`▒`
+// glyphs look like that. So `barCell()` below emits ONE ELEMENT PER CHARACTER of the model's bar
+// string: the characters stay in the DOM (the line's `textContent` is byte-identical to what the
+// text bar produced), and CSS suppresses each glyph and paints the box in its place. Nothing here
+// decides how many cells are filled — that is `moss-model.loadBar`, exactly as before, and the
+// screen has no second opinion about a load.
 
 import { Cmd } from '../wire/session.js';
 import * as MODEL from './moss-model.js';
@@ -27,11 +36,14 @@ import { MossProgramEditor } from './moss-program-editor.js';
 export const COLS = {
   gutter: 2,   // '> ' on the selected row, two spaces otherwise — nothing shifts on move (VS-M3)
   label: 18,
-  bar: 10,     // '[' + 8 cells + ']' (VS-M4 fixes the bar at 8 cells)
+  // '[' + BAR_WIDTH cells + ']'. VR-P6 widened the model's `BAR_WIDTH` 8 → 10 for the design's
+  // engraved ten-cell gauge, so this is 12 where it was 10 — and every offset below moves with it,
+  // which is exactly why they are DERIVED and never written down twice.
+  bar: 12,
   gapBar: 2,
   load: 4,     // right-aligned: '100%' | ' 61%' | '  --'
   gapLoad: 3,
-  state: 12,   // 'ATTEND ⚠' etc., left-aligned (the ⚠ is width-pinned to 1ch in CSS)
+  state: 12,   // 'ATTEND △' etc., left-aligned (the △ is width-pinned to 1ch in CSS)
 };
 /** Character offset of each column's first cell. */
 export const COL_AT = (() => {
@@ -378,6 +390,73 @@ function joinHints(hints) {
  *  output degrades to a blank rather than throwing mid-render. */
 const S = (v) => (v == null ? '' : String(v));
 
+/**
+ * ⭐ VR-P6 — THE ENGRAVED LOAD GAUGE. One `<i class="c-cell">` per character of the model's bar
+ * string, wrapped in the same `.c-bar` span the text bar used, followed by the grid's own gap
+ * characters as a plain text node.
+ *
+ * ⛔ WHY THE CHARACTERS STAY IN THE DOM, and it is not a courtesy to the tests. A ledger line is a
+ * FIXED-WIDTH RECORD (see this file's header): `_ledgerLine` composes it, `columnStarts` in the
+ * suite measures the column offsets back off it, and the `--` row is proven to put every later
+ * column in the same cell as a loaded row by comparing the two RECORDS. Emitting empty boxes would
+ * delete that record and with it the only instrument that can see a bar-cell arithmetic slip. So
+ * the glyph is kept and CSS neutralises it: `.c-cell` is a fixed-size box that is `color:transparent`
+ * and `overflow:hidden`, so the box the player sees is the CSS box and the character inside it
+ * paints nothing and can push nothing — which also retires the fallback-advance drift the old
+ * `.c-bar` width pin existed to hold (`[████▒▒▒▒]` and `[        ]` did not advance identically on
+ * this machine's fallback face). The pin is re-derived and kept anyway; see `moss.css`.
+ *   ⚠️ `font-size:0` WOULD BE THE OBVIOUS WAY TO KILL THE GLYPH AND IT IS THE WRONG ONE — recorded
+ *   because it was tried. The cell's width and height are `em`-derived from the character budget it
+ *   has to fill, and `em` on a `font-size:0` element is 0, so the whole gauge collapses to nothing.
+ *
+ * The brackets are cells too, marked `c-bracket` and painted as nothing: the paper idiom draws no
+ * brackets (design Screen 03 is ten bare boxes), but `[`/`]` are two characters of the record.
+ *
+ * @param {Document} doc
+ * @param {string} barText  `_ledgerLine`'s `bar` field — `[` + cells + `]` + `COLS.gapBar` spaces
+ * @returns {HTMLElement} the `.c-bar` span
+ */
+export function barCell(doc, barText) {
+  const span = mk(doc, 'span', 'c-bar');
+  const text = S(barText);
+  // The bar proper is the first COLS.bar characters; whatever follows is the grid's gap and stays
+  // plain text. Sliced by POSITION rather than by glyph, because a `-1` load's empty cells are
+  // SPACES (`loadBar` writes `[` + width spaces + `]`) and are indistinguishable from the gap.
+  const bar = text.slice(0, COLS.bar);
+  const gap = text.slice(COLS.bar);
+  const cells = mk(doc, 'span', 'c-cells');
+  for (let i = 0; i < bar.length; i++) {
+    const ch = bar[i];
+    const bracket = (i === 0 && ch === '[') || (i === bar.length - 1 && ch === ']');
+    cells.appendChild(mk(doc, 'i',
+      bracket ? 'c-cell c-bracket' : (ch === '█' ? 'c-cell on' : 'c-cell'), ch));
+  }
+  span.appendChild(cells);
+  if (gap) span.appendChild(doc.createTextNode(gap));
+  return span;
+}
+
+/**
+ * The header's inline ink block. `headerLines()` writes `MOSS ▮ MODULAR OPERATIONS &…`, and ▮
+ * (U+25AE) is not in Space Mono — it comes from whatever fallback face the machine has, which is
+ * the charter §1 rule this project already has receipts for ("glyphs not in Space Mono are drawn,
+ * never font glyphs"). The design draws it as an 8×14 ink rectangle, so the character is wrapped
+ * and CSS paints the rectangle over it. The line's `textContent` is unchanged.
+ */
+const HEAD_BLOCK = '▮';
+
+/** One `.moss-headline` div, with the ▮ (if any) wrapped so CSS can draw it. */
+function headlineEl(doc, text) {
+  const el = mk(doc, 'div', 'moss-headline');
+  const s = S(text);
+  const at = s.indexOf(HEAD_BLOCK);
+  if (at < 0) { el.textContent = s; return el; }
+  el.appendChild(doc.createTextNode(s.slice(0, at)));
+  el.appendChild(mk(doc, 'span', 'moss-blk', HEAD_BLOCK));
+  el.appendChild(doc.createTextNode(s.slice(at + HEAD_BLOCK.length)));
+  return el;
+}
+
 // ---- the screen -------------------------------------------------------------------------------
 
 export class MossScreen {
@@ -481,7 +560,9 @@ export class MossScreen {
     // reduced motion); the real <input> sits transparent over the row so typing anywhere on the
     // LEDGER lands in the buffer without a click (IX-M8) and the browser still owns text editing.
     const prompt = mk(doc, 'div', 'moss-promptrow');
-    prompt.appendChild(mk(doc, 'span', 'moss-gt', '>'));
+    // VR-P6: the design's prompt marker is a serif `›`, not the ASCII `>`. It is pure chrome —
+    // nothing reads it, and the ECHO beside it is still the model's buffer verbatim.
+    prompt.appendChild(mk(doc, 'span', 'moss-gt', '›'));
     this.echoEl = mk(doc, 'span', 'moss-echo', '');
     this.cursorEl = mk(doc, 'span', 'moss-cursor', '█');
     this.inputEl = mk(doc, 'input', 'moss-input');
@@ -497,21 +578,31 @@ export class MossScreen {
 
     this.footEl = mk(doc, 'div', 'moss-foot');
 
+    // ⭐ VR-P6 MOVED THE SECOND RULE, and moved nothing else. The design's Screen 03 closes the
+    // page with ONE hairline directly above the prompt (`.moss-ready`) and puts the advisory hard
+    // under the last table row — where the old skin put a rule between the table and the advisory
+    // and nothing between the transcript and the prompt. Same two rules, same elements, one of
+    // them one slot lower.
+    //
+    // ⛔ AND THE DESIGN'S READY LINE IS DELIBERATELY A RULE AND NOT A SENTENCE. The mock prints
+    // `moss rev 4.2.1 ready — type help` beside that hairline; MOSS ALREADY SAYS THAT SENTENCE —
+    // `openMoss()` seeds the transcript with `MOSS REV 4.2.1 READY — TYPE HELP` as its first line
+    // (moss-model.js), a few pixels above this element. Printing it again as chrome would be the
+    // fault log's double-sourcing defect (§13.25 b3) in a new costume, and the chrome copy would
+    // go on claiming readiness over an IX-M13 LINK DOWN notice. So the slot keeps the design's
+    // hairline and lets the model keep the words.
     page.appendChild(this.headEl);
     page.appendChild(mk(doc, 'div', 'moss-rule'));
     page.appendChild(this.bodyEl);
-    page.appendChild(mk(doc, 'div', 'moss-rule'));
     page.appendChild(this.advisoryEl);
     page.appendChild(this.consoleWrapEl);
+    page.appendChild(mk(doc, 'div', 'moss-rule moss-ready'));
     page.appendChild(prompt);
     page.appendChild(this.footEl);
 
-    // VS-M5: ONE overlay element carries the whole CRT treatment (scanlines, vignette),
-    // pointer-events:none, never a per-character effect.
-    const crt = mk(doc, 'div', 'moss-crt');
-    crt.setAttribute('aria-hidden', 'true');
-
-    this.root.replaceChildren(page, crt);
+    // VR-P6: no CRT overlay. The skin is ink on paper (ruling E5) — the scanline/vignette element
+    // that used to be the second child of the root is gone, not restyled.
+    this.root.replaceChildren(page);
     // Clicking anywhere in the page returns focus to the prompt (IX-M8) — EXCEPT on a text-entry
     // surface the user meant to edit: the prompt input itself, or the PROGRAM editor's textarea.
     // Stealing focus back off the editor would make its textarea unclickable (the browser's own
@@ -926,7 +1017,7 @@ export class MossScreen {
     // header (VS-M6) — two lines, then the rule the page's markup already carries
     const head = this.M.headerLines(this.model);
     this.headEl.replaceChildren(
-      ...(Array.isArray(head) ? head : [S(head)]).map((l) => mk(doc, 'div', 'moss-headline', S(l))));
+      ...(Array.isArray(head) ? head : [S(head)]).map((l) => headlineEl(doc, l)));
 
     if (screen === SCREEN.LEDGER) this._renderLedger();
     else if (screen === SCREEN.DETAIL) this._renderDetail();
@@ -948,7 +1039,11 @@ export class MossScreen {
    */
   _ledgerLine(row, selected) {
     const warn = !!row.warn;
-    const stateText = S(row.stateText) + (warn ? ' ⚠' : '');
+    // VR-P6: the attention mark is the design's `△` (Screen 03 — `ATTEND △` / `DEGRADED △` in
+    // oxblood), not the old `⚠`. ONE character either way, so the state cell's width is unchanged;
+    // what changed is which glyph the CSS draws over (see `.moss-warn` in moss.css — it is an SVG
+    // path, because neither mark is in Space Mono).
+    const stateText = S(row.stateText) + (warn ? ' △' : '');
     return {
       gutter: (selected ? '>' : ' ').padEnd(COLS.gutter),
       label: S(row.label).slice(0, COLS.label - 1).padEnd(COLS.label),
@@ -995,14 +1090,14 @@ export class MossScreen {
       el.dataset.index = String(i);
       el.appendChild(mk(doc, 'span', 'c-gutter', p.gutter));
       el.appendChild(mk(doc, 'span', 'c-label', p.label));
-      el.appendChild(mk(doc, 'span', 'c-bar', p.bar));
+      el.appendChild(barCell(doc, p.bar));
       el.appendChild(mk(doc, 'span', 'c-load', p.load));
       const stateEl = mk(doc, 'span', 'c-state' + (p.warn ? ' warn' : ''));
       if (p.warn) {
-        // Split so the ⚠ can be width-pinned without breaking the run of padding around it.
+        // Split so the △ can be width-pinned without breaking the run of padding around it.
         const head = p.stateHead;
         stateEl.appendChild(doc.createTextNode(head + ' '));
-        stateEl.appendChild(mk(doc, 'span', 'moss-warn', '⚠'));
+        stateEl.appendChild(mk(doc, 'span', 'moss-warn', '△'));
         stateEl.appendChild(doc.createTextNode(p.state.slice(head.length + 2)));
       } else {
         stateEl.textContent = p.state;
@@ -1024,9 +1119,12 @@ export class MossScreen {
     wrap.appendChild(rowsEl);
     this.bodyEl.replaceChildren(wrap);
 
-    // The selected row's advisory sits under the rule (VS-M6/IX-M3). '' renders nothing.
+    // The selected row's advisory sits hard under the table (design Screen 03). '' renders nothing.
+    // VR-P6 dropped the `'> '` text prefix: the design's marker is an oxblood serif `›` and it is
+    // now `.moss-adv-line::before` in the stylesheet — chrome belongs in the skin, and the element's
+    // text is the model's sentence and nothing else.
     if (view.advisory) {
-      this.advisoryEl.replaceChildren(mk(doc, 'div', 'moss-adv-line', '> ' + view.advisory));
+      this.advisoryEl.replaceChildren(mk(doc, 'div', 'moss-adv-line', S(view.advisory)));
     } else {
       this.advisoryEl.replaceChildren();
     }

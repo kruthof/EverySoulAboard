@@ -25,7 +25,9 @@ const rowObj = MODEL.rowObj;
 
 export const SCREEN = { LEDGER: 'ledger', DETAIL: 'detail', FAULTLOG: 'faultlog', PROGRAM: 'program' };
 export const STATE = { NOMINAL: 0, ATTEND: 1, DEGRADED: 2, OFFLINE: 3 };
-export const BAR_WIDTH = 8;
+/** VR-P6 widened the shipped `BAR_WIDTH` 8 → 10 for the engraved ten-cell gauge; the double
+ *  follows it, or the DOM suite would render a bar the product never draws. */
+export const BAR_WIDTH = 10;
 export const PROMPT_MAX = 240;
 export const NO_TELEMETRY = 'NO TELEMETRY — LINK DOWN';
 export const FAULT_CAVEAT =
