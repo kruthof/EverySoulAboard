@@ -721,6 +721,45 @@ test('right-click a machine ▸ click the row ▸ ONE prioritise order, in the f
     + '{cmd:"prioritise", cid, x, y, deck}. M2-9 parses exactly these keys.');
 });
 
+// ⭐⭐ VR-P3-a — THE RIGHT-CLICK TAKES THE PIECE UNDER THE POINTER, NOT THE FLOOR BEHIND IT.
+//
+// PRIORITISE is the gesture this defect hurt most: the player points at a MACHINE, and a machine is
+// exactly a piece that STANDS UP off its floor point, so its ink hangs over the tiles behind it. With
+// the floor-plane inverse as the only tier, a right-click on the drawn machine resolved to an empty
+// tile — `prioritiseOffer` found no `devices` row there and the menu SILENTLY did not open, which is
+// the worst shape a miss can take (a stray right-click is deliberately silent, so the two are
+// indistinguishable to a player). Measured before the fix in the running game: 16 of 18 fittings in
+// the wreck's cryo bay resolved 1–3 tiles back, 2 resolved outside the room entirely.
+//
+// The leg drives the SAME coordinates twice. The control is the existing floor behaviour (right-click
+// at the SECOND machine's scene point ⇒ that machine); the subject is the same coordinates with the
+// FIRST machine's drawn piece as `e.target` ⇒ the first machine. If tier one were missing the two
+// would be identical, and if tier one swallowed the canvas the control would break.
+// MUTATION: delete the `data-tile` tier from `roomzoom-view.js`'s `tileAt` ⇒ this reddens.
+test('VR-P3-a: right-clicking a drawn MACHINE offers that machine, not the tile behind it', () => {
+  prime([ADA], null);
+  // CONTROL — bare canvas at CELL's scene point: the floor inverse answers, as it always has.
+  rightClick(CELL);
+  assert.equal(menu().hidden, false, 'control: the menu did not open over the second machine');
+  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR BATTERY');
+  // …and with WING's drawn piece under the pointer at those SAME coordinates, WING is offered.
+  prime([ADA], null);
+  const piece = new RzEl(doc, 'g');
+  piece.setAttribute('data-tile', WING[0] + ',' + WING[1]);
+  piece.dataset.tile = WING[0] + ',' + WING[1];
+  piece.parentNode = canvas();
+  fire(piece, 'contextmenu', atTile(CELL));
+  assert.equal(menu().hidden, false,
+    'the menu did not open at all. A right-click on a drawn machine resolving to empty floor is a '
+    + 'SILENT refusal — the exact failure mode this tier removes.');
+  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR SOLAR WING',
+    'the menu offered the machine the FLOOR point landed on, not the one the player pointed at');
+  clickRow();
+  assert.deepEqual(orders(),
+    [{ cmd: 'prioritise', cid: ADA.cid, x: WING[0], y: WING[1], deck: RECT.deck }],
+    'the order names the tile the floor inverse chose rather than the piece that was pressed');
+});
+
 // ⭐ MUTATION 2 — "send the machine at the wrong tile". The two-machine fixture: the SECOND device,
 // at a different x AND a different y from the first, so sending the first machine's tile, the focus
 // origin, or the room's corner all fail here while passing the leg above.

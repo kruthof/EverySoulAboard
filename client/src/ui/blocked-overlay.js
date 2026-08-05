@@ -168,9 +168,17 @@ export function blockedBadgeSvg(reason, text, unit) {
  * POINTER EVENTS ARE ON, DELIBERATELY — the `zone-overlay.js` finding, inherited rather than
  * rediscovered. Every other group in this stack carries `pointer-events="none"`, and copying that
  * silently disables the `<title>` tooltip. The Room Zoom's click/drag handlers are bound to the
- * CONTAINER and resolve tiles from `clientX/clientY` against the layer's bounding rect; they never
- * read `e.target`, so a child receiving the event and letting it bubble changes nothing.
+ * CONTAINER, so a child receiving the event and letting it bubble changes nothing.
  * `cursor="inherit"` keeps the armed-tool crosshair.
+ *
+ * ⚠️ THE INHERITED SENTENCE *"they never read `e.target`"* IS STALE AND IS CORRECTED HERE TOO — since
+ * VR-P3-a `tileAt` resolves `e.target.closest('[data-tile]')` first. The dashed CELL outlines below
+ * are `place.cell` — sheared into the floor plane on their own tile — so they fall through to the
+ * floor inverse and answer correctly. ⛔ THE LEADER BADGE DOES NOT: it is `place.stand`, upright, so
+ * a press on that ONE label resolves to a tile behind it, exactly as every fitting used to. It is
+ * left alone and RECORDED rather than fixed: the badge is a caption on a refusal, not an affordance,
+ * and giving it a `data-tile` would make a label about a GROUP of tiles claim one of them. A verb
+ * that ever wants to be clicked here needs the `data-tile` tier, not this comment.
  *
  * @param {{tx:number, ty:number, reasonName:string, label:string}[]} tiles roomBlockedTiles output
  * @param {{rx:number, ry:number}} focus the focused room rect's origin, for the local transform

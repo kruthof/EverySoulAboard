@@ -181,13 +181,21 @@ const onScreenExpr = `JSON.stringify((()=>{
     const vh = window.innerHeight, vw = window.innerWidth;
     return { sel, w: Math.round(r.width), h: Math.round(r.height),
       top: Math.round(r.top), bottom: Math.round(r.bottom),
-      hostBottom: Math.round(b.bottom),
-      insideHost: r.top >= b.top - 1 && r.bottom <= b.bottom + 1,
+      hostBottom: Math.round(b.bottom), hostRight: Math.round(b.right), right: Math.round(r.right),
+      // HORIZONTAL CONTAINMENT JOINED THE VERTICAL ONE, and it was added because the pin MISSED a
+      // shipped defect that is this rig's exact subject: the radar svg carried a hard 150x150 inside
+      // a 150px border-box track whose padding-left:26px (a CSS specificity loss) left it 123px of
+      // content, so 27px -- 18% of the instrument -- hung out of the column and was cut off by
+      // .ov-col{overflow:hidden} at EVERY viewport. Vertically it was perfectly placed, so a
+      // top/bottom-only check called it fine. Owner-reported, then reproduced here.
+      insideHost: r.top >= b.top - 1 && r.bottom <= b.bottom + 1
+        && r.left >= b.left - 1 && r.right <= b.right + 1,
       insideView: r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw,
       visiblePx: Math.max(0, Math.min(r.bottom, b.bottom, vh) - Math.max(r.top, b.top, 0)) };
   };
   const out = [probe('#ov-alert', '#ov-ledger'), probe('.ov-ledcaveat', '#ov-ledger'),
-               probe('.ov-radarcap', '#ov-radar'), probe('.ov-cplist', '#ov-compart'),
+               probe('.ov-radarcap', '#ov-radar'), probe('.ov-radarsvg', '#ov-radar'),
+               probe('.ov-cplist', '#ov-compart'),
                probe('.ov-navhint', '#ov-cmd')];
   bar.hidden = was; txt.textContent = wasTxt;
   return out;
@@ -287,18 +295,41 @@ if (c0.tiles.every((t) => t.fittings === 0)) {
 }
 
 // ── the on-screen check ──
-const boxes = await json(onScreenExpr);
-log('\n── ON-SCREEN GEOMETRY (the pin dom-lite cannot carry) ──────────────');
-for (const b of boxes) {
-  if (b.missing) { problems.push(`${b.sel} is not in the DOM at all`); continue; }
-  log(`  ${b.sel.padEnd(16)} ${b.w}×${b.h} top=${b.top} bottom=${b.bottom} `
-    + `hostBottom=${b.hostBottom} visible=${b.visiblePx}px inHost=${b.insideHost} inView=${b.insideView}`);
-  if (!b.insideHost || !b.insideView || b.visiblePx < b.h - 1) {
-    problems.push(`${b.sel} renders ${b.visiblePx}px of ${b.h}px on screen (top=${b.top}, `
-      + `bottom=${b.bottom}, its column ends at ${b.hostBottom}). An affordance clipped out of its `
-      + 'own box is an affordance deleted — see D2 and the always-visible ledger caveat.');
+function readBoxes(boxes, at) {
+  for (const b of boxes) {
+    if (b.missing) { problems.push(`${at}: ${b.sel} is not in the DOM at all`); continue; }
+    log(`  ${b.sel.padEnd(16)} ${b.w}×${b.h} top=${b.top} bottom=${b.bottom} right=${b.right} `
+      + `hostBottom=${b.hostBottom} hostRight=${b.hostRight} visible=${b.visiblePx}px `
+      + `inHost=${b.insideHost} inView=${b.insideView}`);
+    if (!b.insideHost || !b.insideView || b.visiblePx < b.h - 1) {
+      problems.push(`${at}: ${b.sel} renders ${b.visiblePx}px of ${b.h}px on screen (top=${b.top}, `
+        + `bottom=${b.bottom}, right=${b.right}; its column ends at ${b.hostBottom} / ${b.hostRight}). `
+        + 'An affordance clipped out of its own box is an affordance deleted — see D2 and the '
+        + 'always-visible ledger caveat.');
+    }
   }
 }
+const boxes = await json(onScreenExpr);
+log('\n── ON-SCREEN GEOMETRY (the pin dom-lite cannot carry) ──────────────');
+readBoxes(boxes, '1600px');
+
+// ⭐⭐ AND AT THREE NARROWER WIDTHS, BECAUSE THE OWNER'S GESTURE IS SHRINKING THE WINDOW. The readout
+// band's two right-hand tracks were hard pixels (`258px 150px`) with hard 28px gaps, so 490px of it
+// could not compress and only the two PROSE columns gave — measured at a 700px viewport,
+// `compartments` had 147px of content and `aboard` 120px while the instruments kept every pixel they
+// have at 1600. A single-viewport rig cannot see that, and it is the half of this band's design that
+// a player actually operates. Three widths, not a sweep: 1360 is where the radar column used to
+// vanish outright, 1100 is a laptop half-screen, 900 is the narrowest width that still shows all
+// four columns.
+for (const w of [1360, 1100, 900]) {
+  await call('Emulation.setDeviceMetricsOverride', { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(900);
+  const tracks = await evaluate(`getComputedStyle(document.querySelector('.ov-columns')).gridTemplateColumns`);
+  log(`\n── AT ${w}px — tracks ${tracks}`);
+  readBoxes(await json(onScreenExpr), `${w}px`);
+}
+await call('Emulation.clearDeviceMetricsOverride');
+await sleep(900);
 
 // ── THE CLICK MAP AGREES WITH THE DRAWING, measured in the running game ──
 //

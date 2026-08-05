@@ -101,10 +101,17 @@ const BACKOFF_RING_W = ORDER_RING_WIDTH;
  * POINTER EVENTS ARE ON, DELIBERATELY. Every other group in this stack carries
  * `pointer-events="none"`, and the first draft copied that — which silently disabled the `<title>`
  * tooltip that was then the only place the wording existed. The Room Zoom's build/drag/click handlers
- * are bound to the CONTAINER (`rz-canvas`) and resolve tiles from `e.clientX/clientY` against
- * `rz-layers`' bounding rect; they never read `e.target`, so an SVG child receiving the event and
- * letting it bubble changes nothing about them (verified by driving a real drag-build in Chrome).
- * `cursor="inherit"` keeps the armed-tool crosshair.
+ * are bound to the CONTAINER (`rz-canvas`), so an SVG child receiving the event and letting it bubble
+ * changes nothing about them. `cursor="inherit"` keeps the armed-tool crosshair.
+ *
+ * ⚠️ AND ONE SENTENCE OF THIS HEADER IS NOW STALE AND IS CORRECTED RATHER THAN DELETED. It read
+ * *"they never read `e.target`"*. Since VR-P3-a they do: `roomzoom-view.js`'s `tileAt` resolves
+ * `e.target.closest('[data-tile]')` FIRST and falls back to the `clientX/clientY` inverse only on
+ * bare floor. That is still harmless HERE, and for a reason worth writing down rather than assuming:
+ * a zone cell is drawn with `place.cell` — SHEARED INTO THE FLOOR PLANE, on its own tile — and it
+ * carries no `data-tile`, so a press on it falls through to the inverse, which is exactly right about
+ * the floor plane. A future layer that STANDS UP off the floor and takes pointer events must emit
+ * `data-tile` or it re-opens the defect for its own ink.
  *
  * @param {{tx:number, ty:number, restricted:boolean, backedOff:boolean, label:string}[]} tiles
  *   roomZoneTiles output
