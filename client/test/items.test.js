@@ -63,16 +63,35 @@ function idsIn(svg) {
 // never had, and they are the whole of the move. All nine are COSMETIC; index.js's own section
 // comment measures why (every DeviceKind they could plausibly claim is already claimed above).
 // RE-COUNTED off the shipped registry, not derived from this paragraph.
-test('the registry holds exactly 80 items', () => {
-  assert.equal(ITEM_IDS.length, 80);
-  assert.equal(Object.keys(ITEMS).length, 80);
+// ⚠️ 80 → 94 on 2026-08-05 (lane/paper-fixtures). The ship's ARCHITECTURE — doors, hatches, service
+// runs, wall furniture and the three luminaires — is redrawn in the paper/ink dialect in
+// `client/src/items/paper-fixtures.js`, a module with no design card behind it (every dimension in
+// its `SPECS` is a real-world measurement chosen there, not transcribed). ⛔ ALL FOURTEEN ARE NEW
+// ROWS AND NONE REPLACES ONE IN PLACE, which is the opposite of VR-P2's twenty-one and is the whole
+// reason the total moves: the warm rows they displace (`sliding-door`, `hatch-ladder`, `air-vent`,
+// `airlock`, `power-conduit`, `wall-lamp`, `viewport`, `wall-screen`, `vent-fan`, `weapons-rack`,
+// `sun-lamp`, `deck-sign`, `floodlight`, `blast-door`) STAY REGISTERED, at `glyph: null` where they
+// held one, because their wrecked twins are fourteen of the mock's seventy and `wrecked.test.js`
+// walks that bijection positionally. RE-COUNTED off the shipped registry, not derived from here.
+test('the registry holds exactly 94 items', () => {
+  assert.equal(ITEM_IDS.length, 94);
+  assert.equal(Object.keys(ITEMS).length, 94);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource', () => {
+test('the class tally holds: 35 functional, 38 cosmetic, 12 material, 9 resource', () => {
+  // ⚠️ RE-COUNTED AGAIN AFTER lane/paper-fixtures: FUNCTIONAL 29 → 35 and COSMETIC 30 → 38, and
+  // BOTH moved, which is what makes this census worth having. The six functional rows are the three
+  // door states, the deck ladder, the conduit run and the vent grille — every one of them a
+  // `DeviceKind` the sim really has and really projects. The eight cosmetic ones name nothing in
+  // `DeviceKind` at all. ⛔ `DeviceKind.Light` is the one that looks like an omission and is not: it
+  // exists, it is projected, and it has NEVER had a functional piece — `GLYPH_SUBSTITUTE['*']`
+  // borrows a cosmetic luminaire for it, a shape `glyph-map.js` records as a live trap. That borrow
+  // moved from `wall-lamp` to `lamp-sconce` in the same commit and is still a cosmetic row.
+  // MATERIAL and RESOURCE did not move — an addition, not a reclassification.
   // ⚠️ RE-COUNTED AGAIN AFTER VR-P2: COSMETIC 21 → 30, and it is the ONLY class that moved. That is
   // the tell that the fittings package was an ADDITION of nine decor rows and not a reclassification
   // — twenty-one further rows changed their PAINTING in the same commit and are invisible here,
@@ -87,7 +106,7 @@ test('the class tally holds: 29 functional, 30 cosmetic, 12 material, 9 resource
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 9 });
+  assert.deepEqual(by, { functional: 35, cosmetic: 38, material: 12, resource: 9 });
 });
 
 // ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped

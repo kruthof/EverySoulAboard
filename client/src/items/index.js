@@ -3,9 +3,13 @@
 // pairs the pure SVG builder with its sim classification from docs/design/perilune-item-mapping.md:
 //
 // ⚠️ "ALL 70 PIECES OF THE MOCK" WAS THIS FILE'S OPENING CLAUSE AND IS NO LONGER TRUE. The registry
-// is 71: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
+// is 94: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
 // sim fact the mock predates (`ItemKind.Swarf`, from the wreck start's salvage rule) and it is
-// deliberately LAST — see its own comment for why the position is load-bearing.
+// deliberately LAST of the mock-order block — see its own comment for why the position is NOT
+// load-bearing. After it come the redesign's own rows: nine at VR-P2 (the fittings catalogue's
+// pieces the mock never had) and fourteen at lane/paper-fixtures the same day (the ship's
+// architecture, redrawn), 71 → 80 → 94.
+// ⚠️ RE-COUNT THAT NUMBER OFF THE TABLE, NEVER OFF THIS PARAGRAPH — `client/test/items.test.js` does.
 //
 // ⚠️ THE MOCK ALSO CARRIES 70 *WRECKED* TWINS AND THEY ARE NOT IN THIS TABLE. They live in
 // `client/src/items/wrecked.js`, keyed by the PRISTINE itemId, because a wrecked piece is not a
@@ -84,6 +88,8 @@ import * as F from './fixtures.js';
 import * as R from './resources.js';
 import * as C from './cryo.js';
 import * as FT from './fittings.js';
+// — lane/paper-fixtures —
+import * as PF from './paper-fixtures.js';
 
 const fn = (kind, glyph = null) => ({ kind, glyph });
 const dev = (deviceKind, glyph = null, deviceStatus = 'exists') => ({
@@ -156,11 +162,25 @@ export const ITEMS = Object.freeze({
   // `'+'` is `Glyphs.DoorClosed`, i.e. `Glyphs.ForDevice(DeviceKind.Door)` — the rest glyph of the
   // kind, so this row is an ordinary `ForDevice` claim and needs no exception anywhere. The piece is
   // a steel leaf with a lit centre strip: a shut door, which is what the tile means.
-  'sliding-door':     { build: F.slidingDoor,     size: { w: 96, h: 70 }, ...dev('Door', '+') },
+  //
+  // ⚠️ THAT PARAGRAPH IS HISTORY SINCE 2026-08-05 (lane/paper-fixtures) AND IS QUOTED, NOT DELETED,
+  // BECAUSE THE JOIN IT DESCRIBES IS UNCHANGED — only the row it lands on moved. `'+'`, `'H'` and
+  // `'^'` now belong to `door-sliding`, `deck-hatch` and `vent-grille` in the PAPER FIXTURES section
+  // at the bottom of this table, which are the same three objects drawn in the owner's paper/ink
+  // dialect. These three keep their `deviceKind`, their class, their `size` and their wrecked twins
+  // and are UNREACHED WARM ART, in exactly the position `battery-bank` and the two cryo capsules are
+  // in and for exactly their reason.
+  // ⛔ RETIRING THEM WAS CONSIDERED AND REFUSED, and the cost is measured rather than guessed: their
+  // twins are three of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
+  // `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as
+  // a bijection — that walk is the whole of the evidence that the other sixty-seven are transcribed
+  // correctly. Three dead rows cost a reader one paragraph; a relaxed bijection costs the next lane
+  // its instrument.
+  'sliding-door':     { build: F.slidingDoor,     size: { w: 96, h: 70 }, ...dev('Door', null) },
   'airlock':          { build: F.airlock,         size: { w: 80, h: 80 }, ...dev('Door', null) },
-  'hatch-ladder':     { build: F.hatchLadder,     size: { w: 64, h: 74 }, ...dev('Ladder', 'H') },
+  'hatch-ladder':     { build: F.hatchLadder,     size: { w: 64, h: 74 }, ...dev('Ladder', null) },
   'power-conduit':    { build: F.powerConduit,    size: { w: 96, h: 14 }, ...dev('Conduit', null) },
-  'air-vent':         { build: F.airVent,         size: { w: 72, h: 56 }, ...dev('AirVent', '^') },
+  'air-vent':         { build: F.airVent,         size: { w: 72, h: 56 }, ...dev('AirVent', null) },
   'pipe-run':         { build: FT.pipeRun,         size: FT.SIZES['pipe-run'], ...dev('Pipe', null) },
   'wall-lamp':        { build: F.wallLamp,        size: { w: 52, h: 44 }, ...cos('wall_lamp') },
   'viewport':         { build: F.viewport,        size: { w: 90, h: 64 }, ...cos('viewport') },
@@ -293,6 +313,60 @@ export const ITEMS = Object.freeze({
   'vice-post':        { build: FT.vicePost,      size: FT.SIZES['vice-post'],   ...cos('vice_post') },
   'curtain-rail':     { build: FT.curtainRail,   size: FT.SIZES['curtain-rail'], ...cos('curtain_rail') },
   'shrine-shelf':     { build: FT.shrineShelf,   size: FT.SIZES['shrine-shelf'], ...cos('shrine_shelf') },
+
+  // — lane/paper-fixtures —
+  // ── THE PAPER FIXTURES (14) — THE SHIP'S ARCHITECTURE, REDRAWN (2026-08-05) ───────────────────
+  //
+  // Owner-directed: *"produce new svg materials to replace the old ones… full spectrum for release;
+  // ensure the dimensionalities are correct."* These fourteen are doors, hatches, service runs, wall
+  // furniture and the three luminaires — the pieces a player meets in every corridor of
+  // `--ship wreck`, and the last block of the warm set still wearing the pre-redesign steel-and-amber
+  // drawings of `fixtures.js` (plus `blast-door` from `objects.js`). They are drawn in
+  // `client/src/items/paper-fixtures.js`, in the same paper/ink/oxblood oblique as the fittings
+  // catalogue, on the same cm-space vocabulary and through the same ONE derivation of the drawing
+  // scale (`fittings.geometryFor`).
+  //
+  // ⚠️ THEY ARE NOT CATALOGUE CARDS, and that is why they are a separate module rather than fourteen
+  // more rows in `fittings.js`. `design-import/Perilune Fittings.dc.html` has no card for any of
+  // them; every dimension in `paper-fixtures.SPECS` is a real-world measurement chosen here (a 1 m
+  // door opening, a 40 × 40 vent grille at duct height, a floodlight's mounting height), with the
+  // dimension line written into the spec's own comment the way the design document's footer asks for
+  // wall-hung pieces.
+  //
+  // ⚠️ SIX ARE FUNCTIONAL AND EIGHT ARE COSMETIC, and the split is a MEASUREMENT rather than a
+  // default — the same test `items.test.js` applies to every other row: a `functional` row must name
+  // a `DeviceKind` the sim really has. `Door` (three states), `Ladder`, `Conduit` and `AirVent` all
+  // exist and are all projected by `--ship wreck`; a porthole, a wall screen, an extract fan, an arms
+  // rack, a deck sign and the three luminaires name nothing in `DeviceKind` at all. ⛔ THE FAN AND
+  // THE LAMPS ARE THE ONES WORTH SAYING OUT LOUD: `DeviceKind.Light` exists and is projected, but the
+  // set has no FUNCTIONAL luminaire and never has — `GLYPH_SUBSTITUTE['*']` borrows a cosmetic row
+  // for it, which `items/glyph-map.js` records as a live trap and `room-model.js` records as a live
+  // bug it already cost. That borrow is REPOINTED to `lamp-sconce` in the same commit; its shape —
+  // a device wearing a cosmetic piece's art — is deliberately unchanged, because changing it is a
+  // decision about `DeviceKind.Light`, not about a drawing.
+  //
+  // ⚠️ `conduit-run` KEEPS `glyph: null` ON PURPOSE, exactly as `power-conduit` and `pipe-run` do:
+  // `Conduit` and `Pipe` share `'~'` (an intentional collision in `Glyphs.cs`) and both are
+  // utility-LENS overlay lines drawn by other layers, never furniture on a tile. `glyph-map.js` and
+  // `device-sprite-coverage.test.js` record that decision by name and this package does not touch it.
+  //
+  // Their wrecked twins are REPO-AUTHORED (no catalogue card, so nothing to transcribe) and are
+  // ledgered in `client/src/items/wrecked.js`'s `NON_MOCK_TWIN`, which is what keeps the twin↔mock
+  // bijection measuring exactly seventy.
+  'door-sliding':     { build: PF.doorSliding,    size: PF.SIZES['door-sliding'],    ...dev('Door', '+') },
+  'door-airlock':     { build: PF.doorAirlock,    size: PF.SIZES['door-airlock'],    ...dev('Door', null) },
+  'door-blast':       { build: PF.doorBlast,      size: PF.SIZES['door-blast'],      ...dev('Door', null) },
+  'deck-hatch':       { build: PF.deckHatch,      size: PF.SIZES['deck-hatch'],      ...dev('Ladder', 'H') },
+  'conduit-run':      { build: PF.conduitRun,     size: PF.SIZES['conduit-run'],     ...dev('Conduit', null) },
+  'vent-grille':      { build: PF.ventGrille,     size: PF.SIZES['vent-grille'],     ...dev('AirVent', '^') },
+  'extractor-fan':    { build: PF.extractorFan,   size: PF.SIZES['extractor-fan'],   ...cos('extractor_fan') },
+  'hull-port':        { build: PF.hullPort,       size: PF.SIZES['hull-port'],       ...cos('hull_port') },
+  'bulkhead-screen':  { build: PF.bulkheadScreen, size: PF.SIZES['bulkhead-screen'], ...cos('bulkhead_screen') },
+  'arms-rack':        { build: PF.armsRack,       size: PF.SIZES['arms-rack'],       ...cos('arms_rack') },
+  'deck-marker':      { build: PF.deckMarker,     size: PF.SIZES['deck-marker'],     ...cos('deck_marker') },
+  'lamp-sconce':      { build: PF.lampSconce,     size: PF.SIZES['lamp-sconce'],     ...cos('lamp_sconce') },
+  'grow-lamp':        { build: PF.growLamp,       size: PF.SIZES['grow-lamp'],       ...cos('grow_lamp') },
+  'flood-lamp':       { build: PF.floodLamp,      size: PF.SIZES['flood-lamp'],      ...cos('flood_lamp') },
 });
 
 /** The full list of registered itemIds, in mock order. */

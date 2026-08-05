@@ -223,13 +223,13 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 26 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 32 |
 | FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
-| **FUNCTIONAL total** | **29** |
-| COSMETIC (view-only `decor`, non-hashed) | 30 |
+| **FUNCTIONAL total** | **35** |
+| COSMETIC (view-only `decor`, non-hashed) | 38 |
 | MATERIAL (wall/floor tint) | 12 |
 | RESOURCE (ground stack, a sim `ItemKind`) | 9 |
-| **Total** | **80** |
+| **Total** | **94** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -237,6 +237,17 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **80 → 94 on 2026-08-05 (lane/paper-fixtures, the ship's architecture).** Fourteen NEW rows —
+`door-sliding`, `door-airlock`, `door-blast`, `deck-hatch`, `conduit-run`, `vent-grille`,
+`extractor-fan`, `hull-port`, `bulkhead-screen`, `arms-rack`, `deck-marker`, `lamp-sconce`,
+`grow-lamp`, `flood-lamp` — drawn in `client/src/items/paper-fixtures.js`. Six are FUNCTIONAL
+(`Door` ×3 states, `Ladder`, `Conduit`, `AirVent`; all `[exists]`, so the `[NEW]` split does not
+move) and eight COSMETIC. ⛔ **Unlike VR-P2's twenty-one, none of these replaces a row in place**:
+the warm pieces they displace stay registered as unreached art so that the wrecked-twin bijection
+against `perilune-item-set.dc.html` keeps measuring seventy. `'+'`, `'H'` and `'^'` moved off
+`sliding-door` / `hatch-ladder` / `air-vent`; `GLYPH_SUBSTITUTE`'s `'*'` and `'X'` were repointed to
+`lamp-sconce` and `door-blast`.
 
 ⚠️ **21 → 30 COSMETIC and 71 → 80 on 2026-08-05 (VR-P2, the visual redesign's fittings package).**
 The owner's second design document, `design-import/Perilune Fittings.dc.html`, is a THIRTY-piece

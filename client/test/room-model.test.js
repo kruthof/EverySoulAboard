@@ -676,11 +676,14 @@ test('demolishTarget: a device wearing BORROWED art is still a device (the Light
   // THE NAMED CASE. Both premises are asserted first: if the substitution moves or `wall-lamp` stops
   // being cosmetic, this test is naming a trap that no longer exists and must say so out loud rather
   // than pass quietly.
-  assert.equal(GLYPH_TO_ITEM['*'], 'wall-lamp',
-    "'*' (DeviceKind.Light) no longer resolves to wall-lamp — re-point this test at whatever the "
+  // — lane/paper-fixtures — the borrow moved to `lamp-sconce` (the same wall sconce, paper/ink).
+  // It is STILL a cosmetic row, so the trap this test names is still live and still exercised; had
+  // the redesign made Light functional this test would have had to be dropped, loudly, instead.
+  assert.equal(GLYPH_TO_ITEM['*'], 'lamp-sconce',
+    "'*' (DeviceKind.Light) no longer resolves to lamp-sconce — re-point this test at whatever the "
     + 'cosmetic-substituted glyph is now, or drop it if there is none.');
-  assert.equal(ITEMS['wall-lamp'].kind, 'cosmetic',
-    'wall-lamp is no longer a cosmetic row, so the case below no longer exercises the trap it names');
+  assert.equal(ITEMS['lamp-sconce'].kind, 'cosmetic',
+    'lamp-sconce is no longer a cosmetic row, so the case below no longer exercises the trap it names');
   assert.deepEqual(demolishTarget(5, 7, [], [], frameWith([[5, 7, '*']])), { kind: 'device', verb: 'remove' },
     'DEMOLISH on a LIGHT classified as something other than a device. A Light is placeable furniture '
     + 'with its own palette tool and RoomOutfitter puts one in every room on --ship grid: this is a '
@@ -3993,7 +3996,10 @@ test('THE DOOR BUG (driven): a CLOSED door in a room rect draws a door, not a da
     assert.ok(html.includes(furnId(tx, ty)),
       'the door tile drew NOTHING. That is the other half of the defect and it is worse than the '
       + 'chip: "make the NON_FURNITURE sets agree" would have shipped exactly this.');
-    assert.equal(itemForGlyph('+'.charCodeAt(0)), 'sliding-door',
+    // — lane/paper-fixtures — `'+'` moved from the warm `sliding-door` to the paper `door-sliding`
+    // on 2026-08-05. Same object, same DeviceKind, same closed-door meaning; the warm row stays
+    // registered at `glyph: null` so its wrecked twin keeps the mock bijection at seventy.
+    assert.equal(itemForGlyph('+'.charCodeAt(0)), 'door-sliding',
       "the closed-door glyph must resolve to the set's own door leaf, not to some other piece");
   } finally {
     Hud.renderFrame(wreck);
@@ -4004,7 +4010,9 @@ test('THE DOOR BUG (driven): a CLOSED door in a room rect draws a door, not a da
 // The LOCKED state is a SEPARATE decision and a separate piece, because the SVG furniture layer
 // reads `cell[0]` only — `GlyphColor.Locked` (GlyphMapper.cs:243) reaches neither surface, so the
 // art is the one channel left that can say "locked" rather than merely "shut".
-// MUTATION: delete the `X: 'blast-door'` entry from GLYPH_SUBSTITUTE ⇒ RED.
+// MUTATION: delete the `X: 'door-blast'` entry from GLYPH_SUBSTITUTE ⇒ RED.
+// — lane/paper-fixtures — the entry moved from `blast-door` to `door-blast` on 2026-08-05: the same
+// reinforced slab with the same two hazard bands, in the paper/ink dialect.
 test('a LOCKED door draws a DIFFERENT door — the only channel left that can say locked', () => {
   const f = slotFocus('hold');
   const tx = f.rx + 5, ty = f.ry + 3;
@@ -4016,7 +4024,7 @@ test('a LOCKED door draws a DIFFERENT door — the only channel left that can sa
     assert.equal(chipAt(rzLayers.innerHTML, tx, ty), null,
       'a LOCKED door drew the dashed box with a raw `X` in it');
     assert.ok(rzLayers.innerHTML.includes(furnId(tx, ty)), 'a locked door drew nothing at all');
-    assert.equal(itemForGlyph('X'.charCodeAt(0)), 'blast-door');
+    assert.equal(itemForGlyph('X'.charCodeAt(0)), 'door-blast');
     assert.notEqual(itemForGlyph('X'.charCodeAt(0)), itemForGlyph('+'.charCodeAt(0)),
       'LOCKED and CLOSED collapsed onto one piece. `cell[1]` never reaches this layer, so a player '
       + 'would then have no way at all to tell a sealed door from a shut one.');

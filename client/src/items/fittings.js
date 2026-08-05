@@ -387,12 +387,46 @@ function wallStub(s, F, plane, at, a0, a1, b0, b1, hatch) {
  * to skin the same glyph two different ways (`oblique.js`'s own header records that scar).
  */
 export function frameFor(id) {
-  const spec = SPECS[id];
+  const g = geometryFor(SPECS[id]);
+  return g === undefined ? undefined : g.frame;
+}
+
+/**
+ * ⭐ THE SAME DERIVATION, TAKEN A SPEC RATHER THAN AN ID — the door a SECOND catalogue module comes
+ * through (`client/src/items/paper-fixtures.js`, lane/paper-fixtures).
+ *
+ * ⛔ IT EXISTS SO THERE IS STILL EXACTLY ONE DERIVATION OF THE DRAWING SCALE, which is the rule
+ * `frameFor` above states and the scar `oblique.js`'s header records. A second paper catalogue with
+ * its own `SPECS` cannot call `frameFor(id)` — that reads THIS module's table — and the alternative
+ * on offer was for it to re-type `extents`/`scaleOf`/`roomFrame(...)` in its own file. Two copies of
+ * "how big is a centimetre in a fitting's tile" is precisely how the Overview and the Room Zoom came
+ * to skin one glyph two ways. This takes the spec object and returns everything derived from it, so
+ * `frameFor`, `SIZES` and `BOX_EXTENT` here and the whole of the sibling module all read ONE body of
+ * arithmetic. Adding it moved no number: `fittings.test.js` re-derives `SIZES` and `BOX_EXTENT`
+ * independently and is unchanged.
+ *
+ * @param {{w:number,d:number,h:number,z0?:number,round?:boolean}} spec
+ * @returns {{ex:number, ey:number, k:number, z0:number, frame:object, size:{w:number,h:number},
+ *   extent:{w:number,h:number}}|undefined}
+ */
+export function geometryFor(spec) {
   if (!spec) return undefined;
   const [ex, ey] = extents(spec);
   const k = scaleOf(spec);
-  return roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
-    { x: -(k * ex) / 2, y: k * (ey / 2 + (spec.z0 == null ? 0 : spec.z0)) });
+  const z0 = spec.z0 == null ? 0 : spec.z0;
+  return Object.freeze({
+    ex,
+    ey,
+    k,
+    z0,
+    frame: roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
+      { x: -(k * ex) / 2, y: k * (ey / 2 + z0) }),
+    size: Object.freeze({
+      w: Math.max(1, Math.round(PX_PER_CM.catalogue * ex)),
+      h: Math.max(1, Math.round(PX_PER_CM.catalogue * ey)),
+    }),
+    extent: Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) }),
+  });
 }
 
 /**
@@ -1205,3 +1239,20 @@ export function paintFitting(s, id, extra, state) {
 
 /** The drawing vocabulary, for the same caller: cm-space strokes, level ellipses and the ramp. */
 export { ink, line, disc, path, curve };
+
+// — lane/paper-fixtures —
+/**
+ * THE REST OF THE DIALECT, EXPORTED FOR A SECOND CATALOGUE MODULE (`items/paper-fixtures.js`).
+ *
+ * ⛔ NOT A CONVENIENCE. Every name below is a thin wrapper over `oblique.js` that encodes ONE
+ * decision this dialect has already made — how a three-face body is wound (`bx`), what "this surface
+ * continues past the drawing" looks like (`wallStub`, `CUT_DASH`), that a cylinder never shows its
+ * back arc (`cyl`, `hoop`), that a standoff foot is 7 × 4 × 6 cm (`foot`), and that a fitting's hatch
+ * is a per-`idPrefix` `<pattern>` rather than the kit's fixed-id one (`hatchPaint`, whose own comment
+ * says why). Re-typing any of them in a sibling file would put a second answer to a settled question
+ * in the tree, which is the defect this module's header spends four paragraphs on. Nothing here is
+ * new and no builder above changed.
+ */
+export {
+  bx, quad, cyl, hoop, foot, wallStub, hatchPaint, CUT_DASH,
+};

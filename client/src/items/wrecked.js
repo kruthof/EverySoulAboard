@@ -113,6 +113,8 @@ import { ITEMS, ITEM_IDS, placeholderItem } from './index.js';
 import {
   paintFitting, line as fLine, disc as fDisc, curve as fCurve,
 } from './fittings.js';
+// — lane/paper-fixtures —
+import { paintPaperFixture } from './paper-fixtures.js';
 
 // ── the layer primitive ──────────────────────────────────────────────────────────────────────
 
@@ -1026,6 +1028,139 @@ const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
   inkCrack(s, F, [[11, 8, 133], [18, 10, 133]]);          // the near bracket, cracked at the mount
 });
 
+// — lane/paper-fixtures —
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE FOURTEEN PAPER FIXTURES — post-raid twins for the ship's redrawn architecture
+//
+// Same construction as the nine fittings twins above and for the same stated reason: each re-runs
+// its PRISTINE painter (`paper-fixtures.paintPaperFixture`) and then adds ink damage on the same
+// frame, in the same centimetres. That is the only construction under which "the twin is the same
+// object, damaged" survives a redraw of the object — and it is what keeps the mock's own premise for
+// its seventy ("each keeps one identifying feature so it still reads as the same object") true here
+// by force rather than by care. `design-import/Perilune Fittings.dc.html` has no card for any of
+// these fourteen and no wrecked drawing for them either, so all fourteen are REPO-AUTHORED and
+// ledgered in `NON_MOCK_TWIN` below.
+//
+// ⚠️ THE IDENTIFYING FEATURE IS NAMED IN EACH PAINTER'S MARKS AND IS DELIBERATELY LEFT WHOLE: the
+// sliding door's meeting seam, the airlock's undogging wheel, the blast door's two hazard bands, the
+// deck hatch's ring, the conduit's three nodes, the grille's louvres, the fan's impeller, the port's
+// ink glass, the rack's three arms, the sign's arrow, and each luminaire's own outline. A wrecked
+// piece that no longer reads as the same object is the one failure `wrecked.test.js` cannot see — its
+// join is by itemId, and a wrong drawing keyed correctly is still a wrong drawing. That is what
+// `client/tools/paper-fixtures-sheet.mjs` renders side by side.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const doorSliding = (s) => paintPaperFixture(s, 'door-sliding', (_s, { F }) => {
+  inkTear(s, F, [[24, 6, 150], [48, 6, 120], [36, 6, 86]]);   // the near leaf, buckled
+  inkHole(s, F, 88, 6, 140, 8);                               // the far leaf, punched
+  inkScorch(s, F, 60, 6, 60, 20);
+  inkCrack(s, F, [[116, 0, 216], [128, 0, 230]]);             // the head, split at the jamb
+});
+
+const doorAirlock = (s) => paintPaperFixture(s, 'door-airlock', (_s, { F }) => {
+  inkCrack(s, F, [[40, 5, 120], [70, 5, 96]]);                // across the leaf, past the wheel
+  inkHole(s, F, 86, 5, 70, 7);
+  inkScorch(s, F, 40, 6, 66, 16);
+  inkCrack(s, F, [[24, 4, 20], [14, 4, 26]]);                 // the sill, kicked off its lip
+});
+
+const doorBlast = (s) => paintPaperFixture(s, 'door-blast', (_s, { F }) => {
+  inkTear(s, F, [[30, 6, 120], [70, 6, 150], [110, 6, 124]]);
+  inkHole(s, F, 60, 6, 100, 9);
+  inkScorch(s, F, 100, 6, 70, 22);
+  inkCrack(s, F, [[45, 4, 220], [38, 4, 232]]);               // a roller, torn off the track
+});
+
+const deckHatch = (s) => paintPaperFixture(s, 'deck-hatch', (_s, { F }) => {
+  inkCrack(s, F, [[20, 59, 4], [44, 59, 14]]);                // the coaming, split
+  inkHole(s, F, 75, 59, 14, 7);
+  inkScorch(s, F, 40, 59, 14, 16);
+  inkCrack(s, F, [[78, 112, 40], [86, 112, 26]]);             // a stanchion, bent out
+  inkWire(s, F, [43, 88, -20], [30, 80, -30], [24, 70, -44]); // a cable down the well
+});
+
+const conduitRun = (s) => paintPaperFixture(s, 'conduit-run', (_s, { F }) => {
+  inkWire(s, F, [132, 0, 228], [120, 0, 212], [104, 0, 208]);  // a cable, torn out of the tray
+  inkHole(s, F, 176, 0, 228, 5);
+  inkScorch(s, F, 44, 0, 228, 12);
+  inkCrack(s, F, [[224, 14, 234], [232, 20, 240]]);            // a bracket, pulled off the wall
+});
+
+const ventGrille = (s) => paintPaperFixture(s, 'vent-grille', (_s, { F }) => {
+  inkCrack(s, F, [[10, 4, 240], [30, 4, 222]]);
+  inkHole(s, F, 40, 4, 216, 6);
+  inkScorch(s, F, 20, 4, 208, 12);
+  inkTear(s, F, [[7, 0, 236], [20, 0, 232]]);                 // a blade, sprung out of the frame
+});
+
+const extractorFan = (s) => paintPaperFixture(s, 'extractor-fan', (_s, { F }) => {
+  inkCrack(s, F, [[16, 8, 246], [34, 8, 232]]);
+  inkHole(s, F, 52, 8, 212, 7);
+  inkScorch(s, F, 24, 8, 206, 14);
+  inkWire(s, F, [38, 5, 226], [28, 4, 206], [20, 4, 196]);    // the motor lead, hanging
+});
+
+// ⭐ THE ONE TWIN WHOSE MARKS ARE PLACED BY WHAT THE PRISTINE PIECE IS *FILLED* WITH, and the first
+// draft got it wrong in a way no assertion in this repo can see. The porthole's glass is the set's
+// only INK-FILLED area; an `inkCrack` and an `inkHole` authored across it are black on black and
+// contribute nothing — invisible damage on the one piece whose identity is that black disc. Seen on
+// `client/tools/shots-paper-fixtures/paper-fixtures-twins.png`, not reasoned out. Every mark now
+// lands on PAPER: the frame's annulus (r 29–39 from the port's centre) and the hull around it, so the
+// glass stays whole — which is also the better story, since a porthole that has cracked its frame and
+// held is exactly what a post-raid deck looks like.
+const hullPort = (s) => paintPaperFixture(s, 'hull-port', (_s, { F }) => {
+  inkCrack(s, F, [[8, 3, 132], [20, 3, 142]]);                // out of the hull, across the frame
+  inkHole(s, F, 78, 4, 178, 6);                               // punched through the frame's far side
+  inkScorch(s, F, 86, 6, 132, 11);                            // on the hull, clear of the glass
+  inkCrack(s, F, [[16, 2, 113], [6, 2, 120]]);                // the drip rail, torn
+});
+
+const bulkheadScreen = (s) => paintPaperFixture(s, 'bulkhead-screen', (_s, { F }) => {
+  inkCrack(s, F, [[16, 4, 176], [50, 4, 150], [92, 4, 160]]);
+  inkCrack(s, F, [[50, 4, 150], [44, 4, 134]]);
+  inkHole(s, F, 64, 4, 168, 7);
+  inkScorch(s, F, 26, 4, 142, 14);
+  inkWire(s, F, [20, 6, 126], [10, 6, 118], [8, 4, 114]);     // the feed, torn out of the bezel
+});
+
+const armsRack = (s) => paintPaperFixture(s, 'arms-rack', (_s, { F }) => {
+  inkCrack(s, F, [[3, 4, 106], [40, 4, 114]]);                // the retaining rail, bent
+  inkHole(s, F, 52, 10, 64, 7);
+  inkScorch(s, F, 84, 12, 92, 16);
+  inkTear(s, F, [[81, 12, 78], [88, 12, 112]]);               // the short arm, out of its rest
+});
+
+const deckMarker = (s) => paintPaperFixture(s, 'deck-marker', (_s, { F }) => {
+  inkCrack(s, F, [[8, 4, 214], [30, 4, 200]]);
+  inkHole(s, F, 20, 4, 206, 5);
+  inkScorch(s, F, 60, 4, 200, 10);
+  inkCrack(s, F, [[60, 4, 196], [68, 4, 192]]);               // the far stud, out of the wall
+});
+
+const lampSconce = (s) => paintPaperFixture(s, 'lamp-sconce', (_s, { F }) => {
+  inkCrack(s, F, [[13, 6, 194], [26, 6, 202]]);               // the shade, split along a rib
+  // ⚠️ ON THE CONE AND NOT AT THE MOUTH: the lit mouth is an INK disc, so a hole drawn over it merges
+  // with the light and reads as a bigger lamp rather than as damage — the same ink-on-ink trap the
+  // porthole's twin above records, in its milder form.
+  inkHole(s, F, 23, 6, 198, 3);
+  inkScorch(s, F, 23, 14, 218, 10);
+  inkWire(s, F, [16, 14, 206], [12, 10, 196], [8, 6, 190]);   // the flex, hanging out of the plate
+});
+
+const growLamp = (s) => paintPaperFixture(s, 'grow-lamp', (_s, { F }) => {
+  inkCrack(s, F, [[10, 4, 205], [40, 4, 196]]);
+  inkHole(s, F, 66, 4, 200, 6);
+  inkScorch(s, F, 24, 4, 198, 12);
+  inkTear(s, F, [[14, 8, 224], [18, 8, 212]]);                // a suspension rod, parted
+});
+
+const floodLamp = (s) => paintPaperFixture(s, 'flood-lamp', (_s, { F }) => {
+  inkCrack(s, F, [[10, 4, 262], [30, 4, 248]]);
+  inkHole(s, F, 34, 4, 254, 6);
+  inkScorch(s, F, 20, 4, 246, 12);
+  inkCrack(s, F, [[46, 30, 272], [52, 33, 268]]);             // the knuckle, sheared
+});
+
 // ── the registry ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1144,6 +1279,35 @@ export const WRECKED = Object.freeze({
   'vice-post':        { paint: vicePost,     state: '15%', mockLabel: null, catalogue: '23 VICE POST' },
   'curtain-rail':     { paint: curtainRail,  state: '2%',  mockLabel: null, catalogue: '29 CURTAIN RAIL' },
   'shrine-shelf':     { paint: shrineShelf,  state: '31%', mockLabel: null, catalogue: '30 SHRINE SHELF' },
+
+  // — lane/paper-fixtures —
+  // ── THE PAPER FIXTURES (14, 2026-08-05) — REPO-AUTHORED, AND NOT FROM A CARD EITHER ──
+  //
+  // The nine above are repo-authored twins of pieces the owner's CATALOGUE draws pristine; these
+  // fourteen are repo-authored twins of pieces the catalogue does not draw at all (see
+  // `client/src/items/paper-fixtures.js`'s header for why they are designed here rather than ported).
+  // So `catalogue` names the SECTION of that module rather than a card number — writing a card number
+  // that does not exist would be the exact kind of citation the next reader cannot follow.
+  // `mockLabel: null` is again the load-bearing field: it is what keeps these out of the mock's
+  // label/badge bijection, which must go on measuring exactly seventy.
+  //
+  // Their `state` badges are AUTHORED and spread across the mock's own 0–35% band, for the reason the
+  // nine above give: a badge is a fact about a device, not about a document, and nothing on screen
+  // should be able to tell a repo-authored badge from a transcribed one.
+  'door-sliding':     { paint: doorSliding,    state: '21%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'door-airlock':     { paint: doorAirlock,    state: '3%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'door-blast':       { paint: doorBlast,      state: '13%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'deck-hatch':       { paint: deckHatch,      state: '26%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
+  'conduit-run':      { paint: conduitRun,     state: '7%',  mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
+  'vent-grille':      { paint: ventGrille,     state: '30%', mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
+  'extractor-fan':    { paint: extractorFan,   state: '9%',  mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
+  'hull-port':        { paint: hullPort,       state: '5%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'bulkhead-screen':  { paint: bulkheadScreen, state: '0%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'arms-rack':        { paint: armsRack,       state: '17%', mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'deck-marker':      { paint: deckMarker,     state: '24%', mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
+  'lamp-sconce':      { paint: lampSconce,     state: '4%',  mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
+  'grow-lamp':        { paint: growLamp,       state: '11%', mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
+  'flood-lamp':       { paint: floodLamp,      state: '6%',  mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
 });
 
 /**
@@ -1192,6 +1356,23 @@ export const NON_MOCK_TWIN = Object.freeze({
   bench: '01 BENCH', stool: '05 STOOL', cot: '07 COT', footlocker: '09 FOOTLOCKER', sink: '11 SINK',
   'compost-bin': '21 COMPOST BIN', 'vice-post': '23 VICE POST', 'curtain-rail': '29 CURTAIN RAIL',
   'shrine-shelf': '30 SHRINE SHELF',
+  // — lane/paper-fixtures — 2026-08-05, the ship's architecture. These fourteen have no CARD, so the
+  // value names the section of `client/src/items/paper-fixtures.js` the piece is drawn in, matching
+  // the `catalogue` field on their `WRECKED` rows.
+  'door-sliding': 'PAPER FIXTURES · WAYS THROUGH',
+  'door-airlock': 'PAPER FIXTURES · WAYS THROUGH',
+  'door-blast': 'PAPER FIXTURES · WAYS THROUGH',
+  'deck-hatch': 'PAPER FIXTURES · WAYS THROUGH',
+  'conduit-run': 'PAPER FIXTURES · SERVICES',
+  'vent-grille': 'PAPER FIXTURES · SERVICES',
+  'extractor-fan': 'PAPER FIXTURES · SERVICES',
+  'hull-port': 'PAPER FIXTURES · WALL FURNITURE',
+  'bulkhead-screen': 'PAPER FIXTURES · WALL FURNITURE',
+  'arms-rack': 'PAPER FIXTURES · WALL FURNITURE',
+  'deck-marker': 'PAPER FIXTURES · WALL FURNITURE',
+  'lamp-sconce': 'PAPER FIXTURES · LIGHT',
+  'grow-lamp': 'PAPER FIXTURES · LIGHT',
+  'flood-lamp': 'PAPER FIXTURES · LIGHT',
 });
 
 /** The pristine itemIds that have a wrecked twin, in registry order. */
