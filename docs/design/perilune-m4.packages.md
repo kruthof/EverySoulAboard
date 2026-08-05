@@ -440,7 +440,7 @@ consolidation of surfaces that already work.
 
 | # | option | cost / verdict |
 |---|---|---|
-| 1 | ⭐ **One scrolling column, five bands, all present** | ⭐ **RECOMMENDED for v1.** The gate is *"ONE click → ONE window"* and four of its clauses are in different bands; tabs mean the gate's own sentence needs three more clicks to verify. Cheapest to build, cheapest to test (one DOM tree), and the honest empty-state rule (`invisible feedback is FUNCTIONAL`, binding 2026-07-26) is trivial to satisfy — an empty band SAYS it is empty. **Cost: vertical length.** Measured constraint: the dossier it replaces already mounts full-height into `#panels` (`styles.css:428`, `position:fixed;inset:0`), so the room exists. |
+| 1 | ⭐ **One scrolling column, five bands, all present** | ⭐ **RECOMMENDED for v1.** The gate is *"ONE click → ONE window"* and four of its clauses are in different bands; tabs mean the gate's own sentence needs three more clicks to verify. Cheapest to build, cheapest to test (one DOM tree), and the honest empty-state rule (`invisible feedback is FUNCTIONAL`, binding 2026-07-26) is trivial to satisfy — an empty band SAYS it is empty. **Cost: vertical length.** Measured constraint: the dossier it replaces already mounts full-height into `#panels` (`client/styles/console.css` (`#panels`, `position:fixed;inset:0`; was `styles.css:428` pre-VR-A split)), so the room exists. |
 | 2 | Four tabs on RimWorld's own split | ⛔ **REFUSED for v1, kept as the named fallback.** It is the analogue's shape, but RimWorld's window is a persistent docked inspector and ours is a modal takeover — **porting the tab split without the persistence ports the cost and not the benefit** (the *verb parity is NOT sufficient* rule, binding 2026-07-26, applied to layout). ⚠️ **If the playtest says the scroll is too long, this is the amendment**, and it is cheap because the band boundaries are already the tab boundaries. |
 | 3 | Two windows (a glance card + a deep dossier) | ⛔ **REFUSED.** It re-creates the readout/dossier split M4 exists to end and it re-grows `CREW_INTERACTION` to two entries — the exact thing `surface-boundary.test.js:1013-1014` was *requested* to prevent. |
 
@@ -510,10 +510,10 @@ that has already been filled and proves nothing.
 
 #### ⛔ DESIGN QUESTION (c) — WHERE THE WINDOW MOUNTS
 
-**MEASURED.** `#panels` is a body-level sibling (`client/index.html:144`; `styles.css:428`
+**MEASURED.** `#panels` is a body-level sibling (`client/index.html:144`; `client/styles/console.css` `#panels` — was `styles.css:428` pre-VR-A split
 `position:fixed;inset:0;pointer-events:none;z-index:30`) and it is **display:none under two body
-classes**: `body.moss-open` (`styles.css:874`) and `body.roomzoom-open` (`styles.css:1326`). It is
-**deliberately visible over RELATIONS** (`styles.css:1808` says so in a comment).
+classes**: `body.moss-open` (`client/styles/moss.css`; was `styles.css:874`) and `body.roomzoom-open` (`client/styles/roomzoom.css`; was `styles.css:1326`). It is
+**deliberately visible over RELATIONS** (`client/styles/relations.css` says so in a comment; was `styles.css:1808`).
 
 | # | option | cost / verdict |
 |---|---|---|
@@ -1045,7 +1045,7 @@ M4-4's open decision**). Reached from `client/src/ui/overview-view.js:1656` (`ov
 is `'openBioForSelected','selectCrewByCid','selectTab','talkSelectedCrew','toolUsed'`), `:912`
 (`FORBIDDEN_REACH`), `:916` (`CREW_INTERACTION`), asserted `:999-1014`;
 `client/test/zoom-pawn.test.js:797-816` (the Room Zoom's *"SELECTING is not interacting"* pin).
-**The mount:** `client/index.html:144` (`#panels`), `client/styles.css:428`, `:874`, `:1326`, `:1808`.
+**The mount:** `client/index.html:144` (`#panels`), `client/styles/console.css` (`#panels`), `moss.css` + `roomzoom.css` (the two hide rules), `relations.css` (was `client/styles.css:428/:874/:1326/:1808` pre-VR-A split).
 **The Esc ladder:** `client/src/ui/console-model.js:756`, pinned `client/test/console-model.test.js:650-657`.
 **The mood pipeline:** `sim/Sim.Core/Systems/NeedsSystem.cs:190-205` · `sim/Sim.Core/ShipMetrics.cs:86`
 · `sim/Sim.Core/Social/SocialSystem.cs:144-152` · `sim/Sim.Core/Director/DirectorSystem.cs:81-88`.
@@ -1120,7 +1120,7 @@ M4-1 DESIGN QUESTION (a).
   seam"*.
 - `client/src/input/controls.js:174-177,284,331` — the third door (DESIGN QUESTION (b)).
 - `client/src/ui/console-model.js:756` + `client/test/console-model.test.js:650-657` — the Esc rung.
-- `client/index.html:144` + `client/styles.css:428,874,1326` — the mount (DESIGN QUESTION (c)).
+- `client/index.html:144` + `client/styles/console.css` (`#panels`) + `moss.css`/`roomzoom.css` (the hide rules; was `client/styles.css:428,874,1326` pre-VR-A split) — the mount (DESIGN QUESTION (c)).
 
 **PIN IMPACT: NONE expected, and it is provable.** Client-only; check A (`git diff` on
 `Golden/`+`ci.sh`+`content/`) must be **0 lines**. ⚠️ **If this package finds it needs a sim read that
@@ -1722,7 +1722,7 @@ M4-1 DESIGN QUESTION (e)'s sequencing rule.
 | `client/src/ui/overview-view.js` · `overview-model.js` | **M4-2** (readout + actions), **M4-7** (`INERT_TABS` + the tab), **M4-5** (the card), M3-12 ✅, M2-3/M2-20 ✅ | ⛔ **Serialize: M4-2 → M4-7 → M4-5.** ⚠️ ⛔ **`'work'` MUST NEVER JOIN `INERT_TABS`** (`overview-model.js:352-356`, the file says so itself). |
 | `client/src/ui/roomzoom-view.js` · `room-model.js` | **M4-2** (the dock opens the window), **M4-6** (decor), M3-15 ✅, M3-13 ✅, M2-10 ✅ | ⛔ **Serialize.** ⚠️ **`zoom-pawn.test.js:797-816` pins that this file reaches NO crew-interaction seam** — M4-2 inverts that pin **and must re-state its principle** (*"SELECTING is not interacting"*, `:795-796`), not delete it. |
 | ⭐ `client/src/input/controls.js` · `client/src/ui/onboarding.js` | ⭐ **M4-2** (retarget `T`/Enter), **M4-5** (the copy) | ⭐ **New row, and it is a two-file fact with no compiler between them.** The card prints key names as **strings**; the keymap binds them in **code**. **Order: M4-2 then M4-5**, and M4-5 leaves behind the driven leg that every key the card prints is bound (§5 M4-5). |
-| ⭐ `client/index.html` · `client/styles.css` | ⭐ **M4-2** (the `#persona` mount), **M4-8** (deletes `.app`, ~115 of 154 lines) | ⭐ **New row.** ⛔ **M4-2's mount must be a body-level sibling, NOT inside `.app`** — otherwise M4-8 deletes the Persona window. `styles.css:874` / `:1326` are the two hide rules that made `#panels` unusable; **the new container must not inherit either.** |
+| ⭐ `client/index.html` · `client/styles.css` | ⭐ **M4-2** (the `#persona` mount), **M4-8** (deletes `.app`, ~115 of 154 lines) | ⭐ **New row.** ⛔ **M4-2's mount must be a body-level sibling, NOT inside `.app`** — otherwise M4-8 deletes the Persona window. `client/styles/moss.css` / `roomzoom.css` carry the two hide rules (were `styles.css:874`/`:1326` pre-VR-A split) that made `#panels` unusable; **the new container must not inherit either.** |
 | `client/src/ui/panels.js` · `client/test/dossier-honesty.test.js` | **M4-2** (supersedes the card), **M4-3** (truth), **M4-8** (the dialogue window dies) | ⛔ **Serialize: M4-2 → M4-3 → M4-8.** ⚠️ **`dossier-honesty.test.js:138`'s meter census and `:216-286`'s ledger/code agreement pins are the guards against re-adding a morale meter — they must survive the file's replacement, re-pointed at whatever draws the person.** ⭐ **A pin deleted with the file it pinned is a pin deleted.** |
 | `client/src/ui/console-model.js` · `client/test/console-model.test.js` | **M4-2** (the Esc rung), **M4-8** | Serialize. The `escapeTarget` ladder is pinned value-by-value (`:650-657`); rename and re-pin in ONE commit. |
 | ⭐ `sim/Sim.Core/Entities/Citizen.cs` | ⭐ **M4-4** (`Health`/`Morale`/`Archetype`), ⭐ **the break row** (the dwell counter + the catharsis reprieve), M3-7 ✅, M3-9 ✅ | ⛔ **SPINE-adjacent and STRICTLY SERIALIZED — two pin rows on one struct.** ⚠️ **Standing refusal carried from M2-2: `IsRecruitableForWork` MUST NOT absorb the work grid** — and the break gate must not absorb it either. **A break is its own named predicate.** |
@@ -2033,7 +2033,7 @@ statement about WHEN it was true, never a reason to trust it now.***
   `controls.js:174-177,284,331` · `roomzoom-view.js:122,491,570,1035,1142-1143,1446,1682` ·
   `room-model.js:680` · `overview-model.js:342,346,352` · `console-model.js:756` ·
   `console-model.test.js:650-657` · `dossier-honesty.test.js:138` · `panels.js:224-247,251-284,291,
-  315,325,343,353,363,367,385,404,409,418` · `styles.css:428,874,1326,1808` · `onboarding.js:225-227`.
+  315,325,343,353,363,367,385,404,409,418` · `client/styles/{console,moss,roomzoom,relations}.css` (was `styles.css:428,874,1326,1808` pre-VR-A split) · `onboarding.js:225-227`.
 - ⭐ **READ IN REVISION 2 (the send-back's own subjects, each re-measured before the fix):**
   `client/src/input/controls.js:273-335` **in full — the complete keymap census** (§5's (b) box) ·
   `client/src/main.js:72,192-200,364` (`toggleSprites`) · `client/test/input.test.js:182,217` +

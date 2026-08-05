@@ -111,6 +111,46 @@ contains:
   contradiction visible) · zoom-pawn-shot §5b exits 0 unmeasured on `--ship wreck`
   (declared convention, loudly logged).
 
+## ⭐⭐ THE VISUAL REDESIGN WAVE (2026-08-04/05, owner-directed, THIS BRANCH `lane/visual-redesign`)
+
+**The complete client restyle to the owner's Claude Design spec** (`design-import/*.dc.html`,
+imported verbatim; charter + adopted rulings E1–E11: `docs/design/perilune-visual-redesign.charter.md`).
+Six packages, each implemented by one Opus agent and APPROVED by an independent reviewer
+(every package took ≥1 send-back; every verdict enforced): **VR-A** paper/ink/oxblood tokens +
+Instrument Serif + the six-way stylesheet split + the pure cabinet-oblique kit (`oblique.js`) ·
+**VR-P5** two-pass halo ink pawns (repaint ×1.46, measured) · **VR-P2** the 30-fitting catalogue
+(registry 71→80, twins 70→79, six defect classes fixed; 2 invisible-ink MAJORs caught by
+render-probe) · **VR-P6** MOSS on paper (ALL six views survive, CRT deleted) · **VR-P4** the ship
+plate (live miniature tiles, one projection for drawing+clicks — 1296/1296 correct live presses;
+alert/caveat un-clipped; painters driven to DOM, which caught ORDER STUCK never rendering) ·
+**VR-P3** the room cutaway (1 tile = 1 m; assembly-seam census; D5 sentence threading pinned;
+vacuum accent per-clause). Ruling E4 held: NO playtest-earned affordance dropped — all re-housed
+in the dash dialect (oxblood `8 5` = queued order · solid oxblood = fault · ink `6 5` = unbuilt).
+Node suite 1312 → **1463**; sim pins UNMOVED ×5 at every merge (client-only wave).
+⛔ **NOT merged to main** — the owner branched off to evaluate; this lane is the deliverable.
+
+**Open from the wave (filed by reviewers, receipts in the merge commits):**
+- ⭐ **P2b HAS RISEN**: the ~23 uncovered device rows (cryo pods, doors, solar, fabricator…),
+  12 materials, 9 resources and all 70 legacy wrecked twins still wear WARM art — and the new
+  plate miniatures + cutaway make them the drawing's subject; a wrecked room mixes two palettes.
+- **P7 (the owner's core goal)**: the `aboard`/`compartments` story prose needs sim+wire data
+  that does not exist (gated on M4 mood/Persona); the columns render honest wire data only.
+- **VR-P3-a**: a tall fitting's TOP-face click resolves ~3 tiles behind its floor tile
+  (`tileFromScenePoint` header has the corrected note; `e.target`/`elementFromPoint` is the route).
+- Owner-eye items: stool drawn as tripod (catalogue's caption honoured, silhouette win) · shrine
+  shelf's permanently-oxblood frame vs the accent dialect · pawn props anchored outside the doc's
+  arm line · the radar shows own-ship only (no contact channel exists) · short viewports let the
+  readout band grow at the plate's expense (playtest eye) · design-doc fixture slips (E7).
+- Tooling/debt: `zoom-pawn-shot` exit code doesn't track its own `FAILURES: n` · chip id collision
+  on prefix-less `pawnChip` call sites (pre-existing) · pawn sprite overflows its viewBox for
+  270/1944 modifier combos (cosmetic; comment at `pawn-svg.js:365` still overclaims) · E10 bench
+  not committed · deprecated-console amber ramp has a duplicated rung (`--amber-1`≡`--amber-2`;
+  base.css's consumer note should read 13 console / 7 overview / 0 elsewhere) · ~40 stale
+  `styles.css:NNN` citations remain across docs/ (M4 charter's five are FIXED; translation table
+  in `client/styles/base.css`) · no standing verbatim instrument for the split (filed, not built)
+  · MOSS `>` echo vs `›` prompt · PROGRAM gutter marker overlaps 1-digit line numbers ·
+  `perilune-moss-terminal.spec.md` §4 carries a SUPERSEDED banner, full rewrite filed.
+
 ## Next
 
 1. **The playtest 2026-08-07.** All three pre-playtest ⭐ rulings are in; the chain test's
@@ -143,4 +183,5 @@ contains:
 | 08-04 H | TWELVE lanes (owner-directed, AFK): chip-collision · brownout-cadence · rig-hardening · palette-honesty · parts-affordability(D7) · onboarding-thaw · gate-sentences · moss-autoscroll · pod-poll-spam · rig-premises · palette-three-tools · moss-doors-verb | **"can't build / can't defreeze" AUDITED then CLOSED: every build button priced+honest, first bunk affordable (⭐⭐ brownout trade FILED for the owner), 3 new tools · the card TEACHES the thaw, MOSS refusals name the next step, the console scrolls+stops spamming, typed `doors` ends the secret-door stall · the log survives a WEEK · rigs can't coin-flip or leak · ⭐⭐ THE LIVE-PLAYER CHAIN PROVEN DRIVEN (repair→doors→craft→CM→commission, ~6.7 sim-h)** | 12× in-lane full gates + final tree ≡ gated tree (exit 0, twin MATCH), pins UNMOVED ×5, tests →1876/1297 |
 | 08-04 I | vents-verb · crew-sel-collision · moss-scroll-affordance (owner-triage; THREE same-day rulings → OD-Q) | **⭐⭐ D7 RULED keep-the-cache · `doors` RATIFIED and typed `vents` SHIPS (the deck-1 puzzle's noun is learnable; BOARD FAULT visible in the listing) · picking a crew row visibly ARMS it (3rd chip-collision instance closed, guard widened to discover `.sel`) · the MOSS console says `▾ N MORE` — and its review CAUGHT the sign eating the autoscroll slack (fixed at the seam, both sides of the band pinned)** | 3× in-lane full gates + TRAPS-8 re-gates ×2 + final tree ≡ gated tree, pins UNMOVED ×5, tests →1889/1312 |
 | 08-04 J | twom-axis-drift-guardrails + twom-gameplay-pillar (docs-only, owner-direct) | **OD-R — the game is RimWorld × Factorio × THIS WAR OF MINE, and TWoM is a GAMEPLAY PILLAR** (owner amended same day: "more than a tone"; three follow-ups adopted — emergent triage from real scarcity · deterministic mental breaks gate BEHAVIOUR (T12's missing half) · lands inside M4+M5; nothing implementable before the M4-1 charter) · **the drift check the owner asked for**: PROCESS §2 lane-selection gate + `rows:` disclosure, HANDOVER's meta-work candidates demoted behind owner triage | docs-only ×2, full gate exit 0 each, doc-sentinel tests green; rows: none (owner-directed ruling batch) |
+| 08-04/05 L | **THE VISUAL REDESIGN** (owner-directed branch-off, `lane/visual-redesign`, NOT on main): vr-foundation · vr-pawns · vr-fittings · vr-moss · vr-overview · vr-roomzoom | **the whole client is the owner's paper/ink/oxblood design** — one oblique kit draws plate tiles, room cutaway and 30 fittings; ink figures; MOSS on paper with every view alive; every playtest affordance re-housed (E4), dash dialect replaces the amber/red hues (E3); registry 71→80; ⭐ every package survived independent adversarial review (A: shadow-theme guard hole · P5: clip-erased chips · P2: 2 invisible-ink members · P6: row-side grid break + unknown-dressed-as-zero · P4: off-screen alert + split coordinate systems + unpinned painters · P3: unguarded assembly seam) — all fixed and re-verified | 6 in-lane full gates + 4 integration re-gates + final gate, pins UNMOVED ×5 every time, tests →1889/1463; rows: none (owner-directed) |
 | 08-04 K | m4-1-persona-design (forced topmost row after two `none` sessions) | **M4 CHARTERED IN FULL — THE PERSON** (`perilune-m4.packages.md`, 2132 lines): the Persona design with (a)–(h) ruled-or-forked (keymap census says `E`; the T-key third door named; Rell ruled authored, its pin move named) · **⭐⭐ OD-R's TWoM-gameplay section — the deterministic break ladder priced in hashed fields** (review DEFEATED the hard-reset counter with the measured sawtooth; decaying counter recommended; the tunable's unhashed-trait trap named) · M5-1 forward charter · five-item owner batch with silence defaults; 1 send-back (5 MAJOR + 11 MINOR) + 4 nits, all enforced | docs-only, full gate exit 0 in-lane at FINAL commit, twin MATCH, pins UNMOVED ×5, merge tree ≡ lane tree; rows: M4-1 (T16 + T12's OD-R half → chartered) |
