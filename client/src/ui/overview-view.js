@@ -34,7 +34,13 @@ import {
 // erase click takes off.
 import { deckDeviceConditions, eraseTarget, tileOrders } from './room-model.js';
 import { decksView } from './decks-model.js';
-import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js';
+import { overviewScene, makeTransform, starLayerSvg, pawnLayerParts, VIEW_W, VIEW_H } from './overview-scene.js';
+// ⭐ THE CLIENT-SIDE TWEEN (2026-08-05). Pure math in the model, node lifecycle in the layer; this
+// file owns only the clock and the two hand-offs. `pawn-tween-model.js`' header carries the five
+// interpolation rules; `pawn-layer.js`' carries the measurement that chose a persistent OVERLAY
+// over re-adopting live nodes into the rebuilt scene.
+import { makePawnTween, makePausableClock } from './pawn-tween-model.js';
+import { makePawnLayer, prefersReducedMotion } from './pawn-layer.js';
 import { pawnChip } from '../render/pawn-svg.js';
 import {
   // ⚠️ `moraleColor` IS DELIBERATELY NOT IMPORTED HERE (M1-F). This surface used to tint a CREW
@@ -108,6 +114,20 @@ let _toast = null;           // transient status toast
 let _toastTimer = 0;
 let _raf = 0;                // coalesce many wire messages into one repaint
 let _ctx = { transform: null, frame: null }; // last projection, for click→tile
+// ── the tween's handles (see the import note) ────────────────────────────────────────────────
+let _pawnSvgEl = null;       // #ov-pawnlay — the PERSISTENT overlay the figures live in
+let _pawnLayer = null;       // makePawnLayer(_pawnSvgEl) — keyed <g> per cid, survives every repaint
+const _tween = makePawnTween();
+const _clock = makePausableClock(
+  () => (typeof performance === 'object' && performance && typeof performance.now === 'function'
+    ? performance.now() : Date.now()),
+);
+let _place = null;           // the last projection, so the frame loop can place a figure without
+                             // rebuilding the scene (it is `_ctx.transform`, kept under its own name
+                             // so a lane editing the click path cannot silently retire the tween's)
+let _tweenRaf = 0;           // 0 ⇒ NO LOOP IS RUNNING. An idle ship must cost zero frames.
+let _inTweenFrame = false;   // re-entrancy guard — see `tweenFrame`
+let _reduce = false;         // `prefers-reduced-motion` — read ONCE at mount (see `placePawns`)
 // Level-2 room-zoom hooks (owned by a later lane). For now: select/centre + an honest toast.
 let _onEnterRoom = (anchor) => { toast('ROOM ZOOM — coming soon (' + anchor + ')'); };
 // ⚠️ THERE IS NO STOCKPILE ACCEPT-MASK SEAM ON THIS SURFACE ANY MORE, and its absence is deliberate
@@ -299,6 +319,23 @@ function buildSkeleton() {
     '<div class="ov-space">' +
       starLayerSvg() +
       '<div class="ov-stage" id="ov-stage"></div>' +
+      // ⭐⭐ THE PAWN OVERLAY — a SIBLING of `#ov-stage`, not a layer inside the scene, and that is
+      // the whole client-side tween in one line of markup. `paintScene` assigns the entire plate to
+      // `_stage.innerHTML` on every coalesced repaint (~10×/s while anyone walks), so a figure drawn
+      // inside it is destroyed before it could be moved twice. These nodes are never torn down.
+      // ⛔ ITS PROJECTION MUST MATCH THE SCENE'S EXACTLY: same `viewBox` (the plate's is a CONSTANT
+      // `0 0 VIEW_W VIEW_H`, so it is written once here rather than copied per repaint), same
+      // `preserveAspectRatio`, and — the part a stylesheet owns — the same client box, which
+      // `.ov-pawnlay` gets by being `inset:0` in the same `.ov-space` that `.ov-stage` is inset:0 in.
+      // ⚠️ IT TAKES THE POINTER, unlike the Room Zoom's twin, and it has to: this surface resolves a
+      // crew click through `target.closest('.pl-pawn')` + `data-cid`, so a `pointer-events:none`
+      // overlay would silently delete pawn selection on the plate. The SVG root is transparent and
+      // only the figures are targets (`.ov-pawnlay{pointer-events:none}` +
+      // `.ov-pawnlay .pl-pawn{pointer-events:auto}`), so every other press falls through to the
+      // scene exactly as before — and `initOverview` binds the same two pointer handlers here,
+      // because this element is NOT inside `#ov-stage` and its events do not bubble through it.
+      '<svg class="ov-pawnlay" id="ov-pawnlay" xmlns="http://www.w3.org/2000/svg"' +
+        ` viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet"></svg>` +
     '</div>' +
     // the demoted LENS toggles, directly under the plate they wash (ruling E4: kept, quiet)
     '<div class="hud ov-lens" id="ov-lens"></div>' +
@@ -356,6 +393,9 @@ function buildSkeleton() {
     // backdrop-dismiss, its 13 choice buttons and its CANCEL. `overview-model.test.js`'s id census
     // is equality-pinned and drops `ov-picker` in the same commit.
   _stage = document.getElementById('ov-stage');
+  _pawnSvgEl = document.getElementById('ov-pawnlay');
+  _pawnLayer = _pawnSvgEl ? makePawnLayer(_pawnSvgEl, { groupClass: 'pl-pawn' }) : null;
+  _reduce = prefersReducedMotion();
   _toast = document.getElementById('ov-toast');
   _nudge = makeNudge({ el: () => $('ov-nudge') });
 
@@ -368,6 +408,16 @@ function buildSkeleton() {
   // surface never receives when a repaint lands mid-press, and at 10 Hz that is most presses.
   _stage.addEventListener('pointerdown', onScenePointerDown);
   _stage.addEventListener('pointerup', onScenePointerUp);
+  // ⛔ AND THE SAME TWO ON THE PAWN OVERLAY, because it is a SIBLING of `#ov-stage` rather than a
+  // child: a press that lands on a figure never reaches `_stage`'s handlers at all, and without
+  // these two lines clicking a crew member on the plate would do NOTHING — the exact silent
+  // failure mode this surface has already paid for twice (BUG-B, and the console's invisible
+  // cursor). Same handlers, same bubble phase, same one-shot latch (`_downOnScene` is module
+  // state, so a press on the overlay and a release on the scene still resolve as one gesture).
+  if (_pawnSvgEl) {
+    _pawnSvgEl.addEventListener('pointerdown', onScenePointerDown);
+    _pawnSvgEl.addEventListener('pointerup', onScenePointerUp);
+  }
   // …and a release ANYWHERE clears the press latch, so a press begun on the schematic and released
   // off it (a drag out onto a HUD island) cannot leave the latch armed for somebody else's gesture.
   //
@@ -968,7 +1018,17 @@ function repaint() {
 
   const show = shouldShow();
   document.body.classList.toggle('overview-open', show);
-  if (!show) return; // hidden → skip the heavy scene rebuild until it matters again
+  if (!show) {
+    // ⛔ A HIDDEN PLATE ANIMATES NOBODY. The Room Zoom is a full-window takeover, so while it is open
+    // this surface is behind it — and a tween that kept running would spend a frame every 16 ms
+    // moving figures nobody can see, on the one surface whose whole cost argument is "zero work when
+    // nothing is walking". Dropping the nodes also means the return is a COLD START (rule 4), which
+    // is what we want: the roster has moved on while we were away.
+    if (_pawnLayer) _pawnLayer.clear();
+    _tween.clear();
+    _place = null;
+    return; // hidden → skip the heavy scene rebuild until it matters again
+  }
 
   const frame = Hud.getFrame();
   const rosterMsg = Hud.getRoster();
@@ -1161,7 +1221,9 @@ function paintRadar() {
 
 function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid, attention, selAnchor) {
   const state = {
-    deck, decksView: dView, frame, crew,
+    // ⚠️ NO `crew` — the plate's builder no longer draws figures (see `overviewScene`'s ⛔ note and
+    // `pawnLayerParts`). The roster goes to the pawn overlay at the bottom of this function instead.
+    deck, decksView: dView, frame,
     // ⭐ VR-P4 — the two plate-level states the scene cannot derive for itself: which compartments
     // need attention (D5's stuck orders, re-housed per ruling E4) and which one holds the selected
     // crew member (the 2.2 px border).
@@ -1188,7 +1250,100 @@ function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid, attentio
 
   // Cache the projection for click→tile (IX-O-19).
   const entry = (dView || []).find((d) => d.deck === deck);
-  _ctx = { transform: makeTransform(entry ? entry.slots : [], frame), frame };
+  const t = makeTransform(entry ? entry.slots : [], frame);
+  _ctx = { transform: t, frame };
+
+  // ── THE PAWNS: content at MESSAGE cadence, position at DISPLAY cadence ──
+  // ⭐ ONE TRANSFORM, TWO CONSUMERS. The click→tile projection just cached IS the projection the
+  // figures are placed with — a second `makeTransform` here is how a pawn and the tile a click
+  // resolves to would come to disagree about the same compartment.
+  // The tween is fed only crew ON THIS DECK, and it is `pawnLayerParts` that decides that (its
+  // `c.deck !== deck` filter is this plate's only membership test, and a deck cannot go fractional
+  // — `WireFormat.RosterEntry.Fx` states that rule). So a crew member who climbs a ladder LEAVES
+  // the set, is forgotten, and re-enters cold on the other deck: no figure ever glides between
+  // decks, which on a plate that draws one deck at a time would be a slide across the whole ship.
+  if (_pawnLayer) {
+    const parts = pawnLayerParts(crew, deck, t, selCid, 'ov');
+    _pawnLayer.sync(parts);
+    const drawn = new Set(parts.map((p) => String(p.cid)));
+    _tween.sample((crew || []).filter((c) => c && drawn.has(String(c.cid))).map((c) => ({
+      cid: c.cid,
+      x: Number.isFinite(c.fx) ? c.fx : c.x,
+      y: Number.isFinite(c.fy) ? c.fy : c.y,
+      deck: c.deck,
+    })), _clock.tick(isPaused()));
+    _place = t;
+    placePawns();   // never leave a figure at a stale transform for a frame…
+    startTween();   // …then let the loop take over, and only if there is something to animate
+  }
+}
+
+/**
+ * Project the tween's current tile positions and write them onto the persistent nodes. THE ONLY
+ * WORK THAT HAPPENS PER DISPLAY FRAME — no scene rebuild, no decode, no de-clutter sweep.
+ *
+ * ⛔ AND THAT RESTRAINT IS THE WHOLE COST ARGUMENT. A full repaint of this plate is ~0.6 ms
+ * (measured, 200 runs, headless 1440×900) and the two-pass figure layer is a measured ×1.46 on top
+ * of it; running either at 60 Hz would spend more than the frame budget to smooth a walk. Eight
+ * transform writes plus a forced layout measured at a MEDIAN of 0.0 ms and a p90 of 0.1 ms on the
+ * same box — three orders of magnitude cheaper, because only the translate moves.
+ */
+function placePawns() {
+  if (!_pawnLayer || !_place) return 0;
+  // Reduced motion is ONE EXPRESSION, not a second code path: reading the tween at a time past every
+  // segment's end is by definition the newest sample — exactly where this plate drew the figure
+  // before the tween existed. `startTween` simply never arms. (`pawn-layer.js`'s query owns why.)
+  const now = _reduce ? Number.MAX_SAFE_INTEGER : _clock.peek();
+  const pos = _tween.positions(now);
+  const screen = new Map();
+  for (const [key, p] of pos) {
+    const [sx, sy] = _place.project(p.x + 0.5, p.y + 0.5); // feet on the tile centre, as ever
+    screen.set(key, { x: sx, y: sy });
+  }
+  return _pawnLayer.place(screen);
+}
+
+/**
+ * ⛔⛔ ZERO WORK WHEN NOBODY IS WALKING, AND IT IS A LOOP THAT STOPS RATHER THAN A LOOP THAT IDLES.
+ * An idle ship emits NO roster messages at all (measured on `--ship wreck`: 7.67 msg/s while someone
+ * walks, 0.00 idle — `hud.js`'s own note), so "no samples" is the normal state of a quiet ship and a
+ * renderer that kept a rAF alive would burn a frame every 16 ms to redraw a stationary drawing. The
+ * loop is armed by the repaint that delivers a sample and it stops itself the moment `settled()`
+ * says there is nothing left to move.
+ *
+ * ⚠️ THE RE-ENTRANCY GUARD IS NOT DEFENSIVE PROGRAMMING — see the identical note on the Room Zoom's
+ * twin. `overview-model.test.js` installs a SYNCHRONOUS `requestAnimationFrame` so an assertion can
+ * read the surface immediately after the state change that repainted it, and a self-rescheduling
+ * loop under a synchronous rAF is unbounded recursion.
+ */
+function tweenFrame() {
+  _tweenRaf = 0;
+  if (_inTweenFrame) return;
+  _inTweenFrame = true;
+  try {
+    const now = _clock.tick(isPaused());   // …which does not advance while the ship is held
+    placePawns();
+    if (!_tween.settled(now)) startTween();   // …which itself declines while held
+  } finally { _inTweenFrame = false; }
+}
+
+/** Arm one frame, if one is not already armed and there is something to animate. */
+function startTween() {
+  if (_tweenRaf || _reduce) return;
+  // ⛔ A HELD SHIP ARMS NOTHING, AND THIS LINE WAS MISSING UNTIL THE LIVE RIG FOUND IT.
+  // `_clock` does not advance while paused (that is what stops the figures creeping), so a
+  // segment that was unspent when the hold began STAYS unspent — `settled()` is false forever
+  // and the loop re-armed itself every frame, writing nothing and burning a callback every
+  // 16 ms for as long as the player left the ship stopped. Measured on `--ship wreck` before
+  // the fix. The resume needs no special case: it produces wire messages, and every repaint
+  // ends by calling this.
+  if (isPaused()) return;
+  if (_tween.settled(_clock.peek())) return;
+  // ⛔ NO `|| 1` FALLBACK ON THIS HANDLE — the harness's synchronous rAF returns 0 DELIBERATELY (see
+  // `overview-model.test.js`: the callback clears the latch and the return value is assigned
+  // afterwards, so a truthy handle latches the flag forever and every later frame is dropped).
+  const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+  _tweenRaf = raf(tweenFrame);
 }
 
 /**

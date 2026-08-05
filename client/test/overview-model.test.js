@@ -599,7 +599,11 @@ class OvDoc extends DomDocument {
 /** The ids `overview-view.js` looks up, plus the five `hud.js` writes UNGUARDED on a frame dispatch
  *  (`setChip` / `reflectLens` — see `room-model.test.js`, which registers the same five). */
 const OV_IDS = [
-  'overview-view', 'ov-stage', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
+  // ⭐ `ov-pawnlay` — the PERSISTENT pawn overlay (2026-08-05, the client-side tween). Registered
+  // because leaving it out is not neutral: `buildSkeleton` looks it up, gets null, and the surface
+  // silently mounts NO pawn layer at all — so every leg here would be driving a plate with no crew
+  // on it and would not know. (Trap 4's corollary: fix the harness, never the guard.)
+  'overview-view', 'ov-stage', 'ov-pawnlay', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
   'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', // M1-L dropped 'ov-picker' with the modal
   // ⭐ VR-P4 — the plate's own four boxes. `ov-sensor` and `ov-ledger` above did not move id: they
   // are the `aboard` and `the ship` COLUMNS of `ov-columns` now (ruling E4 re-houses, never drops),

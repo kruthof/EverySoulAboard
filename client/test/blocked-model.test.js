@@ -704,7 +704,7 @@ test('every reason the key can emit has a swatch rule in the shipped stylesheet'
 // ══════════════════════════════════════════════ THE SEAM, DRIVEN — not scanned (the binding lesson)
 
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
@@ -769,6 +769,26 @@ function prime() {
 }
 
 const layers = () => blkDoc.getElementById('rz-layers').innerHTML;
+/** ⭐ THE PAWN OVERLAY, KEPT SEPARATE FROM `layers()` ON PURPOSE. Since the client-side tween
+ *  (2026-08-05) the figures live in `#rz-pawnlay`, a persistent sibling `<svg>` of `#rz-layers`
+ *  whose per-cid `<g>` nodes survive the repaint that rebuilds the scene. Sibling suites concatenate
+ *  the two and call the result "what is drawn"; THIS file must not, because its subject is precisely
+ *  WHICH LAYER IS ABOVE WHICH — and the answer stopped being a string offset and became a DOM fact.
+ *  Populated by `appendChild`, so the content is read off the children. */
+const pawnLayerHtml = () => ((blkDoc.getElementById('rz-pawnlay').childNodes) || [])
+  .map((nd) => nd.innerHTML || '').join('');
+/** ⚠️ THE STACKING ORDER IS READ OUT OF THE SKELETON'S OWN MARKUP, and the limit is disclosed rather
+ *  than papered over: this rig's `innerHTML` is a STRING (`BlkEl`, above — dom-lite parses no markup),
+ *  so `.rz-canvas` has no children here at all and a `childNodes` walk would assert nothing. What CAN
+ *  be checked is the source of truth the browser then stacks: the order of the two mounts inside the
+ *  `.rz-canvas` block that `buildSkeleton` writes. `codeOnly` first, so a commented-out mount cannot
+ *  satisfy it. The live stacking — that the figure really is painted over the wash — is witnessed in
+ *  the running game by `client/tools/pawn-tween-shot.mjs`, not here. */
+const RZ_SRC = codeOnly(read(join(CLIENT, 'src/ui/roomzoom-view.js')));
+const canvasMountOrder = () => {
+  const block = RZ_SRC.slice(RZ_SRC.indexOf("'<div class=\"rz-canvas\" id=\"rz-canvas\">'"));
+  return { layers: block.indexOf("id=\"rz-layers\""), pawnlay: block.indexOf("id=\"rz-pawnlay\"") };
+};
 const keyBox = () => blkDoc.getElementById('rz-zonekey').innerHTML;
 
 // ⭐ THE TEST THIS FILE EXISTS FOR. It is not "is the builder called" — that is the guard the
@@ -929,7 +949,15 @@ test('DRIVEN: a row on another deck does not reach the drawn layer', () => {
 // field, and the committed shots show crew sitting partly over badges).
 //
 // MUTATION A: have blockedLayerSvg replace the mark layer instead of overlaying it ⇒ red.
-// MUTATION B: move `body += blockedLayerSvg(...)` AFTER `body += pawnSvg(...)` ⇒ red on the last leg.
+// ⭐⭐ MUTATION B CHANGED SHAPE WITH THE CLIENT-SIDE TWEEN (2026-08-05), AND SO DID THE GUARANTEE.
+// The figures are no longer concatenated into `body` at all: they live in `#rz-pawnlay`, a persistent
+// sibling `<svg>` that is a LATER CHILD of `.rz-canvas` than `#rz-layers`. So "the blocked layer must
+// not wash over a person" is no longer one line's position in a string — it is stacking order between
+// two elements, and NO reordering inside `paintLayers` can break it. The last leg therefore asserts
+// the fact that now carries the promise: the badge is in the scene mount, the person is in the
+// overlay, and the overlay comes after. MUTATION B is now: move `#rz-pawnlay` BEFORE `#rz-layers` in
+// `buildSkeleton` ⇒ red. (Its old form — moving the pawn concatenation — is unreachable, and
+// `items-model.test.js` + `room-model.test.js` both pin that `body += pawnSvg(` never returns.)
 test('DRIVEN: the blocked layer is ADDITIVE — over the mark, under the pawns', () => {
   prime();
   const t = [RECT.rx + 1, RECT.ry + 2];
@@ -948,10 +976,19 @@ test('DRIVEN: the blocked layer is ADDITIVE — over the mark, under the pawns',
   assert.ok(svg.indexOf('mk mk-dig') < svg.indexOf('rz-blocked'),
     'the scrim must be drawn ABOVE the order mark — under it, the amber ring sits at full brightness '
     + 'on a tile that is going nowhere, which is the misreading the layer exists to prevent');
-  assert.ok(svg.includes('rz-pawns'),
-    'no pawn layer in the output — the ordering assertion below would be vacuous (indexOf(-1))');
-  assert.ok(svg.indexOf('rz-blocked') < svg.indexOf('rz-pawns'),
-    'the blocked layer is drawn ABOVE the pawns, so a near-black scrim washes over every crew member '
+  // NON-VACUITY FIRST, both halves: a person really is drawn, and she is NOT in the scene mount.
+  const pawns = pawnLayerHtml();
+  assert.ok(pawns.includes('class="rz-pawn"'),
+    'no figure in the pawn overlay — the stacking assertion below would be vacuous');
+  assert.ok(!svg.includes('class="rz-pawn"'),
+    'a figure is being drawn INSIDE the repainted scene as well. That copy is destroyed ten times a '
+    + 'second (so it cannot be tweened) and it sits UNDER the blocked wash, which is the exact defect '
+    + 'the overlay removes — with the overlay copy on top, nobody would ever notice.');
+  const { layers: iLayers, pawnlay: iPawnLay } = canvasMountOrder();
+  assert.ok(iLayers >= 0 && iPawnLay >= 0, 'the two mounts are not both inside the `.rz-canvas` block '
+    + 'of `buildSkeleton` — the stacking guarantee has no basis and this leg is vacuous');
+  assert.ok(iPawnLay > iLayers,
+    'the pawn overlay is stacked UNDER the scene, so a near-black scrim washes over every crew member '
     + 'standing on a blocked tile. Both view files state this ordering as load-bearing: a layer that '
     + 'explains the floor must never hide a person.');
 });

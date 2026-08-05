@@ -44,6 +44,19 @@ body.moss-open #roomzoom-view{display:none !important}
   border:1px solid var(--paper-border,#C6BBA2);box-shadow:var(--plate-shadow)}
 .rz-layers{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);display:block}
 .rz-layers svg.pawn,.rz-layers .pl-item{shape-rendering:auto}
+/* ⭐⭐ THE PAWN OVERLAY — `.rz-layers`' BOX, COPIED EXACTLY, AND THAT IS THE WHOLE CONTRACT. The
+   figures live outside the layer that is rebuilt wholesale ~10×/s so a client-side tween has nodes
+   to move (roomzoom-view.js's `#rz-pawnlay` note, and pawn-layer.js's measurement). Same `inset:6px`
+   and same width/height calc as the line above — NOT `inset:0` — because the overlay carries the
+   same `viewBox` at the same `preserveAspectRatio`, so any difference in the CLIENT box is a
+   difference in the projection, i.e. a crew member standing beside her own floor. `.rz-pulse` has
+   relied on this identity since it shipped; this is the second consumer.
+   `pointer-events:none`: crew are hit-tested geometrically here (`crewHitAtTile` off the clicked
+   tile) exactly as when the figures were inside the scene, so the overlay must be transparent to
+   the pointer or it eats every click on the floor. */
+.rz-pawnlay{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);display:block;
+  pointer-events:none}
+.rz-pawnlay [data-form="pawn"]{shape-rendering:auto}
 /* The caption keeps its corner and its job. The room's NAME, area and company are stated IN the SVG
    now (the design's serif title + mono stat line), so this line is the MODE and the count — the two
    facts about what the player is doing rather than about where they are. */

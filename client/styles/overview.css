@@ -51,6 +51,22 @@ body.moss-open #overview-view{display:none !important}
 @media (prefers-reduced-motion:reduce){.ov-stars-a,.ov-stars-b,.ov-stars-c{animation:none}}
 .ov-stage{position:absolute;inset:0;cursor:crosshair;z-index:2}
 .ov-stage svg.pl-overview{width:100%;height:100%;display:block}
+/* ⭐⭐ THE PAWN OVERLAY — `.ov-stage`'s BOX, COPIED EXACTLY, AND THAT IS THE WHOLE CONTRACT. The
+   figures live outside the mount that is rebuilt wholesale ~10×/s so a client-side tween has nodes
+   to move (overview-view.js's `#ov-pawnlay` note; pawn-layer.js's measurement). `inset:0` in the
+   same `.ov-space`, so the two `<svg>`s carry the same viewBox at the same preserveAspectRatio over
+   the same client box — any difference here IS a difference in the projection, i.e. a crew member
+   standing beside her own compartment. `z-index:3` puts every figure above every scene layer
+   unconditionally, which is a stronger version of the ordering the scene used to enforce by
+   concatenating the pawn layer last.
+   ⛔ THE POINTER RULE IS TWO LINES AND BOTH ARE LOAD-BEARING: the sheet is transparent to the
+   pointer so a press on empty plate still reaches the scene's room/tile hit test, and the FIGURES
+   take it back, because this surface resolves a crew click through `target.closest('.pl-pawn')`.
+   Delete the second line and clicking a crew member on the map silently stops selecting anybody. */
+.ov-pawnlay{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:3;
+  pointer-events:none}
+.ov-pawnlay .pl-pawn{pointer-events:auto;cursor:pointer}
+.ov-pawnlay [data-form="pawn"]{shape-rendering:auto}
 
 /* ⭐ THE MINIATURE INTERIORS' ONE STYLE RULE, AND IT IS LOAD-BEARING. Each compartment tile is a
    nested <svg> whose 992-unit interior is scaled into a ~150 px cell — about 1/7 — so every stroke

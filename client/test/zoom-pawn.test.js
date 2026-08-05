@@ -255,7 +255,7 @@ class RzDoc extends DocumentLite {
 }
 
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   'rz-crewdock',
   // console ids `hud.js`'s frame/roster dispatch writes through — the same set the sibling rigs
@@ -283,7 +283,16 @@ const Hud = await import('../src/ui/hud.js');
 const RoomZoom = await import('../src/ui/roomzoom-view.js');
 
 const el = (id) => doc.getElementById(id);
-const layers = () => el('rz-layers').innerHTML;
+/** ⭐ WHAT IS DRAWN IN THE ROOM — BOTH LAYERS, and the split is the client-side tween (2026-08-05).
+ *  `#rz-layers` is rebuilt wholesale every repaint and holds the cutaway, the floor, the fittings and
+ *  the marks; the FIGURES live in `#rz-pawnlay`, a persistent sibling `<svg>` whose per-cid `<g>`
+ *  nodes survive a repaint so they can be interpolated between two roster samples. Every assertion in
+ *  this file that says "the room draws X" means the picture, not the mount, so the picture is what
+ *  this returns. (`blocked-model.test.js` is the one file that must keep them APART — its subject is
+ *  which layer is above which.) The per-cid content is read off the child `<g>`s because the overlay
+ *  is populated by `appendChild`, not by an `innerHTML` string. */
+const pawnLayerHtml = () => (el('rz-pawnlay').childNodes || []).map((n) => n.innerHTML || '').join('');
+const layers = () => el('rz-layers').innerHTML + pawnLayerHtml();
 const sent = [];       // what the ROOM ZOOM sent
 const hudSent = [];    // what the SHARED SELECTION FLOW (hud.js) sent
 

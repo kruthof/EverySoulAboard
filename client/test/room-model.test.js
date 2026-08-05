@@ -1235,10 +1235,20 @@ test('WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body
   const iMat = src.indexOf('materialLayerSvg(');
   const iZone = src.indexOf('zoneLayerSvg(');
   const iMark = src.indexOf('markLayerSvg(');
-  const iPawn = src.indexOf('body += pawnSvg(');
   const iFurn = src.indexOf('body += furnitureSvg(');
   assert.ok(iMat > 0 && iZone > 0 && iMark > iMat && iMark > iZone, 'the mark layer must draw last of the floor layers');
-  assert.ok(iPawn > iMark, 'the mark layer must draw UNDER the pawns');
+  // ⭐ "UNDER THE PAWNS" IS NO LONGER A LINE'S POSITION IN THIS CONCATENATION, and the guarantee got
+  // STRONGER rather than weaker (2026-08-05, the client-side tween). The figures left `body` for a
+  // persistent overlay `<svg>` that is a LATER SIBLING of `#rz-layers` — so every layer built here is
+  // below every pawn, unconditionally, and no future reordering of these lines can put a scrim over a
+  // person. What must be guarded instead is that nobody puts them BACK: a second copy of the figures
+  // inside `body` would draw every crew member twice, once animated and once not.
+  assert.equal(src.indexOf('body += pawnSvg('), -1,
+    'the pawn layer is being concatenated into `body` again. It belongs in the persistent `#rz-pawnlay` '
+    + 'overlay — a figure inside `_layers` is destroyed by `innerHTML =` ~10x/s and cannot be tweened, '
+    + 'and a copy in both places draws every crew member twice.');
+  assert.match(src, /_pawnLayer\.sync\(pawnParts\(/,
+    'nothing hands the built pawn parts to the persistent overlay, so the room draws no people at all');
   // …and ABOVE the furniture, since the device-strip fix landed: a condemned DESK now carries fg 26,
   // and beneath its own opaque sprite the amber ✕ is invisible — the owner's exact reported symptom,
   // with the byte present and correct. Inert for debris/dig (glyph 37 is in NON_FURNITURE, so the
@@ -1301,7 +1311,7 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
 // where it is answered.
 
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   // ⭐ THE HINT LINE, registered here because the neutral-first-screen package gave it two texts
   // and therefore a node reference. It is a `<div>`, so the start-tag scanner below (which lifts
@@ -4596,7 +4606,20 @@ function vrMount({ vacuum = false } = {}) {
     ? { type: 'rooms', rooms: FIX.rooms.rooms.concat([['hold', DECK1, 0, 0, 0, 293, 96]]) }
     : FIX.rooms);
   rzEnter('hold');
-  return rzLayers.innerHTML;
+  // ⭐ BOTH DRAWN LAYERS (2026-08-05, the client-side tween). The cutaway and every floor layer are
+  // in `#rz-layers`, which is rebuilt wholesale each repaint; the FIGURES are in `#rz-pawnlay`, a
+  // persistent sibling `<svg>` whose per-cid `<g>` nodes survive that rebuild so a tween can move
+  // them between two roster samples. This census is about what the SCENE CONTAINS, so it reads the
+  // picture rather than one of its two mounts — the guarantee that the figures are ABOVE everything
+  // in `#rz-layers` is now structural (later sibling) and is asserted in its own leg below.
+  return rzLayers.innerHTML + rzPawnHtml();
+}
+
+/** The pawn overlay's markup. It is populated by `appendChild`, not by an `innerHTML` string, so the
+ *  per-cid groups are read off the children. */
+function rzPawnHtml() {
+  const lay = rzDoc.getElementById('rz-pawnlay');
+  return ((lay && lay.childNodes) || []).map((nd) => nd.innerHTML || '').join('');
 }
 
 /** The scene + placement the controller itself derives for the hold — the parity source. */
@@ -4645,7 +4668,11 @@ test('VR-P3 (assembled): every piece of the cutaway is CONCATENATED into the mou
       ['the ground-item layer', (s) => s.includes('class="rz-items"')],
       ['the blocked layer', (s) => s.includes('class="rz-blockeds"')],
       ['the blocked reason SENTENCE', (s) => s.includes('NO WAY TO WALK TO IT')],
-      ['the pawn layer', (s) => s.includes('class="rz-pawns"')],
+      // ⚠️ THE MARKER MOVED WITH THE LAYER, not with the drawing: the `<g class="rz-pawns">` wrapper
+      // died with the concatenated layer, and each figure is its own persistent group in the overlay
+      // now. `class="rz-pawn"` is the sprite group itself — one per crew member drawn — which is the
+      // thing this census was ever about.
+      ['the pawn layer', (s) => s.includes('class="rz-pawn"')],
       ['the queued-order ghost layer', (s) => s.includes('class="rz-ghosts"')],
     ];
     const missing = rows.filter(([, hit]) => !hit(svg)).map(([name]) => name);
@@ -4889,7 +4916,9 @@ test('VR-P3 (assembled): the mark, zone and blocked layers are SHEARED into the 
     pair('the MARK layer', [...marksLayer.matchAll(/<g transform="(matrix\([^)]*\))"><g class="mk /g)].map((m) => mat(m[1])));
     const zoneLayer = svg.slice(svg.indexOf('<g class="rz-zones"'), svg.indexOf('<g class="rz-decor"'));
     pair('the ZONE layer', [...zoneLayer.matchAll(/<g class="rz-zone[^"]*" transform="(matrix\([^)]*\))"/g)].map((m) => mat(m[1])));
-    const blockedLayer = svg.slice(svg.indexOf('<g class="rz-blockeds"'), svg.indexOf('<g class="rz-pawns"'));
+    // …to the END of the document rather than to the (now deleted) pawn wrapper: the pattern below is
+    // specific to `rz-blocked`, and nothing after this layer emits one.
+    const blockedLayer = svg.slice(svg.indexOf('<g class="rz-blockeds"'));
     pair('the BLOCKED layer', [...blockedLayer.matchAll(/<g transform="(matrix\([^)]*\))"><g class="rz-blocked /g)].map((m) => mat(m[1])));
     assert.deepEqual(fails, [], fails.join('\n'));
   } finally { vrRestore(); }
@@ -5053,6 +5082,76 @@ test('VR-P3 (assembled): a ground-item pile STANDS at its own tile through the s
   } finally { vrRestore(); }
 });
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE CLIENT-SIDE TWEEN, DRIVEN ON THE REAL SURFACE (2026-08-05).
+//
+// `pawn-tween.test.js` proves the interpolation maths and the layer's node lifecycle in isolation.
+// What CANNOT be proved there is the thing the whole package rests on: that the figure's DOM node
+// really outlives the repaint that rebuilds the room around it. `client/test/pawn-tween.test.js`
+// mounts into a recording stub; this mounts into the SHIPPING controller, drives real wire messages
+// through `Hud`, and compares node references across a repaint that provably happened.
+//
+// MUTATION, APPLIED AND MEASURED (not asserted): `_pawnSvgEl.innerHTML = ''` immediately before the
+// sync — the exact thing a wholesale-rebuilt mount does to the subtree it holds — makes this test RED
+// at *the layer grew duplicates*, because the layer's bookkeeping and the DOM then disagree about
+// which nodes exist. Reverted from an in-memory copy (TRAPS §2). It is red for the right reason: the
+// figures cannot live anywhere that is assigned wholesale, whatever the assignment is spelled.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('DRIVEN: the pawn node SURVIVES a repaint that rebuilds the whole room', async () => {
+  const f = rzEnter('hold');
+  const walker = { cid: 5150, name: 'Ada Ozawa', role: 'engineer', deck: f.deck,
+    x: f.rx + 4, y: f.ry + 2, task: '' };
+  Hud.renderRoster({ type: 'roster', crew: [walker] });
+  await new Promise((r) => setTimeout(r, 40));
+
+  const lay = rzDoc.getElementById('rz-pawnlay');
+  assert.equal(lay.childNodes.length, 1, 'the room drew no figure at all — every leg below is vacuous');
+  const node = lay.childNodes[0];
+  assert.equal(node.getAttribute('data-cid'), String(walker.cid));
+  const sceneBefore = rzLayers.innerHTML;
+  const artBefore = node.innerHTML;
+  assert.ok(artBefore.includes('class="rz-pawn"'), 'the figure carries no sprite');
+
+  // A REAL REPAINT: three sub-tile steps, exactly the cadence the host sends while she walks.
+  for (const fx of [f.rx + 4.2, f.rx + 4.5, f.rx + 4.8]) {
+    Hud.renderRoster({ type: 'roster', crew: [{ ...walker, fx, fy: walker.y }] });
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  // NON-VACUITY FIRST: the scene really was torn down and rebuilt in that window. Without this the
+  // "node survived" claim is satisfied by a surface that never repainted at all.
+  assert.notEqual(rzLayers.innerHTML, '', 'the scene mount is empty — nothing repainted');
+  assert.equal(rzLayers.innerHTML, sceneBefore,
+    'precondition note: the cutaway is unchanged by a pure roster move, which is exactly why the '
+    + 'figures had to leave it — every one of those repaints assigned this whole string again');
+
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes.length, 1, 'the layer grew duplicates');
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes[0], node,
+    'the pawn node was REPLACED across a repaint. Nothing can be animated between two roster '
+    + 'messages if the node does not survive them — this is the entire reason the figures are not '
+    + 'in `#rz-layers`.');
+  assert.equal(node.innerHTML, artBefore,
+    'her markup was rebuilt although nothing about the ART changed (same task, same selection). '
+    + 'That tears down the sprite the tween is moving, ~10 times a second.');
+  // …and the node was PLACED: it carries a transform, which is the one thing the frame loop writes.
+  assert.match(String(node.getAttribute('transform') || ''), /^translate\(-?[\d.]+ -?[\d.]+\)$/,
+    'the figure carries no transform, so every crew member is drawn at the layer origin');
+});
+
+test('DRIVEN: leaving the room drops the figures — a closed surface holds no pawn state', async () => {
+  const f = rzEnter('hold');
+  Hud.renderRoster({ type: 'roster', crew: [
+    { cid: 5151, name: 'Bo Ashby', role: 'crew', deck: f.deck, x: f.rx + 3, y: f.ry + 2, task: '' },
+  ] });
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes.length, 1, 'precondition: somebody is drawn');
+  rzApi.exit();
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes.length, 0,
+    'the figures are still mounted with the room shut. They would be the FIRST thing painted on the '
+    + 'next room the player opens — in the old room\'s projection.');
+  Hud.renderRoster({ type: 'roster', crew: [] });
+});
+
 /**
  * ⭐ MAJOR 3(b) — A CREW MEMBER IS A PERSON-SIZED FIGURE, and this leg exists because a mutation
  * SURVIVED. `PAWN_M 1.66 → 1.0` drew every soul at 60 % of their height — a room of children,
@@ -5065,8 +5164,12 @@ test('VR-P3 (assembled): a ground-item pile STANDS at its own tile through the s
 test('VR-P3 (assembled): a crew member is drawn between 1.5 m and 1.9 m tall', () => {
   try {
     const svg = vrMount();
-    const pawns = svg.slice(svg.indexOf('<g class="rz-pawns"'));
-    const m = /<g class="rz-pawn" transform="translate\([-\d.]+ [-\d.]+\) scale\(([\d.]+)\)">/.exec(pawns);
+    // ⚠️ THE `<g class="rz-pawns">` WRAPPER IS GONE with the layer that held it — each figure is now
+    // its own persistent `<g class="rz-pawn-root">` in the overlay, and the sprite group inside it is
+    // drawn around the FEET (0,0) with the person's screen position carried on the parent's
+    // `transform`. So the scale is read straight off the sprite group; the translate beside it is the
+    // sprite's own foot offset, not the pawn's place in the room, and this leg was never about that.
+    const m = /<g class="rz-pawn" transform="translate\([-\d.]+ [-\d.]+\) scale\(([\d.]+)\)">/.exec(svg);
     assert.ok(m, 'no pawn was drawn in the mounted scene — this leg is vacuous');
     // The sprite's own viewBox is 24 units tall (`render/pawn-svg.js`'s feet contract), so the drawn
     // height in scene px is `scale × 24`, and the surface's rule is `ROOM_SCALE` px per centimetre.
