@@ -1,5 +1,8 @@
-// The FIXTURE builders (#43–60) — doors, hatches, conduits, wall props & lights. Pure
-// `(opts) -> string`; geometry/colour translated verbatim from perilune-item-set.dc.html.
+// The THIRTEEN FIXTURE builders — doors, hatches, conduits, wall props & lights. Pure
+// `(opts) -> string`; geometry/colour translated verbatim from perilune-item-set.dc.html, whose
+// element numbers 43–60 this file used to cover in full and now covers in part: the surviving
+// builders keep their mock numbers in their own comments (43, 44, 45, 46, 47, 49, 50, 51, 53, 56,
+// 57, 59, 60), and the five gaps are the rows listed below.
 // `opts.state:'off'` dims the glow-bearing fixtures (lamps, conduit, floodlight, sun lamp).
 //
 // ⚠️ IT WAS 18 AND IS NOW 13, for the same reason `objects.js`'s header records: VR-P2 retired
@@ -89,6 +92,7 @@ export const airVent = (opts = {}) =>
       }),
     });
   });
+// 49 WALL LAMP — a warm sconce with a broad downward glow.
 export const wallLamp = (opts = {}) =>
   item('wall-lamp', opts, (s, { powered }) => {
     s.rect({ x: -11, y: -3, w: 22, h: 34, rx: 4, fill: '#4a5560' });
@@ -137,6 +141,7 @@ export const wallScreen = (opts = {}) =>
     s.glow(0, 0, 30, 'rgba(90,200,220,.5)', 1, 20);
     s.rect({ x: -38, y: -22, w: 76, h: 44, rx: 3, fill: screenTeal(s) });
   });
+// 53 VENT FAN — a four-blade fan in a steel housing.
 export const ventFan = (opts = {}) =>
   item('vent-fan', opts, (s) => {
     s.rect({ x: -38, y: -38, w: 76, h: 76, rx: 8, fill: '#38424d' });
@@ -148,6 +153,7 @@ export const ventFan = (opts = {}) =>
     s.circle({ cx: 0, cy: 0, r: 28.5, fill: 'none', stroke: '#2b3742', sw: 3 });
     s.circle({ cx: 0, cy: 0, r: 6, fill: '#8fa2ad' });
   });
+// 56 WEAPONS RACK — a steel rack holding four vertical rods.
 export const weaponsRack = (opts = {}) =>
   item('weapons-rack', opts, (s) => {
     // REDRAWN 2026-07-27. The old piece was four identical grey bars on a navy panel — a radiator, a
@@ -193,6 +199,7 @@ export const sunLamp = (opts = {}) =>
         : '#6b4a26',
     });
   });
+// 59 DECK SIGN — a wayfinding sign on a post.
 export const deckSign = (opts = {}) =>
   item('deck-sign', opts, (s) => {
     s.rect({ x: -3, y: 0, w: 6, h: 40, fill: '#4a5560' });

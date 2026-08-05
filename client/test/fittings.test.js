@@ -29,9 +29,11 @@ import { dirname, join } from 'node:path';
 
 import * as FT from '../src/items/fittings.js';
 import {
-  FITTING_IDS, SPECS, SIZES, BOX, W, frameFor,
+  FITTING_IDS, SPECS, SIZES, BOX_EXTENT, BOX, W, frameFor,
 } from '../src/items/fittings.js';
-import { HATCH, depth, n as nn, PAPER_FLAT } from '../src/render/oblique.js';
+import {
+  HATCH, depth, n as nn, PAPER_FLAT, DEPTH_RATIO, PX_PER_CM,
+} from '../src/render/oblique.js';
 import { INK, PAPER, ATTEND } from '../src/items/helpers.js';
 import { codeOnly } from './code-only.js';
 
@@ -66,6 +68,14 @@ function ellipses(svg) {
  * literally the builder's frame, so this compares a recorded argument at the seam, never a remembered
  * pixel — and it moves correctly if the drawing scale ever changes.
  */
+// ⚠️ THE OBLIQUE'S TWO RATIOS ARE READ HERE, NOT TYPED — and the reason is the defect this file
+// itself carried: `fittings.js` spelled `0.4`/`0.6` out at four sites and this suite spelled `0.6` out
+// at two more, so six copies of one design decision agreed with each other by luck. `DEPTH_RATIO` is
+// the single home (`oblique.depth()` is its only other reader), the charter §1 fixes its VALUES, and
+// those two literals are therefore asserted ONCE below — everything else derives from the constant.
+const RX = DEPTH_RATIO.x;
+const RY = Math.abs(DEPTH_RATIO.y);          // the kit's y ratio is −0.6: in SVG, up is negative
+
 function hasPoint(svg, id, [x, y, z], msg) {
   const [px, py] = frameFor(id).project(x, y, z);
   const asPath = `${nn(px)} ${nn(py)}`;
@@ -73,6 +83,43 @@ function hasPoint(svg, id, [x, y, z], msg) {
   assert.ok(svg.includes(asPath) || svg.includes(asEllipse),
     `${msg}\n  expected ${id} to draw through (${x}, ${y}, ${z}) cm ⇒ "${asPath}", and it does not.`);
 }
+
+/**
+ * The ONE emitted member that runs through every one of `pts` (in the piece's centimetres), returned
+ * as its projected `[x, y]` points.
+ *
+ * ⚠️ WHY IT INSISTS ON EXACTLY ONE, and why that is the whole difference from calling `hasPoint`
+ * twice: two `hasPoint`s prove two coordinates are drawn SOMEWHERE, which two unrelated strokes
+ * satisfy as happily as one member does. Requiring a single `d` that contains all of them is the
+ * statement that they are the same run of ink — and it hands back that run's points, so a rule can
+ * then be asked about the member rather than about the piece.
+ */
+function memberThrough(svg, id, pts, what) {
+  const F = frameFor(id);
+  const want = pts.map(([x, y, z]) => {
+    const [px, py] = F.project(x, y, z);
+    return `${nn(px)} ${nn(py)}`;
+  });
+  const ds = [...svg.matchAll(/ d="([^"]*)"/g)].map((m) => m[1])
+    .filter((d) => want.every((w) => d.includes(w)));
+  assert.equal(ds.length, 1,
+    `${what}: expected exactly ONE member running through ${want.join(' → ')}, found ${ds.length}.\n`
+    + 'Zero means it is gone or re-placed; more than one means the points are shared by other ink and\n'
+    + 'this rule is about the wrong path.');
+  return points(ds[0]);
+}
+
+/**
+ * THE PROJECTION, INVERTED: the DEPTH in centimetres that a projected x implies for a point whose
+ * centimetre x is known. `project` is affine — `px = x0 + s·x + RX·s·y` — so this is exact.
+ *
+ * ⚠️ WHY IT IS WORTH HAVING. "Does this member reach the wall?" asked as `hasPoint(…, [x, 36, z])`
+ * needs the z too, which welds the question to the exact height the builder happens to use today;
+ * re-place the member 2 cm up and the guard reports "gone" rather than "still reaches". Asked as a
+ * DEPTH it is the question actually meant: whichever way the member is drawn, does an end of it land
+ * on the plane the wall stub is on?
+ */
+function depthAt(F, xCm, px) { return (px - F.x0 - F.s * xCm) / (RX * F.s); }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 1. THE SET — thirty pieces, present, pure, namespaced
@@ -161,16 +208,74 @@ test('the three colours this module draws in are the seam\'s, value for value', 
   assert.equal(HATCH.ground, PAPER, 'the kit\'s hatch ground and the seam\'s paper have parted');
 });
 
-test('SIZES is derived from SPECS, not transcribed — and every piece stays inside its own box', () => {
+test('the two ratios the whole dialect turns on are ONE constant, and both readers read it', () => {
+  // The values themselves — measured off the design documents, charter §1. This is the one place a
+  // test file is allowed to say them out loud, because it is the place that is ABOUT them.
+  assert.equal(DEPTH_RATIO.x, 0.4, 'the measured x ratio moved');
+  assert.equal(DEPTH_RATIO.y, -0.6, 'the measured y ratio moved (negative: in SVG, up is −y)');
+
+  // …and `fittings.js` really is reading it rather than carrying a fourth copy, asked at the SEAM:
+  // the displacement a fitting's OWN frame produces for a metre of depth must be `depth()`'s.
+  const F = frameFor('locker');
+  const [ax, ay] = F.project(0, 0, 0);
+  const [bx2, by2] = F.project(0, 100, 0);
+  assert.deepEqual([nn(bx2 - ax), nn(by2 - ay)], depth(100, F.s),
+    'a fitting\'s frame displaces depth differently from oblique.depth() — two projections again');
+
+  // ⚠️ AND THE LITERAL MUST NOT COME BACK, because the four sites that carried it were correct on the
+  // day they were written; that is precisely why an edit to one of them would go unnoticed. Scanned
+  // on the CODE (the module's header quotes the ratios in prose on purpose — see the hex test's own
+  // negative control for the same shape).
+  const code = codeOnly(SRC);
+  const strays = [...code.matchAll(/(?:0\.4|0\.6)\s*\*|\*\s*(?:0\.4|0\.6)\b/g)].map((m) => m[0]);
+  assert.deepEqual(strays, [],
+    `fittings.js multiplies by a projection ratio literally (${strays.join(', ')}). Import\n`
+    + 'DEPTH_RATIO from ../render/oblique.js — one home, two readers, no third spelling. If the\n'
+    + 'number genuinely is NOT the projection (the herb planter\'s stem bow is 0.6 and is a plant\'s\n'
+    + 'proportion), give it a name and say so there: this scan is deliberately blunt, because a\n'
+    + 'coincidence that reads as the ratio is exactly what the next reader will copy.');
+  assert.ok(/(?:0\.4|0\.6)\s*\*/.test(codeOnly('const ry = 0.6 * s * rCm;\n')),
+    'the stray-ratio scan cannot see its own subject — it would pass over a whole re-derivation');
+});
+
+// ⚠️ THIS TEST CHANGED SHAPE IN THE VR-P2 REVISION, AND THE OLD SHAPE IS WORTH RECORDING. It used to
+// assert `max(SIZES[id].w, SIZES[id].h) === BOX` for all thirty — i.e. that every piece's registry
+// `size` was normalised to 112 in its larger axis. That assertion was TRUE and the field it pinned
+// was FALSE: a 260 cm bench claimed 112 × 27 and a ∅46 cm chair claimed 102 × 112, which are the two
+// pieces' TILE proportions sold as a footprint. `SIZES` is now one shared scale for the set and
+// `BOX_EXTENT` is the drawing, and the two are pinned separately because they answer two questions.
+test('SIZES is an honest footprint at ONE shared scale; BOX_EXTENT is the drawn tile', () => {
   for (const id of FITTING_IDS) {
     const spec = SPECS[id];
     const z0 = spec.z0 == null ? 0 : spec.z0;
-    const ex = spec.w + 0.4 * spec.d;
-    const ey = (spec.h - z0) + 0.6 * spec.d;
+    const ex = spec.w + RX * spec.d;
+    const ey = (spec.h - z0) + RY * spec.d;
+    assert.deepEqual(SIZES[id],
+      { w: Math.round(PX_PER_CM.catalogue * ex), h: Math.round(PX_PER_CM.catalogue * ey) },
+      `${id}: the registry size hint is not this piece's centimetres at the catalogue's px/cm`);
     const k = BOX / Math.max(ex, ey);
-    assert.deepEqual(SIZES[id], { w: Math.round(k * ex), h: Math.round(k * ey) },
-      `${id}: the registry size hint no longer matches the drawing it hints at`);
-    assert.equal(Math.max(SIZES[id].w, SIZES[id].h), BOX, `${id} does not fill its box in either axis`);
+    assert.deepEqual(BOX_EXTENT[id], { w: Math.round(k * ex), h: Math.round(k * ey) },
+      `${id}: the drawn extent no longer matches the drawing it describes`);
+    assert.equal(Math.max(BOX_EXTENT[id].w, BOX_EXTENT[id].h), BOX,
+      `${id} does not fill its box in either axis`);
+  }
+  // The property the old field could not have: a bigger object has a bigger footprint. Stated on the
+  // two pairs the review named, so a regression reports in the words the defect was found in.
+  assert.ok(SIZES.bench.w > 3 * SIZES.chair.w,
+    `a 260 cm bench (${SIZES.bench.w}) must not claim a footprint near a ∅46 cm chair's `
+    + `(${SIZES.chair.w}) — that is the tile normalisation leaking back into the registry`);
+  assert.ok(SIZES['bunk-bed'].h > 2 * SIZES.footlocker.h,
+    'a 190 cm bunk stack must stand taller than a 50 cm footlocker');
+  // …and the ORDERING is the centimetres' ordering, everywhere, which is what "one scale" means.
+  for (const a of FITTING_IDS) {
+    for (const b of FITTING_IDS) {
+      const ea = SPECS[a].w + RX * SPECS[a].d;
+      const eb = SPECS[b].w + RX * SPECS[b].d;
+      if (ea > eb) {
+        assert.ok(SIZES[a].w >= SIZES[b].w,
+          `${a} is wider than ${b} in centimetres but not in its size hint`);
+      }
+    }
   }
 });
 
@@ -228,9 +333,13 @@ test('the hatch is the kit\'s pattern, not a second one drawn from memory', () =
 // is stated rather than silent — on a crate a corner-to-corner diagonal is bracing, which is why the
 // charter's defect-1 list names 01 and 06 and not 14.
 test('E8-1: no brace on the bench or the shelf rack crosses the piece', () => {
+  // ⚠️ AGAINST `BOX_EXTENT`, NOT `SIZES`: the segments below are measured in the px the builder
+  // EMITS, and `SIZES` is the registry footprint at the catalogue's own px/cm. Dividing a length in
+  // one space by a diagonal in another is a ratio about nothing — and it would be a silently
+  // permissive one here, since every fitting's footprint is the larger number.
   const LIMIT = 0.25;
   for (const id of ['bench', 'shelf-rack']) {
-    const diag = Math.hypot(SIZES[id].w, SIZES[id].h);
+    const diag = Math.hypot(BOX_EXTENT[id].w, BOX_EXTENT[id].h);
     const long = segments(build(id))
       .map((s) => ({ dx: s.x2 - s.x1, dy: s.y2 - s.y1, s }))
       .filter((v) => Math.min(Math.abs(v.dx), Math.abs(v.dy)) >= 1.5)   // a real diagonal, not an axis
@@ -242,8 +351,8 @@ test('E8-1: no brace on the bench or the shelf rack crosses the piece', () => {
   // NON-VACUITY, as an inclusion test: the rule must catch the catalogue's own geometry, scaled into
   // this box. A filter that excluded everything would agree with a perfect port and with a verbatim
   // one alike.
-  const diag = Math.hypot(SIZES.bench.w, SIZES.bench.h);
-  const catalogueBrace = { dx: (248.5 - 85.3) * (SIZES.bench.w / 312), dy: (211.4 - 196.1) };
+  const diag = Math.hypot(BOX_EXTENT.bench.w, BOX_EXTENT.bench.h);
+  const catalogueBrace = { dx: (248.5 - 85.3) * (BOX_EXTENT.bench.w / 312), dy: (211.4 - 196.1) };
   assert.ok(Math.min(Math.abs(catalogueBrace.dx), Math.abs(catalogueBrace.dy)) >= 1.5
     && Math.hypot(catalogueBrace.dx, catalogueBrace.dy) / diag > LIMIT,
   'the length rule can no longer see the catalogue\'s own bench diagonal — it proves nothing');
@@ -302,16 +411,92 @@ test('E8-3: every member that was floating now meets something, at both ends', (
     hasPoint(heater, 'space-heater', [x, 25, 110], 'a bracket does not start on the panel');
     hasPoint(heater, 'space-heater', [x, 36, 122], 'a bracket does not reach the wall');
   }
-  hasPoint(heater, 'space-heater', [3, 34, 60], 'the supply pipe still runs off to nowhere');
 
   const cells = build('battery-bank');
   hasPoint(cells, 'battery-bank', [50, 4, 118], 'the hazard mark does not stand on the bus bar');
 
   const shrine = build('shrine-shelf');
   for (const x of [14, 50]) {
-    hasPoint(shrine, 'shrine-shelf', [x, 6, 139], 'a bracket does not meet the shelf');
-    hasPoint(shrine, 'shrine-shelf', [x, 29, 126], 'a bracket does not reach the wall');
+    hasPoint(shrine, 'shrine-shelf', [x, 4, 140], 'a bracket does not meet the shelf');
+    hasPoint(shrine, 'shrine-shelf', [x, 30, 116], 'a bracket does not reach the wall');
   }
+});
+
+// ⭐⭐ CLASS 3, THE HARD HALF — AND IT IS SEPARATE FROM THE TEST ABOVE ON PURPOSE.
+//
+// `hasPoint` asks "is this centimetre drawn". Two members shipped in the first port that answered YES
+// and were still exactly the defect class 3 names, because WHERE a point lands in this projection is
+// not what a coordinate list looks like:
+//
+//   · the heater's supply pipe ran (8,12,60) → (3,34,60), leaving the panel's LEFT flank and running
+//     backwards. A centimetre of depth moves a point 0.4 cm RIGHT, so both ends landed INSIDE the
+//     panel's front face and — emitted last — it painted a floating diagonal across the fins;
+//   · the shrine shelf's two brackets ran (x,6,139) → (x,29,126), where 23 cm of depth lifts almost
+//     exactly as far as 13 cm of drop falls, so each came out horizontal, inside the shelf plate's
+//     front face, and was then covered by that plate's opaque PAPER fill. Zero visible pixels.
+//
+// Both facts were found by RENDERING and deleting the member (`ImageChops.difference(...).getbbox()`
+// → None for the brackets; 257 changed px, all of them on the panel, for the pipe) — a picture is
+// still the only instrument that sees paint. What is decidable HERE is the geometry that made it
+// possible, and that is what these legs pin: a member's projected points against the silhouette of
+// the body it is supposed to hang off. Each has the FIRST PORT's own coordinates as an inclusion
+// control, so a rule that stopped being able to see them fails instead of agreeing.
+test('E8-3b: the two members that hid behind their own piece are OUTSIDE its silhouette', () => {
+  const heater = build('space-heater');
+  const Fh = frameFor('space-heater');
+  const HEATER_WALL = SPECS['space-heater'].d;         // the wall stub's plane IS the box's back face
+
+  // The panel is `bx(…, 8, 0, 40, 60, 70, 25)`, so its right-most ink in the picture is the back edge
+  // of its side face — x = 8 + 60 cm at depth 25. Nothing of the pipe may reach left of that.
+  const [bodyRight] = Fh.project(8 + 60, 25, 0);
+  // ⚠️ ANCHORED ON THE TWO ATTACHMENTS ONLY — the panel corner it leaves and the wall's own bottom
+  // cut edge it runs off at. Everything BETWEEN them is left free on purpose, so the rule below is
+  // what polices the route rather than the anchor being the whole test: an elbow re-placed over the
+  // fins keeps both ends and must still fail.
+  const pipe = memberThrough(heater, 'space-heater',
+    [[68, 25, 50], [69, HEATER_WALL, 20]], 'the heater\'s supply pipe');
+  for (const [px, py] of pipe) {
+    assert.ok(px >= bodyRight - 0.05,
+      `the heater's supply pipe passes through (${px}, ${py}) — left of the panel's own right edge\n`
+      + `at x = ${bodyRight}, i.e. ON the finned face. A pipe drawn over the piece it feeds is the\n`
+      + 'catalogue\'s floating hairline again, in the opposite direction.');
+  }
+  // …and the far end is on the WALL PLANE, asked as a depth so the pipe may be re-drawn at any height.
+  assert.ok(pipe.some(([px]) => Math.abs(depthAt(Fh, 69, px) - HEATER_WALL) < 0.05),
+    'no end of the heater\'s supply pipe lands on the wall stub\'s plane — it stops in the air\n'
+    + 'behind the panel, which is the catalogue\'s "runs off to nowhere" with a different bearing.');
+
+  // INCLUSION CONTROL: the first port's own pipe must FAIL this rule, at both ends.
+  const floated = [[8, 12, 60], [3, 34, 60]].map((p) => Fh.project(...p));
+  assert.equal(floated.filter(([px]) => px < bodyRight - 0.05).length, 2,
+    'the silhouette rule can no longer see the pipe that floated across the fins — it proves nothing');
+
+  const shrine = build('shrine-shelf');
+  const Fs = frameFor('shrine-shelf');
+  const SHELF_WALL = SPECS['shrine-shelf'].d;
+  // The plate is `bx(…, 4, 4, 140, 56, 4, 26)` and its underside RECEDES UPWARD, so the lowest ink
+  // the shelf has anywhere is its front-bottom edge. "Visibly below the shelf" is therefore decidable
+  // without knowing anything about paint order: a bracket must draw below this y.
+  const [, plateBottom] = Fs.project(4, 4, 140);
+  for (const x of [14, 50]) {
+    // Anchored on the SHELF end alone — the plate's own front-bottom edge, which is a landmark of the
+    // piece rather than a number this test would have to re-learn if the bracket were re-angled. The
+    // far end is then asked for two things AT ONCE, which is the whole requirement: it must be on the
+    // wall's plane, and it must be below the plate's lowest ink. Either alone is satisfiable by the
+    // geometry that shipped and could not be seen.
+    const bracket = memberThrough(shrine, 'shrine-shelf',
+      [[x, 4, 140]], `the shrine shelf's bracket at x = ${x}`);
+    assert.ok(bracket.some(([px, py]) => Math.abs(depthAt(Fs, x, px) - SHELF_WALL) < 0.05
+      && py > plateBottom + 1),
+    `the shrine shelf's bracket at x = ${x} has no end that both reaches the wall plane and draws\n`
+      + `below the plate's own bottom edge (y = ${plateBottom}). It is this piece's ONLY support, and\n`
+      + 'a bracket inside the plate\'s front face is painted over by that plate\'s opaque paper — the\n'
+      + 'shelf then floats on nothing at all, which no assertion about strings can see.');
+  }
+  // INCLUSION CONTROL: the first port's brackets must FAIL it — every point at or above the edge.
+  const covered = [[14, 6, 139], [14, 29, 126]].map((p) => Fs.project(...p));
+  assert.ok(covered.every(([, py]) => py <= plateBottom + 1),
+    'the below-the-plate rule can no longer see the brackets the plate covered — it proves nothing');
 });
 
 // ── CLASS 4: placeholder glyphs standing in for parts (11 tap, 12 dial, 14 handle, 19 plants) ──
@@ -446,7 +631,7 @@ test('the stroke ramp stays inside the charter\'s 0.9–2.2, by mass', () => {
 // ⚠️ THE ROUND-OBJECTS RULE, WHICH IS THE CATALOGUE'S OWN AND IS LOAD-BEARING FOR PLACEMENT: "anything
 // round drawn level, so a round fitting has no heading and can be set down any way about". A round
 // piece drawn with a heading would need a facing on the wire, and nothing carries one.
-test('every round fitting draws level: ry is exactly 0.6·rx, no heading anywhere', () => {
+test('every round fitting draws level: ry is exactly DEPTH_RATIO·rx, no heading anywhere', () => {
   const round = FITTING_IDS.filter((id) => SPECS[id].round);
   assert.deepEqual(round, ['chair', 'stool', 'supply-barrel', 'fuel-drum', 'vice-post', 'standing-lamp'],
     'the set of round fittings changed — the catalogue marks six');
@@ -458,9 +643,9 @@ test('every round fitting draws level: ry is exactly 0.6·rx, no heading anywher
     const drawing = svg.replace(/<pattern[\s\S]*?<\/pattern>/g, '');
     assert.ok(!drawing.includes('rotate('), `${id} rotates something — this dialect has no heading`);
     for (const e of ellipses(svg)) {
-      assert.equal(nn(e.ry), nn(0.6 * e.rx),
-        `${id}: an ellipse at ${e.cx},${e.cy} has ry/rx = ${(e.ry / e.rx).toFixed(3)}, not 0.6.\n`
-        + 'A level circle in this oblique is exactly 0.6 — anything else is a circle drawn by hand.');
+      assert.equal(nn(e.ry), nn(RY * e.rx),
+        `${id}: an ellipse at ${e.cx},${e.cy} has ry/rx = ${(e.ry / e.rx).toFixed(3)}, not ${RY}.\n`
+        + `A level circle in this oblique is exactly ${RY} — anything else is a circle drawn by hand.`);
     }
   }
 });

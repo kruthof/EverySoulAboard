@@ -72,7 +72,9 @@
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 import { item, r3, INK, PAPER, ATTEND } from './helpers.js';
-import { box as obox, roomFrame, HATCH, PAPER_FLAT, n as nn } from '../render/oblique.js';
+import {
+  box as obox, roomFrame, HATCH, PAPER_FLAT, n as nn, DEPTH_RATIO, PX_PER_CM,
+} from '../render/oblique.js';
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The drawing box, the weight ramp, the cut dash
@@ -89,6 +91,19 @@ export const BOX = 112;
  * members and the heaviest posts at the top.
  */
 export const W = Object.freeze({ hair: 0.9, fine: 1.1, mid: 1.4, heavy: 1.8, mass: 2.2 });
+
+/**
+ * THE OBLIQUE'S TWO RATIOS, AS MAGNITUDES — read from the kit, never re-typed.
+ *
+ * A centimetre of depth moves a point `DX` cm right and `DY` cm up; `oblique.DEPTH_RATIO` is the one
+ * home for both, and `depth()` is the only thing that reads it in SVG-y (where "up" is NEGATIVE, so
+ * `DEPTH_RATIO.y` is −0.6). Everything in THIS module wants the magnitude: an extent grows upward by
+ * `DY·d`, and a level circle's `ry` is `DY·rx`. Taking `Math.abs` here — once, with the sign
+ * explained — is what keeps four call sites from each carrying their own `0.6`, which is how the
+ * ellipse rule and the centring rule come to disagree after a change nobody thought was a change.
+ */
+const DX = DEPTH_RATIO.x;
+const DY = Math.abs(DEPTH_RATIO.y);
 
 /** The room cutaway's "this edge is cut away" dash, at fitting scale. `ROOM_WEIGHT.cutDash` is
  *  `'7 5'` in a 900-px plate; the same rhythm in a 112-unit box is this. Used ONLY on wall stubs,
@@ -153,7 +168,7 @@ export const FITTING_IDS = Object.freeze(Object.keys(SPECS));
  */
 function extents(spec) {
   const z0 = spec.z0 == null ? 0 : spec.z0;
-  return [spec.w + 0.4 * spec.d, (spec.h - z0) + 0.6 * spec.d];
+  return [spec.w + DX * spec.d, (spec.h - z0) + DY * spec.d];
 }
 
 /** The derived px-per-cm for a fitting: whatever makes its larger extent fill `BOX`. */
@@ -168,8 +183,37 @@ function scaleOf(spec) {
  * `ITEMS` row states its size in. DERIVED from `SPECS`, never transcribed: a fitting cannot disagree
  * with its own drawing about how big it is, which is the shape of defect the wrecked join was built
  * around (`wrecked.js` borrows `size` from the pristine row rather than carrying a second column).
+ *
+ * ⚠️ ONE SHARED SCALE, AND THE FIRST DRAFT GOT THIS WRONG IN A WAY WORTH RECORDING. It used the
+ * PER-PIECE drawing scale — whatever makes each piece fill `BOX` — so every one of the thirty came
+ * out normalised to 112 in its larger axis and a 260 cm bench claimed 112 × 27 while a ∅46 cm chair
+ * claimed 102 × 112. Those are the two pieces' TILE proportions; as a footprint they say the chair is
+ * four times the bench, which is false about the objects and false about the drawings. The scale is
+ * therefore `PX_PER_CM.catalogue` — the catalogue's own centimetre rule, the one the thirty were
+ * measured at, imported rather than typed — so the numbers are comparable ACROSS the set and against
+ * the warm-set rows beside them (a 40 cm oxygen tank is 38 × 70 there, ≈ 1 px/cm; these are 0.85).
+ * The extents are the projected ones, depth term included, because `size` describes the picture.
+ *
+ * ⛔ THIS IS NOT THE DRAWING SCALE — see `BOX_EXTENT` below, which is, and which is what a rule about
+ * ink LENGTH inside a tile must be stated against.
  */
 export const SIZES = Object.freeze(FITTING_IDS.reduce((out, id) => {
+  const [ex, ey] = extents(SPECS[id]);
+  const k = PX_PER_CM.catalogue;
+  out[id] = Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) });
+  return out;
+}, {}));
+
+/**
+ * A fitting's DRAWN extent, in the px the builder actually emits — `BOX` in the larger axis, by
+ * construction, and the piece's own proportion in the other.
+ *
+ * Exported because the alternative is a caller re-deriving `scaleOf` from `SPECS` and `BOX`, and a
+ * second derivation of the drawing scale is the same defect `frameFor` exists to prevent. The E8-1
+ * length rule is stated against this and NOT against `SIZES`: a diagonal in the emitted path data is
+ * measured in these px, and dividing it by a footprint at a different scale is a ratio about nothing.
+ */
+export const BOX_EXTENT = Object.freeze(FITTING_IDS.reduce((out, id) => {
   const [ex, ey] = extents(SPECS[id]);
   const k = scaleOf(SPECS[id]);
   out[id] = Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) });
@@ -265,7 +309,7 @@ function bx(s, F, x, y, z, w, h, d, o = {}) {
 function disc(s, F, x, y, z, rCm, o = {}) {
   const [cx, cy] = F.project(x, y, z);
   s.ellipse({
-    cx, cy, rx: F.s * rCm, ry: 0.6 * F.s * rCm,
+    cx, cy, rx: F.s * rCm, ry: DY * F.s * rCm,
     fill: o.fill === undefined ? PAPER : o.fill,
     stroke: o.stroke == null ? INK : o.stroke,
     sw: o.sw == null ? W.fine : o.sw,
@@ -285,7 +329,7 @@ function disc(s, F, x, y, z, rCm, o = {}) {
 function hoop(s, F, x, y, z, rCm, o = {}) {
   const [cx, cy] = F.project(x, y, z);
   const rx = F.s * rCm;
-  const ry = 0.6 * F.s * rCm;
+  const ry = DY * F.s * rCm;
   ink(s, `M${nn(cx - rx)} ${nn(cy)} A${nn(rx)} ${nn(ry)} 0 0 0 ${nn(cx + rx)} ${nn(cy)}`, o);
 }
 
@@ -298,7 +342,7 @@ function cyl(s, F, x, y, z0, z1, rCm, o = {}) {
   const [cx, yb] = F.project(x, y, z0);
   const [, yt] = F.project(x, y, z1);
   const rx = F.s * rCm;
-  const ry = 0.6 * F.s * rCm;
+  const ry = DY * F.s * rCm;
   const sw = o.sw == null ? W.mid : o.sw;
   ink(s,
     `M${nn(cx - rx)} ${nn(yt)} L${nn(cx - rx)} ${nn(yb)}`
@@ -794,11 +838,17 @@ const drawHerbPlanter = (s, { F, hatch }) => {
   bx(s, F, 0, 0, 6, 120, 32, 45, { hatch });
   quad(s, F, [[6, 6, 38], [114, 6, 38], [114, 39, 38], [6, 39, 38]], { fill: hatch, sw: W.fine });
   const PLANTS = [[26, 18, 30], [60, 22, 36], [94, 20, 26]];
+  // Fractions OF THE PLANT'S OWN HEIGHT, named because they are a plant's proportions and nothing
+  // else. ⚠️ `BOW` is 0.6 and is NOT the oblique's up-ratio, however much it looks like it — a stem's
+  // bend has no relation to the projection, and `fittings.test.js` bans a bare `0.6 *` in this file
+  // precisely so a coincidence like this one cannot be mistaken for a fifth copy of the ratio.
+  const BOW = 0.6;
+  const LEAF_LOW = 0.45, LEAF_MID = 0.7, LEAF_TOP = 0.92;
   for (const [x, y, hgt] of PLANTS) {
-    curve(s, F, [x, y, 38], [x + 2, y, 38 + hgt * 0.6], [x - 2, y, 38 + hgt], { sw: W.fine });
-    leaf(s, F, x + 0.5, y, 38 + hgt * 0.45, -8, 5);
-    leaf(s, F, x + 0.8, y, 38 + hgt * 0.7, 8, 4);
-    if (hgt > 28) leaf(s, F, x - 1, y, 38 + hgt * 0.92, -6, 4);
+    curve(s, F, [x, y, 38], [x + 2, y, 38 + hgt * BOW], [x - 2, y, 38 + hgt], { sw: W.fine });
+    leaf(s, F, x + 0.5, y, 38 + hgt * LEAF_LOW, -8, 5);
+    leaf(s, F, x + 0.8, y, 38 + hgt * LEAF_MID, 8, 4);
+    if (hgt > 28) leaf(s, F, x - 1, y, 38 + hgt * LEAF_TOP, -6, 4);
   }
 };
 export const herbPlanter = (opts = {}) => fitting('herb-planter', opts, drawHerbPlanter);
@@ -929,6 +979,20 @@ export const standingLamp = (opts = {}) => fitting('standing-lamp', opts, drawSt
 // is not drawn at all. There is now a wall stub behind it; the brackets run from the panel's top-back
 // edge to that wall; the knob sits ON the front face with a boss; and the hairline is a supply pipe
 // from the panel's flank into the wall. The panel itself becomes a three-face box, so it has depth.
+//
+// ⛔ AND THE PIPE WAS FIXED TWICE, WHICH IS THE PART WORTH READING. The first port ran it
+// `(8,12,60) → (3,34,60)` — out of the panel's LEFT flank and back, which is where the catalogue's
+// own stub points. In THIS projection that is not a pipe at all: a centimetre of depth moves a point
+// 0.4 cm RIGHT, so a member that leaves the left flank and runs backwards travels INTO the picture's
+// centre, and both its projected ends land inside the panel's own front face (x −32.1…19.7,
+// y −21.8…38.7). Emitted last, it painted a floating grey diagonal across the fins — the very defect
+// class 3 names, re-created by the fix for it. Measured, not argued: deleting it moved 257 px in a
+// 480-px render, all of them ON the panel. The wall is only visible where the depth vector uncovers
+// it — a strip to the RIGHT of the body and a band above it — so the pipe now leaves the panel's
+// back-right corner, reaches the wall plane at y = 36, and drops down the stub to its dashed cut
+// edge at z = 20, which is this dialect's way of saying the run continues past the drawing. Every
+// point of it is at or beyond the body's right-most silhouette x, and `fittings.test.js` asserts
+// exactly that rather than merely that the endpoints are drawn.
 const drawSpaceHeater = (s, { F, hatch, powered }) => {
   wallStub(s, F, 'back', 36, 2, 74, 20, 128, hatch);
   for (const x of [20, 60]) line(s, F, [[x, 25, 110], [x, 36, 122]], { sw: W.mid });
@@ -942,7 +1006,7 @@ const drawSpaceHeater = (s, { F, hatch, powered }) => {
   disc(s, F, 62, 0, 52, 4.5, { sw: W.mid });
   disc(s, F, 62, 0, 52, 1.4, { fill: INK, sw: W.hair });
   line(s, F, [[62, 0, 52], [59, 0, 55]], { sw: W.hair });
-  line(s, F, [[8, 12, 60], [3, 34, 60]], { sw: W.fine, opacity: 0.65 });
+  line(s, F, [[68, 25, 50], [69, 36, 50], [69, 36, 20]], { sw: W.fine, opacity: 0.65 });
 };
 export const spaceHeater = (opts = {}) => fitting('space-heater', opts, drawSpaceHeater);
 
@@ -1010,10 +1074,27 @@ export const curtainRail = (opts = {}) => fitting('curtain-rail', opts, drawCurt
 // in mid-air, and the wall the shelf is hung on is absent. The brackets now run from the shelf
 // underside back INTO a wall stub, which is the only reading that makes "HUNG 140" mean anything.
 // The frame keeps the accent: it is the one object on this ship that is nobody's equipment.
+//
+// ⛔ AND THE BRACKETS TOO WERE FIXED TWICE. The first port ran them `(x,6,139) → (x,29,126)` and
+// emitted them BEFORE the plate. Both halves are wrong and the second hides the first: over 23 cm of
+// depth the projection lifts a point 0.6·23 cm while the 13 cm of drop lowers it by 13, so the two
+// terms very nearly cancel and each "bracket" came out as an almost-horizontal stroke lying inside
+// the plate's own front face (x −40.3…29.4, y −1.7…3.2) — then the plate's opaque PAPER front face
+// was painted straight over it. Zero visible pixels, measured: deleting either bracket from a 480-px
+// render changed nothing at all (`ImageChops.difference(...).getbbox()` → None), on the piece whose
+// ONLY drawn support they are. They now start on the plate's FRONT-BOTTOM edge (z = 140, y = 4) —
+// the lowest ink the shelf has — and fall away to the wall plane at y = 30, z = 116, so the drop is
+// 24 cm against 26 cm of depth and the stroke leaves the plate downward instead of sliding under it.
+// They are emitted AFTER the plate as well — and that half is BELT, not braces, measured rather than
+// claimed: with the geometry fixed, swapping the two lines back changes the render by nothing at all
+// (deleting a bracket moves the same 395 px and the same bbox either way), because the brackets no
+// longer lie inside anything that could cover them. It stays because geometry that has to be first in
+// the paint order to be seen is geometry that will be lost again the next time a part is added — and
+// because a test cannot see paint order, which is exactly why the picture had to be the instrument.
 const drawShrineShelf = (s, { F, hatch }) => {
   wallStub(s, F, 'back', 30, 0, 64, 100, 172, hatch);
-  for (const x of [14, 50]) line(s, F, [[x, 6, 139], [x, 29, 126]], { sw: W.mid });
   bx(s, F, 4, 4, 140, 56, 4, 26, { hatch, sw: W.heavy });
+  for (const x of [14, 50]) line(s, F, [[x, 4, 140], [x, 30, 116]], { sw: W.mid });
   line(s, F, [[4, 4, 143], [60, 4, 143]], { sw: W.hair, opacity: 0.5, cap: false });
   bx(s, F, 12, 12, 144, 18, 22, 6, { hatch, sw: W.mid, stroke: ATTEND });
   line(s, F, [[16, 12, 152], [26, 12, 152]], { sw: W.hair, stroke: ATTEND, opacity: 0.6 });

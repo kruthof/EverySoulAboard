@@ -953,7 +953,9 @@ const inkTear = (s, F, pts) => fLine(s, F, pts, { sw: 1.1, dash: '2 2', opacity:
 const inkHole = (s, F, x, y, z, r) => fDisc(s, F, x, y, z, r, { fill: INK, sw: 1.4 });
 // ⚠️ A SOOT BLOOM IS A FILL, NOT A RING, and the first draft got it the other way round — a wide
 // low-opacity STROKE draws a grey hoop round clean paper, which on a barrel or a locker reads as a
-// second hoop rather than as a burn. Measured in `client/tools/shots-fittings/fittings-twins.png`.
+// second hoop rather than as a burn. Seen, not reasoned out: `node client/tools/fittings-sheet.mjs`
+// writes `fittings-twins.html`, every twin beside its pristine piece — re-run it and look. The shots
+// themselves are NOT committed, so a path to one would be a citation nobody can follow.
 const inkScorch = (s, F, x, y, z, r) => fDisc(s, F, x, y, z, r, { fill: INK, sw: 0.9, opacity: 0.16 });
 const inkWire = (s, F, a, c, b) => fCurve(s, F, a, c, b, { sw: 1.3, opacity: 0.9 });
 const inkDead = (s, F, pts) => fLine(s, F, pts, { close: true, fill: INK, sw: 1.1, opacity: 0.85 });
@@ -1017,7 +1019,11 @@ const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
   inkCrack(s, F, [[14, 12, 166], [26, 12, 146]]);         // across the frame
   inkHole(s, F, 46, 16, 150, 5);                          // the cup, holed
   inkScorch(s, F, 34, 28, 128, 15);
-  inkCrack(s, F, [[14, 6, 139], [14, 20, 131]]);          // the near bracket, pulling out
+  // ⚠️ THIS MARK MOVED WITH THE PART IT IS ABOUT. It used to run (14,6,139) → (14,20,131), which was
+  // the near bracket's own line when the bracket was flat and hidden inside the shelf plate; both
+  // were invisible, so the twin lost a mark and nothing said so. The bracket now falls from the
+  // plate's front-bottom edge to the wall, and the crack crosses it just under the shelf.
+  inkCrack(s, F, [[11, 8, 133], [18, 10, 133]]);          // the near bracket, cracked at the mount
 });
 
 // ── the registry ─────────────────────────────────────────────────────────────────────────────

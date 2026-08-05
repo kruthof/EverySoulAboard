@@ -72,6 +72,9 @@ export const solarPanel = (opts = {}) =>
     s.rect({ x: -46, y: -28, w: 92, h: 56, rx: 4, fill: grid });
     s.border({ x: -46, y: -28, w: 92, h: 56, rx: 4, color: '#d9c9a0', width: 4 });
   });
+// 5 OXYGEN TANK — REDRAWN. One capsule with a nub on top was a cryopod, a barrel or a battery. It is
+// now the mock's TWIN BOTTLE SET: two cylinders yoked at the neck and strapped at the base, each with
+// a valve cap and a white label patch. A pair of bottles in a cradle is a gas store and nothing else.
 export const oxygenTank = (opts = {}) =>
   item('oxygen-tank', opts, (s) => {
     s.rect({ x: -26, y: -49, w: 52, h: 6, rx: 3, fill: '#5a6672' });   // the yoke across both necks
@@ -109,6 +112,7 @@ export const waterRecycler = (opts = {}) =>
     s.rect({ x: 27, y: 21.5, w: 22, h: 9, rx: 4, fill: '#5a9fd4' });           // clean water OUT
     s.text('♻', { x: 0, y: 4, size: 22, weight: 700, fill: 'rgba(255,255,255,.85)' });
   });
+// 10 PASTE DISPENSER — steel column, cyan screen, tan spout.
 export const pasteDispenser = (opts = {}) =>
   item('paste-dispenser', opts, (s) => {
     s.rect({
@@ -137,6 +141,7 @@ export const pasteDispenser = (opts = {}) =>
     });
     s.rect({ x: -20, y: 18, w: 40, h: 8, rx: 2, fill: '#c9b083' });
   });
+// 18 POTTED PLANT — leafy green crown over a tapered pot.
 export const pottedPlant = (opts = {}) =>
   item('potted-plant', opts, (s) => {
     s.path(roundedRectPath(-17, 16, 34, 28, { bl: 10, br: 10 }), {
@@ -203,6 +208,7 @@ export const medBed = (opts = {}) =>
     s.rect({ x: -11, y: 3.5, w: 22, h: 5, fill: '#c14a32' });
     s.rect({ x: -2.5, y: -5, w: 5, h: 22, fill: '#c14a32' });
   });
+// 22 COMMS DISH — tan parabola on a mast + base (native SVG in the mock).
 export const commsDish = (opts = {}) =>
   item('comms-dish', opts, (s) => {
     // mock viewBox 0..90, centre (45,45): subtract 45 from every coord.
@@ -222,6 +228,10 @@ export const sensorArray = (opts = {}) =>
     s.glow(18, -18, 10, 'rgba(232,147,74,.6)');
     s.circle({ cx: 18, cy: -18, r: 3.5, fill: '#e8934a' });
   });
+// 25 FABRICATOR — REDRAWN. The old piece was a steel box with a hot rectangle inside it, which at
+// tile size is the cooker seen from a different angle. It is now a printer you can watch WORKING: a
+// dark chamber you look into, a bright print head sweeping across the top of it, a billet forming
+// underneath, an output tray at the bottom lip and a green ready-lamp in the corner.
 export const fabricator = (opts = {}) =>
   item('fabricator', opts, (s, { powered }) => {
     s.rect({ x: -39, y: -36, w: 78, h: 72, rx: 6, fill: s.lin([['0', '#4a5560'], ['1', '#38424d']]) });
@@ -239,6 +249,7 @@ export const fabricator = (opts = {}) =>
     s.glow(-30, -30, 10, 'rgba(90,167,127,.6)', powered ? 1 : 0.15);
     s.circle({ cx: -30, cy: -30, r: 4, fill: powered ? '#5aa77f' : '#2f4f3f' });
   });
+// 27 BLAST DOOR — reinforced steel with a seam + two hazard bands.
 export const blastDoor = (opts = {}) =>
   item('blast-door', opts, (s) => {
     s.rect({

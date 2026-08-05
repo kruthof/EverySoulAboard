@@ -63,7 +63,13 @@ console.log('wrote', join(OUT, 'fittings-sheet.html'), '·', FITTING_IDS.length,
 
 // A second sheet at TILE SIZE — the size a fitting is actually shown at in the Room Zoom. A piece
 // that reads on a 240-px card and dissolves at 48 px is a piece that does not work in the game.
-const tiles = [32, 48, 72].map((px) => `<div class="row"><span>${px}px</span>${
+//
+// ⚠️ 22 IS THE ROW THAT MATTERS AND IT WAS MISSING. The Overview sizes furniture at
+// `max(10, tileSize * 1.7)` (`ui/overview-scene.js:380`), and `tileSize` is `min(KX, KY)` fitted to
+// the deck's extent — on the wreck's decks that lands around 13, i.e. ~22 px per piece. That is the
+// SMALLEST size any of these thirty is actually shown at in the shipping game, and a sheet whose
+// finest row was 32 px was flattering every one of them by about half again.
+const tiles = [22, 32, 48, 72].map((px) => `<div class="row"><span>${px}px</span>${
   FITTING_IDS.map((id) => `<svg width="${px}" height="${px}" viewBox="0 0 ${px} ${px}" title="${id}">${
     FT[camel(id)]({ w: px, h: px, idPrefix: `t${px}-${id}` })}</svg>`).join('')}</div>`).join('\n');
 writeFileSync(join(OUT, 'fittings-tiles.html'),

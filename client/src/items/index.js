@@ -64,7 +64,15 @@
 // door state that correctly draws nothing.
 //   decor       the non-hashed decor channel key, for COSMETIC pieces
 //   material    'wall' | 'floor', for MATERIAL pieces
-//   size        {w,h} — the piece's design footprint in mock px (a placement hint; from the mock)
+//   size        {w,h} — the piece's design footprint in mock px (a placement hint; from the mock).
+//               ⚠️ NOTHING LAYS OUT ON IT TODAY: the only reader outside the tests is
+//               `wrecked.js:wreckedInfo()`, which passes it through so a twin cannot carry a second,
+//               drifting copy. That is why it can be — and now is — an HONEST number rather than a
+//               tile size. The thirty fitting rows take theirs from `fittings.SIZES`, which is each
+//               piece's own centimetres at ONE shared scale (`PX_PER_CM.catalogue`), so a 260 cm
+//               bench reads bigger than a ∅46 cm chair; the warm-set rows below are the mock's own
+//               card measurements, at roughly the same px/cm. ⛔ It is NOT the drawn tile extent —
+//               that is `fittings.BOX_EXTENT`, and a rule about ink length must use that one.
 //
 // The two SVG views (Overview, Room Zoom) place items through this registry; `buildItem(id, opts)`
 // is the tolerant entry point (unknown id → a neutral placeholder group, never a throw).
