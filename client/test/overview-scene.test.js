@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { decode, decodeDecks, decodeRooms, MARK_KIND_NAMES } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
-  overviewScene, makeTransform, starfield, starLayerSvg, DECK, gridLayout,
+  overviewScene, makeTransform, starfield, starLayerSvg, DECK, gridLayout, MIN_TILE,
+  miniToScene, sceneToMini, floorToMini, miniToFloor,
   layoutPawnLabels, LABEL_MAX_ROWS,
 } from '../src/ui/overview-scene.js';
 import { taskTag } from '../src/ui/console-model.js';
@@ -888,20 +889,37 @@ test('E6: the compartment grid is DERIVED from the room census, never a fixed fo
     ],
     'the grid derivation moved — the design shape at n=8 and the column cap are both load-bearing');
 
-  // THE BOX IS FIXED AND THE ROWS SHRINK INTO IT, so the hull never has tiles hanging out of it.
-  for (const n of [1, 8, 13, 20]) {
+  // ⛔ THE TILE IS NEVER DEGENERATE, AND THE SAMPLE GOES PAST WHERE IT USED TO GO NEGATIVE. The
+  // first version stopped at n=20 and asserted containment — which a NEGATIVE height satisfies
+  // trivially. Review measured the real behaviour: with the box height fixed, `tileH` crosses zero
+  // at rows ≥ 9 (n ≥ 49). `MIN_TILE` is the clamp, and past it the grid is TALLER than the box and
+  // SAYS SO through `overflows`, rather than silently inverting.
+  for (const n of [1, 2, 8, 13, 20, 25, 48, 49, 60, 120, 400]) {
     const g = gridLayout(n);
-    assert.ok(g.tileW > 0 && g.tileH > 0, `n=${n} produced a degenerate tile`);
-    assert.ok(g.rows * g.tileH + (g.rows - 1) * 22.8 <= DECK.h + 0.01,
-      `n=${n} lays ${g.rows} rows outside the grid box`);
+    assert.ok(g.tileW >= MIN_TILE.w && g.tileH >= MIN_TILE.h,
+      `n=${n} produced a ${g.tileW}×${g.tileH} tile — below the legibility floor, possibly negative`);
+    assert.ok(g.cells >= n, `n=${n} laid ${g.cells} cells for ${n} compartments — one has no tile`);
+    const boxed = g.rows * g.tileH + (g.rows - 1) * 22.8 <= DECK.h + 0.01;
+    assert.equal(boxed, !g.overflows,
+      `n=${n}: \`overflows\` says ${g.overflows} but the rows ${boxed ? 'do' : 'do not'} fit the box`);
     assert.ok(g.cols * g.tileW + (g.cols - 1) * 12.6 <= DECK.w + 0.01,
       `n=${n} lays ${g.cols} columns outside the grid box`);
   }
+  // THE CROSSING, NAMED AND MEASURED: with `MIN_TILE.h` = 18 the box holds FOUR rows (n ≤ 24) and
+  // the clamp starts binding at five (n ≥ 25). Written out so a future edit to the floor, the gaps
+  // or the box height cannot move it quietly.
+  assert.equal(gridLayout(24).overflows, false, 'four rows no longer fit the box — re-derive the floor');
+  assert.equal(gridLayout(25).overflows, true, 'five rows now fit the box — the clamp is unreachable');
   // …and hostile input does not throw or produce a NaN grid.
   for (const bad of [null, undefined, NaN, -3, 'x', {}]) {
     const g = gridLayout(/** @type {any} */ (bad));
     assert.ok(g.cols >= 1 && g.rows >= 1 && Number.isFinite(g.tileW));
   }
+  // ⚠️ AND THE REALITY CHECK: every authored ship in this repo lays EIGHT compartments per deck, so
+  // the shape the player actually sees is the design's own 4 × 2. The degradation above is real,
+  // stated, and unreached by the shipping game.
+  assert.deepEqual([gridLayout(8).cols, gridLayout(8).rows], [4, 2]);
+  assert.equal(view[0].slots.length, 8, 'the captured ship no longer lays 8 compartments a deck');
 });
 
 test('E6: a census that does not fill its last row leaves DASHED EMPTY cells, not blank paper', () => {
@@ -963,30 +981,50 @@ test('the PIECEWISE transform: project ∘ invert is identity INSIDE a compartme
       `${s.anchorName}'s own centre tile projected outside its own grid cell`);
   }
 
-  // (c) THE KNOWN LIMIT, ASSERTED SO IT CANNOT BE FORGOTTEN RATHER THAN FIXED SILENTLY. A tile
-  //     inside no compartment has nowhere on the plate to be, so `invert` never returns one: every
-  //     point in the grid box comes back as a tile inside some slot.
+  // (c) EVERY PIXEL OF A COMPARTMENT TILE ADDRESSES A TILE IN THAT COMPARTMENT. A cell's BOX is
+  //     bigger than the floor PARALLELOGRAM drawn in it, so this is the property the (u,v) clamp in
+  //     `invert` exists for: without it a press in the back-wall third of a tile solves off the
+  //     floor, `tileAt` clamps it to null, and an armed DIG silently does nothing there.
   const covers = (tx, ty) => slots.some((s) => tx >= s.rect.x && tx < s.rect.x + s.rect.w
     && ty >= s.rect.y && ty < s.rect.y + s.rect.h);
   let sampled = 0;
   for (let i = 0; i <= 20; i += 1) {
     for (let j = 0; j <= 8; j += 1) {
       const px = DECK.x + (DECK.w * i) / 20, py = DECK.y + (DECK.h * j) / 8;
-      const [tx, ty] = t.invert(px, py);
-      // Points fall in the gaps BETWEEN cells too; those resolve through the fallback and are not
-      // part of the claim. What must never happen is a point INSIDE a cell resolving to a tile the
-      // cell's compartment does not contain.
       const cell = t.cells.find((c) => px >= c.cell.x && px <= c.cell.x + c.cell.w
         && py >= c.cell.y && py <= c.cell.y + c.cell.h);
-      if (!cell) continue;
+      if (!cell) continue;               // the gaps between cells are the corridor's, tested below
       sampled += 1;
-      assert.ok(covers(Math.floor(tx), Math.floor(ty)) || Math.floor(tx) === cell.rect.x + cell.rect.w
-        || Math.floor(ty) === cell.rect.y + cell.rect.h,
+      const [tx, ty] = t.invert(px, py);
+      assert.ok(covers(Math.floor(tx), Math.floor(ty)),
         `a click at ${px},${py} inside ${cell.slot.anchorName}'s cell resolved to ${tx},${ty}, `
-        + 'which that compartment does not contain');
+        + 'which no compartment contains — the floor clamp is gone');
+      const own = cell.slot.rect;
+      assert.ok(tx >= own.x && tx <= own.x + own.w && ty >= own.y && ty <= own.y + own.h,
+        `a click inside ${cell.slot.anchorName}'s cell resolved to ${tx},${ty}, outside ITS OWN rect`);
     }
   }
-  assert.ok(sampled >= 40, `only ${sampled} in-cell points sampled — the limit leg is reading nothing`);
+  assert.ok(sampled >= 40, `only ${sampled} in-cell points sampled — the leg is reading nothing`);
+
+  // (d) THE CORRIDOR ROUND-TRIPS TOO. A tile inside no compartment used to have no place on the
+  //     plate at all — 83 deck-0 floor tiles, two items and the HATCH LADDER, the visible
+  //     deck-to-deck route, drawn on no surface. It is drawn in the corridor strip now, through the
+  //     SAME projection, so its round trip is exact and a press on it designates it.
+  const outside = [];
+  for (let ty = 0; ty < 20 && outside.length < 6; ty += 1) {
+    for (let tx = 0; tx < 45 && outside.length < 6; tx += 1) {
+      if (!covers(tx, ty)) outside.push([tx + 0.5, ty + 0.5]);
+    }
+  }
+  assert.ok(outside.length >= 4, 'this deck has no out-of-compartment tile — leg (d) is vacuous');
+  for (const [tx, ty] of outside) {
+    const [sx, sy] = t.project(tx, ty);
+    assert.ok(sy >= t.band.y - 0.01 && sy <= t.band.y + t.band.h + 0.01,
+      `the corridor tile ${tx},${ty} was not drawn in the corridor strip (y=${sy})`);
+    const [bx, by] = t.invert(sx, sy);
+    assert.ok(Math.abs(bx - tx) < 1e-6 && Math.abs(by - ty) < 1e-6,
+      `corridor tile ${tx},${ty} did not round-trip (got ${bx},${by})`);
+  }
 });
 
 test('⭐⭐ D5 RE-HOUSED: a compartment that needs attention takes the OXBLOOD DASHED border, and '
@@ -1029,4 +1067,113 @@ test('the STARFIELD is the persistent skeleton layer and is NEVER in the repaint
       `the scene string carries "${token}" — the drifting field is back inside the repaint and its `
       + 'animation now restarts at the wire\'s render rate');
   }
+});
+
+test('⭐⭐ THE DRAWING AND THE CLICK MAP ARE ONE: a point inside a fitting\'s own drawn footprint '
+  + 'designates the tile that fitting is drawn on', () => {
+  // ⛔ THIS IS THE ACCEPTANCE FOR THE TWO-COORDINATE-SYSTEMS DEFECT. Review measured it in the
+  // running game: with the fittings placed through the oblique and the click map reading an
+  // axis-aligned cell box, 57 of 59 drawn pieces on the wreck's deck 0 clicked a DIFFERENT tile
+  // (dy up to +7) and 49 had NOT ONE PIXEL of their own ink that clicked their own tile. A surface
+  // that shows you one thing and orders another is the worst failure this repo has a name for.
+  //
+  // It is driven off the EMITTED STRING, not off the functions: every piece is found by the id
+  // namespace the scene gave it (`ov-s<slot>-f<x>-<y>`), its drawn base point is read out of the
+  // `translate(...)` beside it, and that point is carried mini → scene → invert with the SAME
+  // helpers the browser's nested-`<svg>` fit and the click path use.
+  const svg = overviewScene(baseState({ deck: 0 }));
+  const t = makeTransform(view[0].slots, frame);
+
+  // Each drawn fitting says which TILE it was drawn for (`data-tile`) beside the translate that
+  // places it. ⚠️ THE FIRST VERSION OF THIS PARSE INFERRED THE TILE FROM THE PIECE'S `<defs>` ID and
+  // was WRONG: a builder that emits no def has no id, so the non-greedy scan walked on and paired
+  // that piece's translate with the NEXT piece's tile. It reported 20 false failures. The emitted
+  // attribute removes the inference.
+  const slotOf = [...svg.matchAll(/data-slot="(\d+)"|data-tile="(\d+),(\d+)"/g)];
+  const pieces = [];
+  let curSlot = -1;
+  for (const m of slotOf) {
+    if (m[1] !== undefined) { curSlot = +m[1]; continue; }
+    pieces.push({ slot: curSlot, tx: +m[2], ty: +m[3] });
+  }
+  const xy = [...svg.matchAll(/<g class="pl-fit" data-tile="\d+,\d+"[^>]*? transform="translate\(([-\d.]+) ([-\d.]+)\)"/g)];
+  assert.equal(xy.length, pieces.length, 'the piece parse and the translate parse disagree');
+  pieces.forEach((p, i) => { p.x = +xy[i][1]; p.y = +xy[i][2]; });
+  assert.ok(pieces.length >= 20,
+    `only ${pieces.length} fittings parsed out of the plate — this assertion is reading nothing`);
+
+  const ITEM = 128;                       // MINI_ITEM: the box a fitting is normalised into
+  const bad = [];
+  for (const p of pieces) {
+    const cell = t.cells[p.slot].cell;
+    const rect = t.cells[p.slot].rect;
+    // The emitted translate puts the piece's box top-left at (x, y); it STANDS on the floor, so its
+    // own floor point is the bottom-centre of that box — the point `floorToMini` produced.
+    const baseX = p.x + ITEM / 2, baseY = p.y + ITEM;
+    // A tile is `BU.x / rect.w` across and `-BV.y / rect.h` back, in mini units. Sample the piece's
+    // footprint: its own base, and a quarter of a tile out from it in each direction.
+    const dx = 860 / rect.w / 4, dy = 168 / rect.h / 4;
+    for (const [ox, oy] of [[0, 0], [dx, 0], [-dx, 0], [0, dy], [0, -dy]]) {
+      const [sx, sy] = miniToScene(cell, baseX + ox, baseY + oy);
+      const [tx, ty] = t.invert(sx, sy);
+      if (Math.floor(tx) !== p.tx || Math.floor(ty) !== p.ty) {
+        bad.push(`s${p.slot} piece at tile ${p.tx},${p.ty} — a press on its footprint `
+          + `(${ox.toFixed(1)},${oy.toFixed(1)} from its base) designates ${Math.floor(tx)},${Math.floor(ty)}`);
+      }
+    }
+  }
+  assert.deepEqual(bad.slice(0, 8), [],
+    `${bad.length} of ${pieces.length * 5} sampled footprint points designate the WRONG tile. The `
+    + 'drawing and the click map have come apart again: `miniContents` places through `floorToMini` '
+    + 'and `makeTransform.invert` must undo exactly that, through `sceneToMini` + `miniToFloor`.');
+});
+
+test('THE SPINE IS DRAWN: a tile inside no compartment still reaches the plate', () => {
+  // ⛔ WHAT THIS PINS, AND WHY IT IS NOT A DETAIL. Review measured that 83 deck-0 floor tiles, two
+  // ground items and the HATCH LADDER at (22,8) — the visible deck-to-deck route on the shipped
+  // wreck — lie inside no slot rect, and with the compartment grid alone they were on NO SURFACE at
+  // Level 1 at all. A plate that draws every room and none of the corridor between them is a floor
+  // plan with the doors painted out. The strip is the grid's own row gap, so the corridor is drawn
+  // where a player expects it: between the two banks of compartments.
+  const slot = {
+    ...view[0].slots[0], slotIndex: 0, roomType: 5, anchorName: 'a0', displayName: 'A0',
+    rect: { x: 0, y: 0, w: 4, h: 4 },
+  };
+  const w = 8, h = 8;
+  const cells = new Array(w * h);
+  for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];      // '.' floor
+  cells[1 * w + 1] = ['b'.charCodeAt(0), 0, 0, 0];                        // a bed, INSIDE the room
+  cells[6 * w + 6] = ['H'.charCodeAt(0), 0, 0, 0];                        // a LADDER, in the spine
+  const st = {
+    deck: 2, decksView: [{ deck: 2, slots: [slot] }], crew: [], marks: [],
+    frame: { deck: 2, w, h, lens: 'none', cells },
+  };
+  const svg = overviewScene(st);
+
+  assert.match(svg, /<g class="pl-corridor"/, 'the plate draws no corridor strip at all');
+  // The slice runs from the corridor's open tag to the next TOP-LEVEL layer, or to the end of the
+  // document when — as here — nothing follows it. Anchoring on the following layer alone made the
+  // extraction fail on a fixture with no crew, no marks and no ghosts, which is a property of the
+  // fixture rather than of the layer.
+  const tail = svg.slice(svg.indexOf('<g class="pl-corridor"'));
+  const nextLayer = tail.indexOf('</g><g class="pl-');
+  const strip = [null, nextLayer >= 0 ? tail.slice(0, nextLayer) : tail];
+  assert.ok(strip[1].includes('class="pl-corridor"'),
+    'the corridor layer was not found where the layer order puts it');
+  assert.ok(strip[1].includes('class="pl-item"'),
+    'the ladder at 6,6 — inside no compartment — is not drawn. The deck-to-deck route is invisible '
+    + 'at Level 1, which is the defect the corridor strip exists to close.');
+
+  // …and it lands IN THE STRIP, not somewhere in the letterbox.
+  const t = makeTransform([slot], st.frame);
+  const [lx, ly] = t.project(6.5, 6.5);
+  assert.ok(ly >= t.band.y - 0.01 && ly <= t.band.y + t.band.h + 0.01,
+    `the spine tile projected to y=${ly}, outside the corridor strip ${t.band.y}..${t.band.y + t.band.h}`);
+  assert.ok(lx >= DECK.x - 0.01 && lx <= DECK.x + DECK.w + 0.01);
+
+  // NON-VACUITY: the bed INSIDE the room is NOT in the strip — it is in its compartment's miniature,
+  // or this test would pass on a build that put every item in the corridor.
+  assert.equal((strip[1].match(/class="pl-item"/g) || []).length, 1,
+    'the corridor drew more than the one spine item — a compartment\'s own fittings leaked into it');
+  assert.match(svg, /class="pl-furniture"/, 'the in-room bed vanished — the two layers are confused');
 });

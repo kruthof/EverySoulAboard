@@ -154,6 +154,45 @@ async function toDeck(deck) {
  * Sizes are `getBoundingClientRect` so a collapsed column or a zero-height tile is caught: a green
  * model test plus a 0-px box is exactly the failure this rig exists to find.
  */
+// ⭐⭐ THE LAYOUT-AWARE HALF, AND IT IS THE REASON THIS RIG IS A PIN AND NOT A GALLERY.
+//
+// Review measured two affordances RENDERED OFF-SCREEN: `#ov-alert` (D2's decaying-capsule warning)
+// resolved 50 px below its column's bottom edge — 0 px of it visible, at every viewport — and
+// `.ov-ledcaveat` was 40 of its 44 px clipped. **`dom-lite` cannot see this class of defect at all**:
+// it has no layout, so a node that is present, painted, un-hidden and entirely outside its own
+// clipping box is indistinguishable from one a player can read. So the assertion lives here, where
+// there is a real box model, and it is expressed as "fully inside its column AND fully inside the
+// viewport" rather than "exists".
+//
+// ⚠️ THE ALERT IS UN-HIDDEN BY HAND FIRST, and that is a LAYOUT measurement, not a faked reading:
+// the wreck at boot has no capsule near a rung crossing, so the bar is correctly empty, and what is
+// under test is where the box LANDS when the wire does raise one. The text is discarded straight
+// after; nothing is screenshotted in that state.
+const onScreenExpr = `JSON.stringify((()=>{
+  const bar = document.getElementById('ov-alert');
+  const txt = document.querySelector('.ov-alerttxt');
+  const was = bar.hidden, wasTxt = txt.textContent;
+  bar.hidden = false;
+  txt.textContent = 'CAPSULE DECAYING — MBEKI — THAW PRICE RISES SOON';
+  const probe = (sel, hostSel) => {
+    const e = document.querySelector(sel), h = document.querySelector(hostSel);
+    if (!e || !h) return { sel, missing: true };
+    const r = e.getBoundingClientRect(), b = h.getBoundingClientRect();
+    const vh = window.innerHeight, vw = window.innerWidth;
+    return { sel, w: Math.round(r.width), h: Math.round(r.height),
+      top: Math.round(r.top), bottom: Math.round(r.bottom),
+      hostBottom: Math.round(b.bottom),
+      insideHost: r.top >= b.top - 1 && r.bottom <= b.bottom + 1,
+      insideView: r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= vw,
+      visiblePx: Math.max(0, Math.min(r.bottom, b.bottom, vh) - Math.max(r.top, b.top, 0)) };
+  };
+  const out = [probe('#ov-alert', '#ov-ledger'), probe('.ov-ledcaveat', '#ov-ledger'),
+               probe('.ov-radarcap', '#ov-radar'), probe('.ov-cplist', '#ov-compart'),
+               probe('.ov-navhint', '#ov-cmd')];
+  bar.hidden = was; txt.textContent = wasTxt;
+  return out;
+})())`;
+
 const censusExpr = `JSON.stringify((()=>{
   const box = (s) => { const e = document.querySelector(s); if (!e) return null;
     const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; };
@@ -172,6 +211,7 @@ const censusExpr = `JSON.stringify((()=>{
     caption: (document.querySelector('.ov-capline')||{}).textContent,
     souls: (document.querySelector('.ov-capsouls')||{}).textContent,
     tiles, emptyTiles: document.querySelectorAll('.pl-room-empty').length,
+    corridorItems: document.querySelectorAll('.pl-corridor .pl-item').length,
     nestedSvgs: document.querySelectorAll('.ov-mini').length,
     vectorEffect: [...new Set(strokes)],
     columns: { compart: box('#ov-compart'), aboard: box('#ov-sensor'), ship: box('#ov-ledger'), outside: box('#ov-radar') },
@@ -201,6 +241,7 @@ log('  masthead   ', JSON.stringify(c0.masthead), '|', JSON.stringify(c0.stats))
 log('  caption    ', JSON.stringify(c0.caption), '|', JSON.stringify(c0.souls));
 log('  ground     ', c0.ground, '  plate', JSON.stringify(c0.plate), '  stage', JSON.stringify(c0.stage));
 log('  tiles      ', c0.tiles.length, '(empty cells ' + c0.emptyTiles + ', nested svgs ' + c0.nestedSvgs + ')');
+log('  corridor   ', c0.corridorItems, 'item(s) drawn in the spine strip');
 for (const t of c0.tiles) {
   log(`    ${String(t.anchor).padEnd(14)} ${t.w}×${t.h}px  purpose=${t.purpose} state=${t.state} fittings=${t.fittings}`);
 }
@@ -232,9 +273,104 @@ if (c0.compartLines.length !== 8) problems.push(`the compartments column lists $
 if (c0.tabs.length !== 6) problems.push(`the footer nav shows ${c0.tabs.length} tabs, not the six ruling E1 keeps`);
 if (c0.radarCircles !== 3) problems.push(`the scope draws ${c0.radarCircles} circles — a fourth is an invented contact`);
 if (!/no contact data/i.test(c0.radarCap.join(' '))) problems.push('the scope does not say it has no contacts');
+// ⛔ THE SPINE IS DRAWN. 83 deck-0 floor tiles, two ground items and the HATCH LADDER at (22,8) —
+// the visible deck-to-deck route — lie inside no compartment, and before the corridor strip existed
+// they were on no surface at Level 1 at all. A plate that draws every room and none of the corridor
+// between them is a floor plan with the doors painted out.
+if (!c0.corridorItems) {
+  problems.push('the corridor strip drew NO item — the spine\'s ground stock and the hatch ladder '
+    + '(the deck-to-deck route) are invisible at Level 1 again');
+}
 if (c0.tiles.every((t) => t.fittings === 0)) {
   problems.push('NOT ONE compartment miniature drew a fitting — the plate is empty rooms, which is '
     + 'the one thing the redesign is for');
+}
+
+// ── the on-screen check ──
+const boxes = await json(onScreenExpr);
+log('\n── ON-SCREEN GEOMETRY (the pin dom-lite cannot carry) ──────────────');
+for (const b of boxes) {
+  if (b.missing) { problems.push(`${b.sel} is not in the DOM at all`); continue; }
+  log(`  ${b.sel.padEnd(16)} ${b.w}×${b.h} top=${b.top} bottom=${b.bottom} `
+    + `hostBottom=${b.hostBottom} visible=${b.visiblePx}px inHost=${b.insideHost} inView=${b.insideView}`);
+  if (!b.insideHost || !b.insideView || b.visiblePx < b.h - 1) {
+    problems.push(`${b.sel} renders ${b.visiblePx}px of ${b.h}px on screen (top=${b.top}, `
+      + `bottom=${b.bottom}, its column ends at ${b.hostBottom}). An affordance clipped out of its `
+      + 'own box is an affordance deleted — see D2 and the always-visible ledger caveat.');
+  }
+}
+
+// ── THE CLICK MAP AGREES WITH THE DRAWING, measured in the running game ──
+//
+// ⛔ THIS IS THE ACCEPTANCE FOR THE TWO-COORDINATE-SYSTEMS DEFECT, and it is measured through the
+// REAL GESTURE rather than through a debug hook: ERASE is armed, a press is dispatched on each
+// sampled fitting's own floor point, and `#ov-toast` reports the tile `pointToTile` resolved
+// (`↺ NOTHING TO ERASE ▸ X,Y ON DECK N`). Erase on a tile carrying no order sends NOTHING, so the
+// probe changes no sim state — it only asks the surface which tile the player just pressed.
+// Review measured 57 of 59 wrong here before the projection was unified.
+await clickSel('.ov-tab[data-ov-tab="build"]');
+await clickSel('.ov-orders .ov-tool[data-ov-tool="erase"]');
+// ⚠️ THE PRESS LANDS ON A PIXEL OF THE PIECE'S OWN INK, found with `elementFromPoint` — not on its
+// bounding-box centre. A fitting's box is a 128-unit square with the art centred in it, so a chair's
+// box centre is the paper BETWEEN its legs: a press there is not a press on the chair, it falls
+// through to the floor map by design, and scoring it as a miss measures the fixture rather than the
+// surface. (Measured: 5 of 15 "misses" were exactly that.) The claim under test is the reviewer's —
+// a point inside the piece's own RENDERED FOOTPRINT designates the piece's tile.
+//
+// ⚠️ AND THE POINT IS RE-FOUND IMMEDIATELY BEFORE EACH PRESS. The scene is `innerHTML`-swapped at
+// the wire's 10 Hz, so a batch of points collected up front is read against nodes that no longer
+// exist by the time the presses are dispatched; one run scored a false miss that way. Finding the
+// point and pressing it inside the same ~200 ms is what makes this pin repeatable rather than a coin.
+const PROBE = `((idx) => {
+  const all = [...document.querySelectorAll('.pl-fit')];
+  const g = all[idx];
+  if (!g) return null;
+  const r = g.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  for (let j = 1; j <= 15; j += 1) {
+    for (let i = 1; i <= 15; i += 1) {
+      const x = r.left + (r.width * i) / 16, y = r.top + (r.height * j) / 16;
+      const el = document.elementFromPoint(x, y);
+      if (el && el.closest && el.closest('.pl-fit') === g) return { tile: g.dataset.tile, x, y };
+    }
+  }
+  return { tile: g.dataset.tile, noInk: true };
+})`;
+const fitCount = await evaluate(`document.querySelectorAll('.pl-fit').length`);
+const SAMPLE = 15;
+const step = Math.max(1, Math.floor(fitCount / SAMPLE));
+const wrong = [];
+let walked = 0;
+let inkless = 0;
+for (let i = 0; i < fitCount; i += step) {
+  const f = await json(`JSON.stringify(${PROBE}(${i}))`);
+  if (!f) continue;
+  if (f.noInk) { inkless += 1; continue; }
+  await evaluate(`document.getElementById('ov-toast').textContent = ''`);
+  await click(f.x, f.y);
+  await sleep(250);
+  const line = await evaluate(`document.getElementById('ov-toast').textContent`);
+  const m = /▸ (\d+),(\d+) ON DECK/.exec(line || '');
+  if (!m) continue;
+  walked += 1;
+  if (`${m[1]},${m[2]}` !== f.tile) wrong.push(`drawn for ${f.tile} → press designates ${m[1]},${m[2]}`);
+}
+await clickSel('.ov-orders .ov-tool[data-ov-tool="erase"]');   // disarm
+log(`\n── CLICK MAP vs DRAWING (live gesture) ─────────────────────────────`);
+log(`  ${fitCount} fittings drawn; ${inkless} with no pressable ink; ${walked} pressed; `
+  + `${wrong.length} designate the wrong tile`);
+for (const w of wrong.slice(0, 6)) log('    ' + w);
+if (walked < 8) problems.push(`only ${walked} fittings pressed — the click check is thin`);
+// ⚠️ A FEW INKLESS ARE EXPECTED AND ARE NOT A DEFECT: pieces are drawn BACK TO FRONT, so a fitting
+// standing behind a taller one is legitimately covered by it — pressing there presses the nearer
+// piece, which is what an oblique view means. MANY would mean the miniature has become unpressable.
+if (inkless > Math.max(2, walked * 0.2)) {
+  problems.push(`${inkless} sampled fittings have NO pixel of their own ink that is hit-testable — `
+    + 'that is beyond what back-to-front occlusion accounts for');
+}
+if (wrong.length) {
+  problems.push(`${wrong.length} of ${walked} drawn fittings designate a DIFFERENT tile than the one `
+    + 'they are drawn on — the drawing and the click map have come apart again');
 }
 await png('1-plate-deck0.png');
 

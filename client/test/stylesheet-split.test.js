@@ -138,15 +138,19 @@ test('⭐ no var() fallback disagrees with the value the cascade actually resolv
   }
   // NON-VACUITY BY INCLUSION: the surface files really do carry these.
   //
-  // ⚠️ THE FLOOR WAS 80 AND IS NOW RE-MEASURED, AND THE REASON IS THE RIGHT DIRECTION. VR-P4
-  // rewrote `overview.css` in the paper idiom and wrote every token reference as a BARE `var(--x)`
-  // with no fallback at all — which is the state this test exists to push the stylesheet towards: a
-  // fallback is a second theme that nothing keeps in step, and the only fallback that cannot
-  // disagree with the cascade is the one that is not written. So the population shrank because the
-  // defect class shrank. The floor is re-measured on this tree (39 across the five surface files)
-  // and kept as a floor rather than an equality, so a file that stops being scanned at all still
-  // fails loudly. ⛔ Do not raise it back by adding fallbacks.
-  assert.ok(checked >= 30, `only ${checked} var() fallbacks scanned — the scan is reading nothing`);
+  // ⚠️ THE FLOOR WAS 80, WAS RE-BASED TO 30 BY VR-P4, AND IS TIGHTENED TO 35 HERE — because this is
+  // a SHARED file and a slack floor on a shared file protects nothing. VR-P4 rewrote `overview.css`
+  // in the paper idiom and wrote every token reference as a BARE `var(--x)` with no fallback at all,
+  // which is the state this test exists to push the stylesheet towards: a fallback is a second theme
+  // nothing keeps in step, and the only fallback that cannot disagree with the cascade is the one
+  // that is not written. So the population shrank because the defect class shrank.
+  //
+  // MEASURED ON THIS TREE, per file: base 0 · overview 0 · moss 0 · console 0 · roomzoom 23 ·
+  // relations 16 ⇒ 39. The floor sits four under that, so losing EITHER of the two files that still
+  // carry fallbacks fails loudly, while P3's roomzoom rewrite is free to remove its own 23 (it will
+  // then re-base this line in ITS commit, with its own measurement).
+  // ⛔ Do not raise the floor by adding fallbacks.
+  assert.ok(checked >= 35, `only ${checked} var() fallbacks scanned — the scan is reading nothing`);
   assert.deepEqual(fails, [], fails.join('\n'));
 });
 

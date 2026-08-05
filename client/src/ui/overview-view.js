@@ -983,7 +983,13 @@ function repaint() {
   // the `blocked` rows that say why an order is stuck, so the oxblood sentence in the `compartments`
   // column and the oxblood dashed border on the tile are the SAME row rendered twice. Two
   // derivations of "which compartment is in trouble" is how the two would come to disagree.
-  const compart = compartmentLines(dView, activeDeck, crew, blocked);
+  // ⛔⛔ THE FOURTH ARGUMENT IS A FUNCTION, NOT THE DECODED ARRAY, and the first cut passed the
+  // array — so `compartmentLines`' `typeof blockedFor === 'function'` guard fell to its no-op and
+  // THE STUCK-ORDER CLAUSE NEVER RENDERED IN THE RUNNING GAME. Every pure test was green (they pass
+  // their own function) and no driven test existed; the painter-level test beside them in
+  // `overview-model.test.js` is what found it. The bound join is `crewBlockedOrder` over the SAME
+  // decoded rows the dock row and the selected readout use, so all three word one row.
+  const compart = compartmentLines(dView, activeDeck, crew, (cid) => crewBlockedOrder(blocked, cid));
   const attention = compart.filter((c) => c.attention).map((c) => c.anchorName);
   const selRoom = selectedCompartmentAnchor(frame, rosterMsg, dView, activeDeck);
 
@@ -1321,7 +1327,11 @@ function paintCompartments(lines) {
     },
     (rec, l) => {
       setText(rec.name, l.name);
-      setText(rec.stat, l.status);
+      // ⚠️ THE LEADING SPACE IS REAL TEXT, NOT A STYLE. `.ov-cpname` and `.ov-cpstat` are adjacent
+      // spans, so their `textContent` runs together — a screen reader and a test both read
+      // "CRYO BAY.101.3 kPa". The gap a sighted reader sees is a CSS margin, which is not text.
+      setText(rec.stat, ' ' + l.status);
+      setAttr(rec.el, 'aria-label', l.label);
       setText(rec.why, l.why || '');
       setHidden(rec.why, !l.why);
       setCls(rec.el, 'attend', !!l.attention);
@@ -1912,8 +1922,30 @@ function hitTest(target) {
   return {};
 }
 
-/** Map a DOM click to a sim tile via the SVG CTM + the cached deck transform, or null. */
+/**
+ * Map a DOM click to a sim tile.
+ *
+ * ⭐ TWO TIERS, AND THE FIRST ONE IS THE DRAWING ITSELF. A fitting in the plate's miniatures says
+ * which tile it was drawn for (`data-tile`), and a press on its own painted ink takes that answer
+ * directly. The reason is the oblique: a piece STANDS UP off its floor point, so the top of a tall
+ * locker is drawn over the tiles behind it, and a floor-plane inverse alone would order one of those
+ * instead of the thing the player was aiming at. Measured in the running game before this tier
+ * existed: pressing the middle of a drawn piece designated a tile 1–2 rows back on 14 of 15 samples.
+ * The unpainted gaps between pieces are not targets, so they fall through to tier two and the two
+ * answers agree rather than fight.
+ *
+ * ⛔ TIER TWO IS STILL THE CTM PATH AND MUST STAY SO (BUG-B): `getScreenCTM().inverse()` into the
+ * scene's own viewBox, then the piecewise oblique inverse. Reading `e.clientX` raw is a mutation
+ * `overview-model.test.js` now drives with a NON-IDENTITY CTM, because under the identity CTM the
+ * harness used to install, the two are the same arithmetic and the mutant survived.
+ */
 function pointToTile(svg, e) {
+  const fit = e.target && e.target.closest ? e.target.closest('.pl-fit') : null;
+  if (fit && fit.dataset && fit.dataset.tile) {
+    const [fx, fy] = String(fit.dataset.tile).split(',');
+    const x = Number(fx), y = Number(fy);
+    if (Number.isFinite(x) && Number.isFinite(y)) return { x: x | 0, y: y | 0 };
+  }
   if (!svg.createSVGPoint || !svg.getScreenCTM) return null;
   const ctm = svg.getScreenCTM();
   if (!ctm) return null;

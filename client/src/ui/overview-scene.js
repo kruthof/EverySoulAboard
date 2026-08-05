@@ -33,20 +33,37 @@
 // is — so a single affine map can no longer be both truthful about the drawing and invertible for a
 // click. `makeTransform(slots, frame)` is therefore PIECEWISE:
 //
-//     project(tx,ty) → the slot whose tile rect contains (tx,ty) → that slot's GRID CELL, linearly
-//     invert(sx,sy)  → the grid cell containing (sx,sy)          → that slot's TILE RECT, linearly
+//     project(tx,ty) → the slot whose rect contains (tx,ty) → that slot's GRID CELL, THROUGH THE
+//                      MINIATURE'S OWN OBLIQUE FLOOR PLANE (`floorToMini` + `miniToScene`)
+//     invert(sx,sy)  → the grid cell containing (sx,sy)      → the same two maps, inverted
+//     …and a tile inside NO slot → the CORRIDOR STRIP (`corridorBand`), linearly, both ways.
 //
-// The two are exact inverses FOR EVERY TILE INSIDE A COMPARTMENT, which is the property `tileAt`
-// (and therefore the order verbs' click→tile path, BUG-B's `getScreenCTM().inverse()` route) needs.
+// ⛔ THE OBLIQUE HALF IS NOT DECORATION — IT IS THE FIX FOR A MEASURED DEFECT. See the block above
+// `floorToMini`: while the drawing used the oblique and the click map used an axis-aligned box, 57
+// of 59 drawn fittings on the wreck's deck 0 clicked a different tile than the one they were drawn
+// on. One projection, two directions, is the whole of the correction.
 //
-// ⛔ KNOWN LIMIT, STATED RATHER THAN HIDDEN: **A TILE INSIDE NO COMPARTMENT HAS NO PLACE ON THE
-// PLATE.** The drawing has nowhere to put it, so `project` falls back to a linear map over the whole
-// grid box and `invert` never returns it. On the shipped ships that set is empty where it matters —
-// every carved compartment IS a slot (OD-K, M1-L: all 16 wreck slots and all 64 grid slots report
-// `occupied` with a non-blank anchor) and all 20 of deck 0's debris tiles sit inside `hall_d0_s7` —
-// but a ship that ever authored a corridor OUTSIDE every slot rect would have tiles the plate cannot
-// address. That is a plate-altitude limit, not a lost verb: the Room Zoom addresses every tile.
-// `overview-scene.test.js` pins BOTH halves (round-trip identity inside a slot; the limit outside).
+// The two are exact inverses FOR EVERY TILE ON THE DECK, which is the property `tileAt` (and
+// therefore the order verbs' click→tile path, BUG-B's `getScreenCTM().inverse()` route) needs.
+//
+// ⚠️ **THE PARAGRAPH THAT STOOD HERE WAS FACTUALLY WRONG AND IS REPLACED, NOT EDITED.** It claimed
+// *"a tile inside no compartment has no place on the plate … `invert` never returns it"*. Review
+// measured the opposite on the running wreck: 672 sampled points in the gaps between cells DID
+// invert to out-of-slot tiles, and the corridor tile round-tripped exactly — the fallback map was
+// live, unowned and undrawn. And the half that was true was worse than the half that was wrong:
+// **83 deck-0 floor tiles, two ground items and the HATCH LADDER at (22,8) — the visible
+// deck-to-deck route — were on no surface at Level 1 at all.**
+//
+// So the deck's SPINE is now a drawn thing: `corridorBand` reserves the grid's own ROW GAP, every
+// no-slot tile projects into that strip through the same transform, `corridorLayer` draws the
+// corridor's items and the ladder in it, and the round trip there is exact. There is no tile on the
+// deck the plate cannot address.
+//
+// ⛔ WHAT REMAINS A LIMIT, STATED HONESTLY: the strip is ~23 design px tall for a corridor that may
+// be a dozen tiles deep, so two corridor tiles a row apart are a fraction of a pixel apart on
+// screen. The mapping is exact; the RESOLUTION is coarse, and a player who wants to designate one
+// particular spine tile should be in the Room Zoom. `overview-scene.test.js` pins the round trip in
+// both regions, and pins that a corridor tile really lands in the strip.
 
 import { buildItem } from '../items/index.js';
 // THE WEAR JOIN — the ONLY door from a surface to the 70 post-raid twins. The threshold and its
@@ -125,24 +142,47 @@ const ROW_GAP = 22.8;
  * the hull. `cells` is `cols * rows`, so a census that does not fill its last row leaves EMPTY
  * CELLS — drawn in the dash dialect's UNBUILT stroke, which is the design's own third tile.
  *
+ * ⛔ THE ROW HEIGHT HAS A POSITIVE FLOOR, AND IT WAS ADDED BECAUSE THE ARITHMETIC WENT NEGATIVE.
+ * Review measured it: with the box height fixed and the gaps constant, `tileH` crosses zero at
+ * rows ≥ 9 (n ≥ 49) and goes NEGATIVE — which draws inverted rects, inverts the click map inside
+ * them, and is trivially "inside the box" for any containment check. `MIN_TILE` clamps both axes;
+ * when the clamp binds the grid is TALLER than `DECK.h` and says so through `overflows`, so a
+ * caller (and the test) can see the degradation rather than infer it from a shape.
+ *
+ * ⚠️ AND THE HONEST NOTE ABOUT WHAT THE SHIPPED GAME ACTUALLY DOES: every authored ship in this repo
+ * lays **8 compartments per deck** (`--ship wreck` and `--ship grid` alike — measured on the wire in
+ * `overview-plate-shot.mjs`'s own instrument check, which dies if deck 0 is not 8). So the shape the
+ * player sees is always the design's own 4 × 2. The degradation above 12 compartments a deck is
+ * REAL and is stated rather than hidden: 3 rows draw 39.6 design-px miniatures (n 13–18), 4 rows 24
+ * (n 19–24), and from FIVE rows up (n ≥ 25) the floor binds, the grid grows taller than its box and
+ * `overflows` says so. Below `MIN_TILE.h` a miniature would be a silhouette rather than a drawing. That is a legibility limit of the
+ * plate at Level 1, not a lost compartment — every one of them still draws, still carries its
+ * `data-anchor`, still clicks into the Room Zoom, and is still named in the `compartments` column.
+ *
  * PURE, and exported so the view (deck caption) and the tests read the same derivation the drawing
  * does — a second copy of this arithmetic is how the caption and the grid would come to disagree
  * about how many compartments a deck has.
  * @param {number} n how many compartments this deck has
- * @returns {{cols:number, rows:number, cells:number, tileW:number, tileH:number}}
+ * @returns {{cols:number, rows:number, cells:number, tileW:number, tileH:number, overflows:boolean}}
  */
 export function gridLayout(n) {
   const count = Math.max(0, Math.floor(Number.isFinite(n) ? n : 0));
   const cols = Math.max(1, Math.min(GRID_MAX_COLS, Math.ceil(count / 2) || 1));
   const rows = Math.max(1, Math.ceil(count / cols) || 1);
-  const tileW = (DECK.w - (cols - 1) * COL_GAP) / cols;
-  const tileH = (DECK.h - (rows - 1) * ROW_GAP) / rows;
-  return { cols, rows, cells: cols * rows, tileW, tileH };
+  const fitW = (DECK.w - (cols - 1) * COL_GAP) / cols;
+  const fitH = (DECK.h - (rows - 1) * ROW_GAP) / rows;
+  const tileW = Math.max(MIN_TILE.w, fitW);
+  const tileH = Math.max(MIN_TILE.h, fitH);
+  return { cols, rows, cells: cols * rows, tileW, tileH, overflows: tileH > fitH || tileW > fitW };
 }
 
 /** The column cap. Six 118-px tiles is the narrowest a miniature interior still reads at (measured
  *  against the design's own 154-px tile: below ~110 px the fittings collapse into their strokes). */
 export const GRID_MAX_COLS = 6;
+
+/** The smallest tile the grid will draw. Below this a miniature is a silhouette, not a drawing —
+ *  and, more importantly, the unclamped arithmetic goes NEGATIVE past rows 8 (see `gridLayout`). */
+export const MIN_TILE = Object.freeze({ w: 40, h: 18 });
 
 /** The design-px rect of grid cell `i` (row-major, left→right then top→bottom). PURE. */
 function cellRect(i, lay) {
@@ -173,6 +213,87 @@ const MINI_W_CM = MINI.wM * 100;
 const MINI_D_CM = MINI.dM * 100;
 /** The box one fitting is normalised into, in miniature px. */
 const MINI_ITEM = 128;
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ THE ONE FLOOR PROJECTION — THE FIX FOR THE TWO-COORDINATE-SYSTEMS DEFECT.
+//
+// ⛔ WHAT WAS WRONG, MEASURED IN THE RUNNING GAME BY REVIEW. Inside a compartment tile the DRAWING
+// and the CLICK MAP were two different mappings: fittings were placed through the oblique frame
+// (`roomFrame(...).project`) while `makeTransform` mapped a tile linearly onto the axis-aligned CELL
+// box. On `--ship wreck` deck 0 that made **57 of 59 drawn fittings click a DIFFERENT tile** (dy up
+// to +7 tiles) and **49 of them had not one pixel of their own ink that clicked their own tile**;
+// the crew figure drew standing inside the back wall while the pods beside her were oblique; and the
+// debris band ran as an axis-aligned row across an oblique floor. Every one of those is the same
+// bug: a surface that shows you one thing and orders another.
+//
+// THE FIX IS THAT THERE IS NOW ONE MAPPING AND IT IS DERIVED FROM THE KIT, NOT RE-TYPED. The room's
+// FLOOR PLANE is an affine map of `(u, v)` — fraction across, fraction back — and its two basis
+// vectors are read straight out of `MINI_FRAME.project`, so if the oblique's ratios ever move, the
+// drawing and the click map move together by construction. The inverse is the plain 2×2 solve of
+// the same basis, which is the closed form the Room Zoom uses for its own floor plane (P3's
+// `room-model.js`; the MATH is replicated here rather than the file imported, because that module is
+// another package's and importing it would couple the two surfaces' layouts).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The nested tile `<svg>`'s viewBox, as numbers (the design's own `-10 -10 992 428`). */
+export const MINI_BOX = Object.freeze({ x: -10, y: -10, w: 992, h: 428 });
+
+/** The miniature's projection frame — one per tile, but identical, so it is built once. */
+const MINI_FRAME = roomFrame(MINI.wM, MINI.dM, MINI.hM, MINI.s, { x: MINI.x, y: MINI.y });
+
+/** The floor plane's origin and its two basis vectors, in MINI viewBox px. READ OFF THE KIT. */
+const F_O = MINI_FRAME.project(0, 0, 0);
+const F_U = MINI_FRAME.project(MINI_W_CM, 0, 0);
+const F_V = MINI_FRAME.project(0, MINI_D_CM, 0);
+const BU = [F_U[0] - F_O[0], F_U[1] - F_O[1]];   // across  → (+860,    0) at s = 1
+const BV = [F_V[0] - F_O[0], F_V[1] - F_O[1]];   // back    → (+112, −168) at s = 1
+const B_DET = BU[0] * BV[1] - BU[1] * BV[0];
+
+/**
+ * `(u, v)` — fraction across the room, fraction back into it — → MINI viewBox px on the FLOOR.
+ * THE ONLY PLACE ANYTHING IN A COMPARTMENT TILE IS POSITIONED: fittings, marks, ghosts, terminal
+ * chips, crew figures, and the inverse the click map runs. PURE.
+ */
+export function floorToMini(u, v) {
+  // ⛔ NOT ROUNDED. `n()` is for the STRING emitters; rounding here costs the round trip its
+  // exactness — measured: 2 dp in mini units divided back through a ~0.18 `meet` factor is ~1.4e-4
+  // of a tile, which fails the identity leg and, worse, would put a click one tile out near a tile
+  // boundary. The emitters round their own output (`miniContents`' translate, `markCellSvg`'s box).
+  return [F_O[0] + u * BU[0] + v * BV[0], F_O[1] + u * BU[1] + v * BV[1]];
+}
+
+/** The exact inverse of `floorToMini` — the 2×2 solve of the same basis. PURE. */
+export function miniToFloor(mx, my) {
+  const px = mx - F_O[0], py = my - F_O[1];
+  if (!B_DET) return [0, 0];
+  return [(px * BV[1] - py * BV[0]) / B_DET, (BU[0] * py - BU[1] * px) / B_DET];
+}
+
+/**
+ * The `xMidYMid meet` fit of the mini viewBox inside one plate-space CELL — i.e. exactly what the
+ * browser does with the nested `<svg x y width height viewBox preserveAspectRatio>` the tile emits.
+ * Anything drawn at PLATE level that must line up with a tile's interior goes through this.
+ */
+export function miniFit(cell) {
+  const k = Math.min(cell.w / MINI_BOX.w, cell.h / MINI_BOX.h);
+  return {
+    k,
+    ox: cell.x + (cell.w - MINI_BOX.w * k) / 2 - MINI_BOX.x * k,
+    oy: cell.y + (cell.h - MINI_BOX.h * k) / 2 - MINI_BOX.y * k,
+  };
+}
+
+/** MINI viewBox px → plate design px, for a given cell. PURE. */
+export function miniToScene(cell, mx, my) {
+  const f = miniFit(cell);
+  return [f.ox + mx * f.k, f.oy + my * f.k];
+}
+
+/** Plate design px → MINI viewBox px, for a given cell. The exact inverse. PURE. */
+export function sceneToMini(cell, sx, sy) {
+  const f = miniFit(cell);
+  return [(sx - f.ox) / f.k, (sy - f.oy) / f.k];
+}
 
 /** Stroke weights inside a tile, measured off the design's tiles (1.1 shell / 0.7 detail). */
 const MINI_WEIGHT = Object.freeze({ shell: 1.1, detail: 0.7, cutDash: '5 4', unbuiltDash: '6 5' });
@@ -214,6 +335,15 @@ function tileExtent(slots, frame) {
     if (frame && frame.w && frame.h) return { minX: 0, minY: 0, maxX: frame.w, maxY: frame.h };
     return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
   }
+  // ⭐ UNIONED WITH THE FRAME, and that is what makes the CORRIDOR STRIP cover the whole deck. The
+  // extent used to be the slots' bounding box alone, which is fine for the cells (they carry their
+  // own rects) and wrong for the band: a spine tile beyond the last compartment's rect then
+  // EXTRAPOLATED past the strip instead of landing in it. Measured on a synthetic one-room deck —
+  // the ladder projected 10 px below the band and 480 px past its right edge.
+  if (frame && frame.w > 0 && frame.h > 0) {
+    minX = Math.min(minX, 0); minY = Math.min(minY, 0);
+    maxX = Math.max(maxX, frame.w); maxY = Math.max(maxY, frame.h);
+  }
   return { minX, minY, maxX, maxY };
 }
 
@@ -245,28 +375,47 @@ export function makeTransform(slots, frame) {
   const FKX = DECK.w / spanX, FKY = DECK.h / spanY;
 
   const cells = list.map((s, i) => ({ slot: s, rect: s && s.rect, cell: cellRect(i, lay), index: i }));
+
+  // THE CORRIDOR BAND — where every tile that is inside NO compartment is drawn and clicked.
+  const band = corridorBand(lay);
+
+  // Art sizing: the smallest a single tile draws at, ON THE FLOOR PLANE, in plate px. One tile is
+  // `BU/rect.w` across and `BV/rect.h` back in mini units, scaled by the cell's own `meet` factor.
   let tileSize = Infinity;
   for (const c of cells) {
     if (!c.rect || !(c.rect.w > 0) || !(c.rect.h > 0)) continue;
-    tileSize = Math.min(tileSize, c.cell.w / c.rect.w, c.cell.h / c.rect.h);
+    const k = miniFit(c.cell).k;
+    tileSize = Math.min(tileSize, (BU[0] / c.rect.w) * k, (-BV[1] / c.rect.h) * k);
   }
   if (!isFinite(tileSize) || tileSize <= 0) tileSize = Math.min(FKX, FKY);
+  tileSize = Math.max(3, tileSize);
 
   const findByTile = (tx, ty) => cells.find((c) => coversTile(c.rect, tx, ty)) || null;
   const findByPoint = (sx, sy) => cells.find((c) => c.rect && sx >= c.cell.x && sx <= c.cell.x + c.cell.w
     && sy >= c.cell.y && sy <= c.cell.y + c.cell.h) || null;
 
+  /** A no-slot tile → the corridor strip, linearly. Injective over the deck's tile extent, so the
+   *  round trip below is exact for a corridor tile too. */
+  const bandProject = (tx, ty) => [
+    DECK.x + ((tx - ext.minX) / spanX) * DECK.w,
+    band.y + ((ty - ext.minY) / spanY) * band.h,
+  ];
+  const bandInvert = (sx, sy) => [
+    ext.minX + ((sx - DECK.x) / DECK.w) * spanX,
+    ext.minY + ((sy - band.y) / band.h) * spanY,
+  ];
+
   const project = (tx, ty) => {
     const c = findByTile(Math.floor(tx), Math.floor(ty));
-    if (!c) return [DECK.x + (tx - ext.minX) * FKX, DECK.y + (ty - ext.minY) * FKY];
-    return [
-      c.cell.x + ((tx - c.rect.x) / c.rect.w) * c.cell.w,
-      c.cell.y + ((ty - c.rect.y) / c.rect.h) * c.cell.h,
-    ];
+    if (!c) return bandProject(tx, ty);
+    const u = (tx - c.rect.x) / c.rect.w;
+    const v = (ty - c.rect.y) / c.rect.h;
+    const [mx, my] = floorToMini(u, v);
+    return miniToScene(c.cell, mx, my);
   };
 
   return {
-    ext, lay, cells, tileSize,
+    ext, lay, cells, tileSize, band,
     KX: FKX, KY: FKY,
     project,
     /** The grid cell a slot occupies, by identity first and slotIndex second. */
@@ -276,21 +425,64 @@ export function makeTransform(slots, frame) {
         || cells.find((c) => c.slot && c.slot.slotIndex === slot.slotIndex);
       return hit ? hit.cell : null;
     },
+    /**
+     * The pixel box of a TILE-SPACE rect. ⚠️ ON AN OBLIQUE FLOOR A TILE IS A PARALLELOGRAM, not an
+     * axis rect, so this returns the BOUNDING BOX of the four projected corners. Its callers
+     * (`markCellSvg`, the build ghosts) draw inside a box by contract; a box that contains the real
+     * parallelogram keeps the mark on its own tile, which is the property that matters.
+     */
     rect(r) {
-      const c = findByTile(Math.floor(r.x), Math.floor(r.y));
-      const [x, y] = project(r.x, r.y);
-      if (!c) return { x, y, w: r.w * FKX, h: r.h * FKY };
-      return { x, y, w: r.w * (c.cell.w / c.rect.w), h: r.h * (c.cell.h / c.rect.h) };
+      const pts = [project(r.x, r.y), project(r.x + r.w, r.y),
+        project(r.x + r.w, r.y + r.h), project(r.x, r.y + r.h)];
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      const x = Math.min(...xs), y = Math.min(...ys);
+      return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
     },
+    /**
+     * A plate point → the fractional TILE it addresses.
+     *
+     * ⭐ THE (u, v) CLAMP IS THE AFFORDANCE, not a rounding detail. A cell's BOX is bigger than the
+     * floor PARALLELOGRAM drawn inside it — the back wall, the ceiling cut and the `meet` letterbox
+     * are all cell and none of them are floor — so a press up in the back wall solves to `v > 1` and
+     * would address a tile the compartment does not contain, i.e. `tileAt` would clamp it to `null`
+     * and an armed DIG would silently do nothing over a third of every tile. Clamping to the floor
+     * means EVERY PIXEL OF A COMPARTMENT TILE ADDRESSES A TILE IN THAT COMPARTMENT, including the
+     * upper body of a fitting that stands up off its own floor point.
+     * ⚠️ It does not weaken the identity: `project` only ever emits `u, v ∈ [0,1]`, so the clamp is
+     * inert on the round trip and bites only on points that are not on the floor at all.
+     */
     invert(sx, sy) {
       const c = findByPoint(sx, sy);
-      if (!c) return [ext.minX + (sx - DECK.x) / FKX, ext.minY + (sy - DECK.y) / FKY];
+      if (!c) return bandInvert(sx, sy);
+      const [mx, my] = sceneToMini(c.cell, sx, sy);
+      const [u0, v0] = miniToFloor(mx, my);
+      const u = Math.min(1, Math.max(0, u0));
+      const v = Math.min(1, Math.max(0, v0));
+      const EPS = 1e-9;
       return [
-        c.rect.x + ((sx - c.cell.x) / c.cell.w) * c.rect.w,
-        c.rect.y + ((sy - c.cell.y) / c.cell.h) * c.rect.h,
+        Math.min(c.rect.x + c.rect.w - EPS, c.rect.x + u * c.rect.w),
+        Math.min(c.rect.y + c.rect.h - EPS, c.rect.y + v * c.rect.h),
       ];
     },
   };
+}
+
+/**
+ * THE CORRIDOR STRIP — the band of plate the deck's SPINE is drawn in.
+ *
+ * ⛔ IT EXISTS BECAUSE ITS ABSENCE DELETED THE DECK'S OWN ROUTE. Review measured it on `--ship
+ * wreck`: **83 deck-0 floor tiles, two ground items and the HATCH LADDER at (22,8) — the visible
+ * deck-to-deck route — lie inside no slot rect**, so with the grid alone they were on no surface at
+ * Level 1 at all. A plate that draws every room and none of the corridor between them is a floor
+ * plan with the doors painted out.
+ *
+ * It is the ROW GAP, which is space the grid already reserves: the corridor really is between the
+ * two banks of compartments, so the strip is where a player expects it. With a single row (a deck of
+ * one or two compartments) there is no gap, so it sits just under the grid box instead.
+ */
+function corridorBand(lay) {
+  if (lay.rows >= 2) return { x: DECK.x, y: DECK.y + lay.tileH, w: DECK.w, h: ROW_GAP };
+  return { x: DECK.x, y: DECK.y + lay.tileH + 4, w: DECK.w, h: 16 };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -378,9 +570,6 @@ function hullLayer() {
 // Layer 2 — THE COMPARTMENT GRID: tiles that are LIVE MINIATURE ROOM INTERIORS.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The miniature's projection frame — one per tile, but identical, so it is built once. */
-const MINI_FRAME = roomFrame(MINI.wM, MINI.dM, MINI.hM, MINI.s, { x: MINI.x, y: MINI.y });
-
 /** Every path inside a tile carries this: at ~1/7 scale a scaled stroke vanishes (the design's own
  *  tiles set it on every element, `Perilune Game.dc.html:65`). */
 const NS = ' vector-effect="non-scaling-stroke"';
@@ -464,8 +653,9 @@ function miniContents(slot, frame, deck, deviceCond, marks, idPrefix) {
       if (!itemId) continue; // glyph nothing skins → graceful skip
       const u = (tx + 0.5 - rect.x) / rect.w;
       const v = (ty + 0.5 - rect.y) / rect.h;
-      const yCm = v * MINI_D_CM;
-      const [px, py] = MINI_FRAME.project(u * MINI_W_CM, yCm, 0);
+      // ⭐ THE SAME FUNCTION THE CLICK MAP INVERTS. A piece stands on the floor point its own tile
+      // centre projects to, so a press on its footprint designates the tile it is drawn on.
+      const [px, py] = floorToMini(u, v);
       const row = cond.get(tx + ',' + ty);
       const g = buildTileItem(itemId, { w: MINI_ITEM, h: MINI_ITEM, idPrefix: `${idPrefix}-f${tx}-${ty}` },
         row ? row.cond : undefined);
@@ -478,8 +668,21 @@ function miniContents(slot, frame, deck, deviceCond, marks, idPrefix) {
       // has CONDEMNED — which arrives as a mark kind and needs no threshold at all.
       const attend = attention.has(tx + ',' + ty);
       pieces.push({
-        yCm,
-        svg: `<g transform="translate(${n(px - MINI_ITEM / 2)} ${n(py - MINI_ITEM)})"`
+        yCm: v * MINI_D_CM,
+        // ⭐ `data-tile` IS THE PIN'S HANDLE, and it is emitted rather than inferred: it says which
+        // tile this piece was DRAWN for, so a test can take the piece's own base point and require
+        // the click map to hand back the same tile. Inferring it from the id namespace instead is
+        // what the first version of that test did, and it mis-paired every piece whose builder
+        // emits no `<defs>` id at all.
+        // ⭐ `pointer-events="visiblePainted"` — a press on a fitting's own INK designates that
+        // fitting's tile (`overview-view.js` `pointToTile` reads `data-tile` first). In an oblique
+        // view a piece stands UP off its floor point, so most of a tall locker's body hangs over the
+        // tiles BEHIND it; without this tier, pressing the part of the drawing a player is aiming at
+        // orders a different tile, which is the same "shows one thing, orders another" defect as the
+        // projection bug, one layer up. The gaps between pieces are unpainted and fall through to
+        // the floor map, which is what makes the two tiers agree rather than fight.
+        svg: `<g class="pl-fit" data-tile="${tx},${ty}" pointer-events="visiblePainted"`
+          + ` transform="translate(${n(px - MINI_ITEM / 2)} ${n(py - MINI_ITEM)})"`
           + (attend ? ` stroke="${ATTEND}"` : '') + `>${g}</g>`,
       });
     }
@@ -539,6 +742,40 @@ function emptyTile(cell) {
     + `<rect x="${n(cell.x)}" y="${n(cell.y)}" width="${n(cell.w)}" height="${n(cell.h)}"`
     +   ` fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="6 5" opacity="0.45"/>`
     + `</g>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Layer 2b — THE SPINE. Everything on the deck that is inside no compartment: the corridor's own
+// floor line, its ground items and — the one that mattered — the HATCH LADDER, which is the visible
+// deck-to-deck route. Drawn in the corridor strip, through the SAME `t.project` the click map
+// inverts, so a press on the ladder designates the ladder's tile.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+function corridorLayer(frame, deck, t, slots, id) {
+  const band = t.band;
+  const rule = `<path d="M${n(band.x)} ${n(band.y + band.h / 2)} L${n(band.x + band.w)} ${n(band.y + band.h / 2)}"`
+    + ` fill="none" stroke="${INK}" stroke-width="0.6" opacity="0.4"/>`;
+  if (!frame || frame.deck !== deck || !Array.isArray(frame.cells)) {
+    return `<g class="pl-corridor" pointer-events="none">${rule}</g>`;
+  }
+  const list = Array.isArray(slots) ? slots : [];
+  const side = Math.max(9, band.h * 0.82);
+  const out = [];
+  for (let ty = 0; ty < frame.h; ty++) {
+    for (let tx = 0; tx < frame.w; tx++) {
+      if (list.some((sl) => sl && coversTile(sl.rect, tx, ty))) continue;   // a compartment owns it
+      const cell = frame.cells[ty * frame.w + tx];
+      if (!Array.isArray(cell)) continue;
+      const code = cell[0];
+      if (NON_FURNITURE.has(code)) continue;
+      const itemId = itemIdForGlyphChar(String.fromCharCode(code));
+      if (!itemId) continue;
+      const [cx, cy] = t.project(tx + 0.5, ty + 0.5);
+      out.push(`<g transform="translate(${n(cx - side / 2)} ${n(cy - side / 2)})">`
+        + `${buildItem(itemId, { w: side, h: side, idPrefix: `${id}-c${tx}-${ty}` })}</g>`);
+    }
+  }
+  return `<g class="pl-corridor" pointer-events="none">${rule}${out.join('')}</g>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -861,6 +1098,7 @@ export function overviewScene(state) {
   const body = ''
     + hullLayer()
     + `<g class="pl-rooms">${tiles.join('')}</g>`
+    + corridorLayer(st.frame, deck, t, slots, id)
     // `markLayer` sits ABOVE the tiles (whose own `pl-furniture` is inside them) — the same order,
     // for the same reason, as the Room Zoom's: a condemned DEVICE carries fg 26, and beneath its own
     // fitting its ✕ would be invisible.

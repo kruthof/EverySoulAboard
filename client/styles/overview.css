@@ -125,10 +125,21 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
 .ov-capsouls{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-micro)}
 
 /* ==== the four-column readout (design `:106`, grid 1fr 1.02fr 258px 150px) ==== */
-.ov-columns{flex:none;height:206px;
+/* ⛔⛔ THE HEIGHT IS `auto`, AND THE FIXED 206px IT REPLACES DELETED TWO AFFORDANCES. Measured in
+   the running game by review: `#ov-alert` (D2's decaying-capsule warning) resolved 50px BELOW the
+   column's bottom edge — 0 px of it on screen, at every viewport — and `.ov-ledcaveat` (the one
+   always-visible limit on the whole island) was 40 of its 44px clipped. A fixed-height box with
+   `overflow:hidden` is exactly how a re-housing deletes the thing it re-housed, and it is the
+   `invisible-feedback-is-FUNCTIONAL` failure with a stylesheet as the cause.
+   So the band takes its CONTENT's height and the plate above it (the flex `1 1 auto` item) gives up
+   the difference; the cap stops a twenty-room census eating the drawing, and the ONE list that can
+   grow without bound scrolls inside itself (`.ov-cplist`). `overview-plate-shot.mjs` measures the
+   alert and the caveat against the viewport, because dom-lite cannot see this class of defect at
+   all. */
+.ov-columns{flex:none;height:auto;max-height:min(46vh,340px);
   display:grid;grid-template-columns:1fr 1.02fr 258px 150px;column-gap:28px;
-  border-top:1px solid var(--ink);padding-top:16px}
-.ov-col{display:flex;flex-direction:column;gap:8px;min-width:0;overflow:hidden}
+  border-top:1px solid var(--ink);padding-top:14px}
+.ov-col{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;overflow:hidden}
 /* the hairline separators the design puts between the columns */
 .ov-columns .ov-col+.ov-col{border-left:1px solid var(--paper-hairline);padding-left:26px}
 .ov-columns .ov-radar{border-left:0;padding-left:0}
@@ -159,7 +170,12 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
   overflow:hidden;text-overflow:ellipsis}
 .ov-faint{color:var(--ink-faintest)}
 
-/* `the ship` — the LEDGER re-housed as five rows with engraved gauges */
+/* `the ship` — the LEDGER re-housed as five rows with engraved gauges.
+   ⚠️ ITS OWN GAP IS TIGHTER THAN THE COLUMN'S. Eleven stacked lines (head, scale, five rows, census,
+   caveat, alert) at the column's 6px gap is 60px of air; at 3px it is 30, which is what lets the
+   whole island — INCLUDING the two lines that must never be clipped — fit a band that also has to
+   hold eight compartment lines beside it. */
+.ov-ledger{gap:3px}
 .ov-ledscale{font-size:8px;letter-spacing:.14em;color:var(--ink-faintest)}
 .ov-ledrow{display:grid;grid-template-columns:56px auto 1fr auto;align-items:center;gap:8px;
   font-size:9.5px;white-space:nowrap}
@@ -178,12 +194,17 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
 .ov-ledcensus{font-size:8.5px;white-space:normal;overflow-wrap:anywhere}
 /* The always-visible caveat. Deliberately NOT `.ov-faint`: it is the one line on this column a
    player who never hovers a row must still read, so it is legible rather than decorative. */
-.ov-ledcaveat{font-size:8.5px;line-height:1.5;white-space:normal;color:var(--ink-micro);
-  border-top:1px solid var(--paper-hairline);padding-top:5px}
+/* ⛔ `flex:none` + `margin-top:auto` — the caveat and the alert under it are the LAST things in the
+   column and the first things a shrinking box would eat. `auto` pushes them to the bottom of the
+   column so they are pinned to a visible edge rather than pushed past one, and `flex:none` stops
+   the flexbox compressing them to nothing when the rows above are tall. This is the pair review
+   measured as 40-of-44px clipped and 0-px-on-screen respectively. */
+.ov-ledcaveat{flex:none;margin-top:auto;font-size:8.5px;line-height:1.45;white-space:normal;
+  color:var(--ink-micro);border-top:1px solid var(--paper-hairline);padding-top:5px}
 /* ⭐⭐ D2's ALERT, as the design's `leak` row (`:183-186`): an oxblood mono label and an oxblood
    serif italic sentence under a hairline, beneath the numbers it is about. */
-.ov-alert{display:flex;align-items:baseline;gap:8px;border-top:1px solid rgba(20,18,15,.2);
-  padding-top:7px;margin-top:2px}
+.ov-alert{flex:none;display:flex;align-items:baseline;gap:8px;
+  border-top:1px solid rgba(20,18,15,.2);padding-top:5px;margin-top:2px}
 .ov-alertlbl{flex:none;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--attend)}
 .ov-alerttxt{font-family:var(--font-serif);font-style:italic;font-size:14px;line-height:1.25;
   color:var(--attend)}
@@ -460,6 +481,10 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
 .onb-begin{margin-top:24px;width:100%;padding:12px;cursor:pointer;font:inherit;font-size:10px;
   letter-spacing:.2em;text-transform:uppercase;color:var(--paper-plate);background:var(--ink);border:0}
 .onb-begin:hover{background:var(--attend)}
+/* ⛔ THE PRESS STATE IS NOT DECORATION — it is the `palette PRESSES` precedent (session G: the build
+   palette's hover had the armed border colour and a press said nothing, which read as a dead
+   button). A button whose only feedback is hover is a button a player cannot tell they clicked. */
+.onb-begin:active{background:var(--ink-annot);transform:translateY(1px)}
 .onb-foot{margin-top:12px;text-align:center;font-size:9px;color:var(--ink-faintest)}
 .onb-help{position:fixed;right:30px;top:66px;z-index:120;width:30px;height:30px;border-radius:50%;
   cursor:pointer;font:inherit;font-size:14px;color:var(--ink);

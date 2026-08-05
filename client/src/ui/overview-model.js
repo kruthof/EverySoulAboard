@@ -808,13 +808,21 @@ export function compartmentLines(decksView, deck, crew, blockedFor) {
       const b = ask(c.cid);
       if (b && b.sentence) { why = 'ORDER STUCK — ' + b.sentence; break; }
     }
+    const name = (s.displayName || s.anchorName || '') + '.';
+    const status = compartmentStatus(s, inside.length);
     return {
       anchorName: s.anchorName,
       // The design's own punctuation: the room's name is a sentence opener, not a label.
-      name: (s.displayName || s.anchorName || '') + '.',
-      status: compartmentStatus(s, inside.length),
+      name,
+      status,
       why,
       attention: !!why,
+      // ⚠️ THE WHOLE LINE AS ONE STRING, for the element's `aria-label` and for anything that reads
+      // the row as text. The name and the status are separate SPANS (they are set in different ink
+      // and the name never wraps), and a screen reader — or a `textContent` assertion — concatenates
+      // spans with NOTHING between them: "CRYO BAY.101.3 kPa · 19°C · ON". The gap on screen is a
+      // margin, which is not text. So the text form is written out once, here.
+      label: name + ' ' + status + (why ? ' — ' + why : ''),
     };
   });
 }
@@ -849,18 +857,26 @@ export function compartmentStatus(slot, souls) {
  * ⚠️ THE DESIGN'S OWN CAPTION ENDS "Under way at 0.31 g, bow to starboard" AND THAT HALF IS NOT
  * WRITTEN. There is no acceleration and no heading anywhere in `sim/`; the two prettiest words in
  * the design's sentence are the two this ship cannot say.
+ *
+ * ⛔ AND NEITHER IS "looking down", WHICH THIS FUNCTION USED TO SAY. Review was right that it is a
+ * false claim about the drawing: the plate is not a floor plan seen from above — it is a GRID OF
+ * OBLIQUE CUTAWAYS whose cell ORDER is slot order, not ship geometry. "one to a cell" says exactly
+ * what the reader is looking at and claims nothing about where the compartment is on the hull.
+ *
+ * ⛔ AND THE DECK COUNT IS THE COUNT, NOT THE TOP INDEX. It printed `totalDecks − 1` and the wreck
+ * — which has TWO decks — read "deck 0 of 1". `decksView.length` is how many decks there are; the
+ * masthead below uses the same term for the same reason.
  */
 export function deckCaptionLine(deck, totalDecks, rooms) {
-  const top = Math.max(0, (totalDecks | 0) - 1);
   const r = rooms | 0;
-  return 'Deck ' + (deck | 0) + ' of ' + top + ' — ' + r + ' compartment' + (r === 1 ? '' : 's')
-    + ', looking down.';
+  return 'Deck ' + (deck | 0) + ' of ' + Math.max(1, totalDecks | 0) + ' — '
+    + r + ' compartment' + (r === 1 ? '' : 's') + ', one to a cell.';
 }
 
 /** The masthead's right-hand stats, in two spans. PURE — the same deck wording the caption uses. */
 export function mastheadStats(deck, totalDecks, day, clock) {
   return {
-    deck: 'deck ' + (deck | 0) + (totalDecks ? ' of ' + ((totalDecks | 0) - 1) : ''),
+    deck: 'deck ' + (deck | 0) + (totalDecks ? ' of ' + Math.max(1, totalDecks | 0) : ''),
     clock: 'day ' + day + ' · ' + clock,
   };
 }
