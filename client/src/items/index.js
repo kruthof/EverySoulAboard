@@ -347,12 +347,21 @@ export const ITEMS = Object.freeze({
   // strings, not the old ones: the `decor` wire channel is keyed by itemId and two rows sharing a key
   // would make the local decor store ambiguous about which art a placed tile wears.
   //
-  // ⇒ ONE COSMETIC ROW IS ACTUALLY REACHED AND IT IS REWIRED: `room-model.js`'s SHELF palette tool
-  // places `itemId: 'bookshelf'`, and it now places `book-case`. The other four warm cosmetics reach
-  // NO draw site at all — the host's `decor` channel ships an empty list (`GameSession.cs:2801`,
-  // `_decor` is a static empty `List`) and the only other producer is that palette's two tools — so
-  // their paper twins are registered and unreached, which is the honest state and is said here rather
-  // than left to be discovered.
+  // ⛔⭐ ALL FIVE ARE UNREACHED, AND THE FIRST DRAFT OF THIS PARAGRAPH SAID OTHERWISE. It claimed the
+  // SHELF palette tool "places `book-case`" and was the one draw site reaching a cosmetic piece. It is
+  // not: `roomzoom-view.js`'s `cls === 'cosmetic'` branch only TOASTS `decorRefusalText(_armed)` and
+  // pulses the tile — no command is sent, `addDecor` has no caller in `client/src` at all, and the
+  // host's `decor` channel is a permanently empty static list (`GameSession.cs:2800-2801`,
+  // `BuildDecor() => _decor`). SHELF and RUG stopped placing anything on 2026-08-04, deliberately, and
+  // this lane read a live tool where there was a dead one. So the honest state: `paste-column`,
+  // `dish-mast`, `book-case`, `deck-turret` and `sleeper-pod` are registered art that NOTHING draws —
+  // exactly the state their five warm predecessors were already in, unchanged by this package.
+  //
+  // ⇒ THE REWIRE ITSELF STAYS, and it is forward-looking rather than live: `room-model.js`'s SHELF row
+  // carries `itemId: 'book-case'` where it carried `'bookshelf'`, so IF the decor path returns the
+  // tool draws the paper piece instead of the warm one. Today it changes no pixel.
+  // ⚠️ AND THIS NOTE DECIDES NOTHING. "Wire it or remove it" is OPEN OWNER RULING M4-6; recording that
+  // the five are unreached is a measurement, not an answer to it.
   'reactor-plant':    { build: MC.reactorPlant,   size: MC.SIZES['reactor-plant'],   ...dev('Reactor', null, 'new') },
   'solar-wing':       { build: MC.solarWing,      size: MC.SIZES['solar-wing'],      ...dev('SolarWing', 'G') },
   'bottle-rack':      { build: MC.bottleRack,     size: MC.SIZES['bottle-rack'],     ...dev('OxygenTank', null, 'new') },

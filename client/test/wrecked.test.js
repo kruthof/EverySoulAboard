@@ -256,6 +256,10 @@ test('the non-mock ledger is exactly the fittings rows, and each one says so in 
     // or a MACHINE row (a sheet entry in `client/tools/machines-sheet.mjs`, cited `MNN NAME`). The
     // membership and the citation SHAPE are asserted together, both ways, so a machine cannot cite a
     // card that does not describe it and a fitting cannot pick up the `M` prefix.
+    // ⚠️ THE MESSAGE'S "(or is both)" ARM IS ONLY TRUTHFUL BECAUSE THE TWO SETS ARE DISJOINT —
+    // `FITTING_IDS ∩ MACHINE_IDS = ∅`, measured once after this loop rather than assumed here. That
+    // is what makes `!==` an XOR and not a wordier `||`: with an overlap, a row in both modules would
+    // read as "in neither" and the sentence would name the wrong fault.
     const isFitting = FITTING_IDS.includes(id);
     const isMachine = MACHINE_IDS.includes(id);
     assert.ok(isFitting !== isMachine,
@@ -264,6 +268,11 @@ test('the non-mock ledger is exactly the fittings rows, and each one says so in 
     assert.match(cat, isMachine ? /^M\d\d [A-Z]/ : /^\d\d [A-Z]/,
       `${id}: the catalogue reference is not "${isMachine ? 'MNN' : 'NN'} NAME"`);
   }
+  // …and the disjointness the XOR above leans on, MEASURED — one line, because a comment claiming a
+  // set relation is exactly the kind of prose that goes stale silently.
+  assert.deepEqual(FITTING_IDS.filter((f) => MACHINE_IDS.includes(f)), [],
+    'a fittings id is also a machines id. The XOR above then reads "is neither" for a row that is\n'
+    + 'BOTH, and two modules are exporting one piece under one name.');
   assert.equal(MOCK_TWIN_IDS.length, 70,
     'THE MOCK POPULATION MOVED OFF SEVENTY. Every label, badge and positional assertion below is\n'
     + 'measured against `docs/design/perilune-item-set.dc.html`, which has exactly seventy wrecked\n'

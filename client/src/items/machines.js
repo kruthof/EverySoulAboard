@@ -137,7 +137,10 @@ export const SPECS = Object.freeze({
   // M02 · one WING of the array: a 2.4 m panel leaning back on a stand. Compare the 2.6 m `bench` —
   // the two longest things in the set, and the only two that read as spans rather than as boxes.
   'solar-wing':      { w: 240, d: 88,  h: 170 },
-  // M03 · two ∅26 cm industrial bottles (140 cm tall, the real thing) yoked in a cradle.
+  // M03 · two ∅26 cm industrial bottles yoked in a cradle. The DRAWN bottle is 136 cm — body 8→122,
+  // shoulder 122→134, valve cap 134→144 — standing on an 8 cm base, and the box's 150 is that plus the
+  // clearance the yoke needs. (The first draft's comment said "140 cm tall, the real thing"; it was
+  // describing a bottle nobody had drawn.)
   'bottle-rack':     { w: 64,  d: 36,  h: 150 },
   // M04 · an ISS-class reclamation rack: 110 × 70 of deck, 1.8 m to the top cover, inlet riser above.
   'reclaimer-stack': { w: 110, d: 70,  h: 180 },
@@ -796,15 +799,30 @@ export const plantPot = (opts = {}) => machine('plant-pot', opts, drawPlantPot);
 //
 // SPINES are the identity — the warm piece's two rows of colours. In one ink the colour goes, so what
 // carries the reading is VARIATION: widths from 5 to 9 cm, heights from 24 to 34, one leaner and one
-// flat stack per case. That is also why the case is drawn OPEN — four members and a hatched back panel
+// flat stack per SHELF. That is also why the case is drawn OPEN — four members and a hatched back panel
 // rather than a box with a face — because a closed body's opaque PAPER front would paint over every
 // book in it, which is the seventh fault in this module's header, arriving by a different road.
+//
+// ⛔⭐ THE SHELF RUN IS A BUDGET, AND THE FIRST DRAFT SPENT 26.8 cm IT DID NOT HAVE. The spine loop
+// walks `x` forward and the leaner and the flat stack are laid down AFTER it, at `x…x+13` and
+// `x+15…x+31` — so eleven spines put the top shelf's stack at x = 122.8 against a case 96 cm wide, i.e.
+// three books hanging in mid-air past the right-hand side panel. Nothing floats (E8-3), and the harness
+// centres the piece on its DECLARED box, so every one of those centimetres was drawn and then clipped.
+// The budget, written down so the next person adding a book has to do the arithmetic:
+//
+//     x_end = 8 + Σw + 0.8·n   must satisfy   x_end + 31 ≤ 91
+//
+// 91 is the near edge of the right side panel (91..96), whose opaque front face at y = 0 would paint
+// over a book at y = 4 anyway — the seventh fault again, one panel along. That caps a shelf at six or
+// seven spines, which is what the rows below carry. ⚠️ It was NOT caught by review's own box guard for
+// two rounds, because that guard measured the ±56 DRAWING SQUARE rather than this piece's projected
+// box; `machines.test.js` now measures the box, and this geometry is its inclusion control.
 const SHELF_Z = [10, 52, 90, 128];
 const SPINES = [
-  [[7, 30], [5, 34], [8, 27], [6, 32], [9, 29], [5, 26], [7, 34], [6, 30], [8, 28], [5, 33], [7, 29]],
-  [[6, 32], [8, 28], [5, 30], [7, 34], [6, 26], [9, 31], [5, 29], [8, 33], [6, 27], [7, 30]],
-  [[9, 27], [5, 31], [7, 34], [6, 28], [8, 30], [5, 26], [6, 32], [7, 29], [9, 33]],
-  [[5, 29], [7, 33], [6, 27], [8, 31], [5, 34], [9, 28], [6, 30], [7, 26]],
+  [[7, 30], [5, 34], [8, 27], [6, 32], [9, 29], [5, 26], [5, 34]],
+  [[6, 32], [8, 28], [5, 30], [7, 34], [6, 26], [9, 31]],
+  [[9, 27], [5, 31], [7, 34], [6, 28], [8, 30], [5, 26], [5, 32]],
+  [[5, 29], [7, 33], [6, 27], [8, 31], [5, 34], [9, 28]],
 ];
 const drawBookCase = (s, { F, hatch }) => {
   quad(s, F, [[5, 26, 10], [91, 26, 10], [91, 26, 170], [5, 26, 170]], { fill: hatch, sw: W.fine });
@@ -820,12 +838,16 @@ const drawBookCase = (s, { F, hatch }) => {
         { sw: W.hair, close: true, cap: false });
       x += w + 0.8;
     }
-    // one leaner and one flat stack per shelf — what a shelf looks like when someone used it
+    // one leaner and one flat stack per shelf — what a shelf looks like when someone used it.
+    // ⚠️ THESE TWO ARE THE END OF THE RUN AND THEY COST 31 cm: the leaner reaches `x + 13` and the
+    // widest flat book `x + 31`. That is the whole of the budget in the comment above — a spine added
+    // to `SPINES` pushes both of them right, and past 91 they are drawn behind the side panel or off
+    // the case entirely.
     line(s, F, [[x, 4, z0], [x + 7, 4, z0], [x + 13, 4, z0 + 26], [x + 6, 4, z0 + 28]],
       { sw: W.hair, close: true, cap: false });
     for (let i = 0; i < 3; i += 1) {
       const z = z0 + i * 4.5;
-      line(s, F, [[x + 15, 4, z], [x + 15 + 18 - i * 2, 4, z], [x + 15 + 18 - i * 2, 4, z + 4],
+      line(s, F, [[x + 15, 4, z], [x + 15 + 16 - i * 2, 4, z], [x + 15 + 16 - i * 2, 4, z + 4],
         [x + 15, 4, z + 4]], { sw: W.hair, close: true, cap: false });
     }
   });

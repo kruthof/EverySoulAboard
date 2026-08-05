@@ -43,9 +43,42 @@ const SRC = readFileSync(join(HERE, '..', 'src', 'items', 'machines.js'), 'utf8'
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 const build = (id, opts = { idPrefix: 'm' }) => MC[camel(id)](opts);
 
-/** Every `M x y` / `L x y` / `Q x y` coordinate pair in a fragment, as `[x, y]`. */
+/**
+ * EVERY coordinate pair a fragment's path data contains, as `[x, y]` — walked command by command.
+ *
+ * ⛔ THE FIRST DRAFT WAS `/[MLQ](x) (y)/` AND ITS DOC LINE CLAIMED "every … coordinate pair", which
+ * was false in two directions at once. `A rx ry rot laf sf x y` ends at a coordinate the pattern never
+ * reached (eighteen of them on `bottle-rack` alone — every band, strap, cylinder lip and taper edge in
+ * the module is an arc), and `Q cx cy x y` matched the CONTROL point and then skipped the endpoint.
+ * The box guard below is the consumer that made this matter: a scan blind to arc endpoints cannot see
+ * a hoop drawn off the piece, and this module is mostly hoops.
+ *
+ * The walker is ABSOLUTE-ONLY and says so: the kit emits `M/L/A/Q/Z` and nothing else (asserted below
+ * as a limit, not assumed), so a lowercase command would be a new primitive and must fail loudly
+ * rather than be silently miscounted.
+ */
 function points(svg) {
-  return [...svg.matchAll(/[MLQ](-?[\d.]+) (-?[\d.]+)/g)].map((m) => [+m[1], +m[2]]);
+  // a bare `d` string (what `memberThrough` hands back) has no markup at all; anything else is a
+  // fragment and its path data lives in `d="…"`.
+  const ds = svg.includes('<') ? [...svg.matchAll(/ d="([^"]*)"/g)].map((m) => m[1]) : [svg];
+  const out = [];
+  for (const d of ds) {
+    assert.ok(!/[a-z]/.test(d), `path data uses a RELATIVE command, which this walker cannot\n`
+      + `read and would silently miscount: "${d.slice(0, 60)}"`);
+    const toks = d.match(/[A-Z]|-?[\d.]+/g) || [];
+    let i = 0;
+    let cmd = '';
+    while (i < toks.length) {
+      if (/[A-Z]/.test(toks[i])) { cmd = toks[i]; i += 1; if (cmd === 'Z') continue; }
+      const num = (k) => toks.slice(i, i + k).map(Number);
+      if (cmd === 'M' || cmd === 'L' || cmd === 'T') { out.push(num(2)); i += 2; }
+      else if (cmd === 'Q' || cmd === 'S') { const a = num(4); out.push([a[0], a[1]], [a[2], a[3]]); i += 4; }
+      else if (cmd === 'C') { const a = num(6); out.push([a[0], a[1]], [a[2], a[3]], [a[4], a[5]]); i += 6; }
+      else if (cmd === 'A') { const a = num(7); out.push([a[5], a[6]]); i += 7; }
+      else assert.fail(`points() does not know the path command "${cmd}" in "${d.slice(0, 60)}"`);
+    }
+  }
+  return out;
 }
 
 /** Every `<ellipse>` in a fragment. */
@@ -303,26 +336,96 @@ test('SIZES is an honest footprint at ONE shared scale; BOX_EXTENT is the drawn 
 // `0.6·s·r` below the point they stand on, and on Bézier CONTROL points, which are emitted into the
 // path data and are the easiest thing in this module to push out of the box by accident (the dish's
 // control point sits 6 cm inside `w`).
+//
+// ⛔⭐ AND THE RULER WAS WRONG FOR TWO ROUNDS, WHICH IS THE HALF WORTH WRITING DOWN. The first draft
+// asked `|x| > BOX/2` — the ±56 px DRAWING SQUARE the piece is centred in — and the two are not the
+// same shape. A piece fills `BOX` in its LARGER extent only, so the smaller axis leaves slack the
+// square happily accepts: `book-case` is 107.2 cm across a 192.8 cm frame, so ~10 px (≈17 cm) of its
+// width was blind, and eleven spines put three flat books at x = 122.8 on a 96 cm case — drawn, then
+// clipped, with the suite green. The square also has no idea which CORNER a point is near: it is a
+// square and the projected box is a HEXAGON.
+//
+// So the question is asked properly. `project` is `px = x0 + s·(x + RX·y)`, `py = y0 − s·(z + RY·y)`,
+// which means a drawn point pins exactly two numbers — `u = x + RX·y` and `v = z + RY·y` — and never
+// the third. The honest test is therefore existential: is there ANY `(x, y, z)` inside the declared
+// box that projects here? Eliminating `y` from `y ∈ [0,d]`, `u − RX·y ∈ [0,w]`, `v − RY·y ∈ [0,h]`
+// leaves six half-planes, and that hexagon IS the piece's declared box as drawn.
+const HEX_TOL = 0.15;   // cm — `n()` rounds to 2 px, which is ≤ 0.02 cm at every scale in the set
+
+/** How far outside its own declared box a drawn px point is, in the piece's centimetres (≤ 0 = in). */
+function outsideBoxCm(id, px, py) {
+  const F = frameFor(id);
+  const S = SPECS[id];
+  const u = (px - F.x0) / F.s;
+  const v = (F.y0 - py) / F.s;
+  const k = Math.hypot(RY, RX);
+  return Math.max(-u, -v, u - (S.w + RX * S.d), v - (S.h + RY * S.d),
+    (RY * u - RX * v - RY * S.w) / k, (RX * v - RY * u - RX * S.h) / k);
+}
+
+/** The same six half-planes applied to a whole level ellipse, via its support function — EXACT, and
+ *  the reason a level ring at the lip of a cylinder is not flagged for the 0.6·r it hangs below. */
+function ellipseOutsideCm(id, e) {
+  const F = frameFor(id);
+  const S = SPECS[id];
+  const k = Math.hypot(RY, RX);
+  const u = (e.cx - F.x0) / F.s;
+  const v = (F.y0 - e.cy) / F.s;
+  const au = e.rx / F.s;
+  const av = e.ry / F.s;
+  const PLANES = [[-1, 0, 0], [0, -1, 0], [1, 0, S.w + RX * S.d], [0, 1, S.h + RY * S.d],
+    [RY / k, -RX / k, (RY * S.w) / k], [-RY / k, RX / k, (RX * S.h) / k]];
+  // ⚠️ THE ELLIPSE TESTED IS THE ONE DRAWN, not the true projection of a 3-D circle. This kit draws a
+  // level circle as an AXIS-ALIGNED `rx × 0.6·rx` ellipse by design (the sheared truth would give a
+  // round thing a heading — see `oblique.js`), so the ink's own semi-axes are what can hang over an
+  // edge, and they are what the support function is taken over. The v axis points UP while `cy` grows
+  // DOWN; that flip is already spent converting the CENTRE, and a semi-axis is unsigned.
+  return Math.max(...PLANES.map(([nu, nv, c]) =>
+    nu * u + nv * v + Math.hypot(nu * au, nv * av) - c));
+}
+
 test('nothing is drawn outside the box the piece is centred on', () => {
   for (const id of MACHINE_IDS) {
     const svg = build(id);
     const over = [];
     for (const [x, y] of points(svg)) {
-      if (Math.abs(x) > BOX / 2 + 0.05 || Math.abs(y) > BOX / 2 + 0.05) over.push(`(${x}, ${y})`);
+      const by = outsideBoxCm(id, x, y);
+      if (by > HEX_TOL) over.push(`(${x}, ${y}) by ${by.toFixed(1)} cm`);
     }
     for (const e of ellipses(svg)) {
-      if (Math.abs(e.cx) + e.rx > BOX / 2 + 0.05 || Math.abs(e.cy) + e.ry > BOX / 2 + 0.05) {
-        over.push(`ellipse ${e.cx},${e.cy} r ${e.rx},${e.ry}`);
-      }
+      const by = ellipseOutsideCm(id, e);
+      if (by > HEX_TOL) over.push(`ellipse ${e.cx},${e.cy} r ${e.rx},${e.ry} by ${by.toFixed(1)} cm`);
     }
     assert.deepEqual(over, [],
-      `${id} draws outside its own ±${BOX / 2} box: ${over.slice(0, 3).join(' ')}.\n`
-      + 'Geometry must stay inside 0..w / 0..d / 0..h — the centring counts the SPEC, not the paint.');
+      `${id} draws outside its own declared ${SPECS[id].w}×${SPECS[id].d}×${SPECS[id].h} cm box, at\n`
+      + `  ${over.slice(0, 3).join('\n  ')}\n`
+      + 'Geometry must stay inside 0..w / 0..d / 0..h — the centring counts the SPEC, not the paint,\n'
+      + 'so ink outside the box is drawn and then clipped by whatever the surface insets.');
   }
-  // POSITIVE CONTROL: the scan must be able to SEE an escape. A guard over a set that happens to
-  // comply and a guard that cannot fail are the same green.
-  const outside = points('<path d="M0 0 L200 3"/>').filter(([x]) => Math.abs(x) > BOX / 2);
-  assert.equal(outside.length, 1, 'the over-box scan cannot see a point outside the box');
+  // ⭐ INCLUSION CONTROL, AND IT IS THE DEFECT THIS GUARD WAS RE-POINTED FOR — not a synthetic point.
+  // (a) `book-case`'s pre-fix geometry: the first draft's eleven-spine top shelf put a flat book at
+  //     x = 122.8 on a 96 cm case. The ±56 SQUARE could not see it; this must.
+  const bc = frameFor('book-case').project(122.8, 4, 128);
+  assert.ok(outsideBoxCm('book-case', bc[0], bc[1]) > 15,
+    'the box guard cannot see the book case\'s own shipped defect — three flat books 26.8 cm past the\n'
+    + 'right-hand side panel, on a piece whose smaller axis leaves the drawing square ~17 cm of slack.');
+  assert.ok(Math.abs(bc[0]) < BOX / 2 && Math.abs(bc[1]) < BOX / 2,
+    `that point is at (${bc}), which is INSIDE the ±${BOX / 2} drawing square — if it ever stops being\n`
+    + 'inside, this control has stopped proving that the square was the wrong ruler.');
+  // (b) `med-cot`'s near-left leg pushed from x = 186 to x = 225: outside a 200 cm cot, inside the
+  //     square by the same slack. Both halves asserted, so the control cannot rot into a tautology.
+  const mc = frameFor('med-cot').project(225, 12, 3);
+  assert.ok(outsideBoxCm('med-cot', mc[0], mc[1]) > 5, 'the box guard cannot see a leg 25 cm off a cot');
+  assert.ok(Math.abs(mc[0]) < BOX / 2 && Math.abs(mc[1]) < BOX / 2, 'that leg is not inside the square');
+  // …and the complement: a point ON the box's own far-top-back corner must PASS, or the guard is
+  // rejecting legal geometry and the next drawing gets bent to satisfy an instrument.
+  for (const id of MACHINE_IDS) {
+    const S = SPECS[id];
+    for (const c of [[0, 0, 0], [S.w, 0, 0], [S.w, S.d, S.h], [0, S.d, S.h], [S.w, S.d, 0], [0, 0, S.h]]) {
+      const [cx, cy] = frameFor(id).project(...c);
+      assert.ok(outsideBoxCm(id, cx, cy) <= HEX_TOL, `${id}: its own box corner ${c} reads as outside`);
+    }
+  }
 });
 
 test('roomBox puts a machine on a surface at exactly s px per centimetre', () => {
