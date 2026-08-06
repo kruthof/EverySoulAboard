@@ -9,6 +9,11 @@
 // for the reason the capsules-and-cells package recorded: `MOCK_TWIN_IDS` must keep measuring
 // exactly seventy, and that positional bijection is the whole of the evidence that the mock's other
 // twins are transcribed correctly.
+//   ⛔ THAT PARAGRAPH IS HISTORY SINCE 2026-08-06 and is kept because it names the constraint the
+// warm purge had to remove first. `lane/warm-purge` retired all fourteen of those rows on the owner's
+// ruling and deleted `fixtures.js`/`objects.js` with them; the bijection is gone, `MOCK_TWIN_IDS` no
+// longer exists, and what proves a twin draws its own row's object is now a mechanical PREFIX rule
+// over all eighty (`client/test/wrecked.test.js`). Nothing about the fourteen pieces below changed.
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // ⚠️ A FILE OF ITS OWN, AND NOT FOURTEEN MORE ROWS IN `fittings.js` — the `cryo.js` precedent, with

@@ -714,6 +714,26 @@ function frameWithDevice(deck, tx, ty, glyph, w = 24, h = 20) {
   return f;
 }
 
+// ⛔ WHAT MAKES A TWIN FRAGMENT RECOGNISABLE, AND WHY IT IS NOT A COLOUR ANY MORE (2026-08-06,
+// lane/warm-purge). These tests used to take the twin's own FILL VALUES — a warm mock twin is
+// `#33281b`/`#4a5560` steel over a `#EBE4D1` paper piece, so a fill the pristine drawing never emits
+// was the strongest size-independent handle available. P2b re-authored the twenty-one paper pieces'
+// twins IN THE SAME FOUR COLOURS as their pristine drawings (a twin is now that piece's own painter
+// re-run with ink damage added), and the diff went EMPTY: the non-vacuity leg tripped and every
+// assertion under it would have passed vacuously in a world where it had not.
+//
+// ⇒ The handle widens from `fill` to the styling attributes a twin's DAMAGE MARKS carry and the
+// piece's own vocabulary does not — `stroke-width="1.7"` is `inkCrack`'s and is in no catalogue
+// ramp; `opacity="0.16"` is `inkScorch`'s bloom. All of them are written PRE-transform, so they are
+// still size-independent, which is the property the old fill scan was chosen for. ⚠️ IT IS DERIVED,
+// NOT LISTED: the set is whatever the twin emits and the piece does not, so a twin re-drawn tomorrow
+// moves it on its own and a twin that stops adding damage empties it and fails the non-vacuity leg.
+const STYLE_ATTR = /(?:fill|stroke-width|stroke-dasharray|opacity)="[^"]+"/g;
+const twinOnlyMarks = (id, opts) => {
+  const piece = buildItem(id, opts).match(STYLE_ATTR) || [];
+  return [...new Set((buildWrecked(id, opts).match(STYLE_ATTR) || []).filter((f) => !piece.includes(f)))];
+};
+
 test('a machine below the wreck floor is PAINTED as its twin on the Room Zoom — driven', () => {
   const tx = RECT.rx + 1, ty = RECT.ry + 1;
   RoomZoom.initRoomZoom({ send: () => {} });
@@ -735,10 +755,14 @@ test('a machine below the wreck floor is PAINTED as its twin on the Room Zoom �
   // The surface builds with `{ w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-f-<tx>-<ty>' }`. Only the
   // idPrefix is needed to reproduce the DEF ids and the twin's distinguishing fills; the geometry is
   // scaled by `render(w,h)` and is identical between the two states.
+  // ⚠️ NO `sketch` FLAG HERE ON PURPOSE: the Room Zoom builds its pieces TREATED (`roomzoom-view.js`
+  // passes no `sketch`), so the marks are compared in the same idiom the surface emits. The Level-1
+  // plate does the opposite and its own test says so.
   const opts = { idPrefix: `rz-f-${tx}-${ty}` };
-  const twinOnly = (buildWrecked('o2-scrubber', opts).match(/fill="[^"]+"/g) || [])
-    .filter((f) => !(buildItem('o2-scrubber', opts).match(/fill="[^"]+"/g) || []).includes(f));
-  assert.ok(twinOnly.length > 0, 'non-vacuity: the twin has fills the pristine piece does not');
+  const twinOnly = twinOnlyMarks('o2-scrubber', opts);
+  assert.ok(twinOnly.length > 0,
+    'non-vacuity: the twin emits no styling attribute the pristine piece does not — every assertion\n'
+    + 'below would pass on a surface that never drew the twin at all');
 
   for (const f of twinOnly.slice(0, 4)) {
     assert.ok(wrecked.includes(f),
@@ -768,9 +792,8 @@ test('a tile with NO device on the channel keeps its ordinary art', () => {
   driveDevices([]);   // the channel says nothing about this tile at all
   const html = devDoc.getElementById('rz-layers').innerHTML;
   const opts = { idPrefix: `rz-f-${tx}-${ty}` };
-  const twinOnly = (buildWrecked('o2-scrubber', opts).match(/fill="[^"]+"/g) || [])
-    .filter((f) => !(buildItem('o2-scrubber', opts).match(/fill="[^"]+"/g) || []).includes(f));
-  assert.ok(twinOnly.length > 0, 'non-vacuity');
+  const twinOnly = twinOnlyMarks('o2-scrubber', opts);
+  assert.ok(twinOnly.length > 0, 'non-vacuity: the twin adds no mark of its own');
   assert.ok(!html.includes(twinOnly[0]),
     'an unreported tile drew the WRECKED twin. "No row" must mean "not known to be wrecked": on a\n'
     + 'reconnect, on the first frames, or against an older host, the whole ship would otherwise\n'

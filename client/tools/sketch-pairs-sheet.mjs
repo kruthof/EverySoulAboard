@@ -72,7 +72,9 @@ const pairs = [];
 for (const [cat, ids, build] of CATS) {
   for (const id of ids) {
     const e = WRECKED[id];
-    if (!e || e.mockLabel != null) continue;   // a warm mock twin is not in this idiom (21 fittings)
+    if (!e) continue;   // a ledgered row with no twin (`cell-spent`, `turnings`)
+    // ⚠️ THE SECOND CLAUSE WAS `|| e.mockLabel != null` — *"a warm mock twin is not in this
+    // idiom (21 fittings)"*. Every twin is paper since 2026-08-06 and the field is gone.
     const p = build(id, { w: CELL, h: CELL, idPrefix: `pp-${id}` });
     const t = buildWrecked(id, { w: CELL, h: CELL, idPrefix: `pp-${id}` });
     const A = new Set(marksOf(p));

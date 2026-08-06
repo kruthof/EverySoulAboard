@@ -1,26 +1,56 @@
-// The 70 WRECKED builders — the POST-RAID twin of every static piece in the warm item set
-// (docs/design/perilune-item-set.dc.html, section "Wrecked — post-raid state", imported 2026-07-28).
-// Pure `(opts) -> string` SVG-`<g>`-fragment builders in the same centred mock-px space as
-// objects.js / fixtures.js / resources.js / cryo.js; see helpers.js for the
-// coordinate model.
+// The 80 WRECKED builders — the POST-RAID twin of every piece the five PAPER catalogues draw.
+// Pure `(opts) -> string` SVG-`<g>`-fragment builders; see helpers.js for the coordinate model.
 //
-// The mock's own premise, verbatim: *"Day 1: the raid left every system dead. Every item above has a
-// broken twin here — scorched, cracked, breached, screens dark, wiring hanging loose — that the
-// thawed crew must repair or rebuild. Each keeps one identifying feature so it still reads as the
-// same object."*
+// ⭐ EVERY TWIN IS BUILT ONE WAY, AND SINCE 2026-08-06 THERE IS NO SECOND WAY. A twin RE-RUNS ITS
+// OWN PRISTINE PAINTER (`paintFitting` / `paintMachine` / `paintPaperFixture` / `paintResource` /
+// `paintMaterial`) on the same frame, with the same `idPrefix`, and then adds INK DAMAGE on top of
+// it. That is not a shortcut: it is the only construction under which "the twin is the same object,
+// damaged" survives a redraw OF the object, and it is what keeps the wreck premise —
+// *"each keeps one identifying feature so it still reads as the same object"* — true by force rather
+// than by care. It is pinned as a PREFIX: a twin's emitted element list must begin with its pristine
+// piece's, in order (`client/test/wrecked.test.js`). The one named exception, with its reason, is
+// `cell-sound`, whose twin is the owner's own drawing of a spent cell (catalogue 34).
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// ⚠️ NOT WIRED TO EITHER SURFACE. Deliberate, and it is the honest state of this package.
+// ⛔ THE WARM MOCK TRANSCRIPTION IS GONE — lane/warm-purge, 2026-08-06, on the owner's ruling.
 //
-// Nothing on the wire tells a surface how damaged a device is — `Device.Condition` exists in the sim
-// and is read by `DeconstructSystem` (E0-5 gave it its second consumer) but has NO wire channel, so
-// no client code can choose between a piece and its twin. This module therefore ships the ART and
-// the JOIN and stops there. The draw decision ("below what condition does a tile wear its wrecked
-// twin?") is a later integration owned by neither this lane nor the `devices` channel lane.
+// This file used to open *"The 70 WRECKED builders — the POST-RAID twin of every static piece in the
+// warm item set (docs/design/perilune-item-set.dc.html, section 'Wrecked — post-raid state',
+// imported 2026-07-28)"*, and roughly six hundred lines of it were a hand transcription of that
+// document: a CSS-div layer primitive (`L`/`box`/`ring`/`shadeFill`), a paint vocabulary
+// (`grad`/`rgrad`/`stripes`/`grid`/`dots`/`bars`/`STL`/`WOOD`) and seven warm damage marks
+// (`scorch`/`crack`/`spark`/`wire`/`rust`/`hole`/`dead`), all in steel-grey and amber. Beside it
+// stood a long argument, restated at five places in `client/src/items/index.js`, that the warm rows
+// those twins belonged to could not be retired:
 //
-// Registered surfaces are UNTOUCHED by this file: nothing in `client/src/ui/` imports it, and
-// `index.js` does not know it exists. The dependency runs ONE WAY — `wrecked.js` imports `ITEMS`,
-// never the reverse — so the whole set reverts by deleting this file and its test.
+//   *"⛔ RETIRING THEM WAS CONSIDERED AND REFUSED, with the cost measured rather than guessed: their
+//   twins are N of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
+//   `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS`
+//   as a bijection — that walk is the whole of the evidence that the other rows are transcribed
+//   correctly. Deleting them would force a third ledger to be invented so the bijection could be
+//   relaxed."*
+//
+// ⇒ THE OWNER RULED THE OTHER WAY ON 2026-08-06. That paragraph is kept, quoted, because it was
+// TRUE while it stood and because it names exactly what was given up. What replaces the bijection is
+// stronger on the question that survives, and the argument is in the same commit's
+// `client/test/wrecked.test.js` header: after the redraw NO TWIN IS A TRANSCRIPTION OF ANYTHING, so
+// there is no second document for a label to disagree with — a bijection over an empty population is
+// a guard kept green forever. The prefix rule above answers the question the label walk was standing
+// in for ("does this twin draw ITS OWN row's object?"), mechanically, over all eighty rows.
+//
+// `docs/design/perilune-item-set.dc.html` STAYS IN THE REPO AS HISTORY. It is where the wreck
+// premise is stated and it is the source of the damage vocabulary every ink mark below is a
+// translation of. NOTHING in `client/` reads it any more, and `wrecked.test.js` no longer opens it.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⚠️ NOT WIRED TO EITHER SURFACE — SUPERSEDED, AND QUOTED BECAUSE IT NAMES THE ORIGINAL SCOPE.
+// It read: *"Nothing on the wire tells a surface how damaged a device is … This module therefore
+// ships the ART and the JOIN and stops there."* The `devices` channel carries `Condition` now and
+// `client/src/items/wear.js` makes the threshold decision once, against `wear.wreck_threshold`.
+// ⇒ THE INVARIANT THAT REPLACED IT IS "ONE DOOR": `wear.js` is the only module that may name this
+// set, and every surface goes through it. The dependency still runs ONE WAY — `wrecked.js` imports
+// `ITEMS`, never the reverse — so the whole set reverts by deleting this file and its test.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 //
 // ⚠️ THE JOIN IS BY itemId, NOT BY `kind`, AND THAT IS THE POINT (CLAUDE.md trap 6). The sixth trap
@@ -28,91 +58,26 @@
 // wearing ANOTHER piece's art, so the borrowed row's `kind` is not a fact about the tile. It shipped
 // DEMOLISH dead on every lamp with the suite green before AND after the fix. A wrecked twin is
 // therefore addressed by the PRISTINE itemId and nothing else: `WRECKED` is keyed by it, and its key
-// set is asserted to be exactly `ITEM_IDS`, in order, with no reference to `kind` anywhere in the
-// lookup path. A future substitution that makes a Light wear `wall-lamp`'s art still resolves to
-// `wall-lamp`'s twin, which is the correct answer for "the art on this tile, wrecked".
-//
-// ⚠️ THE MOCK'S LABELS COLLIDE, AND THE RENAME IS NOT MECHANICAL. A label is unique only within a
-// section, so 62 wrecked pieces reuse the pristine label VERBATIM (`REACTOR` is both). The 8 loose
-// resources are renamed with a `· STATE` suffix — and `CONTROLLER · FRIED` also SHORTENS its stem
-// from `CONTROLLER MODULE`. Any code that tried to derive one label from the other by string surgery
-// would be right 69 times and wrong once, silently. `mockLabel` is therefore carried per row and
-// cross-checked against the committed spec by `client/test/wrecked.test.js`, which parses the
-// mock's own `brokenD` array — the labels are PROVEN against the source, not remembered.
-//
-// ⚠️ THE 70 WRECKED PIECES ARE NOT IN THE SPEC'S MARKUP. They exist only after JS execution: the
-// `brokenD` array lives inside `<script type="text/x-dc" data-dc-script>` and renders through
-// `<sc-for>`. An extractor that greps `class="lbl"` finds the 70 PRISTINE labels and the literal
-// template text `{{b.name}}`, and silently misses every wrecked piece. Read the array.
+// set is asserted to be exactly `ITEM_IDS` minus `NO_WRECKED_TWIN`, in order, with no reference to
+// `kind` anywhere in the lookup path. A future substitution that makes a Light wear `lamp-sconce`'s
+// art still resolves to `lamp-sconce`'s twin, which is the correct answer for "the art on this tile,
+// wrecked".
 //
 // PURITY. Same contract as every other builder: "no DOM, no clock, no randomness — same input ⇒
 // byte-identical output" (helpers.js:1-7). ⚠️ THAT MATTERS MORE HERE THAN ANYWHERE ELSE IN THE SET.
 // Damage LOOKS like scatter, and a builder that derived its scorch marks or crack angles from
 // `Math.random` would not present as an obvious bug — it would present as a golden-frame flake, a
 // screenshot that differs from itself, blamed on the renderer for as long as it took to find. Every
-// coordinate below is AUTHORED, transcribed from the mock's fixed numbers, and there is no scatter
-// term anywhere in this file for anything to reach into.
-//
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// THE TRANSLATION: CSS `.obj` DIVS → SVG.
-//
-// The mock draws each wrecked piece as a stack of absolutely-positioned divs, built from a shared
-// helper vocabulary in `renderVals()`: `box` / `L(T(…) + css)` plus the seven damage marks
-// `scorch` · `crack` · `spark` · `wire` · `rust` · `hole` · `dead`. Those helpers are mirrored
-// one-for-one below, with `s` threaded as the first argument and the CSS tail replaced by named
-// options, so a piece here reads line-for-line against the mock and a reviewer can diff them.
-//
-// Six CSS features needed a decision, each made once, here:
-//
-// 1. `transform: translate(-50%,-50%) translate(Xpx,Ypx) rotate(Ndeg)` → an SVG `<g transform>`.
-//    ⚠️ The mock's `box(…, extra)` / `L(T(…) + css)` sometimes RE-DECLARES `transform` in the CSS
-//    tail, and in CSS the LAST declaration wins — so the helper's own translate is silently
-//    discarded and only the tail's counts. **THIRTEEN layers do this**, MEASURED off the shipped
-//    array (`transform:` appearing twice in one style string), not counted by eye: REACTOR ·
-//    BATTERY BANK ×2 · OXYGEN TANK · PASTE DISPENSER · DINING TABLE · BUNK BED · CHAIR ×2 ·
-//    FUEL DRUM · SUPPLY BARREL · DECK SIGN · FLOODLIGHT. Rotation is an explicit `rot` option here,
-//    so that override cannot exist and cannot be mis-read.
-//    ⚠️ THE FIRST DRAFT OF THIS NOTE SAID "NINE" AND NAMED THE WRONG SET — it invented LOCKER
-//    (whose rotation comes from `T`'s own third argument, not from an override) and missed five.
-//    Kept as a correction rather than silently fixed: this is `CLAUDE.md`'s **re-count, never
-//    compute** in miniature, and a wrong number in a comment is how the next reader learns a wrong
-//    rule.
-// 2. `box-shadow` splits three ways, exactly as resources.js found:
-//      • `inset 0 0 0 Npx <c>`      → `inset: [N, c]`   — a hard inner ring (an SVG inset stroke)
-//      • `0 0 0 Npx <c>`            → `outset: [N, c]`  — a hard OUTER ring (VIEWPORT's frame)
-//      • `inset 0 0 Npx <c>` (blur) → `shade: [N, c]`   — a soft inner vignette, drawn as a RADIAL
-//        FILL from transparent at the middle to the colour at the rim. SVG blur is a filter; filters
-//        are not in this set's vocabulary and a filter on 501 layers would cost more than the effect
-//        is worth. ⚠️ It WAS a wide low-opacity inner STROKE, and that was wrong on screen rather
-//        than merely approximate — see `shadeFill`, which records what the gallery's mock-versus-SVG
-//        column showed and why two constants in it are measured rather than chosen.
-//      • `0 3px 8px rgba(0,0,0,.5)` (drop shadow) → DROPPED. The 70 pristine furniture pieces drop
-//        theirs too; only `resources.js`'s loose piles keep a contact shadow, because a pile has no
-//        outline of its own. Dropping it here keeps the two halves of the set consistent.
-// 3. `repeating-linear-gradient` → `stripes()`, an SVG `<pattern>`. ⚠️ Diagonal (45deg) handedness
-//    is NOT pinned: CSS measures the gradient AXIS anticlockwise from "up", SVG's `patternTransform`
-//    rotates clockwise with y down. Every 45deg use in this file is hazard tape, which reads as
-//    hazard tape either way, so the sign is chosen for looks and stated here rather than argued.
-// 4. `background-image: linear-gradient(...)/radial-gradient(...)` + `background-size` → `grid()`
-//    and `dots()`, both `<pattern>`s. `background-position` is a phase shift only and is DROPPED.
-// 5. `clip-path: polygon(0 0,100% 0,50% 100%)` → `icicle()`, a drawn triangle. SVG needs no clip
-//    for a triangle, and a `<clipPath>` per icicle would put four more ids in every fragment.
-// 6. `conic-gradient` → the resources.js ruling, applied twice and DIFFERENTLY, because the two
-//    uses mean different things:
-//      • PARTS · SEIZED's cogs → REAL TEETH via `gearPath` (imported from resources.js, not
-//        re-derived). At tile size a pie of grey wedges is a grey disc; the toothed silhouette is
-//        the entire reason a cog reads as a cog. This is the pristine `parts` piece's own decision.
-//      • VENT FAN's blades → four quarter SECTORS, which is what `fixtures.js`'s pristine `ventFan`
-//        already does (`fixtures.js:179-180`). A fan IS a disc with alternating quadrants; teeth
-//        would make it a cog. Two conic gradients, two answers, and the difference is deliberate.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
+// coordinate below is AUTHORED and there is no scatter term anywhere in this file for anything to
+// reach into. The one deliberate wobble is the sketch treatment's, and it is seeded by the piece id.
 
-import { item, roundedRectPath, r3, INK } from './helpers.js';
-import { gearPath } from './resources.js';
+import { item, r3, INK } from './helpers.js';
 import { ITEMS, ITEM_IDS, placeholderItem } from './index.js';
 import {
-  paintFitting, line as fLine, disc as fDisc, curve as fCurve, FITTING_IDS,
+  paintFitting, line as fLine, disc as fDisc, curve as fCurve, FITTING_IDS, W,
 } from './fittings.js';
+// — lane/warm-purge — the twelve material twins live in the block just before the registry.
+import { paintMaterial, MATERIAL_IDS } from './paper-materials.js';
 // — lane/paper-resources — the eight redrawn ground stacks re-run their own pristine painter, the
 // same way the nine fittings twins re-run theirs. One import, one direction.
 import { paintResource, PAPER_RESOURCE_IDS } from './paper-resources.js';
@@ -120,812 +85,6 @@ import { paintResource, PAPER_RESOURCE_IDS } from './paper-resources.js';
 import { paintPaperFixture, FIXTURE_IDS } from './paper-fixtures.js';
 // — lane/paper-machines — the thirteen machine twins live in the block at the end of this file.
 import { paintMachine, MACHINE_IDS } from './machines.js';
-
-// ── the layer primitive ──────────────────────────────────────────────────────────────────────
-
-/** CSS `border-radius` → the per-corner radii `roundedRectPath` wants. `'50%'` is handled by L. */
-function corners(w, h, r) {
-  if (r == null) return {};
-  const one = (v) => (typeof v === 'string' && v.endsWith('%') ? (parseFloat(v) / 100) * w : v);
-  const a = Array.isArray(r) ? r : [r, r, r, r];
-  return { tl: one(a[0]), tr: one(a[1]), br: one(a[2]), bl: one(a[3]) };
-}
-
-/** Shrink a radius spec by `d` px, for an inner ring that follows the outer curve. */
-function shrink(r, d) {
-  if (r == null) return null;
-  const one = (v) => (typeof v === 'string' ? v : Math.max(0, v - d));
-  return Array.isArray(r) ? r.map(one) : one(r);
-}
-
-function ring(w, h, r, width, color, opacity) {
-  const i = width / 2;
-  const d = roundedRectPath(-w / 2 + i, -h / 2 + i, w - width, h - width, corners(w - width, h - width, shrink(r, i)));
-  const op = opacity == null ? '' : ` opacity="${r3(opacity)}"`;
-  return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${r3(width)}"${op}/>`;
-}
-
-function eRing(w, h, width, color, opacity) {
-  const i = width / 2;
-  const op = opacity == null ? '' : ` opacity="${r3(opacity)}"`;
-  return `<ellipse cx="0" cy="0" rx="${r3(w / 2 - i)}" ry="${r3(h / 2 - i)}" fill="none" stroke="${color}"`
-    + ` stroke-width="${r3(width)}"${op}/>`;
-}
-
-/**
- * `shade: [N, colour]` — CSS `box-shadow: inset 0 0 Npx <colour>`, a BLURRED inner glow.
- *
- * ⚠️ THIS WAS A HARD INNER STROKE IN THE FIRST DRAFT AND IT WAS WRONG ON SCREEN, not merely
- * approximate. The gallery's mock-versus-SVG column showed it immediately: on HULL PLATING's breach
- * (`inset 0 0 14px rgba(90,140,180,.35)`) a 14px stroke drew a crisp pale-blue RING round the hole
- * where the mock has a soft cold bloom, and it read as a deliberate highlight rather than as damage.
- * A radial fill from transparent at the middle to the colour at the rim is the same optical effect
- * without a filter: no `<filter>` in this set's vocabulary, no per-layer blur cost.
- *
- * The ramp starts at `1 − 0.6·N/(min(w,h)/2)` — the blur radius as a fraction of the shape's own
- * half-extent, so the same `N` reads the same on a 44px breach and an 80px hatch, times 0.6.
- * ⚠️ THE 0.6 IS NOT A FUDGE, it is the difference between the two curves. A CSS inset blur is a
- * GAUSSIAN whose energy piles up against the rim and is essentially gone one radius in; a linear
- * SVG ramp over the same distance spreads the same darkness evenly and reads far heavier. Measured
- * on the worst case in the set — HATCH / LADDER's `inset 0 0 22px rgba(0,0,0,.9)` on an 80px disc,
- * where the full-width ramp swallowed the rungs the piece is identified by — against the mock in
- * the gallery's own middle column.
- */
-/**
- * ⚠️ AND THE RAMP IS ALSO FLATTENED TO 0.7 OF ITS DECLARED ALPHA. An SVG radial gradient over a
- * NON-SQUARE box reaches its final stop at the midpoint of each side and then PADS to the corners,
- * so an elongated shape wears the terminal colour round most of its rim at full strength. On HULL
- * PLATING's breach (`rgba(90,140,180,.35)` over a 44×38 blob) that painted a crisp cyan ring — a
- * portal, not a hull breach. Measured against the mock in the gallery's middle column, twice.
- */
-const SHADE_OPACITY = 0.7;
-
-function shadeFill(s, w, h, width, color) {
-  const half = Math.min(w, h) / 2;
-  const inner = half > 0 ? Math.max(0, Math.min(0.95, 1 - (width * 0.6) / half)) : 0;
-  return s.rad([['0', fade(color)], [String(r3(inner)), fade(color)], ['1', color]]);
-}
-
-/**
- * ONE LAYER — the mock's `L(T(x,y,rot) + 'width:Wpx;height:Hpx;…')`, drawn as a rounded rect (or an
- * ellipse when `r` is `'50%'`) centred on (x,y).
- *
- * @param {object} o { rot, r, fill, opacity, inset:[w,c], outset:[w,c], shade:[w,c] }
- */
-function L(s, x, y, w, h, o = {}) {
-  const parts = [];
-  const fill = o.fill == null ? 'none' : o.fill;
-  const op = o.opacity == null ? '' : ` opacity="${r3(o.opacity)}"`;
-  if (o.r === '50%') {
-    parts.push(`<ellipse cx="0" cy="0" rx="${r3(w / 2)}" ry="${r3(h / 2)}" fill="${fill}"${op}/>`);
-    if (o.outset) parts.push(eRing(w + o.outset[0] * 2, h + o.outset[0] * 2, o.outset[0], o.outset[1]));
-    if (o.inset) parts.push(eRing(w, h, o.inset[0], o.inset[1]));
-    if (o.shade) {
-      parts.push(`<ellipse cx="0" cy="0" rx="${r3(w / 2)}" ry="${r3(h / 2)}" fill="${shadeFill(s, w, h, o.shade[0], o.shade[1])}" opacity="${SHADE_OPACITY}"/>`);
-    }
-  } else {
-    const d = roundedRectPath(-w / 2, -h / 2, w, h, corners(w, h, o.r));
-    parts.push(`<path d="${d}" fill="${fill}"${op}/>`);
-    if (o.outset) {
-      const [ow, oc] = o.outset;
-      parts.push(ring(w + ow * 2, h + ow * 2, shrink(o.r, -ow), ow, oc));
-    }
-    if (o.inset) parts.push(ring(w, h, o.r, o.inset[0], o.inset[1]));
-    if (o.shade) parts.push(`<path d="${d}" fill="${shadeFill(s, w, h, o.shade[0], o.shade[1])}" opacity="${SHADE_OPACITY}"/>`);
-  }
-  const t = o.rot
-    ? `translate(${r3(x)} ${r3(y)}) rotate(${r3(o.rot)})`
-    : `translate(${r3(x)} ${r3(y)})`;
-  s.raw(`<g transform="${t}">${parts.join('')}</g>`);
-}
-
-/** The mock's `box(x,y,w,h,bg,extra)` — an `L` whose default `border-radius` is 5px. */
-const box = (s, x, y, w, h, fill, o = {}) => L(s, x, y, w, h, { r: 5, fill, ...o });
-
-// ── paints ───────────────────────────────────────────────────────────────────────────────────
-
-/** CSS `linear-gradient(a,b)` (or `90deg`/`135deg` via `dir`). */
-const grad = (s, a, b, dir) => s.lin([['0', a], ['1', b]], dir);
-/** CSS `linear-gradient(90deg, a, b 55%, c)` — the three-stop steel/tank bodies. */
-const grad3 = (s, a, b, c, dir = 'h') => s.lin([['0', a], ['0.55', b], ['1', c]], dir);
-/** CSS `radial-gradient(circle[ at cx% cy%], a, b)`. */
-const rgrad = (s, a, b, cx = 0.5, cy = 0.5) => s.rad([['0', a], ['1', b]], { cx, cy });
-/** CSS `radial-gradient(ellipse, c, transparent 70%)` — the puddles and pooled spills. */
-const pool = (s, c, edge = 0.7) => s.rad([['0', c], [String(edge), fade(c)], ['1', fade(c)]]);
-
-/** rgba(r,g,b,a) → the same colour at alpha 0. Named colours are returned unchanged. */
-function fade(c) {
-  const m = c.match(/^rgba?\(([^)]+)\)$/i);
-  return m ? `rgba(${m[1].split(',').slice(0, 3).map((p) => p.trim()).join(',')},0)` : 'rgba(0,0,0,0)';
-}
-
-/**
- * CSS `repeating-linear-gradient(<deg>, a 0 <p>px, b <p>px <q>px)` as an SVG pattern paint.
- * Bands run along x in the pattern's own space; `patternTransform` turns that into the CSS angle.
- * See translation note 3 — the 45deg handedness is not pinned.
- */
-function stripes(s, deg, a, p, b, q) {
-  const inner = `<rect width="${r3(q)}" height="${r3(q)}" fill="${a}"/>`
-    + `<rect x="${r3(p)}" width="${r3(q - p)}" height="${r3(q)}" fill="${b}"/>`;
-  const rot = deg === 90 ? 0 : deg === 0 ? 90 : -deg;
-  return s.pat(inner, { w: q, h: q, transform: rot ? `rotate(${r3(rot)})` : null });
-}
-
-/** CSS crossed `linear-gradient` hairlines at a `gw × gh` pitch — the tile / panel grids. */
-const grid = (s, gw, gh, width, color) =>
-  s.pat(
-    `<rect width="${r3(gw)}" height="${r3(width)}" fill="${color}"/>`
-    + `<rect width="${r3(width)}" height="${r3(gh)}" fill="${color}"/>`,
-    { w: gw, h: gh },
-  );
-
-/** CSS `radial-gradient(<c> Rpx, transparent)` + `background-size` — a dot screen. */
-const dots = (s, size, r, color) =>
-  s.pat(`<circle cx="${r3(size / 2)}" cy="${r3(size / 2)}" r="${r3(r)}" fill="${color}"/>`, { w: size, h: size });
-
-/** CSS `repeating-linear-gradient(0deg, c 0 2px, transparent 2px Npx)` — METAL GRATING's bars. */
-const bars = (s, period, thick, color) =>
-  s.pat(`<rect width="${r3(period)}" height="${r3(thick)}" fill="${color}"/>`, { w: period, h: period });
-
-/** The three palette constants the mock's `renderVals()` declares. */
-const STL = (s) => grad(s, '#414b55', '#2d353d');
-const STLd = (s) => grad(s, '#39424c', '#262e35');
-const WOOD = (s) => grad(s, '#5f4a30', '#463623');
-
-// ── the damage vocabulary — one emitter per mock helper, same argument order ──────────────────
-
-/** `scorch(x,y,r=34)` — a soot bloom. */
-const scorch = (s, x, y, r = 34) =>
-  s.circle({ cx: x, cy: y, r: r / 2, fill: pool(s, 'rgba(16,11,8,.85)') });
-
-/**
- * `crack(x,y,len,rot)` — a dark split with the mock's 1px lifted highlight under it
- * (`box-shadow:0 1px 0 rgba(255,255,255,.1)`, zero blur, so it is a hard offset copy).
- *
- * ⚠️ Both bars live in ONE rotated group, and that is not a tidiness choice. A CSS box-shadow
- * offset is measured in the element's OWN box and then transformed with it, so the highlight sits
- * 1px "below" the crack ALONG THE CRACK, not 1px down the screen. Emitting the highlight as a
- * separate layer at `y + 1` would put it 1px down the screen instead, and on a crack rotated 60–74°
- * (there are several) the two bars would visibly separate.
- */
-const crack = (s, x, y, len, rot) => {
-  const t = rot ? `translate(${r3(x)} ${r3(y)}) rotate(${r3(rot)})` : `translate(${r3(x)} ${r3(y)})`;
-  s.raw(
-    `<g transform="${t}">`
-    + `<rect x="${r3(-len / 2)}" y="0" width="${r3(len)}" height="2" fill="rgba(255,255,255,.1)"/>`
-    + `<rect x="${r3(-len / 2)}" y="-1" width="${r3(len)}" height="2" fill="rgba(14,10,7,.92)"/>`
-    + '</g>',
-  );
-};
-
-/** `spark(x,y)` — a live amber arc: the glow first, then the dot. */
-const spark = (s, x, y) => {
-  s.glow(x, y, 11, 'rgba(242,181,99,.7)');
-  s.circle({ cx: x, cy: y, r: 3, fill: '#f2b563' });
-};
-
-/** `wire(x,y,rot)` — a loose lead, dark at the root and copper at the torn end. */
-const wire = (s, x, y, rot) =>
-  L(s, x, y, 26, 3, { rot, r: 2, fill: grad(s, '#2b2018', '#c9772f', 'h') });
-
-/** `rust(x,y,r=24)` — an oxide stain, wider than it is tall. */
-const rust = (s, x, y, r = 24) =>
-  s.ellipse({ cx: x, cy: y, rx: r / 2, ry: Math.round(r * 0.7) / 2, fill: pool(s, 'rgba(138,60,34,.7)') });
-
-/**
- * `hole(x,y,r=20)` — a hull breach: a black blob with a hard inner lip and a warm scorched rim.
- * The mock's `border-radius:52% 42% 56% 44%` is what stops it being a circle; `roundedRectPath`
- * clamps each corner to half the short side, so the asymmetry survives partially and the shape
- * stays a blob rather than becoming a disc.
- */
-const hole = (s, x, y, r = 20) => {
-  const h = Math.round(r * 0.85);
-  L(s, x, y, r, h, {
-    r: ['52%', '42%', '56%', '44%'],
-    fill: '#0a0d11',
-    inset: [2, 'rgba(0,0,0,.85)'],
-    outset: [1, 'rgba(120,90,60,.3)'],
-  });
-};
-
-/** `dead(x,y,w,h)` — an unlit screen. The set's one honest way to say "no power reaches this". */
-const dead = (s, x, y, w, h) =>
-  L(s, x, y, w, h, { r: 3, fill: grad(s, '#1a1f24', '#11151a'), inset: [1, '#2b3742'] });
-
-/** A downward icicle — the mock's `clip-path:polygon(0 0,100% 0,50% 100%)` on a w×h box. */
-const icicle = (s, x, y, w, h, top, bot) =>
-  s.path(`M${r3(x - w / 2)},${r3(y - h / 2)}L${r3(x + w / 2)},${r3(y - h / 2)}L${r3(x)},${r3(y + h / 2)}Z`,
-    { fill: grad(s, top, bot) });
-
-// ── the 70 builders, keyed below by the PRISTINE itemId ───────────────────────────────────────
-// Order follows `ITEM_IDS` (objects → walls → floors → fixtures → resources → cryo), NOT the mock's
-// own wrecked-section order, which is shuffled. Each body transcribes the mock's layer list in the
-// mock's paint order.
-
-const reactor = (s) => {
-  box(s, 0, 0, 96, 88, STLd(s), { r: 8, inset: [3, '#232b33'] });
-  box(s, -40, 0, 14, 64, grad(s, '#4a5560', '#2d353d', 'h'));
-  box(s, 40, 6, 14, 46, grad(s, '#4a5560', '#2d353d', 'h'), { rot: 14 });
-  L(s, 0, -4, 52, 52, { r: '50%', fill: rgrad(s, '#3a3129', '#1b1713', 0.5, 0.4), inset: [4, '#2b3742'] });
-  crack(s, -2, -4, 44, 28); crack(s, 4, -10, 30, -46);
-  scorch(s, 18, 14, 46); hole(s, -18, 22, 22); wire(s, 34, -26, 34); spark(s, -24, -22);
-  dead(s, 0, 34, 66, 12);
-};
-
-const solarPanel = (s) => {
-  box(s, 0, 0, 92, 56, grad(s, '#26424f', '#1d3541'), { r: 4, inset: [4, '#9e9074'] });
-  L(s, 0, 0, 92, 56, { fill: grid(s, 22, 18, 2, 'rgba(0,0,0,.4)') });
-  hole(s, -22, -6, 26); crack(s, 14, 6, 46, 24); crack(s, 20, -12, 34, -32);
-  scorch(s, 30, 12, 34); rust(s, -34, 16);
-};
-
-const batteryBank = (s) => {
-  box(s, -16, 0, 26, 56, STLd(s), { r: 4, inset: [2, '#1c242d'] });
-  box(s, 17, 3, 26, 56, STLd(s), { r: 4, inset: [2, '#1c242d'], rot: 11 });
-  box(s, -16, 8, 16, 30, '#2a3129', { r: 2, inset: [1, '#4a5560'] });
-  box(s, 17, 12, 16, 22, '#2a3129', { r: 2, inset: [1, '#4a5560'], rot: 11 });
-  scorch(s, 18, -18, 26); crack(s, -16, -14, 20, 18); wire(s, -4, -32, -22);
-  spark(s, 22, -26); rust(s, -28, 24, 16);
-};
-
-const o2Scrubber = (s) => {
-  box(s, 0, 0, 62, 66, STLd(s), { r: 6, inset: [2, '#2b3742'] });
-  L(s, 0, -14, 46, 22, { r: 3, fill: stripes(s, 90, '#20272d', 5, '#4a545e', 9) });
-  hole(s, 8, -14, 20); dead(s, 0, 14, 46, 13); crack(s, -14, 8, 26, -34);
-  scorch(s, -20, -20, 32); wire(s, -36, -6, 12); rust(s, 24, 22, 22);
-};
-
-const oxygenTank = (s) => {
-  box(s, -19, 2, 36, 72, grad3(s, '#4f7d95', '#2b4b5c', '#1f3946'), { r: 18, inset: [3, '#274f61'] });
-  box(s, 20, 6, 36, 62, grad(s, '#48737f', '#26414f', 'h'), { r: 18, inset: [3, '#274f61'], rot: 18 });
-  hole(s, -19, -6, 22); crack(s, 20, 4, 40, 74); scorch(s, -2, 26, 34);
-  rust(s, -30, 26, 22); wire(s, -19, -40, -40);
-};
-
-const waterRecycler = (s) => {
-  box(s, 0, 0, 64, 70, STLd(s), { r: 6, inset: [2, '#2b3742'] });
-  box(s, 0, 6, 42, 34, grad(s, '#274a58', '#1b3540'), { r: 4 });
-  L(s, 0, 16, 42, 12, { fill: 'rgba(120,170,190,.35)' });
-  crack(s, 0, -2, 38, 16); hole(s, 20, -18, 18); scorch(s, -22, 20, 32);
-  L(s, -16, 40, 30, 10, { r: '50%', fill: pool(s, 'rgba(120,170,190,.45)') });
-  rust(s, 30, 4, 20);
-};
-
-const hydroponics = (s) => {
-  box(s, 0, 0, 92, 48, '#3f3122');
-  L(s, -6, -9, 60, 12, { r: 2, fill: stripes(s, 90, '#4a4530', 11, '#3a3626', 20) });
-  L(s, 2, 9, 44, 12, { r: 2, fill: stripes(s, 90, '#54452a', 11, '#42361f', 20) });
-  crack(s, 24, -9, 30, 8); hole(s, 34, 8, 18); scorch(s, -30, 10, 30); rust(s, 30, -18, 20);
-};
-
-const cooker = (s) => {
-  box(s, 0, 0, 66, 52, grad(s, '#2f363e', '#22282e'), { r: 6, inset: [2, '#1c242d'] });
-  L(s, -14, 0, 22, 22, { r: '50%', fill: rgrad(s, '#3a3129', '#1b1713') });
-  L(s, 16, 0, 22, 22, { r: '50%', fill: rgrad(s, '#4a3a2a', '#221a12') });
-  crack(s, 0, -16, 40, 12); scorch(s, 20, 16, 38); wire(s, -32, 18, 26); spark(s, -6, -18);
-};
-
-const cooler = (s) => {
-  box(s, 0, 0, 56, 74, grad(s, '#a8b2b8', '#8b969f'), { r: 6, inset: [3, '#6f7c85'] });
-  box(s, 0, -16, 40, 26, grad(s, '#3f4c54', '#2b353c'), { r: 3 });
-  hole(s, 6, -16, 22);
-  box(s, 0, 16, 40, 26, '#9aa6ae', { r: 3, inset: [2, '#6f7c85'] });
-  crack(s, -4, 16, 30, -22); scorch(s, -22, 30, 30); rust(s, 24, 6, 22);
-  L(s, 0, 44, 26, 8, { r: '50%', fill: pool(s, 'rgba(150,200,220,.4)') });
-};
-
-const pasteDispenser = (s) => {
-  box(s, 0, 0, 58, 64, STLd(s), { r: 6, inset: [2, '#2b3742'] });
-  dead(s, 0, -8, 30, 12);
-  box(s, 0, 22, 40, 8, '#7d7156', { r: 2, rot: -8 });
-  crack(s, 0, 6, 30, -18); hole(s, -20, 6, 14); scorch(s, 22, -22, 24); wire(s, 30, 14, -18);
-};
-
-const diningTable = (s) => {
-  box(s, -4, 2, 74, 48, WOOD(s), { r: 8, rot: -7 });
-  crack(s, -4, 0, 60, 8); crack(s, 6, 10, 30, -42); scorch(s, 24, -14, 30);
-  L(s, -50, 6, 18, 18, { r: '50%', fill: '#33281b' });
-  L(s, 48, 12, 18, 18, { r: '50%', fill: '#33281b', rot: 24 });
-  rust(s, -30, 22, 18);
-};
-
-const bunkBed = (s) => {
-  box(s, 0, 0, 56, 80, '#5f4a33', { r: 8 });
-  L(s, -2, -4, 48, 52, { r: 5, fill: stripes(s, 90, '#6e3a2a', 11, '#5d3222', 22) });
-  L(s, 2, -24, 34, 14, { r: 4, fill: '#a89b85', rot: -12 });
-  crack(s, 0, 8, 40, 14); hole(s, -16, 24, 18); scorch(s, 18, 20, 30); rust(s, 20, -26, 18);
-};
-
-const desk = (s) => {
-  box(s, 0, 4, 88, 44, WOOD(s));
-  dead(s, 20, -16, 30, 18);
-  crack(s, -4, 4, 46, 6); crack(s, -20, 14, 22, -34); scorch(s, -34, -10, 22);
-  wire(s, 40, -8, 22); spark(s, 36, -22);
-};
-
-const chair = (s) => {
-  box(s, 0, 4, 44, 44, '#3a2c1e', { r: 8, rot: -14 });
-  box(s, 2, -20, 44, 14, '#4a3826', { r: 6, rot: -26 });
-  crack(s, 0, 4, 30, 22); scorch(s, 16, 18, 26); rust(s, -18, -6, 18);
-};
-
-const locker = (s) => {
-  box(s, 0, 0, 52, 80, grad(s, '#414b55', '#30383f', 'h'), { inset: [2, '#2b3742'] });
-  L(s, 0, 0, 2, 80, { fill: 'rgba(0,0,0,.5)' });
-  L(s, 20, -6, 24, 76, { r: 3, fill: grad(s, '#39424c', '#262e35', 'h'), inset: [2, '#2b3742'], rot: 14 });
-  L(s, -16, 4, 5, 12, { r: 2, fill: '#8a7248' });
-  hole(s, -8, 26, 14); crack(s, -14, -20, 22, 24); scorch(s, -22, 34, 22); rust(s, 24, 30, 16);
-};
-
-const rug = (s) => {
-  L(s, 0, 0, 96, 64, { r: 8, fill: stripes(s, 90, '#6b3226', 14, '#5b2b1f', 28), inset: [5, '#8a775a'] });
-  hole(s, -20, 6, 26); hole(s, 24, -12, 20); scorch(s, 18, 18, 34);
-  L(s, 0, 26, 96, 8, { fill: stripes(s, 90, '#6b3226', 6, 'transparent', 12) });
-};
-
-const standingLamp = (s) => {
-  L(s, -8, -20, 44, 44, { r: '50%', fill: rgrad(s, '#3a3129', '#1b1713'), inset: [2, '#2b241c'], rot: -34 });
-  crack(s, -8, -20, 30, 18);
-  L(s, 0, 20, 6, 44, { fill: '#3a2c1e' });
-  L(s, 0, 42, 26, 6, { r: 3, fill: '#3a2c1e' });
-  wire(s, 20, -6, 40); spark(s, 6, -34);
-};
-
-const pottedPlant = (s) => {
-  L(s, 0, -12, 50, 44, { r: '50%', fill: rgrad(s, '#6b6440', '#40391f', 0.45, 0.4) });
-  L(s, -14, -22, 22, 5, { r: 2, fill: '#5a5230', rot: -30 });
-  L(s, 16, -6, 18, 4, { r: 2, fill: '#4a4326', rot: 40 });
-  L(s, 4, 30, 34, 28, { r: [0, 0, 10, 10], fill: grad(s, '#5f3f26', '#452c19'), rot: 12 });
-  crack(s, 4, 26, 22, -10);
-  L(s, -22, 40, 26, 10, { r: '50%', fill: pool(s, 'rgba(90,70,45,.6)') });
-};
-
-const bookshelf = (s) => {
-  box(s, 0, 0, 80, 66, '#3f3122', { inset: [3, '#322718'] });
-  L(s, -14, -14, 34, 20, { fill: stripes(s, 90, '#5a3a2a', 8, '#3a2a1e', 11) });
-  L(s, 18, 12, 26, 16, { fill: stripes(s, 90, '#4a4a32', 8, '#33301f', 11), rot: 16 });
-  hole(s, 22, -16, 20); crack(s, 0, 0, 50, 6); scorch(s, -26, 20, 30);
-};
-
-const medBed = (s) => {
-  box(s, 0, 0, 52, 78, '#8f7f5c', { r: 6, inset: [3, '#6f6144'] });
-  L(s, 2, -26, 36, 14, { r: 4, fill: '#a89b85', rot: -14 });
-  crack(s, 0, 6, 36, 12); hole(s, -14, 22, 18); scorch(s, 16, 24, 30);
-  L(s, 0, 6, 22, 5, { fill: '#6e3a2a' });
-  L(s, 0, 6, 5, 22, { fill: '#6e3a2a' });
-  rust(s, 20, -20, 18);
-};
-
-const researchConsole = (s) => {
-  box(s, 0, 0, 80, 52, grad(s, '#2b333b', '#1e242a'), { r: 6 });
-  dead(s, 0, -8, 66, 26); crack(s, -6, -8, 46, 14); crack(s, 10, -16, 26, -40); hole(s, 24, -6, 16);
-  L(s, 0, 18, 66, 8, { r: 2, fill: '#232b33' });
-  wire(s, -38, 12, 24); spark(s, 28, -22);
-};
-
-const commsDish = (s) => {
-  L(s, -6, -14, 64, 34, {
-    r: ['50%', '50%', 8, 8], fill: grad(s, '#8f8266', '#5f5645'), inset: [2, '#6f6552'], rot: -28,
-  });
-  hole(s, -14, -18, 22); crack(s, 4, -10, 34, 16);
-  L(s, 6, 20, 6, 44, { r: 3, fill: '#2d353d', rot: 18 });
-  L(s, 2, 40, 28, 7, { r: 3, fill: '#2d353d' });
-  wire(s, 24, 6, -32); spark(s, -20, -30);
-};
-
-const sensorArray = (s) => {
-  // the mock's `border:2px solid` — an outline ring, not a fill
-  L(s, 0, 0, 72, 72, { r: '50%', inset: [2, '#2d353d'] });
-  L(s, 0, 0, 48, 48, { r: '50%', inset: [2, '#2d353d'] });
-  L(s, 0, 0, 14, 14, { r: '50%', fill: '#1b1f24', inset: [2, '#2d353d'] });
-  crack(s, -8, -6, 46, 34); crack(s, 14, 12, 30, -22); hole(s, 24, -18, 18);
-  scorch(s, -24, 22, 30); spark(s, 18, 22);
-};
-
-const workbench = (s) => {
-  box(s, 0, 6, 96, 44, WOOD(s), { r: 4 });
-  box(s, 0, -24, 96, 14, '#33281b', { r: 3 });
-  L(s, -30, -24, 6, 22, { fill: '#5f6b74' });
-  L(s, 10, -26, 18, 6, { fill: '#7d7156', rot: 26 });
-  crack(s, 0, 6, 56, 8); hole(s, 30, 8, 18); scorch(s, -30, 18, 28); wire(s, 38, -18, 30);
-};
-
-const fabricator = (s) => {
-  box(s, 0, 0, 78, 72, STLd(s), { r: 6, inset: [3, '#2b3742'] });
-  box(s, 0, -6, 58, 38, grad(s, '#141a20', '#0c1014'), { r: 3 });
-  hole(s, -10, -8, 24); crack(s, 16, -4, 32, 26);
-  L(s, 0, 24, 58, 9, { r: 2, fill: '#232b33' });
-  scorch(s, 24, 20, 34); wire(s, -34, 16, 20); spark(s, 26, -26);
-};
-
-const storageCrate = (s) => {
-  box(s, 0, 0, 64, 60, grad(s, '#5f4a30', '#42321f'), { inset: [2, '#322718'] });
-  L(s, 0, 0, 64, 9, { fill: '#322718' });
-  L(s, 0, 0, 9, 60, { fill: '#322718' });
-  crack(s, -6, -16, 32, 10); hole(s, 20, 20, 14); scorch(s, -24, 22, 20); rust(s, -26, -20, 16);
-};
-
-const blastDoor = (s) => {
-  box(s, 0, 0, 78, 70, STLd(s), { r: 4, inset: [3, '#2b3742'] });
-  L(s, 6, 0, 8, 70, { fill: '#12171c', rot: 6 });
-  L(s, 0, -24, 78, 10, { fill: stripes(s, 45, '#7a5a34', 8, '#241d17', 16) });
-  hole(s, -16, 8, 24); crack(s, 20, -6, 34, 62); scorch(s, 22, 22, 32); rust(s, -24, -22, 20);
-};
-
-const turret = (s) => {
-  box(s, 0, 18, 48, 26, STLd(s), { r: 8, inset: [2, '#2b3742'] });
-  L(s, -2, -4, 30, 30, { r: '50%', fill: '#2d353d', inset: [3, '#1f262c'] });
-  L(s, 14, -26, 9, 34, { r: 3, fill: '#232b33', rot: 52 });
-  crack(s, -2, -4, 26, 18); scorch(s, -4, -30, 40); hole(s, 16, 10, 16);
-  wire(s, -28, 6, -26); spark(s, 22, -34);
-};
-
-const cryopod = (s) => {
-  box(s, 0, 0, 48, 82, grad(s, '#414b55', '#2d353d', 'h'), { r: 24, inset: [3, '#2b3742'] });
-  L(s, 0, 0, 30, 62, { r: 15, fill: grad(s, '#3f5c68', '#26414f') });
-  crack(s, 0, -8, 44, 76); hole(s, 6, 18, 18); scorch(s, -18, -26, 30);
-  L(s, -6, 44, 26, 9, { r: '50%', fill: pool(s, 'rgba(150,200,220,.4)') });
-};
-
-const fuelDrum = (s) => {
-  box(s, 2, 2, 48, 64, grad3(s, '#7a5a34', '#5c3f22', '#452e17'), { r: 8, inset: [2, '#33230f'], rot: 12 });
-  L(s, 0, -8, 48, 12, { fill: stripes(s, 45, '#7a5a34', 7, '#241d17', 14), rot: 12 });
-  hole(s, 8, 10, 20); crack(s, -6, -14, 26, 26); scorch(s, -22, 22, 30);
-  L(s, -18, 38, 30, 10, { r: '50%', fill: pool(s, 'rgba(60,40,20,.7)') });
-};
-
-// ── WALLS ──
-const steelBulkhead = (s) => {
-  box(s, 0, 0, 106, 94, '#2f3d4a', { r: 6, inset: [2, '#232b33'] });
-  L(s, 0, 0, 106, 94, { fill: dots(s, 20, 1.5, 'rgba(0,0,0,.4)') });
-  hole(s, -14, 6, 40); crack(s, 26, -16, 44, 58); crack(s, -30, -24, 30, -24);
-  scorch(s, 30, 24, 36); rust(s, -34, 30, 24);
-};
-
-const timberLinedWall = (s) => {
-  box(s, 0, 0, 106, 94, stripes(s, 0, '#5f4227', 15, '#4c3520', 17), { r: 6, inset: [4, '#3a2717'] });
-  hole(s, 12, 10, 34); crack(s, -24, -12, 40, 74); scorch(s, -6, -30, 40); rust(s, 34, 30, 22);
-};
-
-const blastWall = (s) => {
-  box(s, 0, 0, 106, 94, grad(s, '#242c33', '#1c2329'), { r: 6, inset: [4, '#414b55'] });
-  L(s, 0, 0, 106, 94, { fill: dots(s, 26, 2, 'rgba(0,0,0,.5)') });
-  L(s, 0, -34, 106, 14, { fill: stripes(s, 45, '#7a5a34', 9, '#241d17', 18) });
-  hole(s, -10, 12, 30); crack(s, 28, -8, 40, 62); scorch(s, 30, 28, 30); rust(s, -34, 32, 20);
-};
-
-const glassPartition = (s) => {
-  box(s, 0, 0, 106, 94, grad(s, 'rgba(120,170,190,.2)', 'rgba(90,130,160,.08)', 'diag'),
-    { r: 6, inset: [5, '#414b55'] });
-  crack(s, -6, -4, 88, 16); crack(s, 14, 8, 62, -44); crack(s, -26, 18, 48, 58);
-  hole(s, 24, -18, 24); hole(s, -18, 26, 18);
-  L(s, -36, 34, 24, 6, { fill: 'rgba(190,225,240,.55)', rot: 22 });
-  L(s, 30, 32, 18, 5, { fill: 'rgba(190,225,240,.45)', rot: -14 });
-};
-
-const insulatedWall = (s) => {
-  box(s, 0, 0, 106, 94, '#3a434c', { r: 6, inset: [3, '#2a3138'] });
-  L(s, 0, 0, 106, 94, { fill: grid(s, 24, 24, 2, 'rgba(0,0,0,.22)') });
-  hole(s, 16, 8, 32);
-  L(s, 16, 8, 22, 16, { r: 4, fill: '#8a7f62', inset: [1, '#6b6149'] });
-  crack(s, -24, -14, 42, 68); scorch(s, -8, -30, 32); rust(s, 34, 32, 20);
-};
-
-const hullPlating = (s) => {
-  box(s, 0, 0, 106, 94, '#232c36', { r: 6, inset: [2, '#1a212a'] });
-  // two stacked background-images in the mock: seam lines every 35px, then a 20px rivet screen
-  L(s, 0, 0, 106, 94, { fill: stripes(s, 90, 'rgba(0,0,0,.35)', 2, 'transparent', 35) });
-  L(s, 0, 0, 106, 94, { fill: dots(s, 20, 1.5, 'rgba(0,0,0,.4)') });
-  hole(s, -6, 2, 44);
-  L(s, -6, 2, 44, 38, { r: ['52%', '42%', '56%', '44%'], shade: [14, 'rgba(90,140,180,.35)'] });
-  crack(s, 30, -22, 38, 54); scorch(s, 28, 26, 32); rust(s, -34, 32, 22);
-};
-
-// ── FLOORS ──
-const steelTanFloor = (s) => {
-  box(s, 0, 0, 106, 94, '#6b5f45');
-  L(s, 0, 0, 106, 94, { fill: grid(s, 22, 22, 1, 'rgba(0,0,0,.2)') });
-  hole(s, -18, 14, 32); crack(s, 20, -14, 48, 22); crack(s, -6, 26, 34, -34); scorch(s, 26, 22, 34);
-};
-
-const woodPlankFloor = (s) => {
-  box(s, 0, 0, 106, 94, stripes(s, 90, '#7d5730', 21, '#6c4b28', 23));
-  hole(s, 16, -10, 30); crack(s, -22, 12, 44, 12); scorch(s, -8, 30, 36);
-  L(s, 30, 26, 34, 9, { fill: '#5b3f21', rot: 14 });
-};
-
-const growMatting = (s) => {
-  box(s, 0, 0, 106, 94, '#5e6440');
-  L(s, 0, 0, 106, 94, { fill: dots(s, 15, 2, 'rgba(40,50,28,.6)') });
-  hole(s, -16, -10, 30); scorch(s, 20, 14, 40); rust(s, 30, -24, 22);
-  L(s, -24, 28, 36, 8, { fill: '#4a4a2c', rot: 18 });
-};
-
-const creamTileFloor = (s) => {
-  box(s, 0, 0, 106, 94, '#9a8b6c');
-  L(s, 0, 0, 106, 94, { fill: grid(s, 26, 26, 1, 'rgba(0,0,0,.16)') });
-  crack(s, -10, -6, 60, 18); crack(s, 18, 18, 40, -30); hole(s, -26, 24, 24); scorch(s, 28, -22, 30);
-};
-
-const metalGrating = (s) => {
-  box(s, 0, 0, 106, 94, '#443f34');
-  L(s, 0, 0, 106, 94, { fill: bars(s, 9, 2, 'rgba(0,0,0,.4)') });
-  L(s, 0, 0, 106, 94, { fill: dots(s, 18, 1.5, 'rgba(0,0,0,.45)') });
-  hole(s, 18, 10, 34); crack(s, -24, -16, 40, 16);
-  L(s, -16, 30, 40, 6, { fill: '#5f5a48', rot: 16 });
-  scorch(s, -30, 24, 28); rust(s, 32, -26, 20);
-};
-
-const carpetFloor = (s) => {
-  box(s, 0, 0, 106, 94, stripes(s, 90, '#6b3226', 11, '#5b2b1f', 22), { inset: [5, '#7d6c50'] });
-  hole(s, -20, 8, 30); hole(s, 24, -16, 22); scorch(s, 20, 24, 36);
-  L(s, 0, 34, 106, 9, { fill: stripes(s, 90, '#6b3226', 6, 'transparent', 13) });
-};
-
-// ── FIXTURES ──
-const slidingDoor = (s) => {
-  box(s, 0, 0, 96, 70, STLd(s), { inset: [3, '#2b3742'] });
-  L(s, 10, 0, 6, 70, { fill: '#1a1f24', rot: 8 });
-  hole(s, -22, 4, 22); crack(s, 24, -10, 34, 68); scorch(s, 26, 20, 30);
-  wire(s, -38, -22, 18); spark(s, 14, -26);
-};
-
-const airlock = (s) => {
-  L(s, 0, 0, 80, 80, { r: '50%', fill: grad(s, '#414b55', '#2d353d'), inset: [5, '#2b3742'] });
-  L(s, 0, 0, 46, 46, { r: '50%', fill: '#0a0d11', inset: [3, '#1c242d'] });
-  crack(s, 0, 0, 56, 22); crack(s, 4, -8, 40, -58); hole(s, -16, 18, 18);
-  scorch(s, 22, -20, 34); wire(s, 30, 14, -24); spark(s, -22, -20);
-};
-
-const hatchLadder = (s) => {
-  L(s, 0, 0, 80, 80, { r: '50%', fill: '#0f151a', inset: [6, '#414b55'], shade: [22, 'rgba(0,0,0,.9)'] });
-  L(s, -22, 0, 5, 74, { r: 3, fill: grad(s, '#6f7c85', '#2d353d') });
-  L(s, 24, 4, 5, 60, { r: 3, fill: grad(s, '#5f6b74', '#262e35'), rot: 14 });
-  L(s, -2, -14, 44, 7, { r: 3, fill: grad(s, '#8f9aa2', '#5f6b74'), rot: -12 });
-  L(s, 2, 14, 30, 7, { r: 3, fill: grad(s, '#6f7c85', '#414b55') });
-  rust(s, 20, -24, 20); scorch(s, -20, 24, 28);
-};
-
-const powerConduit = (s) => {
-  L(s, -18, 0, 56, 14, { r: 7, fill: '#232b33' });
-  L(s, 30, 4, 34, 14, { r: 7, fill: '#232b33', rot: 16 });
-  L(s, -30, 0, 12, 12, { r: '50%', fill: '#3a3129' });
-  L(s, 0, 0, 12, 12, { r: '50%', fill: '#3a3129' });
-  wire(s, 12, -2, 28); spark(s, 24, 8); scorch(s, 6, 12, 30);
-};
-
-const airVent = (s) => {
-  box(s, 0, 0, 72, 56, STLd(s), { inset: [2, '#2b3742'] });
-  L(s, 0, 0, 56, 40, { r: 3, fill: stripes(s, 0, '#20272d', 5, '#414b55', 9) });
-  L(s, 12, -6, 34, 6, { fill: '#5f6b74', rot: 22 });
-  hole(s, -16, 8, 18); scorch(s, 20, 16, 28); rust(s, -24, -16, 20);
-};
-
-const pipeRun = (s) => {
-  L(s, -14, 0, 62, 16, { r: 8, fill: grad(s, '#4a5560', '#2a323a') });
-  L(s, 34, 6, 34, 16, { r: 8, fill: grad(s, '#4a5560', '#2a323a'), rot: 18 });
-  L(s, -28, 20, 16, 30, { r: 6, fill: grad(s, '#4a5560', '#2a323a', 'h') });
-  crack(s, 6, 0, 24, 8); scorch(s, 12, 6, 28); rust(s, -30, -14, 22);
-  L(s, 14, 26, 26, 9, { r: '50%', fill: pool(s, 'rgba(120,170,190,.4)') });
-};
-
-const wallLamp = (s) => {
-  L(s, 0, 14, 22, 34, { r: 4, fill: '#39424c', inset: [2, '#2b3742'] });
-  L(s, -4, -14, 52, 34, {
-    r: [26, 26, 6, 6], fill: rgrad(s, '#3a3129', '#1b1713', 0.5, 0.8), inset: [2, '#2b241c'], rot: -18,
-  });
-  crack(s, -4, -14, 34, 14); wire(s, 20, -24, 34); spark(s, 14, -32); scorch(s, -20, 6, 26);
-};
-
-const viewport = (s) => {
-  L(s, 0, 0, 90, 64, { r: 8, fill: '#07090d', outset: [6, '#414b55'], shade: [16, 'rgba(0,0,0,.9)'] });
-  crack(s, -6, -2, 70, 14); crack(s, 10, 6, 46, -40); crack(s, -14, 10, 34, 62); hole(s, 26, -12, 18);
-  L(s, -34, 22, 16, 5, { fill: 'rgba(190,225,240,.5)' });
-  rust(s, 30, 22, 20);
-};
-
-const wallScreen = (s) => {
-  box(s, 0, 0, 92, 60, '#1b2127', { inset: [3, '#2d353d'] });
-  dead(s, 0, 0, 76, 44); crack(s, -6, 0, 62, 12); crack(s, 12, -8, 40, -38);
-  hole(s, 26, 8, 16); scorch(s, -30, 16, 28); spark(s, -34, -20);
-};
-
-const spaceHeater = (s) => {
-  box(s, 0, 0, 60, 64, STLd(s), { r: 6, inset: [2, '#2b3742'] });
-  L(s, 0, -10, 40, 7, { r: 3, fill: '#3a3129' });
-  L(s, 0, 2, 40, 7, { r: 3, fill: '#3a3129' });
-  L(s, -4, 14, 34, 7, { r: 3, fill: '#2f2b24', rot: -8 });
-  crack(s, 0, -22, 30, 12); scorch(s, 20, 22, 28); wire(s, -32, 18, 22); spark(s, 24, -24);
-};
-
-const ventFan = (s) => {
-  box(s, 0, 0, 76, 76, '#2b333b', { r: 8, inset: [3, '#232b33'] });
-  // the mock's 4-quadrant conic-gradient, as sectors — the same translation `fixtures.js`'s
-  // pristine ventFan makes (translation note 6; teeth would turn a fan into a cog).
-  L(s, 0, 0, 60, 60, { r: '50%', fill: '#2b333b' });
-  s.path('M0,0 L0,-30 A30,30 0 0 1 30,0 Z', { fill: '#414b55' });
-  s.path('M0,0 L0,30 A30,30 0 0 1 -30,0 Z', { fill: '#414b55' });
-  L(s, 0, 0, 60, 60, { r: '50%', inset: [3, '#232b33'] });
-  L(s, 0, 0, 12, 12, { r: '50%', fill: '#5f6b74' });
-  crack(s, -4, 0, 46, 28); hole(s, 20, -16, 16); scorch(s, -18, 22, 28); wire(s, 30, 20, -20);
-};
-
-const shelfRack = (s) => {
-  box(s, 0, 0, 88, 76, '#3a434c', { inset: [3, '#2a3138'] });
-  L(s, -18, -18, 22, 16, { r: 2, fill: '#5f4a30' });
-  L(s, 10, -20, 22, 16, { r: 2, fill: '#3f3122', rot: 14 });
-  L(s, -6, 16, 22, 16, { r: 2, fill: '#4a4a32' });
-  hole(s, 26, 12, 20); crack(s, -10, 0, 44, 8); scorch(s, -28, 24, 28); rust(s, 28, -26, 18);
-};
-
-const supplyBarrel = (s) => {
-  box(s, 2, 4, 48, 64, grad3(s, '#3f6a80', '#27505f', '#1e3d49'), { r: 8, inset: [2, '#274f61'], rot: -14 });
-  L(s, 0, -8, 48, 10, { fill: stripes(s, 45, '#8fa8b8', 7, '#22333c', 14), rot: -14 });
-  hole(s, 10, 12, 20); crack(s, -8, -14, 24, -30); scorch(s, -20, 24, 28);
-  L(s, -18, 38, 30, 10, { r: '50%', fill: pool(s, 'rgba(120,170,190,.4)') });
-};
-
-const weaponsRack = (s) => {
-  box(s, 0, 0, 96, 74, '#2f373f', { inset: [3, '#232b33'] });
-  L(s, 0, -30, 96, 8, { fill: '#232b33' });
-  L(s, 0, 30, 96, 8, { fill: '#3f3122' });
-  L(s, -28, 0, 9, 56, { r: 2, fill: grad(s, '#414b55', '#242c33') });
-  L(s, -28, 16, 15, 20, { r: 3, fill: '#4a3520' });
-  L(s, 4, 6, 9, 44, { r: 2, fill: grad(s, '#39424c', '#20272d'), rot: 22 });
-  crack(s, 24, -8, 30, 40); hole(s, 30, 16, 18); scorch(s, -24, 26, 26); rust(s, 34, -26, 18);
-};
-
-const sunLamp = (s) => {
-  L(s, -4, -18, 70, 40, {
-    r: [8, 8, 4, 4], fill: grad(s, '#3a352c', '#1d1a15'), inset: [2, '#2b241c'], rot: -22,
-  });
-  crack(s, -4, -18, 46, 16); hole(s, 12, -22, 18);
-  L(s, 0, 20, 8, 40, { fill: '#39424c' });
-  wire(s, 26, -2, 34); spark(s, -26, -30); scorch(s, -18, 16, 26);
-};
-
-const herbPlanter = (s) => {
-  L(s, 4, 18, 44, 30, { r: [0, 0, 8, 8], fill: grad(s, '#5f3f26', '#43290f'), rot: 14 });
-  crack(s, 4, 14, 26, -12);
-  L(s, -2, -14, 50, 42, { r: '50%', fill: rgrad(s, '#5f5b38', '#38341c', 0.45, 0.4) });
-  L(s, -20, -22, 20, 5, { r: 2, fill: '#4f4a2c', rot: -34 });
-  L(s, 18, -4, 16, 4, { r: 2, fill: '#443f24', rot: 38 });
-  L(s, -24, 38, 28, 10, { r: '50%', fill: pool(s, 'rgba(80,62,38,.6)') });
-};
-
-const deckSign = (s) => {
-  L(s, 0, 20, 6, 40, { fill: '#39424c', rot: 6 });
-  L(s, -4, -8, 80, 34, { r: 5, fill: grad(s, '#2a2119', '#1c150f'), inset: [2, '#6b4526'], rot: -12 });
-  crack(s, -4, -8, 44, -12); hole(s, 24, -12, 16); scorch(s, -26, 12, 24);
-  L(s, -16, -10, 14, 12, { r: 2, fill: '#5a4426', rot: -12 });
-  spark(s, 28, -26);
-};
-
-const floodlight = (s) => {
-  box(s, 0, -16, 40, 30, '#39424c', { r: 6, inset: [2, '#2b3742'], rot: -16 });
-  L(s, 24, -18, 30, 22, { r: 3, fill: grad(s, '#2f2b24', '#181510'), inset: [1, '#4a5560'], rot: -16 });
-  crack(s, 20, -18, 24, -16);
-  L(s, 0, 20, 8, 40, { fill: '#2a323a' });
-  wire(s, -26, -4, 28); spark(s, -30, -18); scorch(s, 14, 12, 26);
-};
-
-// ── RESOURCES — the 8 that cannot be repaired, only written off (state `—`, not a percentage) ──
-const regolith = (s) => {
-  L(s, -16, 16, 22, 16, { r: [6, 8, 4, 7], fill: grad(s, '#5f5a4c', '#3f3b31') });
-  L(s, 14, 18, 26, 18, { r: [8, 5, 8, 5], fill: grad(s, '#575345', '#39352c') });
-  L(s, -2, 2, 30, 22, { r: [9, 6, 9, 7], fill: grad(s, '#68624f', '#443f34') });
-  L(s, 18, -8, 16, 13, { r: [5, 7, 4, 6], fill: grad(s, '#5f5a4c', '#3f3b31') });
-  scorch(s, 0, 6, 44);
-  L(s, -20, -8, 12, 10, { r: [6, 4, 6, 4], fill: '#4a3226' });
-  rust(s, 20, 20, 20);
-};
-
-const potato = (s) => {
-  L(s, -16, 14, 30, 22, { r: '50%', fill: rgrad(s, '#6f6142', '#413720', 0.38, 0.32) });
-  L(s, 16, 16, 28, 21, { r: '50%', fill: rgrad(s, '#5f5236', '#38301c', 0.38, 0.32) });
-  L(s, 0, -4, 34, 25, { r: '50%', fill: rgrad(s, '#756645', '#463b22', 0.38, 0.32) });
-  L(s, -6, -8, 10, 8, { r: '50%', fill: 'rgba(40,50,26,.85)' });
-  L(s, 10, 2, 8, 7, { r: '50%', fill: 'rgba(40,50,26,.8)' });
-  L(s, -14, 18, 9, 7, { r: '50%', fill: 'rgba(40,50,26,.75)' });
-  L(s, 4, 26, 30, 9, { r: '50%', fill: pool(s, 'rgba(60,55,30,.65)') });
-};
-
-const scrap = (s) => {
-  L(s, -14, 14, 40, 11, { r: 2, fill: grad(s, '#5f5a52', '#332f2a'), rot: -14 });
-  L(s, 12, 8, 34, 9, { r: 2, fill: grad(s, '#57524a', '#2c2924'), rot: 22 });
-  L(s, -4, -6, 30, 8, { r: 2, fill: grad(s, '#6b665c', '#3a3630'), rot: -40 });
-  L(s, 16, -12, 20, 18, { r: 3, fill: grad(s, '#4a463f', '#292620'), rot: 8 });
-  scorch(s, 0, 4, 46); rust(s, -22, -8, 22); rust(s, 20, 20, 18);
-};
-
-const parts = (s) => {
-  // the mock's two 8-sector conic discs, as REAL TEETH — resources.js's own ruling for this piece
-  s.path(gearPath(-16, 12, 14, 14 * 0.68, 7), { fill: '#5f5a52' });
-  s.circle({ cx: -16, cy: 12, r: 14 * 0.68, fill: '#5f5a52' });
-  L(s, -16, 12, 11, 11, { r: '50%', fill: '#1e2226' });
-  s.path(gearPath(18, 16, 11, 11 * 0.68, 7), { fill: '#6b5f45' });
-  s.circle({ cx: 18, cy: 16, r: 11 * 0.68, fill: '#6b5f45' });
-  s.circle({ cx: 18, cy: 16, r: 4, fill: '#1e2226' });
-  L(s, 2, -14, 34, 10, { r: 3, fill: grad(s, '#6b665c', '#3a3630'), rot: -18 });
-  crack(s, -16, 12, 22, 34); rust(s, 18, -6, 22); rust(s, -24, 22, 18);
-};
-
-const controllerModule = (s) => {
-  box(s, 0, 0, 60, 48, grad(s, '#20342b', '#14231c'), { r: 4, inset: [2, '#0d2019'] });
-  L(s, 0, -4, 24, 20, { r: 2, fill: '#171b1f', inset: [1, '#3a434c'] });
-  L(s, 0, 14, 44, 3, { fill: '#7a6b42' });
-  L(s, -12, 7, 3, 18, { fill: '#7a6b42' });
-  L(s, -34, 0, 12, 4, { fill: '#7a6b42' });
-  L(s, 34, 0, 12, 4, { fill: '#5a4f31' });
-  scorch(s, 16, -10, 30); crack(s, -8, 8, 26, -22); spark(s, 24, 14);
-};
-
-const seals = (s) => {
-  L(s, -14, 12, 36, 36, { r: '50%', fill: '#22261f', inset: [7, '#3f4a36'] });
-  crack(s, -14, 12, 30, 26);
-  L(s, 16, 16, 30, 30, { r: '50%', fill: '#22261f', inset: [6, '#46523c'], rot: 14 });
-  L(s, 4, -14, 40, 26, { r: 4, fill: '#6b6149', inset: [2, '#4f472f'], rot: -10 });
-  L(s, 4, -14, 40, 26, { r: 4, fill: stripes(s, 90, 'transparent', 5, 'rgba(0,0,0,.3)', 7), rot: -10 });
-  rust(s, 22, -22, 20); scorch(s, -22, 26, 24);
-};
-
-const ice = (s) => {
-  L(s, -12, 18, 20, 15, {
-    r: 4,
-    fill: grad(s, 'rgba(190,230,245,.75)', 'rgba(120,175,205,.55)', 'diag'),
-    inset: [2, 'rgba(255,255,255,.35)'],
-  });
-  L(s, 12, 20, 16, 12, { r: 4, fill: grad(s, 'rgba(175,220,240,.7)', 'rgba(105,160,192,.5)', 'diag'), rot: 16 });
-  L(s, -2, 8, 24, 18, {
-    r: 5,
-    fill: grad(s, 'rgba(200,238,250,.8)', 'rgba(130,185,215,.55)', 'diag'),
-    inset: [2, 'rgba(255,255,255,.4)'],
-  });
-  // the meltwater is drawn OVER the blocks, exactly as the mock stacks it: the ice is going, not gone
-  L(s, 0, 26, 80, 22, { r: '50%', fill: pool(s, 'rgba(140,195,225,.42)', 0.72) });
-  L(s, -26, 4, 14, 10, { r: '50%', fill: 'rgba(180,220,238,.45)' });
-};
-
-const corpse = (s) => {
-  L(s, 0, 8, 52, 80, { r: [20, 20, 8, 8], fill: grad(s, '#5f5a52', '#403c36') });
-  L(s, 0, -22, 30, 30, { r: [12, 12, 4, 4], fill: '#4a4238' });
-  L(s, -6, -22, 5, 5, { fill: '#15120f' });
-  L(s, 6, -22, 5, 5, { fill: '#15120f' });
-  L(s, 0, 10, 36, 34, { r: 4, fill: '#6b6459' });
-  L(s, 0, 10, 36, 34, { r: 4, fill: stripes(s, 90, 'transparent', 7, 'rgba(0,0,0,.22)', 9) });
-  L(s, -9, 38, 12, 18, { r: 2, fill: '#2a241d' });
-  L(s, 9, 38, 12, 18, { r: 2, fill: '#2a241d' });
-  scorch(s, 18, 0, 30); rust(s, -20, 22, 20);
-};
-
-// ── CRYO ──
-const cryoCapsuleOccupied = (s) => {
-  box(s, 0, 0, 60, 104, grad3(s, '#414b55', '#2d353d', '#232b33'),
-    { r: [26, 26, 8, 8], inset: [3, '#232b33'] });
-  L(s, 0, -6, 44, 80, { r: [20, 20, 5, 5], fill: grad(s, '#182a34', '#0e1a22'), shade: [12, 'rgba(0,0,0,.8)'] });
-  L(s, 0, 2, 32, 56, { r: [14, 14, 4, 4], fill: grad(s, '#33302a', '#22201c') });
-  crack(s, 0, -12, 60, 74); crack(s, -6, 10, 34, -34); hole(s, 14, -30, 18); scorch(s, -18, 30, 32);
-  icicle(s, -14, -42, 6, 16, 'rgba(200,232,242,.8)', 'rgba(120,175,205,.4)');
-  icicle(s, 4, -44, 5, 12, 'rgba(200,232,242,.75)', 'rgba(120,175,205,.4)');
-  dead(s, 0, 44, 44, 11);
-};
-
-const cryoCapsuleOpen = (s) => {
-  box(s, 0, 0, 60, 104, grad3(s, '#3d4650', '#2a323a', '#20272e'),
-    { r: [26, 26, 8, 8], inset: [3, '#232b33'] });
-  L(s, 0, -6, 44, 80, { r: [20, 20, 5, 5], fill: grad(s, '#161d23', '#0d1216'), shade: [14, 'rgba(0,0,0,.85)'] });
-  L(s, 0, 2, 32, 56, { r: [14, 14, 4, 4], fill: grad(s, '#33302a', '#22201c') });
-  L(s, 42, -18, 26, 88, {
-    r: [14, 14, 5, 5],
-    fill: grad(s, 'rgba(150,190,205,.34)', 'rgba(90,135,160,.22)', 'h'),
-    inset: [3, '#414b55'],
-    rot: 38,
-  });
-  crack(s, 38, -18, 62, 38); hole(s, 4, -22, 16); scorch(s, -18, 28, 30);
-  icicle(s, -14, -42, 6, 18, 'rgba(200,232,242,.8)', 'rgba(120,175,205,.4)');
-  icicle(s, 4, -44, 5, 13, 'rgba(200,232,242,.75)', 'rgba(120,175,205,.4)');
-  wire(s, -30, 34, 26); dead(s, 0, 44, 44, 11);
-};
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // THE NINE FITTINGS (VR-P2) — post-raid twins for the rows the mock never had
@@ -946,10 +105,11 @@ const cryoCapsuleOpen = (s) => {
 // mock's own stated premise for its seventy ("each keeps one identifying feature so it still reads
 // as the same object") true here by force rather than by care.
 //
-// ⛔ THE TWENTY-ONE REPLACED ROWS KEEP THEIR WARM TWINS, and that is a KNOWN, FILED INCONSISTENCY
-// rather than an oversight: `chair`, `locker`, `cooker` and eighteen more now draw a paper-ink
-// pristine piece and a steel-grey wreck. Restyling those seventy is charter §3's package P2b. Until
-// it lands, a wrecked galley mixes two palettes on screen.
+// ⛔ THE TWENTY-ONE REPLACED ROWS KEPT THEIR WARM TWINS UNTIL P2b, WHICH IS THE BLOCK BELOW. That
+// was a known, filed inconsistency — `chair`, `locker`, `cooker` and eighteen more drew a paper-ink
+// pristine piece and a steel-grey wreck, so a wrecked galley mixed two palettes on screen. Closed
+// 2026-08-06 by lane/warm-purge: see "THE TWENTY-ONE RESTYLED TWINS (P2b)" below, which re-authors
+// all twenty-one by exactly the construction the nine here use.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 /** INK DAMAGE — the paper half of the vocabulary above, in a fitting's own centimetres.
@@ -1062,6 +222,228 @@ const shrineShelf = (s) => paintFitting(s, 'shrine-shelf', (_s, { F }) => {
   // were invisible, so the twin lost a mark and nothing said so. The bracket now falls from the
   // plate's front-bottom edge to the wall, and the crack crosses it just under the shelf.
   inkCrack(s, F, [[11, 8, 133], [18, 10, 133]]);          // the near bracket, cracked at the mount
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// — lane/warm-purge —
+// THE TWENTY-ONE RESTYLED TWINS (P2b) — the rows that drew a PAPER piece and a WARM wreck
+//
+// ⛔ THIS CLOSES THE INCONSISTENCY THE BLOCK ABOVE FILED, and it is worth saying what the defect
+// actually was rather than "a palette mismatch": twenty-one registry rows drew a `#EBE4D1`/`#14120F`
+// pristine fitting and, for the same tile, a steel-grey mock transcription in `#33281b`/`#3a2c1e`.
+// So a wrecked galley put two idioms on one screen — and the owner's `strong` sketch ruling made it
+// worse, because `SKETCHED_TWINS` (below) can only treat a twin whose own painting is paper: the
+// pristine piece became conspicuously hand-drawn beside a twin that could not be. Each of the
+// twenty-one now RE-RUNS its own pristine painter through `fittings.paintFitting` and adds ink
+// damage on the same frame, in the same centimetres — the construction the nine above already use,
+// and the only one under which "the twin is the same object, damaged" survives a redraw of the
+// object. Their warm builders are deleted; nothing else in this file's warm half moves.
+//
+// ⚠️ THE DAMAGE IS THE MOCK TWIN'S OWN, PIECE BY PIECE, NOT A SHARED PASS. Each warm builder was read
+// before it was deleted and its marks carried over: the mock's vocabulary is `crack` · `hole` ·
+// `scorch` · `rust` · `wire` · `dead` · `spark`, and it maps
+//   crack → `inkCrack` · hole → `inkHole` · scorch → `inkScorch` · wire → `inkWire` · dead → `inkDead`
+// with two exceptions and one addition, each made once, here:
+//
+//  • `rust` IS A STAIN, AND IT IS DRAWN AS `inkScorch`. A soot bloom and a rust bloom are the same
+//    mark in a two-colour dialect — a low-opacity ink fill over the part that has gone — and every
+//    such mark below carries a comment saying which of the two it came from. Inventing a second
+//    bloom to keep the mock's two words apart would put a mark on screen that no reader could tell
+//    from the first.
+//  • `spark` IS DROPPED, ON EVERY PIECE. Six of the twenty-one carried one (battery-bank, cooker,
+//    desk, standing-lamp, research-console, space-heater). A live arc is a claim about a POWERED
+//    circuit; these twins are the post-raid ship, where `state` is not even read (see `buildWrecked`)
+//    and the mock's own premise is "every system dead". The warm set could tell that lie in colour;
+//    the paper dialect has one accent and it is reserved for attention, so a spark here would have to
+//    be drawn in ink and would read as one more crack. Said once so no later piece re-adds it.
+//  • The mock's `pool` — a soft radial puddle under a leaking piece — is dropped for a different
+//    reason: it lies on the DECK, not on the object, and every mark in this block is anchored ON the
+//    piece it damages (`paper-resources.test.js`'s "damage lands ON the piece" rule). The dashed
+//    containment ring `inkArea` is the one mark that means "the deck around this", and it belongs to
+//    matter that has spilled, not to a fitting that has stopped working.
+//  • `inkTear` — a DASHED run — is used where the mock's own crack falls on something soft that
+//    parts rather than splits: the bunk's berth deck, the rug's border, a plant's stem. Three pieces,
+//    named in their own comments.
+//
+// ⛔ NO OXBLOOD IN ANY OF THE TWENTY-ONE. The accent is attention, faults and queued orders
+// (`docs/design/perilune-art-style.md` §1) and a wreck is none of those — it is a fact about the
+// object. The one accent on screen here is `battery-bank`'s hazard plate, which its PRISTINE painter
+// draws and this twin does not touch.
+//
+// ⭐ EVERY ANCHOR WAS MEASURED, NOT PLACED. `paper-resources.test.js`'s ⭐⭐ anchoring guard is the
+// instrument: a mark floating in clean paper INSIDE the piece's box is valid SVG, passes every box
+// rule, and is simply not on the object. Runs (`inkCrack`/`inkTear`/`inkWire`) are anchored at EVERY
+// vertex and a curve at every flattened sample, so a wire is only as good as its whole arc.
+// ⚠️ AND THE INSTRUMENT HAS A KNOWN BLIND SIDE ON ROUND PIECES, WHICH IS WHY THREE OF THESE ARE
+// ANCHORED WHERE THEY ARE: `sketch-geom.flatten` stops at an `A` command, so a `cyl()` body
+// contributes only its LEFT wall and a `hoop()` only its left end point. The flanks of `fuel-drum`,
+// `supply-barrel` and `standing-lamp`'s column are therefore invisible to it — their marks ride the
+// wall line, the lid, the head and the sight gauge, which are the parts it can see AND the parts a
+// reader can. ⛔ It is the INSTRUMENT that is narrow here, not the pieces (CLAUDE.md's 9th shape),
+// and the two ROUND twins that shipped before this package carry anchors the same blind spot
+// rejects — `stool` one, `vice-post` two, re-measured here rather than remembered, and both on
+// `cyl()` bodies. They are left exactly as they are: this package does not
+// touch the nine, and a mark moved to satisfy a guard that cannot see its own subject would be a
+// worse drawing bought with no evidence.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const batteryBank = (s) => paintFitting(s, 'battery-bank', (_s, { F }) => {
+  inkCrack(s, F, [[10, 6, 30], [28, 6, 52]]);             // a cell case, split down its face
+  inkScorch(s, F, 50, 6, 40, 14);                         // the middle cell, burnt out
+  inkScorch(s, F, 82, 6, 86, 12);                         // …and the mock's RUST, the same bloom
+  inkWire(s, F, [20, 6, 104], [26, 6, 92], [16, 6, 76]);  // a lead off the bus bar, hanging
+});
+
+const o2Scrubber = (s) => paintFitting(s, 'o2-scrubber', (_s, { F }) => {
+  inkHole(s, F, 35, 0, 96, 7);                            // the vent, punched through at its hub
+  inkDead(s, F, [[14, 0, 126], [56, 0, 126], [56, 0, 140], [14, 0, 140]]);   // the readout, out
+  inkCrack(s, F, [[12, 0, 38], [38, 0, 54]]);             // across the filter drawer
+  inkScorch(s, F, 20, 0, 20, 14);                         // the mock's rust, at the plinth
+  inkWire(s, F, [29, 0, 55], [24, 0, 44], [30, 0, 34]);   // the drawer's own harness, torn out
+});
+
+const hydroponics = (s) => paintFitting(s, 'hydroponics', (_s, { F }) => {
+  inkCrack(s, F, [[20, 0, 39], [60, 0, 39]]);             // the bottom lamp bar, split end to end
+  inkHole(s, F, 60, 2, 88, 6);                            // the second tray, holed
+  inkScorch(s, F, 30, 2, 133, 14);                        // the third tray, burnt
+  inkScorch(s, F, 78, 2, 45, 10);                         // the mock's rust, on the bottom tray
+});
+
+const cooker = (s) => paintFitting(s, 'cooker', (_s, { F }) => {
+  // ⚠️ BOTH RUNS ARE LONGER THAN THEY FIRST WERE, AND THE REASON IS MEASURED, NOT TASTE.
+  // `sketch-adoption.test.js`'s tellable-apart leg reads DRAWN LENGTH out of `d` attributes, and an
+  // `inkScorch` is an `<ellipse>` with no `d` at all — so a twin whose damage is mostly bloom scores
+  // as if it had almost none. At three marks, one of them a bloom, this piece came out at 113 units
+  // against a floor of 120: legible on screen, under the bar that says a player can tell a broken
+  // cooker from a working one. The crack now crosses the whole hob plate and the loom hangs the
+  // height of the oven door, which is also the better drawing.
+  inkCrack(s, F, [[10, 10, 96], [80, 46, 96]]);           // the hob plate, split right across
+  inkScorch(s, F, 26, 0, 26, 14);                         // the oven door, scorched at the sill
+  inkWire(s, F, [12, 0, 60], [6, 0, 40], [14, 0, 18]);    // the supply loom, torn out and hanging
+});
+
+const cooler = (s) => paintFitting(s, 'cooler', (_s, { F }) => {
+  inkHole(s, F, 46, 0, 156, 5);                           // straight through the dial
+  inkCrack(s, F, [[12, 0, 120], [40, 0, 96]]);            // across the door
+  inkScorch(s, F, 20, 0, 40, 16);
+  inkScorch(s, F, 66, 0, 150, 10);                        // the mock's rust, beside the dial
+});
+
+const diningTable = (s) => paintFitting(s, 'dining-table', (_s, { F }) => {
+  inkCrack(s, F, [[30, 10, 75], [92, 40, 75]]);           // the top, split across
+  inkCrack(s, F, [[110, 60, 75], [150, 30, 75]]);         // …and again, the mock's second crack
+  inkScorch(s, F, 60, 45, 75, 18);
+  inkScorch(s, F, 40, 70, 75, 10);                        // the mock's rust, at the back edge
+});
+
+const bunkBed = (s) => paintFitting(s, 'bunk-bed', (_s, { F }) => {
+  // ⚠️ `inkTear` AND NOT `inkCrack`: the mock cracks the upper berth, and a berth deck is canvas over
+  // a frame — it parts, it does not split. Same mark, drawn in the dash the soft half of this
+  // vocabulary uses.
+  inkTear(s, F, [[40, 10, 125], [90, 40, 125], [130, 20, 125]]);   // the upper berth, opened up
+  inkHole(s, F, 70, 35, 45, 8);                           // through the lower deck
+  inkScorch(s, F, 150, 30, 45, 16);
+  inkCrack(s, F, [[190, 1, 112], [175, 1, 82]]);          // the ladder, rungs torn off the stiles
+});
+
+const desk = (s) => paintFitting(s, 'desk', (_s, { F }) => {
+  inkDead(s, F, [[92, 0, 30], [138, 0, 30], [138, 0, 62], [92, 0, 62]]);   // the open bay, dark
+  inkCrack(s, F, [[20, 30, 90], [80, 20, 90]]);           // the worktop, split
+  inkCrack(s, F, [[100, 50, 90], [140, 25, 90]]);         // …the mock's second crack
+  inkScorch(s, F, 30, 0, 40, 14);                         // over the drawers
+  inkWire(s, F, [30, 0, 38], [22, 0, 28], [30, 0, 20]);   // a loom, pulled out of the pedestal
+});
+
+const chair = (s) => paintFitting(s, 'chair', (_s, { F }) => {
+  inkCrack(s, F, [[10, 16, 43], [34, 30, 43]]);           // the seat, split across
+  inkScorch(s, F, 32, 26, 43, 10);
+  inkScorch(s, F, 14, 18, 3, 8);                          // the mock's rust, on the base puck
+});
+
+const locker = (s) => paintFitting(s, 'locker', (_s, { F }) => {
+  inkCrack(s, F, [[10, 0, 150], [38, 0, 120]]);           // the near door, split
+  inkHole(s, F, 68, 0, 60, 7);                            // the far door, punched
+  inkScorch(s, F, 20, 0, 40, 16);                         // over the vent bank
+  inkScorch(s, F, 76, 0, 150, 10);                        // the mock's rust, at the far shoulder
+});
+
+const rug = (s) => paintFitting(s, 'rug', (_s, { F }) => {
+  inkHole(s, F, 40, 30, 0, 8);
+  inkHole(s, F, 90, 60, 0, 6);                            // the mock burns TWO holes in this one
+  inkScorch(s, F, 70, 20, 0, 18);
+  // ⚠️ `inkTear`: the mock lays a second stripe band over the mat. A woven mat does not crack — its
+  // border rule is where the weave lets go, so the run is dashed and follows the rule it is parting.
+  inkTear(s, F, [[12, 9, 0], [12, 45, 0], [12, 77, 0]]);  // the border rule, unravelled
+});
+
+const standingLamp = (s) => paintFitting(s, 'standing-lamp', (_s, { F }) => {
+  // ⚠️ THREE LONG RUNS ON PURPOSE — same measurement as the cooker's. This piece is 44 cm wide and
+  // 178 tall, so its whole drawing is a thin column of ink; three short marks scored 44 units against
+  // the 120-unit floor in `sketch-adoption.test.js`'s tellable-apart leg. Each run now spans the part
+  // it damages end to end rather than nicking it.
+  inkCrack(s, F, [[2, 22, 178], [42, 22, 178]]);          // the shade, split right across its rim
+  inkCrack(s, F, [[17, 22, 142], [14, 22, 26]]);          // the column, buckled — the mock's offset pole
+  inkWire(s, F, [17, 22, 146], [11, 22, 104], [17, 22, 62]);   // the flex, pulled out of the column
+});
+
+const researchConsole = (s) => paintFitting(s, 'research-console', (_s, { F }) => {
+  inkDead(s, F, [[13, 4, 104], [47, 4, 104], [47, 4, 124], [13, 4, 124]]);  // the screen, dark
+  inkCrack(s, F, [[14, 4, 120], [42, 4, 106]]);           // across it
+  inkHole(s, F, 30, 4, 112, 5);
+  inkWire(s, F, [30, 12, 20], [36, 12, 14], [30, 12, 8]); // the trunk, torn out under the column
+});
+
+const workbench = (s) => paintFitting(s, 'workbench', (_s, { F }) => {
+  inkCrack(s, F, [[24, 10, 92], [96, 40, 92]]);           // the worktop, split along its length
+  inkHole(s, F, 140, 70, 120, 7);                         // the pegboard, punched
+  inkScorch(s, F, 40, 70, 140, 18);
+  inkWire(s, F, [100, 70, 100], [108, 70, 110], [100, 70, 122]);  // a lead, hanging off the board
+});
+
+const storageCrate = (s) => paintFitting(s, 'storage-crate', (_s, { F }) => {
+  inkCrack(s, F, [[8, 0, 36], [34, 0, 22]]);              // across a brace
+  inkHole(s, F, 46, 0, 12, 6);
+  inkScorch(s, F, 14, 0, 10, 10);
+  inkScorch(s, F, 10, 0, 40, 7);                          // the mock's rust, at the upper corner
+});
+
+const fuelDrum = (s) => paintFitting(s, 'fuel-drum', (_s, { F }) => {
+  inkHole(s, F, 3, 27.5, 50, 7);                          // holed through the flank, between hoops
+  inkCrack(s, F, [[0, 27.5, 68], [2, 27.5, 46]]);         // the wall, split down the seam
+  inkScorch(s, F, 30, 30, 85, 12);                        // the head, burnt round the bung
+});
+
+const pipeRun = (s) => paintFitting(s, 'pipe-run', (_s, { F }) => {
+  inkCrack(s, F, [[60, 0, 158], [130, 0, 172]]);          // along the duct's face
+  inkScorch(s, F, 200, 0, 164, 16);
+  inkScorch(s, F, 40, 0, 154, 12);                        // the mock's rust, at the near end
+});
+
+const spaceHeater = (s) => paintFitting(s, 'space-heater', (_s, { F }) => {
+  inkCrack(s, F, [[18, 0, 100], [42, 0, 72]]);            // across the fin bank
+  inkScorch(s, F, 30, 0, 52, 12);
+  inkWire(s, F, [60, 0, 50], [66, 0, 58], [60, 0, 66]);   // the element's lead, out of the knob boss
+});
+
+const shelfRack = (s) => paintFitting(s, 'shelf-rack', (_s, { F }) => {
+  inkCrack(s, F, [[24, 10, 76], [70, 30, 76]]);           // a shelf, split across
+  inkHole(s, F, 80, 20, 118, 6);                          // the shelf above it, holed
+  inkScorch(s, F, 36, 20, 160, 14);
+  inkScorch(s, F, 5, 0, 150, 8);                          // the mock's rust, up the near upright
+});
+
+const supplyBarrel = (s) => paintFitting(s, 'supply-barrel', (_s, { F }) => {
+  inkHole(s, F, 30, 35, 118, 6);                          // the lid, punched
+  inkCrack(s, F, [[51, 6, 80], [51, 6, 50]]);             // the sight gauge, split down its run
+  inkScorch(s, F, 44, 38, 118, 12);                       // the lid, burnt beside the hole
+});
+
+const herbPlanter = (s) => paintFitting(s, 'herb-planter', (_s, { F }) => {
+  inkCrack(s, F, [[10, 0, 30], [42, 0, 16]]);             // the trough, split at the near corner
+  // ⚠️ `inkTear`: the mock draws its foliage as two drooping strokes rather than a standing plant.
+  // A stem gives way in fibres, so the run is dashed and lies along the stem it follows down.
+  inkTear(s, F, [[58, 22, 72], [61, 22, 58], [59, 22, 44]]);   // the tallest stem, broken over
+  inkScorch(s, F, 90, 20, 38, 12);                        // the soil, spoiled at the third plant
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -1449,126 +831,333 @@ const sleeperPod = (s) => paintMachine(s, 'sleeper-pod', (_s, { F }) => {
   inkCrack(s, F, [[42, 42, 182], [54, 42, 172]]);         // the hood, stove in
 });
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// — lane/warm-purge —
+// THE TWELVE PAPER MATERIALS — post-raid twins for the six wall and six floor skins
+//
+// ⚠️ SAME CONSTRUCTION AS THE NINE FITTINGS, THE EIGHT GROUND STACKS, THE FOURTEEN FIXTURES AND THE
+// THIRTEEN MACHINES ABOVE, AND FOR THE SAME REASON: each twin RE-RUNS its own pristine painter
+// (`paper-materials.paintMaterial`) and then adds ink damage on the same frame. That is the only
+// construction under which "the twin is the same wall, breached" survives a redraw of the wall.
+//
+// ⭐ AND ONE THING IS DIFFERENT HERE, WHICH IS WHY THIS BLOCK CARRIES ITS OWN VOCABULARY. A fitting,
+// a fixture, a machine and a ground stack are all OBJECTS: each has a `SPECS` row, so its frame is a
+// fact about the piece and `inkCrack(s, F, [[x, y, z]…])` can be authored in absolute centimetres.
+// A MATERIAL IS A TILING FIELD WITH NO INTRINSIC EXTENT — the caller's box aspect is the statement of
+// how many metres it wants (`paper-materials.js`'s header), so the SAME skin is 100 × 100 cm on a
+// floor tile, 100 × 240 cm on a wall slab and a 100 × 100 cm CROP on a palette chip. A mark authored
+// at "38 cm up" would sit at mid-height on the chip, a sixth of the way up the slab, and in a third
+// place again on the floor. So every mark below is authored in NORMALISED coordinates of the frame —
+// a fraction across `g.wCm` and a fraction down `g.hCm` — and converted through `g` at draw time. The
+// damage then lies on the same part of the material at every one of the three call sites.
+//
+// ⛔ NO OXBLOOD, IN ANY OF THEM. `paper-materials.js`'s own header states it for the pristine skins
+// and it extends unchanged to the damage: `ATTEND` is attention, faults and queued orders, and a
+// breached wall is a fact about the ship, not an alert about it. Ink, paper and the flat side tone
+// are the whole palette; `paper-materials.test.js` closes over it on both the raw and treated twin.
+//
+// ⚠️ EACH TWIN CARRIES ITS OWN PIECE'S DAMAGE, TRANSCRIBED FROM THE WARM TWIN IT REPLACES
+// (`docs/design/perilune-item-set.dc.html`, the "Wrecked — post-raid state" section, and the warm
+// builders that stood in this file's `── WALLS ──` / `── FLOORS ──` blocks until 2026-08-06). A
+// cracked glass partition is not a rusted grating: the mock's own marks, in the mock's own places,
+// re-expressed on a 106 × 94 card mapped to `u = 0.5 + x/106`, `v = 0.5 + y/94`.
+//
+// ⚠️ WHAT THE INK DIALECT CANNOT SAY, SAID OUT LOUD: THERE IS NO OXIDE MARK. The warm twins carry
+// `rust()`, an oxblood-brown ellipse, on seven of the twelve — and brown is not in this palette, so
+// it cannot be transcribed as itself. It is carried as a WIDER, FAINTER `matScorch` bloom (0.10
+// against a burn's 0.16, and half again the radius): the same stain in the same place, distinguished
+// from a burn by size and weight rather than by hue. That is a LOSS and it is named rather than
+// hidden — a reader comparing the two sets will find seven blooms where the mock had a burn and a
+// stain, and this note is the reason.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * THE MATERIAL TWINS' INK VOCABULARY — the four marks, in the SKIN'S OWN NORMALISED FRAME.
+ *
+ * ⛔ NOT `fittings.line`/`disc`: those project through a fitting's `roomFrame` (x across, y BACK, z
+ * up) and there is no such frame here — a skin is a flat field, and `g` maps `x/y/z/u` in
+ * centimetres of its own extent. Handing them `g` would be handing a projector a frame it was not
+ * built for. These four are the same four IDEAS (`inkCrack`/`inkTear`/`inkHole`/`inkScorch`) drawn
+ * against `g` instead, and nothing here is new ink: the weights are `fittings.W`'s five rungs, which
+ * is the ramp every one of the twelve skins is already drawn on.
+ *
+ * `u` runs 0 → 1 LEFT to RIGHT across `g.wCm`; `v` runs 0 → 1 TOP to BOTTOM down `g.hCm`.
+ * A RADIUS is a fraction of the frame's SHORTER side, so a hole is round on a 1 : 2.4 wall slab and
+ * round on a square floor tile, rather than an ellipse on one of them.
+ */
+const mx = (g, u) => g.x(u * g.wCm);
+const my = (g, v) => g.y(v * g.hCm);
+const mr = (g, f) => g.u(f * Math.min(g.wCm, g.hCm));
+const mPts = (g, pts) => pts.map(([u, v], i) => `${i ? 'L' : 'M'}${mx(g, u)} ${my(g, v)}`).join(' ');
+
+/** A SPLIT — the mock's `crack()`, as a kinked polyline. Heavier than any rule the skins draw except
+ *  `hull-plating`'s strake, so damage reads OVER the field rather than joining it. */
+const matCrack = (s, g, pts) => s.path(mPts(g, pts), { fill: 'none', stroke: INK, sw: W.heavy });
+
+/** A TEAR — a sprung slat, a lifted bar, a spall flake, a frayed edge. Dashed, in centimetres of the
+ *  skin's own frame, so the dash pitch is the same length of material at every call size. */
+const matTear = (s, g, pts) =>
+  s.path(mPts(g, pts), {
+    fill: 'none', stroke: INK, sw: W.fine, opacity: 0.85, dash: `${g.u(3)} ${g.u(2)}`,
+  });
+
+/**
+ * A BREACH — a hole THROUGH the surface.
+ *
+ * ⚠️ AN EIGHT-GON, NOT A DISC, AND NOT FULLY FILLED — both halves are the mock's own decisions read
+ * forward. The warm `hole()` carries `border-radius:52% 42% 56% 44%`, whose whole purpose is that a
+ * breach is not a circle; the eight authored radius multipliers below are that asymmetry, and they
+ * are LITERALS because this file has no scatter term anywhere in it (see the header: damage looks
+ * like randomness, and a builder that reached for `Math.random` would present as a golden-frame
+ * flake rather than as a bug).
+ *
+ * ⛔ AND THE FILL IS 0.55, NOT SOLID, BECAUSE OF `paper-materials.js`'s NO-LARGE-SOLID-FILLS RULE.
+ * The largest breach in the set is `hull-plating`'s at f = 0.22, i.e. ~12.5 % of the tile; solid it
+ * would be a mean darkening of 12.5 %, against the darkest thing in the pristine set (the grating's
+ * open slots, 32 % at 0.30 ≈ 9.6 % mean). At 0.55 it is ~6.9 % — the darkest mark on a damaged tile,
+ * which is right, and still inside the ceiling the skins hold themselves to. The rim is `W.mass`, so
+ * the breach reads by its EDGE at tile size, where any interior tone is one grey pixel.
+ */
+const HOLE_LOBES = [1, 0.86, 1.04, 0.9, 0.98, 0.84, 1.06, 0.92];
+const matHole = (s, g, u, v, f) => {
+  const cx = mx(g, u);
+  const cy = my(g, v);
+  const r = mr(g, f);
+  const d = HOLE_LOBES
+    .map((k, i) => {
+      const a = (i / HOLE_LOBES.length) * Math.PI * 2;
+      return `${i ? 'L' : 'M'}${r3(cx + r * k * Math.cos(a))} ${r3(cy + r * k * Math.sin(a))}`;
+    })
+    .join(' ') + ' Z';
+  s.path(d, { fill: INK, opacity: 0.55 });
+  s.path(d, { fill: 'none', stroke: INK, sw: W.mass });
+};
+
+/** A BURN — the mock's `scorch()`, as a soft ink bloom. The default 0.16 is `wrecked.js`'s own
+ *  `inkScorch` opacity; the OXIDE blooms that stand in for `rust()` pass 0.10 and a wider radius
+ *  (see the block header for why there is no second mark for them). */
+const matScorch = (s, g, u, v, f, opacity = 0.16) =>
+  s.circle({ cx: mx(g, u), cy: my(g, v), r: mr(g, f), fill: INK, opacity });
+
+// ── WALLS ────────────────────────────────────────────────────────────────────────────────────
+
+// STEEL BULKHEAD · 8% — the mock: one breach left of centre, two splits (one steep, one shallow
+// across the top-left), a burn low-right and an oxide stain low-left. The RIVETED PLATE is left
+// whole: it is this wall's identifying feature and the reason it is not `hull-plating`.
+const steelBulkhead = (s, env) => paintMaterial(s, 'steel-bulkhead', env, (_s, g) => {
+  matCrack(s, g, [[0.635, 0.131], [0.707, 0.357], [0.855, 0.528]]);   // the steep split, plate to plate
+  matCrack(s, g, [[0.088, 0.31], [0.204, 0.213], [0.346, 0.18]]);     // …and the shallow one above it
+  matHole(s, g, 0.368, 0.564, 0.2);                                   // punched through, between the courses
+  matScorch(s, g, 0.783, 0.755, 0.18);
+  matScorch(s, g, 0.179, 0.819, 0.18, 0.1);                           // the oxide stain, low on the plate
+});
+
+// TIMBER-LINED WALL · 17% — the mock: a breach right of centre, ONE long split running with the
+// grain, a burn high on the boarding and a stain low-right. The BOARD COURSES survive, which is the
+// piece's whole identity ("horizontal warm-wood planks").
+const timberLinedWall = (s, env) => paintMaterial(s, 'timber-lined-wall', env, (_s, g) => {
+  matCrack(s, g, [[0.222, 0.168], [0.234, 0.385], [0.326, 0.577]]);   // split down four board courses
+  matHole(s, g, 0.613, 0.606, 0.17);                                  // a board stove in
+  matScorch(s, g, 0.443, 0.181, 0.2);                                 // charring, high on the boarding
+  matScorch(s, g, 0.821, 0.819, 0.165, 0.1);                          // damp stain at the skirting end
+});
+
+// BLAST WALL · 12% — the mock: a breach left of centre, a steep split right, a burn low-right, a
+// stain low-left. ⚠️ THE HAZARD BAND IS NOT MARKED AND THAT IS DELIBERATE: it is the one thing that
+// says this slab is not `steel-bulkhead`, and the mock's own premise for its seventy is that each
+// twin keeps one identifying feature so it still reads as the same object.
+const blastWall = (s, env) => paintMaterial(s, 'blast-wall', env, (_s, g) => {
+  matCrack(s, g, [[0.676, 0.227], [0.728, 0.437], [0.853, 0.603]]);   // through the armour, past the band
+  matHole(s, g, 0.406, 0.628, 0.15);                                  // punched below the hazard bar
+  matScorch(s, g, 0.783, 0.798, 0.15);
+  matScorch(s, g, 0.179, 0.84, 0.15, 0.1);                            // oxide, at the bolted stile
+});
+
+// GLASS PARTITION · 2% — THE MOST DAMAGED PIECE IN THE SET AND THE ONE WHOSE CHARACTER IS ENTIRELY
+// ITS OWN: the mock gives it FIVE cracks and TWO spall flakes and no oxide at all, because glass does
+// not rust — it stars, and then it drops flakes. Three of the five cracks run corner to corner across
+// the glazing rather than stopping at a mullion, which is what says the whole sheet went at once.
+const glassPartition = (s, env) => paintMaterial(s, 'glass-partition', env, (_s, g) => {
+  matCrack(s, g, [[0.044, 0.328], [0.418, 0.556], [0.842, 0.586]]);   // the long star, right across
+  matCrack(s, g, [[0.422, 0.814], [0.587, 0.533], [0.842, 0.356]]);   // the second, rising
+  matCrack(s, g, [[0.135, 0.475], [0.212, 0.721], [0.375, 0.908]]);   // …and the third, into the sill
+  matHole(s, g, 0.726, 0.309, 0.12);                                  // a light gone entirely
+  matHole(s, g, 0.33, 0.777, 0.09);                                   // and a smaller one, low
+  matTear(s, g, [[0.055, 0.814], [0.265, 0.91]]);                     // a spall flake, on the sill
+  matTear(s, g, [[0.701, 0.864], [0.865, 0.817]]);                    // and its pair
+});
+
+// INSULATED WALL · 21% — the mock's tell is that the breach EXPOSES THE BATT: it draws a tan panel
+// inside the hole, the one twin in the walls block with a second layer in its wound. Here the batt
+// shows as a tear laid ACROSS the breach, which is the sewn panel opened rather than a colour.
+const insulatedWall = (s, env) => paintMaterial(s, 'insulated-wall', env, (_s, g) => {
+  matCrack(s, g, [[0.199, 0.144], [0.233, 0.369], [0.348, 0.558]]);   // down the stud line
+  matHole(s, g, 0.651, 0.585, 0.16);                                  // the facing, punched
+  matTear(s, g, [[0.547, 0.585], [0.755, 0.585]]);                    // …the batt behind it, opened
+  matScorch(s, g, 0.425, 0.181, 0.16);
+  matScorch(s, g, 0.821, 0.84, 0.15, 0.1);                            // oxide, at the bottom rail
+});
+
+// HULL PLATING · 7% — the mock's ONE mark nothing else in the set carries: a COLD BLOOM in the
+// breach (`shade:[14,'rgba(90,140,180,.35)']`), which is vacuum showing through the ship. It is the
+// biggest hole in the twelve and it is the only one drawn inside a second, wider, fainter ring — the
+// cold reaching out of the hole into the plating around it. The WELDED STRAKES survive.
+const hullPlating = (s, env) => paintMaterial(s, 'hull-plating', env, (_s, g) => {
+  matScorch(s, g, 0.443, 0.521, 0.31, 0.09);                          // the cold bloom, around the breach
+  matHole(s, g, 0.443, 0.521, 0.22);                                  // …and the breach itself, to vacuum
+  matCrack(s, g, [[0.678, 0.102], [0.751, 0.292], [0.888, 0.429]]);   // a strake, split off its lap
+  matScorch(s, g, 0.764, 0.777, 0.16);
+  matScorch(s, g, 0.179, 0.84, 0.165, 0.1);                           // oxide, low on the plate
+});
+
+// ── FLOORS ───────────────────────────────────────────────────────────────────────────────────
+
+// STEEL-TAN FLOOR · 35% — the LEAST damaged piece in the set, and the mock draws it that way: no
+// oxide, no tear, just a breach and two splits crossing the deck plate with one burn. It is the
+// authored deck, so its twin has to stay the quietest damage in the twelve for the same reason the
+// pristine skin is the quietest drawing.
+const steelTanFloor = (s, env) => paintMaterial(s, 'steel-tan-floor', env, (_s, g) => {
+  matCrack(s, g, [[0.479, 0.255], [0.67, 0.403], [0.899, 0.447]]);    // across the plate
+  matCrack(s, g, [[0.31, 0.878], [0.424, 0.744], [0.576, 0.675]]);    // …and back the other way
+  matHole(s, g, 0.33, 0.649, 0.16);                                   // through, beside a screw
+  matScorch(s, g, 0.745, 0.734, 0.17);
+});
+
+// WOOD PLANK FLOOR · 29% — the mock's tell is a LIFTED PLANK: a board-shaped sliver lying at 14° to
+// the courses, which is a thing only a plank floor can do. Carried as a tear along that same axis,
+// so it still crosses the boards rather than lying along one.
+const woodPlankFloor = (s, env) => paintMaterial(s, 'wood-plank-floor', env, (_s, g) => {
+  matCrack(s, g, [[0.089, 0.579], [0.283, 0.678], [0.495, 0.676]]);   // a board, split end to end
+  matHole(s, g, 0.651, 0.394, 0.15);                                  // burnt through two courses
+  matTear(s, g, [[0.627, 0.733], [0.939, 0.82]]);                     // …and one sprung off its nails
+  matScorch(s, g, 0.425, 0.819, 0.18);
+});
+
+// GROW MATTING · 5% — the mock gives this one NO CRACK AT ALL, and that is the honest difference
+// between a woven mat and a slab: matting does not split, it burns, stains and TEARS. A torn strap
+// lying across the weave at 18° is its whole character.
+const growMatting = (s, env) => paintMaterial(s, 'grow-matting', env, (_s, g) => {
+  matHole(s, g, 0.349, 0.394, 0.15);                                  // burnt clean through the lattice
+  matTear(s, g, [[0.112, 0.739], [0.435, 0.857]]);                    // a strap, torn out of the weave
+  matScorch(s, g, 0.689, 0.649, 0.2);
+  matScorch(s, g, 0.783, 0.245, 0.165, 0.1);                          // the wet stain a grow deck gets
+});
+
+// CREAM TILE FLOOR · 33% — the mock: TWO long splits crossing at a shallow angle and a small breach
+// in a corner, with one burn. That is what a tiled floor does — it cracks along its grout runs rather
+// than holing — and it is why the two splits here are the longest marks on any floor in the set.
+const creamTileFloor = (s, env) => paintMaterial(s, 'cream-tile-floor', env, (_s, g) => {
+  matCrack(s, g, [[0.136, 0.338], [0.386, 0.503], [0.675, 0.535]]);   // across four tiles
+  matCrack(s, g, [[0.506, 0.798], [0.649, 0.651], [0.833, 0.585]]);   // …crossing the first
+  matHole(s, g, 0.255, 0.755, 0.12);                                  // one tile gone entirely
+  matScorch(s, g, 0.764, 0.266, 0.15);
+});
+
+// METAL GRATING · 26% — the mock's tell is a LIFTED BEARING BAR: a long thin sliver at 16°, the one
+// mark that says this floor is made of separate bars you can prise up. The OPEN SLOTS survive — they
+// are the piece's identity and the reason a dropped part is gone.
+const metalGrating = (s, env) => paintMaterial(s, 'metal-grating', env, (_s, g) => {
+  matCrack(s, g, [[0.092, 0.271], [0.262, 0.375], [0.455, 0.388]]);   // a cross rod, snapped
+  matHole(s, g, 0.67, 0.606, 0.17);                                   // bars gone, a hole in the walkway
+  matTear(s, g, [[0.168, 0.761], [0.53, 0.878]]);                     // …and one bar prised up
+  matScorch(s, g, 0.217, 0.755, 0.14);
+  matScorch(s, g, 0.802, 0.223, 0.15, 0.1);                           // oxide, where the rod sheared
+});
+
+// CARPET FLOOR · 15% — the mock gives this one TWO breaches and NO crack: carpet does not split, it
+// burns holes. Its second tell is a FRAYED BAND running the full width low on the tile, which is the
+// piece's own border going. The border is what separates carpet from `grow-matting`, so the fray is
+// drawn ON it rather than anywhere else.
+const carpetFloor = (s, env) => paintMaterial(s, 'carpet-floor', env, (_s, g) => {
+  matHole(s, g, 0.311, 0.585, 0.15);                                  // burnt through the pile
+  matHole(s, g, 0.726, 0.33, 0.11);                                   // and again, smaller
+  matTear(s, g, [[0.028, 0.862], [0.972, 0.862]]);                    // the border, frayed right across
+  matScorch(s, g, 0.689, 0.755, 0.18);
+});
+
 // ── the registry ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * `WRECKED[pristineItemId] = { paint, state, mockLabel }`.
+ * `WRECKED[pristineItemId] = { paint, state }`.
  *
  *  paint      the pure painter — never called directly; `buildWrecked()` wraps it in the harness
- *  state      the mock's remaining-condition badge, VERBATIM: `'0%'`–`'35%'`, or `'—'` for the 8
- *             loose resources, which cannot be repaired at all
- *  mockLabel  the label the mock's WRECKED section uses. 62 reuse the pristine label verbatim;
- *             the 8 resources are renamed, non-mechanically. Cross-checked against the committed
- *             spec by client/test/wrecked.test.js — it is evidence, not decoration.
+ *  state      the remaining-condition badge: `'0%'`–`'35%'`, or `'—'` for the 8 loose ground
+ *             stacks, which cannot be repaired at all, only written off
+ *
+ * ⚠️ `mockLabel` IS GONE, AND THE FIELD'S DELETION IS THE PACKAGE (lane/warm-purge, 2026-08-06).
+ * It carried the label the mock's WRECKED section used, and it existed so that a HAND TRANSCRIPTION
+ * of seventy drawings could be checked row-for-row against the document it came from. No twin in this
+ * file is a transcription of anything any more: every one of the eighty re-runs its OWN pristine
+ * painter and adds ink damage, so there is no second document for a label to disagree with. Where the
+ * drawing came from is now a fact about the twin's SOURCE MODULE, and it lives once, in `TWIN_SOURCE`.
  *
  * Key order is `ITEM_IDS` order MINUS `NO_WRECKED_TWIN` (below), and the test asserts that by strict
  * deep-equality: a registry row added without a twin AND without a ledger entry, or a twin for a row
  * that does not exist, fails.
  */
 export const WRECKED = Object.freeze({
-  // ── OBJECTS (30) ──
-  'reactor':          { paint: reactor,        state: '4%',  mockLabel: 'REACTOR' },
-  'solar-panel':      { paint: solarPanel,     state: '11%', mockLabel: 'SOLAR PANEL' },
-  'battery-bank':     { paint: batteryBank,    state: '0%',  mockLabel: 'BATTERY BANK' },
-  'o2-scrubber':      { paint: o2Scrubber,     state: '17%', mockLabel: 'O₂ SCRUBBER' },
-  'oxygen-tank':      { paint: oxygenTank,     state: '6%',  mockLabel: 'OXYGEN TANK' },
-  'water-recycler':   { paint: waterRecycler,  state: '13%', mockLabel: 'WATER RECYCLER' },
-  'hydroponics':      { paint: hydroponics,    state: '9%',  mockLabel: 'HYDROPONICS' },
-  'cooker':           { paint: cooker,         state: '15%', mockLabel: 'COOKER' },
-  'cooler':           { paint: cooler,         state: '8%',  mockLabel: 'COOLER' },
-  'paste-dispenser':  { paint: pasteDispenser, state: '19%', mockLabel: 'PASTE DISPENSER' },
-  'dining-table':     { paint: diningTable,    state: '22%', mockLabel: 'DINING TABLE' },
-  'bunk-bed':         { paint: bunkBed,        state: '25%', mockLabel: 'BUNK BED' },
-  'desk':             { paint: desk,           state: '28%', mockLabel: 'DESK' },
-  'chair':            { paint: chair,          state: '31%', mockLabel: 'CHAIR' },
-  'locker':           { paint: locker,         state: '20%', mockLabel: 'LOCKER' },
-  'rug':              { paint: rug,            state: '12%', mockLabel: 'RUG' },
-  'standing-lamp':    { paint: standingLamp,   state: '5%',  mockLabel: 'STANDING LAMP' },
-  'potted-plant':     { paint: pottedPlant,    state: '0%',  mockLabel: 'POTTED PLANT' },
-  'bookshelf':        { paint: bookshelf,      state: '24%', mockLabel: 'BOOKSHELF' },
-  'med-bed':          { paint: medBed,         state: '18%', mockLabel: 'MED BED' },
-  'research-console': { paint: researchConsole, state: '7%', mockLabel: 'RESEARCH CONSOLE' },
-  'comms-dish':       { paint: commsDish,      state: '3%',  mockLabel: 'COMMS DISH' },
-  'sensor-array':     { paint: sensorArray,    state: '10%', mockLabel: 'SENSOR ARRAY' },
-  'workbench':        { paint: workbench,      state: '26%', mockLabel: 'WORKBENCH' },
-  'fabricator':       { paint: fabricator,     state: '2%',  mockLabel: 'FABRICATOR' },
-  'storage-crate':    { paint: storageCrate,   state: '30%', mockLabel: 'STORAGE CRATE' },
-  'blast-door':       { paint: blastDoor,      state: '14%', mockLabel: 'BLAST DOOR' },
-  'turret':           { paint: turret,         state: '0%',  mockLabel: 'TURRET' },
-  'cryopod':          { paint: cryopod,        state: '16%', mockLabel: 'CRYOPOD' },
-  'fuel-drum':        { paint: fuelDrum,       state: '21%', mockLabel: 'FUEL DRUM' },
+  // ── THE TWENTY-ONE RESTYLED FITTINGS (P2b) — the mock's own furniture, re-authored on paper ──
+  // Each one WAS a mock transcription in `#33281b` and carried a real `mockLabel`; lane/warm-purge
+  // re-drew all twenty-one by the construction the nine below already used (re-run the pristine
+  // painter, add ink damage). The warm rows they used to sit beside are gone from `index.js` in the
+  // same commit, which is why this block leads the table now.
+  'battery-bank':     { paint: batteryBank,    state: '0%' },
+  'o2-scrubber':      { paint: o2Scrubber,     state: '17%' },
+  'hydroponics':      { paint: hydroponics,    state: '9%' },
+  'cooker':           { paint: cooker,         state: '15%' },
+  'cooler':           { paint: cooler,         state: '8%' },
+  'dining-table':     { paint: diningTable,    state: '22%' },
+  'bunk-bed':         { paint: bunkBed,        state: '25%' },
+  'desk':             { paint: desk,           state: '28%' },
+  'chair':            { paint: chair,          state: '31%' },
+  'locker':           { paint: locker,         state: '20%' },
+  'rug':              { paint: rug,            state: '12%' },
+  'standing-lamp':    { paint: standingLamp,   state: '5%' },
+  'research-console': { paint: researchConsole, state: '7%' },
+  'workbench':        { paint: workbench,      state: '26%' },
+  'storage-crate':    { paint: storageCrate,   state: '30%' },
+  'fuel-drum':        { paint: fuelDrum,       state: '21%' },
 
-  // ── WALLS (6) ──
-  'steel-bulkhead':   { paint: steelBulkhead,  state: '8%',  mockLabel: 'STEEL BULKHEAD' },
-  'timber-lined-wall': { paint: timberLinedWall, state: '17%', mockLabel: 'TIMBER-LINED WALL' },
-  'blast-wall':       { paint: blastWall,      state: '12%', mockLabel: 'BLAST WALL' },
-  'glass-partition':  { paint: glassPartition, state: '2%',  mockLabel: 'GLASS PARTITION' },
-  'insulated-wall':   { paint: insulatedWall,  state: '21%', mockLabel: 'INSULATED WALL' },
-  'hull-plating':     { paint: hullPlating,    state: '7%',  mockLabel: 'HULL PLATING' },
+  // ── THE TWELVE MATERIALS (2026-08-06) — six walls, six floors ──
+  // ⭐ THE ONE POPULATION WHOSE DAMAGE IS AUTHORED IN NORMALISED COORDINATES rather than in absolute
+  // centimetres: a skin is a tiling FIELD with no intrinsic extent, so the same mark has to land on
+  // the same part of the material on a 1 m floor tile, a 2.4 m wall slab and a 26 px palette chip.
+  // See the block header above `matCrack` for the whole argument.
+  'steel-bulkhead':   { paint: steelBulkhead,  state: '8%' },
+  'timber-lined-wall': { paint: timberLinedWall, state: '17%' },
+  'blast-wall':       { paint: blastWall,      state: '12%' },
+  'glass-partition':  { paint: glassPartition, state: '2%' },
+  'insulated-wall':   { paint: insulatedWall,  state: '21%' },
+  'hull-plating':     { paint: hullPlating,    state: '7%' },
+  'steel-tan-floor':  { paint: steelTanFloor,  state: '35%' },
+  'wood-plank-floor': { paint: woodPlankFloor, state: '29%' },
+  'grow-matting':     { paint: growMatting,    state: '5%' },
+  'cream-tile-floor': { paint: creamTileFloor, state: '33%' },
+  'metal-grating':    { paint: metalGrating,   state: '26%' },
+  'carpet-floor':     { paint: carpetFloor,    state: '15%' },
 
-  // ── FLOORS (6) ──
-  'steel-tan-floor':  { paint: steelTanFloor,  state: '35%', mockLabel: 'STEEL-TAN FLOOR' },
-  'wood-plank-floor': { paint: woodPlankFloor, state: '29%', mockLabel: 'WOOD PLANK FLOOR' },
-  'grow-matting':     { paint: growMatting,    state: '5%',  mockLabel: 'GROW MATTING' },
-  'cream-tile-floor': { paint: creamTileFloor, state: '33%', mockLabel: 'CREAM TILE FLOOR' },
-  'metal-grating':    { paint: metalGrating,   state: '26%', mockLabel: 'METAL GRATING' },
-  'carpet-floor':     { paint: carpetFloor,    state: '15%', mockLabel: 'CARPET FLOOR' },
+  // ── THE FIVE FITTINGS THAT SIT IN THE MOCK'S OLD "FIXTURES" RUN ──
+  'pipe-run':         { paint: pipeRun,        state: '10%' },
+  'space-heater':     { paint: spaceHeater,    state: '3%' },
+  'shelf-rack':       { paint: shelfRack,      state: '24%' },
+  'supply-barrel':    { paint: supplyBarrel,   state: '18%' },
+  'herb-planter':     { paint: herbPlanter,    state: '4%' },
 
-  // ── FIXTURES (18) ──
-  'sliding-door':     { paint: slidingDoor,    state: '23%', mockLabel: 'SLIDING DOOR' },
-  'airlock':          { paint: airlock,        state: '1%',  mockLabel: 'AIRLOCK' },
-  'hatch-ladder':     { paint: hatchLadder,    state: '27%', mockLabel: 'HATCH / LADDER' },
-  'power-conduit':    { paint: powerConduit,   state: '9%',  mockLabel: 'POWER CONDUIT' },
-  'air-vent':         { paint: airVent,        state: '32%', mockLabel: 'AIR VENT' },
-  'pipe-run':         { paint: pipeRun,        state: '10%', mockLabel: 'PIPE RUN' },
-  'wall-lamp':        { paint: wallLamp,       state: '4%',  mockLabel: 'WALL LAMP' },
-  'viewport':         { paint: viewport,       state: '6%',  mockLabel: 'VIEWPORT' },
-  'wall-screen':      { paint: wallScreen,     state: '0%',  mockLabel: 'WALL SCREEN' },
-  'space-heater':     { paint: spaceHeater,    state: '3%',  mockLabel: 'SPACE HEATER' },
-  'vent-fan':         { paint: ventFan,        state: '11%', mockLabel: 'VENT FAN' },
-  'shelf-rack':       { paint: shelfRack,      state: '24%', mockLabel: 'SHELF RACK' },
-  'supply-barrel':    { paint: supplyBarrel,   state: '18%', mockLabel: 'SUPPLY BARREL' },
-  'weapons-rack':     { paint: weaponsRack,    state: '14%', mockLabel: 'WEAPONS RACK' },
-  'sun-lamp':         { paint: sunLamp,        state: '0%',  mockLabel: 'SUN LAMP' },
-  'herb-planter':     { paint: herbPlanter,    state: '4%',  mockLabel: 'HERB PLANTER' },
-  'deck-sign':        { paint: deckSign,       state: '16%', mockLabel: 'DECK SIGN' },
-  'floodlight':       { paint: floodlight,     state: '6%',  mockLabel: 'FLOODLIGHT' },
+  // ── FITTINGS (9, VR-P2) — the catalogue rows the mock never had ──
+  // Their `state` badges are AUTHORED (the catalogue publishes no condition figures) and are spread
+  // across the same 2–31% band the mock used, so nothing on screen can tell a repo-authored badge
+  // from a transcribed one — which is correct: a badge is a fact about a device, not about a document.
+  'bench':            { paint: bench,        state: '19%' },
+  'stool':            { paint: stool,        state: '6%' },
+  'cot':              { paint: cot,          state: '23%' },
+  'footlocker':       { paint: footlocker,   state: '12%' },
+  'sink':             { paint: sink,         state: '8%' },
+  'compost-bin':      { paint: compostBin,   state: '27%' },
+  'vice-post':        { paint: vicePost,     state: '15%' },
+  'curtain-rail':     { paint: curtainRail,  state: '2%' },
+  'shrine-shelf':     { paint: shrineShelf,  state: '31%' },
 
-  // ── RESOURCES (8) — RENAMED in the mock, and NOT by a mechanical suffix ──
-  // `CONTROLLER · FRIED` also shortens its stem from `CONTROLLER MODULE`. Any code that derived one
-  // label from the other by string surgery would be right 69 times and wrong once, silently.
-  'regolith':         { paint: regolith,       state: '—', mockLabel: 'REGOLITH · CONTAMINATED' },
-  'potato':           { paint: potato,         state: '—', mockLabel: 'POTATO · SPOILED' },
-  'scrap':            { paint: scrap,          state: '—', mockLabel: 'SCRAP · SLAGGED' },
-  'parts':            { paint: parts,          state: '—', mockLabel: 'PARTS · SEIZED' },
-  'controller-module': { paint: controllerModule, state: '—', mockLabel: 'CONTROLLER · FRIED' },
-  'seals':            { paint: seals,          state: '—', mockLabel: 'SEALS · PERISHED' },
-  'ice':              { paint: ice,            state: '—', mockLabel: 'ICE · MELTED' },
-  'corpse':           { paint: corpse,         state: '—', mockLabel: 'CORPSE · UNSHROUDED' },
-
-  // ── CRYO (2) ──
-  'cryo-capsule-occupied': { paint: cryoCapsuleOccupied, state: '13%', mockLabel: 'CRYO CAPSULE · OCCUPIED' },
-  'cryo-capsule-open':     { paint: cryoCapsuleOpen,     state: '10%', mockLabel: 'CRYO CAPSULE · OPEN' },
-
-  // ── FITTINGS (9, VR-P2) — REPO-AUTHORED, NOT FROM THE MOCK ──
-  // `mockLabel: null` is the load-bearing field here, not the name: it is what takes these nine OUT
-  // of the label/badge bijection above, which must keep measuring exactly the mock's seventy. The
-  // catalogue entry each one comes from is carried in `catalogue` instead, so the row still names its
-  // source. Their `state` badges are AUTHORED (the catalogue publishes no condition figures) and are
-  // spread across the same 2–31% band the mock uses, so nothing on screen can tell a repo-authored
-  // badge from a transcribed one — which is correct: a badge is a fact about a device, not about a
-  // document.
-  'bench':            { paint: bench,        state: '19%', mockLabel: null, catalogue: '01 BENCH' },
-  'stool':            { paint: stool,        state: '6%',  mockLabel: null, catalogue: '05 STOOL' },
-  'cot':              { paint: cot,          state: '23%', mockLabel: null, catalogue: '07 COT' },
-  'footlocker':       { paint: footlocker,   state: '12%', mockLabel: null, catalogue: '09 FOOTLOCKER' },
-  'sink':             { paint: sink,         state: '8%',  mockLabel: null, catalogue: '11 SINK' },
-  'compost-bin':      { paint: compostBin,   state: '27%', mockLabel: null, catalogue: '21 COMPOST BIN' },
-  'vice-post':        { paint: vicePost,     state: '15%', mockLabel: null, catalogue: '23 VICE POST' },
-  'curtain-rail':     { paint: curtainRail,  state: '2%',  mockLabel: null, catalogue: '29 CURTAIN RAIL' },
-  'shrine-shelf':     { paint: shrineShelf,  state: '31%', mockLabel: null, catalogue: '30 SHRINE SHELF' },
-
-  // ── CAPSULES AND CELLS (3, 2026-08-05) — REPO-AUTHORED FROM THE CATALOGUE, NOT FROM THE MOCK ──
+  // ── CAPSULES AND CELLS (3, 2026-08-05) — FROM THE CATALOGUE ──
   //
   // ⭐ `cell-sound`'s TWIN IS NOT INK DAMAGE ON THE PRISTINE PIECE, AND IT IS THE ONLY ONE IN THIS
   // FILE THAT IS NOT. It is catalogue 34, CELL SPENT — a drawing the OWNER made of exactly this
@@ -1578,95 +1167,63 @@ export const WRECKED = Object.freeze({
   // over the sound cell would put a repo-authored wreck on screen while the design's own went
   // unreachable. ⇒ THE STANDING RULE IS UNCHANGED AND WORTH RESTATING: re-run the pristine painter
   // UNLESS the design ships the damaged drawing itself, which so far it has done exactly once.
+  // ⚠️ IT IS THEREFORE THE ONE NAMED EXCEPTION to the prefix guard in `client/test/wrecked.test.js`
+  // ("a twin IS its pristine piece plus damage"), by id and with this reason quoted beside it.
   //
-  // ⚠️ `cell-spent` HAS NO ROW HERE OF ITS OWN — it is in `NO_WRECKED_TWIN` below, for `swarf`'s
+  // ⚠️ `cell-spent` HAS NO ROW HERE OF ITS OWN — it is in `NO_WRECKED_TWIN` below, for `turnings`'
   // reason. And `wreckedInfo` takes a twin's `size` from its PRISTINE row, so the spent cell reports
   // `cell-sound`'s footprint (73 × 112) rather than its own (94 × 112, the swell). That is the
   // existing contract, not a defect: `size` is a placement HINT nothing lays out on today, and a twin
   // claiming a different footprint from the thing it replaces is the drift the shared field prevents.
-  'capsule-sealed':   { paint: capsuleSealed, state: '5%',  mockLabel: null, catalogue: '31 CAPSULE, SEALED' },
-  'capsule-open':     { paint: capsuleOpen,   state: '17%', mockLabel: null, catalogue: '32 CAPSULE, OPEN' },
-  'cell-sound':       { paint: cellSound,     state: '0%',  mockLabel: null, catalogue: '34 CELL, SPENT' },
+  'capsule-sealed':   { paint: capsuleSealed, state: '5%' },
+  'capsule-open':     { paint: capsuleOpen,   state: '17%' },
+  'cell-sound':       { paint: cellSound,     state: '0%' },
 
-  // ── PAPER GROUND STACKS (8) — lane/paper-resources, REPO-AUTHORED, NOT FROM THE MOCK ──────────
+  // ── PAPER GROUND STACKS (8) — lane/paper-resources ──────────────────────────────────────────
   //
-  // ⚠️ `state: '—'` ON ALL EIGHT, AND IT IS THE SAME CLAIM THE MOCK MAKES about the warm resources
-  // it replaced: the em-dash means "cannot be repaired, only written off", which is true of matter
-  // and false of machinery. A percentage here would promise a repair verb that does not exist for a
-  // pile. ⇒ The state census in `wrecked.test.js` therefore moves on the DASH side and not on the
-  // percentage side, which is the tell that this package added resources and not devices.
-  //
-  // `catalogue` carries `PAPER RESOURCE · <NAME>` rather than a `NN NAME` card reference: these nine
-  // have no card in `design-import/Perilune Fittings.dc.html` at all, and writing a number that does
-  // not exist would be worse than saying where the drawing really came from.
-  'spoil-heap':       { paint: spoilHeap,    state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · SPOIL HEAP' },
-  'tuber-crate':      { paint: tuberCrate,   state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · TUBER CRATE' },
-  'plate-offcut':     { paint: plateOffcut,  state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · PLATE OFFCUT' },
-  'gear-set':         { paint: gearSet,      state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · GEAR SET' },
-  'control-card':     { paint: controlCard,  state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · CONTROL CARD' },
-  'seal-set':         { paint: sealSet,      state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · SEAL SET' },
-  'ice-block':        { paint: iceBlock,     state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · ICE BLOCK' },
-  'body-bag':         { paint: bodyBag,      state: '—', mockLabel: null, catalogue: 'PAPER RESOURCE · BODY BAG' },
+  // ⚠️ `state: '—'` ON ALL EIGHT: the em-dash means "cannot be repaired, only written off", which is
+  // true of matter and false of machinery. A percentage here would promise a repair verb that does
+  // not exist for a pile. ⇒ The state census in `wrecked.test.js` therefore moves on the DASH side
+  // and not on the percentage side, which is the tell that a package added resources, not devices.
+  'spoil-heap':       { paint: spoilHeap,    state: '—' },
+  'tuber-crate':      { paint: tuberCrate,   state: '—' },
+  'plate-offcut':     { paint: plateOffcut,  state: '—' },
+  'gear-set':         { paint: gearSet,      state: '—' },
+  'control-card':     { paint: controlCard,  state: '—' },
+  'seal-set':         { paint: sealSet,      state: '—' },
+  'ice-block':        { paint: iceBlock,     state: '—' },
+  'body-bag':         { paint: bodyBag,      state: '—' },
 
-  // — lane/paper-fixtures —
-  // ── THE PAPER FIXTURES (14, 2026-08-05) — REPO-AUTHORED, AND NOT FROM A CARD EITHER ──
-  //
-  // The nine above are repo-authored twins of pieces the owner's CATALOGUE draws pristine; these
-  // fourteen are repo-authored twins of pieces the catalogue does not draw at all (see
-  // `client/src/items/paper-fixtures.js`'s header for why they are designed here rather than ported).
-  // So `catalogue` names the SECTION of that module rather than a card number — writing a card number
-  // that does not exist would be the exact kind of citation the next reader cannot follow.
-  // `mockLabel: null` is again the load-bearing field: it is what keeps these out of the mock's
-  // label/badge bijection, which must go on measuring exactly seventy.
-  //
-  // Their `state` badges are AUTHORED and spread across the mock's own 0–35% band, for the reason the
-  // nine above give: a badge is a fact about a device, not about a document, and nothing on screen
-  // should be able to tell a repo-authored badge from a transcribed one.
-  'door-sliding':     { paint: doorSliding,    state: '21%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
-  'door-airlock':     { paint: doorAirlock,    state: '3%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
-  'door-blast':       { paint: doorBlast,      state: '13%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
-  'deck-hatch':       { paint: deckHatch,      state: '26%', mockLabel: null, catalogue: 'PAPER FIXTURES · WAYS THROUGH' },
-  'conduit-run':      { paint: conduitRun,     state: '7%',  mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
-  'vent-grille':      { paint: ventGrille,     state: '30%', mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
-  'extractor-fan':    { paint: extractorFan,   state: '9%',  mockLabel: null, catalogue: 'PAPER FIXTURES · SERVICES' },
-  'hull-port':        { paint: hullPort,       state: '5%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
-  'bulkhead-screen':  { paint: bulkheadScreen, state: '0%',  mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
-  'arms-rack':        { paint: armsRack,       state: '17%', mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
-  'deck-marker':      { paint: deckMarker,     state: '24%', mockLabel: null, catalogue: 'PAPER FIXTURES · WALL FURNITURE' },
-  'lamp-sconce':      { paint: lampSconce,     state: '4%',  mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
-  'grow-lamp':        { paint: growLamp,       state: '11%', mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
-  'flood-lamp':       { paint: floodLamp,      state: '6%',  mockLabel: null, catalogue: 'PAPER FIXTURES · LIGHT' },
+  // ── THE PAPER FIXTURES (14, 2026-08-05) — the ship's architecture, redrawn ──
+  'door-sliding':     { paint: doorSliding,    state: '21%' },
+  'door-airlock':     { paint: doorAirlock,    state: '3%' },
+  'door-blast':       { paint: doorBlast,      state: '13%' },
+  'deck-hatch':       { paint: deckHatch,      state: '26%' },
+  'conduit-run':      { paint: conduitRun,     state: '7%' },
+  'vent-grille':      { paint: ventGrille,     state: '30%' },
+  'extractor-fan':    { paint: extractorFan,   state: '9%' },
+  'hull-port':        { paint: hullPort,       state: '5%' },
+  'bulkhead-screen':  { paint: bulkheadScreen, state: '0%' },
+  'arms-rack':        { paint: armsRack,       state: '17%' },
+  'deck-marker':      { paint: deckMarker,     state: '24%' },
+  'lamp-sconce':      { paint: lampSconce,     state: '4%' },
+  'grow-lamp':        { paint: growLamp,       state: '11%' },
+  'flood-lamp':       { paint: floodLamp,      state: '6%' },
 
-  // ── MACHINES (13, 2026-08-05) — REPO-AUTHORED, FROM NO DOCUMENT AT ALL ──────────────────────
-  //
-  // ⚠️ A THIRD PROVENANCE, AND IT IS WORTH NAMING BECAUSE THE OTHER TWO ARE BOTH DOCUMENTS. Seventy
-  // twins are transcribed from `docs/design/perilune-item-set.dc.html`; nine are repo-authored damage
-  // over pieces the owner's FITTINGS CATALOGUE draws. These thirteen are damage over pieces the repo
-  // drew for itself (`client/src/items/machines.js`), because no document draws the ship's own plant.
-  // They are ledgered in `NON_MOCK_TWIN` for exactly the reason the nine are: what that ledger
-  // protects is the label/badge bijection below measuring the mock's own SEVENTY, and a repo-authored
-  // twin left inside that population does not merely fail the walk — it shifts every row after it
-  // onto the wrong label, which is a green-looking wrong answer for the rows either side of the gap.
-  //
-  // ⚠️ THE `catalogue` STRINGS CARRY AN `M` PREFIX AND THAT IS NOT COSMETIC. The nine fittings twins
-  // name a card in `design-import/Perilune Fittings.dc.html` — `'01 BENCH'` IS a page a reader can
-  // turn to. These name a SHEET number in `client/tools/machines-sheet.mjs`, which is a different
-  // kind of citation, and giving them bare `'01'`…`'13'` would have put two different documents'
-  // numbering into one column with nothing to tell them apart. `wrecked.test.js` accepts both shapes
-  // and says which is which.
-  'reactor-plant':    { paint: reactorPlant,   state: '3%',  mockLabel: null, catalogue: 'M01 REACTOR PLANT' },
-  'solar-wing':       { paint: solarWing,      state: '12%', mockLabel: null, catalogue: 'M02 SOLAR WING' },
-  'bottle-rack':      { paint: bottleRack,     state: '7%',  mockLabel: null, catalogue: 'M03 BOTTLE RACK' },
-  'reclaimer-stack':  { paint: reclaimerStack, state: '14%', mockLabel: null, catalogue: 'M04 RECLAIMER STACK' },
-  'paste-column':     { paint: pasteColumn,    state: '20%', mockLabel: null, catalogue: 'M05 PASTE COLUMN' },
-  'med-cot':          { paint: medCot,         state: '26%', mockLabel: null, catalogue: 'M06 MED COT' },
-  'fab-cell':         { paint: fabCell,        state: '10%', mockLabel: null, catalogue: 'M07 FAB CELL' },
-  'ring-array':       { paint: ringArray,      state: '5%',  mockLabel: null, catalogue: 'M08 RING ARRAY' },
-  'dish-mast':        { paint: dishMast,       state: '18%', mockLabel: null, catalogue: 'M09 DISH MAST' },
-  'plant-pot':        { paint: plantPot,       state: '29%', mockLabel: null, catalogue: 'M10 PLANT POT' },
-  'book-case':        { paint: bookCase,       state: '33%', mockLabel: null, catalogue: 'M11 BOOK CASE' },
-  'deck-turret':      { paint: deckTurret,     state: '8%',  mockLabel: null, catalogue: 'M12 DECK TURRET' },
-  'sleeper-pod':      { paint: sleeperPod,     state: '16%', mockLabel: null, catalogue: 'M13 SLEEPER POD' },
+  // ── MACHINES (13, 2026-08-05) — the ship's own plant, which no design document draws ──
+  'reactor-plant':    { paint: reactorPlant,   state: '3%' },
+  'solar-wing':       { paint: solarWing,      state: '12%' },
+  'bottle-rack':      { paint: bottleRack,     state: '7%' },
+  'reclaimer-stack':  { paint: reclaimerStack, state: '14%' },
+  'paste-column':     { paint: pasteColumn,    state: '20%' },
+  'med-cot':          { paint: medCot,         state: '26%' },
+  'fab-cell':         { paint: fabCell,        state: '10%' },
+  'ring-array':       { paint: ringArray,      state: '5%' },
+  'dish-mast':        { paint: dishMast,       state: '18%' },
+  'plant-pot':        { paint: plantPot,       state: '29%' },
+  'book-case':        { paint: bookCase,       state: '33%' },
+  'deck-turret':      { paint: deckTurret,     state: '8%' },
+  'sleeper-pod':      { paint: sleeperPod,     state: '16%' },
 });
 
 /**
@@ -1675,23 +1232,13 @@ export const WRECKED = Object.freeze({
  * in `client/test/wrecked.test.js`, so an omission has to be argued in a commit message rather than
  * accumulate as a default.
  *
- * ⚠️ IT WAS EMPTY UNTIL THE `swarf` PIECE, AND "empty" WAS AN IMPORT ARTEFACT, NOT AN INVARIANT. The
- * mock ships 70 pristine pieces and 70 twins, so every row had one for as long as the registry was
- * exactly the mock. The moment a piece is drawn for a sim fact the mock predates, the twin set no
- * longer covers it — and `wrecked.test.js` pins the twin↔mock join as a BIJECTION against the
- * committed spec, so inventing a 71st twin would break the thing that proves the other 70 are right.
+ * ⚠️ IT WENT 3 → 2 ON 2026-08-06 AND THE ENTRY THAT LEFT WAS NOT A DECISION REVERSED. `swarf`'s
+ * registry row was retired with the rest of the warm set, so its line went with it — which its own
+ * entry, and `turnings`' below, both said in advance would happen.
  */
 export const NO_WRECKED_TWIN = Object.freeze({
-  swarf:
-    'SWARF IS ALREADY THE WRECKED STATE. It is what a machine BECOMES when it is stripped below the '
-    + 'Parts floor (`deconstruct.device_swarf`), so "wrecked swarf" names nothing the sim can reach: '
-    + 'there is no second condition for a pile of turnings to be in, and W9\'s `Degraded` bit — the '
-    + 'one mechanism that would ever give a RESOURCE two states — is unbuilt and, when it lands, '
-    + 'covers the 8 spoilable resources and not this one. The mock, which is the authority for the '
-    + 'twin set and the thing the bijection test measures against, has no SWARF piece at all.',
   'cell-spent':
-    'A SPENT CELL IS ALREADY THE WRECKED STATE — `swarf`\'s argument, in its second instance and on '
-    + 'a FUNCTIONAL row this time. Catalogue 34 is the drawing of a Battery below '
+    'A SPENT CELL IS ALREADY THE WRECKED STATE. Catalogue 34 is the drawing of a Battery below '
     + '`wear.WRECK_THRESHOLD`, and it is reached as `WRECKED[\'cell-sound\']` rather than by any '
     + 'glyph: `DeviceKind.Battery` has one `ForDevice` arm (`\'B\'`) and condition rides the '
     + '`devices` channel as a byte. So "a wrecked spent cell" names no state the sim can be in, and '
@@ -1700,47 +1247,81 @@ export const NO_WRECKED_TWIN = Object.freeze({
 
   // — lane/paper-resources —
   turnings:
-    'TURNINGS IS `swarf` REDRAWN, AND THE ARGUMENT COMES WITH IT UNCHANGED. It is what a machine '
-    + 'BECOMES when it is stripped below the Parts floor (`deconstruct.device_swarf`), so "damaged '
-    + 'turnings" names nothing the sim can reach — there is no second condition for a nest of '
-    + 'cuttings to be in. ⇒ THIS ENTRY IS NOT A SECOND DECISION: it is the SAME decision following '
-    + 'its piece onto new art, and the moment `swarf` retires so does its line above. Drawing a twin '
-    + 'here to make the eight into nine would be inventing a state the game does not have.',
+    'TURNINGS IS WHAT A MACHINE BECOMES when it is stripped below the Parts floor '
+    + '(`deconstruct.device_swarf`), so "damaged turnings" names nothing the sim can reach — there '
+    + 'is no second condition for a nest of cuttings to be in. ⚠️ THIS ENTRY USED TO END *"the '
+    + 'moment `swarf` retires so does its line above"*, naming the warm `swarf` row that carried the '
+    + 'SAME reason on the SAME material. That moment came on 2026-08-06: `swarf` is gone from the '
+    + 'registry and its ledger line went with it, so this is now the only home the argument has. '
+    + 'Drawing a twin here to make the eight into nine would be inventing a state the game does not '
+    + 'have.',
 });
 
 /**
- * TWINS THAT ARE NOT THE MOCK'S — the second ledger, and it exists because the first one cannot
- * express this case.
+ * ⭐ WHERE EVERY TWIN'S DRAWING CAME FROM — a TOTAL ledger, one entry per row of `WRECKED`.
  *
- * `NO_WRECKED_TWIN` says "this row has no twin, and here is why". These nine rows DO have twins; what
- * they have no part in is the JOIN against `docs/design/perilune-item-set.dc.html`'s `brokenD` array.
- * That join is a BIJECTION — `client/test/wrecked.test.js` asserts every mock piece is claimed
- * exactly once, and walks the mock's 70 pristine labels POSITIONALLY against the twinned rows — so a
- * repo-authored twin left inside it does not merely fail; it destroys the evidence that the other
- * seventy are transcribed correctly, which is the whole reason that test reads the committed spec
- * instead of a remembered list.
+ * ⛔ THIS REPLACED `NON_MOCK_TWIN`, AND IT IS A CHANGE OF KIND RATHER THAN OF CONTENTS. That ledger
+ * was an EXCEPTION list (47 of 117 rows): "these twins are NOT the mock's". Two different facts were
+ * riding on one map — where a drawing came from, and whether a row joins the mock bijection — and the
+ * conflation was MEASURED, not theorised: the twelve materials genuinely ARE rows in
+ * `docs/design/perilune-item-set.dc.html`'s `brokenD` array, so re-authoring them on paper made both
+ * answers true at once and reddened three legs that could not both be satisfied. A total map has no
+ * such tension: it answers only the first question, for every row, and there is no second question
+ * left to ask because the bijection is gone (see the file header).
  *
- * ⇒ THE INVARIANT IS: `WRECKED_IDS` is every registry row minus `NO_WRECKED_TWIN`, in registry order
- * (pinned); and the MOCK join runs over `WRECKED_IDS` minus THIS ledger, which must be exactly 70
- * (pinned). Both sides fail loudly, and neither can be satisfied by relaxing the other.
+ * ⇒ AND IT FAILS IN THE DIRECTION THE OLD ONE COULD NOT. `NON_MOCK_TWIN` could hide a row by ADDING
+ * it — a row quietly moved into the exception list left the bijection green over a smaller set, which
+ * is the fifth trap shape. Adding a row to a TOTAL map changes nothing at all, and OMITTING one fails
+ * by name.
  *
- * Every entry here also carries `mockLabel: null` in `WRECKED` above, and the test pins the two facts
- * to each other: a ledgered row with a mock label, or an unledgered row without one, is a lie about
- * where a drawing came from.
+ * THE VALUE'S SHAPE NAMES THE POPULATION, and each is checked against the shape ITS OWN source
+ * implies (an inclusion test, `client/test/wrecked.test.js`) rather than against one pattern relaxed
+ * enough for all five:
+ *
+ *   `NN NAME`              a card in `design-import/Perilune Fittings.dc.html` — a page a reader can
+ *                          turn to. The name is the DOCUMENT's, the id is ours (`04` is `Table`).
+ *   `MNN NAME`             a sheet entry in `client/tools/machines-sheet.mjs`. The `M` prefix is NOT
+ *                          cosmetic: bare `01`…`13` would put two documents' numbering in one column.
+ *   `PAPER FIXTURES · X`   a SECTION of `client/src/items/paper-fixtures.js` — there is no card.
+ *   `PAPER RESOURCE · X`   a piece in `client/src/items/paper-resources.js` — there is no card.
+ *   `PAPER MATERIAL · X`   a skin in `client/src/items/paper-materials.js` — there is no card.
  */
-export const NON_MOCK_TWIN = Object.freeze({
+export const TWIN_SOURCE = Object.freeze({
+  // — the twenty-one restyled fittings (P2b, 2026-08-06). Read off each card's own header.
+  'battery-bank': '27 CELL RACK', 'o2-scrubber': '16 SCRUBBER', 'hydroponics': '20 GROW RACK',
+  'cooker': '10 STOVE', 'cooler': '12 COLD LOCKER', 'dining-table': '04 TABLE',
+  'bunk-bed': '08 BUNK STACK', 'desk': '13 WORKTOP', 'chair': '02 CHAIR', 'locker': '03 LOCKER',
+  'rug': '28 MAT', 'standing-lamp': '25 DECK LAMP', 'research-console': '24 TERMINAL',
+  'workbench': '22 WORKBENCH', 'storage-crate': '14 CRATE', 'fuel-drum': '18 DRUM',
+  'pipe-run': '17 DUCT RUN', 'space-heater': '26 HEATER', 'shelf-rack': '06 LARDER',
+  'supply-barrel': '15 WATER BUTT', 'herb-planter': '19 PLANTER',
+
+  // — the twelve materials (2026-08-06). No card exists for a wall or floor skin, so the value names
+  //   the module, in the shape the ground stacks and the paper fixtures already use.
+  'steel-bulkhead': 'PAPER MATERIAL · STEEL BULKHEAD',
+  'timber-lined-wall': 'PAPER MATERIAL · TIMBER-LINED WALL',
+  'blast-wall': 'PAPER MATERIAL · BLAST WALL',
+  'glass-partition': 'PAPER MATERIAL · GLASS PARTITION',
+  'insulated-wall': 'PAPER MATERIAL · INSULATED WALL',
+  'hull-plating': 'PAPER MATERIAL · HULL PLATING',
+  'steel-tan-floor': 'PAPER MATERIAL · STEEL-TAN FLOOR',
+  'wood-plank-floor': 'PAPER MATERIAL · WOOD PLANK FLOOR',
+  'grow-matting': 'PAPER MATERIAL · GROW MATTING',
+  'cream-tile-floor': 'PAPER MATERIAL · CREAM TILE FLOOR',
+  'metal-grating': 'PAPER MATERIAL · METAL GRATING',
+  'carpet-floor': 'PAPER MATERIAL · CARPET FLOOR',
+
+  // — the nine catalogue rows the mock never had (VR-P2)
   bench: '01 BENCH', stool: '05 STOOL', cot: '07 COT', footlocker: '09 FOOTLOCKER', sink: '11 SINK',
   'compost-bin': '21 COMPOST BIN', 'vice-post': '23 VICE POST', 'curtain-rail': '29 CURTAIN RAIL',
   'shrine-shelf': '30 SHRINE SHELF',
-  // 2026-08-05, the capsules and cells. `cell-sound`'s entry names 34 rather than 33 ON PURPOSE:
-  // this ledger's value is the catalogue entry the TWIN comes from, and that twin is card 34.
+
+  // — the capsules and cells. `cell-sound`'s entry names 34 rather than 33 ON PURPOSE: this ledger's
+  //   value is the entry the TWIN's drawing comes from, and that twin IS card 34.
   'capsule-sealed': '31 CAPSULE, SEALED', 'capsule-open': '32 CAPSULE, OPEN',
   'cell-sound': '34 CELL, SPENT',
 
-  // — lane/paper-resources — the eight redrawn ground stacks. ⚠️ THE VALUE IS NOT A CARD NUMBER, and
-  // the shape difference is the point: the nine above name a card in the owner's catalogue, these
-  // eight name a module, because there IS no card for a pile. `wrecked.test.js` checks each row
-  // against the shape its own source implies rather than forcing one pattern on both.
+  // — the eight redrawn ground stacks
   'spoil-heap': 'PAPER RESOURCE · SPOIL HEAP',
   'tuber-crate': 'PAPER RESOURCE · TUBER CRATE',
   'plate-offcut': 'PAPER RESOURCE · PLATE OFFCUT',
@@ -1750,9 +1331,7 @@ export const NON_MOCK_TWIN = Object.freeze({
   'ice-block': 'PAPER RESOURCE · ICE BLOCK',
   'body-bag': 'PAPER RESOURCE · BODY BAG',
 
-  // — lane/paper-fixtures — 2026-08-05, the ship's architecture. These fourteen have no CARD, so the
-  // value names the section of `client/src/items/paper-fixtures.js` the piece is drawn in, matching
-  // the `catalogue` field on their `WRECKED` rows.
+  // — the fourteen paper fixtures; the value names the SECTION of their module
   'door-sliding': 'PAPER FIXTURES · WAYS THROUGH',
   'door-airlock': 'PAPER FIXTURES · WAYS THROUGH',
   'door-blast': 'PAPER FIXTURES · WAYS THROUGH',
@@ -1768,9 +1347,7 @@ export const NON_MOCK_TWIN = Object.freeze({
   'grow-lamp': 'PAPER FIXTURES · LIGHT',
   'flood-lamp': 'PAPER FIXTURES · LIGHT',
 
-  // — lane/paper-machines — the thirteen machine twins, 2026-08-05. `M`-prefixed because they cite a
-  // SHEET (`client/tools/machines-sheet.mjs`) rather than a card in the owner's fittings document —
-  // see the section comment on their rows in `WRECKED` for why the two must be tellable apart.
+  // — the thirteen machines
   'reactor-plant': 'M01 REACTOR PLANT', 'solar-wing': 'M02 SOLAR WING',
   'bottle-rack': 'M03 BOTTLE RACK', 'reclaimer-stack': 'M04 RECLAIMER STACK',
   'paste-column': 'M05 PASTE COLUMN', 'med-cot': 'M06 MED COT', 'fab-cell': 'M07 FAB CELL',
@@ -1780,9 +1357,6 @@ export const NON_MOCK_TWIN = Object.freeze({
 
 /** The pristine itemIds that have a wrecked twin, in registry order. */
 export const WRECKED_IDS = Object.freeze(Object.keys(WRECKED));
-
-/** The twinned rows that came FROM the mock — the population the label/badge bijection measures. */
-export const MOCK_TWIN_IDS = Object.freeze(WRECKED_IDS.filter((id) => !(id in NON_MOCK_TWIN)));
 
 /** The id prefix that namespaces a wrecked piece away from its pristine twin. */
 export const WRECKED_PREFIX = 'wrecked:';
@@ -1816,46 +1390,53 @@ export function isWreckedItemId(id) {
  *
  * ⚠️ `state` IS NOT IN THIS LIST, AND ITS ABSENCE IS A FACT ABOUT THE ART, NOT AN OVERSIGHT. An
  * earlier draft of this line advertised `{ w, h, idPrefix, index, state }`, copied from `buildItem`.
- * The harness does forward `state` — but MEASURED, and RE-COUNTED rather than computed: **0 of the
- * 70 twins read it**, every one rendering byte-identically for `state:'on'` and `state:'off'`, while
- * **17 of the 70 PRISTINE rows do respond** (`reactor`, `o2-scrubber`, `water-recycler`, `cooker`,
- * `standing-lamp`, `workbench`, `fabricator`, `turret`, `sliding-door`, `airlock`, `power-conduit`,
- * `wall-lamp`, `space-heater`, `sun-lamp`, `floodlight`, `controller-module`,
- * `cryo-capsule-occupied`). So the contrast is real and it is 17-vs-0, not a rounding of two similar
- * numbers. A wrecked piece is dead by construction (that is what the mock's `dead()` mark means), so
- * there is no lit variant to ask for. Advertising an option that silently does nothing is how a call site gets written against
- * a guarantee that was never there. Deliberately NOT pinned by a test: "no twin responds to state"
- * is a property of today's 70 paintings, not a rule, and a future twin with a flickering emergency
- * strip would be a correct change that a pin would call a regression.
+ * The harness does forward `state` — and it is forwarded on, because a painter that wanted it could
+ * read it. No twin does: a wrecked piece is dead by construction, so there is no lit variant to ask
+ * for. ⚠️ THE MEASUREMENT THAT USED TO STAND HERE IS HISTORY AND IS QUOTED RATHER THAN DELETED —
+ * *"0 of the 70 twins read it … 17 of the 70 PRISTINE rows do respond (`reactor`, `o2-scrubber`,
+ * `water-recycler`, `cooker`, `standing-lamp`, `workbench`, `fabricator`, `turret`, `sliding-door`,
+ * `airlock`, `power-conduit`, `wall-lamp`, `space-heater`, `sun-lamp`, `floodlight`,
+ * `controller-module`, `cryo-capsule-occupied`)"*. Eleven of those seventeen ids no longer exist
+ * (lane/warm-purge retired the warm registry rows on 2026-08-06), so the CONTRAST it drew cannot be
+ * re-measured as written — re-measure it, do not quote it. Deliberately NOT pinned by a test: "no
+ * twin responds to state" is a property of today's paintings, not a rule, and a future twin with a
+ * flickering emergency strip would be a correct change that a pin would call a regression.
  *
  * @param {string} pristineId
  * @param {object} [opts] forwarded to the harness: `{ w, h, idPrefix, index }`
  * @returns {string} an SVG `<g>…</g>` fragment
  */
-/** The pristine ids drawn by one of the four PAPER catalogues — the set that wears the treatment. */
+/**
+ * The pristine ids drawn by one of the FIVE paper catalogues — the set that wears the treatment.
+ * ⚠️ `MATERIAL_IDS` JOINED ON 2026-08-06 (lane/warm-purge) and it is the one member of this union
+ * whose twins need a knob threaded for them; see `buildWrecked` below.
+ */
 const PAPER_CATALOGUE_IDS = new Set([
-  ...FITTING_IDS, ...MACHINE_IDS, ...FIXTURE_IDS, ...PAPER_RESOURCE_IDS,
+  ...FITTING_IDS, ...MACHINE_IDS, ...FIXTURE_IDS, ...PAPER_RESOURCE_IDS, ...MATERIAL_IDS,
 ]);
 
 /**
  * THE TWINS THAT WEAR THE SKETCH TREATMENT — 2026-08-05, the owner's `strong` ruling.
  *
- * A twin is treated IF AND ONLY IF ITS OWN PAINTING IS IN THE PAPER IDIOM, which takes TWO facts and
- * not one: the pristine piece must be drawn by a paper catalogue, AND the twin must be repo-authored
- * against that drawing rather than transcribed from the warm mock (`mockLabel === null`, which is
- * this file's own long-standing ledger of the distinction). Both are read from data here; neither is
- * a list, so a new paper piece or a retired mock twin moves this set on its own.
+ * A twin is treated IF AND ONLY IF ITS OWN PAINTING IS IN THE PAPER IDIOM, and since 2026-08-06 that
+ * is ONE fact rather than two: *has a twin, and is drawn by a paper catalogue*.
  *
- * ⛔ AND THE SECOND FACT IS NOT A TECHNICALITY — IT IS A DEFECT THIS PACKAGE FOUND AND DID NOT
- * CREATE. Twenty-one of the thirty-four fittings still have their WARM MOCK twin: `dining-table`'s
- * pristine drawing is the paper fitting and its twin is the 2026-07-28 mock transcription, painted
- * in `#33281b`. Treating those would put a freehand hand on warm art and break the palette closure
- * (`#3a2c1e` on the chair's twin — measured, which is how this was found). The mismatch is FILED for
- * the owner: it is visible today, and the treatment makes it more so, because the pristine piece is
- * now conspicuously hand-drawn beside a twin that is not.
+ * ⛔ IT USED TO TAKE TWO, AND THE SECOND ONE WAS NOT A TECHNICALITY — IT WAS THE DEFECT THIS SET WAS
+ * BUILT AROUND, NOW CLOSED. Twenty-one of the thirty-four fittings had a WARM MOCK twin:
+ * `dining-table`'s pristine drawing was the paper fitting and its twin was the 2026-07-28 mock
+ * transcription, painted in `#33281b`. Treating those would have put a freehand hand on warm art and
+ * broken the palette closure (`#3a2c1e` on the chair's twin — measured, which is how it was found),
+ * so the condition also required `mockLabel === null`. lane/warm-purge re-authored all twenty-one on
+ * paper AND retired every warm registry row, so there is no longer any twin that a paper catalogue
+ * draws and the mock painted: the second clause became `true` for all eighty, and a clause that can
+ * no longer be false is the fifth trap shape. It is DELETED rather than kept green.
+ *
+ * ⇒ WHAT REPLACES IT AS THE GUARD is `sketch-adoption.test.js`'s membership leg, which walks the
+ * whole of `WRECKED` and requires the treated set to be exactly this one — so a twin drawn in some
+ * third idiom still has to be argued rather than defaulting in.
  */
 const SKETCHED_TWINS = new Set(
-  [...PAPER_CATALOGUE_IDS].filter((id) => WRECKED[id] && WRECKED[id].mockLabel == null),
+  [...PAPER_CATALOGUE_IDS].filter((id) => WRECKED[id] !== undefined),
 );
 
 export function buildWrecked(pristineId, opts = {}) {
@@ -1873,11 +1454,29 @@ export function buildWrecked(pristineId, opts = {}) {
   // identical hand and the whole difference between `sketch(pristine)` and `sketch(twin)` is the
   // damage. Seeded differently, every stroke of both pieces would differ and the distinguishability
   // guard in `sketch-adoption.test.js` would be measuring the seed instead of the damage.
-  return item(`wrecked-${pristineId}`, opts, (s) => entry.paint(s),
-    { sketched: SKETCHED_TWINS.has(pristineId), seed: pristineId });
+  //
+  // ⭐ `env` IS THREADED TO THE PAINTER (2026-08-06), AND ONE POPULATION NEEDS IT. `item()` hands its
+  // painter the RESOLVED box — `{ w, h, facing, state, powered }` — and a MATERIAL twin cannot be
+  // painted without it: a skin has no `SPECS` row, so how many metres it draws is a function of the
+  // caller's box aspect alone (`paper-materials.frameForSkin`). Every other painter here takes one
+  // argument and ignores a second, which was measured across all 68 pre-existing twins before this
+  // line changed: byte-identical output either way.
+  //
+  // ⛔ `ground: false` FOR THE MATERIALS ONLY — `art-style.md` §4's GROUND EXCEPTION, and it has to be
+  // threaded BY HAND. `paper-materials.js` passes it at ITS OWN `item()` seam; `buildWrecked` calls
+  // `item()` itself, so a twin inherits nothing from the skin's harness. Un-threaded, a 12 × 8 room
+  // floor of damaged deck would draw ninety-six of the pawns' ground rules across it at the tiling
+  // pitch — the exact picture the ruling was taken from. A material is not a standing thing; it IS
+  // the deck, so the pawns' sixth tell has nothing to meet. `undefined` on every other row leaves
+  // `sketch()`'s own default alone rather than restating it here.
+  return item(`wrecked-${pristineId}`, opts, (s, env) => entry.paint(s, env), {
+    sketched: SKETCHED_TWINS.has(pristineId),
+    seed: pristineId,
+    ground: MATERIAL_IDS.includes(pristineId) ? false : undefined,
+  });
 }
 
-/** The mock's remaining-condition badge for a twin (`'12%'` / `'—'`), or `undefined`. */
+/** The remaining-condition badge for a twin (`'12%'` / `'—'`), or `undefined`. */
 export function wreckedState(pristineId) {
   const e = typeof pristineId === 'string' ? WRECKED[pristineId] : undefined;
   return e ? e.state : undefined;
@@ -1895,7 +1494,11 @@ export function wreckedInfo(pristineId) {
     pristineId,
     wreckedId: WRECKED_PREFIX + pristineId,
     state: e.state,
-    mockLabel: e.mockLabel,
+    // ⚠️ `mockLabel` STOOD HERE UNTIL 2026-08-06 and is REPLACED rather than dropped: a caller asking
+    // this function about a twin was asking, among other things, where its drawing came from. That
+    // answer now lives in `TWIN_SOURCE`, and it is read from there rather than copied onto the row —
+    // one home, so the two cannot disagree.
+    source: TWIN_SOURCE[pristineId],
     size: base ? base.size : undefined,
     kind: base ? base.kind : undefined,
   };
@@ -1903,8 +1506,8 @@ export function wreckedInfo(pristineId) {
 
 /**
  * Every registry row that is MISSING a wrecked twin. `Object.keys(NO_WRECKED_TWIN)` is the invariant
- * — NOT `[]`, since the `swarf` piece — and the test pins the two lists equal, so an UNLEDGERED
- * omission still fails and a ledgered one names its reason.
+ * — NOT `[]`, since the `cell-spent` and `turnings` rows — and the test pins the two lists equal, so
+ * an UNLEDGERED omission still fails and a ledgered one names its reason.
  */
 export function itemsWithoutWreckedTwin() {
   return ITEM_IDS.filter((id) => !WRECKED[id]);

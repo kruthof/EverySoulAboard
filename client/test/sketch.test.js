@@ -3,7 +3,9 @@
 // ⚠️ ADOPTED 2026-08-05, SO THE FRAMING CHANGED AND THE FILE DID NOT. This was the experiment's guard
 // rail — "nothing in the shipping tree imports it, so there is no product behaviour to pin". Both
 // halves of that are now false: `items/helpers.js` calls `sketch()` at the `item()` seam for all four
-// paper catalogues and their 47 twins, at `LEVELS.strong`, on the owner's ruling.
+// paper catalogues and their 80 twins, at `LEVELS.strong`, on the owner's ruling. (47 until
+// 2026-08-06, when lane/warm-purge re-authored the 21 mock-twinned fittings and the 12
+// materials on paper and retired every warm registry row — re-measure at sketch-adoption.)
 //
 // The DIVISION OF LABOUR is what to read this file against. Here: the module in isolation — its
 // determinism, its palette, its pass-through, and the ordering of the four levels. The ADOPTION —

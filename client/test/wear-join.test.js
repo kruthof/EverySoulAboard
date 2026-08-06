@@ -1,6 +1,6 @@
 // THE WEAR JOIN (client/src/items/wear.js) — the one place a device's CONDITION chooses its art.
 //
-// WHAT THIS FILE IS FOR, in one sentence: to make it impossible for the 70 post-raid twins to be
+// WHAT THIS FILE IS FOR, in one sentence: to make it impossible for the 80 post-raid twins to be
 // wired to the wrong tiles, at the wrong threshold, or by more than one rule.
 //
 // The three things it pins, and why each needed pinning rather than reading:
@@ -176,7 +176,13 @@ test('hasWreckedTwin follows the registry, including the ledgered row with no tw
   for (const id of ITEM_IDS) {
     assert.equal(hasWreckedTwin(id), !(id in NO_WRECKED_TWIN), `${id}`);
   }
-  assert.equal(hasWreckedTwin('swarf'), false, 'swarf IS the wrecked state — it has no twin');
+  // ⚠️ `swarf` STOOD HERE UNTIL 2026-08-06 (`assert.equal(hasWreckedTwin('swarf'), false)`), and its
+  // registry row was retired with the warm set. `turnings` is the same argument on the paper redraw —
+  // a nest of cuttings has no second condition to be in — and it is the row that carries the ledger
+  // line now. The loop above already covers it; this names it, because a ledgered omission that is
+  // only covered by a sweep is one someone deletes without noticing.
+  assert.equal(hasWreckedTwin('turnings'), false, 'turnings IS the wrecked state — it has no twin');
+  assert.equal(hasWreckedTwin('swarf'), false, 'a retired id has no twin either — buildTileItem is tolerant');
   for (const junk of ['', 'nope', null, undefined, 42, {}]) {
     assert.equal(hasWreckedTwin(/** @type {any} */ (junk)), false);
   }
@@ -258,7 +264,11 @@ test('DeviceKind → art is NOT a function, which is why the join keys on the it
     'every DeviceKind now has exactly one piece, so `wear.js`\'s stated reason for not keying on the\n'
     + 'wire\'s `kind` byte is no longer true. Re-read that paragraph before believing it.');
   // The two that matter by name — a door's three states and a capsule's two are the whole reason.
-  assert.ok(names.includes('Door'), 'Door is claimed by sliding-door / airlock / blast-door');
+  // ⚠️ THE THREE DOOR ROWS ARE `door-sliding` / `door-airlock` / `door-blast` SINCE lane/paper-fixtures
+  // (2026-08-05); the warm `sliding-door` / `airlock` / `blast-door` this line used to name were
+  // retired on 2026-08-06. The CLAIM did not change — a door's three states are the whole reason the
+  // join cannot key on the kind byte — only the rows carrying it.
+  assert.ok(names.includes('Door'), 'Door is claimed by door-sliding / door-airlock / door-blast');
   assert.ok(names.includes('CryoPod'),
     'CryoPod is claimed by BOTH capsule pieces. They are the pieces this package exists to put on\n'
     + 'screen, and a kind-keyed join could not tell them apart — it would fail on its headline case.');
@@ -283,10 +293,21 @@ test('DeviceKind → art is NOT a function, which is why the join keys on the it
   // demotion that was only half-made would leave the OLD row winning `deriveGlyphToItem`'s
   // first-wins rule (it is declared earlier), and every capsule on the wreck would still be warm
   // with this file green above.
-  for (const dead of ['cryo-capsule-occupied', 'cryo-capsule-open', 'battery-bank']) {
-    assert.equal(ITEMS[dead].glyph, null, `${dead} still claims a glyph`);
-    assert.ok(!Object.values(GLYPH_TO_ITEM).includes(dead),
-      `${dead} is still reachable from a glyph — the hand-over to the paper pieces is half-made`);
+  //
+  // ⭐ AND THE LIST SPLIT IN TWO ON 2026-08-06, WHICH IS THE STRONGER STATEMENT OF THE SAME THING.
+  // It was `['cryo-capsule-occupied', 'cryo-capsule-open', 'battery-bank']` — three rows held to a
+  // COMPLETED demotion. `battery-bank` is still registered and still held to it. The two capsules
+  // were RETIRED, so for them the demotion is closed the only way that cannot be half-made: the row
+  // is not there, and `buildItem` (which is tolerant) draws the placeholder for the id.
+  assert.equal(ITEMS['battery-bank'].glyph, null, 'battery-bank still claims a glyph');
+  assert.ok(!Object.values(GLYPH_TO_ITEM).includes('battery-bank'),
+    'battery-bank is still reachable from a glyph — the hand-over to cell-sound is half-made');
+  for (const gone of ['cryo-capsule-occupied', 'cryo-capsule-open']) {
+    assert.equal(ITEMS[gone], undefined,
+      `${gone} is back in the registry. It was declared ABOVE the paper capsule it was replaced by,\n`
+      + 'so a re-added row wins `deriveGlyphToItem`\'s first-wins rule and every capsule on the wreck\n'
+      + 'draws warm art again.');
+    assert.ok(!Object.values(GLYPH_TO_ITEM).includes(gone), `${gone} is reachable from a glyph`);
   }
   // …and the Battery's own char lands on the sound cell, whose WRECKED twin is the spent one.
   assert.equal(itemIdForGlyphChar('B'), 'cell-sound');
@@ -393,7 +414,7 @@ test('the Level-1 Overview paints a wrecked machine as its twin — driven, not 
   // ⚠️ THE ROWS GO IN RAW NOW, not through `deckDeviceConditions`. The plate takes the `devices`
   // channel directly (`ship-fittings.js`) because it draws EVERY deck and that adapter reshapes ONE.
   // The wear join itself is untouched: each row's `cond` still reaches `buildTileItem`, which is
-  // still the only door to the 70 post-raid twins. The glyph on the frame is now irrelevant to which
+  // still the only door to the 80 post-raid twins. The glyph on the frame is now irrelevant to which
   // piece is drawn — it is left in the fixture deliberately, so that if a later lane re-introduces a
   // frame read this test keeps working rather than going vacuous.
   // ⚠️ KIND 2, NOT KIND 3, AND THE CHANGE IS THE POINT. The old fixture used kind 3 and drew a
@@ -434,13 +455,42 @@ test('the Level-1 Overview paints a wrecked machine as its twin — driven, not 
   // strongest size-independent statement available here.
   assert.ok(wrecked.includes(`id="ov-d${DECK}-f${TX}-${TY}__0"`),
     'the piece on the device tile is not namespaced by this surface — the fixture missed the tile');
-  const twinMarks = buildWrecked('o2-scrubber', opts).match(/fill="([^"]+)"/g) || [];
-  const pieceMarks = buildItem('o2-scrubber', opts).match(/fill="([^"]+)"/g) || [];
-  const only = twinMarks.filter((f) => !pieceMarks.includes(f));
-  assert.ok(only.length > 0, 'non-vacuity: the twin has fills the pristine piece does not');
-  for (const f of only.slice(0, 3)) {
-    assert.ok(wrecked.includes(f), `the wrecked scene is missing the twin's own ${f}`);
-    assert.ok(!intact.includes(f), `the INTACT scene already carries the twin's ${f} — no join needed`);
+  // ⛔ THE HANDLE IS NO LONGER A COLOUR, AND `sketch: false` IS PART OF THE HANDLE (2026-08-06,
+  // lane/warm-purge). This used to take the twin's own FILL VALUES: a warm mock twin was steel over a
+  // paper piece, so a fill the pristine drawing never emitted was a size-independent way to say "this
+  // surface drew the TWIN". P2b re-authored the twenty-one paper twins in the SAME four colours as
+  // their pristine pieces — a twin is that piece's own painter re-run with ink damage added — and the
+  // fill diff went EMPTY, so the non-vacuity leg tripped rather than the assertions passing silently.
+  // The handle widens to the styling attributes the DAMAGE MARKS carry and the piece's vocabulary
+  // does not (`stroke-width="1.7"` is `inkCrack`'s, in no catalogue ramp; `opacity="0.16"` is
+  // `inkScorch`'s bloom); all are written pre-transform, so they stay size-independent, which is the
+  // property the fill scan was chosen for.
+  // ⚠️ AND `sketch: false` IS NOT A DETAIL: `overview-scene.js`'s `fittingLayer` builds plate
+  // miniatures RAW (art-style §4's plate exception), and the treatment RE-WRITES stroke widths. Built
+  // treated, the marks below are real marks of a real twin that this surface's HTML cannot contain,
+  // and the test would fail for a reason that has nothing to do with the join.
+  const markOpts = { ...opts, sketch: false };
+  const STYLE_ATTR = /(?:fill|stroke-width|stroke-dasharray|opacity)="[^"]+"/g;
+  const pieceMarks = buildItem('o2-scrubber', markOpts).match(STYLE_ATTR) || [];
+  const only = [...new Set((buildWrecked('o2-scrubber', markOpts).match(STYLE_ATTR) || [])
+    .filter((f) => !pieceMarks.includes(f)))];
+  assert.ok(only.length > 0,
+    'non-vacuity: the twin emits no styling attribute the pristine piece does not — the two loops\n'
+    + 'below would then be asserting nothing about which picture this surface drew');
+  // ⚠️ AND A MARK THE PRISTINE PLATE ALREADY DRAWS FOR ITS OWN REASONS CANNOT DISCRIMINATE. One
+  // does: `opacity="0.85"` is `inkDead`/`inkTear`'s AND the plate architecture's. It is dropped BY
+  // MEASUREMENT — the filter is "absent from the intact scene", never a name — so a later mark that
+  // collides moves this on its own. ⛔ THE FLOOR IS WHAT KEEPS THE FILTER HONEST: an exclusion that
+  // emptied the set would turn the loop below into an assertion about nothing, which is precisely the
+  // shape (CLAUDE.md's 4th trap) a scope filter creates when it quietly swallows its own subject.
+  const discriminating = only.filter((f) => !intact.includes(f));
+  assert.ok(discriminating.length >= 3,
+    `only ${discriminating.length} of the twin's ${only.length} own marks are absent from the PRISTINE\n`
+    + 'plate, so almost nothing here separates the two pictures. Either the plate started drawing the\n'
+    + 'twin always, or the twin stopped adding marks of its own.');
+  for (const f of discriminating.slice(0, 3)) {
+    assert.ok(wrecked.includes(f),
+      `the wrecked scene is missing the twin's own ${f} — the join did not reach this surface`);
   }
 });
 

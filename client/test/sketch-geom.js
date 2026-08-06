@@ -461,3 +461,72 @@ export function unbackedKnockouts(rows, paper, inkPaints) {
   }
   return { bad, count };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE TWIN'S DAMAGE — lifted here 2026-08-06 (lane/warm-purge) so it can be asked of ALL 80 twins
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⭐⭐ THESE FOUR WERE PRIVATE TO `paper-resources.test.js`, WHERE THEY WATCHED EIGHT ROWS, AND
+// LIFTING THEM IS THE HALF OF THE BIJECTION RESTRUCTURE THAT ADDS COVERAGE RATHER THAN REMOVING IT.
+// `client/test/wrecked.test.js` used to prove "this twin draws ITS OWN row's object" by joining every
+// twin's label to `docs/design/perilune-item-set.dc.html`'s own `brokenD` array. After 2026-08-06 no
+// twin is a transcription of anything — every one re-runs its pristine painter and adds ink — so
+// there is no second document for a label to disagree with, and the question has a MECHANICAL answer
+// instead: the twin's element list must BEGIN with the pristine piece's, in order, and everything
+// after that prefix must land on the drawing. That is `damageMarks` + `offPieceAnchors`, and it is
+// strictly stronger than the label walk on the surviving question — a painter that is correctly
+// NAMED but calls `paintFitting(s, '<another row>')` passes every count and every name in the suite
+// and fails `damageMarks` by name.
+//
+// ⚠️ A SCORCH AND A HOLE ARE ANCHORED AT THEIR CENTRE, NOT THEIR RIM. They are REGIONS: a burn that
+// laps over the edge of the thing it burned is correct, and asking the rim to be contained would
+// condemn it. Every other mark is a run, and a run is anchored at every vertex it turns on.
+
+/** Default tolerance, in body px, for "this anchor is ON the pristine ink". */
+export const DMG_TOL = 4;
+
+const DMG_SHAPES = ['path', 'ellipse', 'circle', 'rect'];
+
+/** Every drawn shape of a fragment's body, `<defs>` and the ground rule excluded, in emission order. */
+export function damageShapes(svg) {
+  return (svg.replace(/<defs>[\s\S]*?<\/defs>/g, '').match(TAG) || [])
+    .filter((t) => DMG_SHAPES.includes(nameOf(t)) && !t.includes('sk-ground'));
+}
+
+/** Just the AUTHORED anchors of one mark — an ellipse's centre, any other shape's own points. */
+export function damageAnchors(tag) {
+  if (nameOf(tag) === 'ellipse') { const a = attrsOf(tag); return [[+a.cx, +a.cy]]; }
+  if (nameOf(tag) === 'circle') { const a = attrsOf(tag); return [[+a.cx, +a.cy]]; }
+  return shapePolys(tag).flat();
+}
+
+/** The dashed containment RING — the one mark-kind whose meaning is the deck AROUND the object. */
+export const isContainmentRing = (tag) => /stroke-dasharray="3 3"/.test(tag);
+
+/**
+ * ⭐ THE PREFIX RULE, AS AN INSTRUMENT: a twin's shapes MINUS its pristine piece's, and the pristine
+ * piece's must come FIRST, in order. Throws (via the caller's `assert`) at the first divergence, so
+ * the failure names the element index rather than the count.
+ *
+ * @param {string} id            the row, for the message
+ * @param {string} pristineSvg   `buildItem(id, opts)`
+ * @param {string} twinSvg       `buildWrecked(id, SAME opts)` — the same `idPrefix` or nothing matches
+ * @param {(i:number,n:number)=>void} onDiverge called with (first differing index, prefix length)
+ * @returns {string[]} the damage marks
+ */
+export function damageMarks(id, pristineSvg, twinSvg, onDiverge) {
+  const p = damageShapes(pristineSvg);
+  const t = damageShapes(twinSvg);
+  let i = 0;
+  while (i < p.length && i < t.length && p[i] === t[i]) i += 1;
+  if (i !== p.length && typeof onDiverge === 'function') onDiverge(i, p.length);
+  return t.slice(i);
+}
+
+/** Anchors of `marks` that lie neither inside nor within `tol` of the pristine ink. */
+export function offPieceAnchors(pristineSvg, marks, tol = DMG_TOL) {
+  const base = inkPolys(pristineSvg);
+  const pts = marks.flatMap(damageAnchors);
+  return farFrom(base, pts, tol)
+    .filter((q) => !base.some((poly) => poly.length > 2 && inPolygon(poly, q)));
+}

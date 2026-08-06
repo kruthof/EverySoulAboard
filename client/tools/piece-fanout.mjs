@@ -19,7 +19,7 @@
 //   piece-NN-tile.png  the 22/32/48 px tile strip — 22 is the size the Overview really draws
 //                      furniture at on the wreck's decks (`ui/overview-scene.js`, tileSize*1.7)
 //   piece-NN-twin.png  the post-raid twin, for the pieces whose twin is REPO-AUTHORED
-//                      (`wrecked.js NON_MOCK_TWIN`). A piece whose twin is a warm mock
+//                      (every twin is repo-authored since 2026-08-06). A piece whose twin is a warm mock
 //                      transcription gets no twin file — that mismatch is charter §4's filed P2b
 //                      and is not this tool's to hide or to fix.
 //
@@ -37,7 +37,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 import { buildItem, ITEMS } from '../src/items/index.js';
-import { buildWrecked, NON_MOCK_TWIN, WRECKED } from '../src/items/wrecked.js';
+import { buildWrecked, WRECKED } from '../src/items/wrecked.js';
 import { PAPER } from '../src/items/helpers.js';
 
 import { FITTING_IDS } from '../src/items/fittings.js';
@@ -101,8 +101,12 @@ for (let i = pieces.length - 1; i > 0; i--) {
 }
 pieces.forEach((p, i) => { p.n = i + 1; p.nn = String(i + 1).padStart(2, '0'); });
 
-// A repo-authored twin: drawn here against the paper piece, not transcribed from the warm mock.
-const hasRepoTwin = (id) => !!WRECKED[id] && Object.prototype.hasOwnProperty.call(NON_MOCK_TWIN, id);
+// ⚠️ THIS PREDICATE COLLAPSED ON 2026-08-06 AND SAYING SO IS THE POINT. It was
+// `!!WRECKED[id] && hasOwnProperty(NON_MOCK_TWIN, id)` — *"a repo-authored twin: drawn here against
+// the paper piece, not transcribed from the warm mock"* — a real distinction while some twins were
+// mock transcriptions. None is now, so the second clause is true whenever the first is and the
+// question is simply "does this row have a twin".
+const hasRepoTwin = (id) => !!WRECKED[id];
 for (const p of pieces) p.twin = hasRepoTwin(p.id);
 console.log(`${pieces.filter((p) => p.twin).length} of them have a repo-authored twin`);
 
