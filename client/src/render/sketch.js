@@ -1,9 +1,35 @@
-// THE SKETCH TREATMENT — an EXPERIMENT (lane/sketch-experiment, unmerged).
+// THE SKETCH TREATMENT — ADOPTED 2026-08-05 at `strong`, catalogue-wide.
 //
-// ⛔ THIS FILE SHIPS NOTHING. No registry row reads it, no builder calls it, no surface imports it.
-// It exists to answer ONE question the owner asked: "the furniture looks good, but is a bit in a
-// different style to the pawns… let's make it a little more into that sketchy direction." The
-// answer wanted is a PICTURE plus a price, not a merge.
+// ⭐ THE OWNER'S RULING, VERBATIM, off the experiment's screenshots: *"i like the strong one — just
+// ensure you are getting the dimension and perspectives right."* Both halves are load-bearing. The
+// first picks `LEVELS.strong` over the experiment's own recommendation (`hand`), which is recorded
+// below as a superseded finding rather than deleted. The second is the package's spine and it is
+// answered STRUCTURALLY, not by promise — see "GEOMETRY AUTHORITY" three paragraphs down.
+//
+// ── THE STYLE REFERENCE ───────────────────────────────────────────────────────────────────────
+// `docs/design/perilune-art-style.md` is the one place the whole visual language is stated
+// together — palette, projection, the pawns' hand, this treatment's knobs and its two exceptions,
+// and the checklist for adding a piece. It cites; this file derives. Read it before drawing, and
+// re-measure any count it quotes rather than trusting the number (TRAPS 8th).
+//
+// ── WHO CALLS IT ──────────────────────────────────────────────────────────────────────────────
+// `items/helpers.js`'s `item()` — the one door every builder already goes through — with
+// `{ sketched: true }` from the four PAPER catalogues' harnesses and from `wrecked.buildWrecked`
+// for their twins. That is 34 fittings + 13 machines + 14 paper-fixtures + 9 paper-resources, plus
+// the 47 twins of those pieces. MATERIALS (`paper-materials.js`) are NOT treated: a wall or floor
+// skin is a tiled `<pattern>` over a full-bleed face, a different idiom from a drawn object, and
+// the owner has not seen one treated. FILED, not decided. The pre-redesign WARM set is not treated
+// either — it is the idiom being replaced.
+//
+// ── GEOMETRY AUTHORITY — the owner's caveat, as a structure ───────────────────────────────────
+// This module's INPUT is a string and its OUTPUT is a string. The oblique projection, every `SPECS`
+// centimetre, `roomFrame`/`frameFor`, the per-piece drawing scale and every placement transform
+// have already run when it is called, and it can reach none of them: it can only move an EMITTED
+// PATH POINT, and by how much is bounded by `amplitudeBound()` below and measured — every piece of
+// all four catalogues, both directions, per element — by `client/test/sketch-adoption.test.js`.
+// The catalogues' own projection guards therefore keep asking their questions of the RAW fragment
+// (`item(..., { sketch: false })`), which is the geometry, and each carries a treated leg with the
+// amplitude tolerance stated EXPLICITLY. The displacement pin is the bridge between the two.
 //
 // ── WHAT IT IS ────────────────────────────────────────────────────────────────────────────────
 // A pure POST-PROCESSOR over an emitted SVG fragment. `sketch(fragment, {level, seed})` parses the
@@ -132,6 +158,12 @@ export const LEVELS = Object.freeze({
     haloWiden: 1.9, haloScope: 'all', doubles: true, hatch: true, ground: true,
     interiorOvershoot: 0.45,
   }),
+  // ⚠️ SUPERSEDED BY THE OWNER, 2026-08-05 — kept, not deleted, because the finding is still true and
+  // the level is still the control the adoption's halo comparison is driven against. `hand` is what
+  // the experiment recommended; `strong` is what the owner picked after seeing both. The measured
+  // cost of that choice is in the adoption's report: at `strong` the knockout runs on EVERY element
+  // (`haloScope: 'all'`), so a piece's own top face bites the legs standing behind it.
+  //
   // ⭐ THE RECOMMENDATION, and it is `medium` WITH THE KNOCKOUT TAKEN OUT — which is the finding the
   // knob sheet produced rather than a taste I arrived with. See the file header's structural rule:
   // a fitting's PAPER-FILLED FACES ALREADY ARE the knockout. `oblique.box()` fills the front and the
@@ -161,6 +193,118 @@ const PAPER = '#EBE4D1';
 const RAMP_MID = 1.4;
 /** The ground rule's weight — 2.05% of the drawing box, the ratio the pawn's own rule carries. */
 const GROUND_SW = 2.3;
+/** The class the appended ground rule carries, so a guard can name it instead of guessing at it. */
+export const GROUND_CLASS = 'pl-sk-ground';
+/**
+ * The class the DOUBLED silhouette pass carries.
+ *
+ * ⛔ IT EXISTS FOR A GUARD, AND THE GUARD IS THE STRONGEST STATEMENT IN THIS PACKAGE. Every primary
+ * run this module emits is COLLINEAR with the segment it replaces — `handRun` moves its ends ALONG
+ * the run's own axis and bows the curve about it, so the chord from first point to last lies on the
+ * original line to within rounding (measured across the 34 fittings: 0.0069 units, worst case). That
+ * makes "the treatment did not move the drawing" an EXACT test rather than a bounded one, and it
+ * catches what the amplitude bound cannot: a systematic error SMALLER than the amplitude — a 2%
+ * scale, a translation, a rotation. The doubled pass is the one exception (`shiftRun` nudges it off
+ * its own line on purpose), so it has to be identifiable, and a class is how a guard names a thing
+ * instead of inferring it from an opacity that a builder is also allowed to set.
+ */
+export const DOUBLE_CLASS = 'pl-sk-2nd';
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE AMPLITUDE BOUND — the owner's caveat, as a number
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⭐ DERIVED FROM THE KNOBS, TERM BY TERM, so a knob that moves moves the bound with it and the pin
+// cannot be satisfied by widening a literal. Every emitted coordinate of a treated element lies
+// within `amplitudeBound(level, radius)` of the UNTREATED shape it replaces, and every point of the
+// untreated shape lies within the same distance of the treated curve. In the fittings' own 128-unit
+// drawing space; at `strong`, radius 0, that is 6.78 units — 6.1% of the 112-unit drawing box.
+//
+//   1. OVERSHOOT (`L.overshoot`) — `handRun` starts a run `o0` BEFORE its first point and ends it
+//      `o1` after its last, with `o0, o1 ≤ L.overshoot` (and ≤ ¼ of the run, which only ever makes
+//      the term smaller). Purely along the run's own axis, so it is a displacement of exactly that.
+//   2. BOW (`L.waveMax`) — the two cubic control points sit at 0.33 and 0.67 of the EXTENDED run
+//      with a perpendicular offset of at most `min(L.wave·eLen, L.waveMax)`. Their positions ALONG
+//      the axis fall strictly inside the original segment (0.33·eLen − o0 ≥ 0.165·len and
+//      0.67·eLen − o0 ≤ 0.84·len, using o ≤ 0.25·len), so their whole displacement from the segment
+//      is the perpendicular one. A cubic lies inside its control hull, so no drawn point exceeds it.
+//      Terms 1 and 2 are perpendicular to each other and never both maximal on one point, so the
+//      bound takes the LARGER rather than their sum — `max(overshoot, waveMax)`, not the hypotenuse.
+//   3. LUMP (`L.lump`, round things only) — `handEllipse` samples at radius `r·(1 ± lump)`, and the
+//      Catmull-Rom control it hangs off each sample stands `√(1 + (1/6)²) − 1` further out again
+//      (the 12-sample chord is `2·sin(15°)·r`, its control offset a sixth of the neighbour span).
+//      PROPORTIONAL to the radius, which is why the bound takes one.
+//   4. THE DOUBLED SILHOUETTE (`L.doubles`) — `shiftRun` nudges the second pass by up to
+//      ±DOUBLE_NUDGE on EACH axis, on top of a run that already carries terms 1 and 2. Additive.
+//   5. ROUNDING — `n2` on this side, `oblique.n`/`r3` on the other, both 2 dp.
+//
+// ⛔ WHAT THE BOUND DOES NOT COVER, SAID HERE RATHER THAN DISCOVERED LATER: (a) an `A` command's
+// RADII, which `lumpArcs` scales by `1 ± L.lump` while leaving every emitted point alone — pinned
+// separately and exactly, as "the treated `d` is the untreated `d` with only the arc radii moved,
+// each within `lump`"; (b) the appended GROUND RULE, which is new ink by design and carries
+// `class="${GROUND_CLASS}"` so a guard excludes it by name.
+
+/** `shiftRun`'s per-axis nudge for the second pass over a silhouette. */
+export const DOUBLE_NUDGE = 0.9;
+/** How far a 12-sample Catmull-Rom control stands outside the sample radius it hangs off. */
+export const CR_BULGE = Math.sqrt(1 + (1 / 6) ** 2) - 1;
+/** Both sides round to 2 dp (`n2` here, `oblique.n` / `helpers.r3` there). */
+export const ROUND_EPS = 0.01;
+
+/**
+ * The maximum distance a treated point may sit from the untreated shape it came from.
+ * @param {string|object} level a LEVELS id or a knob object
+ * @param {number} [radius] the shape's largest radius, for a round thing; 0 for a straight run
+ * @returns {number} local drawing units (the builders' 128-unit space), 0 for an unknown level
+ */
+export function amplitudeBound(level, radius = 0) {
+  const L = typeof level === 'object' && level ? level : LEVELS[level];
+  if (!L) return 0;
+  const straight = Math.max(L.overshoot, L.waveMax);
+  const round = radius > 0 ? radius * ((1 + L.lump) * (1 + CR_BULGE) - 1) : 0;
+  const doubled = L.doubles ? DOUBLE_NUDGE * Math.SQRT2 : 0;
+  return Math.max(straight, round) + doubled + ROUND_EPS;
+}
+
+/**
+ * THE PEN'S RANGE UNDER A LEVEL — every `stroke-width` the treatment can emit for an untreated ramp
+ * spanning `[swMin, swMax]`, INCLUDING the paper knockout (which is `pen + haloWiden`) and the
+ * doubled silhouette's light second pass (`pen × 0.55`).
+ *
+ * (`penSteps`, just above, is the same statement CLOSED rather than bounded: the exact set of
+ * widths a ramp of `steps` can produce under a level. A catalogue whose raw ramp is five named
+ * rungs has a treated ramp that is a computable set, and "one of these values" is a far stronger
+ * rule than "between these values" — it catches a weight invented inside the range.)
+ *
+ * ⛔ THIS IS WHAT REPLACES A FIXED CEILING, AND THE FLOOR IS THE HALF THAT MATTERS. A ramp guard
+ * that only caps weights is satisfied by a treatment that draws every line at 0.42; the ramp exists
+ * to say that a hairline and a mass member are DIFFERENT, so the range has two ends and both move
+ * with the knobs.
+ */
+export function penSteps(level, steps) {
+  const L = typeof level === 'object' && level ? level : LEVELS[level];
+  if (!L) return [...steps].map(n2).sort((a, b) => a - b);
+  const out = new Set();
+  for (const sw of steps) {
+    for (const sil of [false, true]) {
+      const w = pen(sw, L, sil);
+      out.add(n2(w));
+      if (L.haloWiden > 0 && L.haloScope !== 'none') out.add(n2(w + L.haloWiden));
+      if (L.doubles) out.add(n2(w * 0.55));
+    }
+  }
+  if (L.ground) out.add(GROUND_SW);
+  return [...out].sort((a, b) => a - b);
+}
+
+export function penRange(level, swMin, swMax) {
+  const L = typeof level === 'object' && level ? level : LEVELS[level];
+  if (!L) return { min: swMin, max: swMax };
+  const w = [pen(swMin, L, false), pen(swMin, L, true), pen(swMax, L, false), pen(swMax, L, true)];
+  const lo = Math.min(...w) * (L.doubles ? 0.55 : 1);
+  const hi = Math.max(...w) + (L.haloWiden > 0 && L.haloScope !== 'none' ? L.haloWiden : 0);
+  return { min: n2(lo), max: n2(hi) };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // A very small SVG tokeniser
@@ -257,6 +401,49 @@ function parsePath(d) {
     m = CMD.exec(d);
   }
   return subs.length ? { subs } : null;
+}
+
+/**
+ * EVERY COORDINATE PAIR IN A `d` THE STRICT PARSER REFUSED — endpoints and control points, with an
+ * `A`'s radii / rotation / flags correctly skipped. Absolute commands only; anything relative or
+ * unknown returns `null`, which keeps the caller passing the element through rather than guessing.
+ *
+ * ⛔ THIS EXISTS BECAUSE THE TREATMENT WAS INERT ON A WHOLE CLASS OF MEMBER AND NOBODY COULD SEE IT
+ * (2026-08-05, the adoption; CLAUDE.md's "a verb can be present and INERT"). `drawShape` has always
+ * carried an arm for a body the builder already drew as curves — "it still gets the PEN and the
+ * CAPS, which is why a cylinder does not sit in the sheet at its original weight while everything
+ * round it moves" — and that arm was UNREACHABLE: pass 1 measured a shape only if `parsePath`
+ * succeeded, `parsePath` bails on the first `Q`/`C`, so a curve-bearing path never entered
+ * `shapes[]` and pass 2 emitted it verbatim. Measured on the four catalogues at adoption: 53 of
+ * 1428 stroked path bodies — the sink's tap, every one of the herb planter's leaves, the whole
+ * two-pass occupant figure inside capsule 31 — shipped at their untreated weight with the rest of
+ * their own piece re-penned. The tell was in the stroke ramp: five raw ramp values survived into
+ * treated output, on exactly those elements.
+ */
+function curvePoints(d) {
+  const out = [];
+  CMD.lastIndex = 0;
+  let m = CMD.exec(d);
+  if (!m) return null;
+  while (m) {
+    const c = m[1];
+    const a = nums(m[2]);
+    if (c === 'M' || c === 'L' || c === 'T') {
+      for (let i = 0; i + 1 < a.length; i += 2) out.push([a[i], a[i + 1]]);
+    } else if (c === 'C') {
+      for (let i = 0; i + 5 < a.length; i += 6) out.push([a[i], a[i + 1]], [a[i + 2], a[i + 3]], [a[i + 4], a[i + 5]]);
+    } else if (c === 'Q' || c === 'S') {
+      for (let i = 0; i + 3 < a.length; i += 4) out.push([a[i], a[i + 1]], [a[i + 2], a[i + 3]]);
+    } else if (c === 'A') {
+      for (let i = 0; i + 6 < a.length; i += 7) out.push([a[i + 5], a[i + 6]]);
+    } else if (c === 'H' || c === 'V' || c === 'Z') {
+      // an axis run or a close carries no NEW extreme this measurement needs; the pen does not care
+    } else {
+      return null;   // relative, or something this module has never seen
+    }
+    m = CMD.exec(d);
+  }
+  return out.length ? out : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -378,6 +565,39 @@ function pen(sw, L, sil) {
  * a genuinely hand-hatched face means abandoning `<pattern>` and drawing real clipped lines per face,
  * which is a different and much more expensive package (see the memo). This is the cheap 80%.
  */
+/**
+ * IS THIS PATTERN THE KIT'S `#fh` HATCH, or somebody's structural field?
+ *
+ * ⛔ THE ANSWER USED TO BE "EVERY PATTERN IS THE HATCH", AND THAT WAS A LATENT DEFECT THE MATERIALS
+ * EXTENSION FOUND (2026-08-05). `loosenHatch` REPLACES a pattern's whole interior with three
+ * jittered rules on a paper ground and widens its cell to 3×. Applied to the kit's hatch that is
+ * exactly right — it is one mechanical line and the point is to break the metronome. Applied to
+ * `paper-materials.js` it would have DELETED four skins' identifying art and tripled their pitch:
+ * the grow matting's woven lattice (four crossing bands in a 32-unit cell), the grating's bar and
+ * its edge rule, the carpet's eighteen pile ticks, and the blast wall's own half-cell hazard block.
+ * Every one of those is a MATERIAL, measured in centimetres by `paper-materials.test.js`, and the
+ * treatment would have turned it into generic hatch at three times the spacing.
+ *
+ * So the kit's hatch is recognised by its own SHAPE rather than by being a pattern: a SQUARE cell
+ * carrying exactly two marks — a ground rect that fills the cell, and one straight rule from
+ * `M0 0` to `L0 <period>`. That is `oblique.fhDef` and every catalogue's `hatchPaint`, verbatim and
+ * at any scale (`insulated-wall` draws it at a 9.432 period and is correctly loosened). Anything
+ * else is a field somebody drew on purpose and is passed through untouched.
+ */
+function isKitHatch(openTag, inner) {
+  const a = attrs(openTag);
+  const w = Number(a.width);
+  const h = Number(a.height);
+  if (!(w > 0) || Math.abs(w - h) > 1e-6) return false;
+  const marks = inner.filter((t) => ['rect', 'path', 'line', 'circle', 'ellipse'].includes(tagName(t)));
+  if (marks.length !== 2) return false;
+  const g = attrs(marks[0]);
+  if (tagName(marks[0]) !== 'rect' || Math.abs(Number(g.width) - w) > 1e-6
+    || Math.abs(Number(g.height) - h) > 1e-6 || !g.fill || g.fill === 'none') return false;
+  if (tagName(marks[1]) !== 'path') return false;
+  return new RegExp(`^M0 0 L0 ${w.toString().replace('.', '\\.')}$`).test(String(attrs(marks[1]).d));
+}
+
 function loosenHatch(tag, seed) {
   const a = attrs(tag);
   const p = Number(a.width) || 7;
@@ -408,6 +628,14 @@ function loosenHatch(tag, seed) {
  *           fragment UNCHANGED, which is what makes 'original' a legal column on the sheet.
  *   seed  — the stable identity the wobble hangs off. USE THE PIECE ID: two dining tables in one room
  *           should be the same drawing, and a table should be the same drawing next frame.
+ *   trace — an ARRAY to record `{src, out, nm, radius}` into, one row per shape the treatment saw.
+ *           ⭐ THIS IS THE MEASUREMENT SEAM AND IT EXISTS FOR TRAPS-4. "Did the treatment move this
+ *           element's geometry, and by how much" is a question about a PAIRING between an input
+ *           element and the several output elements that replaced it, and that pairing cannot be
+ *           recovered from the output string by any text scan — a guard that tried would be
+ *           re-deriving the tokeniser and would agree with itself when both were wrong. Recording
+ *           the argument AT THE SEAM is the repo's own remedy. It costs one array push per shape and
+ *           is inert when absent; `sketch()` reads nothing back out of it.
  * @returns {string} the restyled fragment
  */
 export function sketch(fragment, opts = {}) {
@@ -418,6 +646,7 @@ export function sketch(fragment, opts = {}) {
     : (LEVELS[o.level] || null);
   if (!L) return src;
   const seed = String(o.seed == null ? 'sk' : o.seed);
+  const trace = Array.isArray(o.trace) ? o.trace : null;
 
   // ── pass 1: tokenise, and measure the whole body so "silhouette" and "ground" mean something ──
   const toks = src.match(TAG) || [];
@@ -433,7 +662,12 @@ export function sketch(fragment, opts = {}) {
     if (nm !== 'path' && nm !== 'rect' && nm !== 'ellipse' && nm !== 'circle' && nm !== 'line') continue;
     const a = attrs(t);
     let pts = null;
-    if (nm === 'path' && a.d) { const p = parsePath(a.d); if (p) pts = p.subs.flatMap((s) => s.pts); }
+    if (nm === 'path' && a.d) {
+      const p = parsePath(a.d);
+      // ⛔ THE `else` IS NOT A FALLBACK, IT IS THE FIX: without it a curve-bearing body never enters
+      // `shapes[]`, never reaches `drawShape`, and ships untreated. See `curvePoints`.
+      pts = p ? p.subs.flatMap((s) => s.pts) : curvePoints(a.d);
+    }
     else if (nm === 'rect') {
       const x = +a.x || 0, y = +a.y || 0, w = +a.width || 0, h = +a.height || 0;
       pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
@@ -478,9 +712,17 @@ export function sketch(fragment, opts = {}) {
     if (nm === 'defs') { inDefs = !/^<\s*\//.test(t); out.push(t); continue; }
     if (inDefs) {
       if (L.hatch && nm === 'pattern' && !t.startsWith('</')) {
-        pendingHatch = loosenHatch(t, seed);
-        out.push(pendingHatch.open, pendingHatch.inner);
-        continue;
+        // LOOK AHEAD to the cell's own contents before deciding — `isKitHatch` is a question about
+        // what is INSIDE the pattern, and a decision taken on the open tag alone is the decision
+        // that rewrote four material skins.
+        const inner = [];
+        let j = i + 1;
+        while (j < toks.length && toks[j] !== '</pattern>') { inner.push(toks[j]); j += 1; }
+        if (isKitHatch(t, inner)) {
+          pendingHatch = loosenHatch(t, seed);
+          out.push(pendingHatch.open, pendingHatch.inner);
+          continue;
+        }
       }
       if (pendingHatch) { if (t === '</pattern>') { pendingHatch = null; out.push(t); } continue; }
       out.push(t);
@@ -490,6 +732,12 @@ export function sketch(fragment, opts = {}) {
     const sh = shapes[i];
     if (!sh) { out.push(t); continue; }
     const drawn = drawShape(sh, L, seed, i, gBand, maxArea);
+    if (trace) {
+      const a = sh.a;
+      const rr = sh.nm === 'circle' ? (+a.r || 0)
+        : (sh.nm === 'ellipse' ? Math.max(+a.rx || 0, a.ry == null ? (+a.rx || 0) : (+a.ry || 0)) : 0);
+      trace.push({ src: t, out: drawn, nm: sh.nm, radius: rr });
+    }
     out.push(drawn == null ? t : drawn);
   }
 
@@ -529,7 +777,7 @@ export function sketch(fragment, opts = {}) {
     const pad = (maxX - minX) * 0.03;
     const y = maxY + Math.max(0.6, (maxY - minY) * 0.012);
     const closer = scaleGroupCloser(out);
-    const rule = `<path d="M${n2(minX + pad)} ${n2(y)} L${n2(maxX - pad)} ${n2(y)}" fill="none"`
+    const rule = `<path class="${GROUND_CLASS}" d="M${n2(minX + pad)} ${n2(y)} L${n2(maxX - pad)} ${n2(y)}" fill="none"`
       + ` stroke="#14120F" stroke-width="${GROUND_SW}" stroke-linecap="round" opacity="0.35"/>`;
     if (closer >= 0) out.splice(closer, 0, rule);
   }
@@ -646,8 +894,9 @@ function drawShape(sh, L, seed, el, gBand, maxArea) {
     // different noise channel so the two do not lie on top of each other; light, so it reads as
     // pressure rather than as a doubled edge.
     if (L.doubles && r.sil) {
-      const d2 = shiftRun(r.d, noise(seed, el, r.d.length, 'd1') * 0.9, noise(seed, el, r.d.length, 'd2') * 0.9);
-      parts.push(`<path d="${d2}" fill="none" stroke="${stroke}" stroke-width="${n2(w * 0.55)}"`
+      const d2 = shiftRun(r.d, noise(seed, el, r.d.length, 'd1') * DOUBLE_NUDGE,
+        noise(seed, el, r.d.length, 'd2') * DOUBLE_NUDGE);
+      parts.push(`<path class="${DOUBLE_CLASS}" d="${d2}" fill="none" stroke="${stroke}" stroke-width="${n2(w * 0.55)}"`
         + ' stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>');
     }
   }

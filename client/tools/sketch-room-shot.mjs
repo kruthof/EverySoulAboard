@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-// sketch-room-shot.mjs — THE TREATMENT IN A REAL ROOM, BESIDE REAL PAWNS (lane/sketch-experiment).
+// sketch-room-shot.mjs — THE TREATMENT IN A REAL ROOM, BESIDE REAL PAWNS.
+//
+// ⚠️ SHIPPED SINCE 2026-08-05, NOT AN EXPERIMENT ANY MORE. The owner adopted `strong` catalogue-wide,
+// so `standItem` now returns a TREATED fragment by default and this tool asks it for the RAW one
+// (`{ sketch: false }`) and applies each level itself. Without that change the `original` column
+// would have been `strong` and every comparison on this page would have been against the wrong
+// baseline — the exact failure `sketch.test.js`'s "unknown level is a pass-through" leg exists for.
 //
 // ⛔ WHY THE CATALOGUE SHEET IS NOT ENOUGH, and this is the whole reason this second tool exists. A
 // card shows a fitting ALONE on bare paper at a size nothing in the game uses. The owner's complaint
@@ -76,14 +82,22 @@ function plate(level) {
     { ...CREW[1], x: rx + 8, y: ry + 4 },
   ].filter((c) => inRoom(c.x - rx, c.y - ry));
 
-  // ⚠️ THE SEED IS THE PIECE ID PLUS ITS TILE, not the piece id alone. Two lockers on one deck should
+  // ⚠️ THE SEED HERE IS THE PIECE ID PLUS ITS TILE — AND THE SHIPPED SEAM SEEDS BY THE PIECE ALONE.
+  // The difference is deliberate and it is an OPEN VISUAL QUESTION this page exists to show, not a
+  // disagreement: per-tile is what this tool's own first render argued for (below), and per-piece is
+  // what `helpers.item()` does, because it is the seed that makes a treated fragment CACHEABLE — the
+  // repaint bench measures a 39× win from a cache keyed on (itemId, side), and a per-placement seed
+  // gives that up. The plates here are therefore the per-tile look; the game draws the per-piece one.
+  //
+  // ⚠️ THE ORIGINAL ARGUMENT, KEPT: two lockers on one deck should
   // be the SAME OBJECT drawn by the same hand, but a hand does not trace the same wobble twice — and
   // with a bare id they came out bit-identical, which reads as a stamp rather than as a drawing. The
   // tile is the cheapest stable per-instance key the room already has, and it is stable across frames
   // (a fitting does not move), so the piece is the same drawing every tick and a different drawing
   // from its twin. THAT is what the determinism rule is protecting — not sameness, REPEATABILITY.
   const art = FITTINGS.filter(([, dx, dy]) => inRoom(dx, dy)).map(([id, dx, dy]) => {
-    const raw = standItem(id, rx + dx, ry + dy, place, `rm-${level}-${id}-${dx}-${dy}`, undefined);
+    const raw = standItem(id, rx + dx, ry + dy, place, `rm-${level}-${id}-${dx}-${dy}`, undefined,
+      { sketch: false });
     return level === 'original' ? raw : sketch(raw, { level, seed: `${id}@${dx},${dy}` });
   }).join('');
 

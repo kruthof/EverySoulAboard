@@ -29,7 +29,9 @@ import assert from 'node:assert/strict';
 import * as PM from '../src/items/paper-materials.js';
 import { CM, WALL_H_CM, TILE_CM, SPECS, SIZES, MATERIAL_IDS, BUILD } from '../src/items/paper-materials.js';
 import { ITEMS, ITEM_IDS, buildItem } from '../src/items/index.js';
-import { INK, PAPER, ATTEND, TILE, r3 } from '../src/items/helpers.js';
+import { INK, PAPER, ATTEND, TILE, r3, SKETCH_LEVEL } from '../src/items/helpers.js';
+import { amplitudeBound, penSteps } from '../src/render/sketch.js';
+import { bodyExtent, outsideBox } from './sketch-geom.js';
 import { W } from '../src/items/fittings.js';
 import { PX_PER_CM } from '../src/render/oblique.js';
 import {
@@ -48,7 +50,15 @@ const FLOOR_BOX = { w: ROOM_SCALE * TILE_CM, h: ROOM_SCALE * TILE_CM };
 const CHIP_BOX = { w: 26, h: 26 };
 
 const boxFor = (id) => (SPECS[id].surface === 'wall' ? WALL_BOX : FLOOR_BOX);
-const build = (id, box) => buildItem(id, { ...(box || boxFor(id)), idPrefix: 'pm-' + id });
+// ⚠️ `build` IS THE RAW SKIN SINCE 2026-08-05 — the owner extended the `strong` sketch treatment to
+// the materials ("we need to update ALL with the sketch style we defined"), and every measurement in
+// this file reads emitted `<rect>`s and `M…L…` segments to recover a CENTIMETRE. A freehand stroke
+// emits neither, so those readers return nothing and pass vacuously. The centimetres are asked of
+// the geometry; the treated legs below restate the ones that are about what the player sees, and
+// `sketch-adoption.test.js`'s displacement pin + collinearity leg bridge the two.
+const build = (id, box) => buildItem(id, { ...(box || boxFor(id)), idPrefix: 'pm-' + id, sketch: false });
+/** What SHIPS: the same skin with the treatment on it. */
+const treated = (id, box) => buildItem(id, { ...(box || boxFor(id)), idPrefix: 'pm-' + id });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The geometry reader — everything below measures the EMITTED string, never a re-derivation
@@ -135,6 +145,69 @@ function rulePositions(svg, axis, spanCm, minSw = W.fine, maxSw = Infinity) {
 }
 
 /** The MODAL gap between sorted positions, to 2 dp. */
+/**
+ * THE TREATED SKIN'S RULES, AS CHORDS.
+ *
+ * ⭐ THIS WORKS AT ALL BECAUSE OF A PROPERTY THE ADOPTION MEASURES AND PINS: `sketch()` moves a run's
+ * ends ALONG its own axis and bows the curve ABOUT that axis, so the CHORD from a treated run's
+ * first emitted point to its last lies on the ORIGINAL segment's line — worst case 0.0069 units
+ * across the four standing catalogues (`sketch-adoption.test.js`, the collinearity leg). A rule at
+ * y = Y therefore still reads y = Y after the treatment, and a PITCH — which is a difference of two
+ * such positions — survives EXACTLY rather than within a tolerance. That is the honest restatement:
+ * the amplitude tolerance the box guards needed is not needed here, and saying so is worth more than
+ * adding one that would hide a real drift.
+ *
+ * ⚠️ WHAT DOES CHANGE IS THE WEIGHT FILTER. `rulePositions` selects a family by `stroke-width`, and
+ * the treatment gains every weight through `pen()`. So the raw `[minSw, maxSw]` window is mapped
+ * through `penSteps` and the treated window is the min/max of the images — restated, not widened.
+ * The DOUBLED pass and the appended GROUND RULE are excluded by their own classes.
+ */
+function treatedChords(svg) {
+  const out = [];
+  for (const p of bodyOf(svg).matchAll(/<path ([^>]*)\/>/g)) {
+    const tail = p[1];
+    if (/class="pl-sk-2nd"|class="pl-sk-ground"/.test(tail)) continue;
+    if (!/fill="none"/.test(tail)) continue;                  // the fill path is not a rule
+    const d = (tail.match(/ ?d="([^"]+)"/) || [, ''])[1];
+    const sw = +(tail.match(/stroke-width="([\d.]+)"/) || [0, 0])[1];
+    const nums = [...d.matchAll(/-?[\d.]+/g)].map(Number);
+    if (nums.length < 4) continue;
+    out.push({
+      x1: nums[0], y1: nums[1], x2: nums[nums.length - 2], y2: nums[nums.length - 1], sw,
+    });
+  }
+  return out;
+}
+
+/**
+ * `rulePositions`, asked of the treated chords, with the weight window mapped through the ramp.
+ *
+ * ⛔ AS A SET, NOT AS A RANGE, AND THE FIRST DRAFT GOT THIS WRONG IN THE PERMISSIVE DIRECTION. The
+ * raw rule is "weights at or above `W.fine`"; mapping that to `[min(penSteps([1.1])), ∞)` gives a
+ * floor of 0.34 — the DOUBLED pass over an interior hairline — which admits every stroke in the
+ * skin, and the plank floor's 20 cm boards then measured 2.5 cm because the 2.5 cm butt marks were
+ * in the population. Measured, by writing it. The window is therefore the exact IMAGE of the raw
+ * skin's own rungs: take the weights the raw drawing actually uses, keep the ones inside the raw
+ * window, and put them through `penSteps` — one closed set, no range to leak through.
+ */
+function treatedRulePositions(rawSvg, svg, axis, spanCm, minSw = W.fine, maxSw = Infinity) {
+  const span = spanCm * CM;
+  const rungs = [...new Set(segments(rawSvg).map((x) => x.sw))]
+    .filter((r) => r >= minSw - 0.01 && r <= (maxSw === Infinity ? Infinity : maxSw + 0.01));
+  const allowed = new Set(penSteps(SKETCH_LEVEL, rungs));
+  const vals = new Set();
+  for (const s of treatedChords(svg)) {
+    if (!allowed.has(s.sw)) continue;
+    if (axis === 'h' && Math.abs(s.y1 - s.y2) < 0.05 && Math.abs(s.x2 - s.x1) >= span * 0.9) {
+      vals.add(Math.round((((s.y1 + s.y2) / 2) / CM) * 100) / 100);
+    }
+    if (axis === 'v' && Math.abs(s.x1 - s.x2) < 0.05 && Math.abs(s.y2 - s.y1) >= span * 0.9) {
+      vals.add(Math.round((((s.x1 + s.x2) / 2) / CM) * 100) / 100);
+    }
+  }
+  return [...vals].sort((a, b) => a - b);
+}
+
 function modalGap(vals) {
   const gaps = new Map();
   for (let i = 1; i < vals.length; i += 1) {
@@ -324,6 +397,62 @@ test('every skin\'s feature pitch is the CENTIMETRES it claims — measured off 
   }
 });
 
+// ⭐⭐ THE SAME PITCHES, MEASURED ON WHAT SHIPS — and the headline is that they survive EXACTLY.
+//
+//   OLD RULE: every ruled family's modal gap is the centimetres its row of `PITCH` claims, ±0.05.
+//   NEW RULE: the same, measured off the TREATED chords, with the weight window mapped through
+//             `penSteps` and the two treatment-only marks (the doubled pass, the ground rule)
+//             excluded by their classes. STILL ±0.05, NOT the amplitude — because the treatment
+//             moves a run along its own axis and bows it about that axis, so a rule at y = Y still
+//             has its chord on y = Y. Widening this to the amplitude would have hidden a real drift
+//             of up to 6.78 units (5.3 cm at the room's scale) in a measurement whose whole subject
+//             is centimetres.
+//
+// ⛔ THE PATTERN-PITCH SKINS ARE THE OTHER HALF, AND THEY ARE THE DEFECT THIS EXTENSION FOUND. The
+// treatment's `hatch` knob replaced the interior of EVERY `<pattern>` with three jittered rules and
+// tripled its cell. Four material skins carry a pattern that is not a hatch — the matting's woven
+// lattice, the grating's bar, the carpet's pile, the blast wall's hazard block — and all four would
+// have lost their art AND their pitch. `sketch.isKitHatch` now recognises the kit's hatch by its own
+// shape (a square cell, a ground rect, one `M0 0 L0 <period>` rule); everything else passes through.
+// This leg is what says so, in centimetres.
+test('the treated skin keeps every pitch it claims — EXACTLY, not within the amplitude', () => {
+  for (const id of MATERIAL_IDS) {
+    const p = PITCH[id];
+    const svg = treated(id);
+    let got;
+    if (p.probe === 'h' || p.probe === 'v') {
+      got = modalGap(treatedRulePositions(build(id), svg, p.probe, p.span, p.sw, p.swMax));
+    } else if (p.probe === 'pattern') {
+      const m = svg.match(/<pattern id="[^"]+" width="([\d.]+)"/);
+      assert.ok(m, `${id}: the treated skin emits no <pattern> — the treatment ate its field`);
+      got = Math.round((+m[1] / CM) * 100) / 100;
+    } else if (p.probe === 'battRows') {
+      // ⭐ THE BATT COURSES ARE FILL-ONLY `<rect fill="url(#…)">`, AND THE TREATMENT LEAVES THEM
+      // BYTE-IDENTICAL — `drawShape` returns null for an element with no pen, because there is no
+      // stroke to make freehand. So the RAW reader is the correct reader here, and pointing it at
+      // the treated fragment is the statement that they really did come through untouched.
+      const ys = [...new Set(rects(svg).filter((r) => r.w > 30 * CM && r.h > 30 * CM)
+        .map((r) => Math.round((r.y / CM) * 100) / 100))].sort((a, b) => a - b);
+      got = modalGap(ys);
+      assert.ok(ys.length >= 3, `${id}: the treated skin has ${ys.length} batt courses left`);
+    } else {
+      // 'plate' — ONE deck plate to the tile. Its border IS stroked, so it is treated: measured as
+      // the widest chord, against the amplitude, because an overshot corner really does run past
+      // the plate's own edge and that is the one place the tolerance belongs.
+      const spans = treatedChords(svg).map((c) => Math.abs(c.x2 - c.x1) / CM);
+      got = Math.max(...spans);
+      assert.ok(Math.abs(got - p.cm) <= amplitudeBound(SKETCH_LEVEL) / CM + 0.05,
+        `${id}: the treated deck plate spans ${got.toFixed(2)} cm against ${p.cm} cm`);
+      got = p.cm;
+    }
+    assert.ok(Math.abs(got - p.cm) < 0.05,
+      `${id}: ${p.what} measure ${got} cm on the TREATED skin against the ${p.cm} cm it claims.\n`
+      + 'The treatment is a PEN. It may wobble a rule; it may not move it, and it may certainly not\n'
+      + 'change how far apart two of them are — that is a centimetre, and centimetres are the whole\n'
+      + 'reason this module exists.');
+  }
+});
+
 /**
  * A FLOOR PITCH MUST DIVIDE THE METRE. Each floor tile is drawn independently, so a pitch that does
  * not divide 100 cm leaves a partial course at the tile edge and every seam in the room reads as a
@@ -380,6 +509,64 @@ test('every skin puts real INK on its tile, edge to edge', () => {
       `${id} draws ${marks} marks and no pattern — that is a blank tile with a border on it`);
     assert.ok(sp.surface === 'wall' || sp.surface === 'floor');
   }
+});
+
+// ⭐ THE SAME TWO RULES ON WHAT SHIPS. A skin that stopped reaching its own edges under the
+// treatment would show the room's paper between every pair of tiles — the exact defect the warm
+// swatches had — and a skin that bought a colour would break the charter's closure silently.
+//   OLD RULE: the ink box covers ≥ 92% of the body box; ink present; no oxblood.
+//   NEW RULE: the same, on the treated skin, with the coverage floor UNCHANGED (the treatment can
+//             only add reach — overshoot runs PAST an edge, never short of it) and the box ceiling
+//             given the amplitude, since an overshot corner legitimately leaves the tile.
+test('the treated skin still reaches its own edges, in the same three colours', () => {
+  const AMP = amplitudeBound(SKETCH_LEVEL);
+  for (const id of MATERIAL_IDS) {
+    const box = boxFor(id);
+    const svg = treated(id);
+    const k = scaleOf(svg);
+    const bw = box.w / k, bh = box.h / k;
+    assert.ok(svg.includes(INK), `${id}: the treated skin contains no ink at all`);
+    assert.ok(!svg.includes(ATTEND), `${id}: the treated skin spends the OXBLOOD accent`);
+    const bb = bodyExtent(svg).bb;
+    const cov = { w: (bb[2] - bb[0]) / bw, h: (bb[3] - bb[1]) / bh };
+    assert.ok(cov.w >= 0.92 && cov.h >= 0.92,
+      `${id}: the TREATED skin covers ${(100 * cov.w).toFixed(0)} × ${(100 * cov.h).toFixed(0)} % of `
+      + 'its tile — the room\'s paper would show between tiles');
+    const over = outsideBox(svg, { x: bw / 2 + AMP, y: bh / 2 + AMP });
+    assert.deepEqual(over, [], `${id}: the treated skin leaves its own tile by more than the `
+      + `declared amplitude ${AMP.toFixed(2)}: ${over.slice(0, 3).join(' ')}`);
+  }
+});
+
+// ⭐⭐ THE FOUR NON-HATCH PATTERN FIELDS SURVIVE — the defect this extension found, pinned.
+//
+// `sketch()`'s `hatch` knob rewrote the interior of EVERY `<pattern>` it met: paper ground, three
+// jittered rules, cell tripled. That is right for the kit's `#fh` and it would have DELETED the
+// matting's woven lattice, the grating's bar and edge rule, the carpet's eighteen pile ticks and
+// the blast wall's hazard block, replacing four identifying fields with one generic hatch at three
+// times the spacing. `sketch.isKitHatch` now recognises the kit's hatch by its own shape.
+test('a material\'s own pattern field is NOT the kit hatch, and the treatment leaves it alone', () => {
+  const FIELDS = ['blast-wall', 'grow-matting', 'metal-grating', 'carpet-floor'];
+  for (const id of FIELDS) {
+    const rawPat = /<pattern [\s\S]*?<\/pattern>/.exec(build(id));
+    const trePat = /<pattern [\s\S]*?<\/pattern>/.exec(treated(id));
+    assert.ok(rawPat && trePat, `${id} lost its pattern entirely`);
+    assert.equal(trePat[0], rawPat[0],
+      `${id}: the treatment rewrote a material's own pattern field. That field is the piece's\n`
+      + 'identity and its pitch is a CENTIMETRE — see this module\'s PITCH table.');
+  }
+  // …and the one skin that DOES carry the kit's hatch is loosened, or the rule above is a ban.
+  const insulRaw = /<pattern [\s\S]*?<\/pattern>/.exec(build('insulated-wall'))[0];
+  const insulTre = /<pattern [\s\S]*?<\/pattern>/.exec(treated('insulated-wall'))[0];
+  assert.notEqual(insulTre, insulRaw,
+    'the insulated wall carries the KIT hatch (a square cell, a ground rect, one M0 0 L0 rule) and\n'
+    + 'the treatment did not loosen it — `isKitHatch` has stopped recognising the thing it is for');
+  // three periods wide, one period high — the loosened cell's own rule, at the skin's own scale
+  const cell = /<pattern id="[^"]+" width="([\d.]+)" height="([\d.]+)"/.exec(insulTre);
+  assert.ok(Math.abs(+cell[1] - 3 * +cell[2]) < 0.05,
+    `the loosened kit cell is ${cell[1]} × ${cell[2]} — it must be three of its own periods wide and`
+    + ' one high, or the hatch spacing has moved rather than its metronome being broken');
+  assert.match(insulTre, /patternTransform="rotate\(45\)"/, 'the loosened hatch lost the kit angle');
 });
 
 /**
@@ -524,6 +711,80 @@ test('every FLOOR skin survives being laid through the room\'s own cell matrix',
   assert.ok(Math.min(gap, 180 - gap) >= 20,
     `the board courses and the butt joints land ${Math.min(gap, 180 - gap).toFixed(1)}° apart once `
     + 'sheared. Below 20° a laid floor reads as stripes and the boards stop being boards.');
+});
+
+// ⭐⭐ THE SHEAR IS THE MATERIALS' OWN RISK AND IT IS ANSWERED BY RENDERING, NOT BY REASONING.
+//
+// ⛔ WHERE THE TREATMENT APPLIES IN THE FLOOR PATH, SAID PRECISELY, because it is the question that
+// decides whether this works at all. `materialLayerSvg` builds the skin through `buildItem` and THEN
+// wraps it in `place.cell(tx, ty)` — an affine shear into the floor parallelogram. The treatment
+// runs inside `item()`, so the jitter is authored in the SKIN'S OWN SPACE and the shear carries it
+// along with everything else. That is the correct order and the only one that is correct: a hand
+// applied after the shear would be drawn in SCREEN space, so a floor's wobble would run at the same
+// angle everywhere in the room instead of lying on the floor plane, and it would not foreshorten
+// with depth. Verified by rendering — `client/tools/sketch-materials-sheet.mjs` draws every skin
+// flat AND through this same matrix, and that page is the receipt.
+//
+//   OLD RULE: no mark longer than 2 cm collapses below 1 px once sheared; the ink still covers 92%
+//             of the parallelogram; the plank floor's two families stay ≥ 20° apart.
+//   NEW RULE: the same three, measured on the TREATED chords. The angle floor is UNCHANGED — the
+//             collinearity property means a treated chord runs along its raw segment, so shearing it
+//             cannot move the two families relative to each other.
+test('every FLOOR skin survives the shear WITH the treatment on it — measured after the matrix', () => {
+  const M = cellMatrix();
+  const box = { w: M.unit, h: M.unit };
+  for (const id of FLOORS) {
+    const svg = treated(id, box);
+    const k = scaleOf(svg);
+    const chords = treatedChords(svg);
+    assert.ok(chords.length >= 4 || /<pattern /.test(svg), `${id}: too little treated geometry`);
+    // 1 — nothing of substance collapses
+    let collapsed = 0;
+    for (const c of chords) {
+      const l0 = Math.hypot(c.x2 - c.x1, c.y2 - c.y1) / CM;
+      if (l0 < 2) continue;
+      const l1 = len(through(M, k, box, [c.x1, c.y1]), through(M, k, box, [c.x2, c.y2]));
+      if (l1 < 1) collapsed += 1;
+      assert.ok(l1 >= 1,
+        `${id}: a ${l0.toFixed(1)} cm TREATED mark is ${l1.toFixed(2)} px long once the floor plane `
+        + 'has sheared it — that is ink the player cannot see');
+    }
+    assert.equal(collapsed, 0);
+    // 2 — the ink still reaches the tile after the shear
+    const bb = bodyExtent(svg).bb;
+    const corners = [[bb[0], bb[1]], [bb[2], bb[1]], [bb[0], bb[3]], [bb[2], bb[3]]]
+      .map((p) => through(M, k, box, p));
+    const tile = [[-box.w / 2 / k, -box.h / 2 / k], [box.w / 2 / k, -box.h / 2 / k],
+      [-box.w / 2 / k, box.h / 2 / k], [box.w / 2 / k, box.h / 2 / k]].map((p) => through(M, k, box, p));
+    const span = (pts, i) => Math.max(...pts.map((p) => p[i])) - Math.min(...pts.map((p) => p[i]));
+    assert.ok(span(corners, 0) / span(tile, 0) >= 0.92 && span(corners, 1) / span(tile, 1) >= 0.92,
+      `${id}: the sheared TREATED ink covers ${(100 * span(corners, 0) / span(tile, 0)).toFixed(0)} × `
+      + `${(100 * span(corners, 1) / span(tile, 1)).toFixed(0)} % of the tile parallelogram`);
+  }
+  // 3 — the plank floor still reads as boards rather than as stripes
+  const svg = treated('wood-plank-floor', box);
+  const k = scaleOf(svg);
+  const dirOf = (c) => {
+    const a = through(M, k, box, [c.x1, c.y1]);
+    const b = through(M, k, box, [c.x2, c.y2]);
+    return ((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI + 180) % 180;
+  };
+  const rawRungs = [...new Set(segments(build('wood-plank-floor', box)).map((x) => x.sw))];
+  const mid = new Set(penSteps(SKETCH_LEVEL, rawRungs.filter((r) => r >= W.mid - 0.01)));
+  const chords = treatedChords(svg);
+  const courses = chords.filter((c) => Math.abs(c.y1 - c.y2) < 0.05
+    && Math.abs(c.x2 - c.x1) > 0.9 * TILE_CM * CM);
+  const butts = chords.filter((c) => {
+    const l = Math.hypot(c.x2 - c.x1, c.y2 - c.y1) / CM;
+    return mid.has(c.sw) && l >= 8 && l <= 30;
+  });
+  assert.ok(courses.length >= 3 && butts.length >= 4,
+    `the TREATED plank floor no longer draws both families (${courses.length} courses, `
+    + `${butts.length} butts) — this leg cannot see the collapse it exists for`);
+  const g2 = Math.abs(dirOf(courses[0]) - dirOf(butts[0]));
+  assert.ok(Math.min(g2, 180 - g2) >= 20,
+    `TREATED: the board courses and the butt joints land ${Math.min(g2, 180 - g2).toFixed(1)}° apart `
+    + 'once sheared. Below 20° a laid floor reads as stripes.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

@@ -802,18 +802,25 @@ function decorSvg(list, place) {
  * verbatim — a second authority on the exact thing the sheet exists to photograph, so the page could
  * look right while the shipping surface drew something else. It is pure of module state: `place` is
  * an argument and `ROOM_SCALE` is a shared constant.
+ *
+ * ⚠️ THE SEVENTH ARGUMENT IS A MEASUREMENT DOOR AND NOTHING ELSE (2026-08-05, the sketch adoption).
+ * `opts` is spread UNDER the placement fields, so `w`, `h` and `idPrefix` always win and no caller
+ * can move a piece with it. Its one use is `sketch: false`, which asks the builder for the untreated
+ * fragment — `client/tools/sketch-repaint-bench.mjs` times the same plate both ways, and without
+ * this it would have to place the furniture its own way, which is the second-authority failure the
+ * paragraph above exists to prevent.
  */
-export function standItem(itemId, tx, ty, place, idPrefix, cond) {
+export function standItem(itemId, tx, ty, place, idPrefix, cond, opts = {}) {
   const rb = roomBox(itemId, ROOM_SCALE);
   const [px, py] = place.front(tx, ty);
   if (rb) {
-    const g = buildTileItem(itemId, { w: rb.side, h: rb.side, idPrefix }, cond);
+    const g = buildTileItem(itemId, { ...opts, w: rb.side, h: rb.side, idPrefix }, cond);
     return '<g transform="translate(' + (px + rb.dx).toFixed(2) + ' ' + (py + rb.dy).toFixed(2)
       + ')">' + g + '</g>';
   }
   const side = ROOM_SCALE * 100 * M_PER_TILE * 1.15;
   const [cx, cy] = place.foot(tx, ty);
-  const g = buildTileItem(itemId, { w: side, h: side, idPrefix }, cond);
+  const g = buildTileItem(itemId, { ...opts, w: side, h: side, idPrefix }, cond);
   return '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2)
     + ')">' + g + '</g>';
 }

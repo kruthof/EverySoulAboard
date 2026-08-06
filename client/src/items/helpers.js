@@ -14,6 +14,14 @@
 // Box units, so they are independent of the scale transform; patterns/glyphs use the local space.
 //
 // Authority for all geometry + colour: docs/design/perilune-item-set.dc.html.
+//
+// ⚠️ ONE IMPORT, ADDED 2026-08-05 (the sketch adoption): `render/sketch.js`. This module was
+// dependency-free; it now has exactly one dependency, in one direction, and `sketch.js` itself
+// imports nothing. The alternative — four catalogues each calling the post-processor on their own
+// harness's output — is four copies of one decision, which is how two of them come to disagree
+// about the level.
+
+import { sketch } from '../render/sketch.js';
 
 /** The design footprint (mock px) a builder's centred body is scaled against. */
 export const TILE = 128;
@@ -269,16 +277,59 @@ export function scene(idPrefix) {
   return api;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE SKETCH TREATMENT AT THE SEAM (owner ruling, 2026-08-05: "i like the strong one — just
+// ensure you are getting the dimension and perspectives right")
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// `render/sketch.js` is a PURE POST-PROCESSOR over an emitted fragment: it re-draws every straight
+// run as a freehand stroke and writes the fragment back out. It is applied HERE, once, at the one
+// door every builder already goes through — not inside 70 builders — so the whole treatment reverts
+// by deleting one argument, and no builder's geometry is touched by construction.
+//
+// ⛔ THE OWNER'S CAVEAT IS THE SPINE OF THE ADOPTION AND IT IS STRUCTURAL, NOT A PROMISE. The
+// treatment operates on EMITTED PATH POINTS ONLY. The oblique projection, the `SPECS` centimetres,
+// `frameFor`/`roomFrame`, the per-piece drawing scale and every placement transform run to
+// completion BEFORE `sketch()` sees a character, and `sketch()` cannot reach any of them: its input
+// is a string and its output is a string. What it CAN do is move an emitted point, and by how much
+// is bounded and pinned — `sketch.amplitudeBound()` is the bound, `client/test/sketch-adoption.test.js`
+// measures it over all four catalogues, every piece, both directions.
+//
+// ⚠️ IT IS OPT-IN PER CATALOGUE, and the opt-outs are as deliberate as the opts-in. The four PAPER
+// catalogues (fittings 34, machines 13, paper-fixtures 14, paper-resources 9) pass `sketched: true`.
+// MATERIALS (`paper-materials.js`) do NOT: a wall/floor skin's hatch is a different idiom — a
+// tiled `<pattern>` over a full-bleed face rather than a drawn object — and the owner has not seen
+// one treated. That is FILED, not decided. The pre-redesign WARM set (`objects.js`, `fixtures.js`,
+// `resources.js`, `cryo.js`) is not treated either: it is the idiom the redesign is replacing.
+
+/** THE ADOPTED LEVEL. One string, read by the seam and by every guard — never re-typed. */
+export const SKETCH_LEVEL = 'strong';
+
 /**
  * Builder harness: resolves `{w,h,idPrefix,index,state}`, defaults the id prefix deterministically
  * from the item id (+ index), runs `paint(scene, env)`, and returns the tile-normalised fragment.
+ *
+ * @param {string} itemId
+ * @param {object} opts `{w,h,idPrefix,index,state}` — plus `sketch: false` to force the raw
+ *   fragment (the geometry guards' door: they ask about the projection, which the treatment is not
+ *   allowed to move) and `sketchSeed` to override the hand's identity.
+ * @param {(s: object, env: object) => void} paint
+ * @param {{sketched?: boolean, seed?: string}} [cfg] the CATALOGUE's standing choice (and, for a
+ *   wrecked twin, the identity whose hand it must share); `opts.sketch === false` wins over both.
  */
-export function item(itemId, opts, paint) {
+export function item(itemId, opts, paint, cfg = {}) {
   const w = opts.w == null ? 100 : opts.w;
   const h = opts.h == null ? 100 : opts.h;
   const index = opts.index == null ? 0 : opts.index;
   const idPrefix = opts.idPrefix || `${itemId}-${index}`;
   const s = scene(idPrefix);
   paint(s, { w, h, state: opts.state, powered: opts.state !== 'off' && opts.state !== 'unpowered' });
-  return s.render(w, h);
+  const frag = s.render(w, h);
+  if (!cfg.sketched || opts.sketch === false) return frag;
+  // ⚠️ THE SEED IS THE PIECE, NOT THE PLACEMENT. `idPrefix` carries the index, so seeding off it
+  // would make two dining tables in one room two different drawings of the same object — which is
+  // exactly the "stamp vs drawing" failure the seed exists to avoid, inverted.
+  const seed = opts.sketchSeed != null ? opts.sketchSeed
+    : (cfg.seed != null ? cfg.seed : itemId);
+  return sketch(frag, { level: SKETCH_LEVEL, seed });
 }

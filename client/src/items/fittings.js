@@ -516,9 +516,11 @@ function envFor(s, id, state) {
   };
 }
 
-/** The harness: an item fragment whose painter draws in the fitting's own centimetres. */
+/** The harness: an item fragment whose painter draws in the fitting's own centimetres.
+ *  `sketched: true` is the owner's 2026-08-05 ruling — see `helpers.item()` for the seam and for
+ *  why the treatment cannot reach the projection. */
 function fitting(id, opts, paint) {
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); });
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); }, { sketched: true });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

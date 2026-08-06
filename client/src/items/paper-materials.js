@@ -151,7 +151,7 @@ function skin(itemId, opts, paint) {
   const h = opts.h == null ? 100 : opts.h;
   const k = Math.min(w, h) || 1;
   const g = frameOf((TILE * (w / k)) / CM, (TILE * (h / k)) / CM);
-  return item(itemId, opts, (s) => paint(s, g));
+  return item(itemId, opts, (s) => paint(s, g), { sketched: true });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

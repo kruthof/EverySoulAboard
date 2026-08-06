@@ -1,9 +1,20 @@
-// THE SKETCH TREATMENT (src/render/sketch.js) — an EXPERIMENT's guard rail, not a product suite.
+// THE SKETCH TREATMENT (src/render/sketch.js) — the MODULE's own suite.
 //
-// ⛔ WHAT THIS FILE IS FOR, AND WHAT IT DELIBERATELY DOES NOT CLAIM. `sketch.js` is unmerged
-// exploratory code; nothing in the shipping tree imports it, so there is no product behaviour here to
-// pin. What there IS is one invariant that holds even in an experiment — DETERMINISM — and one class
-// of quiet failure that would waste the whole exercise: a treatment that silently did nothing.
+// ⚠️ ADOPTED 2026-08-05, SO THE FRAMING CHANGED AND THE FILE DID NOT. This was the experiment's guard
+// rail — "nothing in the shipping tree imports it, so there is no product behaviour to pin". Both
+// halves of that are now false: `items/helpers.js` calls `sketch()` at the `item()` seam for all four
+// paper catalogues and their 47 twins, at `LEVELS.strong`, on the owner's ruling.
+//
+// The DIVISION OF LABOUR is what to read this file against. Here: the module in isolation — its
+// determinism, its palette, its pass-through, and the ordering of the four levels. The ADOPTION —
+// the seam, the amplitude bound, the box and ellipse and ramp restatements, the twin pairs, the
+// invisible-ink probe — is `client/test/sketch-adoption.test.js`, and the four catalogue suites
+// carry their own treated legs. Nothing here knows which catalogues are treated, and that is right:
+// this file is about the post-processor, not about who calls it.
+//
+// ⛔ WHAT IT STILL DELIBERATELY DOES NOT CLAIM: any of this is a statement about how the treatment
+// LOOKS. One class of quiet failure is worth naming at the top because it is the one an experiment
+// can waste itself on and a product can ship: a treatment that silently did nothing.
 //
 // So every determinism assertion below carries its own NEGATIVE CONTROL. "Same input ⇒ same bytes" is
 // satisfied perfectly by a function that returns its argument, which is exactly the outcome a broken
@@ -11,8 +22,9 @@
 // that cannot tell "stable" from "inert" is the vacuous-guard shape this repo has paid for repeatedly,
 // so each leg asserts BOTH that the bytes are stable AND that they moved.
 //
-// The visual judgement is NOT here and cannot be: `client/tools/sketch-sheet.mjs` and
-// `client/tools/sketch-room-shot.mjs` are the instruments for that, and the memo is their output.
+// The visual judgement is NOT here and cannot be: `client/tools/sketch-sheet.mjs`,
+// `client/tools/sketch-room-shot.mjs` and `client/tools/sketch-pairs-sheet.mjs` are the instruments
+// for that, and the owner's eye is the judge.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,7 +34,10 @@ import { FITTING_IDS } from '../src/items/fittings.js';
 import { sketch, LEVELS, LEVEL_IDS, hash32 } from '../src/render/sketch.js';
 
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
-const build = (id) => FT[camel(id)]({ w: 240, h: 240, idPrefix: `t-${id}` });
+// ⚠️ THE RAW FRAGMENT — this file tests `sketch()` as a function, so it must feed it an UNTREATED
+// input. Since the adoption the builders return a treated one by default, and passing that back in
+// would be measuring the treatment applied twice.
+const build = (id) => FT[camel(id)]({ w: 240, h: 240, idPrefix: `t-${id}`, sketch: false });
 const SAMPLE = ['dining-table', 'bunk-bed', 'locker', 'capsule-sealed', 'cell-sound'];
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

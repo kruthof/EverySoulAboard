@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-// sketch-sheet.mjs — THE EXPERIMENT'S OWN EYE (lane/sketch-experiment, unmerged).
+// sketch-sheet.mjs — THE LEVEL COMPARISON, kept after the adoption as the control page.
+//
+// ⚠️ NOT AN EXPERIMENT ANY MORE (2026-08-05): the owner adopted `strong` catalogue-wide, so the
+// builders return a TREATED fragment and this sheet asks them for the RAW one (`{ sketch: false }`).
+// Without that its `original` column would be `strong` and every comparison on the page would be
+// against the wrong baseline. The page is still worth keeping: it is where the four levels stand
+// beside each other, and it is what the owner's next ruling on the halo would be made from.
 //
 // ⛔ WHY THIS EXISTS AND WHY IT IS NOT A TEST. The question the owner asked — "the furniture looks
 // good, but is a bit in a different style to the pawns… let's make it a little more into that sketchy
@@ -74,7 +80,7 @@ function cell(id, level, side, seedTag) {
   const s = (g.k * side) / TILE;                    // px per cm, on screen, in this cell
   const floorY = side / 2 + (g.k * (g.ey / 2 + g.z0) * side) / TILE;
 
-  const raw = FT[camel(id)]({ w: side, h: side, idPrefix: `${seedTag}-${id}-${level}` });
+  const raw = FT[camel(id)]({ w: side, h: side, idPrefix: `${seedTag}-${id}-${level}`, sketch: false });
   const art = level === 'original' ? raw : sketch(raw, { level, seed: id });
 
   const pw = 16 * CM_PER_PAWN_UNIT * s;
@@ -185,7 +191,7 @@ ${strip}</body></html>`);
 // be discovered by a diff of two screenshots and blamed on the renderer.
 let stable = true;
 for (const id of SAMPLES) {
-  const raw = FT[camel(id)]({ w: CELL, h: CELL, idPrefix: `chk-${id}` });
+  const raw = FT[camel(id)]({ w: CELL, h: CELL, idPrefix: `chk-${id}`, sketch: false });
   for (const lv of LEVEL_IDS) {
     if (sketch(raw, { level: lv, seed: id }) !== sketch(raw, { level: lv, seed: id })) stable = false;
     if (sketch(raw, { level: lv, seed: id }) === sketch(raw, { level: lv, seed: `${id}!` })) stable = false;
@@ -237,7 +243,7 @@ function knobCell(id, label, lvl, side) {
   const g = geometryFor(SPECS[id]);
   const s = (g.k * side) / TILE;
   const floorY = side / 2 + (g.k * (g.ey / 2 + g.z0) * side) / TILE;
-  const raw = FT[camel(id)]({ w: side, h: side, idPrefix: `k-${id}-${label.replace(/\W/g, '')}` });
+  const raw = FT[camel(id)]({ w: side, h: side, idPrefix: `k-${id}-${label.replace(/\W/g, '')}`, sketch: false });
   const art = lvl ? sketch(raw, { level: lvl, seed: id }) : raw;
   const pawnX = side + 4;
   const pawnY = floorY - PAWN_FEET_UNIT * CM_PER_PAWN_UNIT * s;

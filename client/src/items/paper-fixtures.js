@@ -266,9 +266,10 @@ function envFor(s, id, state) {
   };
 }
 
-/** An item fragment whose painter draws in the fixture's own centimetres. */
+/** An item fragment whose painter draws in the fixture's own centimetres.
+ *  `sketched: true` — the owner's 2026-08-05 ruling; the seam is `helpers.item()`. */
 function fixture(id, opts, paint) {
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); });
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); }, { sketched: true });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
