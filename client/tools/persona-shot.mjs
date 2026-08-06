@@ -182,12 +182,30 @@ async function pollFor(fn, ms = 20000, step = 250) {
  */
 const untilOpen = () => pollFor(async () => (await isOpen()) || null, 8000);
 const untilClosed = () => pollFor(async () => ((await isOpen()) ? null : true), 8000);
-/** Wait for the HOST to echo the selection back — `Cmd.click` round-trips before `[U]` can resolve
- *  a cid from the frame, and THAT is the race the fixed sleeps were papering over. */
-const untilSelected = (name) => pollFor(async () => {
-  const n = await evaluate("(()=>{const e=document.querySelector('.ov-selN');return e?e.textContent:'';})()");
-  return n === name ? true : null;
-}, 10000);
+/**
+ * ⛔ WAIT FOR THE SURFACE'S OWN STATEMENT THAT A CREW MEMBER IS SELECTED — the `[U] PERSONA` button
+ * being ENABLED — and not for a text node.
+ *
+ * ⚠️ MEASURED ON THE MERGED TREE (main's side-elevation plate, both decks at once), where this leg
+ * failed 3 runs out of 3 at 35–37/38: `openPersonaForSelected()` WITHOUT a cid resolves
+ * `selectedCrewCid(frame)`, and `frame.sel` is the selected crew tile **ON THE CURRENT DECK**. The
+ * room-control step above enters and leaves a room, which can leave the viewport on another deck —
+ * and then there IS no selection to act on, the readout empties, `setDisabled` greys the button, and
+ * both `[U]` paths correctly do nothing. That is the surface's existing selection semantics (the
+ * readout, MOVE and the old `[B]` all behave identically), NOT a defect this package introduced —
+ * so the rig must establish the precondition the charter names ("on a SELECTED crew member") instead
+ * of racing it. It re-clicks the dock until the surface says a person is selected.
+ */
+const untilPersonaArmed = async () => pollFor(async () => {
+  const armed = await evaluate("(()=>{const b=document.querySelector('[data-ov-persona]');"
+    + "return !!(b && !b.disabled);})()");
+  if (armed) return true;
+  const row = await centre('.ov-crew');
+  if (row) await clickAt(row.x, row.y);            // re-select, then let the wire come back
+  const open = await isOpen();
+  if (open) { await pressKey('Escape', 'Escape', 27); await untilClosed(); }
+  return null;
+}, 20000, 700);
 const untilRoomOpen = () => pollFor(async () => (await evaluate("document.body.classList.contains('roomzoom-open')")) || null, 15000);
 const untilRoomClosed = () => pollFor(async () => ((await evaluate("document.body.classList.contains('roomzoom-open')")) ? null : true), 8000);
 
@@ -318,12 +336,10 @@ if (roomForControl) {
 }
 
 log('\nSTEP 2 — the [U] PERSONA button opens the same window, and the bands read true');
-const crew2 = await pollFor(() => centre('.ov-crew'));
-if (crew2) await clickAt(crew2.x, crew2.y);
-await untilOpen();
-await pressKey('Escape', 'Escape', 27);
-await untilClosed();
-await untilSelected(SUBJECT.name);
+check(!!(await untilPersonaArmed()),
+  'the Overview never reported a crew member as SELECTED (the [U] PERSONA button stayed disabled), '
+  + 'so acceptance step 5\'s precondition — "press the key ON A SELECTED CREW MEMBER" — was never '
+  + 'established and the two checks below would be measuring the wrong state');
 const btn = await centre('[data-ov-persona]');
 check(!!btn, 'the [U] PERSONA button is on screen');
 await clickAt(btn.x, btn.y);
@@ -358,6 +374,7 @@ check(String(beforeEsc).replace(/\bpersona-open\b/, '').trim() === String(afterE
 
 // ───────────────────────── 6. ACCEPTANCE STEP 5 — the retargeted key, through the real keymap
 log('\nSTEP 5 — the retargeted key [U] opens the same window');
+check(!!(await untilPersonaArmed()), 'a crew member is selected, so the key has a subject');
 await pressKey('u', 'KeyU', 85);
 check(!!(await untilOpen()), 'pressing [U] on a selected crew member opened the Persona window');
 st = await windowState();
