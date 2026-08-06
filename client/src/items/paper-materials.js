@@ -157,8 +157,12 @@ function skin(itemId, opts, paint) {
   // and the rule's own semantics have nowhere to land on a tiling skin. Measured before this
   // argument existed: every one of the twelve skins drew its rule 1.5–3.7 units OUTSIDE its own tile
   // edge, and a 12 × 8 room floor drew NINETY-SIX of them through `materialLayerSvg` — a grid of ink
-  // ticks at the tiling pitch, across the floor. Regenerated for the ruling: the materials sheet and
-  // one live room-floor shot, so the picture is what the veto is taken from.
+  // ticks at the tiling pitch, across the floor. The picture the veto is taken from is a CONTROLLED
+  // A/B — `client/tools/sketch-ground-ruling-shot.mjs`: same scene, same camera, same pawn at the
+  // same tile, unselected in both, with this argument as the only variable, and the AFTER column
+  // asserted byte-identical to `materialLayerSvg`. It photographs all SIX floor skins, because the
+  // ruling does NOT read equally on them: on `metal-grating` the rule lands on the tile edge the
+  // skin already draws and 96-vs-0 photographs the same. That is stated, not hidden.
   // ⚠️ IT IS THE ONLY KNOB THE MATERIALS TURN OFF. Everything else about the treatment applies —
   // the pen, the caps, the wobble, the halo, the doubled pass, the `#fh` loosening.
   return item(itemId, opts, (s) => paint(s, g), { sketched: true, ground: false });

@@ -189,6 +189,8 @@ process.stdout.write([
   '',
   `furniture ms treated  ${tArtTreated.toFixed(3)}   (the ${FITTINGS.length} fittings alone)`,
   `furniture ms memoised ${tArtMemo.toFixed(3)}   (×${(tArtMemo / tArtTreated).toFixed(2)} — a cache keyed`
-  + ' on (itemId, side), one string substitution per hit)',
+  + ' on (itemId, side, FACING), one string substitution per hit. The facing is in the key because a'
+  + ' fitting\'s drawing AND its size both turn with it; a two-term key serves a turned bench its'
+  + ' unturned picture. NOT SHIPPED — see this tool\'s header.)',
   '',
 ].join('\n'));

@@ -66,30 +66,34 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 
 /** The four treated catalogues, each as `{name, ids, raw(id), ship(id)}`. */
+// ⚠️ `raw`/`ship` TAKE A FACING, AND IT DEFAULTS TO `undefined` RATHER THAN 0 ON PURPOSE — the
+// rotation suite pins `facing: undefined`, `facing: 0` and no-facing-at-all as byte-identical, so
+// every facing-0 measurement in this file is the same fragment it always measured. See the bridge
+// test in §2 for why the facing had to reach these doors at all.
 const CATALOGUES = [
   {
     name: 'fittings',
     ids: FITTING_IDS,
-    raw: (id) => FT[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, sketch: false }),
-    ship: (id) => FT[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}` }),
+    raw: (id, f) => FT[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f, sketch: false }),
+    ship: (id, f) => FT[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f }),
   },
   {
     name: 'machines',
     ids: MACHINE_IDS,
-    raw: (id) => MC[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, sketch: false }),
-    ship: (id) => MC[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}` }),
+    raw: (id, f) => MC[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f, sketch: false }),
+    ship: (id, f) => MC[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f }),
   },
   {
     name: 'paper-fixtures',
     ids: FIXTURE_IDS,
-    raw: (id) => PF[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, sketch: false }),
-    ship: (id) => PF[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}` }),
+    raw: (id, f) => PF[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f, sketch: false }),
+    ship: (id, f) => PF[camel(id)]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f }),
   },
   {
     name: 'paper-resources',
     ids: PAPER_RESOURCE_IDS,
-    raw: (id) => PR_BUILD[id]({ w: 240, h: 240, idPrefix: `a-${id}`, sketch: false }),
-    ship: (id) => PR_BUILD[id]({ w: 240, h: 240, idPrefix: `a-${id}` }),
+    raw: (id, f) => PR_BUILD[id]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f, sketch: false }),
+    ship: (id, f) => PR_BUILD[id]({ w: 240, h: 240, idPrefix: `a-${id}`, facing: f }),
   },
 ];
 
@@ -630,6 +634,155 @@ test('the displacement pin FAILS when the amplitude is doubled — driven, not a
     + `${total} elements — the pin cannot see an amplitude change and proves nothing`);
 });
 
+// ⭐⭐⭐ THE BRIDGE AT A **FACING** — the hole the merge itself opened, and it was invisible to 206.
+//
+// ⛔ SAY THE SHAPE FIRST, BECAUSE IT IS CLAUDE.md's 4th TRAP WORN BY TWO CORRECT DECISIONS AT ONCE.
+// Every leg in this file measures `CATALOGUES[].raw/ship` at facing 0 — that was the whole world
+// when the package was written. Then `lane/pawn-tween` arrived with a rotation verb, and every
+// projection guard in `rotation.test.js` was correctly pointed at `{ sketch: false }` (a projection
+// question belongs to the raw fragment). Both halves are right; the INTERSECTION is empty. Nothing
+// anywhere looked at TREATED output on a turned piece — 70 pieces × 3 facings — on the very surface
+// `roomzoom-view.standItem` threads a facing through.
+//
+// MEASURED, NOT ANTICIPATED (review, 2026-08-05). Two mutations at the `helpers.item()` seam each
+// ran the sketch + five catalogue + rotation + items-model suites **206/206 GREEN**:
+//   F1  the treatment SKIPPED whenever `opts.facing` is set — a turned piece drawn with a ruler,
+//       standing next to an unturned one drawn by hand.
+//   F2  the treatment APPLIED at facing ≠ 0 with every emitted coordinate scaled ×1.02 — the exact
+//       systematic error the amplitude bound admits and the exact legs below exist to catch.
+// `rotation.test.js`'s two sweeps now kill F1 (treated ≠ raw at every facing, every catalogue).
+// THIS test kills F2, by re-running the three §2 pins on turned geometry.
+//
+// ⚠️ AND THE SEAM EQUALITY IS THE LOAD-BEARING LINE, not the geometry legs. `measurePiece` runs
+// `sketch()` ITSELF, so a defect that lives in the SEAM — F1 and F2 both do — is invisible to it:
+// the instrument would happily measure a beautiful treated fragment that the seam never shipped.
+// Asserting the shipped bytes ARE `sketch(raw_at_this_facing, …)` is what ties the two together,
+// and it is the one line that kills F1 and F2 on its own.
+test('⭐⭐⭐ the treated fragment at EVERY facing is the raw one, bridged — the seam and the geometry', () => {
+  const L = LEVELS[SKETCH_LEVEL];
+  let seamChecks = 0;
+  for (const cat of CATALOGUES) {
+    for (const id of cat.ids) {
+      for (const f of [1, 2, 3]) {
+        const raw = cat.raw(id, f);
+        const ship = cat.ship(id, f);
+        assert.notEqual(ship, raw,
+          `${cat.name}/${id} at facing ${f} ships its RAW fragment — the treatment is applied at rest\n`
+          + 'and skipped when the piece turns.');
+        assert.equal(ship, sketch(raw, { level: SKETCH_LEVEL, seed: id }),
+          `${cat.name}/${id} at facing ${f}: the shipped fragment is not `
+          + `\`sketch(raw, {level: '${SKETCH_LEVEL}', seed: <piece id>})\`. The seam is doing something\n`
+          + 'to a turned piece that this suite does not measure — which is exactly how a ×1.02 scale\n'
+          + 'on every turned coordinate stayed green through 206 tests.');
+        seamChecks += 1;
+        // ⭐ …AND THE HAND IS THE PIECE'S, NOT THE FACING'S. A turned bench is already a different
+        // drawing (the frame turned before `sketch()` saw a character); seeding off the facing would
+        // give one object four hands, which is the "stamp vs drawing" failure inverted.
+        assert.equal(ship, sketch(cat.raw(id, f), { level: SKETCH_LEVEL, seed: id }));
+      }
+    }
+  }
+  assert.equal(seamChecks, ALL_TREATED_IDS.length * 3,
+    `${seamChecks} seam checks over ${ALL_TREATED_IDS.length} pieces × 3 facings`);
+  assert.ok(seamChecks >= 200, 'the facing sweep is vacuous');
+
+  // ── THE THREE §2 PINS, RE-RUN ON TURNED GEOMETRY ────────────────────────────────────────────
+  // The geometry the treatment sees at facing 1 is a DIFFERENT drawing — different run lengths,
+  // different silhouette classification, different ground band — so "the bound holds" is a fresh
+  // claim here rather than a restatement.
+  let geom = 0, runs = 0, round = 0;
+  let worstAmp = 0, worstCol = 0;
+  const EPS = 0.05;
+  const perp = (p, a, b) => {
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const len = Math.hypot(vx, vy);
+    if (len < 1e-9) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+    return Math.abs((p[0] - a[0]) * vy - (p[1] - a[1]) * vx) / len;
+  };
+  for (const cat of CATALOGUES) {
+    for (const id of cat.ids) {
+      for (const f of [1, 2, 3]) {
+        const frag = cat.raw(id, f);
+        for (const r of measurePiece(frag, id).rows) {
+          if (r.kind !== 'geom') continue;
+          geom += 1;
+          // (1) THE DISPLACEMENT BOUND, both directions.
+          worstAmp = Math.max(worstAmp, Math.max(r.fwd, r.rev) / r.bound);
+          assert.ok(r.fwd <= r.bound && r.rev <= r.bound,
+            `${cat.name}/${id} facing ${f}: a treated point is ${Math.max(r.fwd, r.rev).toFixed(2)} `
+            + `from the shape it replaced, past the ${r.bound.toFixed(2)} bound`);
+          // (2) COLLINEARITY, for straight runs.
+          if (r.nm === 'ellipse' || r.nm === 'circle') continue;
+          const segs = [];
+          for (const poly of shapePolys(r.src)) {
+            for (let i = 0; i + 1 < poly.length; i += 1) segs.push([poly[i], poly[i + 1]]);
+          }
+          if (!segs.length) continue;
+          for (const t of r.out.match(/<[^>]*>/g) || []) {
+            const a = attrsOf(t);
+            if (!a.d || a.fill !== 'none' || a.class === DOUBLE_CLASS) continue;
+            const pts = flatten(a.d).flat();
+            if (pts.length < 2) continue;
+            runs += 1;
+            const A = pts[0];
+            const B = pts[pts.length - 1];
+            const best = Math.min(...segs.map(([s0, s1]) => Math.max(perp(A, s0, s1), perp(B, s0, s1))));
+            worstCol = Math.max(worstCol, best);
+            assert.ok(best <= EPS, `${cat.name}/${id} facing ${f}: a treated run's chord lies `
+              + `${best.toFixed(3)} off the line of the member it replaces (limit ${EPS})`);
+          }
+        }
+        // (3) THE ROUND MEMBERS, per axis and exact.
+        for (const m of roundMembers(frag, id)) {
+          const fit = fitRound(m, L.lump);
+          round += 1;
+          assert.ok(fit.kx <= L.lump && fit.ky <= L.lump && fit.dis <= L.lump * 0.5
+            && fit.dcx <= fit.cbx && fit.dcy <= fit.cby,
+          `${cat.name}/${id} facing ${f}: a treated round member is not the raw one — `
+            + `kx ${fit.kx.toFixed(4)} ky ${fit.ky.toFixed(4)} disagreement ${fit.dis.toFixed(4)} `
+            + `against a lump of ${L.lump}`);
+        }
+      }
+    }
+  }
+  // ⛔ THE NON-VACUITY FLOORS, and the headroom checks that say the legs are still legs at a facing
+  // rather than three assertions over an empty set.
+  // MEASURED on this tree: geom 4644 · runs 11 436 · round 702 · worst displacement 0.686 of the
+  // bound · worst collinearity 0.00707 units (the facing-0 figure is 0.0069, so turning the geometry
+  // did not loosen the exact leg by anything that matters). Floors sit under the measurements, and
+  // the headroom checks are what say these are still legs rather than three assertions over nothing.
+  assert.ok(geom > 4000, `only ${geom} turned freehand elements measured — the facing bridge is vacuous`);
+  assert.ok(runs > 10000, `only ${runs} turned runs measured`);
+  assert.ok(round > 600, `only ${round} turned round members measured`);
+  assert.ok(worstAmp > 0.4 && worstAmp < 1, `turned worst displacement ${worstAmp.toFixed(3)} of the bound`);
+  assert.ok(worstCol > 0 && worstCol < EPS / 2, `turned worst collinearity ${worstCol.toFixed(4)}`);
+});
+
+// ⚠️ FILED, NOT FIXED, AND PINNED AS A COUNT SO IT CANNOT STAY INVISIBLE: **A DAMAGED TWIN CANNOT
+// TURN.** `wrecked.js` never mentions `facing` — the string does not appear in the module — and
+// `wear.buildTileItem` hands it the same `opts` bag it hands `buildItem`, so on the shipping surface
+// a wrecked locker draws unturned beside a pristine one that turns. That is `lane/pawn-tween`'s
+// rotation package, not this treatment: the twin is untreated-by-facing, not untreated-by-sketch.
+// Recorded here because this is the file that noticed, and as a COUNT so the day someone threads it
+// this line reports the fix rather than a distant guard failing.
+test('FILED: a wrecked twin ignores the facing — all 47, named as a count rather than left silent', () => {
+  let deaf = 0;
+  for (const id of PAPER_TWIN_IDS) {
+    const a = buildWrecked(id, { w: 240, h: 240, idPrefix: `f-${id}` });
+    const b = buildWrecked(id, { w: 240, h: 240, idPrefix: `f-${id}`, facing: 1 });
+    if (a === b) deaf += 1;
+  }
+  assert.equal(deaf, 47,
+    `${deaf} of 47 treated twins ignore the facing (was 47 at this merge). If this went DOWN someone\n`
+    + 'threaded `facing` through `wrecked.js` — good — and the facing bridge above should grow a twin\n'
+    + 'leg to match. If it went UP, a twin that used to turn has stopped.');
+  // …and the structural half, so "47" cannot become true for a new reason.
+  const src = codeOnly(readFileSync(join(HERE, '..', 'src', 'items', 'wrecked.js'), 'utf8'));
+  assert.ok(!/facing/.test(src),
+    '`wrecked.js` now mentions `facing`, so the count above is no longer measuring what it says');
+});
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 3. E8 ATTACHMENT, RESTATED: "attached" now means WITHIN THE AMPLITUDE OF TOUCHING
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -1047,8 +1200,11 @@ test('every treated piece stands on a ground rule, inside its own scaling group'
 //   · one 12 × 8 room floor drew NINETY-SIX of them through `roomzoom-view.materialLayerSvg` — a
 //     grid of ink ticks across the deck at the tiling pitch, which is precisely the artefact a floor
 //     skin exists to avoid.
-// Regenerated for the ruling so it can be vetoed from the PICTURE and not from this paragraph: the
-// materials sheet and one live room-floor shot.
+// Vetoable from the PICTURE and not from this paragraph: `client/tools/sketch-ground-ruling-shot.mjs`
+// is a CONTROLLED A/B — one variable, same scene, same camera, same pawn, unselected in both — whose
+// AFTER column is asserted byte-identical to `materialLayerSvg`. It draws all six floor skins,
+// because the ruling does not read equally on them (on `metal-grating` the rule lands on the tile
+// edge the skin already draws).
 //
 // ⛔ IT IS A NAMED PER-CATALOGUE KNOB (`item(..., { sketched: true, ground: false })`), NOT A SPECIAL
 // CASE INSIDE `sketch()`. A treatment that asked "is this a material?" would be a second authority on

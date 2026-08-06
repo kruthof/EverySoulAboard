@@ -158,6 +158,21 @@ test('every non-square fitting draws four DIFFERENT pictures, and is determinist
     const svg = [0, 1, 2, 3].map(draw);
     assert.equal(draw(1), svg[1], `${id} is not deterministic at facing 1`);
     assert.ok(!/NaN|undefined/.test(svg.join('')), `${id} emitted NaN/undefined at some facing`);
+      // ⛔⛔ AND THE TREATED FRAGMENT IS NOT THE RAW ONE **AT EVERY FACING** — the hole the merge
+      // itself created, and it was invisible to 206 tests (measured, 2026-08-05, review). Every
+      // sketch-adoption leg measures the catalogues at facing 0; every projection guard in this file
+      // now correctly asks `{ sketch: false }`. So NOTHING pointed at treated output on a turned
+      // piece — and `standItem` threads a facing through on the shipping surface. Two mutations came
+      // back 206/206 GREEN: the treatment SKIPPED whenever `opts.facing` is set, and the treatment
+      // APPLIED at facing ≠ 0 with every coordinate scaled ×1.02. This line kills the first; the
+      // second is killed by the bridge legs in `sketch-adoption.test.js`, which re-run the
+      // displacement, collinearity and round-member pins at a facing.
+    for (const f of [1, 2, 3]) {
+      assert.notEqual(svg[f], buildItem(id, { w: 240, h: 240, idPrefix: 'r', facing: f, sketch: false }),
+        `${id} ships its RAW fragment at facing ${f}. The sketch treatment is applied at facing 0 `
+        + 'and skipped when the piece turns, so a turned fitting is drawn by a different pen from the '
+        + 'one beside it — and no other guard in this repo looks here.');
+    }
     // A SQUARE-FOOTPRINT piece may legitimately look identical at 0 and 2 (a symmetric drawing in a
     // symmetric box), so the claim is scoped to pieces whose footprint is not square. The count at
     // the end is the non-vacuity: this must not silently become an empty sweep.
@@ -440,6 +455,19 @@ test('⭐⭐ EVERY OTHER CATALOGUE TURNS TOO — they all reach the facing throu
         `${name}/${id} is not deterministic at facing 1`);
       assert.ok(!/NaN|undefined/.test(at(0) + at(1) + at(2) + at(3)),
         `${name}/${id} emitted NaN at some facing`);
+      // ⛔⛔ AND THE TREATED FRAGMENT IS NOT THE RAW ONE **AT EVERY FACING** — the hole the merge
+      // itself created, and it was invisible to 206 tests (measured, 2026-08-05, review). Every
+      // sketch-adoption leg measures the catalogues at facing 0; every projection guard in this file
+      // now correctly asks `{ sketch: false }`. So NOTHING pointed at treated output on a turned
+      // piece — and `standItem` threads a facing through on the shipping surface. Two mutations came
+      // back 206/206 GREEN: the treatment SKIPPED whenever `opts.facing` is set, and the treatment
+      // APPLIED at facing ≠ 0 with every coordinate scaled ×1.02. This line kills the first; the
+      // second is killed by the bridge legs in `sketch-adoption.test.js`, which re-run the
+      // displacement, collinearity and round-member pins at a facing.
+      for (const f of [1, 2, 3]) {
+        assert.notEqual(at(f), buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: f, sketch: false }),
+          `${name}/${id} ships its RAW fragment at facing ${f} — treated at rest, untreated turned.`);
+      }
       // Facing 0 must remain byte-identical to no facing at all — the compatibility half.
       assert.equal(at(0), buildItem(id, { w: 240, h: 240, idPrefix: 'pf' }),
         `${name}/${id}: passing facing 0 is not the same as passing no facing`);

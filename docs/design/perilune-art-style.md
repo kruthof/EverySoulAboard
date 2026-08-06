@@ -138,6 +138,13 @@ deck at the tiling pitch. Pinned both ways in `sketch-adoption.test.js` (zero on
 one on every standing piece, with the knob forced on and off as the inclusion control) and at the
 room-floor surface itself. It is the **only** knob the materials turn off.
 
+The owner vetoes it from a **controlled A/B** — `client/tools/sketch-ground-ruling-shot.mjs`: same
+scene, same camera, same pawn at the same tile, unselected in both, with the knob as the only
+variable, and the AFTER column asserted byte-identical to `materialLayerSvg`. ⚠️ **It does not read
+equally on all six floor skins, and the sheet shows all six for that reason**: on `metal-grating` the
+rule lands on the tile edge the skin already draws, so 96 rules and 0 rules photograph the same. It
+reads clearly on `cream-tile-floor`, `wood-plank-floor` and `steel-tan-floor`.
+
 **⛔ THE HALO EXCEPTION, MEASURED.** `haloScope: 'all'` is the expensive knob and the experiment
 measured why: a fitting's paper-filled faces are ALREADY a knockout, so a second one can only reach
 the ink of elements drawn BEFORE it — the table's four legs come away with white bites where the top
