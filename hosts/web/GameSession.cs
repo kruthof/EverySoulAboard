@@ -2550,6 +2550,107 @@ namespace Perilune.Web
         /// wellbeing (morale), whereabouts (deck + tile) and current task. Deliberately not
         /// fog-gated: the player always knows their own crew (ship's intercom), unlike the
         /// frame crew tuple which stays projection-gated.</summary>
+        /// <summary>
+        /// ⭐⭐ M4-9 — <b>HOW SHE IS</b>, composed here and shipped as ONE SENTENCE. M4-1 DESIGN
+        /// QUESTION (e) option 2: <i>"a computed STATE LINE, in words, plus WHAT IT MEANS SHE WILL
+        /// REFUSE"</i>, with the example <i>"Exhausted and hungry. She will not take a job in
+        /// vacuum."</i>
+        ///
+        /// <para>⛔ <b>THE SECOND CLAUSE IS THE WHOLE POINT AND IT IS WHY THIS BAND COULD NOT SHIP IN
+        /// M4-2.</b> That charter's sequencing rule: <i>"a state line that stops after the adjective
+        /// is a COSMETIC OPERATOR"</i> — <c>TARGET.md:65</c> bans a decorative −5 % and <c>:69</c>
+        /// extends it to tone (<i>"Sadness that changes no decision is a decoration"</i>). Until this
+        /// package there was nothing she would refuse, so the sentence had to stop after the
+        /// adjective and could not honestly be drawn at all.</para>
+        ///
+        /// <para><b>THE SECOND CLAUSE HAS THREE STATES AND EVERY ONE OF THEM CHANGES A DECISION:</b>
+        /// <list type="number">
+        ///   <item><b>BROKEN</b> — what she is refusing, right now, by tier. The player's options
+        ///     narrow and this says which one just closed.</item>
+        ///   <item><b>ARMING</b> — the dwell counter is above zero, so she is inside the band a
+        ///     break grows in. The line says how long she has been there. ⭐ This is the clause that
+        ///     makes the band a WARNING rather than an epitaph, and it is honest because the counter
+        ///     is real hashed state, not a forecast.</item>
+        ///   <item><b>STEADY</b> — she will take any work she is capable of. An empty state that is
+        ///     a statement, the same discipline the Persona window's four other empties follow.</item>
+        /// </list></para>
+        ///
+        /// <para>⛔ <b>NO NUMBER FROM THE MOOD FORMULA CROSSES THIS SEAM.</b> Not the mood, not the
+        /// threshold, not the needs — see <c>WireFormat.RosterEntry.State</c>. The one figure the
+        /// sentence carries is a DURATION in sim-hours, which is a fact about the clock rather than a
+        /// meter to feed.</para>
+        ///
+        /// <para>Pure: reads citizen fields and defs, mutates nothing, draws no RNG. Called from
+        /// <see cref="BuildRoster"/> on the sim thread inside Render (≤ 10 Hz), never on a tick
+        /// path.</para>
+        /// </summary>
+        internal string HowSheIs(Citizen c)
+        {
+            var needs = _sim.Defs.Needs;
+            float serve = _sim.Defs.Sustenance.NeedThreshold;   // 0.5 — where SustenanceSystem acts
+            float bed = needs.FatigueRestThreshold;             // 0.75 — where RestSystem acts
+
+            // ── clause 1: the adjectives, and every band edge is a gate the SIM already uses ──
+            // ⚠️ Not invented adjectives over invented cut-points: `serve` is the value at which she
+            // goes to eat or drink and `bed` the value at which she goes to sleep, so each word
+            // marks a REAL transition in her behaviour. The 0.85 upper band is this file's, and it
+            // is declared: nothing in the sim changes there, it is the word for "well past it".
+            const float Severe = 0.85f;
+            var words = new List<string>(4);
+            if (c.Suffocation > 0f) words.Add("struggling to breathe");
+            if (c.Fatigue >= Severe) words.Add("exhausted");
+            else if (c.Fatigue >= bed) words.Add("badly short of sleep");
+            if (c.Hunger >= Severe) words.Add("starving");
+            else if (c.Hunger >= serve) words.Add("hungry");
+            if (c.Thirst >= Severe) words.Add("parched");
+            else if (c.Thirst >= serve) words.Add("thirsty");
+
+            string first;
+            if (words.Count == 0) first = "Steady.";
+            else
+            {
+                var sb = new System.Text.StringBuilder(48);
+                for (int i = 0; i < words.Count; i++)
+                {
+                    if (i > 0) sb.Append(i == words.Count - 1 ? " and " : ", ");
+                    sb.Append(words[i]);
+                }
+                sb[0] = char.ToUpperInvariant(sb[0]);
+                sb.Append('.');
+                first = sb.ToString();
+            }
+
+            // ── clause 2: what it MEANS ──
+            string second;
+            switch (c.BreakTier)
+            {
+                case BreakTier.Minor:
+                    second = "She has stopped taking orders into unbreathable air.";
+                    break;
+                case BreakTier.Major:
+                    second = "She has stopped working. She will still eat, drink and sleep.";
+                    break;
+                case BreakTier.Extreme:
+                    second = "She has withdrawn: she takes no work and no orders at all.";
+                    break;
+                default:
+                    if (c.BreakDwell > 0)
+                    {
+                        // How long she has already been in the band, in sim-hours, from the counter
+                        // itself — `DwellRisePerTick` units per tick, `TicksPerSecond` × 3600 per
+                        // sim-hour. ⚠️ It is elapsed time, NOT a prediction: a forecast would have to
+                        // assume the mood stays down, and the measured sawtooth says it will not.
+                        double hours = c.BreakDwell / (double)MentalBreak.DwellRisePerTick
+                                       / (Simulation.TicksPerSecond * 3600.0);
+                        second = "She has been at the end of her rope for "
+                                 + hours.ToString("0.0", CultureInfo.InvariantCulture) + " h.";
+                    }
+                    else second = "She will take any work she is capable of.";
+                    break;
+            }
+            return first + " " + second;
+        }
+
         private List<WireFormat.RosterEntry> BuildRoster()
         {
             var citizens = _sim.Citizens.Items;
@@ -2573,7 +2674,7 @@ namespace Perilune.Web
                 }
                 var (wx, wy) = WalkFraction(c, tpt);
                 rows.Add(new WireFormat.RosterEntry(c.Id, Name(c), role, mood, TaskLabel(c),
-                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y, traits, wx, wy));
+                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y, traits, wx, wy, HowSheIs(c)));
             }
             return rows;
         }

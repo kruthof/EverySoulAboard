@@ -86,7 +86,11 @@ namespace Perilune.Sim
         /// See <c>docs/HANDOVER.md</c> OPEN for the filed note.</para></summary>
         public static bool TryPathToAdjacent(Simulation sim, Citizen citizen, Int3 target)
         {
-            bool forced = citizen.HeldByOrder;
+            // ⭐ M4-9 — THE FLAG IS THE ORDER *AND* HER STATE. `OrderOverridesSafety` is
+            // `HeldByOrder && not broken`: a minor break withdraws M3-14 rung 2's waiver for that
+            // person, so the order survives and the air question comes back. One rule, one place
+            // that decides whether an order waives it.
+            bool forced = citizen.OrderOverridesSafety;
             for (int i = 0; i < 4; i++)
             {
                 var n = Int3.Neighbor4(target, i);

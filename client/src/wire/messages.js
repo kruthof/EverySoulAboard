@@ -146,6 +146,17 @@
  *   room membership and pawn hit test — uses `fx`/`fy`; anything ADDRESSED TO THE SIM, above all
  *   `crewClickTarget`'s `Cmd.click`, uses `x`/`y`, because the host resolves a click through
  *   `Citizen.Pos`. Getting this backwards drew a crew member standing on a compartment's back wall.
+ * @property {string} [state]
+ *   ⭐⭐ M4-9 — HOW SHE IS (APPEND-ONLY trailing field). ONE COMPOSED SENTENCE: an adjective clause
+ *   from her needs, then WHAT IT MEANS SHE WILL REFUSE. The Persona window's fifth band draws it
+ *   VERBATIM and derives nothing from it.
+ *
+ *   ⛔ THERE IS NO NUMBER HERE AND THERE MUST NOT BE. `TARGET.md:66-69` forbids a misery meter, and
+ *   `dossier-honesty.test.js`'s equality-pinned meter census is the mechanised proof: the host reads
+ *   mood/hunger/thirst/fatigue and the break tier and ships WORDS, so a client that wanted to draw a
+ *   bar has nothing to draw it from. The host-side twin and authority is
+ *   `hosts/web/WireFormat.cs`'s `RosterEntry.State`; `GameSession.HowSheIs` composes it.
+ *   OPTIONAL: an older host omits it, and the band hides rather than inventing a sentence.
  */
 /** @typedef {{type:'roster', crew:RosterEntry[]}} RosterMsg */
 

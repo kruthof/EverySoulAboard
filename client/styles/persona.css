@@ -70,7 +70,16 @@ body.moss-open #persona{display:none !important}
 .pv-stuck{font-family:var(--font-serif);font-style:italic;font-size:14.5px;line-height:1.3;
   color:var(--attend)}
 
-/* ==== band 3 — CAN & CANNOT ==== */
+/* ==== band 3 — HOW SHE IS (M4-9) ==== */
+/* ⭐ ONE SENTENCE, IN THE SERIF, AND NO METER ANYWHERE IN THIS RULE. `TARGET.md:66-69` forbids a
+   misery meter, and the wire makes one impossible (the host sends words, never the scalars) — this
+   rule is where a later lane would be tempted to add a bar, and there is nothing to bind it to.
+   It WRAPS like `.pv-task` and for the same reason: the second clause is the load-bearing half and
+   clipping it would ship exactly the cosmetic operator the band's sequencing rule exists to
+   forbid. */
+.pv-state{font-family:var(--font-serif);font-size:15px;line-height:1.35;color:var(--ink-serif)}
+
+/* ==== band 4 — CAN & CANNOT ==== */
 .pv-skills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
 .pv-skill{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
   border:1px solid var(--paper-hairline);padding:5px 8px;background:var(--paper-inset-3)}
@@ -89,7 +98,7 @@ body.moss-open #persona{display:none !important}
 .pv-cannot-row{border:1px solid var(--attend);color:var(--attend);padding:3px 8px;
   font-size:8.5px;letter-spacing:.12em}
 
-/* ==== band 4 — TIES & HISTORY ==== */
+/* ==== band 5 — TIES & HISTORY ==== */
 .pv-ties{display:flex;flex-direction:column;gap:4px}
 .pv-tie{display:flex;align-items:baseline;gap:8px;font-size:10px}
 .pv-tie-dir{color:var(--ink-faintest);flex:none;width:10px}

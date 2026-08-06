@@ -15,20 +15,20 @@
 // `roomzoom-open` — it is visible over BOTH standard surfaces — and it is outside `.app`, so M4-8's
 // console deletion cannot take it with the shell.
 //
-// ⛔ FOUR BANDS, NOT FIVE, AND THE MISSING ONE IS A CHARTER RULE RATHER THAN AN OMISSION.
-// M4-1 DESIGN QUESTION (e) ends: *"THE RULE: the HOW SHE IS band ships with, or after, the first
-// break behaviour … a state line that stops after the adjective is a COSMETIC OPERATOR"*
-// (`TARGET.md:65`, `:69`; OD-R's amendment). OD-S answered §10 item 1 = **A**, so the first break is
-// package **M4-9** at merge-order position **4b** — AFTER this package at position 2. The band
-// therefore cannot ship here, and the exit gate's *how she is* clause is **PARTIAL until M4-9**,
-// reported rather than quietly filled.
-// ⭐ AND THE SECOND HALF IS MEASURED, NOT ARGUED: its FIRST clause is not buildable today either.
-// `dossier-honesty.test.js:113-118` records the census — `BuildRoster` emits
-// cid/name/role/mood/task/portrait/morale/deck/x/y/traits, the `citizen` message carries
-// role/mood/traits/portrait/log, and `grep -ri "hunger\|thirst\|fatigue" client/src` is EMPTY. Re-run
-// on this tree: still empty. So "Exhausted and hungry" would need a wire channel that does not
-// exist — and M4-2's charter says in terms: *"If this package finds it needs a sim read that does
-// not exist, STOP — that is a different package and a pin question."*
+// ⭐⭐ FIVE BANDS SINCE M4-9, AND THE FIFTH ARRIVING LAST IS THE CHARTER'S OWN SEQUENCING RULE
+// RATHER THAN AN AFTERTHOUGHT. M4-1 DESIGN QUESTION (e) ends: *"THE RULE: the HOW SHE IS band ships
+// with, or after, the first break behaviour … a state line that stops after the adjective is a
+// COSMETIC OPERATOR"* (`TARGET.md:65`, `:69`; OD-R's amendment). OD-S answered §10 item 1 = **A**, so
+// the first break is package **M4-9** at merge-order position **4b** — AFTER this module at position
+// 2. M4-2 therefore shipped FOUR bands and reported the exit gate's *how she is* clause PARTIAL;
+// **M4-9 adds the fifth and closes it**, and the second clause is honest because there is now
+// something she will refuse.
+// ⛔ THE SENTENCE IS THE HOST'S AND IS DRAWN VERBATIM. `roster.state` (M4-9) is composed by
+// `GameSession.HowSheIs` from `Hunger`/`Thirst`/`Fatigue`/`Suffocation`, the break tier and the dwell
+// counter. ⛔ NO NUMBER FROM THE MOOD FORMULA CROSSES THE WIRE — that is what keeps
+// `dossier-honesty.test.js`'s equality-pinned meter census green BY CONSTRUCTION rather than by
+// restraint: a bar cannot be drawn from a string. Nothing here parses, splits or re-derives it; a
+// client that computed a state line would be a second opinion about a person.
 //
 // ⛔ NO ORDERS IN THIS WINDOW (§11, from the analogue). RimWorld's Bio tab hosts none; orders are the
 // map's right-click and the Work tab, both of which Perilune already ships. A second arbitration
@@ -53,6 +53,7 @@
 //                                        ONE row, never three derivations)
 //   skills 0..20 + what she can NEVER do `workcaps` (`workRowColumns`/`workSkillLabel`/`isIncapableOf`)
 //   who knows her                        `relations` (`edgesOf`/`regardRows`)
+//   HOW SHE IS + what she will refuse    `roster.state` (M4-9, composed by `GameSession.HowSheIs`)
 // ⛔ AND THE FOUR HONEST EMPTIES, each written rather than hidden (`invisible feedback is
 // FUNCTIONAL`, binding 2026-07-26; the charter's own copy where it gave copy):
 //   the written identity   — `PersonaSheet` is host-owned and on no wire. **M4-3** brings it.
@@ -178,7 +179,18 @@ function buildSkeleton() {
   _el.stuck = b2.body.appendChild(mk('div', 'pv-stuck'));
   scroll.appendChild(b2.el);
 
-  // ── band 3 — CAN & CANNOT: RW§1.6 + §6.1's own surface ──
+  // ── band 3 — HOW SHE IS: the exit gate's fourth question, and M4-9's own band ──
+  // ⭐ ITS PLACE IN THE ORDER IS THE GATE SENTENCE'S: *"who she is, what she's doing, why, how she
+  // is"* — so it follows DOING & WHY and precedes the two bands the sentence does not name.
+  // ⛔ ONE ELEMENT, ONE WIRE FIELD, NO DERIVATION. If `state` is absent (an older host) the band
+  // hides entirely rather than inventing a sentence — an honest empty is a statement about a
+  // subject, and "we were not told" is not one this window may make up.
+  const bH = band('HOW SHE IS');
+  _el.state = bH.body.appendChild(mk('div', 'pv-state'));
+  _el.stateBand = bH.el;
+  scroll.appendChild(bH.el);
+
+  // ── band 4 — CAN & CANNOT: RW§1.6 + §6.1's own surface ──
   // `MECHANICS.md:5771`, quoted: *"RimWorld puts that in the pawn's Bio tab ('Incapable Of', with the
   // source on hover). We have no such surface — the Persona window is M4."* This is that surface.
   // ⛔ THE STRUCTURE IS THE STATEMENT (`rimworld-reference.md:335`): a work type she can NEVER do is
@@ -196,7 +208,7 @@ function buildSkeleton() {
     'Why is not recorded on the wire yet.'));
   scroll.appendChild(b3.el);
 
-  // ── band 4 — TIES & HISTORY: the payload VISION names ──
+  // ── band 5 — TIES & HISTORY: the payload VISION names ──
   const b4 = band('TIES & HISTORY');
   _el.ties = b4.body.appendChild(mk('div', 'pv-ties'));
   _el.tiesEmpty = b4.body.appendChild(mk('div', 'pv-note pv-empty', 'No one aboard knows her yet.'));
@@ -292,6 +304,10 @@ function paint() {
     // about a subject, and the subject is gone).
     // …and the bands that described HER are emptied rather than left standing. A skill row or a bond
     // that outlived its subject is the same lie as a fabricated one.
+    // …including HOW SHE IS: a state line that outlived its subject is the same lie as a fabricated
+    // one, and this band is the one that speaks about her in the present tense.
+    setText(_el.state, '');
+    setHidden(_el.stateBand, true);
     if (_canKey !== '') { _el.can.replaceChildren(); _el.cannot.replaceChildren(); _canKey = ''; }
     setHidden(_el.cannotHd, true); setHidden(_el.cannot, true); setHidden(_el.cannotWhy, true);
     if (_tiesKey !== '') { _el.ties.replaceChildren(); _tiesKey = ''; }
@@ -323,6 +339,12 @@ function paint() {
   const stuck = crewBlockedOrder(decodeBlocked(Hud.getBlocked()), Number(sel.cid));
   setText(_el.stuck, stuck ? 'ORDER STUCK — ' + stuck.sentence : '');
   setHidden(_el.stuck, !stuck);
+
+  // ── HOW SHE IS ──
+  // Verbatim. `setText` is the guarded write, so an idle repaint mutates nothing.
+  const state = typeof sel.state === 'string' ? sel.state : '';
+  setText(_el.state, state);
+  setHidden(_el.stateBand, state === '');
 
   // ── CAN & CANNOT ──
   paintCaps(Number(sel.cid));

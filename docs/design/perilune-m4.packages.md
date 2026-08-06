@@ -181,6 +181,57 @@ P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. Last mover **M3-9** (`pin/m3-c`,
 |---|---|---|---|---|---|
 | **M4-a** | `lane/m4-4-health` | **M4-4** | ⛔ **DEPENDS ENTIRELY ON §10 ITEM 2, AND EVERY NON-TRIVIAL ANSWER MOVES PINS.** Under (A) real: **P1 P2 P3** (a written `Citizen.Health` changes hashed state on every ship from tick 1) **+ P4 P5** if the floor lands as a def scalar. Under (B) delete: **P1 P2 P3** — ⭐ **removing** a hashed field moves the fold exactly as adding one does, plus a CITZ v9→v10 branch. Under (C) keep-and-retire-the-display: **NONE.** | `Citizen.Health` (`:32`), `Morale` (`:35`) and `Archetype` (`:38`) are all folded today. ⭐ **The charter's own finding: there is NO zero-pin option that changes anything, and §10 item 2 must be answered knowing that.** | ⭐ **tag `pin/m4-a`**, all five values recorded in the tag's own commit |
 | **M4-b** | `lane/breaks` | ⭐ **the first break** (§10 item 1's answer decides its id — **A** = M4-9, **B** = inside M4-4, **C** = no row) | ⛔ **P1 P2 P3**, and **P4 P5 too** unless every scalar is a literal | ⛔ **NEW HASHED PER-CITIZEN STATE IS UNAVOIDABLE — AND IT IS NOT ONE FIELD.** ⭐ **REPRICED; the first draft said "one".** **Field 1, the DWELL COUNTER** (always) — the deterministic replacement for RimWorld's stochastic mean-time-to-break. **Field 2, the PER-PERSON THRESHOLD** — exists under **DESIGN QUESTION (g)(ii)**, the recommendation; under **(g)(i)** (a global literal) it does not, **and §13.5's sharpness mitigation is withdrawn with it**. **Field 3, the CATHARSIS EXPIRY** (`BreakReprieveUntilTick`, under (c) option 2, the recommendation). ⇒ ⛔ **1–3 hashed fields, and RW§8.9's ritual is PER FIELD** (*"default + parser key + save version branch + checksum fold + round-trip test + a re-measured pin"*, `:1887-1899`) — **one commit, one CITZ bump, one re-pin, up to three round-trip legs.** ⚠️ **P4/P5 hold only if the DERIVATION CONSTANTS (4/7, 1/7, the clamp, `dwell_ticks[T]`) ship as LITERALS** — M2-1's rule-not-tunable precedent, used by M3-7 and M3-2. **The charter recommends literals for the DERIVATION and hashed STATE for the per-person BASE**; §5 splits the two explicitly, because the first draft collapsed them into "literals" and thereby deleted the per-person tunable by accident. | ⭐ **tag `pin/m4-b`** |
+
+> ### ⭐⭐ AMENDED IN PLACE 2026-08-05 — **M4-b IS BUILT (M4-9), AND THREE OF THIS ROW'S PREDICTIONS WERE WRONG**
+>
+> Recorded here rather than only in `MECHANICS.md` §13.51, because this row is where the next pin
+> lane will look. **P1 `7bdd0d6f7756dfdc` → `7c70c1befe848cc7` · P2 `cb09b584a5f15e52` →
+> `55437c9e5f5d4c95` · P3 `43a1a5c25713faec` → `6f1fcfda3312c87a` · P4/P5 HELD.**
+>
+> 1. ⛔ **THE FIELD COUNT IS FIVE, NOT "1–3".** The row priced the TRIGGER (a threshold, a dwell, a
+>    reprieve) and the roster §5 wrote needs a STATE: `BreakTier` (WHICH break is running — three
+>    different behaviours need a selector) and `BreakEndsAtTick` (RW§4.2's *"the break ends by
+>    expiry"*; one that ended when the mood recovered would end at the next meal, and the measured
+>    sawtooth lifts her 14.4–27.2 points). Overloading the dwell counter as the break's own timer was
+>    considered and refused — M2-2's one-meaning-per-predicate rule.
+> 2. ⭐ **P4/P5 HELD AS PREDICTED, and the reason held too**: every derivation constant shipped as a
+>    LITERAL. ⚠️ **But the ladder DOES read def fields** — the mood weights, to derive its own floor
+>    and span rather than hard-coding −75/95. Reading a def is not adding one, and the checksums are
+>    about the SET of fields; measured twice, through `DefsChecksumTests` and the scenario host's own
+>    `defs:` print.
+> 3. ⛔ ⭐ **THE SPAN COULD NOT BE THE MOOD RANGE, AND THE MEASUREMENT IS THE REASON.** §5 says
+>    *"Perilune's tunable is expressed in Perilune mood units on a −135…+20 scale."* Driven on
+>    `--ship wreck` over 21 sim-days, **every rung of the RimWorld-shaped ladder over that span reads
+>    0.00 % time-below**, and the deepest (50 % = −57.50) is reached only in excursions whose longest
+>    contiguous run is **2.2 sim-minutes** — because suffocation is a 90–240-second death timer and
+>    cannot be dwelt in. The shipped span is the three SLOW needs only (floor −75, span 95).
+>    ⚠️ Excluded from the SPAN is **not** excluded from the ladder: it still reads `Citizen.Mood`
+>    whole.
+> 4. ⭐ **DESIGN QUESTION (h) RESOLVED BY THE MEASUREMENT IT NAMED, in the recommendation's favour**:
+>    amplitude median **14.40** / max **27.24**, period median **369 710 ticks (10.27 sim-h)**, and
+>    the below-window between resets is **2.8–6.3 sim-h** against a 6-hour dwell ⇒ a HARD RESET
+>    cannot fire in the borderline band. Leaky integrator at **4 : 1**.
+> 5. ⛔ **AND THE VACUITY WAS REAL, MEASURED FOUR WAYS.** The 2×2 (in `ci.sh`'s M4-b block): with the
+>    five fields out of the fold, ladder-live and ladder-stubbed are **bit-identical** — the ladder
+>    changes NO behaviour on P1's fixture. What moved the pin is the widened fold **plus the dwell
+>    counter's own accumulation** (P1's crew end the run at `dwell=174880 / 864000`, 20.2 % of a
+>     break, `tier=None`). ⇒ **no pin sees a tier, a reset rule or a behaviour**, exactly as §2's
+>    instrument table said. `MentalBreakTests` (40 legs) + `HowSheIsTests` (10) are the only cover.
+>    ⚠️ **AND THE FIRST COMMIT'S COVER WAS FOUR GATES SHORT** — a single predicate assert wearing a
+>    header that claimed one leg each. Rebuilt on `WorkTypeVetoTests`' blinded-leg pattern after
+>    review's battery; the full table with the RED names is in `MECHANICS.md` §13.51.
+> 6. ⚠️ ⭐ **AND THE FINDING THE OWNER SHOULD SEE: THE SHIPPING WRECK, LEFT ALONE, NEVER REACHES THE
+>    FIRST RUNG.** Driven 21 sim-days: peak dwell **111 150 of 864 000** and the whole crew dead on
+>    day 19 — of AIR, not of hunger. The ship's own service thresholds hold everybody at a serviced
+>    floor of −33.75 and hydroponics keeps up, so the slow-deprivation state the ladder is for never
+>    arrives unattended. ⛔ **That is a SCARCITY question and this charter puts scarcity tuning in M5**
+>    (§5's TWoM-2 ruling: *"M4 builds the INSTRUMENT, M5 turns the dial"*), so it is FILED, not fixed.
+>    ⭐ **The player, however, can reach it today and the path is already shipped**: `SustenanceSystem`
+>    and `RestSystem` both gate on `IsIdleForWork`, so a crew member held on a standing order eats,
+>    drinks and sleeps nothing — driven, she hits the deprivation floor (−75.00 exactly) and takes an
+>    **EXTREME** break at tick **750 899 (≈20.9 sim-h)**, while the released control sits at −31.07
+>    with a dwell counter of **0**. *You kept her on the job through the night, and she stopped.*
+
 | **M4-c** | `lane/social-ignition` | ⭐ **only if §10 item 4 = yes** | **P1 P2 P3** | Seeding SOCL bonds at thaw writes **hashed sim state from inside `CryoSystem`** — M3-8's competence half is the precedent and the reason the persona half was deliberately kept host-side (`MECHANICS.md:5786-5793`). ⛔ **If item 4 is refused this row does not exist.** | ⭐ **tag `pin/m4-c`** |
 
 ### ⭐ EXPECTED PIN-NEUTRAL, AND WHY EACH ONE IS NEUTRAL FOR A DIFFERENT REASON

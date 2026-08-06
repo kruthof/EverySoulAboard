@@ -33,6 +33,19 @@
 //
 // Exits non-zero on any failed check. NOT wired into ./ci.sh: it needs a browser and a running host,
 // and the gate stays browser-free.
+//
+// ⚠️ FILED, MEASURED, AND NOT CAUSED BY M4-9: THIS TOOL FLAKES ~1 RUN IN 3 ON STEP 2's BUTTON CLICK.
+// Five consecutive runs on the M4-9 tree: 44/44, 41/44, 44/44, 44/44, 41/44. When it fails, the
+// three failures are always the same cascade — `the [U] PERSONA button opened the window`, then the
+// two checks that read the window that did not open (one of which is M4-9's HOW SHE IS band, which
+// merely sits downstream). The cause is the arming race `untilPersonaArmed`'s own header already
+// describes: the button reads ENABLED, a frame lands between the arm and the click, `frame.sel`
+// moves off the current deck, and `openPersonaForSelected()` resolves no cid. ⛔ It is a FALSE-RED
+// generator, never a false green — every failure is "the window did not open", never "it opened and
+// was wrong" — so it cannot manufacture a passing claim. Re-run before believing a red. Filed with
+// the repo's standing rig-flake ledger (onboarding-shot, work-tab-shot); closing it means waiting on
+// the SELECTION rather than on the button's disabled attribute, which is a change to M4-2's step and
+// not M4-9's to make.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -162,6 +175,14 @@ const windowState = async () => json(`(()=>{const e=document.getElementById('per
     bands: Array.from(document.querySelectorAll('.pv-bandhd')).map((b)=>b.textContent),
     task: t ? (t.textContent||'') : '',
     taskClientW: t ? t.clientWidth : -1, taskScrollW: t ? t.scrollWidth : -1,
+    // ⭐ M4-9 — HOW SHE IS. Read the same three ways the task line is: the TEXT (is the second
+    // clause there at all), and the CLIP measure (a sentence whose second clause is ellipsized is
+    // the cosmetic operator the band's sequencing rule forbids, arriving through CSS instead of
+    // through code).
+    state: (document.querySelector('.pv-state')||{}).textContent||'',
+    stateClientW: (document.querySelector('.pv-state')||{}).clientWidth ?? -1,
+    stateScrollW: (document.querySelector('.pv-state')||{}).scrollWidth ?? -1,
+    stateShown: !!(document.querySelector('.pv-state')||{}).offsetParent,
     skills: Array.from(document.querySelectorAll('.pv-skill-lbl')).map((e2)=>e2.textContent),
     cannot: Array.from(document.querySelectorAll('.pv-cannot-row')).map((e2)=>e2.textContent),
     notes: Array.from(document.querySelectorAll('.pv-empty')).filter((e2)=>e2.offsetParent!==null||e2.getClientRects().length)
@@ -351,14 +372,29 @@ check(st && st.display !== 'none' && st.sheetW > 200 && st.sheetH > 200,
 check(st && st.name === SUBJECT.name,
   `the name matches the roster's — window "${st?.name}" vs wire "${SUBJECT.name}"`);
 check(st && st.title === 'PERSONA · ' + SUBJECT.name, 'the window titles itself with her name');
-check(JSON.stringify(st?.bands) === JSON.stringify(['IDENTITY', 'DOING & WHY', 'CAN & CANNOT', 'TIES & HISTORY']),
-  'FOUR bands, in the exit gate\'s order — HOW SHE IS ships with the first mental break (M4-9)');
+check(JSON.stringify(st?.bands) === JSON.stringify(['IDENTITY', 'DOING & WHY', 'HOW SHE IS', 'CAN & CANNOT', 'TIES & HISTORY']),
+  'FIVE bands, in the exit gate\'s order — HOW SHE IS arrived WITH the first mental break (M4-9), '
+  + 'which is DESIGN QUESTION (e)\'s sequencing rule and not an afterthought');
 await png('02-persona-open-overview.png');
 
 // ⭐ THE TASK SENTENCE, WHOLE — the browser-only half of the charter's mutation 7.
 const wireTask = String(SUBJECT.task || '');
 check(st && st.task === wireTask,
   `the task line EQUALS the roster's task field verbatim — window "${st?.task}" vs wire "${wireTask}"`);
+// ⭐⭐ M4-9 — THE FIFTH BAND, ON SCREEN, IN A REAL BROWSER. Three claims no headless test can make:
+// it is VISIBLE (not merely built), it is NOT CLIPPED (the second clause is the load-bearing half),
+// and it carries a SECOND SENTENCE at all — a line that stopped after the adjective would satisfy
+// every DOM-presence assertion in `persona-view.test.js` and still be the cosmetic operator
+// `TARGET.md:65` bans.
+check(st && st.stateShown === true, 'the HOW SHE IS band is ON SCREEN (not built-but-hidden)');
+check(st && typeof st.state === 'string' && st.state.trim().length > 0,
+  `HOW SHE IS says something: "${st?.state}"`);
+check(st && /\.\s+\S/.test(String(st.state || '')),
+  '…and it has a SECOND CLAUSE after the adjective — what it means she will refuse. A one-clause '
+  + 'state line is exactly the cosmetic operator M4-1 DESIGN QUESTION (e)\'s sequencing rule forbids');
+check(st && st.stateScrollW <= st.stateClientW + 1,
+  'the state sentence is NOT clipped — it wraps like the task line, because the clause that matters '
+  + 'is the last one');
 check(st && st.taskScrollW <= st.taskClientW + 1,
   `the task sentence is NOT CLIPPED — content ${st?.taskScrollW}px in a ${st?.taskClientW}px box. `
   + 'Both crew docks ellipsize this label (145px/118px); the window exists so it does not.');

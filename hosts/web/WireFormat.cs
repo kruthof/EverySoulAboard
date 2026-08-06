@@ -284,13 +284,35 @@ namespace Perilune.Web
             /// </summary>
             public readonly float Fx, Fy;
 
+            /// <summary>
+            /// ⭐⭐ M4-9 — <b>HOW SHE IS</b>: the Persona window's fifth band, as ONE COMPOSED
+            /// SENTENCE and never as a number. M4-1 DESIGN QUESTION (e) option 2, verbatim: <i>"a
+            /// computed STATE LINE, in words, plus WHAT IT MEANS SHE WILL REFUSE"</i> — and option 1
+            /// (<c>Citizen.Mood</c> as a number with a bar) is REFUSED TWICE OVER by
+            /// <c>TARGET.md:66-69</c> (<i>"No misery meters … never a bar the player feeds"</i>) and
+            /// by <c>dossier-honesty.test.js:138</c>'s equality-pinned meter census.
+            ///
+            /// <para>⛔ <b>THE NUMBERS NEVER CROSS THE WIRE, AND THAT IS THE POINT RATHER THAN AN
+            /// ECONOMY.</b> The host reads <c>Hunger</c>/<c>Thirst</c>/<c>Fatigue</c>/<c>Mood</c>
+            /// and the break tier and ships a sentence; a client that received the scalars could
+            /// draw the bar this band exists to refuse, and the next lane that wanted one would find
+            /// it already paid for. Same shape as
+            /// <c>perilune-character-simulation.plan.md</c> §8.1's prediction chips.</para>
+            ///
+            /// <para>⚠️ APPEND-ONLY trailing field. Empty string is legitimate and means <i>nothing
+            /// to say</i> — never "unknown".</para>
+            /// </summary>
+            public readonly string State;
+
             public RosterEntry(uint cid, string name, string role, string mood, string task,
                                string portrait, float morale, int deck, int x, int y,
-                               IReadOnlyList<string> traits = null, float? fx = null, float? fy = null)
+                               IReadOnlyList<string> traits = null, float? fx = null, float? fy = null,
+                               string state = null)
             {
                 Cid = cid; Name = name; Role = role; Mood = mood; Task = task;
                 Portrait = portrait; Morale = morale; Deck = deck; X = x; Y = y;
                 Traits = traits;
+                State = state ?? "";
                 // Callers that do not know about the glide (tests of the older shape) get the tile
                 // centre-of-record, so `fx`/`fy` are never a silently wrong (0,0).
                 Fx = fx ?? x; Fy = fy ?? y;
@@ -336,6 +358,8 @@ namespace Perilune.Web
                     // now covers these two fields as well as `morale`).
                     sb.Append(",\"fx\":").Append(Num(Math.Round((double)e.Fx, 2)));
                     sb.Append(",\"fy\":").Append(Num(Math.Round((double)e.Fy, 2)));
+                    // APPEND-ONLY trailing field (M4-9): HOW SHE IS — see RosterEntry.State.
+                    sb.Append(",\"state\":"); AppendString(sb, e.State ?? "");
                     sb.Append('}');
                 }
             sb.Append("]}");

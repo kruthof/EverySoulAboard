@@ -32,6 +32,8 @@ namespace Perilune.Tools
             if (args.Length > 0 && args[0] == "occupancy") return RunOccupancy(args);
             // E0-8: the ledger + the ShipMetrics honesty table (LedgerHarness).
             if (args.Length > 0 && args[0] == "ledger") return RunLedger(args);
+            // M4-9: the post-M3-9 MOOD ENVELOPE — the break package's first required measurement.
+            if (args.Length > 0 && args[0] == "mood") return RunMood(args);
             // P2 live-provider smoke: env-gated, spends real money, NEVER in ci.sh.
             if (args.Length > 0 && args[0] == "llm-smoke") return LlmSmoke.Run(args);
 
@@ -1324,6 +1326,71 @@ namespace Perilune.Tools
                 Console.WriteLine($"  {a.Name,-14} shown {a.Shown,-12} true: {a.Truth}");
                 Console.WriteLine($"                 => {a.Verdict}");
             }
+            return 0;
+        }
+
+        /// <summary>
+        /// ⭐⭐ <c>mood [--ship wreck|slice|grid|perilune] [--days D] [--seed N] [--data DIR]</c> —
+        /// M4-9's FIRST MEASUREMENT: the post-M3-9 mood envelope.
+        ///
+        /// <para>The charter (`perilune-m4.packages.md` §5, MUST RE-MEASURE) forbids setting a break
+        /// threshold before this runs: `MECHANICS.md` §13.4's published envelope is PRE-M3-9 and says
+        /// so about itself, and M3-9 gave the fatigue term a reducer. Four required outputs —
+        /// day-means, the per-citizen envelope, the sawtooth's AMPLITUDE and its PERIOD — plus a
+        /// dwell sweep, because a threshold is only half of a dwell ladder.</para>
+        ///
+        /// <para>Read-only: it ticks and samples. No command, no designation, no file. The CI-pinned
+        /// verb-less path is untouched.</para>
+        /// </summary>
+        private static int RunMood(string[] args)
+        {
+            string shipName = ArgString(args, "--ship", "wreck");
+            bool slice = shipName == "slice";
+            bool grid = shipName == "grid";
+            bool wreck = shipName == "wreck";
+            int days = ArgInt(args, "--days", 3);
+            ulong seed = ArgULong(args, "--seed",
+                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed :
+                wreck ? AuthoredShips.WreckSeed : 42UL);
+            string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
+            var defs = LoadDefs(dataDir, out _, out _, out _);
+
+            GenSimHost host;
+            if (slice)
+            {
+                host = GenSimHost.Build(AuthoredShips.PeriluneSlice(), defs);
+                AuthoredShips.PopulateSlice(host.Sim, host.Minds, host.Facts, null);
+            }
+            else if (grid) host = GenSimHost.Build(AuthoredShips.PeriluneGrid(), defs);
+            else if (wreck) host = GenSimHost.Build(AuthoredShips.PeriluneWreck(), defs);
+            else host = GenSimHost.Build(ProceduralShips.Generate(ShipRecipe.FromSeed(seed)), defs);
+
+            var sim = host.Sim;
+            Console.WriteLine($"mood — {shipName} ship, {days} day(s), seed {seed}, " +
+                              $"{sim.Citizens.Items.Count} crew at boot");
+            Console.WriteLine($"defs: {defs.Checksum:x16}");
+            Console.WriteLine("⚠️ UNATTENDED RUN: under OD-H every work type boots OFF, so this crew eats, drinks,");
+            Console.WriteLine("   sleeps and does no work. That IS the shipped boot state; it is not a working ship.");
+            Console.WriteLine();
+
+            var traces = new Dictionary<uint, MoodHarness.Trace>();
+            long totalTicks = (long)days * TicksPerDay;
+            int sampleIndex = 0;
+            for (long t = 0; t < totalTicks; t++)
+            {
+                sim.Tick();
+                if ((t + 1) % MoodHarness.SampleTicks != 0) continue;
+                MoodHarness.Sample(sim, traces, sampleIndex);
+                sampleIndex++;
+            }
+
+            var ordered = new List<MoodHarness.Trace>(traces.Values);
+            ordered.Sort((a, b) => a.Id.CompareTo(b.Id));
+            Console.WriteLine($"{totalTicks:N0} ticks · {sampleIndex:N0} samples/crew at 1 Hz · " +
+                              $"{ordered.Count} crew member(s) seen alive at some point · " +
+                              $"{sim.Citizens.Items.Count} alive at the end");
+            Console.WriteLine();
+            Console.Write(MoodHarness.Report(ordered, defs, days, TicksPerDay / MoodHarness.SampleTicks));
             return 0;
         }
 

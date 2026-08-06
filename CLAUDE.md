@@ -136,11 +136,38 @@ evidence, even from this file** — re-measure before quoting.
 
   | pin | value | enforced by |
   |---|---|---|
-  | P1 scenario `--days 3 --seed 42` | `7bdd0d6f7756dfdc` | `ci.sh:121` (+ twin-run equality) |
-  | P2 tick-3000 golden | `cb09b584a5f15e52` | `Golden/perilune_tick3000_hash.txt` |
-  | P3 slice tick-3000 golden | `43a1a5c25713faec` | `Golden/slice_tick3000_hash.txt` |
+  | P1 scenario `--days 3 --seed 42` | `7c70c1befe848cc7` | `ci.sh:189` (+ twin-run equality) |
+  | P2 tick-3000 golden | `55437c9e5f5d4c95` | `Golden/perilune_tick3000_hash.txt` |
+  | P3 slice tick-3000 golden | `6f1fcfda3312c87a` | `Golden/slice_tick3000_hash.txt` |
   | P4 defs defaults checksum | `661fcdd4b89f1e87` | `DefsChecksumTests.cs` |
   | P5 defs rules-inclusive (`defs:` print) | `558a1c0a4985f5ea` | `DefsChecksumTests.cs` |
+
+  Last mover: **M4-9 (PIN M4-b, 2026-08-06) — P1/P2/P3 MOVED, P4/P5 measured HELD** (two paths each:
+  `CreateDefault`/`DefsEquivalenceTests` for P4, the pin test and the scenario host's own `defs:`
+  print for P5), and the cause is a **FOLD WIDENING PLUS A COUNTER**, not a behaviour change.
+  `Citizen` gains five hashed fields (CITZ v9→v10: `BreakDwell`, `BreakThresholdPct`, `BreakTier`,
+  `BreakEndsAtTick`, `BreakReprieveUntilTick`) and `MentalBreakSystem` joins the stack after
+  `SafetySystem`. P1 `7bdd0d6f7756dfdc` → `7c70c1befe848cc7` (twin match), P2 `cb09b584a5f15e52` →
+  `55437c9e5f5d4c95`, P3 `43a1a5c25713faec` → `6f1fcfda3312c87a`.
+  **THE 2×2, DRIVEN, AND THE SECOND CELL IS THE POINT:** ladder LIVE + folded `7c70c1befe848cc7` ·
+  ladder STUBBED + folded `d9a67767ec2d1986` · ladder LIVE + **unfolded** `7bdd0d6f7756dfdc` (the
+  old pin, to the digit) · ladder STUBBED + unfolded `7bdd0d6f7756dfdc`. Rows 3 and 4 are identical
+  ⇒ with the new state out of the fold the ladder changes nothing this fixture can see, so **the
+  registration itself is pin-neutral, measured**. What moved the pin is the widened fold **plus the
+  dwell counter's accumulation**: P1's crew end the run at `mood -37.06 / dwell 174880 of 864000 /
+  tier None`.
+  ⚠️ **P1's crew end BELOW the minor threshold (−37.06 vs −34.15)** — the hold is a WINDOW, not a
+  property of the fixture. A longer P1 would fire a break and move this pin for a second,
+  *behavioural* reason.
+  ⚠️ **THE DAY-3 SUMMARY LINE DOES NOT MOVE** — `pop 2 / hydro 98.1 kPa / water 0.0 L /
+  potatoes 371`, byte-identical in all four cells. The hash is the only evidence.
+  ⛔ **NO PIN SEES A TIER, A RESET RULE OR ANY OF THE THREE BEHAVIOURS.** Under OD-H no pinned
+  fixture works, so a held pin here is VACUOUSLY held — M2-12's *"no pin sees the generation
+  term"*, M3-7's *"no pin sees the rate term"* and D1/D6's *"VACUOUS ×4"* in a **fourth costume**.
+  The only instruments are `MentalBreakTests` (40 legs, one BLINDED leg per claim gate on
+  `WorkTypeVetoTests`' pattern) and `HowSheIsTests` (10), and nothing else. ⚠️ The first draft
+  covered all six gates with a single assert on the predicate and **four of the six were measured
+  green** by review; the battery is now 14/14 RED and is recorded in `MECHANICS.md` §13.51.
 
   ⛔ **NO PIN COVERS `--ship wreck`, THE SHIP `./play.sh` BOOTS — measured by D1/D6, 2026-08-02.**
   That package changed what every brownout, repair, thaw and commission writes into the **hashed**
@@ -164,7 +191,7 @@ evidence, even from this file** — re-measure before quoting.
   stateful-`PowerSystem` package. Instruments: `ChronicleSignalTests` + `ChronicleTests`, nothing else (MECHANICS
   §13.43). M2-12's *"no pin sees the generation term"* in a third costume — and this time what the
   pins could not see was a REGRESSION, not just an absence.
-  Last mover: M3-9 (PIN M3-c, 2026-08-02) — **P1 + P4/P5 MOVED, P2/P3 measured HELD**, and the cause
+  Before that: M3-9 (PIN M3-c, 2026-08-02) — **P1 + P4/P5 MOVED, P2/P3 measured HELD**, and the cause
   is a BEHAVIOUR change on every ship: `RestSystem` is the reducer `Citizen.Fatigue` never had, so
   crew who were permanently exhausted now sleep between jobs — and `NeedsSystem`'s ramp is GATED
   while they do (RimWorld's rest meter falls only while awake; ungated it made a deck sleep 63.6

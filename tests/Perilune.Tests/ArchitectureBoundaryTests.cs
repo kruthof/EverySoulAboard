@@ -1423,7 +1423,17 @@ namespace Perilune.Tests
             var notEconomy = new[]
             {
                 "AtmosphereSystem.cs", "CitizenSystem.cs", "CryoSystem.cs", "ExplorationSystem.cs",
-                "GoalSystem.cs", "HistorySystem.cs", "HydroponicsSystem.cs", "NeedsSystem.cs",
+                "GoalSystem.cs", "HistorySystem.cs", "HydroponicsSystem.cs",
+                // ⭐⭐ M4-9 — THE BREAK LADDER, CLASSIFIED **NOT ECONOMY**, AND THE DECISION IS THE
+                // POINT OF THIS TEST. The ladder reads `Citizen.Mood` and writes five per-citizen
+                // fields; it touches no matter, no item, no machine and no value. It DOES change
+                // whether a person takes work — but so do `RestSystem` (she sleeps instead) and
+                // `SafetySystem` (she flees instead), and both sit outside the boundary for the same
+                // reason: LABOUR SUPPLY IS NOT THE ECONOMY'S SUBJECT, the matter it moves is. The
+                // pair is `MentalBreak.cs` (the RULE — literals, derivation, no state) and
+                // `MentalBreakSystem.cs` (its clock); split so the rule can be read without the loop.
+                "MentalBreak.cs", "MentalBreakSystem.cs",
+                "NeedsSystem.cs",
                 "PowerSystem.cs", "RestSystem.cs", "SafetySystem.cs", "SustenanceSystem.cs",
                 "ThermalSystem.cs", "WaterSystem.cs",
             };
