@@ -12,11 +12,26 @@
 //
 // ⇒ THE "BEFORE" COLUMN IS THEREFORE A CAPTURE, taken from the tree this lane branched from and
 // passed in by path. Produce it once, before the deletion, with `--capture` against a checkout of
-// the parent commit:
+// the parent commit.
+//
+// ⚠️ AND THE RECIPE NEEDS ONE STEP THAT IS EASY TO LEAVE OUT — COPY THE TOOL IN. This file is NEW
+// in lane/warm-purge, so it does NOT exist in the parent checkout; the obvious reading, "run
+// `/tmp/wp-base/client/tools/warm-purge-sheet.mjs --capture`", is `Cannot find module`. The tool
+// must be copied into that checkout and run FROM there, so that its `import '../src/items/…'`
+// resolves against the PARENT's item modules — which is the whole point, since those are the warm
+// ones. (Corrected 2026-08-06; the header shipped the unrunnable three-liner.)
 //
 //     git worktree add /tmp/wp-base --detach <parent>
+//     cp client/tools/warm-purge-sheet.mjs /tmp/wp-base/client/tools/      # ← THE STEP
 //     node /tmp/wp-base/client/tools/warm-purge-sheet.mjs --capture /tmp/warm-before.json
 //     node client/tools/warm-purge-sheet.mjs --before /tmp/warm-before.json
+//
+// ⚠️ WHY THAT DOES NOT DIE ON `TWIN_SOURCE`, which the parent's `wrecked.js` does not export: the
+// module is pulled in with a DYNAMIC `await import(…)` and destructured, so a missing export is
+// `undefined` rather than the link-time `SyntaxError` a static `import { TWIN_SOURCE }` would raise
+// in that tree. `card()` reads it through a `(TWIN_SOURCE && …)` guard for the same reason, and the
+// `--capture` arm exits before any card is built. Keep the dynamic import — it is load-bearing for
+// the one job this tool has to do in two different trees.
 //
 // The capture is NOT committed: it is 4 MB of SVG for art that this commit's whole purpose is to
 // remove, and a committed copy would be exactly the "invitation to draw the old art back" that
@@ -46,12 +61,25 @@ const { ITEMS, ITEM_IDS, buildItem } = await import('../src/items/index.js');
 const { WRECKED, WRECKED_IDS, buildWrecked, TWIN_SOURCE } = await import('../src/items/wrecked.js');
 
 // ── the capture arm: run this from the PARENT checkout, before the deletion ───────────────────
+// ⛔ THE CAPTURE'S TWINS ARE NAMESPACED `was-`, NOT `w-`, AND THAT ONE LETTER PAIR IS A REAL BUG FIX
+// (2026-08-06, found in review). Both columns of sheet 2 are inlined into ONE document, so they share
+// one id space. The capture and the live paper twin were both built with `idPrefix: \`w-${id}\``, so
+// 22 of the 33 before/after figures DEFINED THE SAME DEF ID TWICE and every `url(#…)` in the pair
+// resolved to whichever came first — the WARM capture's. The paper column silently wore the mock's
+// gradients and patterns: `grow-matting` picked up the mock's dot field, `blast-wall`'s hazard band
+// went solid, `carpet-floor` lost its pile. ⚠️ NOTHING WAS WRONG WITH THE TWINS — each renders
+// correctly alone, and sheet 1 (one column, `w-` only) had zero duplicate ids throughout. The defect
+// was this tool's, and it is the exact shape the twins' own `idPrefix` guard exists to prevent:
+// `wrecked.test.js`'s *"idPrefix makes two placements collision-free: disjoint def ids"* pins that
+// two DIFFERENT prefixes do not collide — it cannot pin a caller that passes the SAME one twice.
+// ⇒ Verify a regenerated sheet by CENSUS, not by eye: parse every `id="…"` and require zero repeats.
+const CAP_PREFIX = 'was-';
 const capturePath = argOf('--capture');
 if (capturePath) {
   const out = { pristine: {}, twin: {}, meta: {} };
   for (const id of ITEM_IDS) out.pristine[id] = buildItem(id, { w: CELL, h: CELL, idPrefix: `p-${id}` });
   for (const id of WRECKED_IDS) {
-    out.twin[id] = buildWrecked(id, { w: CELL, h: CELL, idPrefix: `w-${id}` });
+    out.twin[id] = buildWrecked(id, { w: CELL, h: CELL, idPrefix: `${CAP_PREFIX}${id}` });
     out.meta[id] = { state: WRECKED[id].state, kind: ITEMS[id].kind };
   }
   writeFileSync(capturePath, JSON.stringify(out));
@@ -111,8 +139,26 @@ if (!beforePath) {
   process.exit(0);
 }
 const before = JSON.parse(readFileSync(beforePath, 'utf8'));
+
+// ⇒ AND RE-KEY AN OLDER CAPTURE ON LOAD, so the fix above does not strand the 4 MB capture that
+// already exists. Both halves are shipped deliberately: the `--capture` arm is the SOURCE fix (a
+// capture taken from here on is disjoint before it is ever written), and this is the READER fix (a
+// capture taken with the old `w-` prefix is corrected as it comes in, without re-running the parent
+// checkout — which is the expensive half of the recipe). Rewriting the prefix TOKEN `w-<id>__`
+// catches the `id="…"` and the `url(#…)` in one pass, because the builders mint both from the same
+// string. IDEMPOTENT, on purpose: `was-chair__` does not contain `w-chair__` (the character after
+// `w` is `a`), so a re-keyed capture re-read is a no-op rather than `wasas-`.
+let rekeyed = 0;
+for (const id of Object.keys(before.twin)) {
+  const from = `w-${id}__`;
+  if (!before.twin[id].includes(from)) continue;
+  before.twin[id] = before.twin[id].split(from).join(`${CAP_PREFIX}${id}__`);
+  rekeyed += 1;
+}
+if (rekeyed) console.log(`re-keyed ${rekeyed} captured twin(s) from \`w-\` to \`${CAP_PREFIX}\` — pre-fix capture`);
+
 const REDRAWN = WRECKED_IDS.filter((id) => before.twin[id] !== undefined
-  && before.twin[id] !== buildWrecked(id, { w: CELL, h: CELL, idPrefix: `w-${id}` }));
+  && before.twin[id] !== buildWrecked(id, { w: CELL, h: CELL, idPrefix: `${CAP_PREFIX}${id}` }));
 const rows = REDRAWN.map((id) => card(id, [
   ['warm twin (was)', before.twin[id]],
   ['paper twin (is)', buildWrecked(id, { w: CELL, h: CELL, idPrefix: `w-${id}` })],

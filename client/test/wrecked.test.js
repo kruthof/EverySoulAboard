@@ -47,9 +47,39 @@
 //   (ii)  ⭐ THE TWIN IS ITS PRISTINE PIECE PLUS DAMAGE — new, and TOTAL. A twin's emitted element
 //         list must BEGIN with its pristine piece's, in order. This is what the bijection was really
 //         standing in for and it is strictly stronger: a painter that is correctly NAMED but calls
-//         `paintFitting(s, '<another row>')` passes (i), passes every census in this file, and fails
-//         (ii) BY NAME. That is the transcription-class error in its surviving form — the wrong
+//         `paintFitting(s, '<another row>')` passes (i) and passes every census in this file, and is
+//         caught anyway. That is the transcription-class error in its surviving form — the wrong
 //         drawing under the right label — and it is driven as a control below.
+//         ⭐ AND IT REDDENS THREE LEGS, NOT ONE. Earlier drafts of this header and of the message in
+//         (ii)'s own test said the swap "fails here" / "fails (ii)", as though the prefix rule were
+//         its only witness. RE-RUN 2026-08-06 — `locker` left named `locker` but calling
+//         `paintFitting(s, 'chair', …)`, applied physically and reverted from an in-memory copy
+//         (TRAPS 2) — prints `pass 1848 / fail 3`, and all three reds are semantic assertions rather
+//         than crashes (TRAPS 3):
+//           1. `⭐⭐ (ii) every twin IS its pristine piece PLUS damage — the prefix rule, over all 80`
+//              → "A TWIN IS NOT ITS OWN PRISTINE DRAWING PLUS DAMAGE"          [this file]
+//           2. `⭐⭐ (iii) every twin's damage lands ON the piece it damages, not merely inside its box`
+//              → "A TWIN MARKS PAPER THE PRISTINE PIECE DOES NOT OCCUPY"       [this file]
+//           3. `⭐⭐ every twin is tellable from its treated pristine piece by MORE than treatment noise`
+//              → "the damage-added twin population changed … 66 !== 67"   [sketch-adoption.test.js]
+//         The correction is deliberately in the STRONGER direction: (iii) catches it because
+//         `locker`'s damage was authored against `locker`'s geometry and a chair does not occupy it,
+//         and the adoption leg catches it as a population move. Do not read "the prefix rule is the
+//         only witness" back into this file — it was an understatement, not a spec.
+//
+//         ⛔ THE BOUND, STATED BESIDE THE RULE BECAUSE IT IS EASY TO OVER-READ: (i)–(iii) pin that a
+//         twin draws ITS OWN ROW'S OBJECT. They do NOT pin that it carries its own row's WOUNDS. A
+//         twin that re-runs its CORRECT pristine painter and then wears ANOTHER twin's damage marks
+//         is GREEN — verified, not assumed: `locker` keeping `paintFitting(s, 'locker', …)` and
+//         wearing `chair`'s three marks verbatim runs `tests 1851 / pass 1851 / fail 0`, so all
+//         three guards are blind to it. (It survives (iii) because chair's marks happen to land on
+//         locker's ink; marks that miss would be caught by geometry, not by provenance.)
+//         ⇒ AND NOTHING WAS LOST HERE — THIS IS A BOUND, NOT A REGRESSION. The RETIRED bijection
+//         never covered mark geometry either: it joined LABELS and BADGES (`mockLabel` against the
+//         spec's piece names, `state` against its condition strings) and could not have seen a
+//         wound swap any more than these three can. The guard that would close it is a per-row
+//         damage fingerprint; no lane has needed one, and it is named here so a later reader does
+//         not mistake silence for coverage.
 //   (iii) THE DAMAGE LANDS ON THAT DRAWING — `offPieceAnchors`, lifted out of
 //         `paper-resources.test.js` (where it watched 8 rows) into `client/test/sketch-geom.js` and
 //         applied to all 80, with `inkArea` (the containment ring) the one mark-KIND exception.
@@ -365,8 +395,12 @@ test('⭐⭐ (ii) every twin IS its pristine piece PLUS damage — the prefix ru
     + 'This is the guard that replaced the mock label bijection, and it is the SAME class of defect:\n'
     + 'the wrong drawing under the right label. A painter whose NAME is correct but whose body calls\n'
     + 'another row\'s painter — `paintFitting(s, \'chair\')` inside `locker` — passes the painter-name\n'
-    + 'guard, passes every census in this file, and fails here. Re-run your own pristine painter and\n'
-    + 'ADD damage; never redraw the piece.');
+    + 'guard and passes every census in this file, and is caught anyway: measured 2026-08-06 it reds\n'
+    + 'THREE legs, not just this one — this leg, the (iii) anchoring leg below, and sketch-adoption\'s\n'
+    + '"tellable from its treated pristine piece" population leg. (The message here used to say it\n'
+    + '"fails here", which understated the guard.) Re-run your own pristine painter and ADD damage;\n'
+    + 'never redraw the piece. ⛔ BOUND: this pins the OBJECT, not the WOUNDS — a twin wearing another\n'
+    + 'twin\'s damage marks over its own correct piece is green here. See this file\'s header, (ii).');
   // ⛔ NON-VACUITY AS AN INCLUSION FLOOR, not a population count: a splitter that silently returned
   // [] for every row would satisfy the line above perfectly.
   assert.ok(marksSeen >= 250, `only ${marksSeen} damage marks split out — the splitter found nothing`);
@@ -390,9 +424,24 @@ test('⭐⭐ (ii) every twin IS its pristine piece PLUS damage — the prefix ru
  *
  * ⚠️ ALL TEN ARE PRE-EXISTING, AND SAYING SO IS THE POINT RATHER THAN AN EXCUSE. The guard is new to
  * these rows — it watched the eight paper ground stacks and nothing else until this commit — so what
- * it found on its first run over the other seventy-two is what those lanes shipped: five fittings
- * twins (VR-P2), three paper-fixture twins and five machine twins, authored in absolute centimetres
- * against geometry that later polish passes moved. NONE of the twenty-one twins lane/warm-purge
+ * it found on its first run over the other seventy-two is what those lanes shipped, authored in
+ * absolute centimetres against geometry that later polish passes moved.
+ *
+ * ⛔ THE COMPOSITION SENTENCE HERE SAID *"five fittings twins (VR-P2), three paper-fixture twins and
+ * five machine twins"* — FIVE + THREE + FIVE = THIRTEEN against a ten-row ledger, and it was simply
+ * wrong (corrected 2026-08-06 in review; the ledger itself was right all along). RE-DERIVED off the
+ * shipped ledger by asking each id which catalogue exports it, never by arithmetic (TRAPS 8th):
+ *
+ *   2 fittings      `stool` 6.3 · `vice-post` 6            (FITTING_IDS, VR-P2)
+ *   3 paper fixtures `deck-hatch` 13.7 · `door-airlock` 7.1 · `conduit-run` 4.8   (FIXTURE_IDS)
+ *   5 machines      `ring-array` 9.4 · `plant-pot` 8.7 · `dish-mast` 5.8 ·
+ *                   `sleeper-pod` 5.5 · `bottle-rack` 5.4  (MACHINE_IDS)
+ *   ────────────────────────────────────────────────────────────────────────────
+ *   10, which is `Object.keys(OFF_PIECE_RESIDUAL).length`, and 0 resources and 0 materials.
+ *
+ * ⇒ The two ZEROES are the load-bearing half of the split and are why the miscount mattered: the
+ * eight paper RESOURCE twins are the population this guard already watched before this commit, so a
+ * resource in this ledger would be a REGRESSION rather than a first sighting. NONE of the twenty-one twins lane/warm-purge
  * itself re-authored is in this list, and none of the twelve materials is (they carry their own,
  * tighter, normalised-coordinate leg in `paper-materials.test.js`).
  *

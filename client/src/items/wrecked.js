@@ -89,21 +89,46 @@ import { paintMachine, MACHINE_IDS } from './machines.js';
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // THE NINE FITTINGS (VR-P2) — post-raid twins for the rows the mock never had
 //
-// ⚠️ THESE ARE NOT THE MOCK'S, AND THE DIFFERENCE IS STRUCTURAL RATHER THAN COSMETIC. Every twin
-// above is a transcription of a drawing in `docs/design/perilune-item-set.dc.html`, checked against
-// that spec's own `brokenD` array label-for-label and badge-for-badge — that bijection is what proves
-// the seventy are right. `design-import/Perilune Fittings.dc.html` ships THIRTY pristine fittings and
-// ZERO wrecked ones, so there is nothing to transcribe for these nine and nothing to check against.
-// They are repo-authored, ledgered as such in `NON_MOCK_TWIN` below, and excluded from the mock join
-// so that it still measures exactly seventy.
+// ⛔ THIS HEADER ARGUED FROM THE MOCK BIJECTION UNTIL 2026-08-06, AND THE ARGUMENT IS GONE RATHER
+// THAN WRONG. It read, and it was true when written: *"Every twin above is a transcription of a
+// drawing in `docs/design/perilune-item-set.dc.html`, checked against that spec's own `brokenD`
+// array label-for-label and badge-for-badge — that bijection is what proves the seventy are right.
+// … They are repo-authored, ledgered as such in `NON_MOCK_TWIN` below, and excluded from the mock
+// join so that it still measures exactly seventy."* The owner ruled on 2026-08-06 — *"we should
+// replace all old items with our new ones"* — and lane/warm-purge retired the warm set. There is no
+// "every twin above" any more: ALL EIGHTY re-run their own pristine painter. So `mockLabel` has no
+// referent, the bijection is over an empty set, `NON_MOCK_TWIN` no longer exists, and nothing in
+// `client/` opens that document. ⇒ A READER FOLLOWING THE OLD SENTENCE FINDS NOTHING, which is why
+// it is quoted here as history instead of left standing.
 //
-// ⚠️ AND THEY ARE DRAWN IN THE PAPER IDIOM, NOT THIS FILE'S WARM ONE, because their PRISTINE pieces
-// are: a `#EBE4D1`/`#14120F` bench under a steel-grey scorch bloom would read as two objects. Each
+// ⇒ WHAT IS TRUE NOW, and where to check it (`client/test/wrecked.test.js`, whose header carries the
+// full restructure argument):
+//   · THE PROVENANCE LEDGER IS TOTAL. `NON_MOCK_TWIN` — an EXCEPTION list, 47 of 117 rows — became
+//     `TWIN_SOURCE`, 80 of 80, a total function. These nine are no longer a special case that has to
+//     be excluded from a join; they are nine ordinary rows in it. Where the old ledger could hide a
+//     row by ADDING it, a total map cannot: adding changes nothing and OMITTING fails.
+//   · THE REGISTRY IS EXACTLY THE FIVE PAPER CATALOGUES — fittings, paper-fixtures, paper-materials,
+//     paper-resources, machines — and that equality is itself pinned. There is no sixth, warm one.
+//   · THE PREFIX RULE IS WHAT PROVES THE DRAWING NOW, in place of the label-and-badge walk: a twin's
+//     emitted element list must BEGIN with its pristine piece's, in order. That makes "the twin is
+//     the same object, damaged" true BY FORCE rather than by care or by transcription — including
+//     for these nine, which the bijection could never say anything about at all.
+//   · `docs/design/perilune-item-set.dc.html` STAYS IN THE REPO AS HISTORY. It is where the wreck
+//     premise is stated (*"each keeps one identifying feature so it still reads as the same
+//     object"*) and that premise is now ENFORCED by the prefix rule rather than quoted at.
+//
+// `design-import/Perilune Fittings.dc.html` ships THIRTY pristine fittings and ZERO wrecked ones, so
+// these nine were repo-authored from the start — which is now the ordinary case rather than the
+// exception it was described as above.
+//
+// ⚠️ AND THEY ARE DRAWN IN THE PAPER IDIOM. ⛔ THE SENTENCE HERE SAID *"NOT THIS FILE'S WARM ONE"*,
+// and that contrast is now empty: there is no warm idiom left in this file for them to differ from.
+// The reason they are paper is unchanged and is about their own pieces — their PRISTINE pieces are:
+// a `#EBE4D1`/`#14120F` bench under a steel-grey scorch bloom would read as two objects. Each
 // twin RE-RUNS its own pristine painter through `fittings.paintFitting` and then adds ink damage on
 // the same frame, in the same centimetres. That is not a shortcut — it is the only construction under
-// which "the twin is the same object, damaged" survives a redraw of the object, and it keeps the
-// mock's own stated premise for its seventy ("each keeps one identifying feature so it still reads
-// as the same object") true here by force rather than by care.
+// which "the twin is the same object, damaged" survives a redraw of the object, and since 2026-08-06
+// it is not these nine's local habit but the construction ALL EIGHTY are built by and held to.
 //
 // ⛔ THE TWENTY-ONE REPLACED ROWS KEPT THEIR WARM TWINS UNTIL P2b, WHICH IS THE BLOCK BELOW. That
 // was a known, filed inconsistency — `chair`, `locker`, `cooker` and eighteen more drew a paper-ink
@@ -112,7 +137,11 @@ import { paintMachine, MACHINE_IDS } from './machines.js';
 // all twenty-one by exactly the construction the nine here use.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-/** INK DAMAGE — the paper half of the vocabulary above, in a fitting's own centimetres.
+/** INK DAMAGE — the damage vocabulary of this file, in a fitting's own centimetres.
+ *  ⛔ THIS SAID "the paper half of the vocabulary above" until 2026-08-06, when it had a warm half to
+ *  be a half OF: a steel-and-soot mark set sat above it and these five were the paper counterparts.
+ *  lane/warm-purge deleted the warm set on the owner's ruling, so there is no other half — these are
+ *  simply THE marks, and every one of the eighty twins is drawn with them.
  *  `crack`/`hole`/`scorch`/`wire`/`dead` are the mock's five marks; these are the same five ideas
  *  drawn as ink line rather than as steel and soot, because that is the register the pieces are in. */
 const inkCrack = (s, F, pts) => fLine(s, F, pts, { sw: 1.7 });
@@ -453,10 +482,19 @@ const herbPlanter = (s) => paintFitting(s, 'herb-planter', (_s, { F }) => {
 // ⚠️ SAME CONSTRUCTION AS THE NINE FITTINGS ABOVE, AND FOR THE SAME REASON: each twin RE-RUNS its
 // own pristine painter (`paperResources.paintResource`) and then adds ink damage on the same frame,
 // in the same centimetres. That is the only construction under which "the twin is the same pile,
-// spoiled" survives a redraw of the pile. `design-import/Perilune Fittings.dc.html` has no card for
-// any of these nine, so — exactly as with the nine fittings — there is nothing to transcribe and
-// nothing to check against: they are repo-authored and ledgered as such in `NON_MOCK_TWIN`, which is
-// what keeps the mock join measuring exactly seventy.
+// spoiled" survives a redraw of the pile — and since 2026-08-06 it is the construction ALL EIGHTY
+// twins are built by, not a local habit of this block and the nine fittings.
+//
+// ⛔ THE PROVENANCE SENTENCE HERE IS HISTORY, NOT CURRENT. It read: *"they are repo-authored and
+// ledgered as such in `NON_MOCK_TWIN`, which is what keeps the mock join measuring exactly
+// seventy."* True when written; there is no mock join now. The owner ruled on 2026-08-06 (*"we
+// should replace all old items with our new ones"*) and lane/warm-purge retired the warm set, so
+// `NON_MOCK_TWIN` — 47 of 117 rows, an EXCEPTION list — became `TWIN_SOURCE`, 80 of 80, TOTAL.
+// These eight are not excluded from anything any more; they are eight ordinary rows in a ledger that
+// names every twin's source. `design-import/Perilune Fittings.dc.html` still has no card for any of
+// them, so they remain repo-authored — which is now the ordinary case rather than the exception.
+// What proves the drawing is the PREFIX RULE (a twin's element list must BEGIN with its pristine
+// piece's, in order), not a label-and-badge walk against a second document.
 //
 // ⚠️ THE STATES ARE THE MOCK'S OWN EIGHT, KEPT DELIBERATELY. The warm resources' twins are labelled
 // CONTAMINATED · SPOILED · SLAGGED · SEIZED · FRIED · PERISHED · MELTED · UNSHROUDED, and those are
@@ -571,11 +609,20 @@ const bodyBag = (s) => paintResource(s, 'body-bag', (_s, { F }) => {
 // Same construction as the nine fittings twins above and for the same stated reason: each re-runs
 // its PRISTINE painter (`paper-fixtures.paintPaperFixture`) and then adds ink damage on the same
 // frame, in the same centimetres. That is the only construction under which "the twin is the same
-// object, damaged" survives a redraw of the object — and it is what keeps the mock's own premise for
-// its seventy ("each keeps one identifying feature so it still reads as the same object") true here
-// by force rather than by care. `design-import/Perilune Fittings.dc.html` has no card for any of
-// these fourteen and no wrecked drawing for them either, so all fourteen are REPO-AUTHORED and
-// ledgered in `NON_MOCK_TWIN` below.
+// object, damaged" survives a redraw of the object — and it is what keeps the wreck premise ("each
+// keeps one identifying feature so it still reads as the same object") true here by force rather
+// than by care. Since 2026-08-06 it is how ALL EIGHTY twins are built, not this block's own habit.
+//
+// ⛔ THE LEDGER SENTENCE IS HISTORY. It read: *"all fourteen are REPO-AUTHORED and ledgered in
+// `NON_MOCK_TWIN` below"*, and the premise above was attributed to *"the mock's own premise for its
+// seventy"*. Both were true when written. The owner ruled on 2026-08-06 — *"we should replace all
+// old items with our new ones"* — and lane/warm-purge retired the warm set: there is no seventy, no
+// mock join, and `NON_MOCK_TWIN` (47 of 117, an EXCEPTION list) is now `TWIN_SOURCE` (80 of 80,
+// TOTAL). The premise is still the mock document's words, but it is now ENFORCED by the prefix rule
+// — a twin's element list must BEGIN with its pristine piece's, in order — rather than quoted at,
+// and `docs/design/perilune-item-set.dc.html` stays in the repo only as history for the wreck
+// premise. `design-import/Perilune Fittings.dc.html` has no card for any of these fourteen and no
+// wrecked drawing for them either, so all fourteen remain REPO-AUTHORED — the ordinary case now.
 //
 // ⚠️ THE IDENTIFYING FEATURE IS NAMED IN EACH PAINTER'S MARKS AND IS DELIBERATELY LEFT WHOLE: the
 // sliding door's meeting seam, the airlock's undogging wheel, the blast door's two hazard bands, the
