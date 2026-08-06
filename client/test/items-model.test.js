@@ -578,7 +578,17 @@ test('the Room Zoom draws the item layer, and main.js dispatches the channel', (
   // FITTINGS clause counts the same list, and deriving it twice is how a stat line and a drawing
   // come to disagree about one room. The subject is unchanged: the furniture layer is told which
   // tiles the item layer draws on.
-  assert.match(ROOMZOOM, /furnitureSvg\(cells, itemStackTileKeys\(_itemTiles\)/,
+  // ⚠️ AND IT IS TWO ASSERTIONS NOW, BECAUSE THE ARGUMENT STOPPED BEING AN INLINE CALL (2026-08-06,
+  // the draw-in): the draw-in's completion TRIGGER needs the same tile set — it asks which tiles the
+  // furniture layer would draw a piece for, so it can suppress exactly those — and the set is
+  // therefore derived ONCE per repaint into `stockedTiles` and handed to both. Two calls would be
+  // two derivations of one fact, which is how the suppression comes to be computed against a tile
+  // set the layer no longer agrees with. The guard's SUBJECT is unchanged and is still pinned end to
+  // end: the local really is `itemStackTileKeys(_itemTiles)`, and the layer really is handed it.
+  assert.match(ROOMZOOM, /const stockedTiles = itemStackTileKeys\(_itemTiles\)/,
+    'the item-layer tile set is no longer derived from the decoded `items` channel — the two halves '
+    + 'of this guard have come apart and the one below would pin a name with nothing behind it');
+  assert.match(ROOMZOOM, /furnitureSvg\(cells, stockedTiles/,
     'the furniture layer must be told which tiles the item layer draws on, or the frame-derived '
     + 'rendering of the same pile — the unknown chip, and now the RESOURCE PIECE itself — is stacked '
     + 'underneath the authoritative one');
