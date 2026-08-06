@@ -1686,10 +1686,17 @@ test('⭐⭐ plate MINIATURES carry no catalogue treatment — and the ARCHITECT
   // 2 — …AND THE ARCHITECTURE IS NOT. The composer sketches the hull, the floor planes and the
   //     partition walls itself, with the same `strong` preset. If this leg ever goes green with 0,
   //     the plate has stopped being a DRAWING and leg 1 above is measuring a dead surface.
-  assert.ok((svg.match(new RegExp(DOUBLE_CLASS, 'g')) || []).length > 0,
-    'the plate carries no doubled silhouette pass anywhere — the composer\'s own `sketch()` call is '
-    + 'gone, so "the miniatures are raw" is no longer a decision about scale, it is the whole plate '
-    + 'going flat. The owner asked for sketchier (`ship-elevation.js` exists for that).');
+  //     ⛔ SCOPED TO THE DECK BANDS, NOT THE DOCUMENT (review, re-verify pass): `hullLayer()` draws
+  //     from the module-scope `SHIP_INK` constant, which no edit to the deck-drawing code can touch —
+  //     unscoped, the count read 11 hull passes + 2 band passes, so deleting the composer's own
+  //     `sketch(deckArchitecture(...))` call stayed GREEN (the 4th shape, dominated 11:2). Sliced
+  //     from the first deck band, the fixture reads 8 and the composer mutation reads 0.
+  const deckArt = svg.slice(svg.indexOf('class="pl-deck"'));
+  assert.ok(deckArt.length > 0, 'no deck band at all — leg 2 has nothing to measure');
+  assert.ok((deckArt.match(new RegExp(DOUBLE_CLASS, 'g')) || []).length > 0,
+    'the DECK BANDS carry no doubled silhouette pass — the composer\'s own `sketch()` call on '
+    + '`deckArchitecture` is gone, so "the miniatures are raw" is no longer a decision about scale, '
+    + 'the interior architecture has gone flat (the hull\'s own SHIP_INK cannot stand in for it).');
 });
 
 test('the ground-rule knob is UNREACHABLE at plate scale — the materials exception cannot apply here', () => {
