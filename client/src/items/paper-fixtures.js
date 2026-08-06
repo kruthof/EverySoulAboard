@@ -83,8 +83,15 @@
 // `(h, d)` and the lowest at `(z0, 0)`; where a piece's tallest part sits at a shallower depth the
 // box grows a band of empty paper the drawing never fills. Measured and fixed at the place it
 // occurred: `deck-hatch`'s grab stanchions were first authored at the NEAR rim (y = 16), which left
-// `0.6 · (118 − 16) = 61` cm of dead box above the drawing — a fifth of the tile. They stand at the
-// BACK rim (y = 112) now, beside the ladder, where a hand actually reaches for them.
+// `0.6 · (118 − 16) = 61` cm of dead box above the drawing — a fifth of the tile. They were pushed to
+// the BACK rim (y = 112) for that reason.
+//
+// ⛔ AND THAT FIX HAS SINCE BEEN TRADED AWAY DELIBERATELY, WHICH IS WHY THE ARITHMETIC STAYS HERE.
+// A pair of posts at y = 112 standing 24 cm behind a ladder at y = 88 is, at this projection, a few px
+// of separation — the two fused into one thick pole and the piece read as a tripod-mounted instrument
+// (a cold reader: "a telescope"). The rail and the ladder are ONE structure at y = 88 now, which
+// leaves 18 cm of dead box rather than 3. It is a real cost, taken knowingly: the box arithmetic buys
+// tile area, and what it was spending it on was making the piece unrecognisable.
 
 import { item, INK, PAPER, ATTEND } from './helpers.js';
 import {
@@ -297,20 +304,29 @@ const drawDoorSliding = (s, { F, hatch, powered }) => {
   wallStub(s, F, 'back', 18, 0, 132, 0, 236, hatch);
   bx(s, F, 0, 0, 0, 16, 216, 18, { hatch });                          // the near jamb
   bx(s, F, 116, 0, 0, 16, 216, 18, { hatch });                        // the far jamb
-  bx(s, F, 0, 0, 216, 132, 20, 18, { hatch, sw: W.heavy });           // the lintel
-  bx(s, F, 10, 0, 208, 112, 6, 6, { hatch, sw: W.fine });             // the head track
+  // ⚠️ THE WEIGHT BALANCE WAS BACKWARDS, AND A BLIND READ CALLED THIS PIECE "A LOCKER". Every piece
+  // of sliding-door hardware was already here and every one of it was drawn light: the lintel was the
+  // heaviest mark on the drawing (a wardrobe's crown trim), while the head track and its rollers — the
+  // ONLY members a hinged locker door cannot have — were `fine` outlines that vanish first at the
+  // 22 px the Overview draws at, where "only WEIGHT survives". Not one centimetre moves below; the
+  // ramp is inverted so the rail carries the read and the frame board stops shouting.
+  bx(s, F, 0, 0, 216, 132, 20, 18, { hatch, sw: W.mid });             // the lintel — a frame board
+  bx(s, F, 6, 0, 0, 120, 3, 6, { hatch, sw: W.mid });                 // ⭐ the sill — a threshold
+  bx(s, F, 10, 0, 208, 112, 6, 6, { hatch, sw: W.mass });             // ⭐ the head track — the rail
   bx(s, F, 16, 6, 0, 50, 200, 6, { hatch });                          // the near leaf
   bx(s, F, 66, 6, 0, 50, 200, 6, { hatch });                          // the far leaf
   for (const x of [34, 98]) {
-    line(s, F, [[x, 4, 200], [x, 4, 208]], { sw: W.mid });            // the hanger …
-    faceDisc(s, F, x, 4, 208, 3, { sw: W.fine });                     // … and its roller
+    line(s, F, [[x, 4, 200], [x, 4, 208]], { sw: W.heavy });          // the hanger …
+    faceDisc(s, F, x, 4, 208, 4.5, { fill: INK, sw: W.mid });         // … and its roller, ON the rail
   }
   line(s, F, [[66, 6, 0], [66, 6, 200]], { sw: W.mass });             // ⭐ the meeting seam
   for (const x of [58, 74]) line(s, F, [[x, 6, 96], [x, 6, 124]], { sw: W.heavy });
   for (const x of [16, 116]) {
     line(s, F, [[x, 6, 0], [x, 6, 200]], { sw: W.hair, opacity: 0.55, cap: false });
   }
-  line(s, F, [[8, 2, 0], [124, 2, 0]], { sw: W.fine, opacity: 0.5, cap: false });   // the floor guide
+  // ⛔ THE 0.5-OPACITY FLOOR HAIRLINE IS GONE AND THE SILL ABOVE REPLACES IT. A threshold is the
+  // other half of "a person walks THROUGH this", and a hairline at half strength is the first mark the
+  // downscale loses — so the piece was left standing on nothing at exactly the size it matters.
   faceDisc(s, F, 124, 0, 108, 3.5, { fill: powered ? INK : PAPER, sw: W.fine });
 };
 export const doorSliding = (opts = {}) => fixture('door-sliding', opts, drawDoorSliding);
@@ -327,7 +343,16 @@ export const doorSliding = (opts = {}) => fixture('door-sliding', opts, drawDoor
 const drawDoorAirlock = (s, { F, hatch, powered }) => {
   wallStub(s, F, 'back', 34, 0, 124, 20, 158, hatch);
   bx(s, F, 24, 4, 20, 76, 16, 30, { hatch, sw: W.mid });              // the sill
-  tube(s, F, 62, 8, 34, 92, 56, { sw: W.heavy });                     // the coaming
+  // ⚠️ THE COAMING IS ONE FACE CIRCLE, NOT A `tube()`, AND THE RENDER IS WHY. `tube()` draws the far
+  // face, the two tangents, then the near face over them — a construction that reads as a thickness
+  // only while the near circle HIDES the far one. At this radius (56 cm, near the piece's whole width)
+  // 26 cm of depth offsets the two circles by less than a third of a radius, so a crescent of the BACK
+  // circle and both tangent stubs stayed visible outside the near face and read as ducting coiled
+  // round the hatch — a cold reader called this piece "a ventilation manifold". `hull-port` gets away
+  // with the same construction because its opaque INK glass covers the whole seam; this piece has
+  // nothing to cover it with, its leaf being SMALLER than its coaming. So the coaming is the near
+  // circle `tube()` already painted last, drawn once and on its own.
+  faceDisc(s, F, 62, 8, 92, 56, { sw: W.heavy });                     // the coaming
   faceDisc(s, F, 62, 6, 92, 46, { sw: W.heavy });                     // the hatch leaf
   faceDisc(s, F, 62, 6, 92, 41, { fill: 'none', sw: W.hair, opacity: 0.6 });
   for (let i = 0; i < 6; i += 1) {                                    // six dogs, on their arms
@@ -369,13 +394,23 @@ const drawDoorBlast = (s, { F, hatch, powered }) => {
   bx(s, F, 138, 0, 0, 18, 232, 26, { hatch });
   bx(s, F, 0, 0, 232, 156, 22, 26, { hatch, sw: W.heavy });           // the lintel
   bx(s, F, 12, 0, 220, 132, 8, 8, { hatch, sw: W.fine });             // the track
-  bx(s, F, 18, 6, 0, 120, 212, 14, { hatch, sw: W.mass });            // ⭐ the slab
+  // ⭐ THE SLAB READS AS SOLID BECAUSE ITS FRONT FACE IS FILLED. On plain paper it was an outline the
+  // eye sees straight through, so a 120 × 212 plate carried no mass at all — and a cold reader, primed
+  // by this game's own vocabulary, called the piece a cryopod. `PAPER_FLAT` is already this file's
+  // tone for a working surface set inside a frame (the deck hatch's well, the vent grille's recess,
+  // the screen's face); it is a fill from the closed palette, not a fifth colour.
+  bx(s, F, 18, 6, 0, 120, 212, 14, { hatch, sw: W.mass, front: PAPER_FLAT });   // ⭐ the slab
   for (const x of [45, 111]) {
     line(s, F, [[x, 4, 212], [x, 4, 220]], { sw: W.heavy });
     faceDisc(s, F, x, 4, 220, 4, { sw: W.fine });
   }
-  for (const x of [42, 72, 102, 132]) {
-    line(s, F, [[x, 6, 14], [x, 6, 198]], { sw: W.heavy, opacity: 0.5, cap: false });
+  // ⛔ TWO EDGE FLANGES, NOT FOUR SEAMS ACROSS THE FIELD — the `arms-rack` rule in this same file
+  // ("four identical bars re-average into a stripe pattern at tile size") in a second costume. Four
+  // evenly-spaced full-height seams at `heavy` ran straight through both hazard bands and re-averaged
+  // into grey cage bars at every tile size. A slab this heavy really is doubled at its jambs; that is
+  // where the structure goes, and it leaves the tape-and-wheel field clear.
+  for (const x of [30, 126]) {
+    line(s, F, [[x, 6, 14], [x, 6, 198]], { sw: W.fine, opacity: 0.4, cap: false });
   }
   for (const z of [34, 170]) {                                        // ⭐ the two hazard bands
     for (const zz of [z, z + 18]) {
@@ -386,9 +421,20 @@ const drawDoorBlast = (s, { F, hatch, powered }) => {
       line(s, F, [[x, 6, z + 1], [x + 12, 6, z + 17]], { sw: W.fine, stroke: ATTEND });
     }
   }
-  faceDisc(s, F, 78, 6, 112, 11, { sw: W.mid });                      // the centre dog
+  faceDisc(s, F, 78, 6, 112, 11, { sw: W.mid });                      // the centre dog …
+  for (const [dx, dz] of [[7, 0], [-7, 0], [0, 7], [0, -7]]) {        // … its spokes, so the ring
+    line(s, F, [[78, 5, 112], [78 + dx, 5, 112 + dz]], { sw: W.hair, opacity: 0.7 });   // reads as a
+  }                                                                                      // WHEEL …
   faceDisc(s, F, 78, 6, 112, 3, { fill: powered ? INK : PAPER, sw: W.hair });
-  line(s, F, [[78, 4, 112], [96, 4, 104]], { sw: W.heavy });          // its lever
+  // ⚠️ … AND THE LEVER STARTS CLEAR OF THE RIM. Drawn from the wheel's own centre it ran back through
+  // the ring for its first 11 cm, and under this treatment's doubled strokes the ring, the pin and the
+  // lever fused into one blob — the piece's only operable-hardware cue, illegible. Started outside the
+  // rim, a handle stays a handle.
+  line(s, F, [[89, 4, 108], [101, 4, 99]], { sw: W.mid });            // its lever
+  // the sill — `door-sliding`'s own device for grounding a leaf on the deck it runs along. Without it
+  // nothing in the picture says "this is set into a floor", which is the other half of reading as a
+  // door rather than as a free-standing box.
+  line(s, F, [[8, 2, 0], [148, 2, 0]], { sw: W.fine, opacity: 0.5, cap: false });
 };
 export const doorBlast = (opts = {}) => fixture('door-blast', opts, drawDoorBlast);
 
@@ -407,18 +453,36 @@ export const doorBlast = (opts = {}) => fixture('door-blast', opts, drawDoorBlas
 // the wall stubs make with their dashed edges.
 const drawDeckHatch = (s, { F }) => {
   cyl(s, F, 59, 59, 0, 14, 59, { sw: W.heavy });                      // the coaming
-  disc(s, F, 59, 59, 14, 45, { fill: PAPER_FLAT, sw: W.mid });        // the well
+  disc(s, F, 59, 59, 14, 45, { fill: PAPER_FLAT, sw: W.heavy });      // the well
   disc(s, F, 59, 59, 14, 40, { fill: 'none', sw: W.hair, opacity: 0.5 });
-  for (const x of [43, 75]) line(s, F, [[x, 88, 14], [x, 88, -56]], { sw: W.heavy, cap: false });
-  for (const z of [2, -20, -42]) line(s, F, [[43, 88, z], [75, 88, z]], { sw: W.mid });
-  for (const x of [40, 78]) {
-    disc(s, F, x, 112, 14, 5, { fill: 'none', sw: W.fine });          // the stanchion foot …
-    line(s, F, [[x, 112, 14], [x, 112, 74]], { sw: W.mass });         // … and its post
+  // ⚠️ ONE LADDER, AT ONE DEPTH — and the piece had TWO. The rails stood at y = 88 and the grab
+  // stanchions at y = 112, 24 cm behind them; at this projection that gap collapses to a few px and
+  // the two structures fused into a single thick pole which, rising out of a round base with a
+  // crossbar across its top, is a tripod-mounted instrument's own silhouette. A cold reader called
+  // this piece "a telescope". There is one rail pair now, run continuously from the grab rail down
+  // through the coaming to the ladder's own bottom, with the rung rhythm carried the WHOLE way — so
+  // the eye reads a ladder's length rather than a crossbar on two legs.
+  //
+  // ⛔ AND IT UNIFIES AT y = 88, THE LADDER'S DEPTH, NOT AT THE STANCHIONS' — the polish as drafted
+  // pulled everything back to y = 112 and stopped the descent at z0 = −8. That deletes the one thing
+  // this piece exists to say: `hasPoint(deck-hatch, [43, 88, −56])` is pinned by name, because a hatch
+  // reads as a way DOWN only while its ladder is drawn below the deck line it is cut into, and z0 is
+  // the lowest ink AFTER the depth lift (−56 + 0.6·88 = −3.2), never the lowest z a member reaches.
+  // ⚠️ THE COST IS PAID HERE AND SAID OUT LOUD: at y = 88 the topmost ink sits 18 cm below the box's
+  // own top (the module header's dead-box arithmetic, which is why the stanchions were pushed to the
+  // back rim in the first place). Eighteen centimetres of empty paper above a grab rail is air over a
+  // hatch; a ladder that stops at the deck is a ring painted on the floor.
+  for (const x of [43, 75]) line(s, F, [[x, 88, 74], [x, 88, -56]], { sw: W.heavy, cap: false });
+  for (const z of [58, 40, 22, 2, -20, -42]) {
+    line(s, F, [[43, 88, z], [75, 88, z]], { sw: W.mid });
+  }
+  for (const x of [43, 75]) {
+    disc(s, F, x, 88, 14, 4, { fill: 'none', sw: W.fine });           // the rail's foot, at the coaming
   }
   // ⚠️ ONE RAIL, AND THE SECOND ONE WAS DELETED AFTER LOOKING AT THE RENDER: two rails between two
   // posts close into a rectangle and the piece read as a gate standing behind a ring rather than as a
   // handhold at the top of a ladder. A grab rail is one rail.
-  line(s, F, [[40, 112, 74], [78, 112, 74]], { sw: W.heavy });        // the grab rail
+  line(s, F, [[43, 88, 74], [75, 88, 74]], { sw: W.heavy });          // the grab rail
 };
 export const deckHatch = (opts = {}) => fixture('deck-hatch', opts, drawDeckHatch);
 
@@ -440,12 +504,23 @@ export const deckHatch = (opts = {}) => fixture('deck-hatch', opts, drawDeckHatc
 const drawConduitRun = (s, { F, hatch, powered }) => {
   wallStub(s, F, 'back', 26, 0, 264, 204, 248, hatch);
   bx(s, F, 12, 0, 220, 240, 14, 14, { hatch });                       // the tray
-  for (const x of [40, 132, 224]) line(s, F, [[x, 14, 234], [x, 26, 244]], { sw: W.mid });
+  // ⚠️ THE STANDOFFS TIE OFF AT THE TRAY'S OWN HEIGHT, NOT TEN CENTIMETRES ABOVE IT. The old strap
+  // ran from the tray's back-top edge up to z 244, near the top of the whole 44 cm wall band — three
+  // long diagonals lying PARALLEL to the stub's own 45° hatch, which the eye pools with it into one
+  // field of diagonals: a wire mesh panel over a low wheeled bed. A bracket that ties off at the same
+  // z as the tray's top is also the true drawing of the real 12 cm gap between tray and bulkhead.
+  for (const x of [40, 132, 224]) line(s, F, [[x, 14, 234], [x, 26, 234]], { sw: W.heavy });
+  line(s, F, [[12, 0, 234], [252, 0, 234]], { sw: W.mid, cap: false });     // the lid seam
   for (const [z, o] of [[224, 0.75], [228, 0.55], [232, 0.4]]) {
     line(s, F, [[16, 0, z], [248, 0, z]], { sw: W.fine, opacity: o, cap: false });
   }
-  for (const x of [44, 132, 220]) {                                   // ⭐ the three nodes
-    faceDisc(s, F, x, 0, 228, 5, { fill: powered ? INK : PAPER, sw: W.mid });
+  // ⭐ THE THREE NODES — kept, and still what `state` moves, but SMALLER and set in the UPPER band of
+  // the tray face. At r 5 centred they filled 71% of the tray's own 14 cm height and sat astride its
+  // lowest edge: three same-size discs low on a long thin bar under a bracketed rail is a hand-cart's
+  // wheels, and a blind read of the sheet came back "a cargo cart". An unbroken band of tray under
+  // each disc makes them lamps let into the duct instead.
+  for (const x of [44, 132, 220]) {
+    faceDisc(s, F, x, 0, 230, 3, { fill: powered ? INK : PAPER, sw: W.mid });
   }
   line(s, F, [[252, 4, 220], [252, 4, 208]], { sw: W.mid });          // the drop …
   line(s, F, [[252, 4, 208], [252, 4, 206]], { sw: W.mid, dash: CUT_DASH, cap: false });
@@ -548,13 +623,22 @@ const drawBulkheadScreen = (s, { F, hatch, powered }) => {
   quad(s, F, [[10, 4, 132], [98, 4, 132], [98, 4, 182], [10, 4, 182]],
     { fill: powered ? PAPER_FLAT : PAPER, sw: W.fine });
   if (powered) {
-    for (const z of [140, 148, 156, 164]) {
-      line(s, F, [[16, 4, z], [64, 4, z]], { sw: W.hair, opacity: 0.5, cap: false });
+    // ⭐ THE POWER LAMP — the one mark on this piece a grate can never carry, and the direct answer to
+    // a blind read that came back "a ventilation grate". Same convention the extractor fan uses for
+    // its own powered hub two builders up: a small ink-filled face circle. "A readout, IF IT IS FED"
+    // is this piece's caption, and until now nothing in the drawing said fed.
+    faceDisc(s, F, 91, 3, 128, 1.6, { fill: INK, sw: W.hair });
+    // ⚠️ RAGGED ROWS OF UNEQUAL LENGTH AT UNEQUAL SPACING, NOT FOUR FULL-WIDTH RULES 8 CM APART. The
+    // old readout reproduced `drawVentGrille`'s louvre rank almost stroke for stroke — same heavy
+    // bezel, same hatched stub above, same rank of evenly-spaced horizontal bands inside — so the two
+    // pieces were genuinely confusable at a glance. A text block starts at one margin and ends where
+    // its line ends; a louvre stack does neither.
+    for (const [x1, x2, z] of [[16, 60, 142], [16, 36, 153], [16, 50, 166]]) {
+      line(s, F, [[x1, 4, z], [x2, 4, z]], { sw: W.hair, opacity: 0.5, cap: false });
     }
     for (const [x, up] of [[72, 12], [80, 26], [88, 18]]) {
       line(s, F, [[x, 4, 138], [x, 4, 138 + up]], { sw: W.mid, opacity: 0.8 });
     }
-    line(s, F, [[16, 4, 174], [50, 4, 174]], { sw: W.hair, opacity: 0.4, cap: false });
   }
   curve(s, F, [20, 6, 126], [14, 6, 118], [14, 4, 113], { sw: W.fine, opacity: 0.65 });
 };
@@ -596,16 +680,38 @@ const drawArmsRack = (s, { F, hatch }) => {
   // at the arms' depth of 12 cm is up to 124 — a member "above" the rail in centimetres can still be
   // behind it in the picture. The rail is 14 cm deep now and both lengths clear 123.8.
   // Two lengths is the rule (four of one re-average into a stripe at tile size); both must clear.
+  // ⭐ AND THE ARM IS REDRAWN AS A WEAPON, because a blind read of the sheet came back "a hydroponic
+  // grow bed" and the old numbers say why: a 15 × 24 × 16 stock is CUBE-proportioned — a tray, not a
+  // buttstock — and a bare vertical hairline standing out of a squat box under a horizontal rail is a
+  // plant stake. Three members answer it, and none of them has a horticultural reading: the stock is
+  // narrowed and heightened into an actual buttstock, a trigger guard is drawn under it, and a slung
+  // strap crosses the barrel on the diagonal at `heavy` — the one mark here guaranteed to survive to
+  // silhouette-and-mass at tile size. The tops (128/128/118) and the depth (12) are UNTOUCHED, so the
+  // paint-order clearance the probe won above still holds; only the stock's own proportion moves.
+  //
+  // ⛔ THE BARREL STAYS TRUE VERTICAL, AND THAT IS TWO GUARDS TALKING, MEASURED RATHER THAN ARGUED.
+  // The polish as drafted raked it 6 cm off plumb ("a leaned rifle, not a stake"). Applied, `E8-1`
+  // named both long arms — `-33.57,19.48 → -28.35,-24` and `-7.48,19.48 → -2.26,-24`, 28% of this
+  // piece's own diagonal against a 25% limit, i.e. the catalogue's mark for "cancelled" laid twice
+  // across a rack — and the identifying-feature pin read `three arms: 0`, because a raked barrel is no
+  // longer one of the three near-vertical members that pin counts. A leaned rifle is a nice idea that
+  // this drawing cannot spell; the stock, the guard and the strap say "weapon" without it.
   for (const [x, top] of [[14, 128], [44, 128], [74, 118]]) {
-    bx(s, F, x, 10, 54, 15, 24, 16, { hatch, sw: W.fine });           // ⭐ the stock …
-    line(s, F, [[x + 7, 12, 78], [x + 7, 12, top]], { sw: W.mass });  // … its barrel …
-    line(s, F, [[x + 4, 12, top], [x + 10, 12, top]], { sw: W.mid }); // … and its muzzle
+    bx(s, F, x, 10, 54, 9, 26, 14, { hatch, sw: W.fine });            // ⭐ the buttstock — narrow, tall
+    curve(s, F, [x + 1, 10, 58], [x - 3, 10, 51], [x + 7, 10, 47], { sw: W.fine }); // its trigger guard
+    line(s, F, [[x + 4, 12, 78], [x + 4, 12, top]], { sw: W.mass });  // … its barrel …
+    line(s, F, [[x + 1, 12, top], [x + 7, 12, top]], { sw: W.mid });  // … and its muzzle
+    line(s, F, [[x + 2, 8, 66], [x + 12, 8, 92]], { sw: W.heavy, opacity: 0.85 }); // the slung strap
   }
   // ⛔ THE RAIL IS EMITTED AFTER THE ARMS, AND THAT IS WHAT "RETAINING" MEANS. Drawn before them it
   // is a shelf the barrels stand in front of, which is the opposite of the job it does.
   bx(s, F, 3, 4, 106, 110, 7, 14, { hatch, sw: W.heavy });            // the retaining rail
   bx(s, F, 94, 8, 54, 18, 26, 22, { hatch, sw: W.mid });              // the ammunition crate
-  line(s, F, [[98, 8, 64], [108, 8, 64]], { sw: W.hair, opacity: 0.6 });
+  line(s, F, [[98, 8, 64], [108, 8, 64]], { sw: W.hair, opacity: 0.6 });        // the lid seam
+  for (const z of [58, 74]) {
+    line(s, F, [[94, 8, z], [112, 8, z]], { sw: W.heavy, opacity: 0.7 });       // strap bands
+  }
+  curve(s, F, [100, 8, 80], [103, 3, 88], [106, 8, 80], { sw: W.mid });         // the carry handle
   // ⛔ THE BACK PANEL IS FLUSH TO THE WALL (`y = 22..32`, and `d` IS 32), so this piece has no
   // stand-off bracket to draw and inventing one would be a member joining two things that touch.
   // Its fixing is what a flush-mounted rack really has: bolts through the panel's own face, placed in
@@ -630,11 +736,18 @@ const drawDeckMarker = (s, { F, hatch }) => {
   // Emitted first, only the part that clears the plate shows — which is the part that is really there.
   for (const x of [12, 60]) line(s, F, [[x, 12, 216], [x, 16, 222]], { sw: W.fine });
   bx(s, F, 4, 4, 194, 64, 28, 8, { hatch, sw: W.heavy });             // the plate
-  quad(s, F, [[8, 4, 198], [64, 4, 198], [64, 4, 218], [8, 4, 218]], { sw: W.hair });
-  line(s, F, [[38, 4, 208], [56, 4, 208]], { sw: W.mass });           // ⭐ the arrow shaft …
-  line(s, F, [[48, 4, 216], [58, 4, 208], [48, 4, 200]], { sw: W.mass });   // … and its head
+  // ⭐ THE SIGN FACE IS A RECESSED FLAT PANEL, one tone step down from the frame's paper — the same
+  // reading a powered screen's face gets two builders up. Drawn as a bare hairline outline the inset
+  // was invisible, so what remained was a hatched box carrying a directional stencil and three stray
+  // stencil marks, and a blind read of the sheet came back "a cargo container". A plaque face inside a
+  // paper frame reads as a mounted sign; a crate wall does not have one.
+  quad(s, F, [[8, 4, 198], [64, 4, 198], [64, 4, 218], [8, 4, 218]], { fill: PAPER_FLAT });
+  // … and the arrow is enlarged from ~36% of the panel to ~75%, so it is the sign's ONE glyph and is
+  // read before the box silhouette is. (It was x 38–58 / z 200–216.)
+  line(s, F, [[26, 4, 208], [56, 4, 208]], { sw: W.mass });           // ⭐ the arrow shaft …
+  line(s, F, [[46, 4, 217], [60, 4, 208], [46, 4, 199]], { sw: W.mass });   // … and its head
   for (const z of [204, 208, 212]) {                                  // the legend, deliberately mute
-    line(s, F, [[13, 4, z], [31, 4, z]], { sw: W.hair, opacity: 0.55, cap: false });
+    line(s, F, [[12, 4, z], [22, 4, z]], { sw: W.hair, opacity: 0.55, cap: false });
   }
 };
 export const deckMarker = (opts = {}) => fixture('deck-marker', opts, drawDeckMarker);
@@ -671,16 +784,24 @@ const drawLampSconce = (s, { F, hatch, powered }) => {
   // inside the plate's own front face and drew as a stray diagonal ACROSS it — the heater's supply
   // pipe again (`fittings.js`, ruling E8 class 3), in a piece where the arm is the only thing
   // connecting the lamp to the wall.
-  line(s, F, [[23, 14, 208], [23, 6, 204]], { sw: W.mid });           // the arm
+  // ⚠️ AND THE SAME CONSTRUCTION MOVED FROM "DETAIL" WEIGHT TO "MASS" WEIGHT, which is the only half
+  // of it §4 of the style guide says survives: at 22 px the arm at `mid` all but disappeared and the
+  // plate and the shade read as two separate floating bodies — a bin over a narrow-necked chute. A
+  // blind read of the sheet came back "a hopper". Not one centimetre moved; the pen did.
+  line(s, F, [[23, 14, 208], [23, 6, 204]], { sw: W.heavy });         // the arm — the shade HANGS
   for (const g of [-1, 1]) {                                          // the shade, a cone
-    line(s, F, [[23 + g * 4, 6, 204], [23 + g * 12, 6, 190]], { sw: W.mid });
+    line(s, F, [[23 + g * 5, 6, 204], [23 + g * 12, 6, 190]], { sw: W.heavy });
   }
-  disc(s, F, 23, 6, 204, 4, { sw: W.fine });
-  disc(s, F, 23, 6, 190, 12, { fill: 'none', sw: W.mid });            // ⭐ its mouth
+  disc(s, F, 23, 6, 204, 5, { sw: W.fine });
+  // ⭐ ITS MOUTH, AND "LIT" IS NOW AN AREA RATHER THAN A STROKE. Drawn `fill:'none'` in both states
+  // the aperture — the piece's clearest "this is a light, not a pipe" cue — contributed zero mass to
+  // the silhouette and only a tiny inner dot moved with power. The flat tone is `bulkhead-screen`'s
+  // and `flood-lamp`'s own convention for a lit face.
+  disc(s, F, 23, 6, 190, 12, { fill: powered ? PAPER_FLAT : 'none', sw: W.heavy });
   if (powered) {
-    disc(s, F, 23, 6, 190, 6, { fill: INK, sw: W.hair });             // ⭐ the lit part
-    for (const [a, b] of [[13, 10], [23, 23], [33, 36]]) {
-      line(s, F, [[a, 4, 188], [b, 4, 182]], { sw: W.hair, opacity: 0.6 });
+    disc(s, F, 23, 6, 190, 7, { fill: INK, sw: W.hair });             // ⭐ the lit part
+    for (const [a, b] of [[11, 7], [23, 23], [35, 39]]) {
+      line(s, F, [[a, 4, 188], [b, 4, 182]], { sw: W.mid, opacity: 0.75 });
     }
   }
   line(s, F, [[14, 14, 228], [32, 14, 228]], { sw: W.hair, opacity: 0.5, cap: false });
@@ -699,20 +820,36 @@ export const lampSconce = (opts = {}) => fixture('lamp-sconce', opts, drawLampSc
 // dimmed by `state`, plus a splay of rays off the front-bottom edge, is how the catalogue's own deck
 // lamp says "this is the lit part" — and it is the same answer, not a new one.
 const drawGrowLamp = (s, { F, hatch, powered }) => {
+  // ⛔ THE STUB STAYS THE FULL SPAN OF THE BOX, AND THAT IS A GUARD'S RULE RATHER THAN A PREFERENCE.
+  // The designer's read of this piece was a four-poster bed — a hatched plane the size of the object,
+  // on four corner posts — and the first half of that diagnosis is right about the POSTS, which are
+  // gone below. The plane is not free to shrink: `E8-6b` asks a deckhead stub to draw through (0,0,h)
+  // AND (w,d,h), because a stub that no longer spans its piece stops being the datum that makes a
+  // mounting height a fact about the drawing and goes back to being a caption. What kills the bed
+  // read is deleting the four uprights under it, not trimming the ceiling it hangs from.
   wallStub(s, F, 'over', 224, 0, 96, 0, 38, hatch);
   bx(s, F, 3, 4, 190, 90, 20, 30, { hatch, sw: W.heavy });            // the fixture
   for (const z of [195, 200, 205]) {                                  // ⭐ the three emitters
     line(s, F, [[10, 4, z], [86, 4, z]], { sw: W.mid, opacity: powered ? 0.95 : 0.3, cap: false });
   }
-  for (const x of [14, 82]) {
-    for (const y of [8, 30]) line(s, F, [[x, y, 210], [x, y, 224]], { sw: W.mid });
-  }
+  for (const x of [42, 54]) line(s, F, [[x, 19, 210], [x, 19, 224]], { sw: W.mid });
+  curve(s, F, [48, 20, 210], [52, 27, 217], [48, 33, 224], { sw: W.fine, opacity: 0.65 });
+  // ⭐ THE LENS — a lit strip flush under the housing, and the glyph this piece had NONE of. The
+  // sconce has its lit disc and the flood lamp its lens quad; this one carried nothing at all that
+  // said "light" rather than "shelf", which is the other half of why it read as furniture. Same fill
+  // convention as the flood lamp's own lens.
+  quad(s, F, [[8, 4, 190], [88, 4, 190], [88, 4, 186], [8, 4, 186]],
+    { fill: powered ? PAPER_FLAT : PAPER, sw: W.fine });
   if (powered) {
-    for (const [a, b] of [[12, 4], [32, 28], [52, 52], [72, 76], [90, 94]]) {
-      line(s, F, [[a, 4, 190], [b, 4, 178]], { sw: W.hair, opacity: 0.55 });
+    // ⚠️ ONE POINT, FANNING — a light cone, where the old spill was five near-parallel, near-vertical
+    // lines that read as ladder rungs under a bed. ⛔ AND THE SPREAD IS SET BY E8-1, MEASURED: the fan
+    // as drawn reached x 18…82, whose outermost ray is 35.2 px on a 131.5 px piece — 27%, past the
+    // ruling's 25% limit, i.e. the catalogue's own mark for "cancelled" laid across a lamp. At ±26 cm
+    // the widest ray is 27.4 px (21%) and a cone is still a cone.
+    for (const x of [22, 35, 48, 61, 74]) {
+      line(s, F, [[48, 4, 186], [x, 4, 178]], { sw: W.hair, opacity: 0.5 });
     }
   }
-  curve(s, F, [48, 20, 210], [52, 30, 218], [48, 34, 224], { sw: W.fine, opacity: 0.65 });
 };
 export const growLamp = (opts = {}) => fixture('grow-lamp', opts, drawGrowLamp);
 
