@@ -279,6 +279,10 @@ export function item(itemId, opts, paint) {
   const index = opts.index == null ? 0 : opts.index;
   const idPrefix = opts.idPrefix || `${itemId}-${index}`;
   const s = scene(idPrefix);
-  paint(s, { w, h, state: opts.state, powered: opts.state !== 'off' && opts.state !== 'unpowered' });
+  // ⭐ `facing` (0..3) is FORWARDED, never interpreted here: this harness knows nothing about
+  // centimetres or projections. The thirty fitting builders read it through their own cm frame
+  // (`fittings.frameFor`); every other builder in this directory simply ignores it, which is the
+  // honest fallback for a piece that has no centimetre spec to turn (charter §4, P2b filed).
+  paint(s, { w, h, facing: opts.facing, state: opts.state, powered: opts.state !== 'off' && opts.state !== 'unpowered' });
   return s.render(w, h);
 }

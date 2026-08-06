@@ -177,6 +177,24 @@ export const SPECS = Object.freeze({
 export const FITTING_IDS = Object.freeze(Object.keys(SPECS));
 
 /**
+ * ⭐⭐ THE PIECE'S FOOTPRINT AT A FACING — `w` and `d` SWAPPED on an odd quarter-turn, and nothing
+ * else touched.
+ *
+ * ⛔ EVERYTHING DOWNSTREAM MUST TAKE THE SAME ANSWER OR THE PIECE CHANGES SIZE WHEN IT TURNS.
+ * `extents` decides how much room the drawing needs, `scaleOf` decides the px/cm that makes it fill
+ * `BOX`, and `roomBox` inverts that scale to put the piece on a surface at true centimetres. Feed
+ * two of the three the unturned spec and the third the turned one and a rotated bench is drawn at a
+ * different metre — which is `CLAUDE.md`'s 7th trap shape (a ratio suite cannot see a scale error)
+ * waiting to happen. So there is ONE function, and `frameFor` and `roomBox` both call it.
+ *
+ * `h` and `z0` never move: a quarter-turn in PLAN cannot change how tall a thing is.
+ */
+function facedSpec(spec, facing) {
+  const f = Number.isFinite(facing) ? ((facing | 0) & 3) : 0;
+  return (f & 1) ? { ...spec, w: spec.d, d: spec.w } : spec;
+}
+
+/**
  * A fitting's extents in centimetres: `[across, up]`, the oblique's own two ratios applied.
  *
  * ⚠️ `z0` IS NOT DECORATION, AND IT WAS ADDED AFTER LOOKING AT THE RENDER. A wall-hung piece's box
@@ -315,8 +333,15 @@ function quad(s, F, pts, o = {}) {
  * and are never re-derived here.
  */
 function bx(s, F, x, y, z, w, h, d, o = {}) {
-  const [px, py] = F.project(x, y, z);
-  s.raw(obox(px, py, w, h, d, F.s, {
+  // ⛔ THROUGH `F.boxAt`, NOT `F.project`, AND THIS IS THE ONE PLACE THE FACING COULD HAVE BEEN
+  // MISSED. `oblique.box()` draws an AXIS-ALIGNED extrusion from a projected origin plus RAW cm
+  // extents — the extents never pass through the plan map — so a projected-only origin would put a
+  // turned bench in exactly the right place with exactly the wrong footprint: the whole piece
+  // correct except that it still runs the old way. `boxAt` maps the box's plan rect and swaps its
+  // extents on an odd facing, and at facing 0 it returns `project`'s own answer to the digit.
+  const b = F.boxAt(x, y, z, w, d);
+  const px = b.x, py = b.y;
+  s.raw(obox(px, py, b.w, h, b.d, F.s, {
     strokeWidth: o.sw == null ? W.mid : o.sw,
     sideFill: o.sideFill || (o.hatch ? 'hatch' : 'flat'),
     hatch: o.hatch,
@@ -414,8 +439,8 @@ function wallStub(s, F, plane, at, a0, a1, b0, b1, hatch) {
  * to draw on a fitting: two derivations of one projection is how the Overview and the Room Zoom came
  * to skin the same glyph two different ways (`oblique.js`'s own header records that scar).
  */
-export function frameFor(id) {
-  const g = geometryFor(SPECS[id]);
+export function frameFor(id, facing) {
+  const g = geometryFor(SPECS[id], facing);
   return g === undefined ? undefined : g.frame;
 }
 
@@ -430,30 +455,61 @@ export function frameFor(id) {
  * "how big is a centimetre in a fitting's tile" is precisely how the Overview and the Room Zoom came
  * to skin one glyph two ways. This takes the spec object and returns everything derived from it, so
  * `frameFor`, `SIZES` and `BOX_EXTENT` here and the whole of the sibling module all read ONE body of
- * arithmetic. Adding it moved no number: `fittings.test.js` re-derives `SIZES` and `BOX_EXTENT`
- * independently and is unchanged.
+ * arithmetic.
+ *
+ * ⭐⭐ `facing` IS THREADED **HERE**, AT THE ONE DERIVATION, AND NOT AROUND IT — the merge resolution
+ * lane/build-ghost × lane/paper-fixtures, 2026-08-05. The two lanes moved this function in opposite
+ * directions: main CENTRALISED it (one body, two catalogues) and this lane PARAMETERISED it (a
+ * quarter-turn per piece). Taking either side alone is a silent defect and both were named before
+ * the choice was made — resolving toward main drops the facing on the floor and rotation becomes a
+ * ghost-only animation the placed piece forgets; resolving toward the lane leaves
+ * `paper-fixtures.js` calling a one-argument door, so the SECOND catalogue can never turn while the
+ * first can. Threading it through the shared body is the only resolution that keeps both properties,
+ * and it is why this is a SEMANTIC merge rather than a textual one (TRAPS 8th shape: a clean
+ * auto-merge is not a clean merge — this one did not even auto-merge, which was the lucky half).
+ *
+ * ⛔ THE SPLIT THAT MUST NOT HAPPEN, stated because it is invisible: `ex`/`ey`/`k` come from the
+ * **FACED** spec (a bench turned end-on is 34 cm across and 260 cm deep, so it fills `BOX`
+ * differently and its origin sits elsewhere), while `roomFrame` is handed the **AUTHORED** `spec.w`
+ * / `spec.d` — it has to know the box the plan map turns INSIDE — plus the facing. Feed the faced
+ * dimensions to `roomFrame` as well and the map runs twice; feed the authored ones to `extents` and
+ * the piece is drawn at a different metre when it turns. `rotation.test.js`'s absolute px/cm leg is
+ * the only instrument that can see the second of those (CLAUDE.md's 7th trap: no ratio suite can).
+ *
+ * ⭐ AT FACING 0 EVERY FIELD IS BYTE-IDENTICAL to the un-parameterised version — `facedSpec` returns
+ * the spec object itself and `roomFrame` short-circuits `facing` 0 to the identity map — so `SIZES`,
+ * `BOX_EXTENT` and both catalogues' pinned numbers are untouched. Verified by byte-compare rather
+ * than argued (`rotation.test.js`, the facing-0 identity leg).
  *
  * @param {{w:number,d:number,h:number,z0?:number,round?:boolean}} spec
+ * @param {number} [facing] 0..3, one clockwise quarter-turn each; absent/0 ⇒ the identity
  * @returns {{ex:number, ey:number, k:number, z0:number, frame:object, size:{w:number,h:number},
  *   extent:{w:number,h:number}}|undefined}
  */
-export function geometryFor(spec) {
+export function geometryFor(spec, facing) {
   if (!spec) return undefined;
-  const [ex, ey] = extents(spec);
-  const k = scaleOf(spec);
+  const fs = facedSpec(spec, facing);
+  const [ex, ey] = extents(fs);
+  const k = scaleOf(fs);
   const z0 = spec.z0 == null ? 0 : spec.z0;
   return Object.freeze({
     ex,
     ey,
     k,
     z0,
+    // ⛔ AUTHORED `spec.w`/`spec.d` HERE, FACED `ex`/`ey` ABOVE — see the paragraph on the split.
     frame: roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
-      { x: -(k * ex) / 2, y: k * (ey / 2 + z0) }),
+      { x: -(k * ex) / 2, y: k * (ey / 2 + z0), facing }),
     size: Object.freeze({
       w: Math.max(1, Math.round(PX_PER_CM.catalogue * ex)),
       h: Math.max(1, Math.round(PX_PER_CM.catalogue * ey)),
     }),
     extent: Object.freeze({ w: Math.max(1, Math.round(k * ex)), h: Math.max(1, Math.round(k * ey)) }),
+    // The FACED footprint in centimetres — what a caller asking "how much floor does this cover" is
+    // asking about: the drawing it is about to place, not the catalogue entry.
+    wCm: fs.w,
+    dCm: fs.d,
+    hCm: spec.h,
   });
 }
 
@@ -479,19 +535,23 @@ export function geometryFor(spec) {
  * @param {number} s  px per cm of the destination surface (PX_PER_CM.room for the cutaway)
  * @returns {{side:number, dx:number, dy:number, wCm:number, dCm:number, hCm:number}|undefined}
  */
-export function roomBox(id, s) {
+export function roomBox(id, s, facing) {
   const spec = SPECS[id];
   if (!spec || !(s > 0)) return undefined;
-  const [ex, ey] = extents(spec);
-  const k = scaleOf(spec);
-  if (!(k > 0)) return undefined;
-  const side = (TILE * s) / k;
-  const z0 = spec.z0 == null ? 0 : spec.z0;
+  // ⛔ THROUGH `geometryFor`, NOT BESIDE IT. `side = TILE·s/k` inverts exactly the scale the builder
+  // will draw at, so the piece lands at `s` px per centimetre AT EVERY FACING — a 200 cm cot covers
+  // 2 tiles across at facing 0 and 2 tiles back at facing 1, never 1.4 of either. That only holds
+  // while this function and the builder's frame read ONE `k`, which is what calling the shared door
+  // guarantees; re-deriving `extents`/`scaleOf` here (as the pre-merge draft did) is a second
+  // authority on the drawing scale and would split silently the day either side changed.
+  const g = geometryFor(spec, facing);
+  if (!g || !(g.k > 0)) return undefined;
+  const side = (TILE * s) / g.k;
   return {
     side,
-    dx: -side / 2 + (s * ex) / 2,
-    dy: -side / 2 - s * (ey / 2 + z0),
-    wCm: spec.w, dCm: spec.d, hCm: spec.h,
+    dx: -side / 2 + (s * g.ex) / 2,
+    dy: -side / 2 - s * (g.ey / 2 + g.z0),
+    wCm: g.wCm, dCm: g.dCm, hCm: g.hCm,
   };
 }
 
@@ -505,10 +565,10 @@ export function roomBox(id, s) {
  * call sites reading `{ F, hatch }`. ⛔ DO NOT SPREAD THIS OBJECT — a spread EVALUATES getters, which
  * would register the pattern for all thirty and quietly undo the whole point.
  */
-function envFor(s, id, state) {
+function envFor(s, id, state, facing) {
   let hp = null;
   return {
-    F: frameFor(id),
+    F: frameFor(id, facing),
     spec: SPECS[id],
     state,
     powered: state !== 'off' && state !== 'unpowered',
@@ -518,7 +578,10 @@ function envFor(s, id, state) {
 
 /** The harness: an item fragment whose painter draws in the fitting's own centimetres. */
 function fitting(id, opts, paint) {
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); });
+  // ⭐ `env.facing` reaches here from `helpers.item`, which reads `opts.facing` — so a caller says
+  // `buildItem(id, { w, h, facing })` and thirty builders turn without one of them mentioning
+  // rotation. A builder that has no cm frame at all (the warm set) simply never sees the option.
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

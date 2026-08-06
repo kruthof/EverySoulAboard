@@ -86,10 +86,15 @@ import { itemForDeviceRow, itemIdForStockKind } from './room-model.js';
  * A ground stack has no condition and carries `undefined`, which is what `buildTileItem` already
  * means by "no wear".
  *
+ * `face` is the `devices` channel's quarter-turn byte, carried for the same reason `cond` is: the
+ * plate and the Room Zoom must draw one machine with one picture, and the Room Zoom's `standItem`
+ * already hands its facing to `buildTileItem`. A ground stack has no facing and carries 0.
+ *
  * @param {Array|null} devices `decodeDevices` output — ALL decks
  * @param {Array|null} items   `decodeItems` output — ALL decks
  * @param {number} deck
- * @returns {Map<string,{itemId:string, cond:number|undefined, kind:number, ground:boolean}>}
+ * @returns {Map<string,{itemId:string, cond:number|undefined, kind:number, ground:boolean,
+ *                       face:number}>}
  */
 export function deckFittings(devices, items, deck) {
   const out = new Map();
@@ -105,13 +110,22 @@ export function deckFittings(devices, items, deck) {
     // a debug chip: at plate scale an unknown-glyph placeholder is 4 px of noise, and the Room Zoom
     // is where an unrecognised stack is worth naming.
     if (!itemId) continue;
-    out.set(it.x + ',' + it.y, { itemId, cond: undefined, kind: it.kind | 0, ground: true });
+    out.set(it.x + ',' + it.y, { itemId, cond: undefined, kind: it.kind | 0, ground: true, face: 0 });
   }
   for (const d of (Array.isArray(devices) ? devices : [])) {
     if (!placed(d) || (d.deck | 0) !== z) continue;
     const itemId = itemForDeviceRow(d);
     if (!itemId) continue;
-    out.set(d.x + ',' + d.y, { itemId, cond: d.cond, kind: d.kind | 0, ground: false });
+    out.set(d.x + ',' + d.y, {
+      itemId, cond: d.cond, kind: d.kind | 0, ground: false,
+      // ⭐ THE FACING BYTE, CARRIED SO THE PLATE AND THE ROOM DRAW ONE PICTURE. `Device.Facing` is a
+      // two-bit quarter-turn on the `devices` channel (`WireFormat.Devices.cs`); the Room Zoom passes
+      // it to `buildTileItem` and so must the plate's `fittingLayer`, or a turned bench is turned in
+      // the room and unturned on the plate. NORMALISED HERE, ONCE: a host that never sends the field
+      // (`undefined`) and a host that sends garbage both land on a legal 0..3, so no drawing code
+      // downstream has to guess what a missing facing means.
+      face: d.face === undefined ? 0 : ((d.face | 0) & 3),
+    });
   }
   return out;
 }

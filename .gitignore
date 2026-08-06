@@ -46,3 +46,5 @@ client/tools/shots-pawn-tween/
 client/tools/shots-sketch/
 # — lane/ship-drawn —
 client/tools/shots-ship-drawn/
+# — lane/build-ghost —
+client/tools/shots-build-ghost/

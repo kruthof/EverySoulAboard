@@ -175,6 +175,20 @@ test('the band height has a POSITIVE FLOOR and says so when the floor binds', ()
 test('spans are PROPORTIONAL to tile spans, contiguous, and complete', () => {
   // The owner's dimensional-honesty caveat, satisfied by construction. A ratio assertion, so it
   // cannot be satisfied by a fixture whose compartments happen to be equal.
+  //
+  // ⛔⛔ AND THAT LAST SENTENCE IS THE ONLY REASON THE PROPERTY IS PINNED AT ALL — **IT IS VACUOUS ON
+  // EVERY SHIP THE GAME ACTUALLY BOOTS**, and saying so is the point of this paragraph. Measured off
+  // the running `decks` channel on 2026-08-05, not inferred:
+  //
+  //     --ship wreck  16 compartments over 2 decks — ALL 12 tiles wide (`12x8` each, both banks)
+  //     --ship grid   64 compartments over 8 decks — ALL 12 tiles wide
+  //
+  // So on both of them every `uSpan` is exactly 1/8 and a build that divided the band EQUALLY —
+  // ignoring `rect.w` entirely — would draw the identical picture and pass every live rig this repo
+  // has. THE SYNTHETIC 6/12/18 FIXTURE BELOW IS THE PROPERTY'S ONLY INSTRUMENT. Do not let a
+  // screenshot, a press census, or `overview-plate-shot.mjs` be read as evidence that dimensional
+  // honesty holds; none of them can distinguish it from equal thirds. If a later lane authors a ship
+  // with unequal compartments, that ship becomes the first live witness and should be said so here.
   const slots = [
     { slotIndex: 0, anchorName: 'a', rect: { x: 0, y: 0, w: 6, h: 8 } },
     { slotIndex: 1, anchorName: 'b', rect: { x: 6, y: 0, w: 12, h: 8 } },

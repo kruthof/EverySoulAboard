@@ -1555,7 +1555,7 @@ namespace Perilune.Web
             var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
                                Clamp(cmd.Y, 0, _sim.World.Height - 1),
                                Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
-            _sim.EnqueueCommand(new PlaceDeviceCommand(kind, pos));
+            _sim.EnqueueCommand(new PlaceDeviceCommand(kind, pos, (byte)(cmd.Facing & 3)));
             _status = "place " + cmd.Name;
         }
 
@@ -3367,7 +3367,12 @@ namespace Perilune.Web
                     // `device.Condition < defs.Wear.WreckThreshold` here: that comparison is the Swarf
                     // rung's precondition and it has one declaration in the sim, beside the fetch that
                     // obeys it. A host-side copy is how the price and the spend come apart.
-                    MaintenanceSystem.IsBelowWreckFloor(_sim, device) ? spendWreck : spendSound));
+                    MaintenanceSystem.IsBelowWreckFloor(_sim, device) ? spendWreck : spendSound,
+                    // ⭐ THE FACING — `Device.Facing` verbatim, masked once more at the wire so a
+                    // corrupt in-memory value cannot reach a client that will index a rotation table
+                    // with it. DRAWING-ONLY: nothing in the sim reads the field (see Device.Facing),
+                    // so this element carries no mechanic — it is how the picture learns to turn.
+                    device.Facing & 3));
             }
             return _devicesScratch;
         }
@@ -5061,13 +5066,28 @@ namespace Perilune.Web
         // indistinguishable from the order "stop repairing".
         public readonly int Work, Priority;
 
+        /// ⭐ WHICH WAY A PLACED DEVICE FACES — 0..3, `place` only (2026-08-05, the owner's
+        /// "I want to be able to rotate it (4× rotation)").
+        ///
+        /// ⛔ A NAMED FIELD RATHER THAN A RIDE ON `I`, and there was no choice: `I` IS ALREADY
+        /// `place`'S DECK. Packing two values into one scalar on the one verb that already spends it
+        /// is how a deck silently becomes a facing on the day someone adds a third — the argument the
+        /// `Work`/`Priority` comment above makes for its own pair, applied to the same struct.
+        ///
+        /// DEFAULTS TO 0, not to a sentinel, and that IS the wire-compatibility contract: 0 is the
+        /// facing every device placed before this existed has, so an older client that sends no
+        /// `facing` key is indistinguishable from one that sends `facing: 0` — which is correct
+        /// rather than merely convenient. (`Work`/`Priority` need −1 because 0 is a real value in
+        /// both; here it is not, because there is no "unset facing".)
+        public readonly int Facing;
+
         public WebCommand(CmdKind kind, int x = 0, int y = 0, int i = 0, string name = null,
                           int sid = 0, uint cid = 0, string text = null, string op = null, string tid = null,
-                          int work = -1, int priority = -1)
+                          int work = -1, int priority = -1, int facing = 0)
         {
             Kind = kind; X = x; Y = y; I = i; Name = name;
             Sid = sid; Cid = cid; Text = text; Op = op; Tid = tid;
-            Work = work; Priority = priority;
+            Work = work; Priority = priority; Facing = facing;
         }
 
         /// <summary>Parse one message. Two families share this reader:
@@ -5121,7 +5141,10 @@ namespace Perilune.Web
                     case "filter": return new WebCommand(CmdKind.Filter, Int(json, "x"), Int(json, "y"), i: Int(json, "mask", -1));
                     // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table|heater",
                     //  "x":..,"y":..,"deck":..} — place a furniture device (Room Zoom decorate palette).
-                    case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
+                    // `facing` is 0..3 and ABSENT MEANS 0 — `Int` answers 0 for a missing key, which is exactly
+                // the pre-2026-08-05 behaviour of this verb. Masked at the sim boundary
+                // (`PlaceDeviceCommand`'s ctor), never trusted from the socket.
+                case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"), facing: Int(json, "facing"));
                     // {"cmd":"remove","x":..,"y":..,"deck":..} — remove a placed furniture device at a tile.
                     case "remove": return new WebCommand(CmdKind.Remove, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
                     // E0-6 — fit a ControllerModule to the device on a tile, making it

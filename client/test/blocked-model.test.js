@@ -704,7 +704,12 @@ test('every reason the key can emit has a swatch rule in the shipped stylesheet'
 // ══════════════════════════════════════════════ THE SEAM, DRIVEN — not scanned (the binding lesson)
 
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  // ⚠️ BOTH SIBLING ROOTS, AND A MISSING ONE FAILS **SILENTLY**. Every painter in the view opens
+  // `if (!node) return;`, so a rig whose document lacks an id simply never exercises that layer and
+  // every assertion phrased as an absence passes for free. This array carried `rz-pawnlay` and not
+  // `rz-ghost`; the build-ghost rig carried the mirror image. Both gained the other's node at the
+  // merge (2026-08-05).
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
@@ -787,7 +792,18 @@ const pawnLayerHtml = () => ((blkDoc.getElementById('rz-pawnlay').childNodes) ||
 const RZ_SRC = codeOnly(read(join(CLIENT, 'src/ui/roomzoom-view.js')));
 const canvasMountOrder = () => {
   const block = RZ_SRC.slice(RZ_SRC.indexOf("'<div class=\"rz-canvas\" id=\"rz-canvas\">'"));
-  return { layers: block.indexOf("id=\"rz-layers\""), pawnlay: block.indexOf("id=\"rz-pawnlay\"") };
+  return {
+    layers: block.indexOf("id=\"rz-layers\""),
+    // ⭐⭐ WIDENED TO THREE AT THE lane/build-ghost × lane/pawn-tween MERGE (2026-08-05), and it was
+    // widened BY HAND because NO RED TEST WOULD EVER HAVE FORCED IT. `#rz-ghost` mounts BETWEEN
+    // these two, at the very line both lanes edited — so the merge conflicted textually and was
+    // resolved in seconds, while this pin went on comparing two indices and staying green with
+    // nothing whatsoever to say about the layer now sitting between them. That is CLAUDE.md's 4th
+    // shape exactly: a guard whose SCOPE excludes the violation. A two-member order pin over a
+    // three-member stack is not a weaker pin, it is a pin about a different stack.
+    ghost: block.indexOf("id=\"rz-ghost\""),
+    pawnlay: block.indexOf("id=\"rz-pawnlay\""),
+  };
 };
 const keyBox = () => blkDoc.getElementById('rz-zonekey').innerHTML;
 
@@ -984,13 +1000,29 @@ test('DRIVEN: the blocked layer is ADDITIVE — over the mark, under the pawns',
     'a figure is being drawn INSIDE the repainted scene as well. That copy is destroyed ten times a '
     + 'second (so it cannot be tweened) and it sits UNDER the blocked wash, which is the exact defect '
     + 'the overlay removes — with the overlay copy on top, nobody would ever notice.');
-  const { layers: iLayers, pawnlay: iPawnLay } = canvasMountOrder();
-  assert.ok(iLayers >= 0 && iPawnLay >= 0, 'the two mounts are not both inside the `.rz-canvas` block '
-    + 'of `buildSkeleton` — the stacking guarantee has no basis and this leg is vacuous');
+  const { layers: iLayers, ghost: iGhost, pawnlay: iPawnLay } = canvasMountOrder();
+  assert.ok(iLayers >= 0 && iGhost >= 0 && iPawnLay >= 0,
+    'the THREE mounts are not all inside the `.rz-canvas` block of `buildSkeleton` — the stacking '
+    + 'guarantee has no basis and this leg is vacuous. (Widened from two at the build-ghost × '
+    + 'pawn-tween merge; see canvasMountOrder.)');
   assert.ok(iPawnLay > iLayers,
     'the pawn overlay is stacked UNDER the scene, so a near-black scrim washes over every crew member '
     + 'standing on a blocked tile. Both view files state this ordering as load-bearing: a layer that '
     + 'explains the floor must never hide a person.');
+  // ⛔ THE SAME RULE, APPLIED TO THE THIRD LAYER. The build ghost is a PREVIEW of what the player is
+  // about to put down — it explains the floor, so it goes over the scene and UNDER the people. A
+  // ghost above the crew would put a translucent dashed table across a crew member's face every time
+  // the pointer crossed her tile, which is the same defect as the wash, drawn in a different ink.
+  assert.ok(iGhost > iLayers,
+    'the BUILD GHOST is stacked UNDER the scene, so the piece the player is about to place is hidden '
+    + 'behind the furniture already there — the preview stops previewing.');
+  assert.ok(iPawnLay > iGhost,
+    'the BUILD GHOST is stacked OVER the crew. A layer that explains the floor must never hide a '
+    + 'person: hovering a tile a crew member is standing on would draw the preview across her.');
+  // …and the whole order in one statement, so a future fourth sibling has one line to read.
+  assert.deepEqual([iLayers, iGhost, iPawnLay].slice().sort((a, b) => a - b), [iLayers, iGhost, iPawnLay],
+    'the three canvas siblings are not mounted in the pinned paint order '
+    + '`rz-layers < rz-ghostlayer < rz-pawnlay`');
 });
 
 // ═════════════════════════════════════════════════════════════════════ the scan controls, both ways

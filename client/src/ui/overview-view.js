@@ -37,7 +37,10 @@ import {
 // row's own `cond` into `buildTileItem` — so the wear join is UNCHANGED and still has exactly one
 // home (`items/wear.js`); what went away is a second per-deck reshaping of the same channel, which
 // could only ever have described one deck. The Room Zoom still imports it and still needs it.
-import { eraseTarget, tileOrders } from './room-model.js';
+// `roomTileRect` is the Room Zoom's OWN anchor resolution — imported rather than re-derived so the
+// deck this surface switches the host to and the deck `enterRoom` focuses on cannot come apart. See
+// `enterCompartment` below; that identity IS the fix for the empty-room press.
+import { eraseTarget, tileOrders, roomTileRect } from './room-model.js';
 import { decksView } from './decks-model.js';
 import { overviewScene, makeShipTransform, starLayerSvg, pawnLayerParts, VIEW_W, VIEW_H } from './overview-scene.js';
 // ⭐ THE CLIENT-SIDE TWEEN (2026-08-05). Pure math in the model, node lifecycle in the layer; this
@@ -1908,8 +1911,21 @@ function onSceneHover(e) {
   scheduleRepaint();
 }
 
-/** The hovered compartment's anchor, or null. Exported for the driven hover-stability test, which
- *  must be able to assert the STATE as well as the emitted class. */
+/**
+ * The hovered compartment's anchor, or null.
+ *
+ * ⚠️ **TEST-ONLY, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT.** Nothing in `client/src` calls
+ * this — the drawing reads `_hoverAnchor` directly through `overviewScene`'s `hovered` argument — and
+ * it is kept exported because the hover-stability test has to assert the STATE and not only the
+ * emitted `pl-room-hover` class. Those are two different claims: a repaint that rebuilds the
+ * compartment element loses the CLASS while the state survives, which is exactly the owner's flicker,
+ * and a test that could see only the markup would read the survival as the defect.
+ *
+ * ⛔ IT IS NOT AN INJECTION POINT AND MUST NOT GROW A SETTER. `overview-view.js` has been burned by
+ * exactly that shape once (`_getStockFilter`, deleted with the stockpile seam — see the note above
+ * `_onEnterRoom`): a live hook nothing reads is the thing a later package mistakes for a wiring bug
+ * and "fixes" by wiring it up.
+ */
 export function hoveredAnchor() { return _hoverAnchor; }
 
 /**
@@ -1939,6 +1955,61 @@ function crossDeck(t) {
   _send(Cmd.deck(r.delta));
   toast(r.line);
   return true;
+}
+
+/**
+ * ⭐⭐ ENTERING A COMPARTMENT — AND THE HALF `crossDeck` DELIBERATELY DOES NOT COVER.
+ *
+ * ⛔⛔ THE DEFECT THIS CLOSES, MEASURED IN THE RUNNING GAME (2026-08-05, `--ship wreck`): the plate
+ * draws BOTH decks, and an ORDER on the band the host is not projecting is refused by `crossDeck`
+ * above — but ROOM ENTRY had no such guard. `_onEnterRoom(anchor)` went straight through, the Room
+ * Zoom's `enterRoom` resolved the anchor on ANY deck (`roomTileRect` scans the whole `decksView`),
+ * and then `roomCells` returned NOTHING because `frame.deck !== focusRoom.deck` — the frame carries
+ * ONE deck and it was still the other one.
+ *
+ * RE-MEASURED HERE, on this tree, by driving the shipped surface with this function stubbed back out
+ * (`overview-plate-shot.mjs`, `--ship wreck`): `hall_d1_s0` — a compartment the plate draws FIVE
+ * fittings into — pressed from the inactive band opened at masthead **"96.0 M² · 0 OF 0 FITTINGS
+ * BUILT", 23 svg paths**, and with this function in place the same press reads **"5 OF 5", 66
+ * paths**. Independent review found it first on `hall_d1_s3` (0 OF 0 / 23 paths against 4 OF 4 / 56)
+ * and both numbers reproduce. ⛔ THE BREADCRUMB AND `body.roomzoom-open` ARE IDENTICAL EITHER WAY,
+ * so nothing on screen — and nothing the rig used to look at — said the room was empty because of
+ * the deck rather than because it is empty. Silently wrong.
+ *
+ * ⭐ THE FIX IS THE TREE'S OWN PATTERN, not a new one: `roomzoom-view.js`'s `onMinimapSlot` already
+ * swaps rooms ACROSS decks by sending `Cmd.deck(target.deck - _focus.deck)` and then focusing. Room
+ * entry is NAVIGATION, not an order — which is why it performs the hop instead of refusing it the
+ * way `crossDeck` refuses a designation. A designation carries only x/y and the host supplies Z from
+ * its own shown deck, so obeying it would order somewhere the player did not point; entering a room
+ * names the room, so there is nothing to mis-address.
+ *
+ * ⭐⭐ THE DECK IS RESOLVED THROUGH `roomTileRect`, THE SAME FUNCTION `enterRoom` USES, and that is
+ * the whole reason this is not a DOM read. Taking the band off the pressed node's `data-deck` would
+ * be the drawing's answer; taking it here is `_focus`'s answer, and the property the defect is about
+ * is precisely **the host's projected deck equals the Room Zoom's focus deck**. Deriving both from
+ * one function makes them equal by construction rather than by two derivations agreeing today.
+ *
+ * ⚠️ THE ROOM IS ENTERED IMMEDIATELY, ONE FRAME BEFORE ITS CONTENTS ARRIVE — stated because it is
+ * observable. The deck change is a wire round trip, so the first repaint still runs against the old
+ * frame and the room fills when the new one lands (`roomzoom-view.js:250`,
+ * `Hud.onShipUpdate(() => { if (_open) scheduleRepaint(); })`). A PAUSED ship is covered: the host's
+ * `Apply` returns true for `CmdKind.Deck`, which marks the view dirty and re-renders without a tick
+ * (`hosts/web/GameSession.cs:477`). Exactly the behaviour `onMinimapSlot` has always had.
+ *
+ * ⚠️ AND THE HOVER AND THE NAV HINT ARE NOW COHERENT WITH IT, which they were not before. The plate
+ * washes a hovered compartment on EITHER band and the hint says "click a compartment to open it" —
+ * true of both bands only once this function exists. Nothing there needed changing; it needed the
+ * press to keep the promise the drawing was already making.
+ *
+ * ⚠️ An anchor `roomTileRect` cannot resolve hops nothing and is handed on unchanged: the Room Zoom
+ * runs the identical lookup and answers with its own "ROOM ZOOM UNAVAILABLE" toast. Inventing a deck
+ * hop for a room the ship does not have would move the player's deck for nothing.
+ */
+function enterCompartment(anchor) {
+  const target = roomTileRect(decksView(decodeDecks(Hud.getDecks()), decodeRooms(Hud.getRooms())), anchor);
+  const shown = _ctx.frame ? _ctx.frame.deck | 0 : 0;
+  if (target && (target.deck | 0) !== shown) _send(Cmd.deck((target.deck | 0) - shown));
+  _onEnterRoom(anchor);
 }
 
 function onSceneGesture(e) {
@@ -2022,7 +2093,9 @@ function onSceneGesture(e) {
     case 'terminal': Hud.selectTab('moss'); break; // clicking a console on the map opens MOSS (IX-M1)
     // M1-L: the `addroom` case is DELETED with the chip that produced it (`overviewClickAction` can
     // no longer return that type). Every compartment now falls to `enterRoom`.
-    case 'enterRoom': _onEnterRoom(action.anchor); break;
+    // ⛔ NOT `_onEnterRoom` DIRECTLY — see `enterCompartment`. A press on the band the host is not
+    // projecting must take the deck with it, or the room opens EMPTY and says nothing about why.
+    case 'enterRoom': enterCompartment(action.anchor); break;
     default: break; // space outside every compartment → no-op (IX-O-18)
   }
 }

@@ -33,6 +33,9 @@ import { clockHHMM } from '../src/ui/console-model.js';
 // `defaultStockFilter` went with the seam (see `room-model.test.js`, which now imports it).
 import { ACCEPT_ALL, stockFilterLabel } from '../src/ui/stock-filter-model.js';
 import { MARK_KIND_NAMES } from '../src/wire/messages.js';
+// The wire builder itself, so the expected deck hop is the shape the controller actually emits
+// rather than a second literal that could agree with a broken one (TRAPS-4: pin the ARGUMENT).
+import { Cmd } from '../src/wire/session.js';
 import { LEDGER_ROW_IDS } from '../src/ui/ledger-model.js';
 import { codeOnly, callBlocks } from './code-only.js';
 import { stylesSource } from './styles-source.js';
@@ -980,12 +983,21 @@ test('an armed STOCKPILE designates NOTHING from the Overview — and still ente
   assert.equal(Hud.getArmedTool(), 'stockpile', 'the shared slot did not take stockpile at all — ' +
     'the assertions below would then be about a click with nothing armed');
   const sent = ovClick(room, 12, 5);
-  assert.deepEqual(sent, [],
+  // ⚠️ THE ASSERTION IS "NO ORDER", NOT "NOTHING AT ALL", AND IT CHANGED FOR A REASON THAT IS THE
+  // POINT OF `enterCompartment`. `hold` is on DECK 1 of this fixture and the frame shows DECK 0, so
+  // entering it now carries the deck with it — that hop is the fix for the room that opened EMPTY.
+  // What this test is about is unchanged and is asserted more precisely than before: the schematic
+  // lowers no ORDER under STOCKPILE. Written as a filter rather than as `[]` so a future verb the
+  // Overview legitimately sends cannot be mistaken for a zone.
+  assert.deepEqual(sent.filter((o) => o.cmd !== 'deck'), [],
     'the Overview zoned a tile. STOCKPILE moved to the Room Zoom because a zone\'s EXTENT is its ' +
     'capacity (one stack per tile) and this surface has no drag gesture — a single-tile zone from ' +
     'the schematic is the affordance that decision removed.');
   assert.deepEqual(ovEntered, ['hold'],
     'the click did not reach the hit rule either — so "sent nothing" here proves nothing');
+  assert.deepEqual(sent, [Cmd.deck(1)],
+    'the cross-band room entry did not take the deck with it — the Room Zoom will focus deck 1 '
+    + 'while the host still projects deck 0, which is the EMPTY-ROOM press (`enterCompartment`)');
   // …and no `filter` leaked out on its own, which is the shape a half-reverted lowering would make.
   assert.deepEqual(sent.filter((o) => o.cmd === 'filter'), []);
   ovArm('stockpile');
@@ -1596,7 +1608,13 @@ test('WP-5 driven: an armed order suppresses ROOM ENTRY (and un-armed still ente
   const room = ovTarget('pl-room', { anchor: 'hold' });
   // POSITIVE CONTROL FIRST — without it, "did not enter" proves only that the hit-test never saw
   // this node, which is exactly how a suppression test passes while suppressing nothing.
-  assert.deepEqual(ovClick(room, 12, 5), [], 'an un-armed room click must send no order');
+  // ⚠️ `hold` IS ON DECK 1 and the frame shows DECK 0, so the un-armed entry now also carries the
+  // deck (`enterCompartment` — without it the Room Zoom opens onto an empty room). The claim under
+  // test is about ORDERS, so it is filtered rather than loosened, and the hop is asserted separately
+  // below so this line cannot quietly absorb a real order that starts riding along.
+  const unarmed = ovClick(room, 12, 5);
+  assert.deepEqual(unarmed.filter((o) => o.cmd !== 'deck'), [], 'an un-armed room click must send no order');
+  assert.deepEqual(unarmed, [Cmd.deck(1)], 'the cross-band room entry lost its deck hop');
   assert.deepEqual(ovEntered, ['hold'], 'the un-armed room click did not enter the room at all — ' +
     'the hit-test is not seeing this node, so the suppression assertion below would be vacuous');
   for (const tool of ORDER_TOOLS) {
@@ -1653,6 +1671,77 @@ test('WP-5 driven: with NOTHING armed the schematic still behaves exactly as bef
   assert.deepEqual(ovEntered, ['reactor']);
   assert.deepEqual(ovClick(ovStage, 12, 5), [], 'bare space must stay a no-op');
   assert.deepEqual(ovEntered, []);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE CROSS-BAND ROOM ENTRY — the half `crossDeckPress` never covered.
+//
+// ⛔⛔ THE DEFECT, MEASURED IN THE RUNNING GAME BEFORE THIS TEST EXISTED (2026-08-05, `--ship
+// wreck`, independent review): the side-elevation plate draws BOTH decks and hover-washes a
+// compartment on either band, and the nav hint says "click a compartment to open it" — but only the
+// DESIGNATION path asked which band the press landed on. Room entry went straight through, the Room
+// Zoom focused a room on deck 1 while the host still projected deck 0, and `roomCells` returns
+// NOTHING when `frame.deck !== focusRoom.deck`. `hall_d1_s3` opened at "96.0 M² · 0 OF 0 FITTINGS
+// BUILT" / 23 svg paths from the inactive band and "4 OF 4" / 56 paths from the active one, with an
+// IDENTICAL breadcrumb. A room that says it is empty when it is not, with nothing on screen naming
+// the reason.
+//
+// ⭐ THE THREE LEGS ARE THE THREE THINGS THAT CAN BREAK INDEPENDENTLY, and each has its own control,
+// because a single-leg version passes while doing one of them and not the other two.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('⭐⭐ a press on the INACTIVE band ENTERS the room AND takes the deck with it', () => {
+  assert.equal(FIX.frame.deck | 0, 0, 'this fixture no longer shows deck 0 — the legs below are '
+    + 'about a press on a band the host is NOT projecting, and would be measuring nothing');
+  // The fixture's own answer for which deck each anchor is on — read off `decksView`, the same
+  // structure both `enterCompartment` and `enterRoom` resolve through, never a hand-typed number.
+  const deckOf = (a) => view.find((d) => d.slots.some((s) => s && s.anchorName === a)).deck | 0;
+  assert.equal(deckOf('hold'), 1);
+  assert.equal(deckOf('reactor'), 0);
+
+  // 1 — THE FIX. A compartment on the OTHER band opens, and the order deck moves to it first.
+  const far = ovTarget('pl-room', { anchor: 'hold', deck: '1' });
+  const sent = ovClick(far, 12, 5);
+  assert.deepEqual(ovEntered, ['hold'],
+    'the press on the inactive band did not enter the room at all — every assertion below is then '
+    + 'about a click nothing resolved');
+  assert.deepEqual(sent, [Cmd.deck(1)],
+    'the room was entered on the deck the host is NOT projecting, so `roomCells` will return nothing '
+    + 'and the Room Zoom opens EMPTY and silent. See `enterCompartment`.');
+
+  // 2 — NON-VACUITY / THE NEGATIVE CONTROL. A compartment on the ACTIVE band must NOT hop, or the
+  //     "fix" is a deck command on every press and the player's rail walks away under them.
+  const near = ovTarget('pl-room', { anchor: 'reactor', deck: '0' });
+  assert.deepEqual(ovClick(near, 12, 5), [],
+    'entering a room on the deck already being shown sent a deck command — the guard is firing on '
+    + 'every press, not on the cross-band one');
+  assert.deepEqual(ovEntered, ['reactor']);
+
+  // 3 — THE HOP IS THE ROOM'S OWN DECK, not a fixed step. Ride the rail to deck 1 and the SAME two
+  //     compartments swap roles — the sign flips and the near one becomes the far one. A guard that
+  //     hard-coded `+1`, or that read the drawing's band instead of the ship's, survives leg 1 and
+  //     dies here.
+  Hud.renderFrame({ ...FIX.frame, deck: 1 });
+  assert.deepEqual(ovClick(far, 12, 5), [], 'deck 1 is shown and entering a deck-1 room still hopped');
+  assert.deepEqual(ovEntered, ['hold']);
+  assert.deepEqual(ovClick(near, 12, 5), [Cmd.deck(-1)],
+    'the hop is not relative to the shown deck — it must be `target.deck - shown`, the same step '
+    + '`onMinimapSlot` sends');
+  assert.deepEqual(ovEntered, ['reactor']);
+  Hud.renderFrame(FIX.frame);
+});
+
+test('an anchor the ship does not have hops NOTHING — a missing room must not move the deck', () => {
+  // `roomTileRect` answers null, and the Room Zoom's own `enterRoom` runs the identical lookup and
+  // answers with "ROOM ZOOM UNAVAILABLE". Moving the player's deck on the way to that toast would be
+  // a side effect with no room at the end of it.
+  assert.equal(view.some((d) => d.slots.some((s) => s && s.anchorName === 'no_such_room')), false,
+    'non-vacuity: the fixture grew a room called `no_such_room` and this leg now proves nothing');
+  const ghost = ovTarget('pl-room', { anchor: 'no_such_room' });
+  assert.deepEqual(ovClick(ghost, 12, 5), []);
+  assert.deepEqual(ovEntered, ['no_such_room'],
+    'the unresolvable anchor was swallowed here instead of being handed on — the Room Zoom owns '
+    + 'that refusal and its toast is the only thing that names it');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

@@ -69,10 +69,33 @@
 // says it (`overview-model.js` `deckCaptionLine`) and `ship-elevation.test.js` pins it.
 //
 // ⚠️ Consequences a later lane must not re-derive: two compartments at the same hull position are
-// drawn apart, so the plate is NOT a navigational aid for "what is above what"; and the walkway's
-// `ty` resolution is coarse (the wreck's 90 spine tiles share a ~7 px-deep strip), which is a
-// RESOLUTION limit, not a mapping error — the round trip there is exact, and a player who wants one
-// particular spine tile should be in the Room Zoom.
+// drawn apart, so the plate is NOT a navigational aid for "what is above what".
+//
+// ⛔⛔ AND THE WALKWAY'S SECOND CONSEQUENCE IS BIGGER THAN THE SENTENCE THAT USED TO STAND HERE.
+// That sentence said *"the wreck's 90 spine tiles share a ~7 px-deep strip … the round trip there is
+// exact"*, and both halves were misleading:
+//
+//   (a) THE STRIP DOES NOT CARRY 90 TILES' WORTH OF `ty`, IT CARRIES THE DECK'S WHOLE RANGE.
+//       `tileExtent` UNIONS the slots' bounding box with the FRAME (deliberately — see its header),
+//       so `ext.minY..maxY` is `0..h` of the whole 45 × 18 = 810-tile deck grid, and the walkway's
+//       inverse spreads `v ∈ [0, V_SPINE)` linearly across ALL of it. MEASURED on the census fixture
+//       (which is the wreck's shape: two banks of four 12 × 8 compartments, spine at ty 8..9): the
+//       strip is **7.84 px deep and addresses all 18 `ty` rows**, of which only 2 (the 90 spine
+//       tiles) are actually walkway. So sixteen of every eighteen answers a press in the strip gives
+//       name a row that is drawn as a COMPARTMENT somewhere else on the band.
+//   (b) "THE ROUND TRIP IS EXACT" IS TRUE OF THE WRONG COMPOSITION. What the census pins is
+//       `invert ∘ project` — tile → point → tile — and that is exact (1620/1620). A PRESS is
+//       `project ∘ invert`, pixel → tile → where that tile draws, and 18 rows sharing 7.84 px cannot
+//       be exact in that direction: whole bands of pixels collapse onto one row and the row they
+//       land on is mostly not drawn there.
+//
+// ⚠️ IT IS INHERITED, NOT CREATED HERE, AND IT IS IMPROVED IN AREA. VR-P4's plate had the same
+// two-region shape in `overview-scene.js`'s `bandInvert` (still on `main`) with the same frame-union
+// extent; independent review measured its press round trip at 87.9 % same-structure. The elevation
+// does not fix the class — closing it needs the spine to own its own `ty` axis, which is a design
+// question about what a corridor IS on this plate — but it gives the strip a real, pressable depth
+// instead of a hairline. FILED for the owner in `docs/HANDOVER.md`; a player who wants one
+// particular spine tile should be in the Room Zoom, which has no such compression.
 
 import { roomFrame, poly, INK, PAPER, PAPER_FLAT, ATTEND, FONT, n } from '../render/oblique.js';
 
@@ -440,10 +463,24 @@ export function makeShipTransform(decksView, frame) {
     // a defensive epsilon. A compartment tile on its rect's FRONT edge projects to exactly
     // `v = V_SPINE`; the floating-point round trip lands it at `0.29999999999999993` about as often
     // as at `0.3`, and on the low side this test sent it to the WALKWAY branch, which re-mapped it
-    // over the deck's whole `ty` extent — tile (0,0) came back as (0, 18). The full-census round trip
-    // is what caught it (32 of 6480 tiles), which is exactly why that census sweeps every tile
-    // instead of sampling. The bias is safe in the other direction: no real walkway tile can reach
-    // `V_SPINE` — the topmost one maps to `((maxY-1-minY)/spanY)·V_SPINE`, strictly below it.
+    // over the deck's whole `ty` extent — tile (0,0) came back as (0, 18). The bias is safe in the
+    // other direction: no real walkway tile can reach `V_SPINE` — the topmost one maps to
+    // `((maxY-1-minY)/spanY)·V_SPINE`, strictly below it.
+    //
+    // ⛔⛔ AND WHICH INSTRUMENT ACTUALLY SEES IT HAS BEEN RE-MEASURED, because the claim that used to
+    // stand here — *"the full-census round trip is what caught it (32 of 6480 tiles)"* — is wrong in
+    // BOTH numbers and, worse, names an instrument that is now blind to it. The census is
+    // **1620 tiles**, not 6480 (`2 decks × 45 × 18`; `ship-elevation.test.js` asserts
+    // `checked === 2 * FRAME.w * FRAME.h`). And with this `- EPS` deleted the census still reads
+    // **0 of 1620** — driven, not argued — because it projects tile CENTRES (`tx + 0.5`) and a centre
+    // never lands on `v = V_SPINE`; only a tile's front-edge CORNER does.
+    //
+    // ⇒ THE ONE INSTRUMENT IS `THE REGION BOUNDARY: a compartment's FRONT EDGE tile stays in its
+    // compartment`, which projects `(tx, rect.y)` and goes red the moment the bias is removed
+    // (measured both ways). This is TRAPS' 9th shape in miniature — the census was made exhaustive
+    // over centres, which is the right census, and in becoming it, it stopped being able to see the
+    // defect it is credited with catching. Do not let a later lane read "the census is green" as
+    // "the region boundary is covered".
     if (v >= V_SPINE - EPS && d.spans.length) {
       const sv = (v - V_SPINE) / (1 - V_SPINE);
       // The compartment whose u-interval contains u. The last span owns u = 1 exactly.

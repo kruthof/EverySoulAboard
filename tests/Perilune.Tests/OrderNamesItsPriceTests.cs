@@ -337,8 +337,8 @@ namespace Perilune.Tests
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 var f = part.Split(']')[0].Split(',');
-                Assert.AreEqual(10, f.Length,
-                    "a devices tuple is TEN elements (x,y,deck,kind,cond,oper,open,serv,air,spend)");
+                Assert.AreEqual(11, f.Length,
+                    "a devices tuple is ELEVEN elements (x,y,deck,kind,cond,oper,open,serv,air,spend,face)");
                 rows.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                           int.Parse(f[1], CultureInfo.InvariantCulture),
                           int.Parse(f[2], CultureInfo.InvariantCulture),

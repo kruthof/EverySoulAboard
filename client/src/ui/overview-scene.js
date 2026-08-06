@@ -386,8 +386,17 @@ function fittingLayer(info, deck, fittings, attention, size, idPrefix) {
     const uv = info.uv(tx + 0.5, ty + 0.5);
     if (!uv) continue;
     const [px, py] = floorPoint(info.plane, uv[0], uv[1]);
+    // ⭐⭐ THE FACING, CARRIED ON THE FITTING ROW ITSELF (merge with `lane/build-ghost`, 2026-08-05).
+    // A device the player turned with [E] must wear ONE picture on both surfaces: the Room Zoom's
+    // `standItem` already passes `facing` to `buildTileItem`, so the plate must too, or one machine
+    // draws turned in the room and unturned on the plate — the exact divergence `wear-join.test.js`'s
+    // shape-parity leg exists to catch. The value comes off `deckFittings`' row (`ship-fittings.js`,
+    // which reads the `devices` channel's `face` byte), NOT off a second join here: this layer is
+    // sourced from `devices`+`items` rather than from the frame, so there is no `deckDeviceConditions`
+    // map left to look a row up in. A ground stack has no facing and carries 0 — what it drew before.
     const g = nonScaling(
-      buildTileItem(f.itemId, { w: size, h: size, idPrefix: `${idPrefix}-f${tx}-${ty}` }, f.cond),
+      buildTileItem(f.itemId, { w: size, h: size, idPrefix: `${idPrefix}-f${tx}-${ty}`,
+        facing: f.face || 0 }, f.cond),
     );
     const attend = attention.has(key);
     pieces.push({

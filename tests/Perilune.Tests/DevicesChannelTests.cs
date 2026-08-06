@@ -42,8 +42,8 @@ namespace Perilune.Tests
         {
             var cells = new[]
             {
-                new WireFormat.DeviceCell(3, 4, 0, (int)DeviceKind.Fabricator, 255, 1, 0, 1, 1, (int)ItemKind.Parts),
-                new WireFormat.DeviceCell(58, 15, 1, (int)DeviceKind.Light, 26, 0, 1, 0, 1, WireFormat.SpendNothing),
+                new WireFormat.DeviceCell(3, 4, 0, (int)DeviceKind.Fabricator, 255, 1, 0, 1, 1, (int)ItemKind.Parts, 0),
+                new WireFormat.DeviceCell(58, 15, 1, (int)DeviceKind.Light, 26, 0, 1, 0, 1, WireFormat.SpendNothing, 0),
             };
             string json = WireFormat.Devices(cells);
             StringAssert.Contains("\"type\":\"devices\"", json);
@@ -57,8 +57,8 @@ namespace Perilune.Tests
             // ItemKind.Parts, i.e. an item byte, and `-2` is WireFormat.SpendNothing, i.e. the
             // sentinel: the pair proves BOTH halves of the column's vocabulary survive the
             // serializer, negatives included.)
-            StringAssert.Contains("[3,4,0,13,255,1,0,1,1,5]", json);
-            StringAssert.Contains("[58,15,1,8,26,0,1,0,1,-2]", json);
+            StringAssert.Contains("[3,4,0,13,255,1,0,1,1,5,0]", json);
+            StringAssert.Contains("[58,15,1,8,26,0,1,0,1,-2,0]", json);
             Assert.AreEqual("{\"type\":\"devices\",\"cells\":[]}",
                 WireFormat.Devices(Array.Empty<WireFormat.DeviceCell>()));
             Assert.AreEqual("{\"type\":\"devices\",\"cells\":[]}", WireFormat.Devices(null),
@@ -75,11 +75,11 @@ namespace Perilune.Tests
         {
             string json = WireFormat.Devices(new[]
             {
-                new WireFormat.DeviceCell(1, 1, 0, (int)DeviceKind.Fabricator, 255, 1, 0, 1, 1, WireFormat.SpendUnknown),
-                new WireFormat.DeviceCell(2, 1, 0, (int)DeviceKind.Fabricator, 255, 1, 0, 1, 0, WireFormat.SpendUnknown),
+                new WireFormat.DeviceCell(1, 1, 0, (int)DeviceKind.Fabricator, 255, 1, 0, 1, 1, WireFormat.SpendUnknown, 0),
+                new WireFormat.DeviceCell(2, 1, 0, (int)DeviceKind.Fabricator, 255, 1, 0, 1, 0, WireFormat.SpendUnknown, 0),
             });
-            StringAssert.Contains("[1,1,0,13,255,1,0,1,1,-1]", json);
-            StringAssert.Contains("[2,1,0,13,255,1,0,1,0,-1]", json);
+            StringAssert.Contains("[1,1,0,13,255,1,0,1,1,-1,0]", json);
+            StringAssert.Contains("[2,1,0,13,255,1,0,1,0,-1,0]", json);
         }
 
         /// <summary>
@@ -102,7 +102,7 @@ namespace Perilune.Tests
         [Test]
         public void The_Tuple_Leads_With_X_Y_Deck_Like_Every_Other_Sparse_Channel()
         {
-            string dev = WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0, 1, 1, WireFormat.SpendUnknown) });
+            string dev = WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0, 1, 1, WireFormat.SpendUnknown, 0) });
             string items = WireFormat.Items(new[] { new WireFormat.ItemCell(7, 3, 1, 4, 200) });
             string marks = WireFormat.Marks(new[] { new WireFormat.MarkCell(7, 3, 1, 2) });
             string zones = WireFormat.Zones(new[] { new WireFormat.ZoneTile(7, 3, 1, 0UL, 0) });
@@ -132,11 +132,11 @@ namespace Perilune.Tests
             {
                 var loud = new CultureInfo("de-DE");
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
-                string inv = WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1, 1, 1, (int)ItemKind.Seals) });
+                string inv = WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1, 1, 1, (int)ItemKind.Seals, 0) });
                 Thread.CurrentThread.CurrentCulture = loud;
-                Assert.AreEqual(inv, WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1, 1, 1, (int)ItemKind.Seals) }),
+                Assert.AreEqual(inv, WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1, 1, 1, (int)ItemKind.Seals, 0) }),
                     "a wire payload that changes with the operator's locale is not a wire payload");
-                StringAssert.Contains("[1234,7,2,3,255,1,1,1,1,7]", inv, "no group separators, no locale digits");
+                StringAssert.Contains("[1234,7,2,3,255,1,1,1,1,7,0]", inv, "no group separators, no locale digits");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }
@@ -281,7 +281,12 @@ namespace Perilune.Tests
             {
                 string body = part.Split(']')[0];
                 var f = body.Split(',');
-                Assert.AreEqual(10, f.Length, "a devices tuple is ten elements, saw: [" + body + "]");
+                // ⚠️ UPDATE THE WIDTH AND THE PARSER **TOGETHER**, NEVER THE WIDTH ALONE — the
+                // sibling note in `DevicesDeltaTests.TupleWidth` argues this at length. This parser
+                // reads POSITIONALLY, so a tuple that silently grew would turn it into a confident
+                // reader of the wrong column. Widened to ELEVEN by the rotation package (2026-08-05),
+                // whose eleventh element is `face` (`Device.Facing`, 0..3, drawing-only).
+                Assert.AreEqual(11, f.Length, "a devices tuple is eleven elements, saw: [" + body + "]");
                 list.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                           int.Parse(f[1], CultureInfo.InvariantCulture),
                           int.Parse(f[2], CultureInfo.InvariantCulture),

@@ -154,6 +154,45 @@ so the main tree IS the gated lane tree at `64ba593` (final full gate exit 0, tw
   the band was incompressible. Now `min(150px,11vw)` + clamps, drop point 1359 → 818 px.
   ⚠️ **The measured floor is 580 px**: at 540 `#ov-compart` clips its own content, at 500 spans
   escape. The 258 px ledger track is its own max-content and cannot shrink — a KNOWN LIMIT.
+- ★ NEW (**VR-P5 the ship drawn**, `lane/ship-drawn` — the Level-1 plate is now a SIDE-ELEVATION
+  CUTAWAY of the whole ship, both decks drawn at once from the all-deck `devices`+`items` channels).
+  **Four owner decisions and one inherited limit, all filed rather than closed:**
+  1. **A LOCKED DOOR DRAWS AS AN ORDINARY ONE ON THE PLATE.** `Device.IsLocked` is deliberately not
+     on the `devices` channel (`WireFormat.Devices.cs`' "left out" list calls it a different
+     feature), so `door-blast` is the ONE piece of the 35-name glyph table the new source cannot
+     reach — censused by name, both directions, in `ship-fittings.test.js`. Un-exercised on
+     `--ship wreck` today (glyph 88 is in neither deck's census). A locked door is a fact about a
+     ROUTE and Level 1 is where a player looks for routes; closing it is a one-element append to
+     the `devices` tuple. **Owner: is that worth a wire field?**
+  2. **FOG IS STILL ONE DECK.** `devices`/`items` carry every deck, but ABSENCE on them is not
+     distinguishable from "explored and empty" — only the `frame` says fogged POSITIVELY, and the
+     host projects one deck (`GameSession.RenderFrame`). So the unsurveyed cross-hatch is available
+     only for the active band; the drawing stamps `data-survey` per band so it never claims to know
+     more than it does. (Moot on the wreck today: all sixteen compartments read `fogged 0/96`.)
+  3. **A STUCK ORDER ON THE INACTIVE BAND SHOWS NO OUTLINE** until the player steps to that deck —
+     the D5 arm follows the ORDER deck because it is paired with the `compartments` column's oxblood
+     sentence (ruling E4: one row rendered twice). Widening the outline alone would put a warning on
+     the plate that nothing explains. **Owner: does the `compartments` column go ship-wide?**
+  4. **`--ship grid` (8 decks) OVERFLOWS THE BAY AND SAYS SO.** The band floor binds at 31.9 px and
+     the stack is 478 px in a 165.5 px bay; `bandLayout` returns `overflows: true` so the degradation
+     is visible rather than inferred. `grid` is the economy fixture and is never offered to a player
+     (CLAUDE.md), so this is recorded, not fixed.
+  5. **THE WALKWAY STRIP COMPRESSES THE DECK'S WHOLE `ty` RANGE — INHERITED, NOT NEW.** `tileExtent`
+     unions the slots' box with the FRAME, so the ~7.84 px spine strip's inverse addresses **all 18
+     `ty` rows** of a 45×18 deck (measured on the census fixture) while only 2 rows / 90 tiles are
+     really walkway. What the census pins is `invert ∘ project` (exact, 1620/1620); a PRESS is the
+     other composition and is not. VR-P4's `bandInvert` had the same shape (still on `main`, measured
+     at 87.9 % same-structure by review); the elevation improves the strip's AREA, not the class.
+     Closing it means giving the spine its own `ty` axis — a design question about what a corridor IS
+     on this plate. The Room Zoom has no such compression.
+  Also from this package's review: the plate rig's room-entry leg was a **4th-shape hole** — it
+  asked `body.roomzoom-open || /ROOM ZOOM/i.test(toast)`, which the FAILURE string "ROOM ZOOM
+  UNAVAILABLE" satisfies and which cannot see "opened EMPTY". Replaced with a live content join
+  (the plate's per-compartment fitting census vs the opened room's masthead) plus a
+  distinguishability control; both verified by mutation. And `ship-elevation.test.js`' exhaustive
+  round-trip census is **blind to the region-boundary epsilon it was credited with catching** — it
+  projects tile CENTRES and only a front-edge CORNER lands on `v = V_SPINE` (9th shape; the one
+  instrument is the REGION BOUNDARY test, driven both ways).
 - Owner-eye items: stool drawn as tripod (catalogue's caption honoured, silhouette win) · shrine
   shelf's permanently-oxblood frame vs the accent dialect · pawn props anchored outside the doc's
   arm line · the radar shows own-ship only (no contact channel exists) · short viewports let the

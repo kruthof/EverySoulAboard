@@ -29,7 +29,7 @@ import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from '.
 // VR-P3 — THE CABINET-OBLIQUE KIT. The room is drawn through it and through nothing else; the ONE
 // hatch def this surface emits is `fhDef('rz')` (`room-model.js roomHatchDef`), and `fhRef(RZ_ID)`
 // is how a face in THIS document references it. `haloText` is the design's label treatment.
-import { box as obliqueBox, fhRef, haloText, INK, PAPER, ATTEND, FONT } from '../render/oblique.js';
+import { box as obliqueBox, fhDef, fhRef, haloText, INK, PAPER, ATTEND, FONT } from '../render/oblique.js';
 // The ONE derivation of how a centimetre-specified fitting lands on a surface at that surface's
 // centimetre rule — see its header for why it lives beside the drawing scale rather than here.
 import { roomBox } from '../items/fittings.js';
@@ -38,7 +38,12 @@ import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
 import { blockedLayerSvg, blockedKeyHtml } from './blocked-overlay.js';
 import { acceptsRowHtml } from './accepts-row.js';
 import { decksView, atmosByAnchor } from './decks-model.js';
-import { buildItem, isResourceItem } from '../items/index.js';
+// `ITEMS` is read (never written) for ONE derivation: the build ghost resolves a functional tool's
+// art by matching the palette row's `deviceKind` against the registry's own `deviceKind` column —
+// see `ghostArtId`, and its note on why that is a derivation rather than an eleventh hand table.
+import { buildItem, isResourceItem, ITEMS } from '../items/index.js';
+// The PLACED piece's own resolver — the ghost now shares it rather than paralleling it.
+import { itemIdForGlyphChar } from '../items/glyph-map.js';
 // THE WEAR JOIN, and the ONLY door from a surface to the wrecked twins (client/src/items/wear.js
 // carries the threshold and its justification; `client/test/wrecked.test.js` pins that this file
 // never imports `wrecked.js` itself).
@@ -90,6 +95,10 @@ import {
 // (3 PARTS a wreck holding 1 cannot pay) and why the price is a pinned mirror rather than a wire read.
 import {
   chipCostText, chipTitleText, paletteCostRow, placeRefusalText, decorRefusalText,
+  // The build ghost's REFUSAL state asks these two — the SAME predicates the `.cant` chip and the
+  // armed cost row are painted from, so the preview and the palette cannot answer one question two
+  // ways (`ghostRefused`).
+  isDecorTool, placeIsUnaffordable,
 } from './build-cost-model.js';
 // PARTS ABOARD, read from the SAME derivation the Overview's LEDGER island prints, so the palette
 // and the ledger cannot count one ship two ways. `Hud.getLedger` is already on `SHIP_STATE_REACH`
@@ -110,7 +119,11 @@ const CTX_GAP = 6;              // clearance the right-click menu keeps from bod
 // thing: a fitting is drawn at its own centimetres (`fittings.roomBox`) and a person at their own
 // height. The one number left is that height, and it is a number about people.
 /** The floor-material swatch's box, in the same unit the floor cells are drawn in. */
-const FLOOR_MAT_PX = 95;
+/** The built floor-material swatch's own size. ⭐ EXPORTED so `build-ghost.test.js` can pin the
+ *  GHOST's floor swatch against the BUILT one by equality rather than by restating 95 in the test —
+ *  a restated constant is a second authority, and this pair is exactly where one drifted (review
+ *  MINOR 8: the ghost's floor swatch never matched the built idiom at all). */
+export const FLOOR_MAT_PX = 95;
 /** A crew member's height in metres. At the cutaway's 0.95 px/cm that is ~158 scene px, which is
  *  what the design's own room figure measures (`scale(1.04)` on its 152-unit build).
  *
@@ -123,6 +136,10 @@ const PAWN_M = 1.66;
 /** The shipped mono stack — the kit's, so an SVG label and the DOM text beside it cannot resolve to
  *  two different faces on a box where the webfont is missing (`oblique.FONT`'s own warning). */
 const MONO_STACK = FONT.mono;
+/** The build ghost's own `#fh` hatch namespace (`<pattern id="rzg-fh">`). It CANNOT be `RZ_ID`: the
+ *  ghost is a second SVG root in the same document as `#rz-layers`, and two roots emitting one id is
+ *  the collision `oblique.fhDef`'s header exists for. */
+const GHOST_ID = 'rzg';
 // ⚠️ THE `HINT` CONSTANT THAT STOOD HERE IS GONE, not renamed: the hint line has TWO texts now
 // (`ZOOM_HINT_IDLE` / `ZOOM_HINT_ARMED`, both in the pure `zoomChrome`), and leaving a third copy
 // of one of them in this file is how the two would drift. The markup below seeds the node with the
@@ -139,6 +156,7 @@ let _onExit = () => {};
 let _root = null;         // #roomzoom-view
 let _canvas = null;       // .rz-canvas (the framed floor)
 let _layers = null;       // <svg> furniture/ghost/mark layer — REBUILT WHOLESALE every repaint
+let _ghost = null;        // #rz-ghost — THE BUILD GHOST's own root (never in the stack; paintGhost)
 let _pulseLayer = null;   // transient input pulses
 // ── the tween's three handles (see the import note) ──────────────────────────────────────────
 let _pawnSvgEl = null;    // #rz-pawnlay — the PERSISTENT overlay the figures live in
@@ -211,6 +229,28 @@ let _ctx = null;
 // Default is the shared `defaultStockFilter()` (ACCEPT-ALL), never a literal — see
 // stock-filter-model.js. A player who never touches the chips gets exactly E0-3 behaviour.
 let _stockFilter = defaultStockFilter();
+// ⭐⭐ THE BUILD GHOST — the tile the pointer is over, and the last thing drawn for it.
+//
+// `_hoverTile` is the resolved tile under the pointer (`tileAt`, the SAME two-tier resolution the
+// click uses — one resolution, so the preview and the placement cannot drift), or null when the
+// pointer is off the room / off the canvas / nothing is armed. `_ghostSig` is what
+// `paintGhost` last wrote, so a mousemove that stays inside one tile mutates NOTHING.
+let _hoverTile = null;
+/**
+ * ⭐⭐ WHICH WAY THE ARMED TOOL WILL PUT THE PIECE DOWN — 0..3, one quarter-turn each, cycled by
+ * [E]. The owner, 2026-08-05: *"I want to be able to rotate it (4× rotation)"*.
+ *
+ * ⛔ IT IS RESET TO 0 BY `arm()`, AND THAT IS A DECISION RATHER THAN HOUSEKEEPING. RimWorld's
+ * designator REMEMBERS its rotation across placements, which is right there because facing is a
+ * MECHANIC (it moves the interaction cell) and a player turning a row of workbenches means it. Ours
+ * is drawing-only and there is no readout of it anywhere but the ghost itself, so a facing that
+ * survived a disarm would be an invisible mode: the player arms TABLE tomorrow and it lands sideways
+ * for a reason nothing on screen explains. Resetting on arm makes the state's whole lifetime
+ * something the player can see. ⚠️ IT DOES NOT RESET BETWEEN CLICKS — turn it once and place four
+ * benches the same way round, which is the gesture the owner's sentence describes.
+ */
+let _facing = 0;
+let _ghostSig = '';       // tool|tx,ty|refused|material|facing|viewBox — the ghost root's write guard
 let _accSig = '';         // last-rendered ACCEPTS row signature (mask + mismatch count), or 'off'
 let _costSig = '';        // last-rendered COST row signature (tool + level + sentence), or 'off'
 
@@ -260,6 +300,10 @@ function buildSkeleton() {
     '<div class="rz-space"></div>' +
     '<div class="rz-canvas" id="rz-canvas">' +
       '<svg class="rz-layers" id="rz-layers" xmlns="http://www.w3.org/2000/svg"></svg>' +
+      // ⭐⭐ THE BUILD GHOST'S ROOT — see `paintGhost`. A SIBLING of the layer stack, never a layer
+      // in it: the stack is `innerHTML`-replaced on every coalesced wire repaint and the ghost
+      // follows the POINTER, which moves an order of magnitude more often than the ship does.
+      '<svg class="rz-ghostlayer" id="rz-ghost" xmlns="http://www.w3.org/2000/svg"></svg>' +
       // ⭐⭐ THE PAWN OVERLAY — a SIBLING of `#rz-layers`, not a layer inside it, and that is the
       // whole client-side tween in one line of markup. `#rz-layers` is assigned wholesale
       // (`innerHTML =`) on every coalesced repaint, ~10×/s; nothing inside it can be animated
@@ -342,6 +386,7 @@ function buildSkeleton() {
       'title="The ship is on HOLD — click to resume">‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP</button>';
   _canvas = $('rz-canvas');
   _layers = $('rz-layers');
+  _ghost = $('rz-ghost');
   _pawnSvgEl = $('rz-pawnlay');
   _pawnLayer = _pawnSvgEl ? makePawnLayer(_pawnSvgEl, { groupClass: 'rz-pawn-root' }) : null;
   // ⛔ AND THE INTERPOLATOR IS RESET WITH THE NODES IT DRIVES. `_pawnLayer` is rebuilt here, so a
@@ -363,6 +408,10 @@ function buildSkeleton() {
   // drag. Every other tool stays on the click handler.
   _canvas.addEventListener('mousedown', onCanvasDown);
   _canvas.addEventListener('mousemove', onCanvasMove);
+  // ⭐ THE GHOST MUST LEAVE WITH THE POINTER. Without this the last hovered tile keeps a piece
+  // standing on it while the player is over the palette choosing a different tool — a preview of a
+  // click they are not about to make, at a tile they are no longer pointing at.
+  _canvas.addEventListener('mouseleave', onCanvasLeave);
   window.addEventListener('mouseup', onCanvasUp); // window: catch a release that ends off-canvas
   _canvas.addEventListener('click', onCanvasClick);
   // ⭐ M2-10 — RIGHT-CLICK, AND THE PHASE IS LOAD-BEARING (BUG-B's exact shape). Registered on the
@@ -492,6 +541,7 @@ export function enterRoom(anchor) {
   if (!f) { toast('ROOM ZOOM UNAVAILABLE — ' + esc(anchor)); return; }
   _focus = f;
   _armed = null;
+  _hoverTile = null;   // a room is entered by a click on ANOTHER surface — nothing is hovered here yet
   _open = true;
   // ⛔ A NEW ROOM IS A COLD START, and forgetting to say so is a walk-through-the-hull bug: the
   // buffered samples belong to the room we just left, so the first repaint here would tween every
@@ -512,6 +562,11 @@ export function exitRoom() {
   _armed = null;
   _drag = null;   // a sweep in progress is abandoned on exit (guards onCanvasUp against a null _focus)
   closeCtx();     // …and so is an open right-click menu: its target tile belongs to a room we are leaving
+  // …and so is the build ghost. It is drawn in the LEAVING room's scene coordinates, and the ghost
+  // root is not torn down by anything else — left standing it is the previous compartment's furniture
+  // hanging over the next one the player opens.
+  _hoverTile = null;
+  clearGhost();
   _focus = null;
   if (_pawnLayer) _pawnLayer.clear();   // see `enterRoom` — a closed surface holds no pawn state
   _tween.clear();
@@ -672,6 +727,10 @@ function repaint() {
   // last free tile, or the player painting more of the room, both change it without touching a chip.
   paintAccepts();
   paintCostRow();
+  // The build ghost's REFUSAL state is a function of the LEDGER, which only a frame can move — so it
+  // is re-asked once per repaint as well as on every hover. The signature guard means an unchanged
+  // answer writes nothing, so an idle ship still mutates no DOM here.
+  paintGhost();
 }
 
 // ── THE CUTAWAY (visual redesign P3, charter §3) ──
@@ -937,6 +996,240 @@ function previewSvg(scene, place) {
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ THE BUILD GHOST — the piece itself, standing on the hovered tile, before the click.
+//
+// The owner's sentence: *"when building a new item, e.g. a table, I want to see it before placing
+// it"*. RimWorld's analogue is §12.1 of `docs/design/rimworld-reference.md` — *"Placing a blueprint
+// is free and instant (a ghost; queue as many as you like)"* — and the half this borrows is the one
+// that comes BEFORE the blueprint: the designator draws the thing under the cursor while it is armed.
+//
+// ⛔ THREE RULES, EACH OF WHICH IS A DEFECT THIS SURFACE HAS ALREADY SHIPPED ONCE.
+//
+// 1. IT IS THE REAL DRAWING, RESTYLED — NEVER A SECOND DRAWING. `ghostPieceSvg` calls `standItem`,
+//    the exact function `furnitureSvg` places the built piece with, and dresses the result by
+//    INHERITANCE: `stroke-dasharray="6 5"` and `opacity` on the wrapping `<g>`. Every stroke in the
+//    fitting set that does not set its own dasharray inherits the dash, so the piece goes to the
+//    charter's UNBUILT/PLANNED dialect (§1 ruling E3: dashed `#14120F` "6 5") without a single path
+//    being re-authored. A hand-drawn ghost is how the Overview and the Room Zoom came to skin one
+//    glyph two ways (`oblique.js`'s header carries that scar) and it is not repeated here.
+//
+// 2. NO OXBLOOD. A ghost is not an alert. The one accent (charter §1) is spent by `ghostSvg` on a
+//    QUEUED ORDER and by `blockedLayerSvg` on a REFUSED one; a preview of a click nobody has made
+//    yet must not shout in the same colour as a fault. The REFUSAL state below therefore says its
+//    piece in ink too — dimmer, with an ink cross — and the oxblood sentence stays where it already
+//    is, on the armed cost row (`paintCostRow`) and in the toast the click raises.
+//    ⚠️ TWO FITTINGS CARRY OXBLOOD IN THEIR OWN ART (`fittings.js` battery-bank / cell-rack hazard
+//    plates). Their ghost shows it, because the ghost IS the piece. Neither is a palette tool today.
+//
+// 3. IT IS NOT A PRESS TARGET. `.rz-ghostlayer` is `pointer-events:none` in CSS AND the group carries
+//    the attribute, because the ghost stands ON the tile it is previewing: a pressable ghost would
+//    win `tileAt`'s first tier (`closest('[data-tile]')`) — or, with no `data-tile` of its own, would
+//    simply swallow the press — and the preview would start answering for the click. That is
+//    VR-P3-a's measured defect (16 of 18 fittings designating the wrong tile) re-created by the very
+//    affordance meant to prevent it.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The ART a tool previews, or `''` for a tool that places no THING (the order verbs, ERASE, MOVE,
+ * DEMOLISH — all four are functions of what is ALREADY on the tile, so there is nothing to preview).
+ *
+ * ⛔ DERIVED FROM THE REGISTRY, NOT TRANSCRIBED. A functional tool's `deviceKind` is the sim enum
+ * member, and `ITEMS` already states which piece skins that member (`dev('Bed','b')` on the
+ * `bunk-bed` row) — so the ghost and the piece that lands afterwards are chosen by the same fact.
+ * The alternative is an eleventh hand table of tool→art, which is the shape `glyph-map.js`'s header
+ * spends forty lines retracting.
+ *
+ * ⚠️ ONE TOOL CANNOT BE DERIVED AND SAYS SO IN THE TABLE. `DeviceKind.Light` has NO `functional`
+ * registry row at all — its art is `GLYPH_SUBSTITUTE['*'] → 'wall-lamp'`, a borrow reachable only
+ * from the glyph CHARACTER, and the client has no DeviceKind → glyph map (that switch is
+ * `sim/Sim.Glyph/Glyphs.cs`). So `PALETTE_CMD.lamp` states its art in the `itemId` vocabulary the
+ * table already uses for the two cosmetic rows. FILED: the general fix is a client mirror of
+ * `Glyphs.ForDevice`, which is a hand mirror and therefore a decision, not a chore.
+ * PURE of DOM; reads only the frozen tables.
+ */
+/* ⭐ EXPORTED so `build-ghost.test.js` can pin the GHOST's route against the PLACED piece's glyph
+   route by calling THIS function rather than restating its body — a restated derivation is the
+   second authority the whole `glyph-map.js` header exists to refuse. */
+export function ghostArtId(tool) {
+  const pc = paletteCommand(tool);
+  if (pc.itemId) return pc.itemId;
+  if (pc.cls !== 'functional' || !pc.deviceKind) return '';
+  // ⛔⛔ RESOLVE THROUGH THE **GLYPH**, NOT THROUGH THE FIRST MATCHING ROW — and this is a defect
+  // fix, not a tidy-up (lane/paper-machines merge, 2026-08-05). `DeviceKind → itemId` IS NOT A
+  // FUNCTION and the registry says so out loud (`wear.js deviceKindsWithSeveralPieces`); machines
+  // then made it concrete by adding `plant-pot` (glyph `'P'`) beside the existing `potted-plant`,
+  // whose row it re-pointed to `glyph: null`. BOTH carry `deviceKind: 'PlantPot'`. A first-match
+  // scan answers `potted-plant` — the OLD warm art — while a PLACED plant resolves glyph `'P'` and
+  // draws `plant-pot`. The player would have previewed one piece and got another, silently, and
+  // nothing but the agreement pin could see it.
+  // ⇒ The placed piece's answer is `itemIdForGlyphChar(glyph)`, so the ghost asks the registry which
+  // glyph this DeviceKind projects and then asks the SAME function. Two hops down ONE route, rather
+  // than a second route that happens to agree.
+  let fallback = '';
+  for (const id of Object.keys(ITEMS)) {
+    const e = ITEMS[id];
+    if (!e || e.kind !== 'functional' || e.deviceKind !== pc.deviceKind) continue;
+    if (typeof e.glyph === 'string' && e.glyph.length === 1) {
+      const viaGlyph = itemIdForGlyphChar(e.glyph);
+      if (viaGlyph) return viaGlyph;
+    }
+    // A row with no glyph is the honest last resort: some kinds project no glyph of their own and
+    // are skinned only by a substitution, and answering nothing at all would draw the unbuilt chip.
+    if (!fallback) fallback = id;
+  }
+  return fallback;
+}
+
+
+/**
+ * Is the armed tool's placement one this surface can already PROVE will be refused? Exactly the
+ * palette's own two answers, reused rather than re-derived — `build-cost-model.js` owns both, the
+ * `.cant` chip state and the armed cost row are painted from them, and a ghost that said something
+ * a third way would be a third authority on one question.
+ *
+ * ⛔ IT IS NOT A TILE PREDICATE AND MUST NOT BECOME ONE. The sim is the sole authority on whether a
+ * particular square is legal (`PlaceDeviceCommand.Execute`'s five guards), the client never gates
+ * the send, and inventing a client-side legality test here would put a preview that says NO in front
+ * of a command that would have succeeded. What this answers is the tool-scoped question the ledger
+ * really does settle: can the ship pay at all, and is this verb wired to a sim at all.
+ */
+function ghostRefused(tool) {
+  return isDecorTool(tool) || placeIsUnaffordable(tool, partsAboard());
+}
+
+/**
+ * ONE GHOST, at one tile. Returns an SVG fragment for the ghost root, or `''` when this tool
+ * previews nothing.
+ *
+ * The three shapes, and each is the shape the COMMITTED thing takes on this surface:
+ *   • a THING (functional / cosmetic) — `standItem`, the placed piece's own builder.
+ *   • WALL / DOOR — the 2.4 m / 2.0 m oblique box `ghostSvg` draws a queued one with, plus the
+ *     ACTIVE MATERIAL's swatch inset on the front face, which is what `materialLayerSvg` insets on
+ *     a BUILT partition. "Walls show the swatch" is therefore the built wall's own idiom, early.
+ *   • FLOOR — the tile's own quad. A floor has no height; extruding it would preview a slab where
+ *     the player is about to lay a surface (`ghostSvg`'s own note).
+ */
+function ghostPieceSvg(tool, tile, scene, place, refused) {
+  const pc = paletteCommand(tool);
+  const idp = 'rz-gh-' + tool;
+  const dim = refused ? 0.3 : 0.55;
+  let art = '';
+  if (pc.cls === 'structural') {
+    const [px, py] = place.front(tile.x, tile.y);
+    const cm = M_PER_TILE * 100;
+    if (pc.kind === 'floor') {
+      art = '<path d="' + place.quad(tile.x, tile.y) + '" fill="none" stroke="' + INK +
+        '" stroke-width="1.5" stroke-dasharray="6 5"/>';
+    } else {
+      const h = pc.kind === 'door' ? 200 : ROOM_HEIGHT_M * 100;
+      art = obliqueBox(px, py, cm, h, cm, scene.s,
+        { stroke: INK, strokeWidth: 1.5, dash: '6 5', sideFill: 'hatch', hatch: fhRef(GHOST_ID) });
+    }
+    // ⭐⭐ THE SWATCH IS PLACED BY THE **BUILT** LAYER'S OWN IDIOM, NOT AN IDIOM OF ITS OWN.
+    //
+    // ⛔ THE DEFECT THIS CLOSES WAS A MERGE, NOT A TYPO (2026-08-05, review): this ghost was written
+    // against the old built-wall skin — a 62 px square floated at 0.62 of the ceiling height — and
+    // main then moved the BUILT wall's skin onto the slab's FRONT FACE (`px, py − faceH`, one tile of
+    // run by one ceiling of height; `materialLayerSvg` above). Neither side conflicted textually, so
+    // the auto-merge produced a tree where ONE material draws TWO different ways at TWO different
+    // centimetres — the preview and the thing it previews. That is the 8th trap shape (a clean
+    // auto-merge is not a clean merge) landing on a picture rather than on a number.
+    // ⚠️ THE FLOOR HALF NEVER MATCHED EITHER, and that was true BEFORE the merge (review MINOR 8):
+    // a built floor material lies IN THE FLOOR PLANE through `place.cell` at `FLOOR_MAT_PX`, and the
+    // ghost drew it as an upright square. Both halves are now the built layer's expressions verbatim,
+    // and `build-ghost.test.js` pins GHOST-vs-BUILT equality so the class cannot reopen quietly.
+    //
+    // GATED ON `toolHasMaterial`, not on the class: DOOR is structural and owns NO material picker,
+    // so `activeMaterial` has nothing to answer for it and a wall swatch on a door ghost would be
+    // this file inventing a fact about the tool.
+    if (toolHasMaterial(tool)) {
+      const mid = materialItemId(pc.kind === 'floor' ? 'floor' : 'wall', activeMaterial(_materials, tool));
+      if (mid) {
+        if (pc.kind === 'floor') {
+          art += '<g transform="' + place.cell(tile.x, tile.y) + '">'
+            + buildItem(mid, { w: FLOOR_MAT_PX, h: FLOOR_MAT_PX, idPrefix: idp + '-mat' }) + '</g>';
+        } else {
+          const faceW = ROOM_SCALE * cm;
+          const faceH = ROOM_SCALE * ROOM_HEIGHT_M * 100;
+          art += '<g transform="translate(' + px.toFixed(2) + ' ' + (py - faceH).toFixed(2) + ')">'
+            + buildItem(mid, { w: faceW, h: faceH, idPrefix: idp + '-mat' }) + '</g>';
+        }
+      }
+    }
+  } else {
+    const itemId = ghostArtId(tool);
+    if (!itemId) return '';
+    // ⭐ THE GHOST PREVIEWS THE FACING LIVE, through the same `standItem` the placed piece uses, so
+    // "what you see is what you get" holds for the rotation as well as for the piece.
+    art = standItem(itemId, tile.x, tile.y, place, idp, undefined, _facing);
+  }
+  // The REFUSAL mark: an ink cross over the tile's own floor quad, at the dotted `1 3` this surface
+  // already uses for "this is being taken away" (`previewSvg`'s erase dash). It is drawn on the
+  // FLOOR rather than over the piece so it reads as a statement about the square, and it spends no
+  // accent — see rule 2 in this section's header.
+  let mark = '';
+  if (refused) {
+    const c = place.corners(tile.x, tile.y);
+    mark = '<path d="M' + c.nearLeft[0].toFixed(1) + ' ' + c.nearLeft[1].toFixed(1) +
+      ' L' + c.farRight[0].toFixed(1) + ' ' + c.farRight[1].toFixed(1) +
+      ' M' + c.nearRight[0].toFixed(1) + ' ' + c.nearRight[1].toFixed(1) +
+      ' L' + c.farLeft[0].toFixed(1) + ' ' + c.farLeft[1].toFixed(1) +
+      '" fill="none" stroke="' + INK + '" stroke-width="1.6" stroke-dasharray="1 3"/>';
+  }
+  // `stroke-dasharray` on the WRAPPER is what turns the real drawing into the unbuilt dialect —
+  // every stroke inside that does not set its own inherits it. `class` carries the state so a rig
+  // and a DOM test can read which of the two the player is looking at.
+  return '<g class="rz-buildghost' + (refused ? ' refused' : '') + '" data-ghost-tool="' + esc(tool) +
+    '" data-ghost-tile="' + (tile.x | 0) + ',' + (tile.y | 0) + '" data-ghost-facing="' + (_facing & 3) +
+    '" pointer-events="none" opacity="' + dim + '" stroke-dasharray="6 5">' + art + mark + '</g>';
+}
+
+/** Take the ghost down and forget what was drawn. Idempotent; every clearing path calls it. */
+function clearGhost() {
+  if (_ghost && _ghostSig !== '') { _ghost.innerHTML = ''; _ghostSig = ''; }
+}
+
+/**
+ * Write the ghost root — GUARDED, so hover inside one tile mutates no DOM at all.
+ *
+ * ⚠️ THE GUARD IS THE PACKAGE'S PERFORMANCE CLAIM AND IT IS THE SIGNATURE, NOT A TIMER. A mousemove
+ * fires per pixel; a tile is ~95 px across. The signature is `tool | tile | refused | viewBox`, so a
+ * pointer crossing a room writes once per TILE BOUNDARY, and an idle pointer writes never. The layer
+ * stack (`_layers.innerHTML`) is untouched by hover on every path through this function — which is
+ * the whole reason the ghost has its own root.
+ */
+function paintGhost() {
+  if (!_ghost) return;
+  if (!_open || !_focus || _armed == null || !_hoverTile) { clearGhost(); return; }
+  // A sweep in progress owns the screen: `previewSvg` is already drawing every tile the release
+  // would designate, INCLUDING the anchor, so a ghost on top of it would double the anchor tile.
+  if (_drag) { clearGhost(); return; }
+  const scene = roomScene(_focus);
+  const refused = ghostRefused(_armed);
+  // The MATERIAL is in the signature because the swatch is in the drawing: a player who flips WALL
+  // from steel to wood while hovering one tile must see the swatch change, and without this term the
+  // guard would hold the old chip up (the tile, the tool and the refusal are all unchanged).
+  const sig = _armed + '|' + _hoverTile.x + ',' + _hoverTile.y + '|' + (refused ? 1 : 0)
+    + '|' + activeMaterial(_materials, _armed) + '|' + _facing + '|' + scene.viewBoxAttr;
+  if (sig === _ghostSig) return;
+  const unit = scene.s * 100 * M_PER_TILE;
+  const place = scenePlacement(scene, _focus, unit);
+  const body = ghostPieceSvg(_armed, _hoverTile, scene, place, refused);
+  if (!body) { clearGhost(); return; }
+  // The SAME viewBox and the SAME fit as `_layers` — the two roots occupy the identical box
+  // (`.rz-ghostlayer` mirrors `.rz-layers`' `inset:6px`), so one scene coordinate means one screen
+  // point in both and the ghost cannot drift off the tile the click will resolve to.
+  setAttr(_ghost, 'viewBox', scene.viewBoxAttr);
+  setAttr(_ghost, 'preserveAspectRatio', 'xMidYMid meet');
+  // ⛔ ITS OWN HATCH NAMESPACE, NOT `roomHatchDef()`'s. The two roots are two elements of ONE
+  // document, so re-emitting `<pattern id="rz-fh">` here would be a duplicate id — the exact
+  // collision `oblique.js`'s `DEFAULT_ID_PREFIX` header exists for, and the failure mode is silent
+  // (one of the two hatched faces resolves against the wrong pattern, or none).
+  _ghost.innerHTML = '<defs>' + fhDef(GHOST_ID) + '</defs>' + body;
+  _ghostSig = sig;
+}
+
 /**
  * ⭐⭐ VR-P3-a — THE ONE WRAPPER EVERY STANDING PIECE WEARS. It says which tile the piece was DRAWN
  * for and makes the piece's own INK the pressable part, which is what `tileAt` resolves a pointer
@@ -987,17 +1280,26 @@ function decorSvg(list, place) {
  * look right while the shipping surface drew something else. It is pure of module state: `place` is
  * an argument and `ROOM_SCALE` is a shared constant.
  */
-export function standItem(itemId, tx, ty, place, idPrefix, cond) {
-  const rb = roomBox(itemId, ROOM_SCALE);
+export function standItem(itemId, tx, ty, place, idPrefix, cond, facing) {
+  // ⭐⭐ THE FACING GOES TO **BOTH** DERIVATIONS OR THE PIECE CHANGES SIZE WHEN IT TURNS. `roomBox`
+  // inverts the drawing scale to land the piece at `ROOM_SCALE` px/cm, and the builder draws at that
+  // scale — and both compute it from `fittings.facedSpec`. Hand the facing to one and not the other
+  // and a turned bench is drawn at a different metre, which no ratio assertion could see (CLAUDE.md's
+  // 7th trap shape). One argument, threaded to both, is the whole guard.
+  // ⚠️ A WARM-SET PIECE IGNORES IT, HONESTLY. Twenty-odd device rows keep their pre-redesign art and
+  // have no centimetre spec (`helpers.item` forwards `facing`; only the thirty fittings read it), so
+  // MEDBED, PLANT and LAMP carry a facing through sim, save and wire and draw the same picture at all
+  // four. That is P2b's boundary, already named in this function's fallback paragraph below. FILED.
+  const rb = roomBox(itemId, ROOM_SCALE, facing);
   const [px, py] = place.front(tx, ty);
   if (rb) {
-    const g = buildTileItem(itemId, { w: rb.side, h: rb.side, idPrefix }, cond);
+    const g = buildTileItem(itemId, { w: rb.side, h: rb.side, idPrefix, facing }, cond);
     return '<g transform="translate(' + (px + rb.dx).toFixed(2) + ' ' + (py + rb.dy).toFixed(2)
       + ')">' + g + '</g>';
   }
   const side = ROOM_SCALE * 100 * M_PER_TILE * 1.15;
   const [cx, cy] = place.foot(tx, ty);
-  const g = buildTileItem(itemId, { w: side, h: side, idPrefix }, cond);
+  const g = buildTileItem(itemId, { w: side, h: side, idPrefix, facing }, cond);
   return '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2)
     + ')">' + g + '</g>';
 }
@@ -1114,9 +1416,14 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
     if (plated.has(c.tx + ',' + c.ty)) continue;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
+      // ⭐⭐ THE FACING IS JOINED ON `(tx,ty)` FROM THE `devices` CHANNEL — the same row `cond`
+      // already comes from, and it has to be a join rather than a field on the cell: a fitting is
+      // chosen by the FRAME'S GLYPH BYTE (`roomCells` → `itemForGlyph`), and a glyph cell is one
+      // glyph plus one mark byte with no room for a device attribute. A tile with art but no device
+      // row (a ground stack, an authored prop) faces 0, which is what it drew before.
       const row = cond.get(c.tx + ',' + c.ty);
       out.push(fit(c.tx, c.ty, standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
-        row ? row.cond : undefined)));
+        row ? row.cond : undefined, row ? row.face : 0)));
     } else {
       // VS-Z-25's unknown chip, in the paper dialect: an INK `6 5` dashed plate — the charter's
       // UNBUILT/PLANNED spelling, which is the honest thing to say about a glyph with no art, and
@@ -1617,12 +1924,18 @@ function arm(tool) {
   // tool without also restoring a layer for it to reveal.
   _armed = nextRoomTool(_armed, { t: 'toggle', tool });
   _drag = null; // arming/disarming cancels any in-progress sweep
+  _facing = 0;  // …and so does the rotation — see `_facing`'s own header for why it is not sticky
   paintChrome();  // label + hint + caption all key on `_armed` — see paintChrome's header
   paintPalette();
   paintMatStrip();
   paintAccepts();
   paintCostRow();
   paintCanvas();
+  // ⭐ THE GHOST FOLLOWS THE ARMED SLOT, NOT ONLY THE POINTER. Swapping BUNK for TABLE without
+  // moving the mouse must swap the piece standing on the hovered tile, and DISARMING must take it
+  // away — `paintGhost` clears on `_armed == null`. Called here for `paintChrome`'s own reason: on a
+  // paused ship no frame arrives, so nothing else would repaint.
+  paintGhost();
   if (_armed != null) nudgeOnIntent(); // arming (not disarming) is the intent worth nudging about
 }
 
@@ -1657,7 +1970,10 @@ function onMatChip(el) {
   const tool = _armed;
   if (!toolHasMaterial(tool)) return;
   const next = setMaterial(_materials, tool, parseInt(el.getAttribute('data-rzmat'), 10) | 0);
-  if (next !== _materials) { _materials = next; paintMatStrip(); scheduleRepaint(); }
+  // …and the BUILD GHOST, whose swatch is the material the chip just changed. `scheduleRepaint` is
+  // rAF-coalesced and reaches `paintGhost` too, but only on a surface that is going to get a frame;
+  // this is the one seam that must answer on a PAUSED ship, which is where materials get chosen.
+  if (next !== _materials) { _materials = next; paintMatStrip(); paintGhost(); scheduleRepaint(); }
 }
 
 /**
@@ -1833,7 +2149,10 @@ function onCanvasClick(e) {
       // ⛔ IT DOES NOT GATE THE SEND, and that is deliberate: the ledger refreshes at ≤1 Hz, so a
       // census one second stale that WITHHELD the command would refuse a legal placement — the same
       // silent no-op, re-created from the other side.
-      _send(Cmd.place(pc.kind, tile.x, tile.y, deck));
+      // ⭐⭐ AND THE FACING GOES WITH IT — the ghost's own `_facing`, so the piece lands turned the
+      // way the player was looking at it. One variable feeds the preview and the command; a second
+      // "facing to send" would be the drift this whole surface's `tileAt` header is about.
+      _send(Cmd.place(pc.kind, tile.x, tile.y, deck, _facing));
       const refused = placeRefusalText(_armed, partsAboard());
       if (refused) toast(refused); else nudgeOnIntent();
       pulse(tile, false);
@@ -2159,6 +2478,13 @@ function onCanvasDown(e) {
   const tile = tileAt(e);
   if (!tile) return;
   _drag = { start: tile, end: tile, tool: _armed, mode: roomDragMode(_armed) };
+  // The press may arrive with no preceding move (a synthetic gesture, a touch-derived click), so the
+  // hovered tile is taken from it. THE GHOST IS NOT CLEARED HERE, deliberately: `paintGhost`'s own
+  // `_drag` arm is the single authority on "a sweep owns the screen", and a second clear beside it
+  // was measured to be UNOBSERVABLE — mutating it away left the whole suite green, because the
+  // `scheduleRepaint` one line down reaches `paintGhost` anyway. A guard nothing can see is a guard
+  // that will drift out of step with the one that matters.
+  _hoverTile = tile;
   scheduleRepaint();
   e.preventDefault(); // suppress text/drag selection during the sweep
 }
@@ -2167,6 +2493,9 @@ function onCanvasDown(e) {
 function onCanvasMove(e) {
   if (_drag) {
     const tile = tileAt(e);
+    // The hovered tile is tracked THROUGH the sweep even though nothing draws it: on release the
+    // ghost must come back where the pointer actually is, not where it was when the press started.
+    if (tile) _hoverTile = tile;
     if (tile && (tile.x !== _drag.end.x || tile.y !== _drag.end.y)) {
       _drag.end = tile;
       _send(Cmd.cursor(tile.x, tile.y));
@@ -2174,9 +2503,26 @@ function onCanvasMove(e) {
     }
     return;
   }
-  if (_armed == null) return;
+  if (_armed == null) { _hoverTile = null; clearGhost(); return; }
   const tile = tileAt(e);
   if (tile) _send(Cmd.cursor(tile.x, tile.y));
+  // ⭐⭐ THE BUILD GHOST'S ONLY INPUT, AND IT IS `tileAt` — THE SAME TWO-TIER RESOLUTION THE CLICK
+  // USES, not a second call to the floor-plane inverse. One resolution means the piece the player
+  // sees standing on a square and the square `onCanvasClick` lowers the order onto are the same
+  // square BY CONSTRUCTION; two would drift exactly where tier one exists to win, i.e. wherever the
+  // pointer is over a tall piece's ink. `tile` is null off the room (the letterbox margin, or a
+  // press that lands outside the focused compartment) and the ghost goes with it — a preview that
+  // hangs on the last legal tile while the pointer is out in the margin is a lie about where the
+  // click would land.
+  // ⛔ NO `scheduleRepaint()` HERE, deliberately: this path must never reach `_layers.innerHTML`.
+  _hoverTile = tile;
+  paintGhost();
+}
+
+/** The pointer left the canvas — the ghost leaves with it. */
+function onCanvasLeave() {
+  _hoverTile = null;
+  clearGhost();
 }
 
 /**
@@ -2283,6 +2629,9 @@ function onCanvasUp(e) {
   if (!_drag || e.button !== 0) return;
   const drag = _drag; _drag = null;
   if (!_open || !_focus) return; // the room vanished / was left mid-sweep — abandon (no null _focus deref)
+  // The sweep is over; the pointer is still on a tile and a tool is still armed, so the ghost comes
+  // back — at `_hoverTile`, which the drag branch of `onCanvasMove` kept current for exactly this.
+  paintGhost();
   const res = buildDragTiles(drag.start, drag.end, drag.mode, roomBounds());
   const pc = paletteCommand(drag.tool);
   const material = activeMaterial(_materials, drag.tool);
@@ -2419,6 +2768,31 @@ function onKey(e) {
     // obvious letter for "cancel", is DEMOLISH three lines up and the console's cancel-a-build
     // toggle; C is free on both keymaps.
     arm('erase'); e.stopPropagation(); e.preventDefault();
+  } else if (k === 'e' || k === 'E') {
+    // ⭐⭐ [E] — ROTATE THE ARMED PIECE, one quarter-turn per press, four presses back to where it
+    // started. The owner, 2026-08-05: *"I want to be able to rotate it (4× rotation)"*.
+    //
+    // ⛔ IT IS **E** AND NOT **R**, AND R WAS CHECKED FIRST RATHER THAN ASSUMED. `R` IS TAKEN:
+    // `input/controls.js:293` binds `r`/`R`/`>` to `Cmd.deck(+1)` — UP A DECK — and the onboarding
+    // help card TEACHES that binding (`onboarding.js:306-308`), with `onboarding.test.js` mechanically
+    // verifying that every card row's claimed key really exists in the file it names. Inside an open
+    // room the console keymap is stood down entirely (`isSuspended` → `roomZoom.isOpen()`, exempting
+    // only the clock keys), so claiming `R` here would WORK — and it would mean "up a deck" at Level 1
+    // and "rotate" at Level 2 while the help card taught only the first. This file's own `M` comment
+    // argues at length that shouting over a console binding with `stopPropagation` is the wrong fix
+    // SHAPE; a full census of the client's five keydown registrations put the free single letters at
+    // E, I, N, O, Q, U, Y, and E is the neutral one — bound nowhere, adjacent to nothing on either
+    // keymap. (`Y`/`N` are soft-reserved for a future confirm and `Q` is the conventional quit.)
+    //
+    // ⚠️ IT IS A NO-OP WITH NOTHING ARMED — there is no piece to turn, and silently mutating a hidden
+    // facing that `arm()` will reset anyway is an invisible state change. The key is still consumed
+    // (`stopPropagation`), because the surface underneath is the deprecated console and E reaches
+    // nothing there either.
+    if (_armed != null) {
+      _facing = (_facing + 1) & 3;
+      paintGhost();   // the ghost is the ONLY readout of the facing — see `_facing`'s header
+    }
+    e.stopPropagation(); e.preventDefault();
   } else if (k === 'm' || k === 'M') {         // M1-K: M toggles MOVE — the console's own letter
     // ⚠️ THIS KEY WAS NOT FREE — IT WAS WORSE THAN TAKEN, AND CLAIMING IT IS HALF OF A BUG FIX.
     // `input/controls.js:225` installs a BUBBLE-phase window keydown for the deprecated console at

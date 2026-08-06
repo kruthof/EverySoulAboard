@@ -401,6 +401,10 @@ namespace Perilune.Sim
                 // asymmetry above, which had to argue for the non-default. `new Device()` already
                 // gave it false, so the branch writes nothing on an old save by construction.
                 if (version >= 6) d.Faulted = reader.ReadBoolean();
+                // v7 — the facing. A PRE-v7 SAVE READS 0, which is correct rather than merely safe:
+                // nothing before this version could turn a device, so every device in such a save
+                // really did face 0. Masked `& 3` because the byte is untrusted input.
+                if (version >= 7) d.Facing = (byte)(reader.ReadByte() & 3);
                 sim.Devices.Add(d, id);
                 // Re-index the device grid (utility overlays never enter it); the
                 // tile's HasDevice flag is already in the saved Flags array.

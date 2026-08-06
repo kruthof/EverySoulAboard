@@ -143,7 +143,19 @@ const PALETTE_CMD = Object.freeze({
   chair: { cls: 'functional', verb: 'place',  kind: 'chair',  deviceKind: 'Chair' },
   locker:{ cls: 'functional', verb: 'place',  kind: 'locker', deviceKind: 'Locker' },
   plant: { cls: 'functional', verb: 'place',  kind: 'plant',  deviceKind: 'PlantPot' },
-  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light' },
+  // ⚠️ THE ONE FUNCTIONAL ROW THAT ALSO STATES ITS `itemId`, AND IT IS NOT A THIRD VOCABULARY — it is
+  // the SAME `itemId` column the two cosmetic rows below already carry, spent here for a hole in the
+  // registry. Every other functional tool's art is DERIVED (the build ghost matches this row's
+  // `deviceKind` against `ITEMS`' own `deviceKind` column — `roomzoom-view.js ghostArtId`), but
+  // `DeviceKind.Light` has NO functional `ITEMS` row at all: its art is `GLYPH_SUBSTITUTE['*'] →
+  // 'wall-lamp'` (`items/glyph-map.js`), a borrow reachable only from the glyph CHARACTER, and no
+  // client module maps a DeviceKind to a glyph — that switch is `sim/Sim.Glyph/Glyphs.cs`.
+  // ⇒ FILED, not fixed here: the general closure is either a real luminaire in the warm/paper set (a
+  // `functional` row with `deviceKind:'Light'`, whereupon this field is deleted and the derivation
+  // covers it) or a client mirror of `Glyphs.ForDevice` — and a hand mirror of a sim switch is
+  // precisely the class of table `glyph-map.js`'s header spends forty lines retracting, so it is a
+  // decision for the owner rather than a chore for this lane.
+  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light', itemId: 'wall-lamp' },
   // M3-10. `kind: 'heater'` is the wire string `GameSession.TryFurnitureKind` switches on, and
   // `deviceKind: 'Heater'` is the sim enum member the ghost/erase paths name; the two are different
   // vocabularies on purpose and every row here carries both.
@@ -1954,10 +1966,10 @@ export function itemIdForStockKind(kind) {
  * merges; it is not silently dropped, because a channel that disagreed with the sim about one-per-tile
  * is a fact worth being able to see rather than one to paper over.
  *
- * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}[]|null} devices
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number,face:number}[]|null} devices
  *        decodeDevices() output
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
- * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}>}
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number,face:number}>}
  */
 export function roomDeviceConditions(devices, focusRoom) {
   const out = new Map();
@@ -1984,6 +1996,15 @@ export function roomDeviceConditions(devices, focusRoom) {
       // KIND — the other three fall back to their OLD BEHAVIOUR and so does this one: before the
       // element existed the offer named no price, so absent means SAY NOTHING.
       spend: d.spend === undefined ? SPEND_UNKNOWN : (d.spend | 0),
+      // ⭐⭐ THE FACING — 0..3, one quarter-turn each, `Device.Facing` off the wire (2026-08-05, the
+      // owner's "I want to be able to rotate it"). ⚠️ THE FALLBACK IS 0 and it is the OLD BEHAVIOUR
+      // rather than a safe-looking default: every device placed before the field existed faces 0,
+      // so an absent element and an explicit 0 must be indistinguishable — the house rule
+      // `decodeDevices` states for every appended element.
+      // ⛔ DRAWING-ONLY. Nothing in the sim reads it (see `Device.Facing`), so a surface that turns
+      // the picture is not changing what the machine does, where it can be reached from, or which
+      // tiles it occupies. It occupies exactly one, at every facing.
+      face: d.face === undefined ? 0 : ((d.face | 0) & 3),
     });
   }
   return out;
@@ -2002,10 +2023,10 @@ export function roomDeviceConditions(devices, focusRoom) {
  * Same key (`"x,y"`), same value shape and the same LAST-ROW-WINS rule as `roomDeviceConditions`, so
  * `client/src/items/wear.js` sees one contract from both surfaces.
  *
- * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}[]|null} devices
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number,face:number}[]|null} devices
  *        decodeDevices() output
  * @param {number} deck
- * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number}>}
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number,serv:number,air:number,spend:number,face:number}>}
  */
 export function deckDeviceConditions(devices, deck) {
   const out = new Map();
@@ -2037,6 +2058,15 @@ export function deckDeviceConditions(devices, deck) {
       // ⭐⭐ `spend` is carried here for the SAME SHAPE-PARITY reason, with the same sentinel default
       // as `decodeDevices`. The Overview has no right-click repair menu, so it has no consumer today.
       spend: d.spend === undefined ? SPEND_UNKNOWN : (d.spend | 0),
+      // ⭐⭐ THE FACING — 0..3, one quarter-turn each, `Device.Facing` off the wire (2026-08-05, the
+      // owner's "I want to be able to rotate it"). ⚠️ THE FALLBACK IS 0 and it is the OLD BEHAVIOUR
+      // rather than a safe-looking default: every device placed before the field existed faces 0,
+      // so an absent element and an explicit 0 must be indistinguishable — the house rule
+      // `decodeDevices` states for every appended element.
+      // ⛔ DRAWING-ONLY. Nothing in the sim reads it (see `Device.Facing`), so a surface that turns
+      // the picture is not changing what the machine does, where it can be reached from, or which
+      // tiles it occupies. It occupies exactly one, at every facing.
+      face: d.face === undefined ? 0 : ((d.face | 0) & 3),
     });
   }
   return out;
@@ -2538,6 +2568,10 @@ export const ZOOM_HINT_ARMED =
   'DIG [G] / STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · ' +
   'ERASE [C]: DRAG OVER PAINTED ORDERS TO TAKE THEM BACK · ' +
   'MOVE [M]: PICK A CREW MEMBER, THEN CLICK WHERE THEY SHOULD GO · DEMOLISH REMOVES A GHOST · ' +
+  // ⭐ THE ROTATION IS TAUGHT HERE OR NOWHERE (2026-08-05). It is a keyboard-only verb with no chip
+  // on the palette, so the hint line is the whole of its discoverability — the same argument the
+  // ACCEPTS row's reveal-on-arm makes for itself.
+  'ROTATE [E]: TURN THE PIECE BEFORE YOU PLACE IT · ' +
   'ESC DISARMS';
 
 /**

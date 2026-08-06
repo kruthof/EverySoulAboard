@@ -752,6 +752,173 @@ await png('4-work-tab.png');
 // element's own identity. Without that, "zero oscillations" is satisfied by a page that never
 // rebuilt at all — which is the vacuity this whole class of pin keeps falling into.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE ROOM-ENTRY **CONTENT** ASSERTION — and the 4th-shape hole it replaces.
+//
+// ⛔⛔ WHAT STOOD HERE COULD NOT SEE THE DEFECT IT WAS POINTED AT (independent review, 2026-08-05).
+// The leg asked only:
+//
+//     body.roomzoom-open  ||  #roomzoom-view not hidden  ||  /ROOM ZOOM/i.test(ov-toast)
+//
+// — three ways of asking "did SOMETHING happen", and the third is satisfied by the FAILURE string
+// the Room Zoom itself prints, `"ROOM ZOOM UNAVAILABLE — <anchor>"`. Worse, none of them can see the
+// defect that was actually live: a press on the INACTIVE band opened the room and the room was
+// EMPTY, because the host still projects the other deck and `roomCells` returns nothing when
+// `frame.deck !== focusRoom.deck`. `body.roomzoom-open` is set either way. That is TRAPS' 4th shape
+// — a guard whose scope cannot contain its own subject — sitting in the one rig that drives the live
+// game.
+//
+// ⭐ THE REPLACEMENT ASSERTS CONTENT: the compartment the plate DREW n fittings into must open a
+// room whose masthead says it holds n. The two numbers come from two independent derivations —
+// the plate's from the whole-ship `devices`+`items` channels through `ship-fittings.js`, the room's
+// from the one-deck `frame` glyphs through `roomCells` — so their agreement is a real join and not a
+// number compared against itself. (`ship-fittings.js`'s header records the tile-for-tile equality
+// that makes them comparable at all; this is that claim re-derived off the running wire.)
+//
+// ⛔ AND IT CARRIES ITS OWN NON-VACUITY, because "n == n" passes trivially when n is 0 on both sides
+// — which is precisely the failure being guarded. `enterRoomLegs` requires the reader to report TWO
+// DIFFERENT numbers for two compartments the plate draws differently, so a reader stuck on a
+// constant (0, or the plate's own census echoed back) reddens. An empty compartment is entered on
+// purpose and must read 0 while a furnished one reads its true count.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/** How many fittings the PLATE drew into one compartment. The plate's half of the join. */
+const plateCensus = (anchor, deck) => evaluate(
+  `document.querySelectorAll('.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]').length`);
+
+/**
+ * What the opened Room Zoom says it holds. The room's half of the join.
+ *
+ * ⚠️ THE COUNT IS IN THE **IN-SVG MASTHEAD** (`.rz-title`, `roomTitleSvg` → `roomStatClauses`),
+ * NOT in the HTML caption strip — measured, after the first cut of this reader looked at
+ * `#rz-caption` and got `"ROOM A0 · NO CREW HERE · 5 PLACED"` back with no `FITTINGS BUILT` clause in
+ * it at all, i.e. `placed: null` on every leg and the whole assertion silently unreadable. Both are
+ * read now: the masthead is the join's number (`placed OF placed+pending`) and the caption's
+ * `N PLACED` is `_capPlaced` = placed + pending, kept as a second witness because they are computed
+ * in two different places off the same `roomCells` call.
+ *
+ * ⚠️ `\\d` IS DOUBLED throughout — this is a template literal, and a single `\d` is eaten by the
+ * escape rules before Chrome ever sees the regex.
+ */
+const readRoom = () => json(`JSON.stringify((()=>{
+  const mast=(document.querySelector('.rz-title')||{}).textContent||'';
+  const cap=(document.getElementById('rz-caption')||{}).textContent||'';
+  const m=/(\\d+) OF (\\d+) FITTINGS BUILT/.exec(mast);
+  const c=/(\\d+) PLACED/.exec(cap);
+  return { open: document.body.classList.contains('roomzoom-open'),
+    mast, cap, placed: m? +m[1] : null, total: m? +m[2] : null, capPlaced: c? +c[1] : null,
+    leaf: (document.querySelector('.rz-crumb-leaf')||{}).textContent||'',
+    paths: document.querySelectorAll('#rz-layers path').length,
+    toast: (document.getElementById('ov-toast')||{}).textContent||'' };
+})())`);
+
+const leaveRoom = async () => {
+  await clickSel('.rz-crumb-link[data-rz="home"]');
+  await sleep(900);
+  if (await evaluate(`document.body.classList.contains('roomzoom-open')`))
+    problems.push('the Room Zoom would not close — every leg after this one is measuring the wrong surface');
+};
+
+/**
+ * Press a pixel, require the room it opens to hold what the plate drew into it, come back out.
+ * Returns the reading so a caller can compare two of them.
+ */
+async function pressIntoRoom(what, anchor, deck, x, y) {
+  const before = latest.get('frame')?.deck | 0;
+  const want = await plateCensus(anchor, deck);
+  await evaluate(`document.getElementById('ov-toast').textContent = ''`);
+  await click(x, y);
+  await sleep(1800);
+  const r = await readRoom();
+  const after = latest.get('frame')?.deck | 0;
+  log(`  ${what} — anchor "${anchor}" on band ${deck}; order deck ${before} → ${after}`);
+  log(`     plate drew ${want} fittings · room says ${JSON.stringify(r)}`);
+  if (!r.open) {
+    problems.push(`a press on ${what} did not open the room at all (toast ${JSON.stringify(r.toast)}). `
+      + 'The fitting layer is a sibling of the compartments in this drawing, so the piece has to '
+      + 'carry its own `data-anchor` — see `roomAnchorOf`.');
+  } else if (r.placed === null) {
+    problems.push('the Room Zoom masthead carries no "N OF M FITTINGS BUILT" clause, so the content '
+      + `assertion has nothing to read (masthead ${JSON.stringify(r.mast)}, caption ${JSON.stringify(r.cap)})`);
+  } else if (r.placed !== want) {
+    problems.push(`THE ROOM OPENED WITH THE WRONG CONTENTS: the plate draws ${want} fittings into `
+      + `"${anchor}" on band ${deck}, and the room it opened says ${r.placed} (${r.paths} svg paths). `
+      + 'The classic cause is the deck: `roomCells` returns NOTHING when the host is still projecting '
+      + 'the other deck, so a cross-band press must take the deck with it (`enterCompartment`).');
+  }
+  if (r.open) await leaveRoom();
+  return { ...r, want, before, after };
+}
+
+/**
+ * The three legs. Kept together because leg 2 is what makes legs 1 and 3 non-vacuous.
+ */
+async function enterRoomLegs() {
+  log('\n── ROOM ENTRY: THE CONTENT JOIN ────────────────────────────────────');
+  await clickSel('.ov-tab[data-ov-tab="build"]');
+  await toDeck(0);
+  await sleep(1500);
+  const shown = latest.get('frame')?.deck | 0;
+
+  // The whole plate's per-compartment census, plus a pressable point in each: an anchored FITTING's
+  // own ink where there is one (the hard case — that is where a player aims), bare floor otherwise.
+  const cells = await json(`JSON.stringify([...document.querySelectorAll('.pl-room[data-anchor]')].map((g)=>{
+    const a=g.dataset.anchor, band=g.closest('.pl-deck'), d=band?band.dataset.deck:null;
+    const fits=[...document.querySelectorAll('.pl-fit[data-anchor="'+a+'"][data-deck="'+d+'"]')];
+    let at=null;
+    for (const f of fits){ const r=f.getBoundingClientRect();
+      for(let j=1;j<=15&&!at;j++) for(let i=1;i<=15&&!at;i++){
+        const x=r.left+r.width*i/16, y=r.top+r.height*j/16;
+        const el=document.elementFromPoint(x,y);
+        if(el&&el.closest&&el.closest('.pl-fit')===f) at={x,y,onInk:true};
+      }
+      if(at) break; }
+    if(!at){ const r=g.getBoundingClientRect(); at={x:r.left+r.width*0.5,y:r.top+r.height*0.88,onInk:false}; }
+    return {anchor:a, deck:d, n:fits.length, x:at.x, y:at.y, onInk:at.onInk};
+  }))`);
+  if (!cells || !cells.length) { problems.push('no compartments on the plate — the room-entry legs cannot run'); return; }
+  log(`  ${cells.length} compartments; census by band: `
+    + JSON.stringify(cells.map((c) => `${c.deck}:${c.anchor}=${c.n}`)));
+
+  // ── LEG 2 FIRST (it is the control): the richest compartment and the poorest one must read back
+  //    DIFFERENTLY. Without this, "the room held what the plate drew" is satisfied by a reader that
+  //    always answers 0 on a ship whose sampled compartment happens to be bare.
+  const byN = cells.slice().sort((a, b) => a.n - b.n);
+  const lo = byN[0], hi = byN[byN.length - 1];
+  if (lo.n === hi.n) {
+    problems.push(`every compartment on this ship draws the same number of fittings (${lo.n}), so the `
+      + 'distinguishability control cannot run and the content assertion is unfalsifiable here');
+  } else {
+    const a = await pressIntoRoom(`the POOREST compartment (${lo.n} drawn)`, lo.anchor, lo.deck, lo.x, lo.y);
+    const b = await pressIntoRoom(`the RICHEST compartment (${hi.n} drawn)`, hi.anchor, hi.deck, hi.x, hi.y);
+    if (a.placed === b.placed) {
+      problems.push(`the Room Zoom reported the SAME fitting count (${a.placed}) for a compartment the `
+        + `plate draws ${lo.n} pieces into and one it draws ${hi.n} into. The reader is a constant, so `
+        + 'every equality above it is vacuous.');
+    }
+  }
+
+  // ── LEG 3: THE INACTIVE BAND. This is the defect's own receipt — a press on the band the host is
+  //    NOT projecting must open a FURNISHED room, and must have moved the order deck to get there.
+  const far = cells.filter((c) => (c.deck | 0) !== shown && c.n > 0).sort((x, y) => y.n - x.n)[0];
+  if (!far) {
+    problems.push('no furnished compartment on a band other than the active one — the cross-band '
+      + 'room entry (the empty-room defect) cannot be driven on this ship');
+  } else {
+    const r = await pressIntoRoom(`the INACTIVE band (deck ${far.deck}, ${far.n} drawn, `
+      + `${far.onInk ? 'on a fitting\'s ink' : 'on bare floor'})`, far.anchor, far.deck, far.x, far.y);
+    if (r.after === r.before) {
+      problems.push('a press on a compartment on the OTHER band opened the room WITHOUT moving the '
+        + 'order deck. The host still projects the deck the player left, so `roomCells` sees a '
+        + 'different deck than `_focus` and the room draws empty — silently.');
+    }
+    if (r.open && r.placed === 0) {
+      problems.push(`THE EMPTY-ROOM PRESS IS BACK: "${far.anchor}" opened showing 0 of its ${far.n} `
+        + 'drawn fittings from the inactive band.');
+    }
+  }
+}
+
 {
   await clickSel('.ov-tab[data-ov-tab="build"]');
   await toDeck(0);
@@ -763,10 +930,19 @@ await png('4-work-tab.png');
   // compartment's height resolved to NO room and only 90 % — bare floor — found one, so a press on
   // a room's contents did not open it and a hover over them did not wash it, over most of its area.
   // Sampling the bare floor would have photographed a green rig over a broken affordance.
+  // ⚠️ THE SPOT NOW CARRIES ITS **BAND**, and that is not decoration. The first `.pl-room` in DOM
+  // order is on the TOP band, which is the HIGHEST deck index — i.e. on `--ship wreck` it is deck 1
+  // while this section has just stepped the rail to deck 0. So this witness was already pressing the
+  // INACTIVE band and nobody knew, which is half of why the press leg below could pass over a room
+  // that opened empty. Recorded rather than "fixed" by moving the sample: the flicker witness is
+  // band-independent (it is about `:hover` surviving an `innerHTML` swap) and the press leg is
+  // driven on BOTH bands explicitly further down.
   const spot = await json(`JSON.stringify((()=>{
     const g=document.querySelector('.pl-room[data-anchor]'); if(!g) return null;
     const r=g.getBoundingClientRect();
-    return {anchor:g.dataset.anchor, x:r.left+r.width*0.5, y:r.top+r.height*0.55,
+    const band=g.closest('.pl-deck');
+    return {anchor:g.dataset.anchor, deck: band? band.dataset.deck : null,
+      x:r.left+r.width*0.5, y:r.top+r.height*0.55,
       floorX:r.left+r.width*0.5, floorY:r.top+r.height*0.9};
   })())`);
   if (!spot) {
@@ -828,20 +1004,10 @@ await png('4-work-tab.png');
     // resolution (`roomAnchorOf`), so a rig that proved only the wash would leave the affordance the
     // surface actually advertises — "click a compartment to open it" — unmeasured on the pixels a
     // player aims at.
-    await evaluate(`window.__enter=null; 1`);
-    await click(spot.x, spot.y);
-    await sleep(1400);
-    const zoomed = await evaluate(
-      `!!(document.body.classList.contains('roomzoom-open')
-         || (document.getElementById('roomzoom-view') && !document.getElementById('roomzoom-view').hidden)
-         || /ROOM ZOOM/i.test((document.getElementById('ov-toast')||{}).textContent||''))`);
-    log(`  press on the SAME pixel entered a room: ${zoomed}`);
-    if (!zoomed) {
-      problems.push('a press on a compartment\'s CONTENTS did not open the room. The fitting layer '
-        + 'is a sibling of the compartments in this drawing, so the piece has to carry its own '
-        + '`data-anchor` — see `roomAnchorOf`.');
-    }
+    await pressIntoRoom('the hover witness\'s own pixel', spot.anchor, spot.deck, spot.x, spot.y);
   }
+
+  await enterRoomLegs();
 }
 
 // ⚠️ BACK TO THE BUILD TAB FIRST. The WORK island is still up from the shot above, and it covers
