@@ -576,12 +576,15 @@ function envFor(s, id, state, facing) {
   };
 }
 
-/** The harness: an item fragment whose painter draws in the fitting's own centimetres. */
+/** The harness: an item fragment whose painter draws in the fitting's own centimetres.
+ *  `sketched: true` is the owner's 2026-08-05 ruling — see `helpers.item()` for the seam and for
+ *  why the treatment cannot reach the projection. */
 function fitting(id, opts, paint) {
   // ⭐ `env.facing` reaches here from `helpers.item`, which reads `opts.facing` — so a caller says
   // `buildItem(id, { w, h, facing })` and thirty builders turn without one of them mentioning
   // rotation. A builder that has no cm frame at all (the warm set) simply never sees the option.
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); });
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); },
+    { sketched: true });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

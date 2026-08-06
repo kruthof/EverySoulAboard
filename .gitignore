@@ -39,9 +39,17 @@ client/tools/shots-paper-resources/
 client/tools/shots-paper-fixtures/
 # — lane/paper-machines —
 client/tools/shots-machines/
+# — lane/sketch-experiment —
+client/tools/shots-sketch/
+# — lane/sketch-adoption —
+client/tools/shots-sketch-adoption/
 # — lane/material-under-pawn —
 client/tools/shots-material-pawn/
 client/tools/shots-pawn-tween/
+# — lane/sketch-experiment (unmerged visual experiment) —
+client/tools/shots-sketch/
+# — lane/ship-drawn —
+client/tools/shots-ship-drawn/
 # — lane/build-ghost —
 client/tools/shots-build-ghost/
 # — lane/m4-2 (the Persona window) —

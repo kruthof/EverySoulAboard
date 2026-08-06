@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { overviewScene, makeTransform, pawnLayerParts } from '../src/ui/overview-scene.js';
+import { overviewScene, makeShipTransform, pawnLayerParts } from '../src/ui/overview-scene.js';
 import { pawnParts } from '../src/ui/roomzoom-view.js';
 import { makePawnLayer } from '../src/ui/pawn-layer.js';
 import { roomScene, scenePlacement, roomCrew, crewHitAtTile, drawnTile } from '../src/ui/room-model.js';
@@ -97,12 +97,18 @@ function mountParts(parts, groupClass) {
     + g.innerHTML + '</g>').join('');
 }
 
-/** The OVERVIEW's mounted pawn markup for a scene state. */
+/**
+ * The OVERVIEW's mounted pawn markup for a scene state.
+ *
+ * ⭐ THE TRANSFORM IS THE WHOLE SHIP'S NOW, AND `pawnLayerParts` TAKES NO `deck`. The side elevation
+ * draws every deck at once, so the deck filter that used to sit in the feeder is gone — the
+ * transform places each crew member on HER OWN band (`pawnLayerParts` reads `c.deck`). Every
+ * assertion in this file is about the glide, which is unchanged; what moved is who is drawn at all,
+ * and that gets its own test at the bottom of section 1.
+ */
 function ovPawns(st) {
-  const deck = st.deck | 0;
-  const entry = (st.decksView || []).find((d) => d.deck === deck);
-  const t = makeTransform(entry ? entry.slots : [], st.frame);
-  return mountParts(pawnLayerParts(st.crew, deck, t, st.selectedCid, 'ov'), 'pl-pawn');
+  const t = makeShipTransform(st.decksView || [], st.frame);
+  return mountParts(pawnLayerParts(st.crew, t, st.selectedCid, 'ov'), 'pl-pawn');
 }
 
 /** The pawn GROUP's emitted `translate(x y)` for one cid — where the person is drawn. */
@@ -337,18 +343,52 @@ test('what must NOT follow the glide: the host is still addressed by the SIM til
   assert.deepEqual(crewClickTarget(null, soul({ x: 7, y: 5, fx: 6.1, fy: 5 })), { x: 7, y: 5 });
 });
 
-// ⭐ THE SAME QUESTION, ASKED OF THE OVERVIEW PLATE — and the answer is that it has no such hazard.
-// The plate filters on `c.deck`, not on a rect, and the deck axis CANNOT go fractional: a deck
-// change is a ladder step, `PathService.GetNeighbors` emits it at the same X/Y, and
-// `GameSession.WalkFraction` refuses to interpolate across Z anyway. So there is no frame in which
-// a pawn is drawn on two decks, or between them. Pinned here because the send-back asked the
-// question, and because "we checked and it was fine" is not evidence.
-test('overview: a gliding pawn is drawn on exactly ONE deck, never between two', () => {
+// ⭐⭐ THE SAME QUESTION, ASKED OF THE OVERVIEW PLATE — AND ITS ANSWER CHANGED WITH THE SIDE
+// ELEVATION, SO THE OLD FORM IS QUOTED RATHER THAN EDITED AWAY.
+//
+// IT USED TO READ: *"her own deck must draw her; another deck must not"* — a pin on the feeder's
+// `c.deck !== deck` filter, which was correct while the plate drew ONE deck at a time. The elevation
+// draws EVERY deck, so that filter is gone and asserting it would be asserting a deleted line. A
+// crew member on the other band is standing in a compartment the player can SEE; omitting her would
+// make the ship report N souls aboard and draw fewer, which is the "invisible feedback is
+// FUNCTIONAL" defect.
+//
+// WHAT SURVIVES INTACT IS THE PROPERTY THE SEND-BACK ACTUALLY ASKED ABOUT — a pawn is never drawn
+// BETWEEN two decks — and it survives for the SAME reason it always did, one layer down: the deck
+// axis cannot go fractional (a deck change is a ladder step, `PathService.GetNeighbors` emits it at
+// the same X/Y, `GameSession.WalkFraction` refuses to interpolate across Z) and
+// `pawn-tween-model.js`'s RULE 2 snaps on a change of deck by name. So the three legs below are:
+// she is drawn ONCE, she is drawn ON HER OWN BAND, and the wire has no way to say otherwise.
+test('overview: a gliding pawn is drawn ONCE, on her OWN band, never between two', () => {
   const gliding = withPos({ deck: 0, x: 8, y: 8, fx: 8.5, fy: 8 });
-  const onDeck0 = ovPawns({ ...state(gliding), deck: 0 });
-  const onDeck1 = ovPawns({ ...state(gliding), deck: 1 });
-  assert.equal((onDeck0.match(/class="pl-pawn"/g) || []).length, 1, 'her own deck must draw her');
-  assert.equal((onDeck1.match(/class="pl-pawn"/g) || []).length, 0, 'another deck must not');
+  const st = { ...state(gliding), deck: 0 };
+  const svg = ovPawns(st);
+  assert.equal((svg.match(/class="pl-pawn"/g) || []).length, 1,
+    'a crew member is drawn a number of times that is not one — the plate draws every deck now, so '
+    + 'a per-deck loop that forgot to de-duplicate would double her');
+
+  // …AND SHE IS ON HER OWN BAND. Driven against the transform rather than eyeballed: her foot point
+  // must sit inside deck 0's band box and outside deck 1's.
+  const t = makeShipTransform(st.decksView || [], st.frame);
+  const parts = pawnLayerParts(st.crew, t, null, 'ov');
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0].deck, 0, 'the part does not carry her deck — `placePawns` would guess');
+  const b0 = t.deckInfo(0).band, b1 = t.deckInfo(1).band;
+  assert.ok(parts[0].y >= b0.y && parts[0].y <= b0.y + b0.h,
+    `her feet (${parts[0].y}) are outside deck 0's band ${b0.y}..${b0.y + b0.h}`);
+  assert.ok(!(parts[0].y >= b1.y && parts[0].y <= b1.y + b1.h),
+    'her feet are inside deck 1\'s band as well — the two bands overlap, or the deck is ignored');
+
+  // AND THE OTHER BAND IS REALLY DRAWN, so "not on deck 1" is a fact about her and not about a plate
+  // that has no second band at all.
+  assert.ok(t.deckOrder.length >= 2, 'the fixture draws one deck — the leg above is vacuous');
+  // A SECOND SOUL ON THE OTHER DECK IS DRAWN TOO — the behaviour change, asserted positively.
+  const both = pawnLayerParts(
+    [...st.crew, { ...st.crew[0], cid: 999, deck: 1 }], t, null, 'ov');
+  assert.deepEqual(both.map((p) => p.deck), [0, 1],
+    'a crew member on the OTHER deck is not drawn — the elevation shows both decks, so she is '
+    + 'standing in a compartment the player can see and the plate is hiding her');
+
   // The wire cannot express "half way between decks": there is no fz, and the deck is an integer.
   assert.equal(Object.keys(gliding[0]).includes('fz'), false, 'no fractional deck exists on the wire');
 });

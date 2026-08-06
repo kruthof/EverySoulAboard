@@ -32,7 +32,9 @@ import { itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { itemIdForStockKind } from '../src/ui/room-model.js';
 import { STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { buildWrecked, WRECKED } from '../src/items/wrecked.js';
-import { ATTEND, PAPER, INK } from '../src/items/helpers.js';
+import { ATTEND, PAPER, INK, SKETCH_LEVEL } from '../src/items/helpers.js';
+import { amplitudeBound, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
+import { measurePiece, bodyExtent, attrsOf, outsideBox } from './sketch-geom.js';
 import { PAPER_FLAT } from '../src/render/oblique.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -65,7 +67,13 @@ const DISPLACED = Object.freeze({
   'turnings': 'swarf',
 });
 
-const build = (id, extra) => BUILD[id]({ w: 400, h: 400, idPrefix: 'pr-' + id, ...extra });
+// ⚠️ `build` IS THE RAW FRAGMENT SINCE 2026-08-05 — the owner's `strong` sketch treatment ships on
+// these nine, and every silhouette / vocabulary assertion here reads emitted coordinates and tag
+// names, neither of which a freehand stroke leaves behind. The geometry keeps being asked of the
+// geometry; the bridge is `sketch-adoption.test.js`'s displacement pin plus the treated legs below.
+const build = (id, extra) => BUILD[id]({ w: 400, h: 400, idPrefix: 'pr-' + id, sketch: false, ...extra });
+/** What SHIPS. */
+const treated = (id, extra) => BUILD[id]({ w: 400, h: 400, idPrefix: 'pr-' + id, ...extra });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 0. NON-VACUITY. Every scan below runs over a parsed set; a parser that quietly returned nothing
@@ -247,6 +255,31 @@ test('nothing is authored outside its own declared box — the part that clips i
     + 'simply not on screen — which is why only a geometric guard can see it. Either move the part\n'
     + 'inside `0..w / 0..d / 0..h`, or grow the spec and say in its comment why the picture is bigger\n'
     + 'than the object.');
+});
+
+// ⭐ THE SAME RULE ON WHAT SHIPS — the amplitude added EXPLICITLY, the ground rule excluded by name.
+//   OLD RULE: the ink box of the RAW drawing is inside the declared extent + CLIP_SLACK.
+//   NEW RULE: the TREATED drawing's marks — curves flattened, ellipses sampled on their perimeter —
+//             are inside the declared extent + CLIP_SLACK + `amplitudeBound(SKETCH_LEVEL)`.
+// The bound is derived from the preset's own knobs (overshoot 3.6, bow ≤ 5.5, the doubled pass'
+// ±0.9 per axis, 2 dp of rounding), so a knob that moves moves the tolerance and nobody can widen
+// a literal to make a piece fit.
+test('the treated pile stays inside its declared box too — plus the amplitude, and no more', () => {
+  const AMP = amplitudeBound(SKETCH_LEVEL);
+  let worstRaw = 0;
+  let worstTreated = 0;
+  for (const id of PAPER_RESOURCE_IDS) {
+    const e = BOX_EXTENT[id];
+    const lim = { x: e.w / 2 + CLIP_SLACK + AMP, y: e.h / 2 + CLIP_SLACK + AMP };
+    const over = outsideBox(treated(id), lim);
+    assert.deepEqual(over, [], `${id}: the TREATED pile leaves its ${e.w}×${e.h} extent by more than `
+      + `the declared amplitude ${AMP.toFixed(2)}: ${over.slice(0, 3).join(' ')}`);
+    const be = (svg) => { const b = bodyExtent(svg); return Math.max(b.mx - e.w / 2, b.my - e.h / 2); };
+    worstRaw = Math.max(worstRaw, be(build(id)));
+    worstTreated = Math.max(worstTreated, be(treated(id)));
+  }
+  assert.ok(worstTreated > worstRaw + 1, 'the treated set spends none of the tolerance — vacuous');
+  assert.ok(worstTreated < CLIP_SLACK + AMP, 'the headroom is gone; re-derive rather than widen');
 });
 
 // ⚠️ THE FLOOR IS THE MEASURED MINIMUM, ROUNDED DOWN, AND IT IS HONEST ABOUT WHAT IT CATCHES.
@@ -465,8 +498,15 @@ test('every twin is its own pristine piece with damage ADDED — never a redraw,
   const twinned = PAPER_RESOURCE_IDS.filter((id) => WRECKED[id]);
   assert.equal(twinned.length, 8, '`turnings` is ledgered as having no twin; the other eight have one');
   for (const id of twinned) {
-    const pristine = normalise(BUILD[id]({ w: 400, h: 400 }));
-    const twin = normalise(buildWrecked(id, { w: 400, h: 400 }));
+    // ⚠️ RAW ON BOTH SIDES, AND THE REASON IS THAT PREFIX-NESS IS A PROPERTY OF THE PAINTERS, NOT
+    // OF THE PICTURE. `sketch()` is a whole-fragment transform: it measures the body to find the
+    // ground band and the largest face, and a twin's extra damage elements move both. So the
+    // treated twin is not a literal prefix of the treated pristine piece even when the painter
+    // relationship is exactly right, and asking here would turn a structural guarantee into a
+    // treatment artefact. The TREATED pair is pinned by its own rule — that the two are still
+    // tellable apart by more than treatment noise — in `sketch-adoption.test.js`.
+    const pristine = normalise(BUILD[id]({ w: 400, h: 400, sketch: false }));
+    const twin = normalise(buildWrecked(id, { w: 400, h: 400, sketch: false }));
     const inner = (s) => s.slice(s.indexOf('scale('));
     // ⭐ THE PRISTINE BODY IS A LITERAL PREFIX OF THE TWIN'S, and that is the whole guarantee:
     // `paintResource` runs the pristine painter FIRST and the damage after it, so a twin that had
@@ -485,8 +525,8 @@ test('each twin expresses its OWN state — the eight are not one damage pass ei
   // remainder must be unique per piece — a copied damage block would collide here and nowhere else.
   const seen = new Map();
   for (const id of PAPER_RESOURCE_IDS.filter((x) => WRECKED[x])) {
-    const pristine = normalise(BUILD[id]({ w: 400, h: 400 }));
-    const twin = normalise(buildWrecked(id, { w: 400, h: 400 }));
+    const pristine = normalise(BUILD[id]({ w: 400, h: 400, sketch: false }));
+    const twin = normalise(buildWrecked(id, { w: 400, h: 400, sketch: false }));
     const marks = twin.slice(pristine.length - '</g></g>'.length);
     assert.ok(marks.length > 80, `${id}: the damage pass is too small to be a state`);
     assert.ok(!seen.has(marks), `${id} carries the same damage as ${seen.get(marks)}`);
@@ -545,10 +585,14 @@ test('SIZES is derived at ONE shared scale, so the nine are comparable with ever
 test('the nine paint in ink, paper, the flat tone and the hatch — and nothing else', () => {
   const allowed = new Set([INK, PAPER, PAPER_FLAT, 'none']);
   const strays = [];
+  // ⚠️ BOTH SIDES, SINCE 2026-08-05. The treatment BUYS NO COLOUR — it implies pressure with weight
+  // and with a paper knockout, never with a grey — so the closure must hold on what ships, and a
+  // treated-only leak (a faked lighter stroke) would otherwise be invisible here.
   for (const id of PAPER_RESOURCE_IDS) {
-    const frag = build(id);
-    for (const m of frag.matchAll(/(?:fill|stroke)="(#[0-9A-Fa-f]{3,8})"/g)) {
-      if (!allowed.has(m[1])) strays.push(`${id}: ${m[1]}`);
+    for (const frag of [build(id), treated(id), treated(id, { state: 'off' })]) {
+      for (const m of frag.matchAll(/(?:fill|stroke)="(#[0-9A-Fa-f]{3,8})"/g)) {
+        if (!allowed.has(m[1])) strays.push(`${id}: ${m[1]}`);
+      }
     }
   }
   assert.deepEqual([...new Set(strays)], [],
