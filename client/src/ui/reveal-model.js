@@ -118,26 +118,46 @@ export function revealTiming(n) {
  * `designs` (the site list) in the same render pass — so "the row is gone AND the tile now carries a
  * drawn piece" is an atomic fact about one repaint, not two events a client has to correlate.
  *
- * ⛔ BOTH HALVES ARE REQUIRED, AND THE SECOND ONE IS WHAT MAKES THIS HONEST. A design row also
+ * ⛔ ALL THREE CLAUSES ARE REQUIRED, AND THE SECOND ONE IS WHAT MAKES THIS HONEST. A design row also
  * disappears when the order is CANCELLED (`erase`, a demolished site, a room that stopped existing),
  * and nothing is built. Keying off the row's absence alone would draw a piece into the room every
  * time a player erased a blueprint — inventing a completion out of a cancellation, which is exactly
  * the "confident wrong number" the blocked/refusal packages exist to remove.
  *
+ * ⛔⛔ AND THE THIRD CLAUSE IS "IT APPEARED **ON THIS REPAINT**", WHICH IS A CORRECTION. The sentence
+ * that stood here claimed the three facts were *atomic on one repaint* because `BuildSystem.Complete`
+ * does both on one tick and `GameSession` sends `frame` before `designs`. **THE SIM HALF IS TRUE AND
+ * THE CLIENT HALF WAS NOT.** Repaints are rAF-COALESCED, not message-batched: `Hud`'s dispatch fires
+ * `notifyShip` per message and `scheduleRepaint` coalesces on the next animation frame, so a frame
+ * boundary can land BETWEEN the `frame` message and the `designs` message. When it does, one repaint
+ * sees the piece with its site still queued — and the furniture layer draws it, normally, because
+ * nothing is suppressing it yet. The next repaint would then have found "row gone ∧ piece present",
+ * suppressed the tile and started the draw-in: the player would watch the fitting POP IN, VANISH,
+ * and draw itself. Driven in node; not observed in two live runs (the two messages are written into
+ * one socket send), so it is rare — and a rare visible glitch is still a glitch.
+ *
+ * `drawnBefore` closes it: a tile the scene ALREADY drew a piece on last repaint is not a completion
+ * to animate, it is a piece that is simply there. The reveal fires only on the repaint the piece
+ * first appears, and the split case degrades to the pre-package behaviour (it appears, and stays).
+ *
  * @param {Map<string,object>} prev  last repaint's designs in the focused room, keyed `"x,y"`
  * @param {Map<string,object>} now   this repaint's, same keying
  * @param {Set<string>} pieceKeys    tiles the furniture layer would draw a PIECE for RIGHT NOW
+ * @param {Set<string>} [drawnBefore] the same set as of the PREVIOUS repaint. ⚠️ Absent ⇒ empty ⇒
+ *   the pre-guard behaviour, which is what the pure legs that do not exercise this clause pass.
  * @returns {Array<{key:string, was:object}>} in `prev`'s own iteration order (the wire's order), so
  *   two simultaneous completions are always processed in the same sequence.
  */
-export function completedTiles(prev, now, pieceKeys) {
+export function completedTiles(prev, now, pieceKeys, drawnBefore) {
   const out = [];
   if (!(prev instanceof Map)) return out;
   const live = now instanceof Map ? now : new Map();
   const built = pieceKeys instanceof Set ? pieceKeys : new Set();
+  const before = drawnBefore instanceof Set ? drawnBefore : new Set();
   for (const [key, was] of prev) {
     if (live.has(key)) continue;      // still queued — nothing has happened
     if (!built.has(key)) continue;    // the site is gone and NOTHING stands there ⇒ cancelled
+    if (before.has(key)) continue;    // …and the scene already drew it: see the ⛔⛔ block above
     out.push({ key, was });
   }
   return out;

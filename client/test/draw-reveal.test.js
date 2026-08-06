@@ -36,6 +36,8 @@ import {
 } from '../src/ui/reveal-model.js';
 import { makeRevealLayer } from '../src/ui/reveal-layer.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
+import { stylesSource } from './styles-source.js';
+import { codeOnly } from './code-only.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -95,10 +97,45 @@ const doc = new RvDoc();
 for (const id of RZ_IDS) { const e = new RvEl(doc, 'div'); e._id = id; doc.register(id, e); }
 globalThis.document = doc;
 globalThis.window = { addEventListener() {}, removeEventListener() {} };
-// ⚠️ SYNCHRONOUS rAF, RETURNING 0 — `build-ghost.test.js`'s note applies verbatim: `scheduleRepaint`
-// is `if (_raf) return; _raf = raf(...)`, so with a synchronous rAF the callback's own `_raf = 0`
-// runs BEFORE the assignment and a non-zero return latches the flag closed forever.
-globalThis.requestAnimationFrame = (fn) => { fn(); return 0; };
+/**
+ * ⛔⛔ A **DEFERRED** rAF WITH AN EXPLICIT FLUSH — and this is a correction, not a preference.
+ *
+ * The sibling rigs run rAF synchronously (`(fn) => { fn(); return 0; }`), which makes every single
+ * wire message its own repaint. That is fine for a surface whose state is a pure function of the
+ * latest message, and WRONG for this one: `scheduleRepaint` exists to COALESCE, the shipping client
+ * really does paint `frame` + `devices` + `designs` in one frame, and the draw-in's whole trigger is
+ * a comparison between two consecutive PAINTS. Under a synchronous rAF the atomic completion — the
+ * normal case, the one the live rig photographs — is literally inexpressible, and the split case is
+ * the only thing the harness can produce. A rig that can only reproduce the rare path would have
+ * reported the common path as broken (it did, for one run: 11 red).
+ *
+ * So callbacks queue, and a test says WHEN the frame happens. Both cases are then explicit rather
+ * than accidental: one `flush()` after three messages is the atomic completion, a `flush()` between
+ * two of them is the rAF boundary `completedTiles`' fourth clause exists for.
+ *
+ * ⛔⛔ AND IT RETURNS A **TRUTHY** HANDLE, WHICH IS THE OPPOSITE OF THE SIBLING RIGS' RULE AND IS
+ * CORRECT FOR EXACTLY THE OPPOSITE REASON. `build-ghost.test.js` returns 0 deliberately because
+ * under a SYNCHRONOUS rAF the callback's own `_raf = 0` runs BEFORE `_raf = raf(...)` lands, so a
+ * truthy handle would latch the flag closed forever. Deferred, the assignment completes long before
+ * the callback runs — so the handle must be truthy or `scheduleRepaint`'s `if (_raf) return;`
+ * COALESCING LATCH NEVER CLOSES and every message queues its own frame again.
+ *
+ * ⚠️ THAT WAS MEASURED, NOT REASONED. With a falsy handle, three messages queued three callbacks and
+ * `flush()` ran three repaints back to back — so a defect that shows up for ONE frame (the trigger
+ * running after the furniture layer, i.e. the piece drawn normally and then suppressed on the very
+ * next paint) was repaired by repaints 2 and 3 before any assertion could read it, and its mutation
+ * SURVIVED. One frame is one paint, here as in the browser.
+ */
+let _rafQ = [];
+let _rafId = 0;
+globalThis.requestAnimationFrame = (fn) => { _rafQ.push(fn); return ++_rafId; };
+/** Run the frame. ⚠️ ONE ROUND ONLY — callbacks that re-arm (the pawn tween does) land in the NEXT
+ *  queue rather than being drained here, which is what a real animation frame does too. */
+function flush() {
+  const q = _rafQ;
+  _rafQ = [];
+  for (const fn of q) fn();
+}
 /** The reduced-motion answer this rig gives. Flipped ONCE, by the last test in the file. */
 let REDUCE = false;
 globalThis.matchMedia = (q) => ({ matches: /reduce/.test(String(q)) ? REDUCE : false });
@@ -119,25 +156,36 @@ RoomZoom.initRoomZoom({ send: () => {} });
 Hud.renderDecks(FIX.decks);
 Hud.renderRooms(FIX.rooms);
 Hud.renderFrame(BASE_FRAME);
+flush();
 RoomZoom.enterRoom('hold');
 
 const layersEl = doc.getElementById('rz-layers');
 const revealEl = doc.getElementById('rz-reveal');
 const layers = () => String(layersEl.innerHTML || '');
 
-// ── the fixture's one tile, and the two states of it ────────────────────────────────────────
-const T = { x: HOLD.rx + 3, y: HOLD.ry + 3 };
+// ── the fixture's tiles, and the two states of them ─────────────────────────────────────────
+const T = { x: HOLD.rx + 3, y: HOLD.ry + 3 };            // deep inside the room
+const T2 = { x: HOLD.rx + 6, y: HOLD.ry + 4 };           // a second interior tile (two at once)
+/** ⭐ ON THE ROOM'S FRONT EDGE — i.e. a tile `roomDoorTiles` will plate and `furnitureSvg` will
+ *  therefore NOT draw a fitting on. The boundary-door leg's whole subject. */
+const TEDGE = { x: HOLD.rx + 4, y: HOLD.ry };
 const KEY = T.x + ',' + T.y;
 const GLYPH_TABLE = 't'.charCodeAt(0);          // → `dining-table` (client/src/items/glyph-map.js)
-const bpCell = (tool, facing) => [T.x, T.y, HOLD.deck, 3, 0, 0, 0, tool, facing];
-/** A frame with the finished piece's glyph standing on `T` — the sim's own evidence it is built. */
-function builtFrame(code = GLYPH_TABLE) {
+const GLYPH_DOOR = 43;                          // '+' — a sliding door; `roomDoorTiles`' own byte
+const bpCellAt = (t, tool, facing) => [t.x, t.y, HOLD.deck, 3, 0, 0, 0, tool, facing];
+const bpCell = (tool, facing) => bpCellAt(T, tool, facing);
+/** A frame with a finished piece's glyph standing on each `[tile, code]` pair. */
+function frameWith(...pairs) {
   const f = JSON.parse(JSON.stringify(BASE_FRAME));
-  const idx = T.y * f.w + T.x;
-  assert.ok(Array.isArray(f.cells[idx]), 'the fixture has no cell at the test tile');
-  f.cells[idx][0] = code;
+  for (const [t, code] of pairs) {
+    const idx = t.y * f.w + t.x;
+    assert.ok(Array.isArray(f.cells[idx]), `the fixture has no cell at ${t.x},${t.y}`);
+    f.cells[idx][0] = code;
+  }
   return f;
 }
+/** The sim's own evidence that the piece on `T` is built. */
+const builtFrame = (code = GLYPH_TABLE) => frameWith([T, code]);
 const EMPTY_FRAME = JSON.parse(JSON.stringify(BASE_FRAME));
 const deviceRow = (face) => ({ type: 'devices', cells: [[T.x, T.y, HOLD.deck, 3, 255, 1, 0, 1, 1, 5, face]] });
 
@@ -160,32 +208,54 @@ function captureTimers(body) {
   return armed;
 }
 
+/**
+ * ⚠️ "NO CLOCK WAS ARMED" HAS TO MEAN "NO **DRAW-IN** CLOCK", AND THE FILTER IS MEASURED RATHER THAN
+ * DEFENSIVE. `toast()` arms a 2600 ms timer of its own, and `onCrewRow` ends by toasting the room it
+ * just opened — so the crew-dock leg counted that toast as a reveal and failed for a reason that had
+ * nothing to do with the draw-in. The window is `revealTiming`'s OWN pinned envelope (`TOTAL_MS` …
+ * 1600, asserted in this file), not a magic number: if the schedule's contract moves, its own test
+ * moves first and this follows.
+ */
+const revealClocks = (armed) => armed.filter((t) => t.ms >= TOTAL_MS && t.ms <= 1600);
+
 /** Put the room back to "nothing queued, nothing built" and forget every reveal. */
 function reset() {
   RoomZoom.exitRoom();
+  Hud.renderRoster({ type: 'roster', crew: [] });
   Hud.renderDesigns({ type: 'designs', cells: [] });
   Hud.renderDevices({ type: 'devices', cells: [] });
   Hud.renderFrame(EMPTY_FRAME);
-  RoomZoom.enterRoom('hold');
+  _rafQ = [];                 // a frame queued by the room we just left must not fire into this one
+  RoomZoom.enterRoom('hold'); // …which repaints directly, not through rAF
 }
 
-/** Queue a blueprint on `T` and repaint. Returns nothing — the surface's state is the subject. */
+/** Queue a blueprint on `T`, in ONE frame. */
 function queue(tool = 'table', facing = 0) {
-  Hud.renderDesigns({ type: 'designs', cells: [bpCell(tool, facing)] });
+  queueAt([bpCell(tool, facing)]);
+}
+
+/** Queue blueprints on an arbitrary set of tiles, in ONE frame. */
+function queueAt(cells) {
+  Hud.renderDesigns({ type: 'designs', cells });
   Hud.renderFrame(EMPTY_FRAME);
+  flush();
 }
 
 /**
  * ⭐⭐ THE COMPLETION, EXACTLY AS THE WIRE DELIVERS IT. `GameSession` sends `frame` (which carries
- * the glyph) BEFORE `designs` (which drops the site) inside ONE render pass, and `BuildSystem
- * .Complete` does both on ONE tick — so the honest fixture is "the piece is in the frame AND the row
- * is gone", and the repaint that reads them is the one that must fire. Returns the timers armed.
+ * the glyph) BEFORE `devices` and `designs` inside ONE render pass, `BuildSystem.Complete` does both
+ * halves on ONE tick, and `scheduleRepaint` coalesces the three messages into ONE frame — so the
+ * honest fixture is three messages and a single `flush()`, and the repaint that reads them is the
+ * one that must fire. (The rAF boundary that can split them is its own test, and it must be written
+ * as a split rather than produced by accident — see the deferred-rAF note at the top of this rig.)
+ * Returns the timers armed.
  */
 function complete({ face = 0, code = GLYPH_TABLE } = {}) {
   return captureTimers(() => {
     Hud.renderFrame(builtFrame(code));
     Hud.renderDevices(deviceRow(face));
     Hud.renderDesigns({ type: 'designs', cells: [] });
+    flush();
   });
 }
 
@@ -272,10 +342,10 @@ test('DRIVEN: the reveal is turned the way the piece was placed', () => {
  */
 test('⭐⭐ DRIVEN: with the devices row not yet in, the reveal takes the BLUEPRINT\'s facing', () => {
   reset(); queue('table', 0);
-  captureTimers(() => { Hud.renderFrame(builtFrame()); Hud.renderDesigns({ type: 'designs', cells: [] }); });
+  captureTimers(() => { Hud.renderFrame(builtFrame()); Hud.renderDesigns({ type: 'designs', cells: [] }); flush(); });
   const facing0 = inkOf(overlayHtml());
   reset(); queue('table', 1);
-  captureTimers(() => { Hud.renderFrame(builtFrame()); Hud.renderDesigns({ type: 'designs', cells: [] }); });
+  captureTimers(() => { Hud.renderFrame(builtFrame()); Hud.renderDesigns({ type: 'designs', cells: [] }); flush(); });
   const facing1 = inkOf(overlayHtml());
   assert.ok(facing0.length > 100, 'no reveal drew at all — the two comparisons are between nothings');
   assert.notEqual(facing0, facing1,
@@ -295,11 +365,12 @@ test('⛔⛔ DRIVEN: erasing a blueprint draws NOTHING — the row went, no piec
   const armed = captureTimers(() => {
     Hud.renderFrame(EMPTY_FRAME);                       // the tile is still bare
     Hud.renderDesigns({ type: 'designs', cells: [] });   // …and the order is gone
+    flush();
   });
   assert.equal(overlay().length, 0,
     'a reveal mounted for a CANCELLED order — the client invented a completion the sim never '
     + 'reported, and drew a piece onto a floor that has nothing on it');
-  assert.equal(armed.length, 0, 'and no animation clock should have been armed');
+  assert.equal(revealClocks(armed).length, 0, 'and no animation clock should have been armed');
 });
 
 /**
@@ -317,7 +388,7 @@ test('⛔⛔ DRIVEN: a build finished while the room is CLOSED draws nothing, th
   RoomZoom.exitRoom();
   const armed = complete();                    // …the builder finishes while we are on the Overview
   assert.equal(overlay().length, 0, 'a reveal was mounted into a closed surface');
-  assert.equal(armed.length, 0, 'an animation clock was armed for a room nobody is looking at');
+  assert.equal(revealClocks(armed).length, 0, 'an animation clock was armed for a room nobody is looking at');
 
   RoomZoom.enterRoom('hold');
   assert.equal(overlay().length, 0,
@@ -350,7 +421,7 @@ test('⭐⭐ DRIVEN: mid-animation there is EXACTLY ONE copy of the piece, acros
   assert.equal(sceneCopies(), 0, 'precondition: the tile is bare while the order is queued');
 
   const armed = complete({ face: 0 });
-  assert.equal(armed.length, 1, 'the completion armed no animation clock, or armed more than one');
+  assert.equal(revealClocks(armed).length, 1, 'the completion armed no animation clock, or armed more than one');
   assert.equal(overlay().length, 1, 'the overlay holds no copy');
   assert.equal(sceneCopies(), 0,
     'the SCENE is drawing the piece as well as the overlay — two copies of one fitting, one of them '
@@ -360,6 +431,7 @@ test('⭐⭐ DRIVEN: mid-animation there is EXACTLY ONE copy of the piece, acros
   const node = revealEl.childNodes[0];
   for (let i = 0; i < 6; i += 1) {
     Hud.renderFrame(builtFrame());
+    flush();
     assert.equal(overlay().length, 1, `repaint ${i}: the overlay grew a second copy`);
     assert.equal(sceneCopies(), 0, `repaint ${i}: the scene started drawing the piece again`);
     assert.equal(revealEl.childNodes[0], node,
@@ -369,7 +441,7 @@ test('⭐⭐ DRIVEN: mid-animation there is EXACTLY ONE copy of the piece, acros
   }
 
   // …and the hand-off: the animation's own envelope elapses, the overlay goes, the layer takes over.
-  armed[0].fn();
+  revealClocks(armed)[0].fn();
   assert.equal(overlay().length, 0, 'the overlay copy outlived the animation');
   assert.equal(sceneCopies(), 1,
     'nobody is drawing the piece now. The suppression is still holding the tile down after the '
@@ -392,11 +464,12 @@ test('⭐⭐ DRIVEN: mid-animation there is EXACTLY ONE copy of the piece, acros
 test('the animation clock is armed for the composed schedule, and the schedule is the owner\'s window', () => {
   reset(); queue('table', 0);
   const armed = complete();
-  assert.equal(armed.length, 1, 'expected exactly one timer');
-  const ms = armed[0].ms;
+  const clocks = revealClocks(armed);
+  assert.equal(clocks.length, 1, 'expected exactly one draw-in timer');
+  const ms = clocks[0].ms;
   assert.ok(ms >= TOTAL_MS, `the clock (${ms} ms) is shorter than the stagger window (${TOTAL_MS} ms)`);
   assert.ok(ms <= 1600, `the draw-in runs ${ms} ms — past the owner's ~1.0–1.5 s window`);
-  armed[0].fn();
+  clocks[0].fn();
 });
 
 // ═════════════════════════════════════════════════════════════════════ 3. the projection guard
@@ -425,6 +498,7 @@ test('a room that RESIZES mid-animation ends the reveal rather than drawing it i
   }
   Hud.renderDecks(decks);
   Hud.renderFrame(builtFrame());
+  flush();
   const view2 = decksView(decodeDecks(decode(JSON.stringify(decks))), decodeRooms(decode(JSON.stringify(FIX.rooms))));
   const f2 = roomTileRect(view2, 'hold');
   assert.notEqual(roomScene(f2).viewBoxAttr, vb0,
@@ -437,6 +511,7 @@ test('a room that RESIZES mid-animation ends the reveal rather than drawing it i
   for (const t of armed) t.fn();      // the stale clock must be harmless
   assert.equal(overlay().length, 0, 'the elapsed clock resurrected something');
   Hud.renderDecks(FIX.decks);         // restore the fixture for anything after
+  flush();
   reset();
 });
 
@@ -452,6 +527,7 @@ test('a piece deleted mid-animation takes its own draw-in with it', () => {
   complete();
   assert.equal(overlay().length, 1, 'precondition: a reveal is in flight');
   Hud.renderFrame(EMPTY_FRAME);            // the glyph is gone — demolished under the animation
+  flush();
   assert.equal(overlay().length, 0,
     'the overlay is still drawing a fitting the ship no longer has, and it is the only copy in the '
     + 'document — nothing else would ever take it away');
@@ -487,7 +563,7 @@ test('⛔⛔ DRIVEN: a CROSS-DECK minimap swap does not read the old deck\'s sit
   // The deck BELOW, at the identical rect, with a finished piece standing on the same coordinates.
   const below = JSON.parse(JSON.stringify(builtFrame()));
   below.deck = 0;
-  captureTimers(() => Hud.renderFrame(below));
+  captureTimers(() => { Hud.renderFrame(below); flush(); });
   const before = layers();
 
   // The slot is a `<rect class="rz-mini-slot">` inside the minimap SVG — this rig's flat scanner does
@@ -511,7 +587,165 @@ test('⛔⛔ DRIVEN: a CROSS-DECK minimap swap does not read the old deck\'s sit
   assert.equal(overlay().length, 0,
     'the client invented a completion out of the OTHER DECK\'s queued site and drew a piece in, in a '
     + 'compartment the player opened one gesture ago');
-  assert.equal(armed.length, 0, 'and armed an animation clock for it');
+  assert.equal(revealClocks(armed).length, 0, 'and armed an animation clock for it');
+  reset();
+});
+
+/**
+ * ⛔⛔ THE **SECOND** FOCUS-SWAP DOOR — the crew dock. Found by review after the minimap door had
+ * been fixed with a line of its own, which is exactly why the answer moved to a choke point.
+ *
+ * `onCrewRow` assigns `_focus` and repaints, through the SAME delegated `#roomzoom-view` handler and
+ * with the same consequence: one press on a crew member standing a deck below draws a phantom
+ * fitting and suppresses the real piece for 1.2 s, because deck-1 `hold` and deck-0 `workshop`
+ * occupy the identical rect and the draw-in state is keyed `"x,y"` with no deck in it.
+ *
+ * MUTATION: delete the `room !== _revealRoom` arm in `syncReveals` ⇒ RED here AND on the minimap leg.
+ */
+test('⛔⛔ DRIVEN: the CREW DOCK is a focus swap too, and it cold-starts the draw-in', () => {
+  reset();
+  queue('table', 0);                        // a site queued in deck-1 `hold`, still waiting
+
+  // Somebody standing a deck below, on the identical rect, with a finished piece on the same tile.
+  const below = frameWith([T, GLYPH_TABLE]);
+  below.deck = 0;
+  Hud.renderRoster({
+    type: 'roster',
+    crew: [{ cid: 77, id: 77, name: 'Rell Ozawa', deck: 0, x: T.x, y: T.y, task: 'None' }],
+  });
+  captureTimers(() => { Hud.renderFrame(below); flush(); });
+  const before = layers();
+
+  const root = doc.getElementById('roomzoom-view');
+  const row = new RvEl(doc, 'div');
+  row.setAttribute('data-rzcrew', '77');
+  row.closest = (sel) => (sel === '[data-rzcrew]' ? row : null);
+  const armed = captureTimers(() => {
+    for (const fn of (root.listeners.click || []).slice()) {
+      fn({ type: 'click', target: row, detail: 1, preventDefault() {}, stopPropagation() {} });
+    }
+  });
+
+  assert.notEqual(layers(), before,
+    'the crew-dock press did not move the surface to her room at all — every assertion below is '
+    + 'vacuous. (`onCrewRow` returns early for a row it cannot resolve; check the roster fixture.)');
+  assert.equal(sceneCopies(), 1,
+    'and the piece must be drawn NORMALLY down here (the second non-vacuity check)');
+  assert.equal(overlay().length, 0,
+    'one press on the crew dock invented a completion out of the OTHER DECK\'s queued site and drew '
+    + 'a piece in — over a compartment the player opened by clicking a name');
+  assert.equal(revealClocks(armed).length, 0, 'and armed an animation clock for it');
+  reset();
+});
+
+/**
+ * ⛔⛔ THE TRIGGER ASKS `pieceTileKeys`, AND THIS IS THE LEG THAT MAKES THAT BITE.
+ *
+ * "One derivation, two consumers" was mechanised on the FURNITURE LAYER only: restating the rule
+ * inline in `syncReveals` was green across the whole suite. It is not decorative. A BOUNDARY DOOR is
+ * drawn ONCE, by the cutaway's paper plate, and `furnitureSvg` deliberately draws no sprite for it
+ * (VR-P3 review, MINOR 4 — the two overlapped into an unreadable smear on `hall_d0_s1`). A trigger
+ * that answered "which tiles get a fitting" its own way would stand a door sprite up in the plated
+ * opening and DRAW IT IN, re-creating that exact double-draw one package later.
+ *
+ * ⛔ BOTH DIRECTIONS ON ONE GLYPH, which is what makes this a statement about the PLATING rather
+ * than about doors having no art: the same byte on an INTERIOR tile must reveal.
+ *
+ * MUTATION: `pieceTileKeys(cells, stocked)` (drop `doorTiles`) in `syncReveals` ⇒ RED.
+ */
+test('⛔⛔ DRIVEN: a completing BOUNDARY door draws nothing — the cutaway already plated it', () => {
+  // (a) the same glyph on an INTERIOR tile DOES reveal — the non-vacuity half, first.
+  reset();
+  queueAt([bpCellAt(T, 'door', 0)]);
+  captureTimers(() => {
+    Hud.renderFrame(frameWith([T, GLYPH_DOOR]));
+    Hud.renderDesigns({ type: 'designs', cells: [] });
+    flush();
+  });
+  assert.equal(overlay().length, 1,
+    'glyph 43 on an INTERIOR tile did not reveal — this test cannot then say anything about the '
+    + 'boundary case, because "no reveal" would be true of the glyph rather than of the plating');
+  reset();
+
+  // (b) the same glyph on the room's FRONT EDGE — plated by the cutaway, drawn by nobody else.
+  queueAt([bpCellAt(TEDGE, 'door', 0)]);
+  const armed = captureTimers(() => {
+    Hud.renderFrame(frameWith([TEDGE, GLYPH_DOOR]));
+    Hud.renderDesigns({ type: 'designs', cells: [] });
+    flush();
+  });
+  const edgeKey = TEDGE.x + ',' + TEDGE.y;
+  assert.equal(
+    (layers().match(new RegExp(`data-tile="${edgeKey}"`, 'g')) || []).length, 0,
+    'precondition: the furniture layer is drawing a fitting on a plated boundary tile, so the '
+    + 'suppression question this test asks is not the one the surface is answering');
+  assert.equal(overlay().length, 0,
+    'the draw-in stood a DOOR SPRITE up in an opening the cutaway had already drawn as a paper '
+    + 'plate, and inked it in — the VR-P3 double-draw, re-created by the trigger answering "which '
+    + 'tiles get a fitting" its own way instead of asking `pieceTileKeys`');
+  assert.equal(revealClocks(armed).length, 0, 'and armed a clock for it');
+  reset();
+});
+
+/**
+ * ⭐⭐ A LATE COMPLETION IS NOT ANIMATED — the corrected atomicity claim, driven.
+ *
+ * Repaints are rAF-COALESCED, not message-batched, so a frame boundary can land between the `frame`
+ * message and the `designs` message even though the SIM does both on one tick. When it does, one
+ * repaint draws the piece normally (nothing suppresses it yet) and the next would find "row gone ∧
+ * piece present" — so the player would watch the fitting POP IN, VANISH and draw itself. The fourth
+ * clause (`drawnBefore`) makes the trigger "it appeared ON THIS REPAINT", and the split case
+ * degrades to the pre-package behaviour: it appears, and it stays.
+ *
+ * MUTATION: drop the `before.has(key)` clause from `completedTiles` ⇒ RED.
+ */
+test('⭐⭐ DRIVEN: a piece the scene ALREADY drew is not re-animated (the split-repaint case)', () => {
+  reset();
+  queue('table', 0);
+  // REPAINT A — the frame message lands alone and the rAF fires before `designs` arrives.
+  captureTimers(() => { Hud.renderFrame(builtFrame()); flush(); });
+  assert.equal(sceneCopies(), 1,
+    'precondition: with the site still queued and the glyph present, the scene draws the piece '
+    + 'normally — that is the state this guard is about');
+  assert.equal(overlay().length, 0, 'nothing should be animating yet: the row is still on the channel');
+  // REPAINT B — now the site clears.
+  const armed = captureTimers(() => { Hud.renderDesigns({ type: 'designs', cells: [] }); flush(); });
+  assert.equal(overlay().length, 0,
+    'the piece POPPED IN on the previous repaint and is now being taken away and drawn in — the '
+    + 'player sees it appear, vanish and re-draw. A completion is only a completion on the repaint '
+    + 'the piece first appears.');
+  assert.equal(sceneCopies(), 1, 'and it must simply stay where it already was');
+  assert.equal(revealClocks(armed).length, 0, 'no clock should have been armed');
+  reset();
+});
+
+/**
+ * ⭐ TWO PIECES FINISHING ON ONE TICK EACH GET THEIR OWN REVEAL — the charter's own requirement,
+ * and untested until review said so. A builder finishing the last two bunks of a row is the normal
+ * case, not the exotic one.
+ *
+ * MUTATION: `startReveal(done[0]…)` instead of the loop ⇒ RED.
+ */
+test('⭐ DRIVEN: two simultaneous completions each get their own reveal, and one clock each', () => {
+  reset();
+  queueAt([bpCellAt(T, 'table', 0), bpCellAt(T2, 'bunk', 1)]);
+  assert.equal(overlay().length, 0, 'precondition: two sites queued, nothing drawing');
+  const armed = captureTimers(() => {
+    Hud.renderFrame(frameWith([T, GLYPH_TABLE], [T2, 'b'.charCodeAt(0)]));
+    Hud.renderDesigns({ type: 'designs', cells: [] });
+    flush();
+  });
+  assert.equal(overlay().length, 2, 'two completions must produce two reveal groups, not one');
+  const tiles = overlay().map((n) => n.getAttribute('data-rv-tile')).sort();
+  assert.deepEqual(tiles, [KEY, T2.x + ',' + T2.y].sort(), 'the two reveals are on the wrong tiles');
+  const two = revealClocks(armed);
+  assert.equal(two.length, 2, 'each reveal needs its own clock — one shared clock ends both early');
+  assert.equal(sceneCopies(), 0, 'and the scene must be suppressing BOTH');
+  // …and they end independently: firing one leaves the other drawing.
+  two[0].fn();
+  assert.equal(overlay().length, 1, 'ending one reveal took the other one with it');
+  two[1].fn();
+  assert.equal(overlay().length, 0, 'the second reveal never ended');
   reset();
 });
 
@@ -685,6 +919,147 @@ test('revealFragment: PURE — same bytes twice, and a piece with nothing to dra
     + 'silhouette by that class and nothing else');
 });
 
+// ═════════════════════════════════════════════════════════════════════ 4a. the focus-swap census
+
+/**
+ * ⭐⭐ THE SWEEP, MADE DURABLE — every site that assigns `_focus`, enumerated, with the rule each one
+ * has to obey written next to it.
+ *
+ * ⛔ THIS EXISTS BECAUSE THE LIST WAS WRONG TWICE. `onMinimapSlot` was found by a mutation, fixed
+ * with a line of its own, and `onCrewRow` — the same shape, the same bug — was then found by review.
+ * CLAUDE.md's answer to that is *sweep the class, not the list*, so the fix moved to a choke point
+ * (`syncReveals`' room-identity check) that every swap reaches because every swap must repaint. This
+ * census is the OTHER half: it does not let a THIRD door appear unnoticed, and its failure text
+ * carries the one question a new door has to answer.
+ *
+ * ⚠️ IT PINS THE SET OF ENCLOSING FUNCTIONS, NOT A COUNT. A count is satisfied by a swap moving from
+ * one function to another; the names are what a reader can check against the argument.
+ */
+test('⭐⭐ CENSUS: every `_focus` assignment in the surface is a site this package has considered', () => {
+  const src = codeOnly(readFileSync(join(HERE, '../src/ui/roomzoom-view.js'), 'utf8'));
+  const fnAt = (idx) => {
+    const before = src.slice(0, idx);
+    const m = [...before.matchAll(/(?:^|\n)(?:export\s+)?function\s+([A-Za-z0-9_]+)\s*\(/g)].pop();
+    return m ? m[1] : '(module scope)';
+  };
+  const sites = [];
+  for (const m of src.matchAll(/(?<![A-Za-z0-9_.])_focus\s*=\s*(?!=)/g)) {
+    // ⚠️ THE `let _focus = null;` DECLARATION IS NOT A SWAP. Counting it put a helper's name in the
+    // set and made the census fail for a reason that has nothing to do with a door.
+    if (/\b(?:let|var|const)\s+$/.test(src.slice(Math.max(0, m.index - 8), m.index))) continue;
+    sites.push(fnAt(m.index));
+  }
+  assert.ok(sites.length >= 4,
+    `only ${sites.length} \`_focus\` assignments found — the scan has rotted (it is reading a file `
+    + 'whose shape has changed) and this census is measuring nothing');
+  assert.deepEqual([...new Set(sites)].sort(), ['enterRoom', 'exitRoom', 'onCrewRow', 'onMinimapSlot', 'repaint'],
+    'A NEW SITE ASSIGNS `_focus`. Answer one question before adding it here:\n'
+    + '  Does it call `repaint()` afterwards? If YES, nothing more is needed — `syncReveals` compares\n'
+    + '  the room identity against `_revealRoom` on every paint and cold-starts the draw-in for you\n'
+    + '  (that is the whole reason the per-door calls were removed). If NO — it changes which room is\n'
+    + '  on screen without a paint — it must call `clearReveals()` itself, like `exitRoom` does, or\n'
+    + '  the previous room\'s queued sites are read as completions in this one: a phantom fitting\n'
+    + '  drawn in, and the real piece on that tile suppressed for 1.2 s. Two slots on two decks\n'
+    + '  routinely share a rect (the fixture\'s `hold`/`workshop` do, and so does the wreck), and the\n'
+    + '  draw-in state is keyed "x,y" with no deck in it.');
+});
+
+test('CONTROL: the `_focus` census would SEE a new assignment site', () => {
+  // Without this the census passes for a scan that matches nothing — CLAUDE.md's 4th shape, and the
+  // exact way a source census rots into decoration.
+  const planted = codeOnly('function somethingNew(t) {\n  _focus = t;\n  repaint();\n}\n');
+  const hits = [...planted.matchAll(/(?<![A-Za-z0-9_.])_focus\s*=\s*(?!=)/g)];
+  assert.equal(hits.length, 1, 'the census pattern does not match a plain `_focus = t;` assignment');
+  assert.ok(!/(?<![A-Za-z0-9_.])_focus\s*=\s*(?!=)/.test(codeOnly('if (_focus === t) return;\nx._focus = 1;')),
+    'the census pattern matches a COMPARISON or a property write, so it would report sites that are '
+    + 'not swaps and train the next lane to widen the allow-list');
+});
+
+// ═════════════════════════════════════════════════════════════════════ 4b. the stylesheet
+
+/**
+ * ⛔⛔ THE OVERLAY MUST BE TRANSPARENT TO THE POINTER, AND UNTIL REVIEW NOTHING SAID SO — deleting
+ * `pointer-events:none` from `.rz-revealer` left the whole suite green.
+ *
+ * It is not cosmetic and it is not the same trade as its two siblings'. The overlay covers the WHOLE
+ * plate (`inset:6px`, the scene's own box), and the piece drawn in it stands UP off its floor point,
+ * so a pointer-live overlay would eat presses across the compartment for the 1.2 s of every build —
+ * on a surface whose entire job is being clicked, and with `#rz-layers`' own `data-tile` tier sitting
+ * underneath it. `.rz-ghostlayer` and `.rz-pawnlay` carry the identical rule for the identical
+ * reason (roomzoom.css states both), so all three are pinned together: a guard that named only the
+ * new one would be satisfied by a lane that deleted the other two.
+ *
+ * ⚠️ READ FROM THE CASCADE `client/index.html` ACTUALLY LINKS (`styles-source.js`), not from a file
+ * path this test picked — a rule in a stylesheet the page never loads is a rule the player never
+ * gets. `codeOnly` first, so a commented-out rule cannot satisfy it.
+ */
+test('⛔⛔ all three canvas overlays are pointer-transparent, in the stylesheet the page loads', () => {
+  const css = codeOnly(stylesSource()).replace(/\s+/g, '');
+  for (const cls of ['.rz-revealer', '.rz-ghostlayer', '.rz-pawnlay']) {
+    const at = css.indexOf(cls + '{');
+    assert.ok(at >= 0, `${cls} has no rule at all in the linked cascade`);
+    const block = css.slice(at, css.indexOf('}', at));
+    assert.ok(block.includes('pointer-events:none'),
+      `${cls} is POINTER-LIVE. It covers the whole plate at the scene's own box, so it shadows `
+      + '`tileAt`\'s `data-tile` tier and starts answering for clicks on the floor beneath it.');
+  }
+});
+
+/**
+ * ⚠️ THE KEYFRAMES BLOCK WAS GATE-INVISIBLE, AND THIS ONLY PARTLY CLOSES IT — say which part.
+ *
+ * Deleting `@keyframes rz-rv-draw` leaves every node test green (there is no CSS engine here) and
+ * every screenshot correct (the dash is fail-visible by design: with no animation the whole path
+ * draws). So the *feature* silently becomes "the piece appears", which is precisely the
+ * pre-package behaviour it replaced — the loudest possible failure to look like success.
+ *
+ * ⛔ WHAT THIS TEST CAN SAY: the block exists in the cascade the page loads, it carries both
+ * properties the two classes need, and both classes name it. ⛔ WHAT IT CANNOT: that the animation
+ * RUNS. That is measurable only in a browser, and it is measured in two places, both of which FAIL
+ * the run rather than warn — `client/tools/draw-reveal-bench.mjs` (mean computed
+ * `stroke-dashoffset` must go 1 → fall → 0, else the whole cost table is a measurement of static
+ * SVG) and `client/tools/draw-reveal-shot.mjs` (the same, sampled across the live completion).
+ * Neither is on `./ci.sh`. That gap is the ledger line, not a claim this test closes it.
+ */
+test('the draw-in keyframes and both classes survive in the linked cascade (text, not behaviour)', () => {
+  const css = codeOnly(stylesSource()).replace(/\s+/g, '');
+  const at = css.indexOf('@keyframesrz-rv-draw{');
+  assert.ok(at >= 0,
+    'the `rz-rv-draw` keyframes block is gone from the stylesheet the page loads. Nothing else in '
+    + 'the gate can see this: the dash is fail-visible, so every piece simply APPEARS — the exact '
+    + 'behaviour this package replaced, with a green suite and correct-looking screenshots.');
+  const block = css.slice(at, css.indexOf('}}', at));
+  assert.ok(block.includes('stroke-dashoffset:1') && block.includes('stroke-dashoffset:0'),
+    'the keyframes no longer run the dash from end to end — the strokes cannot draw themselves in');
+  assert.ok(block.includes('fill-opacity:0') && block.includes('fill-opacity:1'),
+    'the keyframes no longer wash the paper faces in');
+  for (const cls of ['.rz-rv-ink', '.rz-rv-fill']) {
+    const i = css.indexOf(cls + '{');
+    assert.ok(i >= 0, `${cls} has no rule — ${cls === '.rz-rv-ink' ? 'no stroke' : 'no face'} animates`);
+    assert.ok(css.slice(i, css.indexOf('}', i)).includes('animation-name:rz-rv-draw'),
+      `${cls} does not name the keyframes block, so the elements carrying it animate nothing`);
+  }
+  assert.ok(css.slice(css.indexOf('.rz-rv-ink{'), css.indexOf('}', css.indexOf('.rz-rv-ink{')))
+    .includes('stroke-dasharray:1 1'.replace(/\s+/g, '')),
+    'the ink class lost `stroke-dasharray: 1 1`, so `pathLength="1"` normalises a dash nothing uses '
+    + 'and the strokes are simply drawn');
+});
+
+test('CONTROL: the pointer-events scan reads code, and would notice the rule going away', () => {
+  // Without this the loop above passes for a scan that matches anything — CLAUDE.md's 4th shape.
+  const blinded = codeOnly(stylesSource()).replace(/\s+/g, '')
+    .replace('.rz-revealer{position:absolute;inset:6px;width:calc(100%-12px);height:calc(100%-12px);display:block;pointer-events:none}',
+      '.rz-revealer{position:absolute;inset:6px}');
+  assert.ok(!blinded.includes('.rz-revealer{position:absolute;inset:6px;width'),
+    'the blinding edit did not apply — the shipped rule\'s text has moved, so this control asserts '
+    + 'nothing and the guard above may be reading a rule that is not there. Re-find it in '
+    + 'client/styles/roomzoom.css; do NOT delete this control.');
+  const at = blinded.indexOf('.rz-revealer{');
+  assert.ok(!blinded.slice(at, blinded.indexOf('}', at)).includes('pointer-events:none'),
+    'the scan finds `pointer-events:none` in a block that no longer has it — it is matching some '
+    + 'other rule, and the guard above is vacuous');
+});
+
 // ═════════════════════════════════════════════════════════════════════ 5. the layer's own contract
 
 test('reveal-layer: one group per tile, and `mount` on a live key does not stack a second', () => {
@@ -728,7 +1103,7 @@ test('⭐ reduced motion: the piece is simply THERE — no overlay, no suppressi
   queue('table', 0);
   const armed = complete();
   assert.equal(overlay().length, 0, 'a draw-in was mounted for a visitor who asked for reduced motion');
-  assert.equal(armed.length, 0, 'and an animation clock was armed');
+  assert.equal(revealClocks(armed).length, 0, 'and an animation clock was armed');
   assert.equal(sceneCopies(), 1,
     'the piece is not drawn AT ALL. Reduced motion must be the pre-package behaviour — the fitting '
     + 'appears the instant the sim says it exists — never a suppressed tile with nothing on it.');
