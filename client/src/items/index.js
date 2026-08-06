@@ -219,7 +219,8 @@ export const ITEMS = Object.freeze({
   // ⚠️ THE WRECKED TWINS STAY WARM, and that is the wave's own FILED inconsistency rather than an
   // oversight — charter §3's P2b, the same state the twenty-one furniture rows VR-P2 replaced are
   // in. It is invisible on the shipping surface here: `roomzoom-view.js materialLayerSvg` and
-  // `paintMatStrip` both call `buildItem`, never `buildTileItem`, so no material twin has ever been
+  // the build tray's material CARDS both call `buildItem`, never `buildTileItem` (it was
+  // `paintMatStrip` until the tray replaced it), so no material twin has ever been
   // drawn by the Room Zoom (a material is a tile's SKIN — there is no `Device.Condition` for it to
   // read). The twins reach a screen only through `client/tools/wrecked-gallery.mjs`.
   //
@@ -677,4 +678,31 @@ export function buildItem(itemId, opts = {}) {
 /** Registry entry for an id (or undefined). */
 export function itemInfo(itemId) {
   return ITEMS[itemId];
+}
+
+/**
+ * ⭐ A PIECE'S HONEST CENTIMETRES — `{w, d, h}` (+ `z0` when it hangs), or `undefined` for a piece
+ * that declares none.
+ *
+ * ⛔ THE CATALOGUES ARE THE AUTHORITY AND THIS IS ONLY THE DOOR TO THEM. Four of the standing
+ * catalogues each publish their own `SPECS` in real centimetres (`art-style.md` §2: *"a piece
+ * declares honest centimetres and DERIVES its drawing scale"*), and until now every consumer either
+ * imported the catalogue it happened to want (`fittings.roomBox`) or did without. The build tray
+ * needs the number for a piece it knows only by REGISTRY ID — the card's stat line is the piece's
+ * own footprint — and a fifth consumer re-implementing "look in fittings, then machines, then…" is
+ * the second authority this registry exists to prevent.
+ *
+ * ⚠️ `paper-materials.SPECS` IS DELIBERATELY NOT CONSULTED. A material skin is a TILING FIELD, and
+ * its spec is a centimetre PITCH, not a footprint (`paper-materials.test.js` measures it as such).
+ * Answering a pitch to a caller asking "how much floor does this cover" would be a wrong number
+ * wearing the right shape — worse than `undefined`, which callers already handle.
+ *
+ * ⚠️ THE FOUR ARE SEARCHED IN REGISTRATION ORDER AND NO ID IS IN TWO OF THEM (pinned by
+ * `build-tray.test.js`, which requires the four key sets to be pairwise disjoint — otherwise this
+ * function's answer would depend on the order of the lines below, which is not a fact about a
+ * piece). PURE; never throws.
+ */
+export function itemSpecCm(itemId) {
+  if (typeof itemId !== 'string') return undefined;
+  return FT.SPECS[itemId] || MC.SPECS[itemId] || PF.SPECS[itemId] || PR.SPECS[itemId] || undefined;
 }

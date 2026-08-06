@@ -55,5 +55,6 @@ client/tools/shots-sketch/
 client/tools/shots-ship-drawn/
 # — lane/build-ghost —
 client/tools/shots-build-ghost/
+client/tools/shots-build-tray/
 # — lane/m4-2 (the Persona window) —
 client/tools/shots-persona/

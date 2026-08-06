@@ -499,6 +499,17 @@ export function deckSlots(dView, deck) {
 export const M_PER_TILE = 1;
 /** The compartment's ceiling, in metres. Measured off the design; the wire carries no height. */
 export const ROOM_HEIGHT_M = 2.4;
+/**
+ * A DOOR's opening, in metres — 2.0 m in a 2.4 m wall.
+ *
+ * ⚠️ IT IS A CONSTANT HERE BECAUSE IT WAS A LITERAL IN TWO PLACES. `roomzoom-view.js` wrote
+ * `pc.kind === 'door' ? 200 : ROOM_HEIGHT_M * 100` in `ghostPieceSvg` and `g.kind === 1 ? 200 : …`
+ * in `ghostSvg` — the same 200 cm typed twice, one for the hover preview and one for the queued
+ * order — and the build tray now needs the same number a third time for the DOOR card's stat line.
+ * Three copies of a dimension is how a preview and the thing it previews come to be different sizes
+ * (`ghostPieceSvg`'s own swatch defect, 2026-08-05). One home; both call sites read it.
+ */
+export const DOOR_HEIGHT_M = 2;
 /** px per cm for the Level-2 cutaway — the charter's `room` scale, read from the kit, never typed. */
 export const ROOM_SCALE = PX_PER_CM.room;
 /** The ONE `#fh` hatch namespace this surface emits (`fhDef('rz')` → `<pattern id="rz-fh">`). */
@@ -2527,13 +2538,37 @@ export function removeDecor(list, deck, x, y) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * @param {{armed:boolean, dialogueOpen?:boolean, personaOpen?:boolean, roomOpen:boolean}} s
- * @returns {'disarm'|'dialogue'|'persona'|'exit'|'pass'}
+ * ⭐⭐ THE BUILD TRAY'S RUNG (2026-08-05), AND WHERE IT SITS IS THE WHOLE DECISION.
+ *
+ * The tray is a hierarchy — `BUILD › MACHINES › COMFORT` — and its design puts `ESC · BACK A LEVEL`
+ * in its own top-right corner. That sentence has to be TRUE of the same key the room already
+ * listens to, so the rung goes in this reducer rather than into a second handler; `roomzoom-view.js`
+ * installs ONE capture-phase keydown, and a tray listener registered later would run after it and
+ * the room would exit out from under an open tray (the exact argument the `persona` rung records).
+ *
+ * ⛔ IT SITS **BELOW** `persona` AND **ABOVE** `exit`, i.e. fourth. The rule the whole stack obeys is
+ * "take down the topmost thing first", and the topmost thing is whatever is drawn over everything
+ * else: an armed tool is in the player's hand, a dialogue and the Persona window are bodies-level
+ * siblings drawn OVER this surface, and the tray is part of the surface itself. So Escape puts the
+ * tool down, then closes whatever is covering the room, and only then walks the tray back — and
+ * only when the tray is at its root does it leave the room. `trayDepth` is `build-tray-model.js`'s
+ * own number (0 root / 1 category / 2 leaf), so the breadcrumb and this ladder read ONE state.
+ *
+ * ⚠️ THE COST, STATED, because the `persona` rung's own note states its twin: with a tool armed AND
+ * the tray two levels deep, leaving the room takes THREE Escapes. That is RimWorld's Architect menu
+ * exactly (designator, then category, then out) and it is the price of the hierarchy the owner
+ * asked for; the alternative — Escape always exits — deletes "back a level" from the one key the
+ * design labels with it.
+ *
+ * @param {{armed:boolean, dialogueOpen?:boolean, personaOpen?:boolean, trayDepth?:number,
+ *          roomOpen:boolean}} s
+ * @returns {'disarm'|'dialogue'|'persona'|'tray'|'exit'|'pass'}
  */
 export function escStackRung(s) {
   if (s && s.armed) return 'disarm';
   if (s && s.dialogueOpen) return 'dialogue';
   if (s && s.personaOpen) return 'persona';
+  if (s && (s.trayDepth | 0) > 0) return 'tray';
   if (s && s.roomOpen) return 'exit';
   return 'pass';
 }

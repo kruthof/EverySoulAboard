@@ -34,6 +34,7 @@ import {
   PLACE_REFUSAL_TEXT, placeRefusedText, DEVICE_PLACE_COST_PARTS,
 } from '../src/ui/build-cost-model.js';
 import { codeOnly } from './code-only.js';
+import { makeTrayDriver } from './tray-arm.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -102,7 +103,7 @@ class RzDoc extends DomDocument {
 }
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-cost', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-cost', 'rz-minimap',
   'rz-hint', 'rz-ctx', 'rz-ghost',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
   's-speed', 's-msg', 's-runstate', 's-pauselabel', 'b-pause', 's-speedchip',
@@ -163,10 +164,10 @@ doc.getElementById('rz-layers')._rect = sceneRectFor(HOLD);
 
 const canvas = doc.getElementById('rz-canvas');
 const root = doc.getElementById('roomzoom-view');
-const palette = doc.getElementById('rz-palette');
+const tray = doc.getElementById('rz-tray');
 const layers = doc.getElementById('rz-layers');
 const toastEl = doc.getElementById('rz-toast');
-palette.parentNode = root;
+tray.parentNode = root;
 
 function fire(el, type, ev) {
   const e = {
@@ -217,12 +218,14 @@ const fireWindowOnly = (type, ev) => {
   for (const l of (winListeners[type] || []).slice()) l.fn({ type, button: 0, ...ev });
 };
 
-function armViaButton(tool) {
-  const b = palette.querySelectorAll('.rz-tool').find((x) => x.dataset.rztool === tool);
-  assert.ok(b, `no ${tool} button in the shipped palette markup`);
-  fire(b, 'click', { target: b });
-  return b;
-}
+// ⭐ ARMING IS A THREE-PRESS GESTURE NOW — the build tray replaced the flat strip, so a tool is
+// reached through its CATEGORY and its LEAF before its card can be pressed. The walk is
+// `tray-arm.js`'s (shared, new, single-owner: see its header for why this one module is not ported
+// per file), and it drives the shipped `<button>`s through THIS rig's own dispatcher.
+const trayDrv = makeTrayDriver({
+  doc, assert, click: (b) => fire(b, 'click', { target: b }),
+});
+function armViaButton(tool) { return trayDrv.arm(tool); }
 const raf = () => new Promise((r) => setTimeout(r, 30));
 const places = () => sent.filter((o) => o && o.cmd === 'place');
 const toastText = () => String(toastEl.textContent || '');

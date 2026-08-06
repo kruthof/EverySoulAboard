@@ -710,7 +710,7 @@ const RZ_IDS = [
   // `rz-ghost`; the build-ghost rig carried the mirror image. Both gained the other's node at the
   // merge (2026-08-05).
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-minimap',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
 class BlkEl extends DomEl {

@@ -226,11 +226,12 @@ export function placeRefusedText(msg, toolLabel) {
  * ⚠️ IT ANSWERS BEFORE THE CLICK, and that is the point rather than a bonus. The refusal toast tells
  * a player why the thing they just did failed; this row tells them it will fail while they still
  * have the tool in hand — which is the difference between a game that explains itself and a game
- * that apologises. It is a SIBLING of `#rz-matstrip` and `#rz-accepts` in every sense (same wrapper,
- * same reveal-on-arm rule, same "the options belonging to the armed tool" job) and is mutually
- * exclusive with both — materials are WALL/FLOOR, accepts is STOCKPILE, this is furniture/decor —
- * so it costs the wrapping palette ZERO net height. That exclusivity was the deciding argument for
- * the ACCEPTS row too; see its markup comment.
+ * that apologises. It is a SIBLING of `#rz-accepts` (same wrapper, same reveal-on-arm rule, same
+ * "the options belonging to the armed tool" job) and is mutually exclusive with it — accepts is
+ * STOCKPILE, this is furniture/decor — so it costs the wrapping band ZERO net height. That
+ * exclusivity was the deciding argument for the ACCEPTS row too; see its markup comment.
+ * ⚠️ `#rz-matstrip` WAS THE THIRD MEMBER and is gone (2026-08-05): the six WALL/FLOOR materials are
+ * cards inside the build tray's `STRUCTURE` category. Nothing about this row changed.
  *
  * @returns {{text:string, level:''|'fault'}|null}
  */
