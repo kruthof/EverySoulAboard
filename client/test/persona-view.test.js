@@ -300,6 +300,99 @@ test('M4-2: TIES shows the live directed bonds, and the empty note steps aside w
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
+// 4b. ⛔⭐ THE FABRICATION GUARD — an EQUALITY census of everything the window paints, per band
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THIS IS THE CARD'S OWN GUARD, RE-POINTED, AND ITS ABSENCE WAS A SEND-BACK. `panels.js`'s
+// dossier pins its identity band's CHILD CENSUS by EQUALITY (`dossier-honesty.test.js:143-150`)
+// precisely so that a row APPEARING is a red test rather than a design change nobody voted for; the
+// M4 charter's coupling 12 requires that shape to move with the surface. Without it the window was
+// measured accepting, GREEN at 1706/1706: a static `MORALE` label + bar reading nothing, and three
+// fabricated constant rows (`AFFINITY 82%` · `TRUST HIGH` · `ARCHETYPE STOIC`). Every one of those is
+// a ◇ SAMPLE in the one window whose exit gate is *"no ◇ SAMPLE anywhere"* — and `Health`, `Morale`
+// and `Archetype` are exactly the three fields M4-4 is deciding real-or-delete, so a lane that
+// "helpfully" surfaced them would be shipping a fabrication about an open owner question.
+//
+// ⛔ WHY A RECURSIVE CLASS CENSUS AND NOT A LIST OF FORBIDDEN NAMES. A denylist ("no `.pv-meter`")
+// is satisfied by the same lie under another name — the M1-F argument verbatim. The census is
+// EQUALITY over every element class the band paints, in document order, so ANY appearing element is
+// a red test and the author has to say what it is for in a diff.
+//
+// ⚠️ WHAT IT CANNOT SEE, stated in the meter guard's own style: it is blind to a fabricated STRING
+// written into an existing slot (`role` set to a constant, say). That is covered from the other side
+// — the band tests above assert those slots EQUAL the wire's fields — and by `dossier-honesty`'s
+// morale render-pair. Neither instrument is sufficient alone.
+
+/** Every element class inside `node`, in document order. Blank classes are kept as '' so an
+ *  unclassed wrapper cannot be slipped in unseen. */
+function classCensus(node) {
+  const out = [];
+  const walk = (n) => {
+    if (n.nodeType !== 1) return;
+    out.push(n.className || '');
+    for (const c of n.childNodes) walk(c);
+  };
+  for (const c of node.childNodes) walk(c);
+  return out;
+}
+/** The `.pv-bandbody` of the band whose header reads `title`. */
+function bandBody(title) {
+  const heads = [];
+  const walk = (n) => {
+    if (n.nodeType !== 1) return;
+    if (n.classList.contains('pv-band')) heads.push(n);
+    for (const c of n.childNodes) walk(c);
+  };
+  walk(root);
+  const band = heads.find((b) => b.childNodes[0] && b.childNodes[0].textContent === title);
+  assert.ok(band, `no band titled ${title} — the census below would be measuring nothing`);
+  return band.childNodes[1];
+}
+
+test('M4-2: the window\'s painted census is EQUALITY-pinned per band — a row cannot APPEAR', () => {
+  // The standard fixture: Rell, capable of all six, no bonds, nothing stuck. This is the state the
+  // shipped wreck boots into, so it is the state a fabricated row would be added against.
+  open(7);
+
+  assert.deepEqual(classCensus(bandBody('IDENTITY')), [
+    // ⚠️ NO `svg` ENTRY: the bust is written with `innerHTML` (it IS markup — an inline SVG from the
+    // shared registry) and `dom-lite` does not parse markup into nodes. In Chrome the `<svg>` is a
+    // real child; here it is a string on the span. Named so a reader does not "fix" the census by
+    // adding an element this harness cannot see. The bust's presence is asserted by the persona-shot
+    // tool, which runs in a browser.
+    'pv-idrow', 'pv-bust', 'pv-idcol', 'pv-name', 'pv-role', 'pv-where',
+    'pv-traits', 'pv-trait', 'pv-trait',
+    'pv-prose pv-empty',
+  ], 'the IDENTITY band grew or lost an element. EQUALITY, not a denylist: `AFFINITY 82%` or a '
+    + '`MORALE` bar re-added under any other name is the same lie — the sim writes none of those '
+    + '(M1-F; `Citizen.Health`/`Morale`/`Archetype` are M4-4\'s open real-or-delete question).');
+
+  assert.deepEqual(classCensus(bandBody('DOING & WHY')), ['pv-task', 'pv-stuck'],
+    'the DOING & WHY band grew or lost an element');
+
+  // ⭐ THE SKILL STATE IS PART OF THE CENSUS AND THAT IS FREE PRECISION: the fixture gives Rell
+  // REPAIR 4 and HAUL 2, so those two cells read `trained` and the other four `untrained`. A cell
+  // that started reporting a level the wire did not send would move this list as surely as a new row
+  // would. (The three CANNOT elements are present-but-HIDDEN here — Rell's mask is empty. The census
+  // walks hidden nodes deliberately: a row that appears hidden is still a row that appeared.)
+  const skillRow = (state) => ['pv-skill', 'pv-skill-lbl', 'pv-skill-lvl ' + state];
+  assert.deepEqual(classCensus(bandBody('CAN & CANNOT')), [
+    'pv-skills',
+    ...skillRow('trained'), ...skillRow('untrained'), ...skillRow('untrained'),
+    ...skillRow('untrained'), ...skillRow('untrained'), ...skillRow('trained'),
+    'pv-subhd', 'pv-cannot', 'pv-note pv-empty',
+  ], 'the CAN & CANNOT band grew or lost an element');
+
+  assert.deepEqual(classCensus(bandBody('TIES & HISTORY')), [
+    'pv-ties', 'pv-note pv-empty', 'pv-subhd', 'pv-note pv-empty',
+  ], 'the TIES & HISTORY band grew or lost an element');
+
+  // Non-vacuity by INCLUSION: the census really is reading a populated window, not four empty boxes.
+  assert.equal(textsOf(root, 'pv-name')[0], 'Rell Okonkwo');
+  assert.equal(textsOf(root, 'pv-skill-lbl').length, 6);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
 // 5. ⛔ THE CHARTER'S MUTATION 6 — NO METER, AND THE RIG IS PROVABLY ALIVE
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
@@ -368,12 +461,12 @@ test('M4-2: opening sets the body switch and pins the cid; closing takes it away
   const w = open(7);
   assert.ok(doc.body.classList.contains('persona-open'), 'the window opened without its body class '
     + '— the cascade shows it on that class, so the DOM is populated and invisible');
-  assert.equal(Persona.isPersonaOpen(), true);
+  assert.equal(mounted.isOpen(), true);
   assert.equal(textsOf(w, 'pv-title')[0], 'PERSONA · Rell Okonkwo');
 
   mounted.close();
   assert.equal(doc.body.classList.contains('persona-open'), false);
-  assert.equal(Persona.isPersonaOpen(), false);
+  assert.equal(mounted.isOpen(), false);
 
   // ⭐ THE WINDOW PINS THE PERSON IT WAS OPENED FOR — it does not follow the selection. A repaint
   // driven by an unrelated wire update must not swap the subject under the player.
@@ -391,7 +484,7 @@ test('M4-2: the close control dismisses the window', () => {
   const btn = root.childNodes[0].childNodes[0].childNodes[2]; // .pv-sheet > .pv-head > .pv-close
   assert.equal(btn.className, 'pv-close', 'the close control moved — this leg is clicking the wrong node');
   fire(btn, 'click');
-  assert.equal(Persona.isPersonaOpen(), false, 'the close button did not close the window');
+  assert.equal(mounted.isOpen(), false, 'the close button did not close the window');
 });
 
 // ⛔ A CREW MEMBER WHO DIES WITH HER WINDOW OPEN. The window must not vanish (a window that
@@ -400,12 +493,56 @@ test('M4-2: the close control dismisses the window', () => {
 test('M4-2: a subject who leaves the roster is SAID to be gone, not silently closed', () => {
   open(7);
   Hud.renderRoster({ type: 'roster', crew: [OZAWA] });
-  assert.equal(Persona.isPersonaOpen(), true, 'the window closed itself — the player is left wondering '
+  assert.equal(mounted.isOpen(), true, 'the window closed itself — the player is left wondering '
     + 'whether the click worked');
   assert.equal(textsOf(root, 'pv-where')[0], 'NO LONGER ABOARD');
-  assert.deepEqual(shownOf(root, 'pv-stuck'), []);
+  assert.equal(shownOf(root, 'pv-stuck').length, 0);
+  // ⭐ AND NOTHING ABOUT HER IS LEFT STANDING. The write guards (`_traitsKey`, `_bustCid`, `_canKey`,
+  // `_tiesKey`) SKIP a write when the key is unchanged, so a branch that only rewrote the text slots
+  // preserved exactly the rows it meant to clear — measured on the first draft: her trait chips, her
+  // bust and her skill rows all survived their subject. Every band is asserted, not just the two the
+  // branch happens to touch.
+  // ⚠️ LENGTHS, NOT `deepEqual` ON NODES — the same correction as the idle-repaint leg above: a
+  // failing `deepEqual` over DOM nodes tries to diff two circular trees and the run takes minutes
+  // and prints nothing. Measured here too, on this very leg.
+  assert.equal(shownOf(root, 'pv-trait').length, 0, 'her trait chips outlived her');
+  assert.equal(shownOf(root, 'pv-skill').length, 0, 'her skill rows outlived her');
+  assert.equal(shownOf(root, 'pv-tie').length, 0, 'her bonds outlived her');
+  assert.equal(shownOf(root, 'pv-empty').length, 0, 'a written-identity line outlived its subject');
+
+  // ⭐⭐ THE DISCRIMINATING LEG, AND IT IS THE ONE THAT PINS THE **GUARD RESET** RATHER THAN THE HIDE.
+  // Hiding the chips satisfies every assertion above on its own — measured, by deleting the
+  // `_traitsKey = ''` line and watching this test stay GREEN. The reset is load-bearing for the NEXT
+  // open: the write guards skip a rebuild when the key is UNCHANGED, so a window re-opened for
+  // someone whose traits happen to match the cleared subject's would come back with the band
+  // permanently EMPTY — a person silently missing her chips, for as long as the tab lives.
+  Hud.renderRoster({ type: 'roster', crew: [RELL, OZAWA] });
+  mounted.open(7);
+  assert.deepEqual(textsOf(root, 'pv-trait'), ['stoic', 'unbending'],
+    're-opening the window after its subject left painted no trait chips. The clear emptied the '
+    + 'nodes but left `_traitsKey` holding the old signature, so the guard skipped the rebuild.');
+  assert.equal(shownOf(root, 'pv-skill').length, 6, 'the CAN rows did not come back either');
+  assert.ok(String(_bustHtml()).length > 0, 'the bust did not come back');
   mounted.close();
 });
+
+/** The bust span's markup. `dom-lite` does not parse `innerHTML`, so this reads the string the
+ *  window wrote — which is exactly what the `_bustCid` guard decides whether to write. */
+function _bustHtml() {
+  const el = root.childNodes[0] && shownOfAll(root, 'pv-bust')[0];
+  return el ? (el.innerHTML || '') : '';
+}
+/** Every element carrying `cls`, hidden or not. */
+function shownOfAll(node, cls) {
+  const out = [];
+  const walk = (n) => {
+    if (n.nodeType !== 1) return;
+    if (n.classList.contains(cls)) out.push(n);
+    for (const c of n.childNodes) walk(c);
+  };
+  walk(node);
+  return out;
+}
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 7b. ⭐ AN IDLE REPAINT MUTATES NOTHING — the write guards, pinned by NODE IDENTITY

@@ -1916,7 +1916,23 @@ function onSceneGesture(e) {
       }
       break;
     }
-    case 'select': Hud.selectCrewByCid(action.cid); break;
+    // ⭐⭐ M4-2 (SEND-BACK FIX, 2026-08-05) — ONE CLICK, AND IT IS THE CHARTER'S OWN WORD.
+    // `…m4.packages.md:1095` — *"one click on anyone, from either surface, opens ONE WINDOW"* — and
+    // acceptance step 1 — *"Click a crew member in the Overview → the window opens"*. The first
+    // draft of this package opened the window only from the `[U]` button and key, so reaching a
+    // person on THIS surface took two clicks while the Room Zoom dock took one, in the same commit.
+    // The charter draws no line between a pawn on the plate and a CREW WATCH row, so neither does
+    // this: both gestures select AND open.
+    // ⛔ THE CID IS PASSED EXPLICITLY. `selectCrewByCid` sends `Cmd.click`; selection is
+    // WIRE-AUTHORITATIVE and the cached frame still carries the PREVIOUS selection at this instant,
+    // so an argument-less call would open the wrong person's window. Same rule as the Room Zoom dock.
+    // ⚠️ FILED AS A PLAYTEST QUESTION, NOT AS A DISAGREEMENT TAKEN SILENTLY: a modal over the plate
+    // on every pawn click sits in front of the MOVE/PRIORITISE flow, which is the loop M2/M3 built.
+    // The charter is shipped as written; the question is raised in the package's report.
+    case 'select':
+      Hud.selectCrewByCid(action.cid);
+      Hud.openPersonaForSelected(action.cid);
+      break;
     case 'terminal': Hud.selectTab('moss'); break; // clicking a console on the map opens MOSS (IX-M1)
     // M1-L: the `addroom` case is DELETED with the chip that produced it (`overviewClickAction` can
     // no longer return that type). Every compartment now falls to `enterRoom`.
@@ -2143,7 +2159,10 @@ function onHudClick(e) {
   else if (d.ovLens != null) { _send(Cmd.lens(d.ovLens)); }
   else if (d.ovTab != null) { if (!tabIsInert(d.ovTab)) Hud.selectTab(d.ovTab); } // CHRONICLE kept but inert
   else if (d.ovTool != null) { Hud.armTool(d.ovTool); afterToolToggle(btn, e); }
-  else if (d.ovCrew != null) { Hud.selectCrewByCid(d.ovCrew); }
+  // ⭐⭐ M4-2 — the CREW WATCH row is the other half of acceptance step 1 (see the `'select'` case
+  // above for the ruling and for why the cid is explicit). The row still SELECTS, so every order verb
+  // that reads the selection is unaffected; it now also opens the window.
+  else if (d.ovCrew != null) { Hud.selectCrewByCid(d.ovCrew); Hud.openPersonaForSelected(d.ovCrew); }
   // M2-3 — a WORK grid cell. Keyed on the CID half; both halves are read inside.
   else if (d.ovWorkCid != null) { onWorkCellClick(btn, d, e); }
   else if ('ovSpeedDn' in d) { _send(Cmd.speed(-1)); }

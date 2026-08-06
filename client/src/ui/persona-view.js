@@ -247,8 +247,10 @@ function close() {
   if (document.body && document.body.classList) document.body.classList.remove('persona-open');
 }
 
-/** Is the window on screen? Read by `hud.js`'s Escape stack and, through it, by both surfaces. */
-export function isPersonaOpen() { return _open; }
+// ⚠️ NO `isPersonaOpen` EXPORT HERE, DELIBERATELY. `hud.js` owns that read for the whole client
+// (`Hud.isPersonaOpen`, on `SHIP_STATE_REACH`), and it answers it through the registered controller's
+// `isOpen()`. A second exported spelling of one fact is the drift M2-6 already paid for; the first
+// draft shipped one and nothing referenced it.
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // THE PAINT
@@ -275,12 +277,25 @@ function paint() {
     setText(_el.where, 'NO LONGER ABOARD');
     setText(_el.task, '');
     setHidden(_el.stuck, true);
+    // ⚠️ THE IDENTITY HALF IS EMPTIED TOO, AND THE FIRST DRAFT DID NOT DO IT — the comment above
+    // claimed the window stops asserting things about her and the trait chips, the bust and the
+    // written-identity line all stayed standing, because `_traitsKey`/`_bustCid` are write guards
+    // and an unchanged key skips the write. A guard is not a state machine: when the subject leaves,
+    // the keys have to be invalidated or the guard preserves exactly what it was meant to update.
+    if (_traitsKey !== '') { _el.traits.replaceChildren(); _traitsKey = ''; }
+    setHidden(_el.traits, true);
+    if (_bustCid !== null) { _el.bust.innerHTML = ''; _bustCid = null; }
+    setHidden(_el.written, true);
+    // ⚠️ THE BAND FRAMES STAY — the four headers and the section labels are the WINDOW, not claims
+    // about a person. What goes is every sentence that asserted something about HER: the chips, the
+    // bust, the skill rows, the bonds, and all four honest empties (an empty state is a statement
+    // about a subject, and the subject is gone).
     // …and the bands that described HER are emptied rather than left standing. A skill row or a bond
     // that outlived its subject is the same lie as a fabricated one.
     if (_canKey !== '') { _el.can.replaceChildren(); _el.cannot.replaceChildren(); _canKey = ''; }
     setHidden(_el.cannotHd, true); setHidden(_el.cannot, true); setHidden(_el.cannotWhy, true);
     if (_tiesKey !== '') { _el.ties.replaceChildren(); _tiesKey = ''; }
-    setHidden(_el.ties, true); setHidden(_el.tiesEmpty, true);
+    setHidden(_el.ties, true); setHidden(_el.tiesEmpty, true); setHidden(_el.history, true);
     return;
   }
 

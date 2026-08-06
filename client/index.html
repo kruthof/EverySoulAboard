@@ -80,6 +80,12 @@
         <div id="metrics"></div>
       </div>
       <div class="ro-actions">
+        <!-- ⚠️ M4-2 (2026-08-05): this label still says [T] and the `T` KEY IS DELETED (the talk verb
+             went with the third door). The BUTTON still works — `hud.js` gives it its own onclick —
+             so the label is stale rather than false, and it is inside `.app`, which is display:none
+             on every one of the six tabs in normal play (measured) and which M4-8 deletes outright.
+             Left alone deliberately: editing it would move `CONSOLE_SHELL_IDS`' frozen census for a
+             string no player can reach. FILED, not fixed. -->
         <button id="b-talk" class="btn-primary" disabled>[T] OPEN CHANNEL — TALK</button>
         <button id="b-move" class="btn-secondary" disabled>[M] MOVE ORDER</button>
         <button id="b-bio" class="btn-secondary" disabled>BIOGRAPHY</button>

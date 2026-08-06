@@ -81,6 +81,10 @@ function fallbackToCanvas2D() {
     // -cursor `M`/`T`/`Enter` leak back after a context loss, silently. See `isSuspended` in
     // controls.js for what the leak did.
     isSuspended: () => roomZoom.isOpen(),
+    // ⭐ M4-2 — the Persona window is a MODAL over the Overview: while it is up the keymap answers
+    // Escape and the clock and nothing else. BOTH installInput blocks pass it, for the reason the
+    // `isSuspended` note above gives — wiring only one brings the leak back after a context loss.
+    isModalOpen: () => Hud.isPersonaOpen(),
     onBuildKey: (kind) => Hud.armFromKey(kind),
     onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
     onCanvasClick: () => Hud.canvasClicked(),
@@ -382,6 +386,9 @@ inputDispose = installInput({
   // M1-K — see the twin in `fallbackToCanvas2D` above. `roomZoom` is the module-level const created
   // by `initRoomZoom` further up this file, so the closure is resolved by the time any key arrives.
   isSuspended: () => roomZoom.isOpen(),
+  // ⭐ M4-2 — the modal stand-down; see the twin in `fallbackToCanvas2D` above. Wiring only one
+  // block leaves the leak live after a WebGL2 context loss, silently.
+  isModalOpen: () => Hud.isPersonaOpen(),
   onBuildKey: (kind) => Hud.armFromKey(kind),
   onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
   // Plain canvas clicks supersede any pending cross-deck row click (IX-42).

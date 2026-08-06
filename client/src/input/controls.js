@@ -168,6 +168,27 @@ export function installInput(opts) {
   const isSuspended = opts.isSuspended || (() => false);
   /** Keys the deprecated keymap still answers while suspended: the ship's clock, nothing else. */
   const TIME_KEYS = new Set([' ', '+', '=', '-', '_']);
+  /**
+   * ⭐⭐ M4-2 — THE MODAL STAND-DOWN, AND IT IS THE `isSuspended` ARGUMENT ONE FLOOR DOWN.
+   *
+   * The Persona window is a body-level takeover that covers the Overview at `z-index:40`. Without
+   * this, every game key kept firing behind it — MEASURED by review: `G` armed DIG and `3` moved the
+   * lens while the scrim was on screen, and the next `Escape` then spent itself DISARMING the
+   * invisible tool instead of closing the window the player was looking at. That is the
+   * invisible-cursor family the `isSuspended` block above was written for, in a new costume: a verb
+   * wired to state the player cannot see.
+   *
+   * ⛔ IT IS A SEPARATE PREDICATE RATHER THAN `isSuspended || personaOpen`, and the reason is
+   * ESCAPE. `isSuspended` returns BEFORE the Escape branch, which is correct for the Room Zoom (that
+   * surface binds Escape itself, in the capture phase, and owns its own rung ladder). The Persona
+   * window binds NO key: its Escape runs through `onEscape` → `hud.handleEscape` → `escapeTarget`'s
+   * `persona` rung. Folding it into `isSuspended` would swallow the only keystroke that can close it
+   * — and would make the rung this package added dead on the surface it was added for.
+   *
+   * ⚠️ THE TIME KEYS RIDE THROUGH for the same reason they ride through the suspension: they are the
+   * ship's clock, not the console's cursor, and no takeover has ever wanted to suppress them.
+   */
+  const isModalOpen = opts.isModalOpen || (() => false);
 
   // ⭐⭐ M4-2 — OPEN THE PERSONA WINDOW FOR THE SELECTED CREW (U, or Enter when a crew is selected).
   //
@@ -297,6 +318,10 @@ export function installInput(opts) {
     // handler has never been the one that closes a room, and answering it here while a takeover is
     // open could only ever pop a panel the player cannot see.
     if (isSuspended() && !TIME_KEYS.has(k)) return;
+    // The MODAL stand-down (see `isModalOpen` above). Escape and the clock still answer; every other
+    // game key does not, including `P` — a sprite toggle behind an opaque sheet is exactly the
+    // invisible state change this guard exists to stop.
+    if (isModalOpen() && k !== 'Escape' && !TIME_KEYS.has(k)) return;
     if (k === 'P' || k === 'p') { toggleSprites(); return; }
     if (k === 'Escape') { onEscape(); }
     // ⭐⭐ [U] — OPEN THE PERSONA WINDOW FOR THE SELECTED CREW MEMBER (M4-2).

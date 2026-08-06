@@ -932,11 +932,11 @@ function evt(type, props) { return Object.assign(new Event(type), props); }
  * suspended. So the rig records window OPENS as well, at the seam (`Hud.setPersonaWindow`, the same
  * registration `main.js` uses), and the leak test asserts on both.
  */
-function consoleKeys(keys, suspended) {
+function consoleKeys(keys, suspended, modalOpen = false) {
   const savedWindow = globalThis.window;
   const out = [];
   const opens = [];
-  Hud.setPersonaWindow({ open: (cid) => opens.push(cid), close: () => {}, isOpen: () => false });
+  Hud.setPersonaWindow({ open: (cid) => opens.push(cid), close: () => {}, isOpen: () => modalOpen });
   globalThis.window = new EventTarget();
   const dispose = installInput({
     canvas: fakeCanvas(520, 520),
@@ -945,6 +945,7 @@ function consoleKeys(keys, suspended) {
     getFrame: () => ({ w: 64, h: 32, deck: 0, crew: [[32, 10, 0, 7]], sel: [32, 10] }),
     draw() {}, toggleSprites() {},
     isSuspended: () => suspended,
+    isModalOpen: () => Hud.isPersonaOpen(),
   });
   try {
     for (const k of keys) globalThis.window.dispatchEvent(evt('keydown', { key: k }));
@@ -1004,6 +1005,62 @@ test('the console keymap STANDS DOWN under a Level-2 takeover — M, U and Enter
     + 'suppress, the stand-down assertion above proves nothing');
 });
 
+// ⭐⭐ M4-2 (SEND-BACK FIX) — THE MODAL STAND-DOWN, and it is the SAME defect as the leak above with
+// a different lid on it. The Persona window is a body-level takeover at `z-index:40` that covers the
+// Overview; the console keymap is NOT suspended there (no Level-2 surface is open), so before this
+// every game key kept firing behind the scrim. MEASURED BY REVIEW: `G` armed DIG and `3` moved the
+// lens while the window was up — and the next `Escape` then spent itself DISARMING the invisible tool
+// instead of closing the window, so the player's dismissal did nothing visible. That is
+// `HANDOVER.md:314-319`'s shape (a verb wired to state the player cannot see) and the reason the
+// suspension seam exists at all.
+//
+// ⛔ ESCAPE AND THE CLOCK MUST STILL ANSWER — and that is why this is a SEPARATE predicate rather
+// than `isSuspended || personaOpen`. `isSuspended` returns before the Escape branch (correct: the
+// Room Zoom binds Escape itself in capture). The Persona window binds NO key; its Escape runs
+// through `onEscape` → `handleEscape` → `escapeTarget`'s `persona` rung. Folding the two together
+// would swallow the only keystroke that closes it.
+//
+// MUTATION: delete the `isModalOpen() && k !== 'Escape' && …` line in controls.js ⇒ RED on leg 1.
+// MUTATION: drop the `k !== 'Escape'` clause ⇒ RED on leg 2 (the window becomes undismissable).
+test('M4-2: the keymap STANDS DOWN behind the Persona window — but Escape and the clock still answer', () => {
+  // ── leg 1: the game keys are swallowed ──
+  const behind = consoleKeys(['g', '3', 'm', 'b', 'v', 'ArrowLeft', 'P'], false, true);
+  assert.deepEqual([...behind], [],
+    'a game key fired while the Persona window covered the screen. `G`/`V`/`B` arm tools the player '
+    + 'cannot see behind an opaque sheet, `3` moves the lens under it, and `M` sends a real move '
+    + 'order — and the next Escape is then spent on the invisible tool instead of the window.');
+  assert.deepEqual(behind.opens, [],
+    'the Persona key re-fired behind an already-open window');
+
+  // ── leg 2: Escape and the clock are NOT swallowed ──
+  // ⚠️ Escape is observed through `onEscape`, not through the wire: it sends no command. Without
+  // this leg the assertion above is satisfied by a stand-down that swallows EVERYTHING, which would
+  // make the window impossible to dismiss with the key its own header button advertises.
+  let escapes = 0;
+  const savedWindow = globalThis.window;
+  globalThis.window = new EventTarget();
+  const sent = [];
+  Hud.setPersonaWindow({ open: () => {}, close: () => {}, isOpen: () => true });
+  const dispose = installInput({
+    canvas: fakeCanvas(520, 520),
+    camera: { x: 0, y: 0, z: 1, viewW: 520, viewH: 520, tile: 26 },
+    session: { send: (o) => sent.push(o) },
+    getFrame: () => ({ w: 64, h: 32, deck: 0, crew: [[32, 10, 0, 7]], sel: [32, 10] }),
+    draw() {}, toggleSprites() {},
+    onEscape: () => { escapes += 1; },
+    isSuspended: () => false,
+    isModalOpen: () => Hud.isPersonaOpen(),
+  });
+  try {
+    for (const k of ['Escape', ' ', '+', 'g']) globalThis.window.dispatchEvent(evt('keydown', { key: k }));
+  } finally { dispose(); globalThis.window = savedWindow; Hud.setPersonaWindow(null); }
+  assert.equal(escapes, 1,
+    'Escape was swallowed by the modal stand-down, so the Persona window cannot be closed by the '
+    + 'key its own [ESC] CLOSE button advertises');
+  assert.deepEqual(sent.map((o) => o.cmd), ['pause', 'speed'],
+    'the ship\'s clock stopped answering behind the window (or `G` leaked through)');
+});
+
 // MUTATION: pass `isSuspended` to only the FIRST installInput block in main.js — the WebGL2→Canvas2D
 // fallback left bare, which brings the whole leak back after a context loss, silently ⇒ RED.
 test('BOTH main.js installInput blocks pass the suspension seam', () => {
@@ -1016,6 +1073,11 @@ test('BOTH main.js installInput blocks pass the suspension seam', () => {
       `installInput block #${i + 1} does not pass isSuspended. Wiring only one leaves the `
       + 'invisible-cursor M/T/Enter leak live after a WebGL2 context loss, with nothing on screen '
       + 'to say the keymap came back.');
+    // ⭐ M4-2 — the SAME argument for the modal seam, one floor down: a fallback block without it
+    // brings the behind-the-window key leak back after a context loss, equally silently.
+    assert.ok(codeOnly(block).includes('isModalOpen:'),
+      `installInput block #${i + 1} does not pass isModalOpen — game keys will fire behind the `
+      + 'Persona window on this path.');
   });
   // NEGATIVE CONTROL for the comment stripper: a COMMENTED-OUT wiring must NOT satisfy the scan.
   // The fixture carries a LATER REAL COMMENT, because a naive `/\*[\s\S]*?\*\//` stripper finds no

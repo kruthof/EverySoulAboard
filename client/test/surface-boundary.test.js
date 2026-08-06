@@ -1120,11 +1120,37 @@ test('M4-2: the two superseded crew seams are GONE from hud.js, by name', () => 
  *  `hud.js`, which is precisely what the crew-interaction census cannot see. */
 const CREW_VERBS = Object.freeze(['bio', 'bye', 'say', 'talk']);
 
-/** Which crew verbs `source` sends as CODE (comments and their prose stripped by the shared
- *  stripper — trap 1's first half; the negative control below is its second). */
-function directCrewVerbSends(source) {
+/** ⭐ THE ONE MODULE ALLOWED TO CONSTRUCT A CREW-VERB PAYLOAD: `Cmd` itself. It is the wire
+ *  VOCABULARY — defining a command is not opening a door — and it is deliberately NOT a
+ *  CONSOLE_OWNER, so it has to be named. Its non-vacuity is asserted below: if the factory ever
+ *  moved, this exemption would start covering a file that no longer defines anything. */
+const CREW_VERB_FACTORY = 'src/wire/session.js';
+
+/**
+ * Which crew verbs `source` sends as CODE (comments and their prose stripped by the shared stripper
+ * — trap 1's first half; the negative control below is its second).
+ *
+ * ⛔ TWO FORMS, AND THE SECOND ONE WAS A HOLE FOUND BY REVIEW. The first draft matched only the
+ * FACTORY form `Cmd.talk(…)`, so `session.send({ type: 'talk', cid })` — **the real wire shape, which
+ * is what `Cmd.talk` returns** (`src/wire/session.js:176`) — walked straight past it: a second door
+ * added beside the sanctioned one stayed GREEN at 1706/1706, measured. A guard that only sees the
+ * convenient spelling of a violation is `CLAUDE.md`'s 4th trap in miniature. The alternation below
+ * closes it; `CREW_VERB_FACTORY` is skipped for the LITERAL form only (it is where those four
+ * objects are defined) and is still scanned for the factory form, where it hits nothing.
+ *
+ * ⚠️ WHAT IT STILL CANNOT SEE, said out loud in the meter guard's own style: a payload assembled
+ * indirectly — `const t = 'ta' + 'lk'`, an object built field-by-field, or a verb read out of a
+ * table. That is not reachable by any text scan, and the instrument that covers it is the
+ * CREW_INTERACTION census above (a door has to be REACHED to be a door) plus the acceptance script.
+ * @param {string} source @param {string} [path] the module's repo-relative path, for the exemption
+ */
+function directCrewVerbSends(source, path) {
   const code = codeOnly(source);
-  return CREW_VERBS.filter((v) => new RegExp('\\bCmd\\s*\\.\\s*' + v + '\\s*\\(').test(code));
+  return CREW_VERBS.filter((v) => {
+    if (new RegExp('\\bCmd\\s*\\.\\s*' + v + '\\s*\\(').test(code)) return true;
+    if (path === CREW_VERB_FACTORY) return false;
+    return new RegExp("\\btype\\s*:\\s*['\"]" + v + "['\"]").test(code);
+  });
 }
 
 // MUTATION (this is the charter's mutation 3, and NOTHING caught it before this test existed):
@@ -1137,8 +1163,19 @@ test('M4-2: no module outside the console sends a CREW VERB directly (the third 
   for (const abs of files) {
     const path = rel(abs);
     if (CONSOLE_OWNERS.includes(path)) continue;
-    for (const v of directCrewVerbSends(readFileSync(abs, 'utf8'))) offenders.push(`${path}:Cmd.${v}`);
+    for (const v of directCrewVerbSends(readFileSync(abs, 'utf8'), path)) offenders.push(`${path}:${v}`);
   }
+  // ⚠️ THE EXEMPTION'S OWN NON-VACUITY. `CREW_VERB_FACTORY` is skipped for the literal form; if the
+  // `Cmd` factory ever moved out of that file the skip would start protecting a module that defines
+  // nothing, and the guard would quietly stop covering wherever the payloads went.
+  const factory = readOrNull(CREW_VERB_FACTORY);
+  assert.ok(factory, `${CREW_VERB_FACTORY} is gone — the crew-verb exemption is guarding a ghost`);
+  assert.deepEqual(directCrewVerbSends(factory, CREW_VERB_FACTORY), [],
+    'the factory CALLS one of the verbs it defines — the exemption covers DEFINITION only');
+  assert.deepEqual([...CREW_VERBS].filter((v) => new RegExp(`\\btype\\s*:\\s*'${v}'`).test(codeOnly(factory))),
+    [...CREW_VERBS],
+    `${CREW_VERB_FACTORY} no longer defines all four crew-verb payloads, so the exemption above is ` +
+    'covering a file that is not the factory any more. Move the exemption to wherever `Cmd` lives.');
   // ⚠️ ONE `deepEqual` ON THE WHOLE LIST rather than a loop of `ok`s: `assert` throws, so a loop
   // would report only the first offender and a resurrection that re-added TWO doors would read as
   // a one-line slip (`CLAUDE.md`'s fifth trap shape).
@@ -1170,31 +1207,42 @@ test('NEGATIVE CONTROL: a crew verb named in a COMMENT does not trip the direct-
   assert.match(raw, /Cmd\.talk\(cid\)/,
     'controls.js no longer mentions the deleted send in prose — this control has lost its subject; ' +
     're-point it at whichever file explains the deletion, do not delete it (the 9th trap shape)');
-  assert.deepEqual(directCrewVerbSends(raw), []);
+  assert.deepEqual(directCrewVerbSends(raw, 'src/input/controls.js'), []);
   // …and the second half of trap 1: a stripper that gave up at the first comment would also pass
   // the line above. A LATER real comment plus a LIVE send in between must still be seen.
   const fixture = [
     "// historical: session.send(Cmd.talk(cid));   <- the third door, deleted at M4-2",
+    "// and its literal twin: session.send({ type: 'talk', cid });",
     "    session.send(Cmd.bio(sel.cid));",
+    "    session.send({ type: 'bye', sid });",
     '/* a later real comment, so a stripper that gave up early is not silently fine */',
   ].join('\n');
-  assert.deepEqual(directCrewVerbSends(fixture), ['bio'],
-    'the stripper is eating code, or stopping at the first comment');
+  assert.deepEqual(directCrewVerbSends(fixture, 'src/input/controls.js'), ['bio', 'bye'],
+    'the stripper is eating code, or stopping at the first comment, or the LITERAL form is not seen');
 });
 
 // ⚠️ THE INCLUSION HALF, PER VERB. A search that finds nothing and a search that CANNOT find
 // anything look identical; each verb is planted as real code into the real shipped source and the
 // guard must name it. One test per verb — blinded, so a matcher that broke for `bye` alone cannot
 // hide behind `talk` failing first.
+// ⭐ TWO FORMS × FOUR VERBS = EIGHT CONTROLS, and the LITERAL half is the one review had to add:
+// `session.send({type:'talk', cid})` is what `Cmd.talk` RETURNS, so it is the shape a lane would
+// reach for after the factory import was removed as "unused".
+const PLANT_FORMS = Object.freeze([
+  ['factory', (v) => `session.send(Cmd.${v}(1));`],
+  ['literal', (v) => `session.send({ type: '${v}', cid: 1 });`],
+]);
 for (const verb of CREW_VERBS) {
-  test(`INCLUSION: a planted \`Cmd.${verb}(\` in src/input/controls.js IS caught`, () => {
-    const raw = readOrNull('src/input/controls.js');
-    assert.ok(raw, 'controls.js is gone');
-    const planted = raw.replace('function personaForSelected() {',
-      `function personaForSelected() {\n    session.send(Cmd.${verb}(1));`);
-    assert.notEqual(planted, raw, 'the plant did not apply — the anchor moved, and this control is inert');
-    assert.deepEqual(directCrewVerbSends(planted), [verb]);
-  });
+  for (const [form, emit] of PLANT_FORMS) {
+    test(`INCLUSION: a planted ${form}-form \`${verb}\` send in src/input/controls.js IS caught`, () => {
+      const raw = readOrNull('src/input/controls.js');
+      assert.ok(raw, 'controls.js is gone');
+      const planted = raw.replace('function personaForSelected() {',
+        `function personaForSelected() {\n    ${emit(verb)}`);
+      assert.notEqual(planted, raw, 'the plant did not apply — the anchor moved, and this control is inert');
+      assert.deepEqual(directCrewVerbSends(planted, 'src/input/controls.js'), [verb]);
+    });
+  }
 }
 
 // MUTATION: add `$('stockfilter')` to overview-view.js — a modern view reaching into console DOM,
