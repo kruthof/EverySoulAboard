@@ -128,6 +128,12 @@ import { partsUnits } from './ledger-model.js';
 // interpolation rules and `pawn-layer.js`' for the measured overlay-vs-re-adoption decision.
 import { makePawnTween, makePausableClock } from './pawn-tween-model.js';
 import { makePawnLayer, prefersReducedMotion } from './pawn-layer.js';
+// ⭐⭐ THE DRAW-IN (2026-08-06) — the owner's *"instead of immediately emerging, could it be DRAWN?
+// like if someone writes on paper?"*. The completion JOIN and the per-stroke schedule are the pure
+// `reveal-model.js`; the node lifecycle is `reveal-layer.js`, `pawn-layer.js`'s pattern for
+// `pawn-layer.js`'s measured reason. This file owns the trigger, the suppression and the clock.
+import { completedTiles, revealFragment } from './reveal-model.js';
+import { makeRevealLayer } from './reveal-layer.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -190,6 +196,61 @@ const _clock = makePausableClock(
 let _tweenRaf = 0;        // 0 ⇒ NO LOOP IS RUNNING. An idle room must cost zero frames.
 let _inTweenFrame = false; // re-entrancy guard — see `tweenFrame`
 let _reduce = false;      // `prefers-reduced-motion` — read ONCE at mount (see `placePawns`)
+// ── the draw-in's four handles (see the import note) ──────────────────────────────────────────
+let _revealSvgEl = null;  // #rz-reveal — the PERSISTENT overlay a completing piece draws itself in
+let _revealLayer = null;  // makeRevealLayer(_revealSvgEl) — one keyed <g> per completing tile
+/**
+ * ⭐ THE TRIGGER'S WHOLE MEMORY: the focused room's design rows AS OF THE LAST REPAINT, keyed
+ * `"x,y"`. A completion is `prev has it` ∧ `now does not` ∧ `a piece stands there` — see
+ * `reveal-model.completedTiles` for why the third clause is what separates a build from a
+ * CANCELLATION, and for the sim receipt that the three facts are atomic on one tick.
+ *
+ * ⛔ IT IS EMPTIED ON EVERY ROOM ENTRY AND EXIT, and that is what "a completion while the room is
+ * not focused draws nothing, and does not queue a stale reveal for the next visit" MEANS in code.
+ * The map only ever holds rows this surface itself observed while open on this room; a builder who
+ * finishes a bunk three compartments away is never in it, so there is nothing to fire when the
+ * player walks in an hour later and the piece is simply part of the room.
+ */
+let _bpPrev = new Map();
+/** Tiles with a reveal IN FLIGHT — `"x,y" → {timer, endAt}`. Read by `furnitureSvg` (which draws
+ *  nothing for them) and by nothing else. This is the suppression, and it is a SET OF TILES rather
+ *  than a flag on a piece because the layer it suppresses is rebuilt from scratch every repaint. */
+const _revealing = new Map();
+/** The `viewBox` the live reveals were composed against — see `paintLayers`' projection guard. */
+let _revealViewBox = '';
+/**
+ * ⭐⭐ WHICH ROOM THE DRAW-IN STATE ABOVE BELONGS TO — `"anchor|deck|slot"`, and this one line is the
+ * WHOLE class of focus-swap bugs closed at a choke point instead of one door at a time.
+ *
+ * ⛔ THE LIST WAS THE WRONG SHAPE, MEASURED TWICE. `_bpPrev` and `_revealing` are keyed `"x,y"` with
+ * NO DECK in the key (each is only ever read against one `_focus`, which carries the deck), and two
+ * slots on two decks routinely occupy the SAME RECT — the fixture's deck-1 `hold` and deck-0
+ * `workshop` do, and so does the shipped wreck. So any door that swaps `_focus` without emptying
+ * this state reads the OLD room's queued sites as completions in the NEW one: a phantom fitting
+ * drawn in, and the real piece on that tile suppressed for 1.2 s. Review found `onCrewRow` after I
+ * had "fixed" `onMinimapSlot`, which is exactly the failure mode CLAUDE.md names — *sweep the class,
+ * not the list*.
+ *
+ * ⇒ EVERY SWAP GOES THROUGH `repaint()` BY CONSTRUCTION (there is no way to show a different room
+ * without one), and `syncReveals` is the first thing in the paint that reads this state. Comparing
+ * the room's IDENTITY there catches every existing door AND every door nobody has written yet. The
+ * per-site calls that used to sit in `enterRoom` and `onMinimapSlot` are GONE with it: a redundant
+ * call whose removal leaves the suite green is the M5a survivor shape all over again.
+ *
+ * ⚠️ IDENTITY, NOT GEOMETRY. `repaint()` re-resolves `_focus` from the live decks channel every
+ * paint, so the same room's RECT can move under us — that is a different failure with a different
+ * remedy (`paintLayers`' `viewBox` guard, which finishes a reveal whose projection moved). A rect
+ * change must NOT empty `_bpPrev`, or a completion arriving on the same repaint as a resize would be
+ * silently dropped.
+ */
+let _revealRoom = '';
+/**
+ * ⭐ THE TILES THE SCENE DREW A PIECE ON LAST REPAINT — the fourth clause of the completion join.
+ * See `reveal-model.completedTiles`' ⛔⛔ block for the corrected atomicity argument and the
+ * pop-vanish-draw it removes. It is a fact about what was PAINTED, so it advances on every repaint,
+ * including one where the `designs` channel has not spoken.
+ */
+let _prevPieces = new Set();
 let _zoneKey = null;      // .rz-zonekey (WP-3: what the zone marks MEAN, in words)
 let _zoneKeySig = '';     // last-rendered key HTML — re-set only on change (the minimap pattern)
 let _toast = null;
@@ -398,6 +459,16 @@ function buildSkeleton() {
     '<div class="rz-space"></div>' +
     '<div class="rz-canvas" id="rz-canvas">' +
       '<svg class="rz-layers" id="rz-layers" xmlns="http://www.w3.org/2000/svg"></svg>' +
+      // ⭐⭐ THE DRAW-IN OVERLAY — the piece a builder has just finished, drawing itself in. A THIRD
+      // persistent sibling on the same box, for the SAME reason as the two below it: `#rz-layers` is
+      // `innerHTML`-replaced on every coalesced wire repaint, and a `stroke-dashoffset` animation
+      // needs a node that outlives the message that started it.
+      // ⛔ ITS PLACE IN THE STACK IS A DECISION. It sits DIRECTLY ABOVE `#rz-layers` and BELOW the
+      // build ghost, because the ghost is the preview of the NEXT thing the player is about to put
+      // down and the reveal is the LAST thing they put down — a hover ghost must draw over a piece
+      // that is still being inked in, exactly as it draws over a piece that is already there.
+      // (`#rz-layers < #rz-reveal < #rz-ghost < #rz-pawnlay`, pinned by `canvasMountOrder()`.)
+      '<svg class="rz-revealer" id="rz-reveal" xmlns="http://www.w3.org/2000/svg"></svg>' +
       // ⭐⭐ THE BUILD GHOST'S ROOT — see `paintGhost`. A SIBLING of the layer stack, never a layer
       // in it: the stack is `innerHTML`-replaced on every coalesced wire repaint and the ghost
       // follows the POINTER, which moves an order of magnitude more often than the ship does.
@@ -494,6 +565,19 @@ function buildSkeleton() {
   _canvas = $('rz-canvas');
   _layers = $('rz-layers');
   _ghost = $('rz-ghost');
+  _revealSvgEl = $('rz-reveal');
+  _revealLayer = _revealSvgEl ? makeRevealLayer(_revealSvgEl, { groupClass: 'rz-reveal' }) : null;
+  // …and ALL the trigger's state is reset with the nodes it drives, through the one function that
+  // knows what "all" is. ⚠️ THIS USED TO EMPTY TWO OF THE FIVE BY HAND and was caught in review —
+  // the very shape the sentence here warned about: a second mount would have left `_prevPieces`,
+  // `_revealViewBox` and `_revealRoom` holding the old skeleton's answers.
+  // ⚠️ AND SAY THE HONEST HALF, MEASURED: **REVERTING THIS LINE TO THE TWO-OF-FIVE VERSION CHANGES
+  // NOTHING OBSERVABLE** (it is the one surviving mutation in this package's table). A re-mount is
+  // always followed by a room entry, and `syncReveals`' room-identity check cold-starts everything
+  // on that room's first paint anyway. It is here because "six pieces of state that must be cleared
+  // together" is the shape the next lane half-clears, and because a partial clear beside a function
+  // whose whole job is the full one is a lie about what this file believes.
+  clearReveals();
   _pawnSvgEl = $('rz-pawnlay');
   _pawnLayer = _pawnSvgEl ? makePawnLayer(_pawnSvgEl, { groupClass: 'rz-pawn-root' }) : null;
   // ⛔ AND THE INTERPOLATOR IS RESET WITH THE NODES IT DRIVES. `_pawnLayer` is rebuilt here, so a
@@ -662,6 +746,13 @@ export function enterRoom(anchor) {
   if (_pawnLayer) _pawnLayer.clear();
   _tween.clear();
   _place = null;
+  // ⛔ NO `clearReveals()` HERE ANY MORE, AND THE ABSENCE IS THE FIX RATHER THAN A REGRESSION. A new
+  // room IS a cold start for the draw-in, but this is not the place that decides it: `repaint()`
+  // below reaches `syncReveals`, whose FIRST act is to compare the room's identity against the one
+  // the draw-in state belongs to and empty everything when they differ (`_revealRoom`). A call here
+  // would be a second, partial answer to a question one choke point already answers for every door —
+  // including the two that were missing it, and the ones nobody has written. Its removal is
+  // measured: the mutation that deletes the choke point reddens both focus-swap legs.
   document.body.classList.add('roomzoom-open');
   repaint();
 }
@@ -685,6 +776,7 @@ export function exitRoom() {
   if (_pawnLayer) _pawnLayer.clear();   // see `enterRoom` — a closed surface holds no pawn state
   _tween.clear();
   _place = null;
+  clearReveals();       // …and no half-drawn furniture, and no memory of what was queued in here
   document.body.classList.remove('roomzoom-open');
   _onExit();
 }
@@ -899,6 +991,21 @@ function paintLayers(frame, crew, designs, decor, selCid) {
     setAttr(_pawnSvgEl, 'viewBox', scene.viewBoxAttr);
     setAttr(_pawnSvgEl, 'preserveAspectRatio', 'xMidYMid meet');
   }
+  // …and the draw-in overlay, from the same `scene`, for the same reason.
+  if (_revealSvgEl) {
+    setAttr(_revealSvgEl, 'viewBox', scene.viewBoxAttr);
+    setAttr(_revealSvgEl, 'preserveAspectRatio', 'xMidYMid meet');
+  }
+  // ⛔ AND A REVEAL WHOSE PROJECTION MOVED UNDER IT IS FINISHED EARLY, NEVER LEFT TO DRAW ITSELF IN
+  // THE WRONG PLACE. The pawn overlay survives a changed `viewBox` because it re-projects every
+  // figure every frame; a reveal is composed ONCE (its whole point is that nothing rewrites it), so
+  // if the room's rect moves — a wall built out, a compartment merged — the group is standing in the
+  // old scene's coordinates. Ending it here hands the tile straight back to the furniture layer
+  // below, which is drawn from the NEW placement: the piece is simply there, which is the honest
+  // degradation. This is the "instant appear" arm reduced motion already takes.
+  if (_revealing.size && _revealViewBox && _revealViewBox !== scene.viewBoxAttr) {
+    for (const key of Array.from(_revealing.keys())) finishReveal(key);
+  }
   // …and the placement is cached for the frame loop, which must project a tween's tile coordinate
   // WITHOUT rebuilding the scene (a full repaint per frame is what this package exists to avoid).
   _place = place;
@@ -927,6 +1034,18 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   // the furniture pass must NOT also stand the door's own sprite in the same opening — see
   // `furnitureSvg`'s header for the live symptom this closed.
   const doorTiles = roomDoorTiles(frame, _focus, currentDeckView());
+  // ⭐⭐ THE DRAW-IN'S TRIGGER RUNS **BEFORE** THE FURNITURE LAYER IS BUILT, and the ordering is the
+  // whole of "no double draw". A completion is detected on the SAME repaint that first carries the
+  // finished piece, so if the layer were assembled first the piece would be painted normally for one
+  // frame and then vanish under the suppression as the overlay started — a flash, at 5–10 Hz, on
+  // every build. Detected here, the tile is in `_revealing` before `furnitureSvg` is called and the
+  // scene has never drawn it.
+  // ⛔ AND `itemStackTileKeys` IS DERIVED ONCE, HERE, FOR BOTH CONSUMERS. The trigger asks which
+  // tiles the furniture layer would draw a piece for, and the furniture layer then draws them; two
+  // calls would be two derivations of one fact, which is how the suppression comes to be computed
+  // for a tile set the layer no longer agrees with.
+  const stockedTiles = itemStackTileKeys(_itemTiles);
+  syncReveals(scene, place, cells, stockedTiles, doorTiles, designs);
   body += roomDoorsSvg(scene, _focus, doorTiles);
   body += materialLayerSvg(roomMaterialTiles(frame, _focus, decodeMaterials(Hud.getMaterials())), place);
   // Zones sit ABOVE the material layer, and that ordering is unchanged and still load-bearing: a
@@ -935,7 +1054,7 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   // material 0 and are skipped, which is the only reason the wrong order ever looked correct.)
   body += zoneLayerSvg(_zoneTiles, _focus, place, unit);
   body += decorSvg(roomDecor(decor, _focus), place);
-  body += furnitureSvg(cells, itemStackTileKeys(_itemTiles), _deviceCond, place, doorTiles);
+  body += furnitureSvg(cells, stockedTiles, _deviceCond, place, doorTiles, _revealing);
   // WP-2 — debris + dig/strip marks, IN THE FLOOR PLANE and ABOVE the furniture layer.
   //
   // ⛔ THE ORDER IS THE ONE THING IN THIS STACK THAT IS NOT ABOUT THE PROJECTION, and it is kept
@@ -1079,6 +1198,193 @@ function startTween() {
   // silently dropped). This assignment must be allowed to land on 0 for exactly that reason.
   const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
   _tweenRaf = raf(tweenFrame);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// THE DRAW-IN — a finished piece writes itself onto the paper
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ⭐⭐ ONE REPAINT'S WORTH OF THE TRIGGER: what finished, what is still drawing, what is done.
+ *
+ * ⛔ THE SIGNAL IS THE WIRE'S OWN AND THERE IS NO CLIENT TIMER ANYWHERE IN IT. Nothing here counts
+ * ticks, estimates build progress, or watches a job. It compares two consecutive readings of the
+ * `designs` channel against the tile's own drawn state — see `reveal-model.completedTiles` for the
+ * sim receipt that `BuildSystem.Complete` clears the row and spawns the piece on ONE tick, and for
+ * why the second half of the test is what distinguishes a build from a cancelled order. The only
+ * clock in the whole feature is the one that ends the animation, and it is armed from the SCHEDULE
+ * (`revealFragment` returns the envelope it composed) rather than from a guess about the sim.
+ *
+ * ⚠️ AND IT IS A NO-OP UNTIL THE CHANNEL HAS SPOKEN. `Hud.getDesigns()` is null before the first
+ * `designs` message; `roomDesigns(null, …)` correctly answers "no sites", and taken as a reading
+ * that would make every site this room knew about look CLEARED at once. The gate is the message's
+ * presence, and while it is absent `_bpPrev` is not advanced either — an un-updated memory is
+ * recoverable, a memory overwritten with a non-answer is not.
+ */
+function syncReveals(scene, place, cells, stocked, doorTiles, designs) {
+  if (!_revealLayer) return;
+  // ⛔⛔ THE FOCUS-SWAP CHOKE POINT, AND IT IS THE FIRST THING IN THE PAINT ON PURPOSE — see
+  // `_revealRoom`'s header for why this replaced a per-door list, and for the identical-rect
+  // measurement that made a list the wrong shape.
+  const room = _focus ? (_focus.anchor + '|' + (_focus.deck | 0) + '|' + (_focus.slotIndex | 0)) : '';
+  if (room !== _revealRoom) { clearReveals(); _revealRoom = room; }
+  // ⭐⭐ ONE CALL, AND THE **SAME** CALL THE FURNITURE LAYER MAKES. `pieceTileKeys` is the one
+  // derivation of "which tiles get a fitting"; restating its rule here — even correctly, even with
+  // the same three arguments — is a second authority on exactly the question the suppression must
+  // agree with the layer about. Review drove the cheapest wrong restatement (drop `doorTiles`) and a
+  // completing BOUNDARY DOOR then drew its own sprite into the paper plate the cutaway had already
+  // drawn: the VR-P3 double-draw, re-created by the draw-in. `draw-reveal.test.js` pins it in both
+  // directions on one glyph.
+  const pieces = pieceTileKeys(cells, stocked, doorTiles);
+  // ⛔ NEXT, RETIRE ANYTHING THE SIM HAS TAKEN BACK. A piece can be demolished, or its glyph
+  // overwritten, while its own reveal is still running — the tile then leaves `pieces`, the
+  // furniture layer stops drawing it, and the overlay would be the ONLY copy left: a fitting that
+  // outlives its own removal, for a second, with no wire row behind it.
+  for (const key of Array.from(_revealing.keys())) {
+    if (!pieces.has(key)) finishReveal(key);
+  }
+  // ⚠️ AND THIS ADVANCES **BEFORE** THE `designs` GATE BELOW, because it is a fact about what the
+  // SCENE PAINTED and not about what the channel said. A repaint that draws the piece while the
+  // channel is silent still has to be remembered, or the split-repaint case it exists to catch
+  // (`completedTiles`' ⛔⛔ block) reappears through the one door that skips the rest of this
+  // function.
+  const wasDrawn = _prevPieces;
+  _prevPieces = pieces;
+  if (!designs) return;                       // the channel has not spoken — see the header
+  const now = new Map();
+  for (const g of roomDesigns(designs, _focus)) now.set(g.x + ',' + g.y, g);
+  // ⚠️ REDUCED MOTION TAKES THE **SAME** JOIN AND SIMPLY DOES NOT MOUNT, so there is no second code
+  // path to rot: `_bpPrev` still advances, the furniture layer still draws the piece the instant it
+  // exists, and the visitor gets exactly the pre-package behaviour (`pawn-layer.js`'s own rule for
+  // the tween, stated once and obeyed here).
+  if (!_reduce) {
+    const done = completedTiles(_bpPrev, now, pieces, wasDrawn);
+    if (done.length) {
+      // The cell walk happens ONCE per repaint that completes anything, never once per completion:
+      // a builder finishing the last two bunks of a row is the normal case, not the exotic one.
+      const byTile = new Map();
+      for (const c of cells) if (c && c.itemId) byTile.set(c.tx + ',' + c.ty, c);
+      for (const { key, was } of done) startReveal(key, was, byTile.get(key), place, scene);
+    }
+  }
+  _bpPrev = now;
+}
+
+/**
+ * Compose and mount ONE finished piece's draw-in.
+ *
+ * ⭐ THE PIECE IS `standItem`'s, NOT A COPY OF IT — the exact call `furnitureSvg` is about to be
+ * told not to make. Preview → blueprint → built → DRAWN-IN are now four states of one object drawn
+ * by one builder, which is the rule `ghostSvg` already states for the first three; a fifth
+ * derivation of "what does a locker look like at (7,3) facing 2" is how the overlay and the layer
+ * would come to disagree, and the disagreement would be visible as a jump at the hand-off.
+ *
+ * ⛔ THE FACING IS THE `devices` ROW'S WHEN THERE IS ONE AND THE BLUEPRINT'S OTHERWISE, and the
+ * fallback is not defensive: `GameSession` sends `frame` (which carries the glyph, so the piece
+ * exists) BEFORE `devices` (which carries the facing) in one render pass. A repaint that lands
+ * between the two therefore knows the piece and not yet which way round it is — and the blueprint's
+ * own `facing` is the answer, because it is what the player turned the ghost to and what the sim
+ * stored on the site (`PendingBuild.Facing`). Reading 0 instead would draw the reveal one way and
+ * the settled piece another.
+ */
+function startReveal(key, was, cell, place, scene) {
+  const [tx, ty] = key.split(',').map((v) => v | 0);
+  if (!cell || !cell.itemId) return;
+  const row = _deviceCond.get(key);
+  const facing = row ? (row.face & 3) : ((was && was.facing) | 0) & 3;
+  const cond = row ? row.cond : undefined;
+  const built = standItem(cell.itemId, tx, ty, place, 'rz-rv-' + tx + '-' + ty, cond, facing);
+  const { html, count, timing } = revealFragment(built);
+  // ⛔ A FRAGMENT WITH NOTHING TO ANIMATE IS NOT MOUNTED. `count === 0` means the piece carries no
+  // stroked and no filled element this module recognises — an empty group, or art drawn entirely
+  // through a `<use>`. Mounting it would suppress the layer's copy for 1.2 s and put an EMPTY group
+  // in its place: the tile would be blank for the whole animation, which is worse than no feature.
+  if (!count) return;
+  _revealLayer.mount(key, html);
+  _revealViewBox = scene.viewBoxAttr;
+  const timer = later(() => onRevealElapsed(key), timing.total);
+  _revealing.set(key, { timer, ms: timing.total, count });
+}
+
+/**
+ * The animation's own end. FINISH FIRST, THEN REPAINT, and the order is the double-draw rule.
+ *
+ * `finishReveal` drops the tile out of the suppression set and takes the overlay copy away; the
+ * `repaint()` that follows rebuilds the furniture layer, which now draws the piece. Both happen in
+ * ONE synchronous task, so there is no instant at which a viewer — or a test reading the DOM —
+ * could see two copies or none: the overlay is gone before the scene is rebuilt, and the scene is
+ * rebuilt before control returns.
+ */
+function onRevealElapsed(key) {
+  if (!finishReveal(key)) return;
+  if (_open && _focus) repaint();
+}
+
+/** End one reveal: cancel its timer, drop the suppression, take the overlay copy away. No repaint —
+ *  callers that need one say so, because the two call sites want opposite things (the timer wants
+ *  the scene rebuilt now; `paintLayers` is already rebuilding it and must not recurse). */
+function finishReveal(key) {
+  const rec = _revealing.get(key);
+  if (!rec) return false;
+  if (rec.timer) cancelLater(rec.timer);
+  _revealing.delete(key);
+  if (_revealLayer) _revealLayer.unmount(key);
+  return true;
+}
+
+/** ⭐ EVERY PIECE OF DRAW-IN STATE, GONE, IN ONE CALL — the cold start. Five things, and they are
+ *  cleared together because they are one fact about one room: the animations in flight, their
+ *  clocks, the trigger's memory of what was queued, the projection they were composed against, and
+ *  the record of what the scene painted last. "Two pieces of state that must be cleared together"
+ *  is the shape the next lane half-clears; that is why `buildSkeleton` calls THIS rather than
+ *  emptying two of the five by hand, and why the focus-swap choke point calls it too. */
+function clearReveals() {
+  for (const [, rec] of _revealing) { if (rec.timer) cancelLater(rec.timer); }
+  _revealing.clear();
+  _bpPrev = new Map();
+  _prevPieces = new Set();
+  _revealViewBox = '';
+  _revealRoom = '';
+  if (_revealLayer) _revealLayer.clear();
+}
+
+/** ⚠️ RESOLVED OFF THE GLOBAL AT CALL TIME, NOT CAPTURED AT MODULE LOAD. A node rig drives this
+ *  animation's clock by installing its own `setTimeout` (the same way the rigs install their own
+ *  `document`, `window` and `requestAnimationFrame`), and a captured reference would silently keep
+ *  the real one — so the suite would be waiting on wall time for an animation it is supposed to be
+ *  holding still. */
+function later(fn, ms) {
+  return (typeof setTimeout === 'function') ? setTimeout(fn, ms) : 0;
+}
+function cancelLater(h) {
+  if (typeof clearTimeout === 'function') clearTimeout(h);
+}
+
+/**
+ * ⭐⭐ WHICH TILES DOES `furnitureSvg` DRAW A PIECE FOR — ONE DERIVATION, TWO CONSUMERS.
+ *
+ * The draw-in must suppress exactly what the layer would otherwise draw, and "exactly" is doing all
+ * the work: a boundary door is drawn by the CUTAWAY and skipped here (`doorTiles`), and a tile whose
+ * loose stock is drawn by the item layer is skipped there too. A reveal that mounted a copy of a
+ * piece the layer was never going to draw would ADD a fitting to the room for 1.2 s — a sliding door
+ * standing half a metre in front of the paper plate the cutaway already drew, which is the exact
+ * double-draw VR-P3's review found and fixed. Re-stating the rule beside the rule is how the two
+ * come apart, so `furnitureSvg` asks this function rather than carrying its own copy of the test.
+ *
+ * @returns {Set<string>} `"x,y"` keys
+ */
+export function pieceTileKeys(cells, stocked, doorTiles) {
+  const skip = stocked instanceof Set ? stocked : new Set();
+  const plated = new Set((Array.isArray(doorTiles) ? doorTiles : []).map((d) => d.tx + ',' + d.ty));
+  const out = new Set();
+  for (const c of (Array.isArray(cells) ? cells : [])) {
+    if (!c || !c.itemId) continue;
+    const key = c.tx + ',' + c.ty;
+    if (plated.has(key)) continue;
+    if (isResourceItem(c.itemId) && skip.has(key)) continue;
+    out.add(key);
+  }
+  return out;
 }
 
 /** The live drag-build preview: the tiles the current sweep WOULD designate.
@@ -1591,8 +1897,12 @@ export function materialLayerSvg(tiles, place, focus = _focus) {
  *  half a metre in front of it. Live on `hall_d0_s1`, where the two overlapped into an unreadable
  *  smear. `doorTiles` is `roomDoorTiles`' own EDGE-ONLY list (its header argues that limit), so an
  *  INTERIOR partition door keeps its sprite: the cutaway never drew that one, and dropping it would
- *  delete a door from the room instead of de-duplicating one. */
-function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
+ *  delete a door from the room instead of de-duplicating one.
+ *
+ *  `revealing` (2026-08-06) is the set of tiles whose piece is DRAWING ITSELF IN on `#rz-reveal`
+ *  right now. Absent ⇒ nothing is suppressed and this pass behaves exactly as it did. See the
+ *  suppression's own comment in the loop for why it is a skip and not an opacity. */
+function furnitureSvg(cells, stocked, deviceCond, place, doorTiles, revealing) {
   const out = [];
   const skip = stocked instanceof Set ? stocked : new Set();
   const cond = deviceCond instanceof Map ? deviceCond : new Map();
@@ -1615,10 +1925,37 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
   // The wrapper is `standingPiece`, SHARED with `decorSvg` rather than written twice — see its header
   // for why a second copy is how the decor layer was left latent-wrong by the first cut of this fix.
   const fit = standingPiece;
+  // ⭐⭐ THE PIECE RULE IS ASKED, NOT RESTATED — `pieceTileKeys` is the ONE derivation of "which
+  // tiles get a fitting", and the draw-in's suppression asks the identical function. See its header
+  // for why a second copy of this test beside this test is how the overlay and the layer would come
+  // to disagree about a boundary door.
+  const pieces = pieceTileKeys(cells, skip, doorTiles);
+  const drawing = revealing instanceof Map || revealing instanceof Set ? revealing : new Set();
   for (const c of cells) {
-    if (plated.has(c.tx + ',' + c.ty)) continue;
-    if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
+    const key = c.tx + ',' + c.ty;
     if (c.itemId) {
+      if (!pieces.has(key)) continue;
+      // ⭐⭐ THE DRAW-IN'S SUPPRESSION, AND IT IS ONE LINE BECAUSE IT IS THE HONEST MECHANISM. While a
+      // piece is drawing itself in on the overlay, THIS layer draws nothing for its tile — so there
+      // is exactly one copy of it in the document at every instant, through every repaint, with no
+      // opacity trick and no second element to keep in sync. The tile leaves the set when the
+      // animation's own envelope elapses (`onRevealElapsed`), and the very next repaint — which that
+      // function performs synchronously — puts the settled piece back here where it belongs.
+      // ⚠️⚠️ THE COST, STATED PROPERLY — the first draft of this paragraph UNDERSTATED it and review
+      // corrected it, so both the claim and the correction stand here. For those ~1.2 s the piece is
+      // not a press target (the overlay is `pointer-events:none`, and this is the tier that carries
+      // `data-tile`), so a press falls through to the floor-plane inverse. What that inverse answers
+      // is NOT "the tile you clicked": a fitting STANDS UP off its floor point, so its top and front
+      // faces hang over the tiles BEHIND it — VR-P3-a measured the consequence on the wreck's cryo
+      // bay through the real gesture, and of 18 drawn fittings the inverse alone resolved 16 to a
+      // DIFFERENT tile (1–3 rows back) and 2 to no tile at all. A tall piece is the bad case: a press
+      // on a cryopod's BODY during its reveal designates a NEIGHBOUR. It is bounded (one tile, one
+      // animation, on a square the player has just watched a builder finish) and the alternative —
+      // freezing the layer's copy in place to keep the hit box — is the double draw this package
+      // exists to prevent. ⛔ COMPOSITION ITEM FOR THE INTEGRATOR: `lane/place-in-vacuum` (in review)
+      // rewrites `tileAt` for `PIECE_SUBJECT_TOOLS`. Re-drive this window after BOTH land — the
+      // rewrite may narrow the cost or move it, and neither lane can see the merged behaviour.
+      if (drawing.has(key)) continue;
       // ⭐⭐ THE FACING IS JOINED ON `(tx,ty)` FROM THE `devices` CHANNEL — the same row `cond`
       // already comes from, and it has to be a join rather than a field on the cell: a fitting is
       // chosen by the FRAME'S GLYPH BYTE (`roomCells` → `itemForGlyph`), and a glyph cell is one
@@ -1627,7 +1964,7 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
       const row = cond.get(c.tx + ',' + c.ty);
       out.push(fit(c.tx, c.ty, standItem(c.itemId, c.tx, c.ty, place, 'rz-f-' + c.tx + '-' + c.ty,
         row ? row.cond : undefined, row ? row.face : 0)));
-    } else {
+    } else if (!plated.has(key) && !skip.has(key)) {
       // VS-Z-25's unknown chip, in the paper dialect: an INK `6 5` dashed plate — the charter's
       // UNBUILT/PLANNED spelling, which is the honest thing to say about a glyph with no art, and
       // emphatically not the oxblood a queued order wears.
@@ -2340,6 +2677,12 @@ function onCrewRow(rawCid) {
   // intrinsically escaped — running the name through `esc` first would show a player the literal
   // string `&amp;` where the room is called `R&D`. Escaping is for the `innerHTML` paths above.
   if (!target) { toast(who + ' IS IN ' + (row.roomName || row.anchor) + ' — CANNOT OPEN IT'); return; }
+  // ⛔ THIS IS THE **SECOND** FOCUS-SWAP DOOR, and review found it after the first one had been
+  // "fixed" with a line of its own. It assigns `_focus` and repaints exactly as `onMinimapSlot`
+  // does, so it had the identical draw-in bug: one crew-dock press on somebody a deck below drew a
+  // phantom fitting and suppressed the real piece for 1.2 s (the two rooms share a rect). It carries
+  // no clear of its own on purpose — `syncReveals`' room-identity check owns the whole class now,
+  // and a call here would let that check's own mutation survive on this path. See `_revealRoom`.
   _focus = target;
   _armed = null;
   _trayNav = TRAY_ROOT;
@@ -2360,6 +2703,11 @@ function onMinimapSlot(slotEl) {
   _armed = null;
   _trayNav = TRAY_ROOT;
   _drag = null; // a room swap abandons any in-progress sweep
+  // ⛔ THE DRAW-IN IS COLD-STARTED BY `repaint()` BELOW, NOT BY A LINE HERE. This door had an
+  // explicit `clearReveals()` for one round; review then found `onCrewRow` — a SECOND door of the
+  // identical shape, with the identical bug — so the answer moved to the one place every door has to
+  // pass through. See `_revealRoom`. Adding a call back here would make the choke point's own
+  // mutation survive on this path, which is how the list came to be wrong in the first place.
   repaint();
 }
 

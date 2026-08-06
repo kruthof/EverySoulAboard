@@ -49,14 +49,50 @@ body.moss-open #roomzoom-view{display:none !important}
   border:1px solid var(--paper-border,#C6BBA2);box-shadow:var(--plate-shadow)}
 .rz-layers{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);display:block}
 .rz-layers svg.pawn,.rz-layers .pl-item{shape-rendering:auto}
-/* ⛔⛔ THREE SIBLING ROOTS IN ONE BOX, AND THE SOURCE ORDER **IS** THE PAINT ORDER.
-   `.rz-layers` < `.rz-ghostlayer` < `.rz-pawnlay` — the floor and its furniture, then the preview of
-   what the player is about to put down, then the people. THE RULE IT ENCODES: a layer that EXPLAINS
-   the floor must never HIDE A PERSON. All three carry the identical `inset:6px` box (which is
-   `.rz-pulse`'s, and has been since the pulse shipped) and are given the identical
-   `viewBox`/`preserveAspectRatio` from ONE `scene` object, so a scene coordinate means the same
-   point in all three; any divergence in the CLIENT box is a divergence in the projection.
+/* ⛔⛔ FOUR SIBLING ROOTS IN ONE BOX, AND THE SOURCE ORDER **IS** THE PAINT ORDER.
+   `.rz-layers` < `.rz-revealer` < `.rz-ghostlayer` < `.rz-pawnlay` — the floor and its furniture,
+   then the piece a builder has just finished drawing itself in, then the preview of what the player
+   is about to put down, then the people. THE RULE IT ENCODES: a layer that EXPLAINS the floor must
+   never HIDE A PERSON. All four carry the identical `inset:6px` box (which is `.rz-pulse`'s, and has
+   been since the pulse shipped) and are given the identical `viewBox`/`preserveAspectRatio` from ONE
+   `scene` object, so a scene coordinate means the same point in all four; any divergence in the
+   CLIENT box is a divergence in the projection.
    Pinned as an ORDER, not as a set, by `canvasMountOrder()` — see its note. */
+/* ⭐⭐ THE DRAW-IN OVERLAY (2026-08-06) — where a just-finished piece writes itself onto the paper.
+   ⛔ IT SITS DIRECTLY ON `.rz-layers` AND UNDER THE GHOST, which is a decision and not an accident:
+   the ghost previews the NEXT placement and must draw over a piece still being inked exactly as it
+   draws over one that is already there, while the reveal itself must cover the floor the piece is
+   standing on. Same `inset:6px` box and same `pointer-events:none` as its two siblings; the tile
+   under a drawing piece is answered by `tileAt`'s closed-form inverse for the ~1.2 s it takes
+   (roomzoom-view.js's suppression comment states that cost). */
+.rz-revealer{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);
+  display:block;pointer-events:none}
+.rz-revealer .pl-item{shape-rendering:auto}
+/* ⭐⭐ ONE KEYFRAMES BLOCK FOR THE WHOLE FEATURE, and it carries BOTH properties because a treated
+   piece's elements are not cleanly one or the other: `sketch.js`'s `repaint()` arm re-emits a body
+   with its fill AND its stroke intact, so the same element must ink its outline and wash its face.
+   `stroke-dashoffset` is meaningless on a fill-only element and `fill-opacity` on a `fill="none"`
+   one, so the single block is exact rather than merely convenient.
+   ⛔ `stroke-dasharray: 1 1` LIVES HERE AND THE OFFSET DOES NOT, and that asymmetry is the
+   fail-visible rule: `stroke-dashoffset` defaults to 0, so an element carrying this dash with NO
+   animation running (no stylesheet, an old engine, `animation:none` below) draws its dash from 0 to
+   1 — the WHOLE path. A piece whose animation never starts is a piece that is simply there.
+   The per-element `animation-delay` and `animation-duration` are written INLINE by
+   `reveal-model.revealFragment`, computed from the element's index in emission order — which is
+   painter order, which is drawing order (that module's header carries the argument). */
+@keyframes rz-rv-draw{from{stroke-dashoffset:1;fill-opacity:0}to{stroke-dashoffset:0;fill-opacity:1}}
+.rz-rv-ink{stroke-dasharray:1 1;animation-name:rz-rv-draw;animation-timing-function:linear;
+  animation-fill-mode:both}
+.rz-rv-fill{animation-name:rz-rv-draw;animation-timing-function:linear;animation-fill-mode:both}
+/* ⭐ REDUCED MOTION — INSTANT APPEAR, and it is belt to `roomzoom-view.js`'s braces. That file reads
+   `prefersReducedMotion()` once at mount and never MOUNTS a reveal at all, which is the real
+   answer (no overlay, no suppression, the piece is drawn by the normal layer the instant it
+   exists). This rule exists for the box where the query answer changes after boot: with the
+   animation off, the dash above draws the whole path and the piece is complete. Same promise the
+   `.rz-pulse-tile` rule at the bottom of this file already makes. */
+@media (prefers-reduced-motion: reduce){
+  .rz-rv-ink,.rz-rv-fill{animation-name:none}
+}
 /* ⭐⭐ THE BUILD GHOST'S OWN SVG — a SECOND root over `.rz-layers`, at the IDENTICAL box, so the two
    share one viewBox and one `xMidYMid meet` fit and a scene coordinate means the same thing in both.
    ⛔ IT IS A SEPARATE ROOT AND NOT A LAYER IN THE STACK, for the reason `.rz-pulse` is a div: the
