@@ -162,7 +162,16 @@ const PALETTE_CMD = Object.freeze({
   medbed:{ cls: 'functional', verb: 'place',  kind: 'medbed', deviceKind: 'MedBed' },
   table: { cls: 'functional', verb: 'place',  kind: 'table',  deviceKind: 'Table' },
   rug:   { cls: 'cosmetic',   verb: 'decor',  itemId: 'rug' },
-  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'bookshelf' },
+  // — lane/paper-machines — `itemId` was `'bookshelf'` (the warm row) until 2026-08-05; it is the
+  // paper `book-case` now. ⛔ THE TOOL PLACES NOTHING, AND THE FIRST DRAFT OF THIS COMMENT SAID IT
+  // DID. `roomzoom-view.js`'s `cls === 'cosmetic'` branch toasts `decorRefusalText(_armed)` and stops
+  // — SHELF and RUG stopped writing decor on 2026-08-04, on purpose, because the piece vanished on
+  // reload and no other surface could see it. `addDecor` survives in this module with no caller in
+  // `client/src`, and the host's `decor` channel is a static empty list (`GameSession.cs:2800-2801`).
+  // So this row is a FORWARD-LOOKING rewire: if the decor path ever returns, the tool draws the paper
+  // piece rather than the warm one. Nothing about the tool, the verb, the class or what a click does
+  // moved. ⚠️ It also does not answer M4-6 ("wire it or remove it"), which is the owner's, and open.
+  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'book-case' },
   // ORDER class (console-retirement WP-4) — a DESIGNATION, not a build. It consumes no material and
   // changes no geometry: it marks a tile as intent and the sim's job board picks it up. `verb` is the
   // wire verb NAME (`dig`/`stockpile`/`strip`), which is what makes it emphatically NOT a build:

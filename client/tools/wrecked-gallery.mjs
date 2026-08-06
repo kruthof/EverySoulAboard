@@ -96,7 +96,10 @@ const mockByLabel = new Map(brokenD.map((b) => [b.name, b]));
 // The predicate is now the ledger's own invariant, stated in `wrecked.js` as: `WRECKED_IDS` is every
 // registry row MINUS `NO_WRECKED_TWIN`, in registry order. `wrecked.test.js` asserts the same thing
 // by strict deep-equality; this is the cheap arithmetic form, and it names the ledger so the next row
-// added to it does not resurrect the exit 2.
+// added to it does not resurrect the exit 2. ⚠️ THE TWO NUMBERS QUOTED ABOVE ARE PRE-MERGE: after
+// lane/paper-resources merged in, this tree prints 93 rows − 3 ledgered (`swarf`, `cell-spent`,
+// `turnings`) = 90 twins. The predicate below is DERIVED, so it needed no edit for that — which is
+// the point of writing it as the ledger's invariant instead of as a literal.
 const twinExempt = Object.keys(NO_WRECKED_TWIN).length;
 if (WRECKED_IDS.length !== ITEM_IDS.length - twinExempt) {
   console.error(`FAIL: ${ITEM_IDS.length} registry rows − ${twinExempt} ledgered exempt `

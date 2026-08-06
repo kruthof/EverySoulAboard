@@ -326,7 +326,9 @@ test('paletteCommand maps every one of the twenty-one tools to a class + verb', 
     assert.equal(byTool[t].deviceKind, dk);
   }
   assert.deepEqual(byTool.rug, { cls: 'cosmetic', verb: 'decor', itemId: 'rug' });
-  assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'bookshelf' });
+  // — lane/paper-machines — `itemId` was `'bookshelf'` until 2026-08-05. This is the only draw site
+  // in the client that reaches a cosmetic piece, so it is the only one the paper machines rewire.
+  assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'book-case' });
   assert.deepEqual(byTool.demolish, { cls: 'demolish', verb: null });
   // The THREE ORDER verbs. `verb` is the WIRE verb name, not 'build': an order is a designation, and
   // routing it through Cmd.build would hand it to BuildSystem (controls.js:52-58). STOCKPILE joined
@@ -542,7 +544,9 @@ test('roomCells clamps to the room rect + deck and skins glyphs to items / unkno
 
 test('itemForGlyph maps device glyphs, skips floor/wall, and is empty for the unmapped', () => {
   assert.equal(itemForGlyph('D'.charCodeAt(0)), 'desk');
-  assert.equal(itemForGlyph('P'.charCodeAt(0)), 'potted-plant');
+  // — lane/paper-machines — `'P'` (PlantPot) moved from the warm `potted-plant` to the paper
+  // `plant-pot` on 2026-08-05. What this leg asserts is unchanged: a device glyph resolves to a piece.
+  assert.equal(itemForGlyph('P'.charCodeAt(0)), 'plant-pot');
   assert.equal(itemForGlyph('.'.charCodeAt(0)), '');
   assert.equal(itemForGlyph('#'.charCodeAt(0)), '');
   assert.equal(itemForGlyph('z'.charCodeAt(0)), '');
@@ -773,11 +777,14 @@ test('demolishTarget: a device wearing BORROWED art is still a device (the Light
   // THE NAMED CASE. Both premises are asserted first: if the substitution moves or `wall-lamp` stops
   // being cosmetic, this test is naming a trap that no longer exists and must say so out loud rather
   // than pass quietly.
-  assert.equal(GLYPH_TO_ITEM['*'], 'wall-lamp',
-    "'*' (DeviceKind.Light) no longer resolves to wall-lamp — re-point this test at whatever the "
+  // — lane/paper-fixtures — the borrow moved to `lamp-sconce` (the same wall sconce, paper/ink).
+  // It is STILL a cosmetic row, so the trap this test names is still live and still exercised; had
+  // the redesign made Light functional this test would have had to be dropped, loudly, instead.
+  assert.equal(GLYPH_TO_ITEM['*'], 'lamp-sconce',
+    "'*' (DeviceKind.Light) no longer resolves to lamp-sconce — re-point this test at whatever the "
     + 'cosmetic-substituted glyph is now, or drop it if there is none.');
-  assert.equal(ITEMS['wall-lamp'].kind, 'cosmetic',
-    'wall-lamp is no longer a cosmetic row, so the case below no longer exercises the trap it names');
+  assert.equal(ITEMS['lamp-sconce'].kind, 'cosmetic',
+    'lamp-sconce is no longer a cosmetic row, so the case below no longer exercises the trap it names');
   assert.deepEqual(demolishTarget(5, 7, [], [], frameWith([[5, 7, '*']])), { kind: 'device', verb: 'remove' },
     'DEMOLISH on a LIGHT classified as something other than a device. A Light is placeable furniture '
     + 'with its own palette tool and RoomOutfitter puts one in every room on --ship grid: this is a '
@@ -3620,9 +3627,38 @@ function chipAt(html, tx, ty) {
   return m ? m[1] : null;
 }
 
-/** The `idPrefix` the ITEM layer builds a stack's piece with, per tile and slot — so a test can say
- *  WHICH layer drew a piece on a tile. The furniture layer's is `rz-f-<tx>-<ty>`. */
-const stackId = (tx, ty, slot = 0) => 'rz-it-' + tx + '-' + ty + '-' + slot;
+/**
+ * ⛔ THE HELPER THAT USED TO LIVE HERE WAS A PROXY, AND IT WENT RED FOR THE WRONG REASON.
+ * It read `const stackId = (tx, ty, slot = 0) => 'rz-it-' + tx + '-' + ty + '-' + slot;` — the
+ * `idPrefix` the item layer hands `buildItem` — and "did the layer draw a piece here?" was answered
+ * by searching the HTML for that string. ⚠️ AN `idPrefix` ONLY REACHES THE OUTPUT IF THE PIECE
+ * REGISTERS A `<defs>` ENTRY: `scene.pat`/`lin`/`rad` name their defs after it and nothing else does.
+ * Every ground-stack piece happened to use a gradient, so the proxy held — until three pieces of the
+ * paper redraw (`gear-set`, `ice-block`, `turnings`) legitimately needed no def at all, and two
+ * driven tests reported "the stack drew nothing" about a stack that was drawn perfectly.
+ *
+ * ⇒ THE MARKERS BELOW ARE THE LAYER'S OWN, and they exist for exactly this: `itemStackSvg` writes
+ * `class="rz-item" data-tile="tx,ty"` per tile and `class="rz-stack" data-kind="N"` per slot, on
+ * purpose, as test hooks. Nothing about them depends on how a piece is painted.
+ */
+const stackTile = (tx, ty) => 'class="rz-item" data-tile="' + tx + ',' + ty + '"';
+
+/**
+ * The KIND BYTES the item layer drew on one tile, in emission order — or `null` when the layer put
+ * no group on that tile at all. The two answers are kept apart deliberately: "the tile was not
+ * drawn" and "the tile was drawn with no slots" fail in the same direction and mean opposite things.
+ *
+ * The slice runs from this tile's group to the NEXT tile's, which is exact because the layer emits
+ * one group per tile in order; `rz-stack` appears in no other layer, so an unbounded tail on the
+ * last tile cannot pick up a neighbour's slots.
+ */
+function stackSlotsAt(html, tx, ty) {
+  const i = html.indexOf(stackTile(tx, ty));
+  if (i < 0) return null;
+  const next = html.indexOf('class="rz-item"', i + 1);
+  const seg = html.slice(i, next < 0 ? html.length : next);
+  return [...seg.matchAll(/class="rz-stack" data-kind="([^"]+)"/g)].map((m) => m[1]);
+}
 const furnId = (tx, ty) => 'rz-f-' + tx + '-' + ty;
 /** The badge/chip texts the item layer drew, in emission order (anchored on the badge text colour). */
 // ⭐ VR-P3 — the badge's ink moved to the paper dialect: the count plate is PAPER with an INK
@@ -3667,7 +3703,7 @@ test('THE PILE IS DRAWN ONCE, FROM THE CHANNEL (driven): count present, frame du
     const after = rzLayers.innerHTML;
 
     assert.ok(after.includes('class="rz-items"'), 'the item layer must reach the DOM');
-    assert.ok(after.includes(stackId(tx, ty)),
+    assert.deepEqual(stackSlotsAt(after, tx, ty), ['0'],
       'the ITEM layer drew no piece on the stocked tile — the count has nothing to sit beside');
     assert.deepEqual(badges(after), ['40'],
       'the COUNT is the fact no projection byte could ever carry: a stack of 1 and a stack of 40 '
@@ -3706,8 +3742,9 @@ test('LOSS 2 (driven): two kinds on one tile are BOTH drawn — the projection c
     Hud.renderItems(itemsMsg([[tx, ty, 0, 7], [tx, ty, 3, 2]]));
     rzApi.exit(); rzApi.enter('hold');
     const html = rzLayers.innerHTML;
-    assert.ok(html.includes(stackId(tx, ty, 0)), 'the stack the projection DROPPED must be drawn');
-    assert.ok(html.includes(stackId(tx, ty, 1)), 'and so must the one it kept');
+    assert.deepEqual(stackSlotsAt(html, tx, ty), ['0', '3'],
+      'BOTH slots must be drawn, in the channel\'s own order — the one the projection DROPPED '
+      + '(Regolith) and the one it kept (Potato).');
     assert.deepEqual(badges(html), ['7', '2'], 'with a count each — two piles, two numbers');
     assert.ok(html.includes('data-kind="0"') && html.includes('data-kind="3"'),
       'both KINDS must be named, or the two slots could be two drawings of the same pile');
@@ -3742,7 +3779,7 @@ test('LOSS 3 (driven): a stack on a DEVICE tile is drawn, and drawn ABOVE the de
     rzApi.exit(); rzApi.enter('hold');
     const html = rzLayers.innerHTML;
 
-    assert.ok(html.includes(stackId(tx, ty)),
+    assert.deepEqual(stackSlotsAt(html, tx, ty), ['5'],
       'a stack stored on a device tile drew nothing. Under the projection it reached the client '
       + 'nowhere at all — pass 4 painted the device glyph over it — and that is loss 3.');
     assert.deepEqual(badges(html), ['12'], 'and it must carry its count');
@@ -3751,7 +3788,7 @@ test('LOSS 3 (driven): a stack on a DEVICE tile is drawn, and drawn ABOVE the de
       + 'letter chip) may be dropped on a stocked tile: real furniture art says what is installed '
       + 'there, the stack says what is lying there, and both are true.');
 
-    assert.ok(html.indexOf(stackId(tx, ty)) > html.indexOf(furnId(tx, ty)),
+    assert.ok(html.indexOf(stackTile(tx, ty)) > html.indexOf(furnId(tx, ty)),
       'the stack is drawn BEFORE (i.e. underneath) the device sprite, so the player sees the machine '
       + 'and not the stock — the wire loss removed and the same loss reintroduced in the client');
   } finally {
@@ -3773,12 +3810,12 @@ test('an items dispatch ALONE repaints the surfaces — the cache is not enough'
   try {
     rzApi.exit(); rzApi.enter('hold');
     await new Promise((r) => setTimeout(r, 40));
-    assert.ok(!rzLayers.innerHTML.includes(stackId(tx, ty)), 'precondition: nothing is stocked yet');
+    assert.equal(stackSlotsAt(rzLayers.innerHTML, tx, ty), null, 'precondition: nothing is stocked yet');
 
     // NOTHING ELSE IS DISPATCHED. No frame, no decks, no rooms — only the channel under test.
     Hud.renderItems(itemsMsg([[tx, ty, 8, 9]]));
     await new Promise((r) => setTimeout(r, 40));
-    assert.ok(rzLayers.innerHTML.includes(stackId(tx, ty)),
+    assert.deepEqual(stackSlotsAt(rzLayers.innerHTML, tx, ty), ['8'],
       'an `items` message reached the cache and the Room Zoom never repainted. The channel is '
       + 'deduped by GameSession.Send, so on a quiet ship it is sent ONCE — a haul that just landed '
       + 'would then sit invisible until some unrelated channel moved.');
@@ -4090,7 +4127,10 @@ test('THE DOOR BUG (driven): a CLOSED door in a room rect draws a door, not a da
     assert.ok(html.includes(furnId(tx, ty)),
       'the door tile drew NOTHING. That is the other half of the defect and it is worse than the '
       + 'chip: "make the NON_FURNITURE sets agree" would have shipped exactly this.');
-    assert.equal(itemForGlyph('+'.charCodeAt(0)), 'sliding-door',
+    // — lane/paper-fixtures — `'+'` moved from the warm `sliding-door` to the paper `door-sliding`
+    // on 2026-08-05. Same object, same DeviceKind, same closed-door meaning; the warm row stays
+    // registered at `glyph: null` so its wrecked twin keeps the mock bijection at seventy.
+    assert.equal(itemForGlyph('+'.charCodeAt(0)), 'door-sliding',
       "the closed-door glyph must resolve to the set's own door leaf, not to some other piece");
   } finally {
     Hud.renderFrame(wreck);
@@ -4101,7 +4141,9 @@ test('THE DOOR BUG (driven): a CLOSED door in a room rect draws a door, not a da
 // The LOCKED state is a SEPARATE decision and a separate piece, because the SVG furniture layer
 // reads `cell[0]` only — `GlyphColor.Locked` (GlyphMapper.cs:243) reaches neither surface, so the
 // art is the one channel left that can say "locked" rather than merely "shut".
-// MUTATION: delete the `X: 'blast-door'` entry from GLYPH_SUBSTITUTE ⇒ RED.
+// MUTATION: delete the `X: 'door-blast'` entry from GLYPH_SUBSTITUTE ⇒ RED.
+// — lane/paper-fixtures — the entry moved from `blast-door` to `door-blast` on 2026-08-05: the same
+// reinforced slab with the same two hazard bands, in the paper/ink dialect.
 test('a LOCKED door draws a DIFFERENT door — the only channel left that can say locked', () => {
   const f = slotFocus('hold');
   const tx = f.rx + 5, ty = f.ry + 3;
@@ -4113,7 +4155,7 @@ test('a LOCKED door draws a DIFFERENT door — the only channel left that can sa
     assert.equal(chipAt(rzLayers.innerHTML, tx, ty), null,
       'a LOCKED door drew the dashed box with a raw `X` in it');
     assert.ok(rzLayers.innerHTML.includes(furnId(tx, ty)), 'a locked door drew nothing at all');
-    assert.equal(itemForGlyph('X'.charCodeAt(0)), 'blast-door');
+    assert.equal(itemForGlyph('X'.charCodeAt(0)), 'door-blast');
     assert.notEqual(itemForGlyph('X'.charCodeAt(0)), itemForGlyph('+'.charCodeAt(0)),
       'LOCKED and CLOSED collapsed onto one piece. `cell[1]` never reaches this layer, so a player '
       + 'would then have no way at all to tell a sealed door from a shut one.');
@@ -5423,7 +5465,17 @@ test('the device-tile fallback resolves EVERY DeviceKind — the 29-kind round-t
   // of them is a device whose art belongs to ANOTHER registry row — the sixth trap's own subject,
   // and the exact set `GLYPH_SUBSTITUTE`'s header names.
   const BORROWERS = [
-    ['Light', 'wall-lamp'], ['WaterTank', 'oxygen-tank'], ['SalvageRecycler', 'water-recycler'],
+    // ⚠️ `Light` REPOINTED wall-lamp → lamp-sconce ON THE MERGE (lane/paper-fixtures moved
+    // `GLYPH_SUBSTITUTE['*']` onto the paper luminaire). The BORROW is unchanged in shape — a
+    // cosmetic row worn by a live `DeviceKind` — which is why this row survives the repoint
+    // instead of leaving the census. Auto-merge could not see this; the suite went red on it.
+    // ⚠️ `WaterTank` AND `SalvageRecycler` REPOINTED ON THIS MERGE (lane/paper-machines moved
+    // `GLYPH_SUBSTITUTE['O']` onto `bottle-rack` and `['Y']` onto `reclaimer-stack`, so the whole
+    // plant is paper). Same shape as the `Light` repoint below it: the BORROW is unchanged — a row
+    // belonging to another `DeviceKind` worn by a live one — only the drawing moved. ⛔ BOTH OF
+    // THESE AUTO-MERGED CLEAN AND THEN WENT RED, exactly as `Light` and the Door leg did, which is
+    // the third time this control has caught a repoint no textual merge could see.
+    ['Light', 'lamp-sconce'], ['WaterTank', 'bottle-rack'], ['SalvageRecycler', 'reclaimer-stack'],
     ['Radiator', 'space-heater'], ['MedCabinet', 'locker'], ['IceMelter', 'cooker'],
   ];
   for (const [kind, piece] of BORROWERS) {
@@ -5447,7 +5499,9 @@ test('the device-tile fallback resolves EVERY DeviceKind — the 29-kind round-t
   const DOOR = DEVICE_KIND_NAMES.indexOf('Door');
   if (itemForDeviceRow({ kind: POD, open: 0 }) !== 'capsule-sealed') fails.push('a shut pod is not card 31');
   if (itemForDeviceRow({ kind: POD, open: 1 }) !== 'capsule-open') fails.push('an open pod is not card 32');
-  if (itemForDeviceRow({ kind: DOOR, open: 0 }) !== 'sliding-door') fails.push('a shut door is not a door');
+  // ⚠️ `'+'` MOVED OFF THE WARM `sliding-door` ONTO THE PAPER `door-sliding` (lane/paper-fixtures).
+  // Same glyph, same kind, a different registry row — another auto-merge-clean collision.
+  if (itemForDeviceRow({ kind: DOOR, open: 0 }) !== 'door-sliding') fails.push('a shut door is not a door');
   if (itemForDeviceRow({ kind: DOOR, open: 1 }) !== '') {
     fails.push('an OPEN doorway resolves to a door leaf. An open doorway is a gap and both surfaces '
       + 'draw nothing for it — restoring a leaf because a pawn is walking through would be a new lie.');

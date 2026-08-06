@@ -33,5 +33,11 @@ client/tools/shots-roomzoom/
 client/tools/shots-capsules/
 # — lane/paper-materials —
 client/tools/shots-paper-materials/
+# — lane/paper-resources —
+client/tools/shots-paper-resources/
+# — lane/paper-fixtures —
+client/tools/shots-paper-fixtures/
+# — lane/paper-machines —
+client/tools/shots-machines/
 # — lane/material-under-pawn —
 client/tools/shots-material-pawn/

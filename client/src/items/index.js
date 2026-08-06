@@ -3,12 +3,21 @@
 // pairs the pure SVG builder with its sim classification from docs/design/perilune-item-mapping.md:
 //
 // ⚠️ "ALL 70 PIECES OF THE MOCK" WAS THIS FILE'S OPENING CLAUSE AND IS NO LONGER TRUE. The registry
-// is 84: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
+// is 120: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
 // sim fact the mock predates (`ItemKind.Swarf`, from the wreck start's salvage rule) and it is
 // deliberately LAST of the mock-order block — see its own comment for why the position is NOT
-// load-bearing. After it come the owner's fittings catalogue rows: nine at VR-P2 (2026-08-05) and
-// four more the same day when the catalogue grew its "Capsules and cells" section, 71 → 80 → 84.
+// load-bearing. After it come the redesign's own rows: nine from the owner's fittings catalogue
+// (VR-P2, 2026-08-05), four more the same day when the catalogue grew its "Capsules and cells"
+// section, then the NINE PAPER GROUND STACKS, then the FOURTEEN PAPER FIXTURES — the ship's
+// architecture, redrawn — and then the THIRTEEN PAPER MACHINES, the ship's own plant
+// (lane/paper-machines, the same day): 71 → 80 → 84 → 93 → 107 → 120.
 // ⚠️ RE-COUNT THAT NUMBER OFF THE TABLE, NEVER OFF THIS PARAGRAPH — `client/test/items.test.js` does.
+//
+// ⚠️ AND `resource` IS NOW TWO POPULATIONS, which is the one thing a reader of this table has to
+// know before trusting a row. A resource row is either LIVE — it claims a sim `ItemKind` name and a
+// `Glyphs.ForItem` char, and both joins land on it — or SUPERSEDED, meaning its art is still here and
+// still builds but another row took both joins (`itemKind: null, glyph: null, supersededBy: '…'`).
+// The nine warm ground stacks are all superseded; see `resSuperseded` below for why they are kept.
 //
 // ⚠️ THE MOCK ALSO CARRIES 70 *WRECKED* TWINS AND THEY ARE NOT IN THIS TABLE. They live in
 // `client/src/items/wrecked.js`, keyed by the PRISTINE itemId, because a wrecked piece is not a
@@ -94,6 +103,12 @@ import * as F from './fixtures.js';
 import * as R from './resources.js';
 import * as C from './cryo.js';
 import * as FT from './fittings.js';
+// — lane/paper-resources —
+import * as PR from './paper-resources.js';
+// — lane/paper-fixtures —
+import * as PF from './paper-fixtures.js';
+// — lane/paper-machines — the thirteen paper machines (see the section at the bottom of `ITEMS`).
+import * as MC from './machines.js';
 
 const fn = (kind, glyph = null) => ({ kind, glyph });
 const dev = (deviceKind, glyph = null, deviceStatus = 'exists') => ({
@@ -107,6 +122,30 @@ const wall = () => ({ kind: 'material', material: 'wall', glyph: '#' });
 const floor = () => ({ kind: 'material', material: 'floor', glyph: '.' });
 /** A GROUND STACK: `itemKind` is the sim `ItemKind` member name, `glyph` its `Glyphs.ForItem` char. */
 const res = (itemKind, glyph) => ({ kind: 'resource', itemKind, glyph });
+/**
+ * — lane/paper-resources — A SUPERSEDED GROUND STACK: still a `resource` row, still a real builder,
+ * but claiming NEITHER the sim kind NOR the glyph any more, because another row draws that pile now.
+ *
+ * ⚠️ THE TWO JOINS BOTH HAVE TO MOVE AND THEY ARE NOT THE SAME JOIN — confusing them is trap 6.
+ * A resource row is reached TWICE: `glyph-map.js`'s `deriveGlyphToItem` resolves a projected
+ * `Glyphs.ForItem` char to a piece, and `room-model.js` joins the `items` channel's kind BYTE through
+ * `STOCK_KINDS` → `RESOURCE_ITEM_BY_KIND_NAME` → a piece. The first keys on `glyph`, the second on
+ * `itemKind`, and BOTH derivations take the FIRST row that claims the key — so a demoted row that
+ * kept either field would silently keep winning it, from above the new row, forever. Setting both to
+ * `null` is what actually hands the join over; `supersededBy` names the row that took it, so the
+ * demotion is greppable and the guard can check the pair rather than trusting a comment.
+ *
+ * ⛔ RETIRING THE ROWS OUTRIGHT WAS CONSIDERED AND REFUSED, with the cost measured rather than
+ * guessed — the same call the capsules lane made for `cryo-capsule-occupied`. Eight of these nine
+ * have twins that are eight of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
+ * `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as a
+ * bijection — that walk is the whole of the evidence that the other sixty-two are transcribed
+ * correctly. Deleting them would take `MOCK_TWIN_IDS` to 62 and force a third ledger to be invented
+ * so the bijection could be relaxed. Nine dead rows cost a reader one paragraph.
+ */
+const resSuperseded = (supersededBy) => ({
+  kind: 'resource', itemKind: null, glyph: null, supersededBy,
+});
 
 /**
  * ITEMS[itemId] = { build, size, kind, ... }. Order follows the mock (objects → walls → floors →
@@ -116,7 +155,8 @@ const res = (itemKind, glyph) => ({ kind: 'resource', itemKind, glyph });
 export const ITEMS = Object.freeze({
   // ── OBJECTS (30) ──
   'reactor':          { build: O.reactor,         size: { w: 64, h: 64 }, ...dev('Reactor', null, 'new') },
-  'solar-panel':      { build: O.solarPanel,      size: { w: 92, h: 56 }, ...dev('SolarWing', 'G') },
+  // — lane/paper-machines — glyph 'G' moved to `solar-wing`; see the MACHINES section below.
+  'solar-panel':      { build: O.solarPanel,      size: { w: 92, h: 56 }, ...dev('SolarWing', null) },
   // ⚠️ `glyph: null` SINCE 2026-08-05, AND IT IS A DEMOTION RATHER THAN AN OVERSIGHT. This row is
   // catalogue 27, the CELL RACK, and it held `'B'` (`Glyphs.ForDevice(DeviceKind.Battery)`) from the
   // mock until the owner's "Capsules and cells" revision. `'B'` now belongs to `cell-sound` (34 rows
@@ -131,7 +171,8 @@ export const ITEMS = Object.freeze({
   'battery-bank':     { build: FT.batteryBank,     size: FT.SIZES['battery-bank'], ...dev('Battery', null) },
   'o2-scrubber':      { build: FT.o2Scrubber,      size: FT.SIZES['o2-scrubber'], ...dev('Scrubber', 'S') },
   'oxygen-tank':      { build: O.oxygenTank,      size: { w: 38, h: 70 }, ...dev('OxygenTank', null, 'new') },
-  'water-recycler':   { build: O.waterRecycler,   size: { w: 60, h: 66 }, ...dev('Reclaimer', 'R') },
+  // — lane/paper-machines — glyph 'R' moved to `reclaimer-stack`.
+  'water-recycler':   { build: O.waterRecycler,   size: { w: 60, h: 66 }, ...dev('Reclaimer', null) },
   'hydroponics':      { build: FT.hydroponics,     size: FT.SIZES['hydroponics'], ...dev('GrowBed', '"') },
   'cooker':           { build: FT.cooker,          size: FT.SIZES['cooker'], ...dev('Cooker', null, 'new') },
   'cooler':           { build: FT.cooler,          size: FT.SIZES['cooler'], ...cos('cooler') },
@@ -143,14 +184,18 @@ export const ITEMS = Object.freeze({
   'locker':           { build: FT.locker,          size: FT.SIZES['locker'], ...dev('Locker', 'L') },
   'rug':              { build: FT.rug,             size: FT.SIZES['rug'], ...cos('rug') },
   'standing-lamp':    { build: FT.standingLamp,    size: FT.SIZES['standing-lamp'], ...cos('standing_lamp') },
-  'potted-plant':     { build: O.pottedPlant,     size: { w: 58, h: 68 }, ...dev('PlantPot', 'P') },
+  // — lane/paper-machines — glyph 'P' moved to `plant-pot`.
+  'potted-plant':     { build: O.pottedPlant,     size: { w: 58, h: 68 }, ...dev('PlantPot', null) },
   'bookshelf':        { build: O.bookshelf,       size: { w: 80, h: 66 }, ...cos('bookshelf') },
-  'med-bed':          { build: O.medBed,          size: { w: 52, h: 78 }, ...dev('MedBed', 'd') },
+  // — lane/paper-machines — glyph 'd' moved to `med-cot`.
+  'med-bed':          { build: O.medBed,          size: { w: 52, h: 78 }, ...dev('MedBed', null) },
   'research-console': { build: FT.researchConsole, size: FT.SIZES['research-console'], ...dev('Terminal', 'T') },
   'comms-dish':       { build: O.commsDish,       size: { w: 90, h: 90 }, ...cos('comms_dish') },
-  'sensor-array':     { build: O.sensorArray,     size: { w: 88, h: 88 }, ...dev('Telescope', 'x') },
+  // — lane/paper-machines — glyph 'x' moved to `ring-array`.
+  'sensor-array':     { build: O.sensorArray,     size: { w: 88, h: 88 }, ...dev('Telescope', null) },
   'workbench':        { build: FT.workbench,       size: FT.SIZES['workbench'], ...dev('MachineShop', 'M') },
-  'fabricator':       { build: O.fabricator,      size: { w: 70, h: 64 }, ...dev('Fabricator', 'F') },
+  // — lane/paper-machines — glyph 'F' moved to `fab-cell`.
+  'fabricator':       { build: O.fabricator,      size: { w: 70, h: 64 }, ...dev('Fabricator', null) },
   'storage-crate':    { build: FT.storageCrate,    size: FT.SIZES['storage-crate'], ...cos('storage_crate') },
   'blast-door':       { build: O.blastDoor,       size: { w: 78, h: 70 }, ...dev('Door', null) },
   'turret':           { build: O.turret,          size: { w: 48, h: 74 }, ...cos('turret') },
@@ -202,11 +247,25 @@ export const ITEMS = Object.freeze({
   // `'+'` is `Glyphs.DoorClosed`, i.e. `Glyphs.ForDevice(DeviceKind.Door)` — the rest glyph of the
   // kind, so this row is an ordinary `ForDevice` claim and needs no exception anywhere. The piece is
   // a steel leaf with a lit centre strip: a shut door, which is what the tile means.
-  'sliding-door':     { build: F.slidingDoor,     size: { w: 96, h: 70 }, ...dev('Door', '+') },
+  //
+  // ⚠️ THAT PARAGRAPH IS HISTORY SINCE 2026-08-05 (lane/paper-fixtures) AND IS QUOTED, NOT DELETED,
+  // BECAUSE THE JOIN IT DESCRIBES IS UNCHANGED — only the row it lands on moved. `'+'`, `'H'` and
+  // `'^'` now belong to `door-sliding`, `deck-hatch` and `vent-grille` in the PAPER FIXTURES section
+  // at the bottom of this table, which are the same three objects drawn in the owner's paper/ink
+  // dialect. These three keep their `deviceKind`, their class, their `size` and their wrecked twins
+  // and are UNREACHED WARM ART, in exactly the position `battery-bank` and the two cryo capsules are
+  // in and for exactly their reason.
+  // ⛔ RETIRING THEM WAS CONSIDERED AND REFUSED, and the cost is measured rather than guessed: their
+  // twins are three of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
+  // `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as
+  // a bijection — that walk is the whole of the evidence that the other sixty-seven are transcribed
+  // correctly. Three dead rows cost a reader one paragraph; a relaxed bijection costs the next lane
+  // its instrument.
+  'sliding-door':     { build: F.slidingDoor,     size: { w: 96, h: 70 }, ...dev('Door', null) },
   'airlock':          { build: F.airlock,         size: { w: 80, h: 80 }, ...dev('Door', null) },
-  'hatch-ladder':     { build: F.hatchLadder,     size: { w: 64, h: 74 }, ...dev('Ladder', 'H') },
+  'hatch-ladder':     { build: F.hatchLadder,     size: { w: 64, h: 74 }, ...dev('Ladder', null) },
   'power-conduit':    { build: F.powerConduit,    size: { w: 96, h: 14 }, ...dev('Conduit', null) },
-  'air-vent':         { build: F.airVent,         size: { w: 72, h: 56 }, ...dev('AirVent', '^') },
+  'air-vent':         { build: F.airVent,         size: { w: 72, h: 56 }, ...dev('AirVent', null) },
   'pipe-run':         { build: FT.pipeRun,         size: FT.SIZES['pipe-run'], ...dev('Pipe', null) },
   'wall-lamp':        { build: F.wallLamp,        size: { w: 52, h: 44 }, ...cos('wall_lamp') },
   'viewport':         { build: F.viewport,        size: { w: 90, h: 64 }, ...cos('viewport') },
@@ -238,14 +297,23 @@ export const ITEMS = Object.freeze({
   // table and the enum itself — nothing produces it, nothing consumes it, no recipe names it. It is
   // dead E3 mining vocabulary and must not be given art until it is real, so it STAYS in
   // `NO_GROUND_ITEM_SPRITE` (client/test/device-sprite-coverage.test.js) with that as its reason.
-  'regolith':         { build: R.regolith,        size: { w: 70, h: 46 }, ...res('Regolith', ',') },
-  'potato':           { build: R.potato,          size: { w: 68, h: 48 }, ...res('Potato', 'f') },
-  'scrap':            { build: R.scrap,           size: { w: 72, h: 48 }, ...res('Scrap', 's') },
-  'parts':            { build: R.parts,           size: { w: 68, h: 54 }, ...res('Parts', 'p') },
-  'controller-module':{ build: R.controllerModule, size: { w: 84, h: 50 }, ...res('ControllerModule', 'c') },
-  'seals':            { build: R.seals,           size: { w: 72, h: 62 }, ...res('Seals', 'g') },
-  'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...res('Ice', 'i') },
-  'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...res('Corpse', '&') },
+  //
+  // ⚠️ ALL EIGHT WENT `itemKind: null, glyph: null` ON 2026-08-05 (lane/paper-resources) AND THE
+  // PARAGRAPH ABOVE IS NOW HISTORY, NOT WIRING. The nine ground stacks were redrawn in the owner's
+  // paper/ink dialect — `client/src/items/paper-resources.js`, the nine rows at the bottom of this
+  // table — and both joins moved with them: the `Glyphs.ForItem` char AND the `ItemKind` name. These
+  // eight keep their class, their builder, their `size` and their mock twins, and are now UNREACHED
+  // WARM ART, in exactly the position `battery-bank` and the two cryo capsules are in.
+  //   Everything the note above says about `MetalOre` is still true and still lives in
+  // `NO_GROUND_ITEM_SPRITE`; only the rows the eight kinds land on changed.
+  'regolith':         { build: R.regolith,        size: { w: 70, h: 46 }, ...resSuperseded('spoil-heap') },
+  'potato':           { build: R.potato,          size: { w: 68, h: 48 }, ...resSuperseded('tuber-crate') },
+  'scrap':            { build: R.scrap,           size: { w: 72, h: 48 }, ...resSuperseded('plate-offcut') },
+  'parts':            { build: R.parts,           size: { w: 68, h: 54 }, ...resSuperseded('gear-set') },
+  'controller-module':{ build: R.controllerModule, size: { w: 84, h: 50 }, ...resSuperseded('control-card') },
+  'seals':            { build: R.seals,           size: { w: 72, h: 62 }, ...resSuperseded('seal-set') },
+  'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...resSuperseded('ice-block') },
+  'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...resSuperseded('body-bag') },
 
   // ── CRYO (2) — FUNCTIONAL since the wreck start (W3) ──
   // ⚠️ THE NOTE THAT STOOD HERE IS QUOTED RATHER THAN DELETED, BECAUSE IT WAS TRUE WHEN WRITTEN AND
@@ -314,7 +382,10 @@ export const ITEMS = Object.freeze({
   // the mock was drawn, so there is no mock piece and no mock WRECKED twin for it. The missing twin is
   // ledgered by name in `client/src/items/wrecked.js` (`NO_WRECKED_TWIN`) with its reason; it is not an
   // omission to be filled in later.
-  'swarf':            { build: R.swarf,          size: { w: 74, h: 50 }, ...res('Swarf', 'w') },
+  // ⚠️ AND THIS ONE WENT `null`/`null` WITH THE EIGHT ABOVE — see their block. `turnings` draws
+  // `ItemKind.Swarf` now; this row is unreached warm art and keeps its `NO_WRECKED_TWIN` line,
+  // because the reason for that line is a fact about the MATERIAL and follows it onto the new art.
+  'swarf':            { build: R.swarf,          size: { w: 74, h: 50 }, ...resSuperseded('turnings') },
 
   // ── FITTINGS (9) — THE CATALOGUE ROWS THE MOCK NEVER HAD (VR-P2) ──────────────────────────────
   //
@@ -373,13 +444,177 @@ export const ITEMS = Object.freeze({
   // byte at `WRECK_THRESHOLD`, the same predicate every other device uses.
   //
   // ⇒ `cell-spent` therefore carries `glyph: null` (it is a Battery, in a state the wire spells with
-  // a number rather than a char) and is the second entry ever in `NO_WRECKED_TWIN`: a spent cell IS
+  // a number rather than a char) and is an entry in `NO_WRECKED_TWIN`: a spent cell IS
   // the wrecked state, so "a wrecked spent cell" names nothing the sim can reach. That is `swarf`'s
-  // argument, in its second instance.
+  // argument, in a second instance. ⚠️ RE-COUNT THAT LEDGER OFF `wrecked.js`, NOT OFF THIS COMMENT —
+  // it was written when the ledger held two and the paper ground stacks brought `turnings` (the same
+  // argument, third instance) the same day.
   'capsule-sealed':   { build: FT.capsuleSealed, size: FT.SIZES['capsule-sealed'], ...dev('CryoPod', 'K') },
   'capsule-open':     { build: FT.capsuleOpen,   size: FT.SIZES['capsule-open'],   ...dev('CryoPod', 'k') },
   'cell-sound':       { build: FT.cellSound,     size: FT.SIZES['cell-sound'],     ...dev('Battery', 'B') },
   'cell-spent':       { build: FT.cellSpent,     size: FT.SIZES['cell-spent'],     ...dev('Battery', null) },
+
+  // ── PAPER GROUND STACKS (9) — lane/paper-resources, 2026-08-05 ───────────────────────────────
+  //
+  // The nine loose piles of the `items` wire channel, redrawn in the owner's paper/ink dialect on
+  // the cabinet-oblique kit. They REPLACE the eight warm mock resources and `swarf` — see that block
+  // above for the demotion and why those rows are kept — so this is a NINE-ROW ADDITION that moves
+  // no sim kind and no glyph anywhere else: the same nine `ItemKind`s, the same nine `Glyphs.ForItem`
+  // chars, nine different rows carrying them.
+  //
+  // ⚠️ THE IDS ARE NEW AND THAT IS DELIBERATE. A registry key is unique, so the redraw could not
+  // reuse `regolith`/`potato`/… while the warm rows stayed registered. Each new id names the OBJECT
+  // rather than the material — a spoil heap, a tuber crate, a body bag — which is the catalogue's own
+  // habit, and which is the honest description of what is drawn: the sim's `Potato` is a food unit,
+  // and what a hold floor actually carries is a crate of them.
+  //
+  //   Regolith          → spoil-heap        Seals    → seal-set
+  //   Potato            → tuber-crate       Ice      → ice-block
+  //   Scrap             → plate-offcut      Corpse   → body-bag
+  //   Parts             → gear-set          Swarf    → turnings
+  //   ControllerModule  → control-card
+  //
+  // ⚠️ NOTHING HAND-MIRRORS THAT TABLE. `itemKind` carries the sim's own enum member NAME and
+  // `glyph` its `Glyphs.ForItem` char, exactly as the warm rows did, so `room-model.js`'s kind-byte
+  // join and `glyph-map.js`'s glyph join both land here by DERIVATION. The list above is a reader's
+  // aid; `client/test/paper-resources.test.js` drives the real join for every one of the nine.
+  //
+  // ⛔ `size` IS `PR.SIZES`, THE DERIVED ONE, never a transcription — same rule as the fittings rows:
+  // a piece cannot disagree with its own drawing about how big it is.
+  'spoil-heap':       { build: PR.spoilHeap,     size: PR.SIZES['spoil-heap'],    ...res('Regolith', ',') },
+  'tuber-crate':      { build: PR.tuberCrate,    size: PR.SIZES['tuber-crate'],   ...res('Potato', 'f') },
+  'plate-offcut':     { build: PR.plateOffcut,   size: PR.SIZES['plate-offcut'],  ...res('Scrap', 's') },
+  'gear-set':         { build: PR.gearSet,       size: PR.SIZES['gear-set'],      ...res('Parts', 'p') },
+  'control-card':     { build: PR.controlCard,   size: PR.SIZES['control-card'],  ...res('ControllerModule', 'c') },
+  'seal-set':         { build: PR.sealSet,       size: PR.SIZES['seal-set'],      ...res('Seals', 'g') },
+  'ice-block':        { build: PR.iceBlock,      size: PR.SIZES['ice-block'],     ...res('Ice', 'i') },
+  'body-bag':         { build: PR.bodyBag,       size: PR.SIZES['body-bag'],      ...res('Corpse', '&') },
+  'turnings':         { build: PR.turnings,      size: PR.SIZES.turnings,         ...res('Swarf', 'w') },
+
+  // — lane/paper-fixtures —
+  // ── THE PAPER FIXTURES (14) — THE SHIP'S ARCHITECTURE, REDRAWN (2026-08-05) ───────────────────
+  //
+  // Owner-directed: *"produce new svg materials to replace the old ones… full spectrum for release;
+  // ensure the dimensionalities are correct."* These fourteen are doors, hatches, service runs, wall
+  // furniture and the three luminaires — the pieces a player meets in every corridor of
+  // `--ship wreck`, and the last block of the warm set still wearing the pre-redesign steel-and-amber
+  // drawings of `fixtures.js` (plus `blast-door` from `objects.js`). They are drawn in
+  // `client/src/items/paper-fixtures.js`, in the same paper/ink/oxblood oblique as the fittings
+  // catalogue, on the same cm-space vocabulary and through the same ONE derivation of the drawing
+  // scale (`fittings.geometryFor`).
+  //
+  // ⚠️ THEY ARE NOT CATALOGUE CARDS, and that is why they are a separate module rather than fourteen
+  // more rows in `fittings.js`. `design-import/Perilune Fittings.dc.html` has no card for any of
+  // them; every dimension in `paper-fixtures.SPECS` is a real-world measurement chosen here (a 1 m
+  // door opening, a 40 × 40 vent grille at duct height, a floodlight's mounting height), with the
+  // dimension line written into the spec's own comment the way the design document's footer asks for
+  // wall-hung pieces.
+  //
+  // ⚠️ SIX ARE FUNCTIONAL AND EIGHT ARE COSMETIC, and the split is a MEASUREMENT rather than a
+  // default — the same test `items.test.js` applies to every other row: a `functional` row must name
+  // a `DeviceKind` the sim really has. `Door` (three states), `Ladder`, `Conduit` and `AirVent` all
+  // exist and are all projected by `--ship wreck`; a porthole, a wall screen, an extract fan, an arms
+  // rack, a deck sign and the three luminaires name nothing in `DeviceKind` at all. ⛔ THE FAN AND
+  // THE LAMPS ARE THE ONES WORTH SAYING OUT LOUD: `DeviceKind.Light` exists and is projected, but the
+  // set has no FUNCTIONAL luminaire and never has — `GLYPH_SUBSTITUTE['*']` borrows a cosmetic row
+  // for it, which `items/glyph-map.js` records as a live trap and `room-model.js` records as a live
+  // bug it already cost. That borrow is REPOINTED to `lamp-sconce` in the same commit; its shape —
+  // a device wearing a cosmetic piece's art — is deliberately unchanged, because changing it is a
+  // decision about `DeviceKind.Light`, not about a drawing.
+  //
+  // ⚠️ `conduit-run` KEEPS `glyph: null` ON PURPOSE, exactly as `power-conduit` and `pipe-run` do:
+  // `Conduit` and `Pipe` share `'~'` (an intentional collision in `Glyphs.cs`) and both are
+  // utility-LENS overlay lines drawn by other layers, never furniture on a tile. `glyph-map.js` and
+  // `device-sprite-coverage.test.js` record that decision by name and this package does not touch it.
+  //
+  // Their wrecked twins are REPO-AUTHORED (no catalogue card, so nothing to transcribe) and are
+  // ledgered in `client/src/items/wrecked.js`'s `NON_MOCK_TWIN`, which is what keeps the twin↔mock
+  // bijection measuring exactly seventy.
+  'door-sliding':     { build: PF.doorSliding,    size: PF.SIZES['door-sliding'],    ...dev('Door', '+') },
+  'door-airlock':     { build: PF.doorAirlock,    size: PF.SIZES['door-airlock'],    ...dev('Door', null) },
+  'door-blast':       { build: PF.doorBlast,      size: PF.SIZES['door-blast'],      ...dev('Door', null) },
+  'deck-hatch':       { build: PF.deckHatch,      size: PF.SIZES['deck-hatch'],      ...dev('Ladder', 'H') },
+  'conduit-run':      { build: PF.conduitRun,     size: PF.SIZES['conduit-run'],     ...dev('Conduit', null) },
+  'vent-grille':      { build: PF.ventGrille,     size: PF.SIZES['vent-grille'],     ...dev('AirVent', '^') },
+  'extractor-fan':    { build: PF.extractorFan,   size: PF.SIZES['extractor-fan'],   ...cos('extractor_fan') },
+  'hull-port':        { build: PF.hullPort,       size: PF.SIZES['hull-port'],       ...cos('hull_port') },
+  'bulkhead-screen':  { build: PF.bulkheadScreen, size: PF.SIZES['bulkhead-screen'], ...cos('bulkhead_screen') },
+  'arms-rack':        { build: PF.armsRack,       size: PF.SIZES['arms-rack'],       ...cos('arms_rack') },
+  'deck-marker':      { build: PF.deckMarker,     size: PF.SIZES['deck-marker'],     ...cos('deck_marker') },
+  'lamp-sconce':      { build: PF.lampSconce,     size: PF.SIZES['lamp-sconce'],     ...cos('lamp_sconce') },
+  'grow-lamp':        { build: PF.growLamp,       size: PF.SIZES['grow-lamp'],       ...cos('grow_lamp') },
+  'flood-lamp':       { build: PF.floodLamp,      size: PF.SIZES['flood-lamp'],      ...cos('flood_lamp') },
+
+  // ── MACHINES (13) — lane/paper-machines, 2026-08-05 ───────────────────────────────────────────
+  //
+  // ⭐ THE SHIP'S OWN PLANT, ON PAPER. `design-import/Perilune Fittings.dc.html` is the owner's
+  // catalogue of things a CREW BUILDS and it draws no machinery at all, so after VR-P2 the reactor,
+  // the solar wing, the gas bottles, the reclaimer, the paste column, the med bed, the fab cell, the
+  // sensor array, the dish, the plant pot, the bookshelf, the turret and the cryopod were still
+  // wearing `objects.js`'s steel-and-glow mock art. That is charter §4's filed P2b in its most
+  // conspicuous form, because SIX of those thirteen are glyphs the sim really projects: a wreck deck
+  // drew warm art and paper art side by side on one screen. `client/src/items/machines.js` is the
+  // paper half; these thirteen rows are the wiring.
+  //
+  // ⚠️ SIX GLYPHS MOVED, AND THE OLD ROWS ARE KEPT AT `glyph: null`. Above, each strip is marked
+  // `— lane/paper-machines —` at the row it happens on:
+  //     'G' SolarWing  solar-panel    → solar-wing        'd' MedBed     med-bed      → med-cot
+  //     'R' Reclaimer  water-recycler → reclaimer-stack   'F' Fabricator fabricator   → fab-cell
+  //     'P' PlantPot   potted-plant   → plant-pot         'x' Telescope  sensor-array → ring-array
+  // ⛔ DELETING THE OLD ROWS WAS CONSIDERED AND REFUSED, with the cost measured rather than guessed.
+  // All thirteen are among the SEVENTY the mock draws, and `client/test/wrecked.test.js` walks
+  // `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as
+  // a bijection — that walk is the whole of the evidence that the other fifty-seven are transcribed
+  // correctly. Removing thirteen rows would take the mock population to 57 and force a third ledger
+  // ("mock pieces deliberately unclaimed") to be invented so the bijection could be relaxed. Thirteen
+  // dead rows cost a reader one paragraph; a relaxed bijection costs the next lane its instrument.
+  // ⇒ SO SAY IT OUT LOUD: `reactor`, `solar-panel`, `oxygen-tank`, `water-recycler`,
+  // `paste-dispenser`, `med-bed`, `fabricator`, `sensor-array`, `comms-dish`, `potted-plant`,
+  // `bookshelf`, `turret` and `cryopod` ARE NOW UNREACHED ART. They keep their class, their
+  // `deviceKind` and their wrecked twins, and nothing on either surface resolves to them.
+  //
+  // ⚠️ TWO OF THE THIRTEEN ARE `deviceStatus: 'new'`, LIKE THE ROWS THEY REPLACE. `DeviceKind.Reactor`
+  // and `DeviceKind.OxygenTank` do not exist in `sim/Sim.Core/Entities/Device.cs` — checked, not
+  // assumed — so neither piece can claim a `Glyphs.ForDevice` char and neither is placeable. Drawing
+  // them anyway is right: the catalogue-and-registry pair is the art authority, and a machine the
+  // owner asked for does not wait on an enum member. `items.test.js` pins the `new` list, so this is
+  // a decision recorded in a commit rather than a default.
+  //
+  // ⚠️ FIVE ARE COSMETIC, AND IT IS THE SAME MEASUREMENT THE NINE FITTINGS ROWS RECORD: a `functional`
+  // row must name a `DeviceKind` the sim really has. `paste-column`, `dish-mast`, `book-case`,
+  // `deck-turret` and `sleeper-pod` name nothing — there is no Dispenser, Antenna, Shelf, Turret or
+  // (single) Pod kind — exactly as their warm predecessors named nothing. Their decor keys are NEW
+  // strings, not the old ones: the `decor` wire channel is keyed by itemId and two rows sharing a key
+  // would make the local decor store ambiguous about which art a placed tile wears.
+  //
+  // ⛔⭐ ALL FIVE ARE UNREACHED, AND THE FIRST DRAFT OF THIS PARAGRAPH SAID OTHERWISE. It claimed the
+  // SHELF palette tool "places `book-case`" and was the one draw site reaching a cosmetic piece. It is
+  // not: `roomzoom-view.js`'s `cls === 'cosmetic'` branch only TOASTS `decorRefusalText(_armed)` and
+  // pulses the tile — no command is sent, `addDecor` has no caller in `client/src` at all, and the
+  // host's `decor` channel is a permanently empty static list (`GameSession.cs:2800-2801`,
+  // `BuildDecor() => _decor`). SHELF and RUG stopped placing anything on 2026-08-04, deliberately, and
+  // this lane read a live tool where there was a dead one. So the honest state: `paste-column`,
+  // `dish-mast`, `book-case`, `deck-turret` and `sleeper-pod` are registered art that NOTHING draws —
+  // exactly the state their five warm predecessors were already in, unchanged by this package.
+  //
+  // ⇒ THE REWIRE ITSELF STAYS, and it is forward-looking rather than live: `room-model.js`'s SHELF row
+  // carries `itemId: 'book-case'` where it carried `'bookshelf'`, so IF the decor path returns the
+  // tool draws the paper piece instead of the warm one. Today it changes no pixel.
+  // ⚠️ AND THIS NOTE DECIDES NOTHING. "Wire it or remove it" is OPEN OWNER RULING M4-6; recording that
+  // the five are unreached is a measurement, not an answer to it.
+  'reactor-plant':    { build: MC.reactorPlant,   size: MC.SIZES['reactor-plant'],   ...dev('Reactor', null, 'new') },
+  'solar-wing':       { build: MC.solarWing,      size: MC.SIZES['solar-wing'],      ...dev('SolarWing', 'G') },
+  'bottle-rack':      { build: MC.bottleRack,     size: MC.SIZES['bottle-rack'],     ...dev('OxygenTank', null, 'new') },
+  'reclaimer-stack':  { build: MC.reclaimerStack, size: MC.SIZES['reclaimer-stack'], ...dev('Reclaimer', 'R') },
+  'paste-column':     { build: MC.pasteColumn,    size: MC.SIZES['paste-column'],    ...cos('paste_column') },
+  'med-cot':          { build: MC.medCot,         size: MC.SIZES['med-cot'],         ...dev('MedBed', 'd') },
+  'fab-cell':         { build: MC.fabCell,        size: MC.SIZES['fab-cell'],        ...dev('Fabricator', 'F') },
+  'ring-array':       { build: MC.ringArray,      size: MC.SIZES['ring-array'],      ...dev('Telescope', 'x') },
+  'dish-mast':        { build: MC.dishMast,       size: MC.SIZES['dish-mast'],       ...cos('dish_mast') },
+  'plant-pot':        { build: MC.plantPot,       size: MC.SIZES['plant-pot'],       ...dev('PlantPot', 'P') },
+  'book-case':        { build: MC.bookCase,       size: MC.SIZES['book-case'],       ...cos('book_case') },
+  'deck-turret':      { build: MC.deckTurret,     size: MC.SIZES['deck-turret'],     ...cos('deck_turret') },
+  'sleeper-pod':      { build: MC.sleeperPod,     size: MC.SIZES['sleeper-pod'],     ...cos('sleeper_pod') },
 });
 
 /** The full list of registered itemIds, in mock order. */

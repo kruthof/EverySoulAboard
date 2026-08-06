@@ -138,7 +138,8 @@ export function isWreckedCond(cond) {
 
 /**
  * Does `itemId` have a wrecked twin to wear? PURE, TOLERANT — `false` for an unknown id and for the
- * rows in `NO_WRECKED_TWIN` (`swarf` today).
+ * rows in `NO_WRECKED_TWIN` (`swarf`, `cell-spent` and `turnings` today — re-read the ledger, it
+ * has grown once per lane).
  */
 export function hasWreckedTwin(itemId) {
   return typeof itemId === 'string' && WRECKED[itemId] !== undefined;
