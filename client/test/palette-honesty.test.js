@@ -498,6 +498,16 @@ function fire(el, type, ev) {
   }
   return e;
 }
+
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function press(el, extra) {
+  fire(el, 'pointerdown', { button: 0, ...extra });
+  return fire(el, 'pointerup', { button: 0, ...extra });
+}
 /** ⚠️ `innerHTML`, NOT `textContent`. The scanner lifts START TAGS and ignores text, and the
  *  controller writes these rows with `innerHTML`, so `textContent` is '' for every one of them —
  *  a rig that read it would report every sentence as absent and every absence as proven. */
@@ -612,7 +622,7 @@ test('DRIVEN: arming a furniture tool prices it against the ship the player is o
 
 // ── answer 2: a refused click says why ───────────────────────────────────────────────────────
 
-// MUTATION: drop the `if (refused) toast(refused);` line ⇒ RED (the click is silent again).
+// MUTATION: drop the `if (line) toast(line);` line in `onPlaceRefused` ⇒ RED (silent again).
 // MUTATION: gate the send on affordability (`if (!refused) _send(...)`) ⇒ RED on the still-sends leg.
 test('DRIVEN: a placement the ship cannot pay for SAYS SO — and the command still goes', async () => {
   const fails = [];
@@ -622,9 +632,19 @@ test('DRIVEN: a placement the ship cannot pay for SAYS SO — and the command st
   armViaButton('bunk');
   sent.length = 0;
   toastEl.textContent = '';
-  fire(canvas, 'click', { target: canvas, ...at(tile[0], tile[1]) });
+  press(canvas, { target: canvas, ...at(tile[0], tile[1]) });
 
-  if (toastText() !== 'BUNK ▸ NEEDS 3 PARTS — SHIP HAS 1') fails.push('the refused click said: "' + toastText() + '"');
+  // ⭐⭐ THE PRESS ITSELF SAYS NOTHING NOW, AND THAT IS THE CHANGE. The client used to compose a
+  // refusal from the `ledger` census — an UPPER BOUND on what `TryPay` can spend, right about one
+  // refusal class out of six and blind to the other five. The SIM says why, on `placerefused`, and
+  // this surface only relays it. So the first assertion is that the press is quiet…
+  if (toastText() !== '') fails.push('the press composed its own refusal again: "' + toastText() + '"');
+  // …and the second is that the SIM'S answer is what the player reads. This is the shipped host's
+  // own payload shape (`WireFormat.PlaceRefused`), fed through the shipped relay.
+  api.placeRefused({ x: tile[0], y: tile[1], deck: DECK1, kind: 5, reason: 6, price: 3, affordable: 1 });
+  if (toastText() !== 'BUNK ▸ NEEDS 3 PARTS WITHIN REACH — ONLY 1 IS LOOSE ABOARD') {
+    fails.push('the sim\'s refusal reached the player as: "' + toastText() + '"');
+  }
   // ⛔ THE CLIENT NEVER GATES THE WIRE. The host is the only authority on whether a placement
   // happens; a census up to a second stale that withheld the command would refuse a LEGAL placement,
   // re-creating the silent no-op from the other side.
@@ -640,7 +660,10 @@ test('DRIVEN: a placement the ship cannot pay for SAYS SO — and the command st
   await setParts(9);
   toastEl.textContent = '';
   sent.length = 0;
-  fire(canvas, 'click', { target: canvas, ...at(tile[0], tile[1]) });
+  press(canvas, { target: canvas, ...at(tile[0], tile[1]) });
+  // No `placerefused` arrives for a placement the sim accepts — so the box stays as it was. The
+  // sentence CANNOT appear on its own any more, which is the point: silence here is now the sim's
+  // silence rather than the client's guess agreeing with it by luck.
   if (toastText().includes('NEEDS')) fails.push('an affordable placement is still refused: "' + toastText() + '"');
   if (!sent.some((o) => o && o.cmd === 'place')) fails.push('an affordable placement sent no command');
 
@@ -725,8 +748,15 @@ test('DRIVEN: GROWBED, MEDBED and TABLE arm, price, refuse honestly, and send th
     const tile = tiles[i];
     sent.length = 0;
     toastEl.textContent = '';
-    fire(canvas, 'click', { target: canvas, ...at(tile[0], tile[1]) });
-    if (toastText() !== want) fails.push(`${label}: the refused click said "${toastText()}"`);
+    press(canvas, { target: canvas, ...at(tile[0], tile[1]) });
+    // The PREVIEW (chip, hover, cost row) is still the client's own ledger reading — legs 1-3 above
+    // assert exactly that, and it is legitimate BEFORE the gesture. The VERDICT is the sim's, and it
+    // arrives on `placerefused`; the press itself is silent.
+    if (toastText() !== '') fails.push(`${label}: the press composed its own refusal: "${toastText()}"`);
+    api.placeRefused({ x: tile[0], y: tile[1], deck: DECK1, kind: 5, reason: 6, price: 3, affordable: 1 });
+    if (toastText() !== `${label} ▸ NEEDS 3 PARTS WITHIN REACH — ONLY 1 IS LOOSE ABOARD`) {
+      fails.push(`${label}: the sim's refusal reached the player as "${toastText()}"`);
+    }
     const places = sent.filter((o) => o && o.cmd === 'place');
     if (places.length !== 1) fails.push(`${label}: ${places.length} place commands were sent, expected 1`);
     else if (places[0].kind !== paletteCommand(tool).kind) {
@@ -894,7 +924,7 @@ test('DRIVEN: a SHELF click draws NOTHING and says it is not buildable yet', asy
 
   sent.length = 0;
   toastEl.textContent = '';
-  fire(canvas, 'click', { target: canvas, ...at(tile[0], tile[1]) });
+  press(canvas, { target: canvas, ...at(tile[0], tile[1]) });
 
   if (toastText() !== 'SHELF ▸ ' + DECOR_NOT_WIRED) fails.push('the SHELF click said: "' + toastText() + '"');
   // ⛔ THE LIE ITSELF: a decor `<g>` in the rendered layer stack is art for furniture the ship does

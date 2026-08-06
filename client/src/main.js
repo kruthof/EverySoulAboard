@@ -238,6 +238,12 @@ function onMessage(m) {
     case 'chron': Hud.renderChron(m); break;
     // Polish: pending build ghosts (BUILD feedback) + the MOSS terminal directory.
     case 'designs': Hud.renderDesigns(m); break;
+    // ⭐⭐ THE SIM REFUSED A PLACEMENT AND SAID WHY — a ONE-SHOT reply to one gesture, not a
+    // state channel: it is `Emit`ted (never cached, never deduped, absent from the reconnect
+    // snapshot), so it goes straight to the surface that made the gesture rather than through
+    // `Hud`'s wire cache. Nothing else on this switch does that today; `operate` did, and its
+    // deletion is why there was no wire→toast path left to reuse.
+    case 'placerefused': roomZoom.placeRefused(m); break;
     case 'terminals': Hud.renderTerminals(m); break;
     // RELATIONS tab: the directed relationship graph feeding the crew-web viewport swap.
     case 'relations': Hud.renderRelations(m); break;

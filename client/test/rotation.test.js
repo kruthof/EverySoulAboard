@@ -546,6 +546,16 @@ function fire(el, type, extra) {
   }
   return e;
 }
+
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function press(el, extra) {
+  fire(el, 'pointerdown', { button: 0, ...extra });
+  return fire(el, 'pointerup', { button: 0, ...extra });
+}
 function armTool(tool) {
   const btn = new RtEl(doc, 'button');
   btn.dataset.rztool = tool;
@@ -621,7 +631,7 @@ test('⭐⭐ THE PLACED PIECE KEEPS THE FACING THE PLAYER WAS LOOKING AT', () =>
   const shown = ghostFacing();
   assert.equal(shown, 3, 'premise: three presses show facing 3');
   sent.length = 0;
-  fire(canvas, 'click', { button: 0, ...atTile(TABLE_TILE.x, TABLE_TILE.y) });
+  press(canvas, { button: 0, ...atTile(TABLE_TILE.x, TABLE_TILE.y) });
   const place = sent.find((o) => o.cmd === 'place');
   assert.ok(place, 'the click lowered a place command');
   assert.equal(place.facing, shown,

@@ -94,7 +94,7 @@ import {
 // header for the owner complaint ("I cannot build anything except the walls"), the measured cause
 // (3 PARTS a wreck holding 1 cannot pay) and why the price is a pinned mirror rather than a wire read.
 import {
-  chipCostText, chipTitleText, paletteCostRow, placeRefusalText, decorRefusalText,
+  chipCostText, chipTitleText, paletteCostRow, placeRefusedText, decorRefusalText,
   // The build ghost's REFUSAL state asks these two — the SAME predicates the `.cant` chip and the
   // armed cost row are painted from, so the preview and the palette cannot answer one question two
   // ways (`ghostRefused`).
@@ -250,6 +250,16 @@ let _hoverTile = null;
  * benches the same way round, which is the gesture the owner's sentence describes.
  */
 let _facing = 0;
+/**
+ * ⭐ WHICH TOOL ASKED FOR WHICH TILE — `"x,y,deck" → tool`, written when a `place` command goes out
+ * and read (and deleted) when the sim's refusal for that tile comes back. It exists ONLY so the
+ * refusal sentence can lead with the word the player pressed; it is never consulted for legality.
+ *
+ * ⛔ BOUNDED BY CONSUMPTION AND BY LEAVING THE ROOM, not by a timer. Every accepted placement leaves
+ * one stale entry behind (no refusal arrives for it), so `exitRoom` clears the map — a Map that only
+ * ever grows is a leak on a surface a player sits in for an hour.
+ */
+const _placeAsked = new Map();
 let _ghostSig = '';       // tool|tx,ty|refused|material|facing|viewBox — the ghost root's write guard
 let _accSig = '';         // last-rendered ACCEPTS row signature (mask + mismatch count), or 'off'
 let _costSig = '';        // last-rendered COST row signature (tool + level + sentence), or 'off'
@@ -262,8 +272,38 @@ let _costSig = '';        // last-rendered COST row signature (tool + level + se
 // stuck. Now the interactive chrome is built ONCE (buildChrome) and the paint helpers MUTATE nodes
 // in place; the palette's `.on` toggles, the caption/breadcrumb text is guard-written, and the
 // minimap SVG is re-set only when its signature changes. Mirrors overview-view.js's keyed pattern.
-// The SVG canvas layer (paintLayers) is still rebuilt as one string — it holds no interactive focus
-// (its clicks resolve synchronously against geometry, not against a DOM node).
+//
+// ⛔⛔ THE SENTENCE THAT STOOD HERE WAS FALSE, AND IT COST THE PLAYER 28 PRESSES IN 30. It read,
+// verbatim:
+//
+//     "The SVG canvas layer (paintLayers) is still rebuilt as one string — it holds no interactive
+//      focus (its clicks resolve synchronously against geometry, not against a DOM node)."
+//
+// **A CLICK IS NOT SYNCHRONOUS AND IT DOES RESOLVE AGAINST A DOM NODE.** A click spans
+// mousedown→mouseup; `paintLayers` does `_layers.innerHTML = body` on every coalesced wire repaint;
+// and when a rebuild lands between the two, the pressed node is detached, Chrome finds no common
+// ancestor for down/up and FIRES NO `click` EVENT AT ALL. Not a wrong tile — NO event, which is
+// exactly the owner's report of 2026-08-05: *"the ghost shows items are placeable in all open areas
+// — how it should be — but the actual building only works in some"*. The second half of the false
+// clause is false too: `tileAt`'s FIRST tier is `e.target.closest('[data-tile]')`, i.e. a DOM node,
+// and it has been since VR-P3-a.
+//
+// MEASURED, not argued — `client/tools/place-census-shot.mjs` on the running wreck, 30 ordinary
+// presses (140 ms hold) on distinct clear floor tiles of `hall_d0_s5` with the sim RUNNING and the
+// canvas measured tearing down 7×/s: **2/30 presses reached the wire as a `place` command.** The
+// same rig after this fix is the other half of the receipt.
+//
+// ⭐ WHY THE SWEEP TOOLS ALWAYS WORKED, AND WHY THAT LOOKED LIKE "only some areas". WALL/FLOOR/DOOR
+// and DIG/STOCKPILE/STRIP commit from `onCanvasDown`/`onCanvasUp` — raw `mousedown`/`mouseup`, which
+// are dispatched at whatever is under the pointer and need no surviving common ancestor. Only the
+// SINGLE-CLICK classes (place / move / demolish / cosmetic / pawn-select) hung off `click`. That is
+// the whole of the owner's earlier *"I cannot build anything except the walls"* as well.
+//
+// THE FIX IS THE OVERVIEW'S, ported: the gesture resolves on a `pointerdown` + `pointerup` PAIR
+// (`onCanvasPointerDown`/`onCanvasPointerUp`), so the pressed node no longer has to survive. The
+// canvas layer is STILL rebuilt as one string; the known-better fix is still the keyed reconcile,
+// and it is still not built here for `overview-view.js`'s reason — `paintLayers` is a string
+// builder and converting it is a rewrite.
 const _el = {};           // cached chrome node references (built once)
 let _miniSig = '';        // last-rendered minimap innerHTML — re-set only on change
 // M1-K — the crew dock's rows, keyed by cid and MUTATED IN PLACE. The row nodes are rebuilt only
@@ -285,13 +325,42 @@ export function initRoomZoom(opts) {
   _send = (opts && opts.send) || (() => {});
   _onExit = (opts && opts.onExit) || (() => {});
   _root = document.getElementById('roomzoom-view');
-  if (!_root) return { enter: () => {}, exit: () => {}, isOpen: () => false };
+  // ⚠️ THE STUB CARRIES `placeRefused` TOO, AND THAT IS A CRASH RATHER THAN TIDINESS. `main.js`
+  // routes the `placerefused` one-shot straight to this API; a stub missing the method would throw
+  // `roomZoom.placeRefused is not a function` inside `onMessage` — on a page with no
+  // `#roomzoom-view` node — and take the whole wire loop down with it.
+  if (!_root) return { enter: () => {}, exit: () => {}, isOpen: () => false, placeRefused: () => {} };
   buildSkeleton();
   Hud.onShipUpdate(() => { if (_open) scheduleRepaint(); });
   // ESC / B / X in capture phase so the Room Zoom's own stack pre-empts the console's while it is
   // open (the console/canvas are display:none behind us). Other keys pass through untouched.
   window.addEventListener('keydown', onKey, true);
-  return { enter: enterRoom, exit: exitRoom, isOpen: () => _open };
+  return { enter: enterRoom, exit: exitRoom, isOpen: () => _open, placeRefused: onPlaceRefused };
+}
+
+/**
+ * ⭐⭐ THE SIM REFUSED A PLACEMENT AND HERE IS WHY — the `placerefused` one-shot, put into words.
+ *
+ * ⛔ THIS IS A RELAY, NOT A PREDICATE. The client asks nothing about legality: the reason BYTE is
+ * the sim's, the sentence is `placeRefusedText`'s table, and the only thing this surface adds is
+ * WHICH TOOL the player pressed with (`_placeAsked`, recorded at send time on the tile the command
+ * named). Inventing a client-side legality test here would be a second authority on what the sim
+ * accepts, and the two drift on the first tick — which is the ghost's own stated rule.
+ *
+ * ⚠️ IT DOES NOT REQUIRE THE ROOM TO STILL BE OPEN ON THAT TILE, but it does require the surface to
+ * be open at all: a toast fired into a closed Room Zoom writes into a hidden box nobody sees, and a
+ * refusal the player cannot read is the defect this whole package exists to remove, re-created one
+ * layer up. A player who has already left the room has moved on from the gesture.
+ */
+export function onPlaceRefused(msg) {
+  if (!_open || !msg) return;
+  const key = (msg.x | 0) + ',' + (msg.y | 0) + ',' + (msg.deck | 0);
+  const tool = _placeAsked.get(key);
+  _placeAsked.delete(key);
+  const line = placeRefusedText(msg, tool ? (TOOL_LABEL[tool] || tool) : '');
+  // ⛔ NEVER `toast('')` — an empty box un-hidden for 2.6 s reads as a glitch rather than as silence
+  // (overview-view.js's rule, stated once and obeyed everywhere).
+  if (line) toast(line);
 }
 
 function buildSkeleton() {
@@ -413,7 +482,24 @@ function buildSkeleton() {
   // click they are not about to make, at a tile they are no longer pointing at.
   _canvas.addEventListener('mouseleave', onCanvasLeave);
   window.addEventListener('mouseup', onCanvasUp); // window: catch a release that ends off-canvas
-  _canvas.addEventListener('click', onCanvasClick);
+  // ⭐⭐ THE SINGLE-PRESS GESTURE RESOLVES ON A POINTERDOWN/POINTERUP PAIR, NOT ON `click` — BUG-B at
+  // Level 2, and the reason is the ⛔⛔ block above `_el`. `click` is precisely the event this canvas
+  // never receives when a repaint lands mid-press, and at 7-10 repaints/s that is nearly every press
+  // (measured 2/30). The tile is captured at DOWN and the command goes at UP, so the square the
+  // player was looking at under the ghost is the square the order lands on.
+  _canvas.addEventListener('pointerdown', onCanvasPointerDown);
+  _canvas.addEventListener('pointerup', onCanvasPointerUp);
+  // …and a release ANYWHERE clears the latch, so a press begun on the floor and released over the
+  // palette cannot leave it armed for somebody else's gesture.
+  //
+  // ⛔ BUBBLE PHASE. DO NOT ADD A THIRD ARGUMENT TO THESE TWO CALLS. `_canvas`'s own handler sits
+  // below window on the same event, so it must read the latch FIRST; passing `true` moves the clear
+  // to CAPTURE, where it runs ahead of `_canvas` and empties `_press` every single time — the whole
+  // gesture then dies silently, which is this package's own bug reintroduced by one word. That
+  // mutation is exactly what killed the Overview's equivalent (overview-view.js:432-439) and it is
+  // guarded the same way here: `prioritise-menu.test.js` records the phase argument at registration.
+  window.addEventListener('pointerup', clearCanvasPress);
+  window.addEventListener('pointercancel', clearCanvasPress);
   // ⭐ M2-10 — RIGHT-CLICK, AND THE PHASE IS LOAD-BEARING (BUG-B's exact shape). Registered on the
   // element in the BUBBLE phase — no third argument — like the four canvas gestures above it, and
   // NOT `{capture: true}`. `overview-model.test.js` measured what a capture registration does to a
@@ -567,6 +653,8 @@ export function exitRoom() {
   // hanging over the next one the player opens.
   _hoverTile = null;
   clearGhost();
+  _press = null;          // a press begun in this room may not resolve into the next one
+  _placeAsked.clear();    // see the map's header: an ACCEPTED placement leaves its entry behind
   _focus = null;
   if (_pawnLayer) _pawnLayer.clear();   // see `enterRoom` — a closed surface holds no pawn state
   _tween.clear();
@@ -2063,12 +2151,59 @@ function onMinimapSlot(slotEl) {
   repaint();
 }
 
-function onCanvasClick(e) {
-  closeCtx(); // ⭐ M2-10: a left click anywhere on the floor dismisses an open right-click menu
-  // ⭐ THROUGH `tileAt`, NOT THROUGH THE INVERSE DIRECTLY (VR-P3-a). This is the PLACE path — the one
-  // the owner reported as "not all squares work" — and it has to resolve the pointer exactly the way
-  // the sweep and the right-click do, or the same press means two tiles on one surface.
-  const tile = tileAt(e);
+/**
+ * ⭐⭐ THE PRESS LATCH — a primary press that STARTED on the canvas and has not yet resolved, with
+ * the tile it started on. `{cx, cy, tile}` or null.
+ *
+ * ⛔ THE TILE IS CAPTURED AT **DOWN**, NOT RE-READ AT UP, and that is the ghost-consistency half of
+ * this fix rather than an implementation detail. The build ghost draws at `_hoverTile`, which
+ * `onCanvasMove` set from the SAME `tileAt` — so at the moment the player commits, the piece they
+ * can see standing on a square and the square this lowers the order onto are the same square by
+ * construction. Re-reading at release would let a repaint that lands DURING the press (a pawn
+ * walking into frame, a piece finishing and growing tall) move the answer out from under a gesture
+ * the player had already aimed. The Overview resolves at release instead, and correctly: it has no
+ * hover preview to agree with.
+ */
+let _press = null;
+/** How far the pointer may travel between down and up and still be a PRESS rather than a drag.
+ *  Small on purpose — this surface has real drag gestures (the sweep tools), and a generous slop
+ *  would turn an abandoned drag into a placement. */
+const PRESS_SLOP_PX = 6;
+
+/** True for the primary button, and for an event carrying no `button` at all. A secondary button
+ *  never produced a `click` here and must not produce a gesture now — it has `onCanvasContext`. */
+function isPrimaryPointer(e) { return ((e && e.button) || 0) === 0; }
+
+function onCanvasPointerDown(e) {
+  if (!isPrimaryPointer(e)) return;
+  _press = { cx: e.clientX, cy: e.clientY, tile: tileAt(e) };
+}
+
+function onCanvasPointerUp(e) {
+  if (!isPrimaryPointer(e)) return;
+  const press = _press;
+  _press = null;
+  if (!press) return; // a release whose press began somewhere else (a palette button, the crumb)
+  const dx = Math.abs((e.clientX || 0) - press.cx);
+  const dy = Math.abs((e.clientY || 0) - press.cy);
+  if (dx > PRESS_SLOP_PX || dy > PRESS_SLOP_PX) return; // that was a drag, not a press
+  resolveCanvasPress(e, press.tile);
+}
+
+/** Any release or cancel, wherever it lands: the latch is one-shot and never survives its press. */
+function clearCanvasPress() { _press = null; }
+
+/**
+ * Resolve one canvas press — the body that used to hang off `click` (see the ⛔⛔ block above `_el`
+ * for why it no longer can). `tile` is the DOWN tile, already resolved by `tileAt`.
+ */
+function resolveCanvasPress(e, tile) {
+  closeCtx(); // ⭐ M2-10: a left press anywhere on the floor dismisses an open right-click menu
+  if (!_open || !_focus) return; // the room was left between down and up — no null `_focus` deref
+  // ⭐ THE TILE CAME THROUGH `tileAt`, NOT THROUGH THE INVERSE DIRECTLY (VR-P3-a). This is the PLACE
+  // path — the one the owner reported as "not all squares work" — and it resolves the pointer
+  // exactly the way the sweep and the right-click do, or the same press means two tiles on one
+  // surface.
   if (!tile) return; // letterbox margin / outside the room (IX-Z-11)
 
   if (_armed == null) {
@@ -2140,21 +2275,33 @@ function onCanvasClick(e) {
     // bay left the room's device census byte-identical. Now pinned by derivation off
     // `GameSession.cs`'s own switch in `prioritise-menu.test.js`.
     if (typeof Cmd.place === 'function') {
-      // ⭐⭐ THE COMMAND STILL GOES, ALWAYS, AND THE SENTENCE IS SAID BESIDE IT — never instead of it.
-      // The host is the only authority on whether a placement happens; this surface only answers for
-      // what it can prove. `placeRefusalText` is '' unless the ledger's census (an UPPER BOUND on the
-      // spendable Parts — `build-cost-model.js`'s header has the inequality) is already short of the
-      // 3-Parts price, in which case `PlaceDeviceCommand.TryPay` cannot possibly succeed and the
-      // silence the owner hit ("I cannot build anything except the walls") is now a sentence.
-      // ⛔ IT DOES NOT GATE THE SEND, and that is deliberate: the ledger refreshes at ≤1 Hz, so a
-      // census one second stale that WITHHELD the command would refuse a legal placement — the same
-      // silent no-op, re-created from the other side.
+      // ⭐⭐ THE COMMAND ALWAYS GOES, AND THE ANSWER COMES BACK FROM THE SIM.
+      //
+      // ⛔ THE CLIENT'S OWN REFUSAL GUESS USED TO LIVE ON THIS LINE AND IS DELETED. It read
+      // `const refused = placeRefusalText(_armed, partsAboard()); if (refused) toast(refused);` —
+      // a sentence composed from the `ledger` channel's total, which is an UPPER BOUND on what
+      // `PlaceDeviceCommand.TryPay` can actually spend (that spends only LOOSE, UNRESERVED stacks).
+      // So it was right about one refusal class, late by up to a second, and structurally blind to
+      // the other five — the tile with something already on it, the unwalkable tile, the walled
+      // tile. MEASURED on the shipped wreck after the click loss was closed: 30 presses, 30
+      // commands, 29 refusals, and the guess could speak for at most the parts case.
+      // ⇒ The sim now publishes `PlaceRefusedEvent` on every arm and the host relays it
+      // (`placerefused`), so the sentence the player hears is the sim's ACTUAL reason rather than
+      // this surface's inference. `onPlaceRefused` below is where it lands.
+      // ⛔ THE GHOST'S REFUSED STYLING STAYS on the same predicate, and that is not an inconsistency:
+      // a PREVIEW may be a guess, because it is shown BEFORE the gesture and can be contradicted at
+      // no cost. A verdict may not.
+      //
       // ⭐⭐ AND THE FACING GOES WITH IT — the ghost's own `_facing`, so the piece lands turned the
       // way the player was looking at it. One variable feeds the preview and the command; a second
       // "facing to send" would be the drift this whole surface's `tileAt` header is about.
       _send(Cmd.place(pc.kind, tile.x, tile.y, deck, _facing));
-      const refused = placeRefusalText(_armed, partsAboard());
-      if (refused) toast(refused); else nudgeOnIntent();
+      // Remember WHICH tool asked for THIS tile, so the sim's answer can be read back in the
+      // player's own vocabulary. Keyed by tile rather than kept in one slot: two quick presses with
+      // two different tools produce two refusals, and a single slot would put the second tool's name
+      // on the first tile's sentence.
+      _placeAsked.set(tile.x + ',' + tile.y + ',' + deck, _armed);
+      nudgeOnIntent();
       pulse(tile, false);
     } else { toast(TOOL_LABEL[_armed] + ' — PLACEMENT LANDS WITH THE SIM BUILD PASS'); pulse(tile, false); }
   } else if (pc.cls === 'cosmetic') {

@@ -551,6 +551,16 @@ function fire(target, type, extra) {
   return e;
 }
 
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function press(el, extra) {
+  fire(el, 'pointerdown', { button: 0, ...extra });
+  return fire(el, 'pointerup', { button: 0, ...extra });
+}
+
 const canvas = () => doc.getElementById('rz-canvas');
 const menu = () => doc.getElementById('rz-ctx');
 const toastText = () => doc.getElementById('rz-toast').textContent;
@@ -598,7 +608,7 @@ function arm(tool) {
  *  FIRST, the armed tool survives) has no other instrument. */
 function armedNow() {
   sent.length = 0;
-  fire(canvas(), 'click', atTile(WING));
+  press(canvas(), atTile(WING));
   const yes = orders().some((o) => o.cmd === 'place');
   sent.length = 0;
   return yes;
@@ -680,7 +690,7 @@ test('a click with a FUNCTIONAL tool armed sends the palette tool string, not th
   for (const tool of ['lamp', 'bunk', 'heater', 'growbed', 'medbed', 'table']) {
     arm(tool);
     sent.length = 0;
-    fire(canvas(), 'click', atTile(WING));
+    press(canvas(), atTile(WING));
     const place = orders().find((o) => o.cmd === 'place');
     assert.ok(place, `${tool.toUpperCase()} armed: no place command went out at all`);
     assert.equal(place.kind, paletteCommand(tool).kind,
@@ -1152,7 +1162,7 @@ test('a LEFT click on the floor dismisses an open menu', () => {
   prime([ADA], null);
   rightClick(WING);
   assert.equal(menu().hidden, false);
-  fire(canvas(), 'click', atTile(BARE));
+  press(canvas(), atTile(BARE));
   assert.equal(menu().hidden, true);
 });
 

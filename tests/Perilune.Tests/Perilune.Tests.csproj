@@ -68,6 +68,11 @@
          exactly as the two comments above promise — leaving this line out failed with `the type name
          'BlockedCell' does not exist in the type 'WireFormat'`. -->
     <Compile Include="../../hosts/web/WireFormat.Blocked.cs" />
+    <!-- the `placerefused` ONE-SHOT (WHY the sim would not put the furniture down): another sibling
+         partial, WireFormat.cs again taking NO diff. Same hand-added rule as every line above, and
+         the rule bit a FIFTH time exactly as promised — leaving this line out failed the build with
+         `WireFormat enthält keine Definition für "PlaceRefused"` on GameSession.cs. -->
+    <Compile Include="../../hosts/web/WireFormat.Place.cs" />
     <!-- the `operate` REPLY (what the ship did with a door/vent toggle): a SEVENTH sibling partial,
          WireFormat.cs again taking NO diff. It is a one-shot reply rather than a cached channel, but
          it lives here for the same reason and under the same hand-added rule — and the rule bit a

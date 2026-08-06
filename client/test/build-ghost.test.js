@@ -181,6 +181,16 @@ function fire(el, type, extra) {
   }
   return e;
 }
+
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function press(el, extra) {
+  fire(el, 'pointerdown', { button: 0, ...extra });
+  return fire(el, 'pointerup', { button: 0, ...extra });
+}
 /** Arm a tool the way a player does — a click on a real `[data-rztool]` chip, through the delegated
  *  handler on the root. Never `arm()` directly: that would test a function, not a surface. */
 function armTool(tool) {
@@ -287,7 +297,7 @@ test('THE RESOLUTION IS THE CLICK\'S OWN — the ghost tile and the placed tile 
   const shown = /data-ghost-tile="(-?\d+),(-?\d+)"/.exec(ghost.innerHTML);
   assert.ok(shown, 'the ghost drew somewhere');
   sent.length = 0;
-  fire(canvas, 'click', { button: 0, ...pt });
+  press(canvas, { button: 0, ...pt });
   const place = sent.find((o) => o.cmd === 'place');
   assert.ok(place, 'the click lowered a place command');
   assert.equal(Number(shown[1]), place.x, 'the ghost previewed the tile the order went to (x)');

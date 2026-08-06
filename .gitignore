@@ -31,6 +31,7 @@ client/tools/shots-fittings/
 client/tools/shots-overview/
 client/tools/shots-roomzoom/
 client/tools/shots-capsules/
+client/tools/shots-place-census/
 # — lane/paper-materials —
 client/tools/shots-paper-materials/
 # — lane/paper-resources —

@@ -355,6 +355,16 @@ function fire(target, type, extra) {
   return e;
 }
 
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function press(el, extra) {
+  fire(el, 'pointerdown', { button: 0, ...extra });
+  return fire(el, 'pointerup', { button: 0, ...extra });
+}
+
 // ⭐ VR-P3 — TILE → POINTER, THROUGH THE SHIPPED PROJECTION. The surface is a cabinet-oblique
 // cutaway now, so `(tx - rx) * 32 + 16` points at a tile metres from the one it names. Both helpers
 // go through `roomScene`/`scenePlacement` — the objects the layers are drawn with — so the point a
@@ -369,7 +379,7 @@ function sceneRectFor(focus) {
  *  hit-test math. */
 function clickTile(tx, ty) {
   const [px, py] = scenePlacement(roomScene(QUARTERS), QUARTERS).foot(tx, ty);
-  return fire(el('rz-canvas'), 'click', { clientX: Math.round(px), clientY: Math.round(py) });
+  return press(el('rz-canvas'), { clientX: Math.round(px), clientY: Math.round(py) });
 }
 
 /** The crew dock's row button for a cid, straight out of the live DOM (never rebuilt by hand). */

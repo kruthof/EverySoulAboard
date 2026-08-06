@@ -705,18 +705,52 @@ namespace Perilune.Sim
             }
         }
 
+        /// <summary>
+        /// ⭐⭐ SAY WHY, AND SAY IT ONCE. Publishes <see cref="PlaceRefusedEvent"/> and returns
+        /// false, so every rejection arm below is one line and cannot forget the sentence.
+        ///
+        /// <para>⛔ THE CONTRACT PARAGRAPH ABOVE USED TO END *"an illegal request is a silent no-op —
+        /// the client only promises the attempt"*, and that silence WAS the bug. Measured on the
+        /// shipped wreck with the click loss closed (<c>client/tools/place-census-shot.mjs</c>): 30
+        /// presses on clear floor, 30 commands on the wire, <b>29 refused and not one of them
+        /// audible</b>. A refusal the player cannot hear is indistinguishable from a broken verb —
+        /// <c>docs/TRAPS.md</c> Part C, which this repo has paid for three times.</para>
+        /// </summary>
+        private bool Refuse(Simulation sim, PlaceRefusal why, int price = 0, int affordable = 0)
+        {
+            sim.Events.Publish(new PlaceRefusedEvent
+            {
+                Pos = _pos, Kind = (byte)_kind, Reason = (byte)why, Price = price, Affordable = affordable,
+            });
+            return false;
+        }
+
         public void Execute(Simulation sim)
         {
-            if (!IsPlaceableFurniture(_kind)) return;
-            if (!sim.World.InBounds(_pos)) return;
+            if (!IsPlaceableFurniture(_kind)) { Refuse(sim, PlaceRefusal.NotPlaceable); return; }
+            if (!sim.World.InBounds(_pos)) { Refuse(sim, PlaceRefusal.OutOfBounds); return; }
             // A walkable non-wall floor tile, empty of any device (one-per-tile rule).
-            if ((sim.World.GetFlags(_pos) & TileFlags.Walkable) == 0) return;
-            if (sim.World.GetWall(_pos) != TileDefs.Void) return;
-            if ((sim.World.GetFlags(_pos) & TileFlags.HasDevice) != 0) return;
-            if (sim.TryGetDeviceAt(_pos, out _)) return;
+            if ((sim.World.GetFlags(_pos) & TileFlags.Walkable) == 0) { Refuse(sim, PlaceRefusal.NotWalkable); return; }
+            if (sim.World.GetWall(_pos) != TileDefs.Void) { Refuse(sim, PlaceRefusal.Blocked); return; }
+            if ((sim.World.GetFlags(_pos) & TileFlags.HasDevice) != 0) { Refuse(sim, PlaceRefusal.Occupied); return; }
+            // ⚠️ THE SECOND OCCUPIED ARM IS A CORRUPT-STATE BACKSTOP, NOT A PATH — measured, by
+            // mutation. Blanking THIS arm's `Refuse` leaves `PlaceRefusalTests` fully GREEN, because
+            // `AddDevice` sets `TileFlags.HasDevice` and the flag clause one line up always fires
+            // first; blanking the flag arm reddens. Both keep their publish so the pair cannot come
+            // to disagree, and the fact that only one of them is reachable is written down here
+            // rather than left for the next reader to rediscover with a mutation that will not bite.
+            if (sim.TryGetDeviceAt(_pos, out _)) { Refuse(sim, PlaceRefusal.Occupied); return; }
             // CHARGED LAST, so an illegal request never spends: every rejection above leaves the
             // ship's matter untouched, and this one leaves it untouched too when it cannot pay.
-            if (!TryPay(sim, sim.Defs.Build.DevicePlaceCost)) return;
+            //
+            // ⭐ THE TWO NUMBERS GO WITH THE REFUSAL, AND THEY ARE THE POINT OF THIS ARM. The client
+            // can already GUESS this case from the `ledger` channel, and its guess is an UPPER BOUND:
+            // the ledger totals every Part aboard, while `Affordable` counts only LOOSE, UNRESERVED
+            // stacks. A ship whose three Parts are in a hauler's arms reads RICH on the ledger and
+            // refuses here — the exact "it works on some tiles and not others" the owner reported,
+            // with no tile involved at all. Sending both numbers is what lets the sentence say which.
+            int price = sim.Defs.Build.DevicePlaceCost;
+            if (!TryPay(sim, price)) { Refuse(sim, PlaceRefusal.CannotPay, price, Affordable(sim)); return; }
             // Deterministic name (kind + tile) — no counters, no RNG; InvariantCulture ints.
             string name = System.FormattableString.Invariant(
                 $"{_kind.ToString().ToLowerInvariant()}_{_pos.X}_{_pos.Y}_{_pos.Z}");

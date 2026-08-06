@@ -379,4 +379,75 @@ namespace Perilune.Sim
         /// <summary><see cref="JobDropReason"/> as a byte (append-only contract).</summary>
         public byte Reason;
     }
+
+    /// <summary>
+    /// ⭐⭐ WHY A PLACEMENT DID NOT HAPPEN. APPEND-ONLY — the byte is on the wire.
+    ///
+    /// <para>⛔ <b><see cref="None"/> IS NEVER PUBLISHED, AND THAT IS THE "NO-DEFAULT REASON" RULE
+    /// (the D5 family's, <see cref="JobDropReason"/>'s shape).</b> A zero that means "some reason"
+    /// is how a refusal channel comes to carry a sentence the player cannot act on: every publish
+    /// site below names its own clause, and <c>PlaceRefusalTests.EveryRefusalArmNamesItsOwnReason</c>
+    /// drives all six and requires a non-zero, DISTINCT byte from each. A seventh clause added
+    /// without a seventh member would silently ship as <see cref="None"/>.</para>
+    /// </summary>
+    public enum PlaceRefusal : byte
+    {
+        /// <summary>Not a reason. Never published; the sentinel that makes a missing arm loud.</summary>
+        None = 0,
+        /// <summary>The kind is not on <c>PlaceDeviceCommand.IsPlaceableFurniture</c>.</summary>
+        NotPlaceable = 1,
+        /// <summary>Off the map.</summary>
+        OutOfBounds = 2,
+        /// <summary>The tile is not walkable — nobody could stand here to use it.</summary>
+        NotWalkable = 3,
+        /// <summary>A wall or rubble stands on the tile.</summary>
+        Blocked = 4,
+        /// <summary>Something is already on the tile (one device per tile).</summary>
+        Occupied = 5,
+        /// <summary>The ship cannot pay the Parts price out of LOOSE, UNRESERVED stacks.</summary>
+        CannotPay = 6,
+    }
+
+    /// <summary>
+    /// ⭐⭐ <b>THE SIM SAYING WHY IT REFUSED A PLACEMENT.</b> Published by
+    /// <c>PlaceDeviceCommand.Execute</c> on every early return, read by the web host in
+    /// <c>GameSession.AdvanceTicks</c> and relayed to the player as one sentence.
+    ///
+    /// <para><b>THE DEFECT IT CLOSES</b> — the owner, 2026-08-05: *"the ghost shows items are
+    /// placeable in all open areas … but the actual building only works in some, which makes no
+    /// sense; something is broken."* Two causes; this is the second. The command's own contract used
+    /// to say *"an illegal request is a silent no-op — the client only promises the attempt"*, and
+    /// silence is exactly what made a refused tile indistinguishable from a broken verb
+    /// (<c>docs/TRAPS.md</c> Part C, "invisible feedback is FUNCTIONAL", three owner reports).
+    /// Measured on the shipped wreck with the click loss closed: <b>29 of 30 presses on clear floor
+    /// were refused, and the sim said nothing about any of them.</b></para>
+    ///
+    /// <para>⛔ <b>THE CLIENT MUST NOT RE-DERIVE THIS.</b> A client-side legality predicate is a
+    /// second authority on what the sim will accept, and the two drift on the first tick — the ghost
+    /// deliberately has no such guard for the same reason. The sim decides and SAYS SO; the client
+    /// only relays the sentence.</para>
+    ///
+    /// <para>TRANSIENT, like every other channel on this bus: not saved, not folded into
+    /// <c>Simulation.StateHash</c>, no def field, no <c>IStatefulSystem</c> checksum. ⛔ That shape is
+    /// load-bearing rather than decorative — the chronicle-signal lane's save/restore regression
+    /// (<c>CLAUDE.md</c>'s pin block) was a transient event folded into a hashed, never-evicted field,
+    /// and the point of this shape is that a re-published event on reload can change nothing.</para>
+    /// </summary>
+    public struct PlaceRefusedEvent : ISimEvent
+    {
+        /// <summary>The tile the player pressed.</summary>
+        public Int3 Pos;
+        /// <summary>The <see cref="DeviceKind"/> asked for, as a byte.</summary>
+        public byte Kind;
+        /// <summary><see cref="PlaceRefusal"/> as a byte (append-only contract).</summary>
+        public byte Reason;
+        /// <summary>What the placement would have cost. Only meaningful for
+        /// <see cref="PlaceRefusal.CannotPay"/>; 0 elsewhere.</summary>
+        public int Price;
+        /// <summary>What the ship could actually have spent — LOOSE, UNRESERVED stacks, which is a
+        /// smaller number than the ledger's total and is the whole reason this arm can fire on a
+        /// ship whose ledger reads rich enough. Only meaningful for
+        /// <see cref="PlaceRefusal.CannotPay"/>; 0 elsewhere.</summary>
+        public int Affordable;
+    }
 }

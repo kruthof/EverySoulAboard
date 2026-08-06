@@ -1682,6 +1682,16 @@ function rzFire(el, type, extra) {
   }
   return e;
 }
+
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function rzPress(el, extra) {
+  rzFire(el, 'pointerdown', { button: 0, ...extra });
+  return rzFire(el, 'pointerup', { button: 0, ...extra });
+}
 /** `mouseup` is bound on WINDOW (a release that ends off-canvas still commits), so it is dispatched
  *  through the window stub rather than through the element tree. */
 function rzMouseUp(button = 0) { for (const fn of (rzWinListeners.mouseup || []).slice()) fn({ button }); }
@@ -3069,7 +3079,7 @@ test('WP-4: a release commits the swept set exactly once, trailing click include
   rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(28, 14) });
   rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(30, 16) });
   rzMouseUp();
-  rzFire(rzCanvas, 'click', { button: 0, ...atTile(30, 16) });  // the browser's trailing click
+  rzPress(rzCanvas, { button: 0, ...atTile(30, 16) });  // the browser's trailing click
   assert.equal(rzOrders(rzSent).length, 9, 'the release committed 9 tiles; the trailing click added more');
   rzArm('dig');
 });
@@ -3367,7 +3377,7 @@ test('WP-4: the built-wall dead end now points at STRIP', () => {
   assert.equal(demolishTarget(wallTile.x, wallTile.y, null, null, wreck).kind, 'built-wall',
     'the hold\'s top-left tile is no longer a built wall in the fixture — pick another');
   rzArm('demolish');
-  rzFire(rzCanvas, 'click', { button: 0, ...atTile(wallTile.x, wallTile.y) });
+  rzPress(rzCanvas, { button: 0, ...atTile(wallTile.x, wallTile.y) });
   assert.match(rzDoc.getElementById('rz-toast').textContent, /STRIP/,
     'DEMOLISH on a built wall must name the verb that CAN take it apart, now that STRIP exists here');
   rzArm('demolish');
@@ -4060,11 +4070,11 @@ test('VR-P3-a leg 2: a STRIP sweep pressed on a piece marks the PIECE\'S tile, a
 test('VR-P3-a leg 3: a single-click PLACE on a piece targets the piece\'s tile', () => {
   rzArm('lamp');   // `cls: functional` — exactly one click and exactly one `Cmd.place`
   rzSent.length = 0;
-  rzFire(rzCanvas, 'click', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzPress(rzCanvas, { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
   const floor = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
   assert.deepEqual(floor.map(xy), [[VR_FLOOR.x, VR_FLOOR.y]], 'control: the floor tier answers');
   rzSent.length = 0;
-  rzFire(rzFitNode(VR_FIT.x, VR_FIT.y), 'click', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzPress(rzFitNode(VR_FIT.x, VR_FIT.y), { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
   const onPiece = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
   assert.deepEqual(onPiece.map(xy), [[VR_FIT.x, VR_FIT.y]],
     'a PLACE click on a drawn piece landed on the floor tile behind it — `onCanvasClick` is still '
@@ -4325,12 +4335,12 @@ test('DEMOLISH on a real LAMP on the captured grid ship SENDS Cmd.remove (the se
   // CONTROL FIRST: the same click with NO tool armed must send nothing. Without it, "a remove was
   // sent" is satisfied by a canvas that emits one on every click.
   rzSent.length = 0;
-  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+  rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
   assert.deepEqual(sentOrders(), [], 'an UNARMED click on the lamp sent a command');
 
   rzArm('demolish');
   rzSent.length = 0;
-  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+  rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
   const orders = sentOrders();
   rzArm('demolish');
 
@@ -4364,7 +4374,7 @@ test('DEMOLISH on a device wearing its OWN art sends Cmd.remove too', () => {
     rzEnter('hold');
     rzArm('demolish');
     rzSent.length = 0;
-    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
     const orders = sentOrders();
     rzArm('demolish');
     assert.deepEqual(orders, [Cmd.remove(tile.x, tile.y, f.deck)],
@@ -4391,7 +4401,7 @@ test('DEMOLISH on a ground PILE sends nothing — the art did not make spoil rem
     rzEnter('hold');
     rzArm('demolish');
     rzSent.length = 0;
-    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
     const orders = sentOrders();
     rzArm('demolish');
     assert.deepEqual(orders, [],
@@ -4441,7 +4451,7 @@ test('DEMOLISH on a CLOSED DOOR sends NOTHING — art did not make it removable'
     rzEnter('hold');
     rzArm('demolish');
     rzSent.length = 0;
-    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
     const orders = sentOrders();
     rzArm('demolish');
     assert.deepEqual(orders, [],
@@ -5286,7 +5296,7 @@ try { Hud.initConsole({ send: (o) => rzHudSent.push(o) }); } catch { /* chrome, 
 /** A plain click at the centre of a tile of the CURRENTLY focused room, through the real canvas
  *  handler — the gesture a player makes to select a crew member (no tool armed). */
 function rzClickTile(tx, ty) {
-  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(_rzFocusNow, tx, ty) });
+  rzPress(rzCanvas, { button: 0, ...atTileIn(_rzFocusNow, tx, ty) });
 }
 let _rzFocusNow = null;
 

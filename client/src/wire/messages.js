@@ -162,6 +162,24 @@
  */
 
 /**
+ * ⭐⭐ WHY THE SIM WOULD NOT PUT THE FURNITURE DOWN — a ONE-SHOT reply to ONE gesture, not a state
+ * channel. Emitted (never cached, never deduped, absent from the reconnect snapshot) by
+ * `GameSession.RelayRefusedPlacements` when `PlaceDeviceCommand` publishes `PlaceRefusedEvent`.
+ *
+ * `reason` is `Perilune.Sim.PlaceRefusal` as a byte, APPEND-ONLY, and `0` (`None`) is the
+ * no-default sentinel that is never published. The WORDS live in the client
+ * (`build-cost-model.js`'s `PLACE_REFUSAL_TEXT`), the CODE lives in the sim — the same split
+ * `BLOCKED_REASON_TEXT` already ships.
+ *
+ * `price`/`affordable` are meaningful only for `CannotPay` (6) and are 0 otherwise. BOTH travel
+ * because the `ledger` channel's total is an UPPER BOUND on what `TryPay` can spend: it counts every
+ * Part aboard, `TryPay` spends only LOOSE, UNRESERVED stacks, and only the sim knows the smaller
+ * number.
+ * @typedef {{type:'placerefused', x:number, y:number, deck:number, kind:number, reason:number,
+ *            price:number, affordable:number}} PlaceRefusedMsg
+ */
+
+/**
  * The ship's MOSS terminal directory — one entry per terminal device, [tid, deck, x, y]. The MOSS
  * tab lists these so a terminal's IDE can be opened without hunting the deck for a console tile.
  * NOT fog-gated; snapshot-cached like roster.
@@ -977,7 +995,7 @@ export function isIncapableOf(row, workType) {
   return (row.incapableMask & (1 << (workType | 0))) !== 0;
 }
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg|BlockedMsg|WorkMsg|WorkCapsMsg} WireMsg */
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg|BlockedMsg|WorkMsg|WorkCapsMsg|PlaceRefusedMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
