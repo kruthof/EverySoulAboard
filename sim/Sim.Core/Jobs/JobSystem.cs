@@ -217,7 +217,14 @@ namespace Perilune.Sim
                 var citizen = citizens[i];
                 if (citizen.JobKind == JobKind.None)
                 {
-                    if (citizen.IsRecruitableForWork) TryAssign(sim, citizen); // held + player-ordered crew never self-assign
+                    // ⭐⭐ M4-9 (BREAK GATE 1 of 6) — SHE STOPPED WORKING. Asked BESIDE the grid's
+                    // veto, never folded into `IsRecruitableForWork`: the M4-1 charter rules that a
+                    // break is its own NAMED gate, on M2-2's lesson (a second meaning stuffed into
+                    // one predicate is how the M2-0 spike repeated). The six sites are the five
+                    // `CanTakeWorkType` gates M2-2 enumerates plus the pre-emption path, and
+                    // `MentalBreakTests.EveryClaimGateRefusesABrokenCrewMember` drives each ALONE.
+                    if (citizen.IsRecruitableForWork && !citizen.BreakRefusesWork)
+                        TryAssign(sim, citizen); // held + player-ordered crew never self-assign
                     continue;
                 }
                 // ⭐⭐ M2-8 — PRE-EMPTION, AND IT IS ASKED HERE BECAUSE THIS LOOP IS THE ONLY PLACE
@@ -229,7 +236,19 @@ namespace Perilune.Sim
                 // here reaches a pawn inside a maintenance chain exactly as it reaches a hauler.
                 // Putting it in TryAssign instead would reach nobody: TryAssign is only entered by
                 // pawns who have no job to lose.
-                if (TryPreempt(sim, citizen)) continue;
+                // ⭐ M4-9 (BREAK GATE 2 of 6) — THE PRE-EMPTION PATH. A broken crew member must not be
+                // taken OFF one job onto a better-banded one either: pre-emption is a claim in the
+                // other direction, and leaving it open would move her the moment a repair out-ranked
+                // whatever she was doing when she broke.
+                //
+                // ⛔ THE GATE IS ON THE CALL, NOT ON THE LOOP BODY, AND THE FIRST DRAFT GOT THAT
+                // WRONG. A bare `if (BreakRefusesWork) continue;` here also skips everything BELOW —
+                // the owner lookup and the job-driving that follows it. A broken crew member still
+                // holds NEEDS jobs (`SustenanceSystem` and `RestSystem` are deliberately not gated on
+                // the break), so skipping the body would have frozen her mid-meal and mid-sleep: a
+                // break that stops her eating, which is exactly the thing `IsRecruitableForWork`'s
+                // standing ruling forbids. Refuse the pre-emption; run the rest.
+                if (!citizen.BreakRefusesWork && TryPreempt(sim, citizen)) continue;
 
                 // THREE different things land on a null owner, and only one of them is fine:
                 //   (a) a kind this dispatcher legitimately does not drive — Eat/Drink

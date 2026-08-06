@@ -154,7 +154,36 @@ printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes 
 # so Simulation.StateHash's citizen fold changed on every ship. FOLD-ONLY: with the identical state
 # present but excluded from the fold, this hash was still 02257f5bce961570 and the full dotnet suite
 # was 1330/1330 green — measured, not asserted. Nothing reads the new state.
-printf '%s\n' "$OUT" | grep -q "7bdd0d6f7756dfdc" || { echo "FAIL: reference hash changed (expected 7bdd0d6f7756dfdc) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+# ⭐⭐ M4-9 (PIN M4-b, 2026-08-05): 7bdd0d6f7756dfdc -> 7c70c1befe848cc7. THE FIRST MENTAL BREAK.
+# Citizen gains FIVE hashed fields (CITZ v9 -> v10): BreakDwell, BreakThresholdPct, BreakTier,
+# BreakEndsAtTick, BreakReprieveUntilTick — and MentalBreakSystem joins the stack after Safety.
+# P2 cb09b584a5f15e52 -> 55437c9e5f5d4c95; P3 43a1a5c25713faec -> 6f1fcfda3312c87a.
+# P4/P5 HELD (661fcdd4b89f1e87 / 558a1c0a4985f5ea) — every ladder constant is a LITERAL, on M2-1's
+# rule-not-tunable precedent, so no def field was added; measured twice, through DefsChecksumTests
+# and through this host's own `defs:` print.
+#
+# ⛔ THE 2x2, DRIVEN, AND THE SECOND CELL IS THE ONE THAT MATTERS:
+#   ladder LIVE  + 5 fields folded      -> 7c70c1befe848cc7   <- SHIPPED
+#   ladder STUBBED + 5 fields folded    -> d9a67767ec2d1986   <- DIFFERS FROM SHIPPED
+#   ladder LIVE  + fields NOT folded    -> 7bdd0d6f7756dfdc   <- returns to the old pin TO THE DIGIT
+#   ladder STUBBED + fields NOT folded  -> 7bdd0d6f7756dfdc
+# READ IT AS FOUR CELLS AND NOT TWO. Rows 3 and 4 are IDENTICAL, so with the new state out of the
+# fold the ladder changes NOTHING this fixture can see: no job moves, no position moves, no break
+# fires. But rows 1 and 2 DIFFER, so the ladder does WRITE on this fixture — and what it writes is
+# the DWELL COUNTER. Instrumented at the end of the pinned run: both crew read
+# `mood=-37.06 dwell=174880 tier=None` against a minor threshold of -34.15 and a required dwell of
+# 864000 units. ⇒ P1's crew are 20.2 % of the way to a break and NOBODY BREAKS IN THE WINDOW.
+# ⇒ THE MOVE IS: the widened fold, PLUS the counter's own accumulation. It is NOT a behaviour change.
+#
+# ⛔ SO SAY THE VACUITY OUT LOUD, BECAUSE THE M4-1 CHARTER PREDICTED IT BY NAME (§2's instrument
+# table): NO PIN SEES THE TIER DERIVATION, THE RESET RULE, OR ANY OF THE THREE BEHAVIOURS. Under
+# OD-H every work type boots off and no pinned run enqueues a command, so no pinned fixture ever
+# reaches a break. This is M2-12's "no pin sees the generation term" and M3-7's "no pin sees the rate
+# term" in a fourth costume. The ONLY instrument is MentalBreakTests (28 legs, driven, absolute
+# thresholds, one blinded leg per behaviour), and nothing else.
+# ⚠️ THE DAY-3 SUMMARY LINE DOES NOT MOVE — `pop 2 / hydro 98.1 kPa / water 0.0 L / potatoes 371`,
+# byte-identical to main. As at M3-9, the ONLY evidence is the hash.
+printf '%s\n' "$OUT" | grep -q "7c70c1befe848cc7" || { echo "FAIL: reference hash changed (expected 7c70c1befe848cc7) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== screenshot-test metrics (advisory) =="
 if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then

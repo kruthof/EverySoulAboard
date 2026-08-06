@@ -314,7 +314,10 @@ namespace Perilune.Sim
             // rule is asked the same way every tick she carries it — issue-time and drive-time
             // cannot come to different answers about the same job. Released with the job by
             // `Citizen.JobKind`'s setter, so the very tick the service ends this reads false again.
-            bool forced = worker.HeldByOrder;
+            // ⭐ M4-9 — see JobContext.TryPathToAdjacent: a broken crew member's order no longer
+            // waives the air (`Citizen.OrderOverridesSafety`). The two forced-flag computation
+            // sites in the sim are this one and that one, and they must not disagree.
+            bool forced = worker.OrderOverridesSafety;
             if (!TryFindStagingTile(sim, device.Pos, out var staging, forced))
             {
                 DropCarried(sim, worker); // machine walled in mid-job
@@ -590,6 +593,10 @@ namespace Perilune.Sim
                 {
                     var c = citizens[i];
                     if (!c.IsRecruitableForWork) continue;
+                    // ⭐ M4-9 (BREAK GATE 4 of 6) — the second PUSH recruiter. Same placement
+                    // argument as CraftingSystem's copy: before `anyIdle`, beside M2-2's veto, so a
+                    // person's break is never recorded as a refusal by the MACHINE.
+                    if (c.BreakRefusesWork) continue;
                     // ⭐ M2-2 (G3) — THE WORK-TYPE VETO, and this is the gate OD-G's opening beat
                     // rests on: without it MaintenanceSystem recruits the wreck's boot pawn for a
                     // Maintain service at ~tick 201 and the game plays itself. Placed BEFORE

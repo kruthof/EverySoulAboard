@@ -100,9 +100,15 @@ ordinals.
   questions (a)–(h) ruled-or-forked — and an M5-1 forward charter. **Owner review
   pending; the 08-07 playtest's findings amend the charter before M4-2 implements**).
   The outline that follows is kept as the index.
-  M4-1 Persona design (INFRA — doc written, owner review open) · M4-2 build it · M4-3
+  M4-1 Persona design (INFRA — doc written, owner review open) · M4-2 build it ✅ · M4-3
   dossier stops lying · M4-4 Health/Morale real-or-delete · M4-5 onboarding rewrite ·
   M4-6 RUG/SHELF · M4-7 Chronicle reachable · M4-8 WP-9 console deletion.
+  ⭐ **M4-9 THE FIRST MENTAL BREAK — the ninth package, created by OD-S item 1 = A** (not by a
+  charter; §4's numbering rule). Merge-order position **4b**, pin row **`pin/m4-b`**, RUNS ALONE.
+  **BUILT 2026-08-05** (MECHANICS §13.51): the deterministic ladder, the HOW SHE IS band that
+  closes M4-2's PARTIAL *how she is* clause, the Chronicle line, and the graduated override.
+  ⛔ Pins P1/P2/P3 MOVED, P4/P5 HELD — values in `ci.sh`'s M4-b block; **the integrator re-pins
+  CLAUDE.md + HANDOVER + memory and writes the `pin/m4-b` tag at merge.**
 - **M5:** M5-1 the ending · M5-2 alerts · M5-3 mid-game goal · M5-4 art pass · M5-5
   Regolith→Rubble rename · M5-6 device-removal hole · M5-7 save/load (own lane).
 

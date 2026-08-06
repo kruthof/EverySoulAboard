@@ -116,6 +116,10 @@ namespace Perilune.Sim
             // WorkTypeMap rather than as a literal WorkType.Mine so that widening the whitelist past
             // Dig cannot silently ship an ungated kind.
             if (!WorkTypeMap.TryOf(e.Job, out var work) || !citizen.CanTakeWorkType(work)) return false;
+            // ⭐ M4-9 (BREAK GATE 5 of 6) — THE LLM GRANT. The effect pipeline is BOUNDED BY the
+            // sim's own refusals and never overrides them: a crew member who has stopped working
+            // does not start again because a model asked nicely.
+            if (citizen.BreakRefusesWork) return false;
             if (citizen.JobKind != JobKind.None) return false;
             // ⭐ M2-5 (SITE 5) — THE ARBITRATION, for the same reason M2-2 put the veto here: the
             // effect pipeline is BOUNDED BY the work grid and never overrides it. A grant is not

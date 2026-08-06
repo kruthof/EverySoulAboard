@@ -536,6 +536,27 @@ namespace Perilune.Sim
                 // reverted to `Combine(h, (ulong)c.SkillsRaw[0])`, P1/P2/P3 all read their OLD values.
                 var skills = c.SkillsRaw;
                 for (int t = 0; t < skills.Length; t++) h = XxHash64.Combine(h, (ulong)skills[t]);
+                // ⭐⭐ M4-9 (CITZ v10) — THE MENTAL BREAK'S FIVE FIELDS. Folded in the citizen PREFIX
+                // beside the two arrays, for the reason M2-1 gave for putting the grid here: the
+                // TRAILING run (Name/PrevPos/Path) is what the path-boundary collision pair aligns
+                // on, and appending there is not a thing to do casually.
+                //
+                // ⛔⛔ AND THE STANDING HAZARD THREE PARAGRAPHS UP IS DISCHARGED HERE, NOT ASSUMED
+                // AWAY. It reads: "THE NEXT HASHED PREFIX FIELD WITH A NON-ZERO DEFAULT KILLS THAT
+                // GUARD SILENTLY — it will not go red, it will go green for the wrong reason."
+                // `Citizen.BreakThresholdPct` IS such a field (it boots at 43). ⇒
+                // StateHashHonestyTests.TwoCrewPathFixture now zeroes it explicitly, and the check
+                // that header demands was performed: with the zeroing in place, deleting
+                // `Combine(h, path.Count)` below turns Aliased_PathTilesCannotShuffleAcrossTwoCitizens
+                // RED. Without the zeroing it stays GREEN with the line deleted — the guard dead.
+                //
+                // ⚠️ THE TIER IS FOLDED AS ITS BYTE, and the enum is append-only for exactly the
+                // reason JobKind's header gives: the value is saved AND folded, so a renumber
+                // silently re-labels every stored break.
+                h = XxHash64.Combine(h, (ulong)c.BreakDwell);
+                h = XxHash64.Combine(h, (ulong)c.BreakThresholdPct | ((ulong)(byte)c.BreakTier << 8));
+                h = XxHash64.Combine(h, (ulong)c.BreakEndsAtTick);
+                h = XxHash64.Combine(h, (ulong)c.BreakReprieveUntilTick);
                 // W0-1b — saved since CITZ v1, folded only now. Name is the identity every
                 // other layer keys on; PrevPos is derived-but-hashed (same contract as
                 // Device.NetworkId/Powered: a load hashes equal immediately, and dropping it

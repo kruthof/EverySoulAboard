@@ -162,6 +162,14 @@ const windowState = async () => json(`(()=>{const e=document.getElementById('per
     bands: Array.from(document.querySelectorAll('.pv-bandhd')).map((b)=>b.textContent),
     task: t ? (t.textContent||'') : '',
     taskClientW: t ? t.clientWidth : -1, taskScrollW: t ? t.scrollWidth : -1,
+    // ⭐ M4-9 — HOW SHE IS. Read the same three ways the task line is: the TEXT (is the second
+    // clause there at all), and the CLIP measure (a sentence whose second clause is ellipsized is
+    // the cosmetic operator the band's sequencing rule forbids, arriving through CSS instead of
+    // through code).
+    state: (document.querySelector('.pv-state')||{}).textContent||'',
+    stateClientW: (document.querySelector('.pv-state')||{}).clientWidth ?? -1,
+    stateScrollW: (document.querySelector('.pv-state')||{}).scrollWidth ?? -1,
+    stateShown: !!(document.querySelector('.pv-state')||{}).offsetParent,
     skills: Array.from(document.querySelectorAll('.pv-skill-lbl')).map((e2)=>e2.textContent),
     cannot: Array.from(document.querySelectorAll('.pv-cannot-row')).map((e2)=>e2.textContent),
     notes: Array.from(document.querySelectorAll('.pv-empty')).filter((e2)=>e2.offsetParent!==null||e2.getClientRects().length)
@@ -351,7 +359,7 @@ check(st && st.display !== 'none' && st.sheetW > 200 && st.sheetH > 200,
 check(st && st.name === SUBJECT.name,
   `the name matches the roster's — window "${st?.name}" vs wire "${SUBJECT.name}"`);
 check(st && st.title === 'PERSONA · ' + SUBJECT.name, 'the window titles itself with her name');
-check(JSON.stringify(st?.bands) === JSON.stringify(['IDENTITY', 'DOING & WHY', 'CAN & CANNOT', 'TIES & HISTORY']),
+check(JSON.stringify(st?.bands) === JSON.stringify(['IDENTITY', 'DOING & WHY', 'HOW SHE IS', 'CAN & CANNOT', 'TIES & HISTORY']),
   'FOUR bands, in the exit gate\'s order — HOW SHE IS ships with the first mental break (M4-9)');
 await png('02-persona-open-overview.png');
 
@@ -359,6 +367,20 @@ await png('02-persona-open-overview.png');
 const wireTask = String(SUBJECT.task || '');
 check(st && st.task === wireTask,
   `the task line EQUALS the roster's task field verbatim — window "${st?.task}" vs wire "${wireTask}"`);
+// ⭐⭐ M4-9 — THE FIFTH BAND, ON SCREEN, IN A REAL BROWSER. Three claims no headless test can make:
+// it is VISIBLE (not merely built), it is NOT CLIPPED (the second clause is the load-bearing half),
+// and it carries a SECOND SENTENCE at all — a line that stopped after the adjective would satisfy
+// every DOM-presence assertion in `persona-view.test.js` and still be the cosmetic operator
+// `TARGET.md:65` bans.
+check(st && st.stateShown === true, 'the HOW SHE IS band is ON SCREEN (not built-but-hidden)');
+check(st && typeof st.state === 'string' && st.state.trim().length > 0,
+  `HOW SHE IS says something: "${st?.state}"`);
+check(st && /\.\s+\S/.test(String(st.state || '')),
+  '…and it has a SECOND CLAUSE after the adjective — what it means she will refuse. A one-clause '
+  + 'state line is exactly the cosmetic operator M4-1 DESIGN QUESTION (e)\'s sequencing rule forbids');
+check(st && st.stateScrollW <= st.stateClientW + 1,
+  'the state sentence is NOT clipped — it wraps like the task line, because the clause that matters '
+  + 'is the last one');
 check(st && st.taskScrollW <= st.taskClientW + 1,
   `the task sentence is NOT CLIPPED — content ${st?.taskScrollW}px in a ${st?.taskClientW}px box. `
   + 'Both crew docks ellipsize this label (145px/118px); the window exists so it does not.');

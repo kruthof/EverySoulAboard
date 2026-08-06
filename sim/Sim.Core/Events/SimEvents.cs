@@ -456,4 +456,34 @@ namespace Perilune.Sim
         /// <see cref="PlaceRefusal.CannotPay"/>; 0 elsewhere.</summary>
         public int Affordable;
     }
+    /// <summary>
+    /// ⭐⭐ M4-9 — SHE BROKE. Published by <see cref="MentalBreakSystem"/> on the tick a crew member
+    /// crosses a derived threshold with the dwell served, once per break (never per tick of one) —
+    /// the break is a STATE on the citizen and this is its edge.
+    ///
+    /// <para>Carries the NAME as well as the id, on <see cref="CitizenDiedEvent"/>'s precedent and
+    /// for a weaker version of the same reason: <c>HistorySystem</c> reads the bus a tick later,
+    /// and a break on a crew member who dies in that window would otherwise render as
+    /// "A crew member". She is still in the store when the reader runs today; the field costs
+    /// nothing and removes the class.</para>
+    ///
+    /// <para>TRANSIENT — not saved, not folded into <c>Simulation.StateHash</c>, no def field, no
+    /// <c>IStatefulSystem</c> checksum. ⛔ That shape is deliberate and the receipt is in CLAUDE.md's
+    /// pin block: the chronicle-signal lane's save/restore regression was a transient event folded
+    /// into a hashed, never-evicted field. A re-published event on reload must be able to change
+    /// nothing — and here it cannot, because the BREAK itself lives on the citizen (CITZ v10) and a
+    /// reload restores it directly rather than replaying the edge.</para>
+    /// </summary>
+    public struct MentalBreakEvent : ISimEvent
+    {
+        /// <summary>Who broke.</summary>
+        public uint CitizenId;
+        /// <summary>Her name at the moment she broke.</summary>
+        public string Name;
+        /// <summary><see cref="BreakTier"/> as a byte (append-only contract; the enum is saved).</summary>
+        public byte Tier;
+        /// <summary>The mood that did it — the number, so the log line can be checked against the
+        /// ladder rather than believed.</summary>
+        public float Mood;
+    }
 }

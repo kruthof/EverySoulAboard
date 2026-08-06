@@ -78,6 +78,10 @@ const LONG_TASK = 'Repairing conduit at (17,3) · NO AIR — chosen over hauling
 const RELL = {
   cid: 7, name: 'Rell Okonkwo', role: 'ENGINEER', mood: '', morale: 1,
   task: LONG_TASK, portrait: '', deck: 0, x: 6, y: 6, traits: ['stoic', 'unbending'],
+  // ⭐ M4-9 — HOW SHE IS. The host's own composition shape: an adjective clause from her needs, then
+  // WHAT IT MEANS SHE WILL REFUSE (`GameSession.HowSheIs`). ⛔ A STRING, and there is deliberately no
+  // number here to draw a bar from — see the meter legs below.
+  state: 'Exhausted and hungry. She has stopped working. She will still eat, drink and sleep.',
 };
 const OZAWA = {
   cid: 9, name: 'Kenji Ozawa', role: 'MEDIC', mood: '', morale: 1,
@@ -145,24 +149,22 @@ function snapshot(n) {
 // 1. THE BANDS — the exit gate's four questions, in the exit gate's own order
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-// ⛔ FOUR, NOT FIVE, AND PINNED BY EQUALITY IN BOTH DIRECTIONS.
+// ⛔ FIVE SINCE M4-9, AND PINNED BY EQUALITY IN BOTH DIRECTIONS.
 //   · A band ADDED here is a surface growing without a decision.
 //   · A band REMOVED is a clause of the gate sentence going unanswered.
-//   · And the ABSENT one is the point: `HOW SHE IS` ships with, or after, the first mental break
-//     (M4-1 DESIGN QUESTION (e); OD-S answered §10 item 1 = A, so that is package M4-9 at merge-order
-//     position 4b, AFTER this one). Shipping the band early would be an adjective that changes no
-//     decision — `TARGET.md:65`'s cosmetic-operator rule and OD-R's own amendment. ⭐ AND THE FIRST
-//     CLAUSE IS NOT BUILDABLE EITHER, MEASURED: `Fatigue`/`Hunger`/`Thirst` reach NO client surface
-//     (`grep -ri "hunger\|thirst\|fatigue" client/src` is empty), so "Exhausted and hungry" would
-//     need a wire channel that does not exist — and M4-2's charter says STOP when that happens.
-test('M4-2: the window paints FOUR bands, in the exit gate\'s own order, and HOW SHE IS is not one', () => {
+//   · ⭐ AND THE FIFTH ARRIVED LAST ON PURPOSE. M4-2 shipped four and reported the exit gate's
+//     *how she is* clause PARTIAL, because M4-1 DESIGN QUESTION (e) rules that `HOW SHE IS` ships
+//     *with, or after,* the first mental break — an adjective that changes no decision is
+//     `TARGET.md:65`'s cosmetic operator. OD-S answered §10 item 1 = A, so that break is package
+//     **M4-9**, and **M4-9 brought the band with it**: the sentence's second clause now names
+//     something she will actually refuse.
+test('M4-9: the window paints FIVE bands, in the exit gate\'s own order, HOW SHE IS included', () => {
   const w = open(7);
   assert.deepEqual(textsOf(w, 'pv-bandhd'),
-    ['IDENTITY', 'DOING & WHY', 'CAN & CANNOT', 'TIES & HISTORY'],
+    ['IDENTITY', 'DOING & WHY', 'HOW SHE IS', 'CAN & CANNOT', 'TIES & HISTORY'],
     'the Persona window\'s band census moved. It is pinned by EQUALITY because the band ORDER is the '
     + 'exit-gate sentence\'s order ("who she is, what she\'s doing, why, how she is") and a reviewer '
-    + 'checking the gate reads top to bottom. If you are adding HOW SHE IS, you are M4-9 and you must '
-    + 'bring the behaviour it describes with you.');
+    + 'checking the gate reads top to bottom.');
   // Non-vacuity by INCLUSION: the scan is reading a live window, not an empty container.
   assert.equal(textsOf(w, 'pv-name')[0], 'Rell Okonkwo');
 });
@@ -231,6 +233,57 @@ test('M4-2: DOING & WHY says WHY the order is stuck — for HER, and only for he
 //
 // MUTATION: build the CAN row from `WORK_COLUMNS` instead of `workRowColumns(caps)` ⇒ RED (BUILD
 // re-appears for Ozawa). MUTATION: drop the CANNOT list ⇒ RED.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ M4-9 — HOW SHE IS
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('M4-9: HOW SHE IS draws the host sentence VERBATIM and derives nothing from it', () => {
+  const w = open(7);
+  assert.deepEqual(textsOf(w, 'pv-state'), [RELL.state],
+    'the band is one wire field drawn whole. It must not be split, re-cased, truncated or '
+    + 'summarised: the SECOND clause is the load-bearing half (what she will refuse), and every '
+    + 'transformation this window could apply would be a second opinion about a person.');
+});
+
+test('M4-9: the state line MOVES when the sim says she broke — the band is not decoration', () => {
+  const steady = open(7, { crew: [{ ...RELL, state: 'Steady. She will take any work she is capable of.' }, OZAWA] });
+  assert.deepEqual(textsOf(steady, 'pv-state'), ['Steady. She will take any work she is capable of.']);
+
+  const broken = open(7, { crew: [{ ...RELL, state: 'Starving. She has withdrawn: she takes no work and no orders at all.' }, OZAWA] });
+  assert.deepEqual(textsOf(broken, 'pv-state'),
+    ['Starving. She has withdrawn: she takes no work and no orders at all.'],
+    'a band that painted the same words for a whole and a broken crew member would be exactly the '
+    + 'cosmetic operator DESIGN QUESTION (e)\'s sequencing rule exists to forbid');
+});
+
+test('M4-9: an older host that sends no `state` HIDES the band rather than inventing a sentence', () => {
+  const { state, ...noState } = RELL;   // eslint-disable-line no-unused-vars
+  const w = open(7, { crew: [noState, OZAWA] });
+  assert.deepEqual(shownOf(w, 'pv-state'), [],
+    'no sentence is a legitimate answer; a made-up one is not. `invisible feedback is FUNCTIONAL` '
+    + 'cuts both ways — the window may not assert something it was never told.');
+  // Non-vacuity by INCLUSION: the window really did paint, it just left this band out.
+  assert.equal(textsOf(w, 'pv-name')[0], 'Rell Okonkwo');
+});
+
+test('M4-9: HOW SHE IS carries NO number and NO meter — the census and the text both say so', () => {
+  const w = open(7);
+  // The band's DOM is one element (the per-band census above pins that by equality). Here the
+  // complementary claim: nothing in the shipped module reads a numeric mood/needs field at all,
+  // because the wire does not carry one.
+  const src = readFileSync(new URL('../src/ui/persona-view.js', import.meta.url), 'utf8');
+  const code = codeOnly(src);
+  for (const field of ['\\.mood\\b', '\\.hunger\\b', '\\.thirst\\b', '\\.fatigue\\b', '\\.morale\\b']) {
+    assert.equal(new RegExp(field).test(code), false,
+      'the Persona window reads a numeric need/mood field (' + field + '). It must not: the host '
+      + 'ships WORDS precisely so a bar cannot be drawn (TARGET.md:66-69).');
+  }
+  // …and the control that keeps the scan honest — a field it SHOULD read is present.
+  assert.equal(/\.state\b/.test(code), true,
+    'the scan found nothing because it is scanning nothing — `state` should be here');
+  assert.equal(textsOf(w, 'pv-state').length, 1);
+});
+
 test('M4-2: CAN & CANNOT — an incapable work type has NO cell, and is named under CANNOT', () => {
   // Rell: capable of all six (an empty mask — charter §12.15: she boots with the fleet-wide default).
   const wr = open(7);
@@ -369,6 +422,12 @@ test('M4-2: the window\'s painted census is EQUALITY-pinned per band — a row c
 
   assert.deepEqual(classCensus(bandBody('DOING & WHY')), ['pv-task', 'pv-stuck'],
     'the DOING & WHY band grew or lost an element');
+
+  // ⭐ ONE ELEMENT. A METER HERE WOULD BE A SECOND. That is what makes this census the mechanised
+  // half of `TARGET.md:66-69` for M4-9's own band: a bar, a gauge, a percentage chip or a second
+  // "intensity" span all move this list, and none of them can be added quietly.
+  assert.deepEqual(classCensus(bandBody('HOW SHE IS')), ['pv-state'],
+    'the HOW SHE IS band grew or lost an element');
 
   // ⭐ THE SKILL STATE IS PART OF THE CENSUS AND THAT IS FREE PRECISION: the fixture gives Rell
   // REPAIR 4 and HAUL 2, so those two cells read `trained` and the other four `untrained`. A cell

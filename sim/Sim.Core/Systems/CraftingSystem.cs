@@ -667,6 +667,12 @@ namespace Perilune.Sim
                 {
                     var c = citizens[i];
                     if (!c.IsRecruitableForWork) continue;
+                    // ⭐ M4-9 (BREAK GATE 3 of 6) — the PUSH recruiter that bypasses the dispatcher
+                    // entirely. Placed BESIDE M2-2's veto (never inside it) and BEFORE `anyIdle`, on
+                    // the veto's own positional argument one comment down: "she has broken" is a
+                    // fact about the PERSON, and turning it into a 5 s backoff stamp on the STATION
+                    // would record the refusal against the wrong subject.
+                    if (c.BreakRefusesWork) continue;
                     // ⭐ M2-2 (G2) — THE WORK-TYPE VETO, and its POSITION is behaviour, not style.
                     // It sits BEFORE `anyIdle = true` so a crew member with Craft switched off reads
                     // as "nobody is free", not as "somebody is free but cannot reach the bench". The

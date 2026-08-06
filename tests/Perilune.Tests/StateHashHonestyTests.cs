@@ -723,6 +723,20 @@ namespace Perilune.Tests
             // fold to 0, and the widened array is part of that prefix.
             foreach (WorkType wt in Enum.GetValues(typeof(WorkType))) second.SetSkill(wt, 0);
             second.HeldByOrder = false;
+            // ⭐⭐ M4-9 (CITZ v10) — AND THIS ONE IS THE HAZARD THE FOLD'S OWN HEADER WARNED ABOUT BY
+            // NAME: "THE NEXT HASHED PREFIX FIELD WITH A NON-ZERO DEFAULT KILLS THAT GUARD SILENTLY
+            // — it will not go red, it will go green for the wrong reason." `BreakThresholdPct`
+            // boots at MentalBreak.DefaultThresholdPct (43), so without this line crew 1's prefix
+            // no longer folds to zero and the collision pair below can never form.
+            // ⛔ VERIFIED THE WAY THAT HEADER ASKS FOR, not assumed: with these five lines present,
+            // deleting `Combine(h, path.Count)` from Simulation.StateHash turns
+            // Aliased_PathTilesCannotShuffleAcrossTwoCitizens RED; with them removed it stays GREEN
+            // with the same line deleted — i.e. the guard was dead and nothing else noticed.
+            second.BreakDwell = 0;
+            second.BreakThresholdPct = 0;
+            second.BreakTier = BreakTier.None;
+            second.BreakEndsAtTick = 0;
+            second.BreakReprieveUntilTick = 0;
             if (!firstCrewCarriesBothTiles) second.Path.Add(new Int3(0, 0, 0)); // Q lands here instead
             second.PathIndex = 0;
             second.MoveCooldown = 0;

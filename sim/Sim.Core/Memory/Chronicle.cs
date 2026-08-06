@@ -177,6 +177,26 @@ namespace Perilune.Sim
             // the owner ruled the log line because the alternative here is permanent silence. That
             // classing is the reason it sits low on this ladder rather than beside the work tier.)
             HistoryKind.OrderDropped => 5,
+            // ⭐⭐ M4-9 — A MENTAL BREAK JOINS THE WORK TIER, AND THE PLACEMENT IS ARGUED RATHER
+            // THAN CONVENIENT.
+            //
+            // It must out-rank the brownout (5) for D1's own reason one tier up, run backwards: the
+            // break is often WHY the repair the brownout was about never happened, and a day
+            // remembered as "the power flapped" when what actually happened is "she stopped working"
+            // tells the player the symptom instead of the cause. Tier 6 means "the ship's capability
+            // changed and a person made it happen" — a break is that sentence with the agency
+            // reversed, and the capability change is real: a crew member who takes no work is the
+            // largest single change to what this ship can do that is not a death.
+            //
+            // ⛔ AND IT DOES NOT GO ABOVE 6, WHICH IS A SCOPE RULE RATHER THAN A JUDGEMENT. Every
+            // pairing above tier 6 is owner-ruled and pinned by name, and `perilune-m4.packages.md`
+            // §10 item 5 says in terms that M4-7 "must NOT re-order anything above tier 6". Six is
+            // the highest slot available to this package without an owner ruling. ⚠️ FILED FOR THE
+            // OWNER: whether a break should headline a day over a repair or a commissioning is a
+            // real question and the tie currently answers it by CLOCK — item 5's own rule (the
+            // strict '>' in Render keeps the earliest entry), which is the same tie-break
+            // Construction/Deconstruct have used since E0-5.
+            HistoryKind.MentalBreak => 6,
             HistoryKind.Argument => 4,
             HistoryKind.Bond => 4,
             HistoryKind.RelationshipChanged => 3,
@@ -215,6 +235,9 @@ namespace Perilune.Sim
             // does (Repair, Commission, Salvage), and the line's own first two words say what
             // became of it.
             HistoryKind.OrderDropped => "Order",
+            // M4-9. The tag names the SUBJECT, as every other row here does — and the subject is a
+            // PERSON, which is why it is not "Break".
+            HistoryKind.MentalBreak => "Crew",
             HistoryKind.Generic => "Note",
             _ => "Note",
         };

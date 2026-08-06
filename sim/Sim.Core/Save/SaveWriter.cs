@@ -49,7 +49,7 @@ namespace Perilune.Sim
 
         public const ushort TileVersion = 2;    // v2: + per-tile Material array (byte[n]) per level
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
-        public const ushort CitizenVersion = 9; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove; v8 +the work-priority grid, WorkIncapable, Skill, HeldByOrder (M2-1); v9 the one Skill byte WIDENS to a per-work-type array (M3-7, OD-M item 8A)
+        public const ushort CitizenVersion = 10; // v10 the MENTAL BREAK's five fields (M4-9); v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove; v8 +the work-priority grid, WorkIncapable, Skill, HeldByOrder (M2-1); v9 the one Skill byte WIDENS to a per-work-type array (M3-7, OD-M item 8A)
         // v7: + Facing (2 bits in a byte, drawing-only — Device.Facing's own doc carries the
         // divergence from RimWorld and the pin-neutrality obligation).
         public const ushort DeviceVersion = 7;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner; v5: + Scriptable (E0-6); v6: + Faulted (OD-O/M3-16)
@@ -293,6 +293,18 @@ namespace Perilune.Sim
                 for (int t = 0; t < c.SkillsRaw.Length; t++) w.Write(c.SkillsRaw[t]);
                 w.Write(c.HeldByOrder); // M2-19's sticky claim — READ since M2-19 and WRITTEN since
                                         // M2-9 (PrioritiseJobCommand): live state, not reserved
+                // ⭐⭐ v10 (M4-9) — THE MENTAL BREAK. Five fields, appended at the END of the record
+                // so a v9 payload is a strict prefix of a v10 one and the reader's branch is a
+                // trailing `if (version >= 10)` rather than a re-shuffle. ⚠️ NO SELF-DESCRIBING
+                // COUNT here, unlike the two arrays above, and that is not an inconsistency: those
+                // are variable-length runs whose length is a compile-time constant that could
+                // CHANGE (a seventh work type); these are five scalars of fixed width whose count
+                // can only change by another version bump, which is exactly what a version is for.
+                w.Write(c.BreakDwell);
+                w.Write(c.BreakThresholdPct);
+                w.Write((byte)c.BreakTier);
+                w.Write(c.BreakEndsAtTick);
+                w.Write(c.BreakReprieveUntilTick);
             }
         }
 
