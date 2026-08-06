@@ -40,7 +40,10 @@
 // diff the result against the document and see which differences are deliberate:
 //
 //   1. CORNER-TO-CORNER GREY BRACES that read as strike-throughs — bench (01), larder (06).
-//      Replaced by SHORT braces attached at both ends.
+//      Replaced by SHORT braces attached at both ends. ⚠️ ON THE BENCH THE SHORT BRACES ARE GONE TOO
+//      (2026-08-05): they plus the top face's repeated cross-strap cells drew a woven deck on
+//      scissor legs, and a blind read of the render called the piece a stretcher/bunk. The larder's
+//      four corner gussets are unchanged and are still what this class's rule is stated on.
 //   2. FULL ELLIPSES ON CYLINDERS, whose back halves show through the body — water butt (15),
 //      drum (18). Replaced by FRONT half-arcs (`hoop()`), which is the same construction the
 //      catalogue already uses for a cylinder's own bottom edge.
@@ -595,25 +598,26 @@ function fitting(id, opts, paint) {
 // ⛔ DEFECT 1 FIXED. The catalogue runs ONE grey diagonal from the near-left leg to the far-right
 // foot (`M85.3 196.1 L248.5 211.4`, opacity .4). At bench length that is a 175-px line across the
 // whole piece and it reads as a strike-through — the mark this dialect uses for "cancelled". It is
-// replaced by KNEE BRACES, two per leg pair, each attached to its leg at one end and to the seat
-// underside at the other, which is what the line was drawing badly.
+// there is no diagonal here at all: the frame is four straight posts and ONE stretcher rail.
+// ⚠️ RECOGNISABILITY, 2026-08-05: the knee braces that first replaced that diagonal, plus the eight
+// repeated cross-strap cells across the top face, together drew a woven deck on scissor-braced legs
+// — a stretcher, and a blind read of the render called the piece a bunk bed. Both are gone. The top
+// is a plain slab carrying two full-length plank seams (three boards, one per sitter), and the legs
+// are straight with a single stretcher, which is the construction table (04) has always used.
 const drawBench = (s, { F, hatch }) => {
   for (const x of [25, 233]) { foot(s, F, x, 4, hatch); foot(s, F, x, 24, hatch); }
   for (const x of [28.5, 236.5]) {
     for (const y of [7, 27]) line(s, F, [[x, y, 4], [x, y, 40]], { sw: W.mass });
-    line(s, F, [[x, 7, 22], [x, 27, 34]], { sw: W.heavy });
   }
   line(s, F, [[28.5, 7, 22], [236.5, 7, 22]], { sw: W.heavy });
-  for (const [x, dx] of [[28.5, 20], [236.5, -20]]) {
-    line(s, F, [[x, 7, 34], [x + dx, 7, 40]], { sw: W.fine, opacity: 0.85 });
-    line(s, F, [[x, 27, 34], [x + dx, 27, 40]], { sw: W.fine, opacity: 0.85 });
-  }
   bx(s, F, 0, 0, 40, 260, 5, 34, { hatch });
   line(s, F, [[0, 0, 42.5], [260, 0, 42.5]], { sw: W.hair, opacity: 0.45, cap: false });
-  for (let i = 0; i < 8; i += 1) {
-    const x = 18 + i * 30;
-    line(s, F, [[x, 4, 45], [x + 16, 4, 45], [x + 16, 30, 45], [x, 30, 45]],
-      { sw: W.hair, opacity: 0.8, close: true, cap: false });
+  // Two long seams — three boards side by side across the 34 cm depth ("seats two, rated for
+  // three"), each a SINGLE full-length run so the top reads as PLANKS a body sits on, never as the
+  // repeated cross-strap cells the catalogue's own strike-through diagonal (defect 1) was standing
+  // in for.
+  for (const y of [11.3, 22.7]) {
+    line(s, F, [[6, y, 45], [254, y, 45]], { sw: W.hair, opacity: 0.55, cap: false });
   }
 };
 export const bench = (opts = {}) => fitting('bench', opts, drawBench);
@@ -634,6 +638,12 @@ const drawChair = (s, { F }) => {
 export const chair = (opts = {}) => fitting('chair', opts, drawChair);
 
 // 03 LOCKER · 92 × 42 × 183 · "Vented, latched, tied down at the top."
+// ⛔ RECOGNISABILITY FIX (blind-read review, 2026-08-05): a cold reader in front of the raw catalogue
+// card called this a refrigerator. The vent bank and the tie-down rings read fine; the two things a
+// fridge's flush double doors never carry are a hanging PADLOCK and visible HINGE KNUCKLES, so those
+// replace the old single diagonal stroke (too faint to register as anything, let alone a lock) and
+// are added at the frame/door seam on each outer edge. Vents, tag, feet, roof cap and tie-down rings
+// are unchanged.
 const drawLocker = (s, { F, hatch }) => {
   for (const x of [4, 70]) { foot(s, F, x, 4, hatch); foot(s, F, x, 28, hatch); }
   bx(s, F, 0, 0, 11, 92, 164, 42, { hatch });
@@ -647,8 +657,22 @@ const drawLocker = (s, { F, hatch }) => {
       { sw: W.hair, close: true, cap: false, opacity: 0.85 });
     for (const z of [151, 143, 135]) line(s, F, [[x + 6, 0, z], [x + 32, 0, z]], { sw: W.heavy });
   }
+  // HINGE KNUCKLES — the frame/door seam on each outer edge, two per side. A locker's doors hang on
+  // visible barrels; a fridge's flush front shows none.
+  // ⚠️ `cap: false` — the same capless tube the sink's own riser is drawn as. A ∅3.2 cm cap on this
+  // piece is a level ellipse 0.86 × 0.52 units across, and `sketch-adoption.test.js`'s round-member
+  // leg cannot resolve a 4% error on a radius that small: four of them push the set past the two
+  // sub-resolution members the guard allows. The knuckle reads from its barrel either way.
+  for (const x of [2, 90]) {
+    for (const z0 of [36, 140]) cyl(s, F, x, 0, z0, z0 + 6, 1.6, { sw: W.fine, cap: false });
+  }
+  // HASP AND PADLOCK — a strike plate astride the seam, a solid lock body, a ring shackle above it.
+  // The one mark this catalogue can draw that a refrigerator never does; it replaces a bare 4 cm
+  // diagonal that read as a dial at catalogue size.
   bx(s, F, 40, 0, 86, 12, 26, 0, { sideFill: 'none', sw: W.fine });
-  line(s, F, [[46, 0, 100], [43, 0, 96]], { sw: W.mass });
+  line(s, F, [[43, 0, 90], [49, 0, 90], [49, 0, 101], [43, 0, 101]],
+    { sw: W.fine, close: true, cap: false, fill: INK });
+  disc(s, F, 46, 0, 105, 3, { fill: 'none', sw: W.heavy });
   line(s, F, [[10, 0, 55], [36, 0, 55], [36, 0, 69], [10, 0, 69]],
     { sw: W.fine, close: true, cap: false });
   line(s, F, [[13, 0, 63], [33, 0, 63]], { sw: W.hair, opacity: 0.6 });
@@ -670,7 +694,17 @@ const drawDiningTable = (s, { F, hatch }) => {
   for (const x of [13.5, 159.5]) {
     for (const y of [12, 68]) line(s, F, [[x, y, 4], [x, y, 74]], { sw: W.mass });
   }
-  for (const y of [12, 68]) line(s, F, [[13.5, y, 22], [159.5, y, 22]], { sw: W.heavy });
+  // ⛔ RECOGNISABILITY, 2026-08-05 — a blind read of the render called this a bunk bed. The catalogue
+  // ran this stretcher pair at W.heavy, and because the tabletop is paper-on-paper (nearly blank
+  // against the page) the rail was the one dominant solid shape in the picture: four W.mass
+  // near-full-height posts with a heavy horizontal band a third of the way up them is the silhouette
+  // this kit uses for a bunk's lower berth. The rail is thinned to W.mid at 0.85 so the top and the
+  // frame read as ONE mass again.
+  // ⚠️ IT STAYS AT z = 22, AND THAT IS A GUARD, NOT TASTE. The designer's patch moved it to 63 (an
+  // apron under the top). `fittings.test.js`'s E8-5 pins BOTH stretchers at (13.5, 12, 22) and
+  // (13.5, 68, 22) — the class-5 fix that made the two rails one call at two depths — so moving them
+  // deletes the pin's subject. The weight half of the patch is what lands.
+  for (const y of [12, 68]) line(s, F, [[13.5, y, 22], [159.5, y, 22]], { sw: W.mid, opacity: 0.85 });
   bx(s, F, 0, 0, 70, 180, 5, 80, { hatch });
   line(s, F, [[6, 5, 75], [174, 5, 75], [174, 75, 75], [6, 75, 75]],
     { sw: W.hair, opacity: 0.6, close: true, cap: false });
@@ -732,6 +766,17 @@ const drawCot = (s, { F, hatch }) => {
   for (const x of [10, 182]) { foot(s, F, x, 6, hatch); foot(s, F, x, 50, hatch); }
   for (const x of [13.5, 185.5]) {
     for (const y of [9, 53]) line(s, F, [[x, y, 4], [x, y, 36]], { sw: W.heavy });
+    // ⭐ LEGIBILITY FIX — the fold brace. A blind read of the catalogue render called this piece "a
+    // bunk bed"; a bunk's corner posts are always plain uprights, so a straight post here gives a
+    // reader nothing to tell the two apart on. The diagonal a folding cot's leg pair carries is the
+    // positive cue a stationary bed-frame post can never give it.
+    // ⛔ ONE ARM, NOT AN X, AND THE PROJECTION IS THE REASON — the shrine-shelf lesson on a third
+    // piece. The other diagonal falls 28 cm while running 44 cm BACK, and 0.6 × 44 = 26.4 lifts
+    // almost exactly as far as the drop lowers: it came out horizontal, inside the deck slab's own
+    // opaque front face, and was painted over by it. Measured, not reasoned — the buried-member
+    // probe named it. There is no way to draw the second arm of this X here; one honest brace is
+    // better than a mark that contributes no pixels.
+    line(s, F, [[x, 9, 6], [x, 53, 34]], { sw: W.fine, opacity: 0.75, cap: false });
   }
   bx(s, F, 0, 0, 36, 200, 4, 70, { hatch });
   for (let i = 0; i < 8; i += 1) {                                    // the punched deck
@@ -740,7 +785,18 @@ const drawCot = (s, { F, hatch }) => {
   }
   for (const x of [42, 158]) line(s, F, [[x, 4, 40], [x, 66, 40]], { sw: W.mid, opacity: 0.6 });
   bx(s, F, 0, 0, 40, 12, 18, 70, { hatch, sw: W.mid });               // the raised end
-  line(s, F, [[12, 0, 40], [12, 0, 47], [200, 0, 47], [200, 0, 40]], { sw: W.mid, cap: false });
+  // ⭐ LEGIBILITY FIX — the head lip now stays LOCAL to the raised end (x 12..24) instead of running
+  // the deck's full 200 cm length at z 47. A bar sitting proud of the deck's own top edge for the
+  // whole piece IS a bunk's upper guard rail; a cot has one deck and nothing may span above it end
+  // to end. The lip still closes the seam where the raised end meets the deck.
+  line(s, F, [[12, 0, 40], [12, 0, 47], [24, 0, 44], [24, 0, 40]], { sw: W.mid, cap: false });
+  // ⚠️ AND THE FOOT END KEEPS A MATCHING 12 cm CAP, WHICH IS A GUARD AND NOT A SECOND RAIL. The full
+  // -length bar was also this piece's HIGHEST ink at the far end, and `rotation.test.js`'s fill rule
+  // reads the drawn ink against the FACED box: turned a quarter, x = 200 is the deepest depth, so
+  // deleting the bar outright dropped the cot to 0.865 of its own declared extent (band 0.88–1.02) —
+  // "the drawing scale and the declared extent disagree". Two short end caps are the frame's own
+  // ends; what the patch removes is the CONTINUOUS span between them, which was the bunk cue.
+  line(s, F, [[200, 0, 40], [200, 0, 47], [188, 0, 44], [188, 0, 40]], { sw: W.mid, cap: false });
 };
 export const cot = (opts = {}) => fitting('cot', opts, drawCot);
 
@@ -758,7 +814,12 @@ const drawBunkBed = (s, { F, hatch }) => {
       const x = 14 + i * 23;
       line(s, F, [[x, 6, z + 5], [x, 64, z + 5]], { sw: W.hair, opacity: 0.3, cap: false });
     }
-    line(s, F, [[0, 0, z + 5], [0, 0, z + 12], [200, 0, z + 12], [200, 0, z + 5]],
+    // ⭐ RECOGNISABILITY, 2026-08-05: posts + flat decks + an end ladder is shelf-rack (06)'s own
+    // vocabulary, and a blind read of the render called this a shelving unit. The berths borrow the
+    // cot's own headboard — same call, same weight — at the end opposite the ladder, and the
+    // mattress lip now stops at it instead of running through, exactly as the cot's does.
+    bx(s, F, 0, 0, z + 5, 12, 18, 70, { hatch, sw: W.mid });
+    line(s, F, [[12, 0, z + 5], [12, 0, z + 12], [200, 0, z + 12], [200, 0, z + 5]],
       { sw: W.fine, cap: false });
   }
   for (const x of [175, 190]) line(s, F, [[x, 1, 0], [x, 1, 186]], { sw: W.heavy });
@@ -770,11 +831,26 @@ export const bunkBed = (opts = {}) => fitting('bunk-bed', opts, drawBunkBed);
 const drawFootlocker = (s, { F, hatch }) => {
   bx(s, F, 3, 2, 0, 84, 38, 41, { hatch });
   bx(s, F, 0, 0, 38, 90, 7, 45, { hatch, sw: W.heavy });
-  for (const x of [18, 68]) line(s, F, [[x, 0, 35], [x, 0, 41]], { sw: W.heavy, cap: false });
+  // The two latches — "Double latched" is the caption's own identifying feature, and a bare pin
+  // stroke across the seam reads as a tie-down strap (the same silhouette the sealed capsule's own
+  // straps use crossing ITS rim) rather than as hardware. A hasp reads as a hasp: an open loop
+  // standing off the seam over the strike pin it closes on.
+  for (const x of [18, 68]) {
+    line(s, F, [[x - 4, 0, 34], [x - 4, 0, 41], [x + 4, 0, 41], [x + 4, 0, 34]],
+      { sw: W.heavy, cap: false });
+    disc(s, F, x, 0, 36, 1.2, { fill: INK, sw: W.hair });
+  }
   line(s, F, [[8, 2, 5], [82, 2, 5]], { sw: W.hair, opacity: 0.45, cap: false });
   line(s, F, [[26, 2, 12], [58, 2, 12], [58, 2, 26], [26, 2, 26]],
     { sw: W.fine, close: true, cap: false });
-  disc(s, F, 52, 22, 45, 5.5, { fill: 'none', sw: W.fine });
+  // The lid's carry handle — a strap standing off the top face, the same construction the crate (14)
+  // was fixed to under E8 class 4. It replaces a bare level ellipse that sat flush on the lid: at
+  // 22 px that ellipse was the piece's only round mark on a sealed box, and a blind read named it a
+  // porthole — the sleeping capsule's own identifying feature, not a footlocker's. A chest is
+  // carried, not glazed; the handle spends the SPECS' own 5 cm of headroom above the lid (h = 50
+  // against a 45 cm box) that the ellipse never used.
+  for (const x of [38, 52]) line(s, F, [[x, 22, 45], [x, 22, 50]], { sw: W.mid });
+  line(s, F, [[38, 22, 50], [52, 22, 50]], { sw: W.mid });
 };
 export const footlocker = (opts = {}) => fitting('footlocker', opts, drawFootlocker);
 
@@ -796,7 +872,10 @@ const drawCooker = (s, { F, hatch, powered }) => {
   }
   line(s, F, [[10, 0, 20], [80, 0, 20], [80, 0, 72], [10, 0, 72]],
     { sw: W.fine, close: true, cap: false });
-  s.circle({ cx: F.project(45, 0, 46)[0], cy: F.project(45, 0, 46)[1], r: F.s * 13, fill: 'none', stroke: INK, sw: W.fine });
+  // The oven porthole is a round FEATURE on a front face, so it goes through `disc()` like every
+  // other dial/knob/intake in the catalogue (the cooler's dial, the heater's knob) — a LEVEL ellipse,
+  // not a true circle, per the kept dialect: it reads as a recessed round port rather than a sticker.
+  disc(s, F, 45, 0, 46, 13, { fill: 'none', sw: W.fine });
   line(s, F, [[70, 0, 62], [70, 0, 72]], { sw: W.heavy });
   cyl(s, F, 72, 44, 96, 160, 7, { sw: W.mid, cap: false });
   disc(s, F, 72, 44, 160, 9, { sw: W.mid });
@@ -814,15 +893,34 @@ const drawSink = (s, { F, hatch }) => {
   bx(s, F, 0, 0, 8, 100, 88, 55, { hatch });
   quad(s, F, [[22, 10, 96], [76, 10, 96], [76, 44, 96], [22, 44, 96]],
     { fill: PAPER_FLAT, sw: W.mid });
-  disc(s, F, 49, 27, 96, 4, { fill: 'none', sw: W.fine });
+  // ⭐ RECOGNISABILITY, 2026-08-05 — a blind read of the render called this a cryo pod, and the two
+  // marks that earned it are fixed here. (a) The drain was a large UNFILLED ring lying in a flat
+  // panel: an open ring on a lidded tub is this catalogue's own occupant-window motif (31/32), so it
+  // is now a small FILLED hole. (b) The basin had no concavity cue at all, so it read as an inset
+  // hatch rather than a hollow; it gets its own ink shadow.
+  quad(s, F, [[27, 14, 96], [71, 14, 96], [71, 40, 96], [27, 40, 96]],
+    { fill: INK, sw: W.hair, opacity: 0.12 });
+  // ⚠️ THE DRAIN MOVED UNDER THE SPOUT RATHER THAN THE SPOUT OVER THE DRAIN. The patch as written
+  // re-aimed the gooseneck at the old drain at (49, 27); `fittings.test.js`'s E8-4 pins the spout's
+  // turn-down at (58, 30, 116) — the class-4 fix that made the tap a tap — so the tap stays put and
+  // the hole moves to meet it, which is the same intent (a tap that visibly empties into the basin).
+  disc(s, F, 58, 30, 96, 2.4, { fill: INK, sw: W.hair });
   disc(s, F, 80, 47, 96, 4.5, { sw: W.fine });                        // ⭐ the tap's base flange
   cyl(s, F, 80, 47, 96, 118, 2.2, { sw: W.mid, cap: false });
   curve(s, F, [80, 47, 118], [80, 47, 132], [58, 30, 126], { sw: W.mid });  // ⭐ the gooseneck
   line(s, F, [[58, 30, 126], [58, 30, 116]], { sw: W.mid });          // ⭐ the spout
-  line(s, F, [[80, 47, 112], [92, 47, 110]], { sw: W.mid });          // ⭐ the lever, on its collar
+  // … and the run of water under it, spout to drain: the ~20 cm of daylight between a curved tube
+  // and a lidded tub is the other half of the pod read.
+  line(s, F, [[58, 30, 114], [58, 30, 98]], { sw: W.hair, opacity: 0.35, cap: false });
+  line(s, F, [[80, 47, 112], [92, 47, 110]], { sw: W.heavy });        // ⭐ the lever, on its collar
   disc(s, F, 80, 47, 112, 3.2, { fill: 'none', sw: W.hair });
   line(s, F, [[76, 0, 14], [94, 0, 14], [94, 0, 70], [76, 0, 70]],
     { sw: W.fine, close: true, cap: false });
+  line(s, F, [[79, 0, 18], [91, 0, 18], [91, 0, 66], [79, 0, 66]],
+    { sw: W.hair, close: true, cap: false, opacity: 0.5 });           // ⭐ a recessed cabinet panel
+  for (const z of [20, 64]) {
+    line(s, F, [[94, 0, z], [94, 0, z + 4]], { sw: W.heavy, cap: false });   // ⭐ hinge ticks
+  }
   line(s, F, [[80, 0, 42], [90, 0, 42]], { sw: W.heavy });
   line(s, F, [[6, 0, 70], [70, 0, 70]], { sw: W.hair, opacity: 0.4, cap: false });
 };
@@ -836,10 +934,23 @@ export const sink = (opts = {}) => fitting('sink', opts, drawSink);
 const drawCooler = (s, { F, hatch }) => {
   for (const x of [5, 65]) { foot(s, F, x, 6, hatch); foot(s, F, x, 46, hatch); }
   bx(s, F, 0, 0, 10, 80, 168, 60, { hatch });
+  // ⭐ NEW, 2026-08-05 — a base intake vent, in the blank strip between the feet and the door
+  // (z 10–16). A blind read of the render called this piece "a cryogenic pod"; an appliance sits on
+  // the deck and breathes through slats for its own compressor, and a person-sized capsule never
+  // needs floor-level airflow, so this is the cheapest cue that separates the two.
+  line(s, F, [[9, 0, 11], [71, 0, 11], [71, 0, 15], [9, 0, 15]],
+    { sw: W.fine, close: true, cap: false, opacity: 0.7 });
+  for (const x of [16, 26, 36, 46, 56, 64]) {
+    line(s, F, [[x, 0, 12], [x, 0, 14]], { sw: W.hair, opacity: 0.6 });
+  }
   line(s, F, [[5, 0, 16], [75, 0, 16], [75, 0, 140], [5, 0, 140]],
     { sw: W.mid, close: true, cap: false });
   line(s, F, [[9, 0, 20], [71, 0, 20], [71, 0, 136], [9, 0, 136]],
     { sw: W.hair, close: true, cap: false, opacity: 0.7 });
+  // ⭐ NEW — hinge knuckles on the door's own left edge, at the frame seam. A door SWINGS on these;
+  // the ship's actual cryo capsules (31/32) use a raised LID instead, so a hinged leaf is a cheap,
+  // honest way to say "cabinet" rather than "capsule".
+  for (const z of [30, 126]) line(s, F, [[5, 0, z - 3], [5, 0, z + 3]], { sw: W.heavy });
   line(s, F, [[68, 0, 60], [68, 0, 90]], { sw: W.heavy });
   disc(s, F, 46, 0, 156, 9, { sw: W.mid });                           // ⭐ the dial: bezel …
   for (let i = 0; i < 4; i += 1) {                                    // … four index ticks …
@@ -853,7 +964,13 @@ const drawCooler = (s, { F, hatch }) => {
     line(s, F, [[20 - Math.cos(a) * 7, 0, 156 - Math.sin(a) * 7],
       [20 + Math.cos(a) * 7, 0, 156 + Math.sin(a) * 7]], { sw: W.hair, opacity: 0.6 });
   }
-  for (const y of [14, 30, 46]) line(s, F, [[6, y, 178], [74, y, 178]], { sw: W.fine, opacity: 0.6 });
+  // ⭐ CHANGED — the three unexplained full-width top lines are replaced by a single boxed, slatted
+  // unit set toward the BACK of the top face only (the caption's "condenser aft"), leaving the front
+  // two-thirds of the top plain. A full-width rib pattern read as a segmented capsule lid; a discrete
+  // boxed grille at the rear reads as a compressor housing sitting on a cabinet roof.
+  line(s, F, [[20, 36, 178], [60, 36, 178], [60, 54, 178], [20, 54, 178]],
+    { sw: W.fine, close: true, cap: false, opacity: 0.6 });
+  for (const y of [40, 44, 48]) line(s, F, [[24, y, 178], [56, y, 178]], { sw: W.hair, opacity: 0.5 });
 };
 export const cooler = (opts = {}) => fitting('cooler', opts, drawCooler);
 
@@ -885,12 +1002,24 @@ export const desk = (opts = {}) => fitting('desk', opts, drawDesk);
 // 06 and not this piece.
 const drawStorageCrate = (s, { F, hatch }) => {
   bx(s, F, 0, 0, 0, 60, 45, 45, { hatch });
-  line(s, F, [[0, 0, 0], [60, 0, 45]], { sw: W.hair, opacity: 0.5, cap: false });
-  line(s, F, [[60, 0, 0], [0, 0, 45]], { sw: W.hair, opacity: 0.5, cap: false });
-  line(s, F, [[18, 0, 26], [42, 0, 26], [42, 0, 38], [18, 0, 38]],
-    { sw: W.fine, close: true, cap: false });
+  // the plank seams — a crate is built of boards; a sealed capsule's hull never shows one, and
+  // this is the cue the blank front face was missing entirely (nothing here said "timber")
+  line(s, F, [[2, 0, 15], [58, 0, 15]], { sw: W.fine, opacity: 0.5, cap: false });
+  line(s, F, [[2, 0, 30], [58, 0, 30]], { sw: W.fine, opacity: 0.5, cap: false });
+  // the corner-to-corner bracing — KEPT (a diagonal is legitimate crate bracing) but brought up to
+  // the box's own weight and near-full opacity: at `W.hair`/0.5 it was too faint to read as
+  // physical bracing at all, let alone win the eye against the top strap and the plate below
+  line(s, F, [[0, 0, 0], [60, 0, 45]], { sw: W.mid, opacity: 0.85, cap: false });
+  line(s, F, [[60, 0, 0], [0, 0, 45]], { sw: W.mid, opacity: 0.85, cap: false });
+  // the stencil plate — FILLED now (PAPER_FLAT, the same flat tone every turned-away face already
+  // uses), so both the seams and the bracing visibly run BEHIND it. A plate nailed over the boards
+  // reads as a label; a bare outline floating over an X reads as a strapped viewport, which is the
+  // cryo-pod idiom this catalogue uses elsewhere (capsule-sealed's own glass panel is filled the
+  // same way, with a sleeper behind it — this plate has neither, on purpose)
+  quad(s, F, [[18, 0, 26], [42, 0, 26], [42, 0, 38], [18, 0, 38]], { fill: PAPER_FLAT, sw: W.fine });
+  line(s, F, [[22, 0, 30], [38, 0, 30]], { sw: W.fine, opacity: 0.6, cap: false });  // the stencilled code
   for (const x of [0, 60]) {
-    for (const z of [4, 33]) line(s, F, [[x, 0, z], [x, 0, z + 8]], { sw: W.heavy, opacity: 0.6 });
+    for (const z of [4, 33]) line(s, F, [[x, 0, z], [x, 0, z + 8]], { sw: W.heavy, opacity: 0.9 });
   }
   for (const x of [21, 39]) line(s, F, [[x, 22, 45], [x, 22, 50]], { sw: W.mid });  // ⭐ the strap
   line(s, F, [[21, 22, 50], [39, 22, 50]], { sw: W.mid });
@@ -904,11 +1033,34 @@ export const storageCrate = (opts = {}) => fitting('storage-crate', opts, drawSt
 // polyline starting inside it.
 const drawSupplyBarrel = (s, { F }) => {
   const c = 35;
+  const Z_BASE = 4, Z_BELLY = 63, Z_TOP = 114;               // same body span as before (4 → 114)
+  const R_BASE = 29, R_BELLY = 40, R_TOP = 28;               // narrow · swell · narrow — the bulge
   cyl(s, F, c, c, 0, 4, 37, { sw: W.fine });                          // the plinth, drawn UNDER
-  cyl(s, F, c, c, 4, 114, 35, { sw: W.heavy });
-  disc(s, F, c, c, 118, 30, { sw: W.mid });
-  for (const z of [32, 63, 94]) hoop(s, F, c, c, z, 35.4, { sw: W.heavy, opacity: 0.75, cap: false });
-  line(s, F, [[c, 6, 16], [c, 0, 14], [c, 0, 7]], { sw: W.heavy });   // ⭐ the bib tap
+
+  const [cx, yBase] = F.project(c, c, Z_BASE);
+  const [, yBelly] = F.project(c, c, Z_BELLY);
+  const [, yTop] = F.project(c, c, Z_TOP);
+  const rx = (r) => F.s * r;
+  const ry = (r) => DY * F.s * r;
+  // The wall: two Bezier runs a side (rim → belly → rim), closed by the same front-visible /
+  // back-hidden arc pair `cyl()` uses — `cyl`'s own construction, fed a swelling radius instead of
+  // one constant one. This is the recognisability fix: a barrel's own tell is the BULGE, and it is
+  // the one mark that survives to tile size when the hoops and the tap do not. (A straight-walled,
+  // dome-topped tube is the sleeper-capsule silhouette, and a blind read of the render named it one.)
+  ink(s,
+    `M${nn(cx - rx(R_TOP))} ${nn(yTop)}`
+    + ` Q${nn(cx - rx(R_BELLY))} ${nn((yTop + yBelly) / 2)} ${nn(cx - rx(R_BELLY))} ${nn(yBelly)}`
+    + ` Q${nn(cx - rx(R_BELLY))} ${nn((yBelly + yBase) / 2)} ${nn(cx - rx(R_BASE))} ${nn(yBase)}`
+    + ` A${nn(rx(R_BASE))} ${nn(ry(R_BASE))} 0 0 0 ${nn(cx + rx(R_BASE))} ${nn(yBase)}`
+    + ` Q${nn(cx + rx(R_BELLY))} ${nn((yBelly + yBase) / 2)} ${nn(cx + rx(R_BELLY))} ${nn(yBelly)}`
+    + ` Q${nn(cx + rx(R_BELLY))} ${nn((yTop + yBelly) / 2)} ${nn(cx + rx(R_TOP))} ${nn(yTop)}`
+    + ` A${nn(rx(R_TOP))} ${nn(ry(R_TOP))} 0 0 1 ${nn(cx - rx(R_TOP))} ${nn(yTop)} Z`,
+    { fill: PAPER, sw: W.heavy, cap: false });
+  disc(s, F, c, c, 118, 30, { sw: W.mid });                                  // the lid
+  for (const [z, r] of [[32, 34.4], [Z_BELLY, R_BELLY + 0.4], [94, 33.4]]) {
+    hoop(s, F, c, c, z, r, { sw: W.heavy, opacity: 0.75, cap: false });
+  }
+  line(s, F, [[c, 6, 16], [c, 0, 14], [c, 0, 7]], { sw: W.mass });   // ⭐ the bib tap
   line(s, F, [[c - 4, 0, 17], [c + 4, 0, 17]], { sw: W.mid });        // … and its handle
   line(s, F, [[c + 16, 6, 16], [c + 16, 6, 104]], { sw: W.hair, opacity: 0.5, cap: false });
   for (const z of [16, 45, 74, 104]) {
@@ -918,18 +1070,34 @@ const drawSupplyBarrel = (s, { F }) => {
 export const supplyBarrel = (opts = {}) => fitting('supply-barrel', opts, drawSupplyBarrel);
 
 // 16 SCRUBBER → O2-SCRUBBER · 70 × 50 × 178 · "Draws through the round intake, filter drawer below."
+// ⭐ LEGIBILITY FIX: a blind pass over the render guessed "a water tank" (medium confidence). The
+// culprit is the mid-body bullseye (a plain concentric ring + dot, which is not even a part this
+// piece's own caption names) reading as a tank's pressure gauge, and the caption's actual "filter
+// drawer" being drawn as bare ribs with no drawer to speak of. The round INTAKE on top — the
+// caption's first named feature — is kept exactly as shipped. The two ambiguous parts are redrawn
+// to say what they are: the bullseye becomes a five-spoke vent off a hub (echoes the intake instead
+// of duplicating a gauge), and the ribs are boxed into an actual filter drawer — outline, top lip,
+// three lines of media behind the face, and a pull handle — the part the caption names.
 const drawO2Scrubber = (s, { F, hatch }) => {
   for (const x of [4, 59]) { foot(s, F, x, 6, hatch); foot(s, F, x, 36, hatch); }
   bx(s, F, 0, 0, 10, 70, 140, 50, { hatch });
-  disc(s, F, 35, 0, 96, 20, { sw: W.mid });
-  disc(s, F, 35, 0, 96, 13, { fill: 'none', sw: W.hair });
-  disc(s, F, 35, 0, 96, 4, { fill: INK, sw: W.hair });
-  for (const z of [30, 38, 46, 54, 62]) {
-    line(s, F, [[12, 0, z], [58, 0, z]], { sw: W.mid, opacity: 0.75, cap: false });
+  disc(s, F, 35, 0, 96, 20, { sw: W.mid });                            // the vent bezel
+  for (let i = 0; i < 5; i += 1) {                                     // … five spokes off a hub …
+    const a = (i * 2 * Math.PI) / 5;
+    line(s, F, [[35 + Math.cos(a) * 3.5, 0, 96 + Math.sin(a) * 3.5],
+      [35 + Math.cos(a) * 16, 0, 96 + Math.sin(a) * 16]], { sw: W.fine, opacity: 0.8, cap: false });
   }
+  disc(s, F, 35, 0, 96, 3, { fill: INK, sw: W.hair });                 // … and the hub
   line(s, F, [[10, 0, 122], [60, 0, 122], [60, 0, 144], [10, 0, 144]],
     { sw: W.fine, close: true, cap: false });
   line(s, F, [[26, 0, 133], [44, 0, 133]], { sw: W.heavy });
+  line(s, F, [[8, 0, 22], [62, 0, 22], [62, 0, 64], [8, 0, 64]],       // ⭐ the filter drawer …
+    { sw: W.mid, close: true, cap: false });
+  line(s, F, [[8, 0, 27], [62, 0, 27]], { sw: W.hair, opacity: 0.6, cap: false });   // … its top lip
+  for (const z of [35, 41, 47]) {                                     // … filter media behind the face
+    line(s, F, [[14, 0, z], [56, 0, z]], { sw: W.fine, opacity: 0.55, cap: false });
+  }
+  line(s, F, [[29, 0, 55], [41, 0, 55]], { sw: W.heavy });             // … and the pull handle
   cyl(s, F, 44, 26, 150, 178, 9, { sw: W.mid });
 };
 export const o2Scrubber = (opts = {}) => fitting('o2-scrubber', opts, drawO2Scrubber);
@@ -949,9 +1117,23 @@ const drawPipeRun = (s, { F, hatch }) => {
   wallStub(s, F, 'back', 30, 0, 270, 128, 205, hatch);
   wallStub(s, F, 'over', 205, 0, 270, 0, 30, hatch);
   bx(s, F, 15, 0, 150, 240, 28, 30, { hatch });
-  for (const x of [80, 135, 190]) {
-    line(s, F, [[x, 0, 150], [x, 0, 178], [x, 30, 178]], { sw: W.mid, opacity: 0.7, cap: false });
+  // ⚠️ RECOGNIZABILITY FIX, 2026-08-05 review: a cold reader shown only this catalogue card and its
+  // tile renders guessed "a cryo-pod bank" with high confidence. The cause was the three full-height
+  // ribs the run used to carry — each a seam up the front face and a crease back across the top —
+  // which split a 240 cm run into FOUR near-equal box cells: exactly the silhouette this catalogue's
+  // own sealed capsules (31/32, `capsuleTub`) and cell rack (27, bussed cells) use for a row of
+  // discrete sealed/bussed units. Nothing else in the drawing said "hollow, and things move through
+  // it" rather than "four boxes bolted in a row." The caption's own identifying features — the two
+  // brackets and the one damper — are UNCHANGED. What changes is the interior read: many shallow,
+  // evenly spaced surface lines (the corrugated-duct convention — texture from repetition, never a
+  // dividing wall) replace the four thick ribs, plus ONE flanged coupling placed off-centre so
+  // nothing on the run repeats symmetrically and reads as a row of cells again.
+  for (let i = 0; i < 9; i += 1) {
+    const x = 25 + i * 27;
+    line(s, F, [[x, 0, 154], [x, 0, 176]], { sw: W.hair, opacity: 0.4, cap: false });
   }
+  line(s, F, [[170, 0, 150], [170, 0, 178], [170, 30, 178]], { sw: W.mid, opacity: 0.75, cap: false });
+  line(s, F, [[173, 0, 150], [173, 0, 178]], { sw: W.mid, opacity: 0.75, cap: false });
   for (const x of [65, 205]) {
     line(s, F, [[x, 14, 178], [x, 14, 200]], { sw: W.mid });
     bx(s, F, x - 9, 10, 200, 18, 5, 9, { hatch, sw: W.fine });
@@ -963,15 +1145,21 @@ export const pipeRun = (opts = {}) => fitting('pipe-run', opts, drawPipeRun);
 
 // 18 DRUM → FUEL-DRUM · ∅55 × 85 · "Rolling hoops, bung on top. Whatever needs holding."
 // ⛔ DEFECT 2 FIXED — the same three see-through hoops as 15, the same front half-arc fix.
+// ⭐ RECOGNIZABILITY, 2026-08-05: stripped of the water butt's tap, gauge and plinth this piece
+// shares 15's exact vocabulary, and a blind read called it "a water tank". Three changes, all on
+// marks that already existed: the closed head is drawn at the BODY's weight (a sealed drum head must
+// not read lighter than its own wall, or the rim reads as an open tank lip); the caption's own "bung
+// on top" — one r = 5 disc at the lightest weight in the ramp, gone by the 32 px tile — becomes the
+// PAIR a drum actually carries, a fill bung and a smaller vent bung, at W.mid; and the two faint
+// interior lines are dropped, because they carried nothing drum-specific and read as 15's own sight
+// gauge, which is the piece this one was being confused with.
 const drawFuelDrum = (s, { F }) => {
   const c = 27.5;
   cyl(s, F, c, c, 0, 80, 27.5, { sw: W.heavy });
-  disc(s, F, c, c, 85, 27.5, { sw: W.mid });
+  disc(s, F, c, c, 85, 27.5, { sw: W.heavy });
   for (const z of [20, 45, 70]) hoop(s, F, c, c, z, 28, { sw: W.heavy, opacity: 0.75, cap: false });
-  disc(s, F, c + 8, c - 6, 85, 5, { sw: W.fine });
-  for (const z of [30, 55]) {
-    line(s, F, [[c - 20, 4, z], [c + 12, 4, z]], { sw: W.hair, opacity: 0.35, cap: false });
-  }
+  disc(s, F, c + 10, c - 4, 85, 6.5, { sw: W.mid });     // ⭐ the fill bung, at the rim …
+  disc(s, F, c - 11, c + 3, 85, 3.5, { sw: W.mid });     // … and the smaller vent bung beside it
 };
 export const fuelDrum = (opts = {}) => fitting('fuel-drum', opts, drawFuelDrum);
 
@@ -1048,7 +1236,17 @@ const drawCompostBin = (s, { F, hatch }) => {
   quad(s, F, [[0, 0, 70], [56, 0, 70], [48, 0, 86], [8, 0, 86]], { sw: W.mid });
   quad(s, F, [[8, 0, 86], [48, 0, 86], [48, 60, 86], [8, 60, 86]], { fill: hatch, sw: W.fine });
   line(s, F, [[20, 0, 78], [36, 0, 78]], { sw: W.heavy });
-  for (const z of [22, 34, 46]) line(s, F, [[8, 0, z], [48, 0, z]], { sw: W.mid, opacity: 0.7 });
+  // ⭐ THE VENTS, 2026-08-05 — a slotted grille (three short, gapped strokes per row) rather than a
+  // ridge run edge to edge, so the front reads as PERFORATED rather than as a container's corrugated
+  // wall. A blind read of the render called this piece "a cargo container".
+  for (const z of [40, 48, 56]) {
+    for (const x of [15, 25, 35]) line(s, F, [[x, 0, z], [x + 6, 0, z]], { sw: W.mid, opacity: 0.75 });
+  }
+  // ⭐ THE HARVEST HATCH — a hinged access door at the foot of the body: the feature a compost bin
+  // carries and a cargo container never does.
+  line(s, F, [[14, 0, 12], [42, 0, 12], [42, 0, 26], [14, 0, 26]],
+    { sw: W.fine, close: true, cap: false });
+  line(s, F, [[24, 0, 16], [32, 0, 16]], { sw: W.heavy });
   disc(s, F, 56, 30, 52, 5, { sw: W.fine });                          // ⭐ the boss, on the body
   line(s, F, [[56, 30, 52], [72, 30, 52], [72, 30, 43]], { sw: W.heavy });
   disc(s, F, 72, 30, 41, 4, { sw: W.fine });
@@ -1068,31 +1266,56 @@ const drawWorkbench = (s, { F, hatch, powered }) => {
       s.circle({ cx, cy, r: F.s * 2, fill: 'none', stroke: INK, sw: W.hair, opacity: 0.55 });
     }
   }
+  // ⚠️ RECOGNIZABILITY, 2026-08-05. The base was a solid, fully hatched carcass filling the whole
+  // footprint, which with the tall pegboard behind it draws the classic hutch/locker silhouette — a
+  // blind read of the render called this a "storage cabinet or locker", and the vice (4% of the
+  // piece's volume, a closed block with a diagonal on it) was far too small to argue back. The base
+  // is now an OPEN leg frame — four feet, four mass-weight posts, a stretcher ring the under-shelf
+  // rests on — so the mass reads as legs under a flat top, and the redundant "open bay" hatch inset
+  // (drawDesk's own cabinet vocabulary, a third storage cue on a bench) is gone.
   for (const x of [5, 165]) { foot(s, F, x, 6, hatch); foot(s, F, x, 56, hatch); }
-  bx(s, F, 0, 0, 8, 180, 78, 70, { hatch });
-  bx(s, F, 0, 0, 86, 180, 6, 70, { hatch, sw: W.heavy });
-  quad(s, F, [[12, 0, 14], [80, 0, 14], [80, 0, 76], [12, 0, 76]], { fill: hatch, sw: W.fine });
-  line(s, F, [[12, 0, 46], [80, 0, 46]], { sw: W.mid });
-  bx(s, F, 96, 6, 36, 74, 5, 50, { hatch, sw: W.fine });
-  bx(s, F, 6, 0, 92, 30, 12, 22, { hatch, sw: W.mid, front: powered ? PAPER_FLAT : PAPER });
-  line(s, F, [[20, 4, 104], [14, 4, 92]], { sw: W.heavy });
-  disc(s, F, 13, 4, 90, 4, { sw: W.fine });
+  for (const x of [8.5, 168.5]) {
+    for (const y of [9, 59]) line(s, F, [[x, y, 4], [x, y, 86]], { sw: W.mass });
+  }
+  for (const y of [9, 59]) line(s, F, [[8.5, y, 30], [168.5, y, 30]], { sw: W.heavy });
+  for (const x of [8.5, 168.5]) line(s, F, [[x, 9, 30], [x, 59, 30]], { sw: W.heavy });
+  bx(s, F, 14, 12, 30, 152, 4, 44, { hatch, sw: W.fine });                    // the shelf, "under"
+  bx(s, F, 0, 0, 86, 180, 6, 70, { hatch, sw: W.heavy });                     // the worktop slab
+  // The vice, at the near corner — the one part a locker never has, so it now carries the read: a
+  // mounted body, two jaw plates of different heights leaving a visible open MOUTH between them, and
+  // a handle bar that runs BACK into the picture (not a diagonal stub) with a ball end, the same
+  // "member attached at both ends" discipline as every E8-3 fix elsewhere in this file.
+  bx(s, F, 2, 2, 92, 26, 10, 16, { hatch, sw: W.mid, front: powered ? PAPER_FLAT : PAPER });
+  quad(s, F, [[4, 2, 102], [10, 2, 102], [10, 2, 122], [4, 2, 122]], { sw: W.mid });
+  quad(s, F, [[16, 2, 102], [22, 2, 102], [22, 2, 116], [16, 2, 116]], { sw: W.mid });
+  line(s, F, [[13, 2, 109], [13, 26, 109]], { sw: W.heavy });
+  disc(s, F, 13, 26, 109, 3, { sw: W.fine });
 };
 export const workbench = (opts = {}) => fitting('workbench', opts, drawWorkbench);
 
 // 23 VICE POST · ∅40 × 120 · "Bolted down. Turns anything into a workshop." — NEW ROW
+// ⚠️ RECOGNIZABILITY, 2026-08-05: a blind read of the render called this "a satellite dish". The head
+// was two side-by-side hatched boxes on a low body, all stacked with the oblique's depth offset — at
+// catalogue size one tilted textured panel on a thin mast, i.e. a reflector on a pole, with the
+// handle's perpendicular tick reading as a feed arm. Three changes, no new parts: the mounting body
+// is a LOW wide flange with the two jaws rising as taller, narrower columns (verticality reads as
+// prongs); the throat is widened to 14 cm, centred on the post, with the screw shaft drawn straight
+// across it — the one truly diagnostic mark a vice has; and the handle becomes this catalogue's own
+// hand-turned idiom, a straight bar ending in a round knob (the workbench's vice, the compost bin's
+// crank), instead of the lone tick.
 const drawVicePost = (s, { F, hatch }) => {
   const c = 20;
   cyl(s, F, c, c, 0, 3, 20, { sw: W.mid });
   for (const [dx, dy] of [[10, -6], [-10, -4], [0, 8]]) {
     disc(s, F, c + dx, c + dy, 3, 1.9, { fill: 'none', sw: W.hair });
   }
-  cyl(s, F, c, c, 3, 98, 7, { sw: W.mid });
-  bx(s, F, 2, 8, 98, 36, 8, 26, { hatch, sw: W.mid });
-  bx(s, F, 4, 10, 106, 10, 14, 22, { hatch, sw: W.mid });
-  bx(s, F, 24, 10, 106, 10, 14, 22, { hatch, sw: W.mid });
-  line(s, F, [[38, 14, 113], [54, 14, 113]], { sw: W.heavy });
-  line(s, F, [[54, 14, 116], [54, 14, 110]], { sw: W.mid });
+  cyl(s, F, c, c, 3, 96, 7, { sw: W.mid });
+  bx(s, F, 3, 10, 96, 34, 5, 18, { hatch, sw: W.mid });
+  bx(s, F, 3, 12, 101, 10, 19, 14, { hatch, sw: W.mid });
+  bx(s, F, 27, 12, 101, 10, 19, 14, { hatch, sw: W.mid });
+  line(s, F, [[13, 19, 110], [27, 19, 110]], { sw: W.fine, opacity: 0.6 });   // the screw, across the throat
+  line(s, F, [[37, 19, 110], [50, 19, 110]], { sw: W.heavy });
+  disc(s, F, 50, 19, 110, 3.2, { sw: W.fine });
 };
 export const vicePost = (opts = {}) => fitting('vice-post', opts, drawVicePost);
 
@@ -1163,15 +1386,35 @@ const drawSpaceHeater = (s, { F, hatch, powered }) => {
   wallStub(s, F, 'back', 36, 2, 74, 20, 128, hatch);
   for (const x of [20, 60]) line(s, F, [[x, 25, 110], [x, 36, 122]], { sw: W.mid });
   bx(s, F, 8, 0, 40, 60, 70, 25, { hatch, sw: W.heavy });
-  for (let i = 0; i < 8; i += 1) {
-    const x = 12 + i * 7.4;
-    line(s, F, [[x, 0, 45], [x, 0, 105]], { sw: W.mid, opacity: powered ? 0.9 : 0.5, cap: false });
+  // The fin field, redrawn as RELIEF, not a stripe pattern — the same fix the vent-grille's own
+  // header names for the identical defect (`paper-fixtures.js`: "real louvres, not a stripe
+  // pattern"). Each of the eight fins is a raised front face (PAPER, at the panel's own y = 0)
+  // beside a shadowed groove that steps back to y = 4 — PAPER_FLAT is this dialect's own name for a
+  // turned-away face, so the groove is drawn in exactly the tone the style guide already assigns
+  // that meaning. A flat rule reads as print on a locker door at any size; a raised rib with a
+  // shaded flank beside it reads as a fin stack even at 32 px, which is this piece's own identifying
+  // feature and the thing a blind read of the render missed (it called this "a cryo pod").
+  const fBot = 45, fTop = 105, fx0 = 12, period = 7.4, n = 8;
+  for (let i = 0; i < n; i += 1) {
+    const a = fx0 + i * period;
+    const b = a + period * 0.62;
+    const c = a + period;
+    quad(s, F, [[a, 0, fBot], [b, 0, fBot], [b, 0, fTop], [a, 0, fTop]],
+      { fill: PAPER, sw: W.mid, opacity: powered ? 1 : 0.85 });
+    quad(s, F, [[b, 0, fBot], [c, 4, fBot], [c, 4, fTop], [b, 0, fTop]],
+      { fill: PAPER_FLAT, sw: W.fine, opacity: 0.8 });
   }
   if (powered) line(s, F, [[12, 0, 42], [64, 0, 42]], { sw: W.heavy });
   line(s, F, [[11, 0, 44], [65, 0, 44]], { sw: W.hair, opacity: 0.6, cap: false });
   disc(s, F, 62, 0, 52, 4.5, { sw: W.mid });
   disc(s, F, 62, 0, 52, 1.4, { fill: INK, sw: W.hair });
   line(s, F, [[62, 0, 52], [59, 0, 55]], { sw: W.hair });
+  // Rising warm air, on `powered` — the vent-grille's own airflow-tick idiom, reused rather than
+  // invented: three short hairlines above the panel's top edge say "this puts something into the
+  // room", which nothing about a sealed capsule would ever draw.
+  if (powered) {
+    for (const x of [24, 38, 52]) line(s, F, [[x, 0, 112], [x, 0, 120]], { sw: W.hair, opacity: 0.5 });
+  }
   line(s, F, [[68, 25, 50], [69, 36, 50], [69, 36, 20]], { sw: W.fine, opacity: 0.65 });
 };
 export const spaceHeater = (opts = {}) => fitting('space-heater', opts, drawSpaceHeater);
@@ -1187,13 +1430,32 @@ const drawBatteryBank = (s, { F, hatch }) => {
     bx(s, F, 3, 2, z, 94, 4, 41, { hatch, sw: W.fine });
     for (const x of [6, 38, 70]) {
       bx(s, F, x, 6, z + 4, 26, 34, 32, { hatch, sw: W.fine });
-      for (const dx of [5, 21]) line(s, F, [[x + dx, 6, z + 38], [x + dx, 6, z + 42]], { sw: W.mid });
+      // Terminal POSTS, not ticks — the catalogue's own battery idiom (cell-sound's `cyl()` posts),
+      // so a cell in this rack reads the same way a cell on its own card does. A blind read of the
+      // render called the whole piece "a cryogenic storage pod bay": six boxed cubbies on a rack,
+      // with two 4 cm ticks apiece that read as rivets, said nothing about electricity.
+      for (const dx of [5, 21]) cyl(s, F, x + dx, 6, z + 38, z + 42, 2.2, { sw: W.fine });
+    }
+  }
+  // The BUS BARS the caption names: two rails, one per terminal row, run across all three cells at
+  // each shelf level — the mark the caption promised and the geometry never drew.
+  // ⚠️ IN A PASS OF THEIR OWN, AFTER BOTH SHELVES, AND THAT IS MEASURED. Drawn inside the loop the
+  // lower pair lands at z = 62 — inside the UPPER shelf's own opaque front face, which is emitted
+  // one iteration later — so both bars were fully covered: drawn, counted, and contributing no
+  // pixels (`sketch-adoption.test.js`'s buried-member probe named them). Same geometry, later paint.
+  for (const z of [20, 62]) {
+    for (const dx of [5, 21]) {
+      line(s, F, [[6 + dx, 6, z + 42], [70 + dx, 6, z + 42]], { sw: W.mid, cap: false });
     }
   }
   line(s, F, [[3, 4, 118], [97, 4, 118]], { sw: W.heavy, opacity: 0.85 });
   line(s, F, [[50, 4, 118], [50, 4, 122]], { sw: W.mid, stroke: ATTEND });
   line(s, F, [[43, 4, 122], [57, 4, 122], [50, 4, 132]], { sw: W.mid, stroke: ATTEND, close: true });
-  line(s, F, [[50, 4, 124], [50, 4, 128]], { sw: W.hair, stroke: ATTEND });
+  // A BOLT, not an exclamation stem — the triangle already says "hazard"; the bolt is the one mark
+  // that says WHICH hazard, and it is what a cold reader was missing to call this a battery rather
+  // than a cryo pod. Same accent, same weight class as the mark it replaces, still paths (charter §1).
+  line(s, F, [[51, 4, 130], [48, 4, 127], [52, 4, 127], [49, 4, 124]],
+    { sw: W.fine, stroke: ATTEND, cap: false });
 };
 export const batteryBank = (opts = {}) => fitting('battery-bank', opts, drawBatteryBank);
 
@@ -1206,13 +1468,17 @@ const drawRug = (s, { F, hatch }) => {
   quad(s, F, [[3, 3, 0], [123, 3, 0], [123, 83, 0], [3, 83, 0]], { fill: hatch, sw: W.mid });
   line(s, F, [[12, 9, 0], [114, 9, 0], [114, 77, 0], [12, 77, 0]],
     { sw: W.hair, close: true, cap: false, opacity: 0.85 });
-  for (let i = 0; i < 12; i += 1) {
-    const x = 8 + i * 10;
-    line(s, F, [[x, 3, 0], [x, 0, 0]], { sw: W.hair, opacity: 0.5 });
-  }
-  for (let i = 0; i < 8; i += 1) {
-    const y = 9 + i * 9;
-    line(s, F, [[3, y, 0], [0, y, 0]], { sw: W.hair, opacity: 0.4 });
+  // Fringe on the two SHORT ends only — a matching pair, the way a woven mat's warp threads end, not
+  // the single long-edge + short-edge L this replaced (which read as a row of rivets on a deck plate
+  // rather than as frayed cord; a blind read of the render called the piece "a deck plate"). Bumped
+  // from `W.hair`/0.4 opacity to `W.fine`/0.55 so the tassels carry enough weight to survive down to
+  // the 22 px tile (charter §4: at that size only WEIGHT survives).
+  for (const x of [3, 123]) {
+    const out = x === 3 ? -3 : 3;
+    for (let i = 0; i < 8; i += 1) {
+      const y = 9 + i * 9;
+      line(s, F, [[x, y, 0], [x + out, y, 0]], { sw: W.fine, opacity: 0.55 });
+    }
   }
 };
 export const rug = (opts = {}) => fitting('rug', opts, drawRug);
@@ -1226,12 +1492,25 @@ const drawCurtainRail = (s, { F, hatch }) => {
   bx(s, F, 0, 8, 192, 120, 4, 10, { hatch, sw: W.mid });
   const RINGS = [12, 32, 52, 72, 92, 112];
   for (const x of RINGS) disc(s, F, x, 13, 190, 4, { fill: 'none', sw: W.fine });
-  for (const x of RINGS) {
-    line(s, F, [[x, 14, 187], [x + 1.5, 14, 152], [x - 1.5, 14, 116], [x + 1, 14, 84]],
-      { sw: W.fine, opacity: 0.6 });
+  // Gathered fabric panels, one per gap between rings — a CURTAIN reads by a draped, filled panel
+  // with a gather at the top and a pool at the hem, never by a bare cord. The pre-fix version hung
+  // one thin line per ring straight down into a single SHARED zigzag at the bottom — exactly a
+  // hammock's support strap plus cross-brace, and a blind read of the render called the piece "a
+  // crew bunk rack ... with cross-bracing for stability". Each panel now gathers under its own two
+  // rings, bows below them, and pools at its OWN uneven hem — never a vertex shared with its
+  // neighbour, which is where the bracing read came from.
+  for (let i = 0; i < RINGS.length - 1; i += 1) {
+    const xa = RINGS[i];
+    const xb = RINGS[i + 1];
+    const xm = (xa + xb) / 2;
+    const hem = i % 2 === 0 ? 80 : 86;
+    quad(s, F, [
+      [xa, 14, 187], [xb, 14, 187],
+      [xb - 3, 14, hem + 8], [xm, 14, hem], [xa + 3, 14, hem + 8],
+    ], { sw: W.fine, opacity: 0.92 });
+    curve(s, F, [xm, 14, 183], [xm - 1.4, 14, 132], [xm + 1, 14, hem + 6],
+      { sw: W.hair, opacity: 0.55 });
   }
-  line(s, F, [[10, 14, 84], [30, 14, 78], [50, 14, 84], [70, 14, 78], [90, 14, 84], [112, 14, 80]],
-    { sw: W.fine, opacity: 0.7 });
 };
 export const curtainRail = (opts = {}) => fitting('curtain-rail', opts, drawCurtainRail);
 
@@ -1262,8 +1541,17 @@ const drawShrineShelf = (s, { F, hatch }) => {
   bx(s, F, 4, 4, 140, 56, 4, 26, { hatch, sw: W.heavy });
   for (const x of [14, 50]) line(s, F, [[x, 4, 140], [x, 30, 116]], { sw: W.mid });
   line(s, F, [[4, 4, 143], [60, 4, 143]], { sw: W.hair, opacity: 0.5, cap: false });
-  bx(s, F, 12, 12, 144, 18, 22, 6, { hatch, sw: W.mid, stroke: ATTEND });
-  line(s, F, [[16, 12, 152], [26, 12, 152]], { sw: W.hair, stroke: ATTEND, opacity: 0.6 });
+  // THE FRAME, REDONE FOR RECOGNITION — a blind read of the catalogue render called this "a coffee
+  // maker or hot beverage dispenser". The cause: a solid 6 cm-deep oxblood box with one flat
+  // horizontal accent at mid-height reads as a sealed appliance body with a fill-line or control
+  // mark, not as a picture frame. Two changes, both inside the existing box: (1) the body is now
+  // 3 cm deep — a frame stands on its shelf, it does not sit like a canister — and (2) the mid-height
+  // accent is replaced by an inset MAT, a smaller rectangle recessed inside the front face. A
+  // rectangle inside a rectangle is the one mark that reads as glazing over a picture rather than as
+  // a sealed body. The accent colour, the footprint and the silhouette are unchanged.
+  bx(s, F, 12, 12, 144, 18, 22, 3, { hatch, sw: W.mid, stroke: ATTEND });
+  line(s, F, [[15, 12, 148], [27, 12, 148], [27, 12, 161], [15, 12, 161]],
+    { sw: W.hair, close: true, cap: false, opacity: 0.75 });
   cyl(s, F, 46, 16, 144, 152, 5, { sw: W.mid });
   curve(s, F, [51, 16, 150], [56, 16, 149], [50, 16, 145], { sw: W.fine });
 };
@@ -1427,26 +1715,35 @@ const drawCapsuleOpen = (s, { F, hatch }) => {
   line(s, F, [[6, 0, 20], [200, 0, 20], [200, 0, 44], [6, 0, 44]],
     { sw: W.hair, close: true, cap: false, opacity: 0.8 });
   line(s, F, [[20, 0, 32], [70, 0, 32]], { sw: W.heavy, opacity: 0.3 });
-  // The straps: flat across the rim, then dipping into the tub — two flats per strap, which is the
-  // card's own two-segment construction, with the second segment's fall made explicit (the card's
-  // reads as a flat quad only until you measure its depth against its drop).
+  // The straps: laid flat across the rim, then hanging DOWN THE OUTER FRONT WALL — loose, not tucked
+  // into the tub. This replaces the earlier construction, whose second segment dipped INTO the tub's
+  // own depth (y 34→62 while z fell 56→46): a diagonal taper that is `leaf()`'s own silhouette for
+  // 19/20's plants, and read as two leaves rising out of a bed at tile size — a blind read of the
+  // render called this piece "a grow bed". A strap that used to cinch a lid, unclipped, falls
+  // OUTSIDE the box it was cinching, flat against the wall it hangs on, not into the empty cavity.
   // ⚠️ 14 CM WIDE, NOT THE CARD'S 9. Also a render call: at 9 cm a strap on a 206 cm capsule is two
   // hairlines a millimetre apart and reads as a scratch on the rim rather than as webbing. 14 cm is
   // the narrowest that still reads as a band at the 48 px the Overview draws a tile at.
   for (const x of [54, 134]) {
-    quad(s, F, [[x, 6, 56], [x + 14, 6, 56], [x + 14, 34, 56], [x, 34, 56]], { sw: W.fine });
-    quad(s, F, [[x, 34, 56], [x + 14, 34, 56], [x + 14, 62, 46], [x, 62, 46]], { sw: W.fine });
+    quad(s, F, [[x, 8, 56], [x + 14, 8, 56], [x + 14, 0, 56], [x, 0, 56]], { sw: W.fine });
+    quad(s, F, [[x, 0, 56], [x + 14, 0, 56], [x + 14, 0, 16], [x, 0, 16]],
+      { sw: W.fine, opacity: 0.85 });
   }
   const HINGE_Y = 70; const FREE_Y = 31; const LID_TOP = 123.5;
   const X0 = 22; const X1 = 184;
   const lidPt = (x, t) => [x, HINGE_Y + (FREE_Y - HINGE_Y) * t, 56 + (LID_TOP - 56) * t];
-  for (const x of [X0, X1]) disc(s, F, x, HINGE_Y, 56, 8, { sw: W.fine });
-  line(s, F, [lidPt(X0, 0), lidPt(X1, 0), lidPt(X1, 1), lidPt(X0, 1)],
-    { sw: W.mid, close: true, cap: false });
+  // The lid is a FILLED hood, not an open wire frame. An unfilled rung-frame standing over a tub is
+  // hydroponics' own construction (posts + rungs over trays) — the other half of the false "grow
+  // bed" read. A hinged capsule lid is a solid (glazed) cover; the five ribs now read as its window
+  // bars because there is glass between them to bar, rather than as bare trellis wire.
+  quad(s, F, [lidPt(X0, 0), lidPt(X1, 0), lidPt(X1, 1), lidPt(X0, 1)],
+    { fill: PAPER_FLAT, sw: W.mid });
   for (let i = 1; i <= 5; i += 1) {
     const x = X0 + ((X1 - X0) * i) / 6;
-    line(s, F, [lidPt(x, 0.05), lidPt(x, 0.95)], { sw: W.hair, opacity: 0.28, cap: false });
+    line(s, F, [lidPt(x, 0.05), lidPt(x, 0.95)], { sw: W.hair, opacity: 0.3, cap: false });
   }
+  // Hinge posts drawn LAST so the pivot reads on top of the hood's own edge, not buried under its fill.
+  for (const x of [X0, X1]) disc(s, F, x, HINGE_Y, 56, 8, { sw: W.fine });
 };
 export const capsuleOpen = (opts = {}) => fitting('capsule-open', opts, drawCapsuleOpen);
 
@@ -1459,7 +1756,22 @@ export const capsuleOpen = (opts = {}) => fitting('capsule-open', opts, drawCaps
 // leave the terminals hanging off the top of the box.
 const drawCellSound = (s, { F, hatch }) => {
   bx(s, F, 0, 0, 0, 64, 86, 56, { hatch });
-  for (const x of [16, 48]) cyl(s, F, x, 16, 86, 98, 7, { sw: W.fine });
+  // Terminal posts, redrawn as a stepped BOLT profile — a wide shoulder then a narrow stud — instead
+  // of a plain-walled tube. A uniform cylinder is this catalogue's own flue-pipe idiom (see
+  // `space-heater`'s stack), and that is exactly what a blind read of the original post returned
+  // ("a heating unit"); the step is the one silhouette a vent pipe never carries. Total post height
+  // is unchanged: 86 → 90 → 98, still the 12 cm the dimension line prices in.
+  for (const x of [16, 48]) {
+    cyl(s, F, x, 16, 86, 90, 8.5, { sw: W.fine });
+    cyl(s, F, x, 16, 90, 98, 3.5, { sw: W.fine });
+  }
+  // Polarity, on the studs' own caps — drawn as PATHS, never a font glyph (charter §1, the same
+  // precedent as the hazard bang and the cooler's dial pointer): a cross on the left post, a bar on
+  // the right. No heating fixture in this catalogue carries a polarity mark, so this cannot misread
+  // as one, and it is the direct, minimum fix for the blind guess.
+  line(s, F, [[13.8, 16, 98], [18.2, 16, 98]], { sw: W.hair });
+  line(s, F, [[16, 13.8, 98], [16, 18.2, 98]], { sw: W.hair });
+  line(s, F, [[45.8, 16, 98], [50.2, 16, 98]], { sw: W.hair });
   line(s, F, [[8, 0, 18], [56, 0, 18], [56, 0, 64], [8, 0, 64]],
     { sw: W.fine, close: true, cap: false });
   for (const z of [26, 36, 46, 56]) line(s, F, [[14, 0, z], [50, 0, z]], { sw: W.heavy });
@@ -1489,15 +1801,27 @@ const drawCellSpent = (s, { F, hatch }) => {
   bx(s, F, X0, 0, 0, 64, 86, 56, { hatch, stroke: ATTEND });
   cyl(s, F, X0 + 16, 16, 86, 98, 7, { sw: W.fine, stroke: ATTEND });
   cyl(s, F, X0 + 48, 16, 86, 94, 7, { sw: W.fine, stroke: ATTEND });
+  // Polarity marks on the two terminal caps — a "+" over the live post, a "−" over the sunk one.
+  // Measured need: two round-topped posts on a box, by themselves, read as tanks or portholes as
+  // readily as terminals (a blind pass on this card called the whole piece a cryopod). A polarity
+  // mark has no reading anywhere else in the genre, so it is the cheapest glyph that closes the
+  // misread — two short strokes on a cap this piece already draws, no new colour, no new part.
+  line(s, F, [[X0 + 13, 16, 98], [X0 + 19, 16, 98]], { sw: W.heavy, stroke: ATTEND });
+  line(s, F, [[X0 + 16, 13, 98], [X0 + 16, 19, 98]], { sw: W.heavy, stroke: ATTEND });
+  line(s, F, [[X0 + 45, 16, 94], [X0 + 51, 16, 94]], { sw: W.heavy, stroke: ATTEND });
   line(s, F, [[X0 + 8, 0, 18], [X0 + 56, 0, 18], [X0 + 56, 0, 64], [X0 + 8, 0, 64]],
     { sw: W.fine, close: true, cap: false, stroke: ATTEND });
   line(s, F, [[X0 + 14, 0, 26], [X0 + 50, 0, 26]], { sw: W.heavy, stroke: ATTEND });
   curve(s, F, [X0, 0, 4], [X0 - 12, 0, 43], [X0, 0, 82], { sw: W.fine, stroke: ATTEND, opacity: 0.8 });
   curve(s, F, [X0 + 64, 0, 4], [X0 + 76, 0, 43], [X0 + 64, 0, 82],
     { sw: W.fine, stroke: ATTEND, opacity: 0.8 });
-  line(s, F, [[X0 + 22, 0, 58], [X0 + 30, 0, 48], [X0 + 36, 0, 40]], { sw: W.fine, stroke: ATTEND });
-  line(s, F, [[X0 + 30, 0, 48], [X0 + 40, 0, 52]], { sw: W.hair, stroke: ATTEND });
-  line(s, F, [[X0 + 36, 0, 40], [X0 + 34, 0, 32]], { sw: W.hair, stroke: ATTEND });
+  // The crack: same three-point path and same two tails as before (the placement was already tuned
+  // to stay inside the panel), but the main run is held at ONE heavier weight, so it reads as a bold
+  // electrical fault laid over the case rather than as spidering glass in a window — half of what
+  // made a blind read call this piece a cracked cryopod.
+  line(s, F, [[X0 + 22, 0, 58], [X0 + 30, 0, 48], [X0 + 36, 0, 40]], { sw: W.heavy, stroke: ATTEND });
+  line(s, F, [[X0 + 30, 0, 48], [X0 + 40, 0, 52]], { sw: W.fine, stroke: ATTEND });
+  line(s, F, [[X0 + 36, 0, 40], [X0 + 34, 0, 32]], { sw: W.fine, stroke: ATTEND });
   line(s, F, [[X0 + 26, 0, 20], [X0 + 26, 0, 10], [X0 + 22, 0, 0]],
     { sw: W.fine, stroke: ATTEND, opacity: 0.75 });
 };

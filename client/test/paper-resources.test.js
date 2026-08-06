@@ -34,7 +34,11 @@ import { STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { buildWrecked, WRECKED } from '../src/items/wrecked.js';
 import { ATTEND, PAPER, INK, SKETCH_LEVEL } from '../src/items/helpers.js';
 import { amplitudeBound, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
-import { measurePiece, bodyExtent, attrsOf, outsideBox } from './sketch-geom.js';
+import {
+  measurePiece, bodyExtent, attrsOf, outsideBox,
+  nameOf as geomNameOf, shapePolys as geomShapePolys,
+  inkPolys as geomInkPolys, farFrom as geomFarFrom,
+} from './sketch-geom.js';
 import { PAPER_FLAT } from '../src/render/oblique.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -602,4 +606,123 @@ test('the nine paint in ink, paper, the flat tone and the hatch — and nothing 
   // NON-VACUITY: the scan must really be reading hex out of these fragments.
   assert.ok(build('body-bag').includes(INK) && build('body-bag').includes(PAPER),
     'the colour scan found no ink and no paper in a piece made of both — it is reading nothing');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 8. THE TWIN'S DAMAGE LANDS ON THE PIECE IT DAMAGES
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⭐⭐ A GUARD CLASS THIS REPO DID NOT HAVE, and the defect it is named for shipped. The only
+// neighbouring rule is `paper-fixtures.test.js`'s "every twin's damage lands inside the piece's own
+// BOX" — and a box is 240 × 240 of mostly empty paper, so a mark can pass it while floating clear of
+// everything drawn. That is exactly what happened: the designer-polish pass narrowed `seal-set`'s
+// gasket card to x 3…17, `wrecked.js` anchors its damage in ABSOLUTE centimetres, and the card's
+// tear went on running to x = 23 — a dashed curl hanging in clean paper, inside the box, past the
+// object. Filed as a residual by 98d2b3e, closed by the repair round, and pinned here so the next
+// piece that moves under its own twin fails instead of shipping.
+//
+// THE RULE: every anchor of every damage mark lies ON the pristine drawing — inside one of its drawn
+// areas, or within `TOL` of one of its strokes.
+//
+// ⛔ THE ONE EXCEPTION IS BY MARK-KIND, NOT BY PIECE, which is what keeps it from becoming a place to
+// hide a defect. `inkArea` is the dashed containment ring, and its whole meaning is THE DECK AROUND
+// THE OBJECT — `spoil-heap`'s "the deck around it, marked off" and `ice-block`'s meltwater spreading.
+// A containment ring that landed on the piece would be the wrong drawing. Every OTHER mark — crack,
+// tear, wire, hole, scorch, slit — damages the object and must touch it. Measured: with `inkArea`
+// excluded, the whole eight-twin set has exactly ZERO off-piece anchors, so the exception is doing no
+// work beyond its own two rings and the floor below is not being met vacuously.
+//
+// ⚠️ A SCORCH AND A HOLE ARE ANCHORED AT THEIR CENTRE, NOT THEIR RIM. They are REGIONS: a burn that
+// laps over the edge of the thing it burned is correct, and asking the rim to be contained would
+// condemn it. Every other mark is a run, and a run is anchored at every vertex it turns on.
+const DMG_TOL = 4;
+const DMG_SHAPES = ['path', 'ellipse', 'circle', 'rect'];
+const dmgShapesOf = (svg) => (svg.replace(/<defs>[\s\S]*?<\/defs>/g, '').match(/<[^>]*>/g) || [])
+  .filter((t) => DMG_SHAPES.includes(geomNameOf(t)) && !t.includes('sk-ground'));
+const dmgAnchorsOf = (tag) => {
+  if (geomNameOf(tag) === 'ellipse') { const a = attrsOf(tag); return [[+a.cx, +a.cy]]; }
+  return geomShapePolys(tag).flat();
+};
+const isContainmentRing = (tag) => /stroke-dasharray="3 3"/.test(tag);
+const inPoly2 = (poly, [x, y]) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+    const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
+/** The damage marks of a twin = the shapes it emits beyond its pristine piece's own prefix. */
+function damageMarks(id, pristineSvg, twinSvg) {
+  const p = dmgShapesOf(pristineSvg);
+  const t = dmgShapesOf(twinSvg);
+  let i = 0;
+  while (i < p.length && i < t.length && p[i] === t[i]) i += 1;
+  assert.equal(i, p.length,
+    `${id}: the twin is not the pristine drawing PLUS damage — it diverges at element ${i} of `
+    + `${p.length}. Every anchoring claim below rests on the twin containing the piece it damages.`);
+  return t.slice(i);
+}
+/** Anchors of `marks` that lie neither inside nor within `tol` of the pristine ink. */
+function offPieceAnchors(pristineSvg, marks, tol = DMG_TOL) {
+  const base = geomInkPolys(pristineSvg);
+  const pts = marks.flatMap(dmgAnchorsOf);
+  return geomFarFrom(base, pts, tol)
+    .filter((q) => !base.some((poly) => poly.length > 2 && inPoly2(poly, q)));
+}
+
+test('⭐⭐ every twin\'s damage lands ON the piece it damages, not merely inside its box', () => {
+  let marksSeen = 0;
+  let anchorsSeen = 0;
+  const bad = [];
+  for (const id of PAPER_RESOURCE_IDS) {
+    if (!WRECKED[id]) continue;   // `turnings` is ledgered as having no second condition at all
+    const pristine = buildItem(id, { w: 240, h: 240, idPrefix: 'z', sketch: false });
+    const twin = buildWrecked(id, { w: 240, h: 240, idPrefix: 'z', sketch: false });
+    const marks = damageMarks(id, pristine, twin).filter((t) => !isContainmentRing(t));
+    marksSeen += marks.length;
+    anchorsSeen += marks.flatMap(dmgAnchorsOf).length;
+    for (const m of marks) {
+      const off = offPieceAnchors(pristine, [m]);
+      if (off.length) {
+        bad.push(`${id}: ${off.length} anchor(s) off the drawing — `
+          + `${off.slice(0, 2).map((q) => `(${q[0].toFixed(1)}, ${q[1].toFixed(1)})`).join(' ')} `
+          + `on ${(attrsOf(m).d || m).slice(0, 48)}`);
+      }
+    }
+  }
+  assert.deepEqual(bad, [],
+    'A TWIN MARKS PAPER THE PRISTINE PIECE DOES NOT OCCUPY:\n  ' + bad.join('\n  ') + '\n'
+    + 'The damage is authored in absolute centimetres against the pristine geometry, so a redraw of\n'
+    + 'the piece silently strands it. Re-anchor the mark onto the feature it damages — do NOT widen\n'
+    + 'the tolerance, which is the one edit that makes this guard stop meaning anything.');
+  // ⛔ NON-VACUITY, AS AN INCLUSION FLOOR. A probe that found no marks and a set with no defects read
+  // identically green, and the mark-splitter is exactly the part that could silently return [].
+  assert.ok(marksSeen >= 25, `only ${marksSeen} damage marks inspected — the splitter found nothing`);
+  assert.ok(anchorsSeen >= 100, `only ${anchorsSeen} anchors inspected — the probe is reading nothing`);
+});
+
+test('the anchoring guard FAILS on the defect it is named for — driven, both directions', () => {
+  const pristine = buildItem('seal-set', { w: 240, h: 240, idPrefix: 'z', sketch: false });
+  const twin = buildWrecked('seal-set', { w: 240, h: 240, idPrefix: 'z', sketch: false });
+  const marks = damageMarks('seal-set', pristine, twin).filter((t) => !isContainmentRing(t));
+  // (a) AS SHIPPED: the re-anchored tear is on the card.
+  assert.deepEqual(offPieceAnchors(pristine, marks), [],
+    'the shipped seal-set twin already has an off-piece anchor — fix that before reading (b)');
+  // (b) THE PRE-FIX GEOMETRY, PLANTED: the tear as it shipped before 2026-08-06, running to x = 23
+  // while the card ends at x = 17. Built through the SAME frame the painter uses, so this is the
+  // real mark and not a hand-typed pixel, and the guard must name it.
+  const F = frameForSpec(SPECS['seal-set'], 240, 240);
+  const old = [[7, 34, 14], [15, 33, 11], [23, 34, 13]].map((p) => F.project(...p));
+  const planted = `<path d="M${old.map((q) => q.map((v) => Math.round(v * 100) / 100).join(' ')).join(' L')}"`
+    + ' fill="none" stroke="#2B2B2B" stroke-width="1.1" stroke-dasharray="2 2"/>';
+  const caught = offPieceAnchors(pristine, [planted]);
+  assert.ok(caught.length >= 1,
+    'the guard PASSES the exact geometry that shipped broken — it cannot see its own subject.\n'
+    + `planted: ${planted}`);
+  // …and the leg that would hide it: the box rule this guard exists to strengthen says nothing.
+  const inBox = old.every(([x, y]) => Math.abs(x) <= 120.05 && Math.abs(y) <= 120.05);
+  assert.ok(inBox,
+    'the planted mark is outside the 240 box, so `paper-fixtures`\' box rule WOULD have caught it\n'
+    + 'and this guard adds nothing. The whole point is that the stranded tear is inside the box.');
 });

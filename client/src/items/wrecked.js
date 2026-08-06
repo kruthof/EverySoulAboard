@@ -1142,7 +1142,16 @@ const sealSet = (s) => paintResource(s, 'seal-set', (_s, { F }) => {
   inkCrack(s, F, [[6, 20, 0], [16, 14, 0], [24, 6, 0]]);  // PERISHED: the big ring, split across
   inkCrack(s, F, [[25, 30, 0], [31, 25, 0], [38, 22, 0]]); // and the small one
   inkScorch(s, F, 16, 14, 0, 10);
-  inkTear(s, F, [[7, 34, 14], [15, 33, 11], [23, 34, 13]]);  // the card, curled off its edge
+  // ⚠️ RE-ANCHORED 2026-08-06 — THE TEAR RAN TO x = 23 AND THE CARD ENDS AT x = 17. The
+  // designer-polish pass narrowed the gasket card (`paper-resources.js drawSealSet`: it leans on the
+  // NEAR ring only now, quad x-span 3…17), and this twin's damage was authored in ABSOLUTE cm
+  // against the OLD, wider geometry — so the far end of the tear hung in clean paper with nothing
+  // under it. Filed as a residual by the paper-resources commit (98d2b3e) because `wrecked.js` was
+  // another lane's file at the time; closed here.
+  // The three points now lie ON the card, interpolated inside its own quad
+  // A(3,29,0) B(15,30,0) C(17,34,12) D(5,33,13) at v ≈ 0.85 of the way to the top edge — so the tear
+  // runs along the edge it is described as curling off, and moves with the card if the card moves.
+  inkTear(s, F, [[6.5, 32.6, 10.9], [10.7, 32.9, 10.6], [14.9, 33.3, 10.3]]);  // the card, curled off its edge
 });
 
 const iceBlock = (s) => paintResource(s, 'ice-block', (_s, { F }) => {
@@ -1282,14 +1291,36 @@ const deckMarker = (s) => paintPaperFixture(s, 'deck-marker', (_s, { F }) => {
   inkCrack(s, F, [[60, 4, 196], [68, 4, 192]]);               // the far stud, out of the wall
 });
 
+// ⛔ RE-ANCHORED 2026-08-06, WITH THE PIECE IT DAMAGES. `drawLampSconce` was redrawn on the owner's
+// ruling ("i have no clue what lamp-sconce does show") and every mark below was authored in ABSOLUTE
+// centimetres against the drawing it replaced — the cone that ran z 190…204 narrow-side-up, and the
+// 24 × 24 plate at z 208…232. Left alone they would have hung in clean paper inside the box, which is
+// exactly the defect `paper-resources.test.js`'s anchoring guard is named for, one catalogue over.
+// The four marks below were re-derived against the shipped geometry: the shade is now the tapered
+// `cone(23, 6, 206, 220, 9, 12)` at y = 6, the bulb is a ∅11 face circle at (23, 6, 199), and the
+// backplate is `bx(16, 17, 222, 14, 18, 5)`.
+// ⛔ AND THE RE-ANCHORING IS A JUDGED REDRAW, NOT A VERIFIED ONE. The claim that stood here named
+// `paper-resources.test.js`'s anchoring instrument as the check; that instrument CANNOT tell the two
+// apart. Driven from a scratch probe pointed at this twin: the marks below read `4 marks / 17 anchors
+// / 0 off-piece` — and the four PRE-redraw marks, authored against a drawing that no longer exists,
+// put on this same painter read `4 marks / 17 anchors / 0 off-piece` too. Identical, both green.
+// The cause is measured rather than guessed: `drawLampSconce`'s hatched `wallStub` is itself a drawn
+// AREA spanning x 0…46 × z 182…240, so every anchor EITHER set lands in is "on the piece". Deleting
+// the stub does separate them (stale 8 off-piece anchors, shipped 4) but is not an instrument
+// either — with the wall gone the flex, which correctly hangs onto it, reads off-piece as well.
+// ⭐ SO STATE WHAT IS ACTUALLY COVERED: gross detachment only — a mark clear of the piece AND of its
+// wall stub. A check that could speak to RE-ANCHORING has to tie each mark to the feature it names,
+// and that is the package this commit filed (extending the guard to the fourteen fixtures), not a
+// line in this header. Until it exists, the four coordinate sets below are the designer's judgement.
 const lampSconce = (s) => paintPaperFixture(s, 'lamp-sconce', (_s, { F }) => {
-  inkCrack(s, F, [[13, 6, 194], [26, 6, 202]]);               // the shade, split along a rib
-  // ⚠️ ON THE CONE AND NOT AT THE MOUTH: the lit mouth is an INK disc, so a hole drawn over it merges
-  // with the light and reads as a bigger lamp rather than as damage — the same ink-on-ink trap the
-  // porthole's twin above records, in its milder form.
-  inkHole(s, F, 23, 6, 198, 3);
-  inkScorch(s, F, 23, 14, 218, 10);
-  inkWire(s, F, [16, 14, 206], [12, 10, 196], [8, 6, 190]);   // the flex, hanging out of the plate
+  inkCrack(s, F, [[15, 6, 210], [28, 6, 216]]);               // the shade, split along a rib
+  // ⚠️ ON THE CONE AND NOT ON THE BULB: the bulb is an INK disc, so a hole drawn over it merges with
+  // the light and reads as a bigger lamp rather than as damage — the same ink-on-ink trap the
+  // porthole's twin above records, in its milder form. (Before the redraw the INK was the mouth; the
+  // rule is the same and its subject moved.)
+  inkHole(s, F, 18, 6, 209, 3);
+  inkScorch(s, F, 23, 17, 230, 8);                            // the backplate, burned
+  inkWire(s, F, [17, 17, 223], [13, 12, 212], [9, 6, 200]);   // the flex, hanging out of the plate
 });
 
 const growLamp = (s) => paintPaperFixture(s, 'grow-lamp', (_s, { F }) => {

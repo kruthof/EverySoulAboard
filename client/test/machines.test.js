@@ -1036,3 +1036,165 @@ test('the thirteen twins are ledgered, badged, and none is its own pristine piec
       `${id}'s twin renders exactly like the pristine piece — it carries no damage at all`);
   }
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE SEVENTH FAULT'S OTHER HALF: A FILLED MEMBER PAINTED OVER BY A LATER OPAQUE ONE
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⭐⭐ THE INSTRUMENT THAT WOULD NORMALLY CATCH THIS IS STRUCTURALLY BLIND TO IT, and that blindness
+// is CLAUDE.md's 4th shape exactly — a guard whose scope filter excludes the violation.
+// `sketch-geom.js buriedMembers()` classifies every element with an opaque fill as an AREA: areas
+// bury, and are never themselves counted as victims. So a HATCHED WALL painted over by an opaque
+// `PAPER_FLAT` mouth contributes zero pixels and the buried-member ledger reads exactly as green as
+// correct art. Measured, not assumed: reversing the two lines below leaves the whole node suite —
+// all of it, including `sketch-adoption.test.js`'s ledger — green.
+//
+// ⛔ THE PAIR THIS TEST WAS BORN ON IS GONE, BY OWNER RULING — 2026-08-06, on the polish gallery:
+// nine pieces go back to their pre-polish drawings, `fab-cell` among them. The row that stood here
+// named `fab-cell`'s recess (an opaque mouth quad with a hatched wall set 16 cm back inside it), and
+// that construction was created BY the designer-polish pass — the reverted piece draws a flat inset
+// outline coplanar with the mouth instead, which is a STROKE, and a stroke buried by a later area is
+// NOT the fault this test is named for: `buriedMembers()` counts strokes as victims and sees it.
+// ⭐ MEASURED, NOT ARGUED — the whole justification for dropping the row rests on it, so it was
+// driven: emit the reverted `fab-cell`'s inset outline BEFORE its opaque mouth quad and the node
+// suite reds at `sketch-adoption.test.js`'s "no member … is erased" ledger (1817/1818, and this test
+// is not the one that fails). Keeping `fab-cell` in the table would therefore have kept a row whose
+// subject another instrument already covers, while falsifying this one's headline.
+//
+// ⭐ THE RULE ITSELF IS NOT POLISH-SPECIFIC AND IS RESTATED, NOT DROPPED. `reclaimer-stack`'s sight
+// glass is the same construction and predates the polish entirely: an opaque `PAPER_FLAT` pane, then
+// the water standing in it drawn as a HATCHED quad inside that pane. It is the very piece the
+// deleted `fab-cell` comment cited as its own precedent ("the same `fill: hatch` for what is behind
+// the glass the reclaimer's sight glass uses"). Drawn in the other order, the water contributes zero
+// pixels and the glass reads as an empty window — and the blindness leg still holds exactly, because
+// `fill="url(#fh)"` satisfies `opaqueTail`, so the water is classified as an AREA and can never be a
+// victim. Measured on this tree, not inherited: reversing the two lines leaves the whole node suite
+// green except this test.
+//
+// ⛔ WHY A NAMED PAIR RATHER THAN A SWEEP OVER THE SET. Swept, this question has a large
+// pre-existing population — every `pad()` standoff in the module is a filled member the body's own
+// face contains — and those are E8-3b's subject, with their own rule and their own reasoning. A
+// sweep would therefore need a ledger of ~20 rows before it asserted anything, which is a package,
+// not a pin. (Re-measured on the reverted tree with a throwaway probe: EIGHT of the thirteen
+// machines carry at least one opaque-outer / opaque-inner nesting — `book-case`, `fab-cell`,
+// `med-cot`, `paste-column`, `plant-pot`, `reactor-plant`, `reclaimer-stack`, `sleeper-pod` — and
+// several carry more than one, so the ~20-row figure is the right order.) The pair table below
+// states the one relationship this module can defend as load-bearing.
+const NESTED_PAIRS = [
+  // [id, outer opaque member (drawn FIRST), inner member (drawn INSIDE it, SECOND), what]
+  ['reclaimer-stack',
+    [[24, 0, 62], [80, 0, 62], [80, 0, 132], [24, 0, 132]],
+    [[24, 0, 62], [80, 0, 62], [80, 0, 98], [24, 0, 98]],
+    'the sight glass: the hatched water standing inside an opaque pane'],
+];
+
+test('⭐⭐ a member nested inside an opaque one is drawn AFTER it — the fault no ledger sees', () => {
+  // ⚠️ CONTAINED means inside OR ON, and the change is forced by the subject rather than convenient.
+  // Water standing in a glass shares the pane's own sill — two of the four inner vertices ARE outer
+  // vertices — so a strictly-interior test condemns the correct drawing. `EDGE_TOL` is 0.01 local
+  // units against this piece's own 112-unit drawn box, and 0.01 is not a taste number: it is EXACTLY
+  // `oblique.n()`'s emit quantum, the 2-dp rounding every coordinate in the drawing passes through.
+  //
+  // ⛔ THE RECEIPT THAT STOOD HERE WAS TRAPS-3 — A RED FOR THE WRONG REASON — so it is replaced
+  // rather than reworded. It named "the water 8 cm past the pane's left lip" (inner x 24 → 16) as
+  // proof the tolerance had not swallowed the assertion. Driven: that mutation does go red, but at
+  // `find()`'s hand-typed LOCATOR — `expected exactly ONE member at the inner member (…), found 0`,
+  // because moving x 24 moves two of the four coordinates the locator searches for. It never reaches
+  // the containment leg at all, and it reds identically with `EDGE_TOL` widened to 1e9.
+  //
+  // ⭐ THE DISCRIMINATING MUTATION KEEPS ALL FOUR ANCHOR COORDINATES AND ADDS A FIFTH VERTEX, so the
+  // locator still finds exactly one member and only containment can speak. Insert `[X, 0, 80]` into
+  // `drawReclaimerStack`'s inner quad, on the pane's right lip (this frame is 0.5 local units per cm,
+  // so one cm of X is two emit quanta). Driven, `node --test client/test/machines.test.js`, 38 tests:
+  //     X = 80.00 — on the lip; projects to 5.55, the outer edge itself   → 38/38 GREEN
+  //     X = 80.02 — 5.56, ONE emit quantum clear of it                    → 38/38 GREEN
+  //     X = 80.04 — 5.57, TWO emit quanta clear of it                     → 37/38 RED, and the red is
+  //                 leg (b): "the inner member is NOT entirely inside the outer one any more"
+  //     X = 80.04 with `EDGE_TOL = 1e9`, control leg absent               → 38/38 GREEN
+  // ⚠️ SAY THE SECOND ROW OUT LOUD: ONE QUANTUM OUT IS ADMITTED, not rejected. `5.56 - 5.55` is
+  // 0.009999999999999787 in a double, which lands inside `<= EDGE_TOL`. The tolerance's guaranteed
+  // discrimination therefore begins at TWO quanta (0.02 local units, 0.04 cm on this piece) — that is
+  // the number the inclusion control below pins, and a control written at one quantum would be
+  // pinning a floating-point accident instead.
+  // ⭐ THE LAST ROW IS WHY THE CONTROL LEG EXISTS AT ALL: the leg reds because the tolerance is 0.01
+  // and for no other reason, and a widened `EDGE_TOL` used to take that away in silence. It no longer
+  // can — re-driven WITH the control shipped, `EDGE_TOL = 1e9` on its own, no painter mutation, reds
+  // 37/38 at the control itself: "EDGE_TOL (1000000000) admits a point TWO emit quanta clear of the
+  // outer member's edge".
+  const EDGE_TOL = 0.01;
+  const onEdge = (poly, [x, y]) => {
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+      const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
+      const dx = xj - xi; const dy = yj - yi; const L2 = dx * dx + dy * dy;
+      if (L2 === 0) { if (Math.hypot(x - xi, y - yi) <= EDGE_TOL) return true; continue; }
+      const t = Math.max(0, Math.min(1, ((x - xi) * dx + (y - yi) * dy) / L2));
+      if (Math.hypot(x - (xi + t * dx), y - (yi + t * dy)) <= EDGE_TOL) return true;
+    }
+    return false;
+  };
+  const inPoly = (poly, p) => {
+    const [x, y] = p;
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+      const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside || onEdge(poly, p);
+  };
+  for (const [id, outerPts, innerPts, what] of NESTED_PAIRS) {
+    const svg = build(id);
+    const F = frameFor(id);
+    const key = (pts) => pts.map(([x, y, z]) => {
+      const [px, py] = F.project(x, y, z);
+      return `${nn(px)} ${nn(py)}`;
+    });
+    // Find each member by the projected coordinates the builder actually emitted — the seam, not a
+    // remembered pixel (trap 4), so this moves correctly if the scale ever changes.
+    const els = [...svg.matchAll(/<path[^>]* d="([^"]*)"[^>]*>/g)].map((m, i) => ({ i, d: m[1], tag: m[0] }));
+    const find = (pts, label) => {
+      const want = key(pts);
+      const hit = els.filter((e) => want.every((w) => e.d.includes(w)));
+      assert.equal(hit.length, 1,
+        `${id}: expected exactly ONE member at ${label} (${want.join(' → ')}), found ${hit.length}`);
+      return hit[0];
+    };
+    const outer = find(outerPts, 'the outer opaque member');
+    const inner = find(innerPts, 'the inner member');
+    // (a) THE OUTER REALLY IS OPAQUE — otherwise the order does not matter and this pin is theatre.
+    assert.ok(/fill="(#|url\()/.test(outer.tag) && !/fill="none"/.test(outer.tag)
+      && !/opacity="0?\.\d+"/.test(outer.tag),
+      `${id}: ${what} — the outer member is not opaque, so nothing is at stake in the order.\n`
+      + `  ${outer.tag.slice(0, 120)}`);
+    // (b) THE INNER REALLY IS CONTAINED — the whole reason the order is load-bearing. If a later
+    // redraw moves the inner member so it pokes out of the outer one, this assertion says so
+    // instead of the pin silently becoming a statement about two unrelated strokes.
+    const outerPoly = points(outer.d);
+    const innerPoly = points(inner.d);
+    // ⭐ THE INCLUSION CONTROL FOR `EDGE_TOL` ITSELF, run on the polygon this test actually read.
+    // Without it the tolerance is free — at 1e9 every leg here stays green (driven, header). A point
+    // ON the outer member's right-hand edge must read as contained; the same point two emit quanta
+    // clear of it must not. ⚠️ It reads that edge as axis-aligned, which the table's one row is; a
+    // row that is not fails HERE, loudly, instead of quietly widening what "contained" means.
+    const outerYs = outerPoly.map(([, y]) => y);
+    const edgeX = Math.max(...outerPoly.map(([x]) => x));
+    const midY = (Math.max(...outerYs) + Math.min(...outerYs)) / 2;
+    assert.ok(inPoly(outerPoly, [edgeX, midY]),
+      `${id}: a point ON the outer member's own edge (${edgeX}, ${midY}) reads as OUTSIDE it, so the\n`
+      + 'containment leg below now condemns the correct drawing — water in a glass shares the sill.');
+    assert.ok(!inPoly(outerPoly, [nn(edgeX + 0.02), midY]),
+      `${id}: EDGE_TOL (${EDGE_TOL}) admits a point TWO emit quanta clear of the outer member's edge\n`
+      + `(${nn(edgeX + 0.02)} against ${edgeX}), so the containment leg below can no longer see an\n`
+      + 'inner member poking out of the one that is supposed to hold it.');
+    assert.ok(innerPoly.every((p) => inPoly(outerPoly, p)),
+      `${id}: ${what} — the inner member is NOT entirely inside the outer one any more, so the\n`
+      + 'containment this pin is about has changed. Re-derive the pair before editing the order.');
+    // (c) THE ORDER. Painter's algorithm: later wins, so the inner must come second or it draws
+    // ZERO PIXELS — and no other guard in this repo would notice.
+    assert.ok(inner.i > outer.i,
+      `${id}: ${what} — the inner member is emitted at index ${inner.i}, BEFORE the opaque outer one\n`
+      + `at ${outer.i}. It is painted over and contributes zero pixels. This is the module header's\n`
+      + 'seventh fault, and `buriedMembers()` cannot see it: an opaque-filled element is only ever\n'
+      + 'treated as a burier there, never as a victim.');
+  }
+  assert.ok(NESTED_PAIRS.length >= 1, 'the pair table is empty — this test asserts nothing');
+});

@@ -55,6 +55,8 @@ client/tools/shots-sketch/
 client/tools/shots-ship-drawn/
 # — lane/build-ghost —
 client/tools/shots-build-ghost/
+# — lane/designer-polish — before/after gallery + the 22 px ink-mass census
+client/tools/shots-polish/
 client/tools/shots-build-tray/
 # — lane/m4-2 (the Persona window) —
 client/tools/shots-persona/
