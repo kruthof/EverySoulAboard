@@ -28,20 +28,29 @@ namespace Perilune.Tests
             var rows = new[]
             {
                 new WireFormat.RosterEntry(7u, "Ada", "welder", "grief", "hauling", "pk_00000001", 0.75f, 0, 3, 4,
-                    new[] { "steady", "wry" }),
+                    new[] { "steady", "wry" }, null, null,
+                    "Exhausted and hungry. She has stopped working. She will still eat, drink and sleep."),
                 new WireFormat.RosterEntry(9u, "Bo", "", "", "idle", "", 1f, 1, 10, 2),
             };
             string json = WireFormat.Roster(rows);
             StringAssert.Contains("\"type\":\"roster\"", json);
-            // The traits array, then fx/fy, are APPEND-ONLY trailing on each row. A caller that
-            // supplies no glide (these two do not) serializes fx/fy AT the integer tile — never a
-            // silently wrong (0,0) — which is also exactly what a crew member standing still sends.
+            // The traits array, then fx/fy, then `state` (M4-9) are APPEND-ONLY trailing on each row.
+            // A caller that supplies no glide (row 2 does not) serializes fx/fy AT the integer tile —
+            // never a silently wrong (0,0) — which is also exactly what a crew member standing still
+            // sends. ⭐ `state` IS THE HOW SHE IS BAND'S WHOLE PAYLOAD, and the assertion below is
+            // deliberately the FULL sentence: what makes the band honest is its SECOND clause (what
+            // she will refuse), and a truncated expectation would pass on a host that shipped only
+            // the adjective — which is the cosmetic operator M4-1 DESIGN QUESTION (e) forbids.
             StringAssert.Contains("{\"cid\":7,\"name\":\"Ada\",\"role\":\"welder\",\"mood\":\"grief\"," +
                 "\"morale\":0.75,\"task\":\"hauling\",\"portrait\":\"pk_00000001\",\"deck\":0,\"x\":3,\"y\":4," +
-                "\"traits\":[\"steady\",\"wry\"],\"fx\":3,\"fy\":4}", json);
-            // A row with no traits (null) still emits the stable empty array.
+                "\"traits\":[\"steady\",\"wry\"],\"fx\":3,\"fy\":4," +
+                "\"state\":\"Exhausted and hungry. She has stopped working. She will still eat, drink and sleep.\"}",
+                json);
+            // A row with no traits (null) still emits the stable empty array — and a row with no
+            // state emits the stable empty STRING. ⛔ Empty means "nothing to say", never "unknown":
+            // the client hides the band on absence and must never be handed a null to guess at.
             StringAssert.Contains("\"cid\":9", json);
-            StringAssert.Contains("\"y\":2,\"traits\":[],\"fx\":10,\"fy\":2}", json);
+            StringAssert.Contains("\"y\":2,\"traits\":[],\"fx\":10,\"fy\":2,\"state\":\"\"}", json);
             Assert.AreEqual("{\"type\":\"roster\",\"crew\":[]}", WireFormat.Roster(Array.Empty<WireFormat.RosterEntry>()));
         }
 

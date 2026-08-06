@@ -123,6 +123,16 @@ namespace Perilune.Sim
         public void Execute(Simulation sim)
         {
             if (!sim.Citizens.TryGet(_citizenId, out var citizen) || citizen.Dead) return;
+            // ⭐⭐ M4-9 — THE GRADUATED OVERRIDE'S TOP RUNG (OD-S item 3 = A). A MOVE order is the
+            // last thing a break takes away, and only EXTREME takes it: at minor and major she
+            // still walks where she is told. `BreakRefusesOrders` is `BreakTier >= Extreme` — the
+            // "IMPOSSIBLE" cell of the item's own table, where major's is "REFUSED" (the work
+            // order, one class up) and minor's is "still lands".
+            // ⛔ SILENT, like every other precondition in this class — and the visible half is not
+            // missing, it is elsewhere by design: the Persona window's HOW SHE IS band says in
+            // words what she will refuse BEFORE the player clicks (M4-1 DESIGN QUESTION (e)'s
+            // second clause), which is a better answer than a toast after the fact.
+            if (citizen.BreakRefusesOrders) return;
             // A direct order overrides any job — cancel it cleanly (drop cargo where
             // they stand, release reservations) so nothing stays locked mid-redirect.
             sim.CancelJob(citizen);
@@ -319,6 +329,13 @@ namespace Perilune.Sim
             if (_citizenId <= 0 || _deviceId <= 0) return;
             if (!sim.Citizens.TryGet((uint)_citizenId, out var citizen) || citizen.Dead) return;
             if (citizen.HoldPosition) return;
+            // ⭐⭐ M4-9 — THE GRADUATED OVERRIDE'S MIDDLE RUNG (OD-S item 3 = A). A WORK order is
+            // REFUSED at MAJOR and above: she has stopped working, and an order is not a way around
+            // that. ⛔ It is NOT refused at MINOR — that is the whole graduation. A minor-broken
+            // crew member still takes the order; what she will not do is cross the pressure frontier
+            // for it, and that is enforced further down by `forced: citizen.OrderOverridesSafety`
+            // rather than here, so a SAFE order still lands exactly as it always did.
+            if (citizen.BreakRefusesWork) return;
             if (!sim.Devices.TryGet((uint)_deviceId, out var device)) return;
 
             // The work type this order belongs to, out of M2-2's ONE table — the same lookup the
@@ -340,7 +357,17 @@ namespace Perilune.Sim
             // ⚠️ WHAT IS STILL REFUSED IS THE GEOMETRY, NOT THE AIR: `TryFindStagingTile` tests
             // `Simulation.IsWalkable` OUTSIDE the flag, so a walled-in machine is refused exactly
             // as it always was. "An order overrides the air, never the geometry."
-            if (!MaintenanceSystem.TryFindStagingTile(sim, device.Pos, out _, forced: true)) return;
+            // ⭐ M4-9 — AND THE FLAG IS NO LONGER AN UNCONDITIONAL `true`. A MINOR break withdraws
+            // rung 2's waiver for this person (`Citizen.OrderOverridesSafety`), so the order is
+            // accepted or refused HERE on the ordinary air rule — the same rule, asked the same way,
+            // with the waiver simply absent. Major and extreme never reach this line.
+            // ⚠️ ASKED AS THE TIER, NOT THROUGH `OrderOverridesSafety`, AND THE DIFFERENCE IS REAL:
+            // that property is `HeldByOrder && not broken`, and at THIS point the hold has not been
+            // written yet (it is set at the bottom of this method, after the job — the writer
+            // contract). Reading it here would refuse every first order on every ship. The property
+            // is for the sites that run while a hold EXISTS; this is the acceptance gate.
+            bool waivesAir = citizen.BreakTier == BreakTier.None;
+            if (!MaintenanceSystem.TryFindStagingTile(sim, device.Pos, out _, forced: waivesAir)) return;
             // ⭐ THE WRECK RULE W2 — the refusal the `blocked` channel surfaces as
             // ReasonNoConsumable. Asked here for the reason RecruitForNeediest asks it at
             // recruitment rather than in the work phase: discovering it later throws away 900 s of
@@ -351,7 +378,7 @@ namespace Perilune.Sim
             // order would be refused for "nothing aboard to fix it with" on a ship whose Parts are
             // simply behind the frontier the order was given to cross — and the badge raised over
             // the machine would say so on the wire. One rule, one flag, both gates.
-            if (MaintenanceSystem.IsUnfixableWreck(sim, device, forced: true)) return;
+            if (MaintenanceSystem.IsUnfixableWreck(sim, device, forced: waivesAir)) return;
             // One servicer per machine is an invariant of MaintenanceSystem.DriveWorkers, which
             // drives EVERY Maintain citizen bound to the tile: a second one would repair the same
             // machine twice over and FindWorker would only ever see the first. An order aimed at a

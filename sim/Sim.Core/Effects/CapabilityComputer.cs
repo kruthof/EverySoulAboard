@@ -75,7 +75,13 @@ namespace Perilune.Sim
             // cannot do", and gating one of this hand-mirrored pair re-introduces it.
             // ⚠️ The two halves must stay in step; WorkTypeVetoTests pins each ALONE, blinded of the
             // other, because a test that passes with either present cannot see a half-gated pair.
-            if (citizen.JobKind == JobKind.None && citizen.CanTakeWorkType(WorkType.Mine))
+            // ⭐ M4-9 (BREAK GATE 6 of 6) — THE LLM *OFFER*, and it is the half that matters for
+            // exactly the reason the comment above gives about M2-2's pair: gating the GRANT alone
+            // leaves the dig in the model's tool schema, so a broken crew member AGREES IN DIALOGUE
+            // to work the sim will then silently refuse. The two halves must stay in step, and
+            // `MentalBreakTests` pins each ALONE, blinded of the other (the 5th trap's shape).
+            if (citizen.JobKind == JobKind.None && !citizen.BreakRefusesWork
+                && citizen.CanTakeWorkType(WorkType.Mine))
             {
                 FillDigTargets(sim, citizen, into.AssignableDigTargets);
                 if (into.AssignableDigTargets.Count > 0)

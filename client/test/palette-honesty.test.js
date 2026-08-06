@@ -56,6 +56,8 @@ import {
   defaultMaterials, materialLabel, allTilesAlreadyMaterial, FLOOR_MATERIALS,
 } from '../src/ui/build-material-model.js';
 import { codeOnly } from './code-only.js';
+import { makeTrayDriver } from './tray-arm.js';
+import { trayLeafFor } from '../src/ui/build-tray-model.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { stylesSource } from './styles-source.js';
 
@@ -185,23 +187,39 @@ test('the chip\'s price rules are actually PARSED — a stray comment cannot swa
   // (b) the rules exist as RULES. Comments are removed the way a parser removes them — PAIRED, so a
   // stray `*/` leaves its prose behind IN SELECTOR POSITION, which is precisely the bug: the rule's
   // name then reads as a suffix of a long nonsense selector and this lookup misses it.
+  // ⚠️ THE MAP ACCUMULATES, IT DOES NOT OVERWRITE — a bug this test found in itself (2026-08-05).
+  // `rules.set(sel, decls)` is LAST-WINS, and the build tray's short-viewport `@media` blocks restate
+  // `.rz-card` to shrink it. The base rule's `flex-direction:column` was therefore invisible here
+  // while being perfectly alive in the cascade: the property leg below reported a defect that did
+  // not exist. Concatenating every block a selector owns is what "does this selector declare X
+  // anywhere" actually needs.
   const rules = new Map();
   const stripped = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
   for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    rules.set(m[1].trim().replace(/\s+/g, ' '), m[2]);
+    const key = m[1].trim().replace(/\s+/g, ' ');
+    rules.set(key, (rules.get(key) || '') + ';' + m[2]);
   }
-  for (const sel of ['.rz-tool.costed', '.rz-tool-cost', '.rz-tool.cant .rz-tool-cost', '.rz-cost-line.fault']) {
+  // ⭐ THE SELECTORS MOVED AT THE BUILD TRAY (2026-08-05) AND THE SUBJECT DID NOT. The price used to
+  // be a second LINE on a `.rz-tool` chip (`.rz-tool.costed` turned the button into a column);
+  // it is a `.rz-card-price` line on a CARD now. What this test is about is unchanged and is not
+  // about any particular selector: it is about whether the rules that carry the price are ALIVE in
+  // the parsed stylesheet, because an unbalanced block comment eats the rule that follows it and
+  // NOTHING goes red — measured, twice, on this very file.
+  for (const sel of ['.rz-card-price', '.rz-card.cant .rz-card-price', '.rz-card-stat',
+                     '.rz-cost-line.fault']) {
     if (!rules.has(sel)) fails.push(`\`${sel}\` is not a parsed rule in styles.css — it was swallowed`);
   }
-  // …and the one property whose absence is invisible on screen but changes the box.
-  const costed = rules.get('.rz-tool.costed') || '';
-  if (!/flex-direction\s*:\s*column/.test(costed)) {
-    fails.push('`.rz-tool.costed` no longer stacks its two lines — the price would sit beside the label ' +
-      'and widen an eighteen-tool wrapping row instead of adding one short line under it');
+  // …and the one property whose absence is invisible on screen but changes the box: a card stacks
+  // its art, name, price and stat as a COLUMN. Beside each other they would widen every card in a
+  // scrolling row and push the last cards further out of reach.
+  const card = rules.get('.rz-card') || '';
+  if (!/flex-direction\s*:\s*column/.test(card)) {
+    fails.push('`.rz-card` no longer stacks its four lines — the price and the stat would sit beside ' +
+      'the name and widen every card in the row');
   }
   // NON-VACUITY BY INCLUSION: the parse must find the rules this file did NOT write, or it is
   // finding nothing and every membership test above is free.
-  for (const sel of ['.rz-tool', '.rz-hint']) {
+  for (const sel of ['.rz-tray', '.rz-hint']) {
     if (!rules.has(sel)) fails.push(`the rule parse missed the pre-existing \`${sel}\` — it is reading nothing`);
   }
 
@@ -363,7 +381,12 @@ const fixView = decksView(decodeDecks(decode(JSON.stringify(FIX.decks))), decode
 const wreck = FIX.frameDeck1;
 const DECK1 = 1;
 
-const TAG_RE = /<(button|span)\b([^>]*)>/g;
+// ⚠️ `div` JOINED THE SCANNER ON 2026-08-05 (the build tray). The flat strip was buttons and spans
+// only; the tray's three SECTIONS — the category rail, the leaf rail and the card row — are `div`s,
+// and without them here `querySelector('.rz-tray-cats')` answers null, `makeBuildTray` paints into
+// nothing, and every driven leg below passes over an empty menu. That is the 4th trap shape (a scope
+// filter that excludes the subject), so the filter is widened rather than the markup bent.
+const TAG_RE = /<(button|span|div)\b([^>]*)>/g;
 const ATTR_RE = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/g;
 
 class RzEl extends DomEl {
@@ -416,7 +439,7 @@ class RzDoc extends DomDocument {
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-cost', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-cost', 'rz-minimap',
   'rz-hint', 'rz-ctx',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
   's-speed', 's-msg', 's-runstate', 's-pauselabel', 'b-pause', 's-speedchip',
@@ -471,18 +494,18 @@ doc.getElementById('rz-layers')._rect = sceneRectFor(HOLD);
 
 const canvas = doc.getElementById('rz-canvas');
 const root = doc.getElementById('roomzoom-view');
-const palette = doc.getElementById('rz-palette');
+const tray = doc.getElementById('rz-tray');
 const costRow = doc.getElementById('rz-cost');
 const toastEl = doc.getElementById('rz-toast');
 const layers = doc.getElementById('rz-layers');
 
 // `makeRzDoc` registers every chrome node by id and parents NONE of them, so a click on a real
 // palette button would die at the palette instead of reaching the delegated handler on the root.
-// Parenting them is what the shipped DOM already does (`#rz-palette` and `#rz-matstrip` both live
-// inside `.rz-palette-wrap` inside `#roomzoom-view`), and it is what lets these tests drive the
+// Parenting them is what the shipped DOM already does (`#rz-tray` lives inside `.rz-palette-wrap`
+// inside `#roomzoom-view`), and it is what lets these tests drive the
 // SHIPPED buttons and swatches rather than stand-ins the rig built itself.
-palette.parentNode = root;
-doc.getElementById('rz-matstrip').parentNode = root;
+tray.parentNode = root;
+
 
 /** Dispatch an event the way the controller's own listeners receive it — bubbling up the real
  *  parent chain, exactly as `room-model.test.js`'s sibling rig does. */
@@ -514,12 +537,18 @@ function press(el, extra) {
 const stripTags = (html) => String(html || '').replace(/<[^>]*>/g, '').trim();
 /** Canvas coordinates for a tile in the focused room. */
 const at = (tx, ty) => scenePointFor(HOLD, tx, ty);
-/** Arm a tool by clicking its SHIPPED palette button. */
-function armViaButton(tool) {
-  const b = palette.querySelectorAll('.rz-tool').find((x) => x.dataset.rztool === tool);
-  assert.ok(b, `no ${tool} button in the shipped palette markup`);
-  fire(b, 'click', { target: b });
-  return b;
+/** Arm a tool by walking the SHIPPED build tray and pressing its card — the whole player gesture
+ *  (category ▸ leaf ▸ card). `tray-arm.js` asserts BY NAME when any of the three is missing. */
+const trayDrv = makeTrayDriver({ doc, assert, click: (b) => fire(b, 'click', { target: b }) });
+function armViaButton(tool) { return trayDrv.arm(tool); }
+/** The card row's own markup for the leaf holding `tool`, navigated to first. `''` for a tool the
+ *  taxonomy does not place — the slicer's own "found nothing" case, which must stay distinguishable
+ *  from "found the wrong card". */
+function cardsHtml(tool) {
+  if (!trayLeafFor(tool)) return '';
+  trayDrv.open(tool);
+  const row = tray.querySelector('.rz-tray-cards');
+  return row ? row.innerHTML : '';
 }
 /**
  * Set the ship's Parts census the way the host does, then WAIT for the surface to repaint.
@@ -562,29 +591,34 @@ function floorTiles(n) {
 
 // ── the palette markup itself ────────────────────────────────────────────────────────────────
 
-// MUTATION: drop the `<span class="rz-tool-cost">` from `buildChrome` ⇒ RED.
-test('DRIVEN: the shipped palette markup carries a price on every priced tool', () => {
+// ⭐ THE PRICE MOVED FROM A CHIP'S SECOND LINE TO A CARD'S `.rz-card-price`, AND IT IS NOW ON EVERY
+// CARD RATHER THAN ONLY ON THE PRICED ONES. That is a widening, not a dilution: `trayPriceText` is
+// `chipCostText` with ONE addition — a tool that spends nothing says `NO PARTS` instead of showing a
+// blank slot, because a card with an empty price line reads as a card whose price nobody worked out.
+// The two are pinned EQUAL wherever `chipCostText` has an answer, so the new text cannot drift from
+// the def-derived one.
+// MUTATION: drop the `<span class="rz-card-price">` from `cardHtml` ⇒ RED.
+// MUTATION: make `trayPriceText` return `'3 PARTS'` for an order verb ⇒ RED (the equality leg).
+test('DRIVEN: the shipped tray markup carries a price on EVERY card, and the priced ones say the def\'s number', () => {
   const fails = [];
-  const btns = palette.querySelectorAll('.rz-tool');
-  if (btns.length !== ROOM_TOOLS.length) {
-    fails.push(`the scanner found ${btns.length} tool buttons, not ${ROOM_TOOLS.length} — every leg below is vacuous`);
+  let cards = 0;
+  for (const tool of ROOM_TOOLS) {
+    const html = cardsHtml(tool);
+    const shown = [...html.matchAll(/data-rztool="([^"]*)"[\s\S]*?<span class="rz-card-price">([^<]*)<\/span>/g)];
+    if (!shown.length) { fails.push(`the leaf holding '${tool}' painted no priced cards`); continue; }
+    cards += shown.length;
+    for (const [, t, price] of shown) {
+      const want = chipCostText(t) || 'NO PARTS';
+      if (price !== want) fails.push(`'${t}' card prices itself '${price}', expected '${want}'`);
+      if (chipCostText(t) && price !== chipCostText(t)) {
+        fails.push(`'${t}' no longer quotes \`chipCostText\` — the def-derived price and the card ` +
+          'have become two answers to one question');
+      }
+    }
   }
-  const costs = palette.querySelectorAll('.rz-tool-cost');
-  const expected = ROOM_TOOLS.filter((t) => chipCostText(t) !== '').length;
-  if (costs.length !== expected) fails.push(`${costs.length} cost lines in the markup, expected ${expected}`);
-  // ⚠️ READ OFF THE BUILDER'S OWN STRING. The scanner lifts start tags and drops text, so the
-  // spans' `textContent` is '' here whatever the palette says — an assertion on it would pass over
-  // a palette that printed nothing at all.
-  const texts = [...palette.innerHTML.matchAll(/<span class="rz-tool-cost">([^<]*)<\/span>/g)]
-    .map((m) => m[1]).sort();
-  const want = ROOM_TOOLS.map(chipCostText).filter(Boolean).sort();
-  if (JSON.stringify(texts) !== JSON.stringify(want)) {
-    fails.push(`the markup's cost lines are ${JSON.stringify(texts)}, expected ${JSON.stringify(want)}`);
-  }
-  // Every tool button is still a real button that starts unpressed — the second span must not have
-  // displaced the attributes the palette-overflow package pinned.
-  if ((palette.innerHTML.match(/<button type="button" class="rz-tool/g) || []).length !== ROOM_TOOLS.length) {
-    fails.push('a tool is no longer a `<button type="button">` whose class STARTS with rz-tool');
+  if (cards <= ROOM_TOOLS.length) {
+    fails.push(`only ${cards} priced cards over every leaf — WALL and FLOOR alone add twelve ` +
+      'material cards, so a number this low means the walk read almost nothing');
   }
   assert.deepEqual(fails, [], fails.join('\n'));
 });
@@ -599,16 +633,21 @@ test('DRIVEN: arming a furniture tool prices it against the ship the player is o
   await setParts(1);                                   // the shipped wreck at boot
   armViaButton('bunk');
   if (costText() !== 'BUNK ▸ NEEDS 3 PARTS — SHIP HAS 1') fails.push('the armed cost row reads: "' + costText() + '"');
-  const bunkBtn = palette.querySelectorAll('.rz-tool').find((b) => b.dataset.rztool === 'bunk');
-  if (!bunkBtn.classList.contains('cant')) fails.push('the BUNK chip does not wear the cannot-pay state');
-  if (bunkBtn.getAttribute('title') !== 'BUNK ▸ NEEDS 3 PARTS — SHIP HAS 1') {
-    fails.push('the chip hover reads: "' + bunkBtn.getAttribute('title') + '"');
+  const bunkBtn = trayDrv.cardFor('bunk');
+  if (!bunkBtn) fails.push('no BUNK card on screen after arming it — the legs below read nothing');
+  else {
+    if (!bunkBtn.classList.contains('cant')) fails.push('the BUNK card does not wear the cannot-pay state');
+    if (bunkBtn.getAttribute('title') !== 'BUNK ▸ NEEDS 3 PARTS — SHIP HAS 1') {
+      fails.push('the card hover reads: "' + bunkBtn.getAttribute('title') + '"');
+    }
   }
 
   // THE SHIP FINDS SOME PARTS — the sentence must FOLLOW, not latch.
   await setParts(9);
   if (costText() !== 'BUNK ▸ 3 PARTS · 9 ABOARD') fails.push('after a resupply the row reads: "' + costText() + '"');
-  if (bunkBtn.classList.contains('cant')) fails.push('the BUNK chip still reads as unaffordable at 9 Parts');
+  if (trayDrv.cardFor('bunk').classList.contains('cant')) {
+    fails.push('the BUNK card still reads as unaffordable at 9 Parts');
+  }
 
   // A tool that spends nothing hides the row entirely — no invented price anywhere on the palette.
   armViaButton('bunk');                          // disarm
@@ -695,15 +734,16 @@ test('DRIVEN: a placement the ship cannot pay for SAYS SO — and the command st
 //           shipped bug reproduced on a new tool.
 // MUTATION: drop any of the three from ROOM_TOOLS ⇒ RED at `armViaButton` (no such button).
 /**
- * The `.rz-tool-cost` text inside ONE tool's button, sliced out of the palette's own markup string,
- * or null when that button carries no cost line. See the ⚠️ at leg 1 for why the node cannot answer.
+ * The `.rz-card-price` text inside ONE tool's card, sliced out of the tray's own markup string, or
+ * null when the tool has no card in the leaf that is open. See the ⚠️ at leg 1 for why the node
+ * cannot answer: the scanner lifts start tags and drops text.
  */
 function chipFragment(tool) {
-  const html = palette.innerHTML;
+  const html = cardsHtml(tool) || '';
   const i = html.indexOf(`data-rztool="${tool}"`);
   if (i < 0) return null;
   const end = html.indexOf('</button>', i);
-  const m = /<span class="rz-tool-cost">([^<]*)<\/span>/.exec(html.slice(i, end < 0 ? undefined : end));
+  const m = /<span class="rz-card-price">([^<]*)<\/span>/.exec(html.slice(i, end < 0 ? undefined : end));
   return m ? m[1] : null;
 }
 
@@ -711,10 +751,14 @@ function chipFragment(tool) {
 // button has no price AND when the slice missed the button entirely, and the leg above reports both
 // as "ABSENT". An unpriced tool must read null and a priced one must read the price, or the leg is
 // asserting that a lookup which finds nothing found nothing.
-test('the palette-markup slicer attributes a price to the RIGHT chip', () => {
+test('the tray-markup slicer attributes a price to the RIGHT card', () => {
   assert.equal(chipFragment('bunk'), '3 PARTS', 'the slicer cannot find the price on a tool that has had one since the honesty package');
-  assert.equal(chipFragment('dig'), null, 'DIG has no cost line and the slicer invented one — it is reading past the button');
-  assert.equal(chipFragment('shelf'), DECOR_CHIP_TEXT, 'the slicer does not see the decor chip line');
+  // ⚠️ DIG's ANSWER CHANGED FROM `null` TO `NO PARTS`, and that is the shipped widening rather than
+  // a slip: every card states a price now, and a designation's honest one is that it spends nothing.
+  // The slicer's "reading past the button" failure mode is still covered — by the unknown tool below,
+  // which must be null, and by the fact that DIG reads its OWN answer rather than BUNK's.
+  assert.equal(chipFragment('dig'), 'NO PARTS', 'DIG must state that it spends nothing, in words');
+  assert.equal(chipFragment('shelf'), DECOR_CHIP_TEXT, 'the slicer does not see the decor card line');
   assert.equal(chipFragment('no-such-tool'), null);
 });
 
@@ -726,21 +770,30 @@ test('DRIVEN: GROWBED, MEDBED and TABLE arm, price, refuse honestly, and send th
   for (const [i, tool] of ['growbed', 'medbed', 'table'].entries()) {
     const label = TOOL_LABEL[tool];
     const want = `${label} ▸ NEEDS 3 PARTS — SHIP HAS 1`;
-    const btn = armViaButton(tool);
+    armViaButton(tool);
 
     // 1. the chip itself — the constant price line, built once by `buildChrome`.
     // ⚠️ READ OFF THE PALETTE'S OWN MARKUP STRING, NOT OFF THE BUTTON NODE. `dom-lite`'s scanner
     // lifts START TAGS and keeps no children, so `btn.innerHTML` is undefined for every one of the
-    // twenty-one buttons — an assertion on it reports ABSENT against a palette that prints the price
+    // twenty-one buttons — an assertion on it reports ABSENT against a menu that prints the price
     // correctly (measured: all three legs fired on the shipped tree). The sibling markup test above
-    // regexes `palette.innerHTML` for the same reason; this slices ONE button's fragment out of it so
+    // regexes the card row's own markup for the same reason; this slices ONE card's fragment out of it so
     // the price is attributed to the right chip rather than merely present somewhere on the bar.
     if (chipFragment(tool) !== '3 PARTS') {
       fails.push(`${label}: the chip's own cost line is ${chipFragment(tool) === null ? 'ABSENT' : '"' + chipFragment(tool) + '"'}, not "3 PARTS"`);
     }
-    // 2. the live half — `paintPalette`'s `.cant` class and hover sentence
-    if (!btn.classList.contains('cant')) fails.push(`${label}: the chip does not wear the cannot-pay state at 1 Part`);
-    if (btn.getAttribute('title') !== want) fails.push(`${label}: the chip hover reads "${btn.getAttribute('title')}"`);
+    // 2. the live half — the tray painter's `.cant` class and hover sentence.
+    // ⚠️ THE NODE IS RE-RESOLVED HERE RATHER THAN CAPTURED FROM `armViaButton`, and that is a real
+    // property of the tray rather than rig hygiene: `chipFragment` above NAVIGATES (category, then
+    // leaf), and a category press empties the card row before the leaf press refills it — so a card
+    // reference taken before the walk is a DETACHED node whose classes never move again. Measured:
+    // all three `.cant` legs reported stale state against a surface that was painting correctly.
+    const btn = trayDrv.cardFor(tool);
+    if (!btn) fails.push(`${label}: no card on screen after arming it`);
+    else {
+      if (!btn.classList.contains('cant')) fails.push(`${label}: the card does not wear the cannot-pay state at 1 Part`);
+      if (btn.getAttribute('title') !== want) fails.push(`${label}: the card hover reads "${btn.getAttribute('title')}"`);
+    }
     // 3. the armed row — `paintCostRow`, the answer BEFORE the click
     if (costText() !== want) fails.push(`${label}: the armed cost row reads "${costText()}"`);
 
@@ -770,7 +823,9 @@ test('DRIVEN: GROWBED, MEDBED and TABLE arm, price, refuse honestly, and send th
     if (costText() !== `${label} ▸ 3 PARTS · 9 ABOARD`) {
       fails.push(`${label}: after a resupply the row reads "${costText()}"`);
     }
-    if (btn.classList.contains('cant')) fails.push(`${label}: the chip still reads unaffordable at 9 Parts`);
+    if (trayDrv.cardFor(tool).classList.contains('cant')) {
+      fails.push(`${label}: the card still reads unaffordable at 9 Parts`);
+    }
     await setParts(1);
     armViaButton(tool);                                // disarm
   }
@@ -803,10 +858,10 @@ test('DRIVEN: the FLOOR default drag says why it painted nothing — and WOOD do
   // ⚠️ THE COMMANDS STILL GO — the client says what the sim will do, it does not decide it.
   if (!sent.some((o) => o && o.cmd === 'build')) fails.push('the default drag sent no build commands at all');
 
-  // PICK WOOD through the SHIPPED material chip, and the sweep reports what it built.
-  const wood = doc.getElementById('rz-matstrip').querySelectorAll('.rz-mat-chip')
-    .find((c) => c.getAttribute('data-rzmat') === '1');
-  if (!wood) fails.push('no WOOD chip in the shipped material strip — the leg below is vacuous');
+  // PICK WOOD through the SHIPPED material CARD (the swatch strip's job, re-housed in
+  // `STRUCTURE › FLOOR`'s card row), and the sweep reports what it built.
+  const wood = trayDrv.cardFor('floor', 1);
+  if (!wood) fails.push('no WOOD card in the shipped FLOOR leaf — the leg below is vacuous');
   else {
     fire(wood, 'click', { target: wood });
     toastEl.textContent = '';
@@ -853,10 +908,9 @@ test('DRIVEN: the FLOOR no-op toast names the ARMED material, not the default on
   const run = floorTiles(3);
 
   armViaButton('floor');
-  const wood = doc.getElementById('rz-matstrip').querySelectorAll('.rz-mat-chip')
-    .find((c) => c.getAttribute('data-rzmat') === '1');
+  const wood = trayDrv.cardFor('floor', 1);
   if (!wood) {
-    fails.push('no WOOD chip in the shipped material strip — this leg cannot arm a non-default material');
+    fails.push('no WOOD card in the shipped FLOOR leaf — this leg cannot arm a non-default material');
   } else {
     fire(wood, 'click', { target: wood });
     // The whole swept run ALREADY carries WOOD (mat byte 1). Wire order is `[x, y, deck, kind, mat]`

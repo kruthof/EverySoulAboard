@@ -1,4 +1,21 @@
 #!/usr/bin/env node
+//
+// ⛔⛔ STALE AS OF 2026-08-06 — THIS RIG ADDRESSES DOM THE BUILD TRAY DELETED, AND IT WILL DIE ON ITS
+// NEXT RUN. It is FILED, not fixed, and the filing is here rather than only in `HANDOVER.md` because
+// a rig that fails for a reason nobody wrote down reads as a regression in the game.
+//   WHAT IS GONE: `.rz-tool` (as `.rz-tool.on`, the "is anything armed" witness) and the bare
+//     `[data-rztool="wall"]` reach. `.rz-palette-wrap` survives.
+//   WHAT REPLACED IT: `#rz-tray` — a breadcrumb, two rails (`.rz-tray-cat` / `.rz-tray-sub`) and a
+//     row of `.rz-card`s. A tool's control now exists ONLY while its leaf is open, so every selector
+//     below needs a NAVIGATION step in front of it (press `[data-rzcat=…]`, then `[data-rzsub=…]`,
+//     both derivable from `build-tray-model.js`'s `trayLeafFor` / `categoryOf` — see
+//     `client/tools/build-tray-shot.mjs`, which does exactly this).
+//   ⚠️ NOTHING REDDENS TODAY: none of the four stale rigs is in `./ci.sh`.
+//   ⚠️ THE PORT IS SMALL: `.rz-tool.on` becomes `.rz-card.on`, and WALL needs STRUCTURE > WALL
+//   opened first. ⭐ ITS SUBJECT IS UNCHANGED AND STILL LIVE — "the first screen in a room is the
+//   room, not a menu demanding a tool" is exactly the claim the tray's reserved band puts back in
+//   play, so this is the one whose ABSENCE costs the most.
+//
 // THE FIRST SCREEN IN A ROOM IS THE ROOM — the LIVE-PIXEL acceptance, in real Chrome, against the
 // running game.
 //

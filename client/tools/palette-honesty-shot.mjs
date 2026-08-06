@@ -1,4 +1,20 @@
 #!/usr/bin/env node
+//
+// ⛔⛔ STALE AS OF 2026-08-06 — THIS RIG ADDRESSES DOM THE BUILD TRAY DELETED, AND IT WILL DIE ON ITS
+// NEXT RUN. It is FILED, not fixed, and the filing is here rather than only in `HANDOVER.md` because
+// a rig that fails for a reason nobody wrote down reads as a regression in the game.
+//   WHAT IS GONE: `.rz-palette`, `.rz-tool`, `.rz-tool-cost` and `#rz-matstrip` / `.rz-mat-chip`.
+//   WHAT REPLACED IT: `#rz-tray` — a breadcrumb, two rails (`.rz-tray-cat` / `.rz-tray-sub`) and a
+//     row of `.rz-card`s. A tool's control now exists ONLY while its leaf is open, so every selector
+//     below needs a NAVIGATION step in front of it (press `[data-rzcat=…]`, then `[data-rzsub=…]`,
+//     both derivable from `build-tray-model.js`'s `trayLeafFor` / `categoryOf` — see
+//     `client/tools/build-tray-shot.mjs`, which does exactly this).
+//   ⚠️ NOTHING REDDENS TODAY: none of the four stale rigs is in `./ci.sh`.
+//   ⚠️ THE PORT IS THE CHEAPEST OF THE FOUR AND THE MOST WORTH DOING: every question it asks
+//   still has an answer on the tray — the price line is `.rz-card-price`, the armed state is
+//   `.rz-card[aria-pressed="true"]` for a tool card and `.rz-card[aria-checked="true"]` for a material
+//   card, and the six swatches are the STRUCTURE leaf's own cards.
+//
 // palette-honesty-shot.mjs — DOES THE PALETTE ACTUALLY ANSWER, ON THE SHIP THE PLAYER BOOTS?
 //
 // ⚠️ WHY A BROWSER RIG AND NOT JUST THE NODE SUITE. `client/test/palette-honesty.test.js` drives the

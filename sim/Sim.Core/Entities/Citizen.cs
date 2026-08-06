@@ -262,6 +262,148 @@ namespace Perilune.Sim
         /// </summary>
         public bool HeldByOrder;
 
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // ⭐⭐ M4-9 — THE MENTAL BREAK. FIVE HASHED FIELDS (CITZ v10), and the count is REPRICED.
+        //
+        // The M4-1 charter priced this row at "1–3 hashed fields" (§2, row M4-b). It is FIVE, and
+        // each one is named here with the thing it exists for, because a reviewer is owed the
+        // difference rather than a silent overrun:
+        //   1 BreakDwell            — the leaky integrator. The charter's field 1, unavoidable.
+        //   2 BreakThresholdPct     — the per-person tunable. DESIGN QUESTION (g) option (ii), the
+        //                             charter's own recommendation; without it RW§4.2's "ONE
+        //                             per-person tunable" is not implemented and §13.5's
+        //                             "two people at the same mood are NOT at the same tier"
+        //                             mitigation would have to be withdrawn.
+        //   3 BreakReprieveUntilTick— catharsis. DESIGN QUESTION (c) option 2, the charter's own
+        //                             recommendation, and the charter itself reprices it as "+1
+        //                             hashed field ON TOP of (g)'s answer".
+        //   4 BreakTier             — WHICH break is running. The charter's roster is three
+        //                             DIFFERENT behaviours; a break with no tier cannot select one.
+        //   5 BreakEndsAtTick       — WHEN it stops. RW§4.2: "the break ends by expiry". A break
+        //                             that ended when the mood recovered would end at the next meal
+        //                             — the measured sawtooth lifts her 14.4–27.2 points — and the
+        //                             player would watch it flicker.
+        // ⛔ 4 and 5 are what the charter's pricing missed, and they are missed for one reason: the
+        // charter priced the TRIGGER (a threshold plus a dwell) and the roster it wrote needs a
+        // STATE. Overloading BreakDwell to serve as the break's own timer was considered and
+        // refused — a second meaning in one field is the shape M2-2's standing refusal is about.
+        //
+        // ⚠️ THE FOLD HAZARD, discharged here because Simulation.StateHash's own header demands it:
+        // BreakThresholdPct has a NON-ZERO default (43), and it is folded in the citizen PREFIX.
+        // StateHashHonestyTests.TwoCrewPathFixture's collision pair requires every value of crew 1's
+        // prefix to fold to ZERO, so that fixture zeroes this byte explicitly — verified by deleting
+        // the `Combine(h, path.Count)` line and watching the pair go RED, which is the check that
+        // header asks for by name.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// ⭐ THE DWELL COUNTER — the deterministic replacement for RimWorld's stochastic
+        /// <i>mean time to break</i>. Units are ticks × <see cref="MentalBreak.DwellRisePerTick"/>;
+        /// it RISES while <see cref="Mood"/> is at or below the minor threshold and LEAKS while it is
+        /// above (<see cref="MentalBreak.DwellRisePerTick"/> explains the 4 : 1 ratio and the
+        /// measurement that chose a leaky integrator over a hard reset).
+        ///
+        /// <para>⛔ <b>IT PAUSES WHILE SHE IS ASLEEP</b> — <see cref="JobKind.Sleep"/>, the same
+        /// predicate <c>NeedsSystem</c>'s fatigue ramp is gated on and for the same stated reason
+        /// (<i>"the one fact about sleeping that is already saved, already hashed, and already the
+        /// thing RestSystem writes, so the two systems cannot disagree about who is asleep"</i>).
+        /// It is the honest analogue of RimWorld freezing the mood bar while a pawn sleeps
+        /// (<c>rimworld-reference.md:986</c>): Perilune has no bar to freeze, and what the freeze
+        /// actually buys is that <b>a sleeping pawn's break risk does not accumulate</b>. ⭐ This
+        /// closes <c>TARGET.md:93</c>'s third T12 remainder, <i>"no mood freeze while asleep"</i>.</para>
+        /// </summary>
+        public uint BreakDwell;
+
+        /// <summary>
+        /// ⭐ THE ONE PER-PERSON TUNABLE (RW§4.2's <i>"one per-pawn stat"</i>): her minor threshold
+        /// as a PERCENTAGE of the mood span above the deprivation floor, clamped 1..50 exactly as
+        /// RimWorld clamps. Major and extreme are DERIVED from it (×4/7, ×1/7) and are not stored.
+        /// The shipped default and the measurement behind it are
+        /// <see cref="MentalBreak.DefaultThresholdPct"/>'s.
+        ///
+        /// <para>⛔ <b>IT MAY NEVER BE SET FROM A TRAIT.</b> Perilune's traits live on the
+        /// HOST-OWNED, UNHASHED <c>PersonaSheet</c>, and the TUI host attaches none — a hashed break
+        /// decision that read one would compute two different ladders from one save on two hosts,
+        /// which is a determinism violation and not a display bug. The sanctioned author is
+        /// <c>SleeperAptitudes</c>'s shape: sim-side literals applied INSIDE <c>CryoSystem</c> at the
+        /// thaw. ⚠️ <b>No such author exists as of this commit</b> — phrased that way on purpose,
+        /// because "nothing writes this yet" is a statement about a TREE and a merge changes the
+        /// tree. Every crew member on every ship boots at the default, so the byte is uniform today
+        /// and the ladder is uniform with it.</para>
+        /// </summary>
+        public byte BreakThresholdPct = MentalBreak.DefaultThresholdPct;
+
+        /// <summary>
+        /// Which break is running, or <see cref="Perilune.Sim.BreakTier.None"/>. Saved and hashed;
+        /// the enum's values are append-only (see its header).
+        /// </summary>
+        public BreakTier BreakTier;
+
+        /// <summary>The tick this break expires at; meaningless while
+        /// <see cref="BreakTier"/> is <see cref="Perilune.Sim.BreakTier.None"/>. RW§4.2: a break
+        /// <i>"ends by expiry"</i>.</summary>
+        public long BreakEndsAtTick;
+
+        /// <summary>CATHARSIS' expiry: while <c>TickCount &lt; </c> this, her threshold is dropped by
+        /// <see cref="MentalBreak.ReprievePctDrop"/> and she is correspondingly harder to break.
+        /// RimWorld calls catharsis <i>"an explicit anti-death-spiral device"</i>
+        /// (<c>rimworld-reference.md:1016</c>); without it a crew member who breaks is more likely to
+        /// break again immediately, which in a TWoM register is the game giving up on someone.</summary>
+        public long BreakReprieveUntilTick;
+
+        /// <summary>
+        /// ⭐ <b>MINOR — THE ORDER NO LONGER WAIVES THE AIR.</b> M3-14's rung 2 says a
+        /// <see cref="HeldByOrder"/> worker's staging rule is asked with the air question waived
+        /// (<c>SafetySystem.cs:129-133</c> names the only two callers allowed to pass it). A break of
+        /// ANY tier withdraws that waiver for this person: the order still exists, she still works,
+        /// she will simply not walk into vacuum for it.
+        ///
+        /// <para>⚠️ <b>IT IS THE FLAG'S COMPUTATION THAT CHANGES, NOT THE RULE.</b> Every site that
+        /// used to read <see cref="HeldByOrder"/> to decide <c>forced</c> reads THIS instead —
+        /// <c>JobContext.TryPathToAdjacent</c> and <c>MachineWearSystem.DriveWorkers</c> — so there
+        /// is still exactly one worksite-safety rule and exactly one place that decides whether an
+        /// order waives it.</para>
+        /// </summary>
+        public bool OrderOverridesSafety => HeldByOrder && BreakTier == BreakTier.None;
+
+        /// <summary>
+        /// ⭐ <b>MAJOR (and above) — SHE DECLINES EVERY WORK CLAIM.</b> A break is its OWN named gate,
+        /// asked BESIDE <see cref="CanTakeWorkType"/> at every gate that asks it, and deliberately
+        /// NOT folded into <see cref="IsRecruitableForWork"/> or into the veto.
+        ///
+        /// <para><b>WHY BESIDE AND NOT INSIDE.</b> M2-2's standing refusal — <i>"IsRecruitableForWork
+        /// MUST NOT absorb the work grid"</i> — is about the grid, and a break is not the grid; but
+        /// the lesson is the same one, and the M4-1 charter states it for this package by name: <i>"a
+        /// second meaning stuffed into one predicate is how the M2-0 spike repeated. A break is its
+        /// own named gate, asked beside the grid's."</i> Folding it into
+        /// <see cref="IsRecruitableIgnoringJob"/> would also make a broken crew member unrecruitable
+        /// by the PRE-EMPTION path in a way no test could tell from the hold, and the two are
+        /// different facts with different lifetimes.</para>
+        ///
+        /// <para>⛔ <b>NEEDS AND FLEE ARE UNTOUCHED, deliberately.</b> <c>SustenanceSystem</c> gates
+        /// on <see cref="IsIdleForWork"/>, <c>RestSystem</c> on the same, and <c>SafetySystem</c> on
+        /// neither — so a broken crew member still eats, still drinks, still sleeps and still runs
+        /// from lethal air. A break stops WORK. It is not a way to starve someone, which is
+        /// <see cref="IsRecruitableForWork"/>'s own standing ruling applied unchanged.</para>
+        /// </summary>
+        public bool BreakRefusesWork => BreakTier >= BreakTier.Major;
+
+        /// <summary>
+        /// ⭐ <b>EXTREME — THE PLAYER'S WORD STOPS WORKING, AND ONLY HERE.</b> OD-S item 3 answer A,
+        /// the GRADUATED override: an order still LANDS at minor (she refuses only the dangerous
+        /// class), is REFUSED at major, and is IMPOSSIBLE at extreme — where even
+        /// <c>MoveCitizenCommand</c> is declined and she stays where she is.
+        ///
+        /// <para>⚠️ <b>THIS IS A DEVIATION FROM RIMWORLD AND IT IS DELIBERATE.</b> RimWorld gives the
+        /// player <i>no control</i> at any tier (<c>rimworld-reference.md:1014</c>). Perilune's whole
+        /// phase-1 loop IS the direct order (M3-14 shipped rungs 2+3+4 so that <i>"the pawn walks
+        /// into vacuum because you told her to"</i>), so B — the analogue unmodified — would mean the
+        /// first break a player ever sees takes their only verb away with no ladder and no warning.
+        /// The graduation keeps the direct-order game intact for the common case and makes each tier
+        /// take exactly one more thing away.</para>
+        /// </summary>
+        public bool BreakRefusesOrders => BreakTier >= BreakTier.Extreme;
+
         /// <summary>This crew member's manual priority for <paramref name="type"/>;
         /// <see cref="WorkPriority.Off"/> (0) means they will not do it.</summary>
         public byte GetWorkPriority(WorkType type) => WorkPrioritiesRaw[(int)type];

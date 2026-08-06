@@ -1882,7 +1882,7 @@ Chapters, in write order (`:108-134`):
 |--------|---------|----------|
 | `TILE` | 1 | per deck: `Floor[]`, `Wall[]`, `Flags[]`, `RoomId[]`. **Flags saved verbatim** (incl. `HasDevice`/`Designated`) — the reader never re-derives them |
 | `ROOM` | 3 | per room: `TileCount`, O2/CO2/N2 moles, `TemperatureK`; then anchors (name, probe, `RoomType` at v3) |
-| `CITZ` | 8 | v2 +Thirst, v3 +ReservedItemId, v4 +RevealsFog, v5 +Faction/Health/Morale/Archetype, v6 +HoldPosition, v7 +OrderedMove, **v8 +work-priority grid / WorkIncapable / Skill / HeldByOrder (M2-1)** |
+| `CITZ` | **10** | v2 +Thirst, v3 +ReservedItemId, v4 +RevealsFog, v5 +Faction/Health/Morale/Archetype, v6 +HoldPosition, v7 +OrderedMove, v8 +work-priority grid / WorkIncapable / Skill / HeldByOrder (M2-1), v9 the one `Skill` byte WIDENS to a per-work-type array (M3-7), **v10 +the MENTAL BREAK's five fields — BreakDwell / BreakThresholdPct / BreakTier / BreakEndsAtTick / BreakReprieveUntilTick (M4-9, §13.51)** |
 | `DEVC` | 7 | v2 +StoredLiters/Progress/FluidNetworkId, v3 +Condition, v4 +LockOwner, v5 +Scriptable (E0-6), v6 +Faulted (OD-O / M3-16), **v7 +Facing (2026-08-05 — drawing-only, §13.50)** |
 | `ITEM` | 2 | v2 +Label |
 | `DSLS` | 1 | MOSS sources per terminal |
@@ -2046,17 +2046,33 @@ set), so a crew member will cheerfully agree to walk with you and then not.
   inert furniture. ⚠️ **The half of the old bullet that survives**: fatigue still gates **no work
   rate** — `Citizen.cs`'s *"slows work"* was false and is now corrected in place, and RW §4.4 says
   rest reaches mood and immunity only.
-- **`Mood`** is computed but gates nothing — no work-speed modifier, no breaks (§5.3). It
-  is not a flat line: it **sawtooths**, because the hunger/thirst terms ramp and then drop
-  each time a citizen eats or drinks. Measured on the slice, crew-mean at the day marks:
-  **−37.7 (day 1) → −26.4 (day 2) → −29.5 (day 3)**, with a per-citizen envelope over days
-  1–3 of roughly **[−39.8, −10.5]**. ⚠️ **THE CEILING CLAIM IS RETIRED BY M3-9 (§13.40).** It read:
-  *"`Fatigue` saturates at 1.0 after ~16 h and never falls, so `Mood ≤ 20 − 25 = −5` from then on …
-  Mood is permanently negative for every crew member from day 1 onward."* Fatigue now falls while a
-  crew member sleeps, so the −25 floor is no longer permanent and the mood envelope above is a
-  PRE-M3-9 measurement that has not been re-taken. ⭐ And the OTHER half of this bullet — *"Mood is
-  computed but gates nothing"* — was already false when it was written and is worth stating plainly:
-  mood reaches `ShipMetrics.Morale` → `DirectorSystem` tension → `WearPressure` →
+- ~~**`Mood`** is computed but **gates nothing** — no work-speed modifier, no breaks…~~
+  ✅ **CLOSED 2026-08-05 by M4-9 — see §13.51.** Mood now gates BEHAVIOUR: `MentalBreakSystem` runs a
+  deterministic three-tier break ladder off it, and a broken crew member refuses dangerous orders,
+  refuses work, or refuses orders outright. ⭐ **AND THE ENVELOPE BELOW IS THE RE-TAKEN ONE** — the
+  pre-M3-9 numbers (*"crew-mean −37.7 / −26.4 / −29.5, envelope [−39.8, −10.5]"*) are struck: they
+  were measured before `RestSystem` gave `Fatigue` a reducer, and every one of them moved.
+  **RE-MEASURED on this tree with `hosts/scenario -- mood` (M4-9's own harness):**
+
+  | run | day-means | envelope (min … max) |
+  |---|---|---|
+  | `--ship wreck`, 3 days, 1 crew | **−11.09 / −14.93 / −18.77** | **[−32.88, +20.00]** |
+  | `--ship wreck`, 7 days | −11.09 … −21.42 | **[−33.50, +20.00]** |
+  | `--ship slice`, 3 days, 8 crew | **−8.66…−11.07 / −12.40…−15.31 / −14.36…−18.57** | **[−32.92, +20.00]** |
+
+  ⭐ **THE FLOOR IS NOT AN ACCIDENT AND IT IS DERIVABLE TWICE.** A ship that can still feed, water
+  and bed her holds a crew member against a **SERVICED FLOOR** of
+  `MoodBase − need_threshold·(Wh + Wt) − fatigue_rest_threshold·Wf = 20 − 20 − 15 − 18.75 =`
+  **−33.75**, because `SustenanceSystem` serves at 0.5 and `RestSystem` beds at 0.75. The driven
+  minimum is **−33.50**. The two agree to 0.25 of a mood point.
+  ⚠️ **IT STILL SAWTOOTHS, AND THE SAWTOOTH IS NOW MEASURED RATHER THAN ASSERTED** (nobody had ever
+  taken its amplitude or period): **amplitude median 14.40 points** (a drink) **/ max 27.24** (a meal
+  and a drink together), **period median 369 710 ticks ≈ 10.27 sim-h**. ⭐ **AND SLEEP IS A PLATEAU,
+  NOT A TOOTH** — measured slope while asleep −0.0047 vs −0.0068 mood per 1 000 ticks awake: the
+  fatigue recovery is *smaller* than the hunger+thirst ramp, so sleeping SLOWS the decline and never
+  reverses it. Only eating and drinking make mood rise.
+  ⭐ The OTHER half of the old bullet — *"mood gates nothing"* — was already false when written, and
+  is worth restating: mood reaches `ShipMetrics.Morale` → `DirectorSystem` tension → `WearPressure` →
   `MachineWearSystem`, which is exactly why M3-9 moved P1.
 - **`Citizen.Health`** (`Citizen.cs:31`, "Damaged by hypoxia, cold and struggle") is
   **never written by any system**. It is saved (`SaveWriter.cs:263`), hashed
@@ -8029,3 +8045,215 @@ guard that fails any module whose `frameFor` builds its own `roomFrame` again. T
 ~20 device rows still wearing PRE-REDESIGN WARM ART have no centimetre spec at all (charter §4, P2b
 FILED), so **MEDBED, PLANT and LAMP carry a facing through sim, save and wire and draw the same
 picture at all four.** That is P2b's boundary, not a new gap.
+
+### 13.51 ⭐⭐ THE FIRST MENTAL BREAK — mood gates behaviour, deterministically (M4-9, OD-R's TWoM pillar, 2026-08-05)
+
+**WHAT CHANGED IN ONE SENTENCE.** `Citizen.Mood` had exactly one behavioural consumer — the social
+argument roll — and `TARGET.md`'s T12 recorded the remainder as *"mood still gates no crew behaviour
+directly."* It does now: `MentalBreakSystem` (`sim/Sim.Core/Systems/MentalBreakSystem.cs`) runs a
+three-tier ladder off the hashed mood, and a crew member who has been low for long enough **refuses
+the dangerous order · stops working · withdraws**.
+
+**THE MECHANISM IS RIMWORLD'S AND THE DEVIATIONS ARE NAMED.** `rimworld-reference.md` §4.2
+(`:1007-1012`) is adopted whole: *one per-person tunable, three derived tiers* — major **4/7** of
+minor, extreme **1/7**, the minor threshold clamped **1 %–50 %**. Four things are deliberately NOT
+adopted and each is written into the code that departs:
+
+| RimWorld | Perilune | why |
+|---|---|---|
+| **mean time to break** (10 d / 3 d / 0.7 d) — a per-tick probability | ⭐ **DWELL TIME**, a hard time: 6 sim-h / 1.8 / 0.42, RimWorld's own 10 : 3 : 0.7 RATIO at Perilune's scale | `TARGET.md:63-65` forbids a die in an outcome. A hard 10 days outlives the ship — `--ship wreck` left alone kills its whole crew on **day 19**, measured |
+| a weighted roster of break TYPES per tier | **one behaviour per tier, no selection at all** | a weighted roster IS a die; and one tier / one consequence is the more legible design |
+| catharsis = **+40 mood for 2.5 days** (a thought) | ⭐ a **threshold reprieve**: −18 pct for 2.5 sim-days | Perilune's mood is closed-form and memoryless and has no slot for a timed offset. 18 is Iron-willed's own offset (`:1026`); 2.5 days is RimWorld's own duration |
+| the player has **no control** during a break | ⭐ a **GRADUATED override** (OD-S item 3 = A): the order LANDS at minor, is REFUSED at major, is IMPOSSIBLE at extreme | Perilune's whole phase-1 loop IS the direct order. B would take the player's only verb away with no ladder and no warning |
+
+#### ⛔⛔ THE SPAN — the one place the arithmetic had to deviate, and the measurement that forced it
+
+RimWorld's thresholds are percentages of a 0..100 bar whose zero is *"as unhappy as it is possible to
+be"*. Perilune's mood is **not a percentage and not centred on zero** (`NeedsSystem.cs:196-198` says
+so itself). Two consequences, and the second is the finding:
+
+1. **The derivation must be applied to the HEADROOM above a floor, never to the mood value.** 4/7 of
+   −34.15 is −19.5, which is *above* minor — the ladder would invert.
+2. ⛔ **THE FULL MOOD FLOOR (−135, suffocation included) MAKES THE LADDER VACUOUS, MEASURED.**
+   Across every rung of the RimWorld-shaped ladder over that span — 1 %, 2 %, 5 % … 50 % — a
+   21-sim-day `--ship wreck` run spends **at most 0.04 %** of its time below the threshold
+   (0.00 % at 1–25 %, 0.00 % at 30–40 %, **0.01 % at 45 %**, **0.04 % at 50 %**), and **no
+   contiguous run below ANY of them exceeds 1 330 ticks — 2.2 sim-minutes**.
+   ⚠️ **The first draft of this row read "0.00 % at every rung" and that was wrong at two of the
+   twelve** — the correction matters because it is the difference between *never reached* and
+   *reached only while dying*, and the second is the claim the design actually rests on. The cause is structural: `Citizen.Suffocation` is a **90–240-second death
+   timer**, so its contribution to mood cannot be *dwelt in*. ⇒ **a ladder anchored to −135 fires only
+   on people who are already dying** — the D-3 shape (`rimworld-reference.md:1830-1835`) approached
+   from the never-true side.
+
+⇒ **THE SPAN IS THE THREE SLOW NEEDS ONLY**: floor `20 − 40 − 30 − 25 = −75`, span **95**.
+⚠️ **Excluded from the SPAN is not excluded from the LADDER** — the ladder reads `Citizen.Mood`
+whole, suffocation term and all, so thin air still pushes a crew member toward a break. What
+suffocation does not get to do is define where the bottom is.
+
+#### THE SHIPPED NUMBERS, and every one is a measurement or a citation
+
+| quantity | value | provenance |
+|---|---|---|
+| deprivation floor / span | **−75 / 95** | derived from the four `[needs]` mood weights, not pasted |
+| `BreakThresholdPct` default | **43** | **MEASURED**: the serviced floor is −33.75 and the driven envelope bottoms at −33.50, so 43 % puts minor just below a coping ship's reach |
+| minor / major / extreme | **−34.15 / −51.66 / −69.16** | 43 % of 95 above −75, then ×4/7 and ×1/7 |
+| dwell minor / major / extreme | **216 000 / 64 800 / 15 120** ticks (6 / 1.8 / 0.42 sim-h) | RimWorld's 10 : 3 : 0.7 ratio; the SCALE is driven (below) |
+| counter rise : leak | **4 : 1** per tick | the measured duty cycle (below) |
+| break duration minor / major / extreme | 72 000 / 144 000 / 288 000 ticks | ⚠️ **PERILUNE'S, AND THE INVENTION IS DECLARED** — RW§4 publishes no break durations at all |
+| catharsis | −18 pct for 2 160 000 ticks | RW§4.2 `:1026` and `:1016` |
+
+**WHY 6 SIM-HOURS AND NOT SOMETHING ELSE — DRIVEN.** Sawtooth amplitude median **14.40** points
+against a combined ramp of `Wh/172800 + Wt/86400 + Wf/57600 = 1.0127e-3` mood/s ⇒ **3.95–7.47 sim-h
+to fall back to where a reset lifted her from**, on a period whose median is **10.27 sim-h**. So a
+crew member oscillating across the threshold is below it **2.8–6.3 sim-h between resets**: a 6-hour
+dwell is *longer than a coping ship can supply* and *shorter than the hours a failing one supplies
+continuously*.
+
+#### ⛔ DESIGN QUESTION (h) — THE HARD RESET IS REFUTED BY MEASUREMENT, NOT BY ARGUMENT
+
+The M4-1 charter left the counter's reset rule open and said it would be *"decided by a measurement
+this charter did not take"*. Taken: near the minor threshold **every meal and every drink carries her
+back above it** (amplitude 14.40–27.24 against a threshold sitting ~0.4 points below the serviced
+floor), and the below-window between resets (2.8–6.3 h) is **shorter than the dwell**. ⇒ a HARD RESET
+zeroes the counter in exactly the band a minor break grows in, and **the break never fires**.
+
+**The shipped rule is the LEAKY INTEGRATOR** (option 2): `BreakDwell += 4` per tick below,
+`-= 1` per tick above, clamped to the minor dwell. A leaky integrator over a square wave converges on
+its duty cycle, and it accumulates iff duty > `leak/(1+leak)` — **20 % at 4 : 1**, which the measured
+27–61 % band clears, where **50 % at 1 : 1** would not. ⚠️ Be precise about what it smooths:
+RimWorld low-passes the mood and *then* thresholds; this thresholds and *then* low-passes, so the
+smoothing acts on the boolean. For a duty-cycle input they are behaviourally alike; they are not
+identical.
+
+#### THE SLEEP PAUSE — and it closes a T12 remainder for free
+
+`TARGET.md:93` lists *"no mood freeze while asleep"* as one of T12's three remainders. RimWorld
+freezes the mood BAR; Perilune has no bar, and what the freeze actually buys is that **a sleeping
+pawn's break risk does not accumulate**. ⇒ the dwell counter **pauses while `JobKind == Sleep`** —
+the same predicate `NeedsSystem`'s fatigue ramp is gated on, for the reason M3-9 gave: it is the one
+fact about sleeping that is already saved, already hashed, and already the thing `RestSystem` writes.
+⛔ **The "able to move" half of RW§4.2's precondition ships as ABSENT and says so**: it is T14, and
+`Citizen.Health` is measured never-written. The line that grows its second half is marked in
+`MentalBreakSystem.Tick`.
+
+#### THE FIVE HASHED FIELDS (CITZ v9 → v10), and the count is a REPRICE
+
+The charter priced this row at *"1–3 hashed fields"*. It is **five**, and the difference is the
+charter pricing the TRIGGER while the roster it wrote needs a STATE:
+
+| field | what it is for |
+|---|---|
+| `BreakDwell` (uint) | the leaky integrator — the charter's field 1 |
+| `BreakThresholdPct` (byte) | the per-person tunable — DESIGN QUESTION (g)(ii) |
+| `BreakReprieveUntilTick` (long) | catharsis — DESIGN QUESTION (c) option 2 |
+| ⭐ `BreakTier` (byte) | **WHICH** break is running — three behaviours need a selector |
+| ⭐ `BreakEndsAtTick` (long) | **WHEN** it stops. RW§4.2: a break *"ends by expiry"* — one that ended when the mood recovered would end at the next meal, and the measured sawtooth lifts her 14.4–27.2 points |
+
+⛔ **Overloading `BreakDwell` as the break's own timer was considered and refused** — a second meaning
+in one field is the shape M2-2's standing refusal is about.
+⚠️ **THE PER-PERSON BYTE MAY NEVER BE SET FROM A TRAIT.** Traits live on the host-owned, unhashed
+`PersonaSheet`, and the TUI host attaches none: a hashed break decision reading one would compute two
+different ladders from one save on two hosts. The sanctioned author is `SleeperAptitudes`' shape
+(sim-side, applied inside `CryoSystem` at the thaw). **No such author exists as of this commit** —
+every crew member on every ship boots at 43, so the ladder is uniform today.
+
+#### WHERE THE THREE BEHAVIOURS ARE ENFORCED — six gates, none of them folded
+
+| tier | predicate | asked at |
+|---|---|---|
+| MINOR | `Citizen.OrderOverridesSafety` (`HeldByOrder && not broken`) | **three** sites: `JobWork.TryPathToAdjacent` (the job board's staging seam), `MachineWearSystem.DriveWorkers`, and `PrioritiseJobCommand`'s acceptance gate. ⛔ A **fourth** site reads the hold directly and is deliberately NOT converted — `SafetySystem.cs:284`, M3-14's rung 4 (a held crew member does not flee lethal air): that is a fact about the ORDER, not about whether an order waives a STAGING rule |
+| MAJOR | `Citizen.BreakRefusesWork` | **six** claim gates: `JobSystem`'s dispatcher gate, `JobSystem.TryPreempt`, `CraftingSystem.FindNearestReachableIdle`, `MachineWearSystem.FindNearestReachableIdle`, `EffectValidator` (LLM grant), `CapabilityComputer` (LLM offer) — the five M2-2 enumerates plus pre-emption |
+| EXTREME | `Citizen.BreakRefusesOrders` | `MoveCitizenCommand` |
+
+> ### ⛔⛔ AND EVERY ONE OF THOSE GATES IS PINNED BY ITS OWN BLINDED LEG — BECAUSE FOUR OF THEM WERE NOT
+>
+> The first commit of this package covered the six with a **single assert on the predicate**
+> (`Assert.That(c.BreakRefusesWork, Is.True)`) under a header claiming one leg each, and a citation
+> in `JobSystem.cs` saying it *"drives each ALONE"*. It exercised no gate at all. Independent review
+> ran the battery — each gate reverted to its pre-M4-9 form — and found **four of the six GREEN**
+> (pre-emption, the crafting recruiter, the LLM grant, the LLM offer) plus **all three MINOR-tier
+> sites GREEN**. That is the 4th trap (a guard whose scope excludes the violation) wearing a doc
+> comment that says otherwise. The fix is `WorkTypeVetoTests`' own pattern — the veto a break sits
+> BESIDE at the same sites — one blinded leg per gate with a working control.
+>
+> **THE BATTERY, RE-RUN ON THIS TREE. Every row was physically applied, the suite run, the tree
+> restored from an in-memory copy (never `git checkout`, TRAPS-2):**
+>
+> | mutation (gate reverted to pre-M4-9) | verdict | the leg that reddens |
+> |---|---|---|
+> | G1 dispatcher claim gate | **RED** | `Major_TheDispatcherStopsGivingHerWork_WithAWorkingControl` |
+> | G2 `JobSystem.TryPreempt` | **RED** | `BreakGate2_Preemption_ABrokenCrewMemberIsNotTakenOffTheJobSheHolds` |
+> | G3 `CraftingSystem` recruiter | **RED** | `BreakGate3_CraftingRecruiter_*` |
+> | G4 `MachineWearSystem` recruiter | **RED** | `BreakGate4_WearRecruiter_*` (+2 others) |
+> | G5 `EffectValidator` (LLM grant) | **RED** | `BreakGate5_LlmGrant_*` |
+> | G6 `CapabilityComputer` (LLM offer) | **RED** | `BreakGate6_LlmOffer_*` |
+> | MINOR-a `JobWork.TryPathToAdjacent` | **RED** | `Minor_TheJobBoardStagingSeam_StopsWaivingTheAirToo` |
+> | MINOR-b `MachineWearSystem.DriveWorkers` | **RED** | `Minor_TheOrderNoLongerCrossesTheFrontier_Driven` |
+> | MINOR-c `PrioritiseJobCommand` waiver | **RED** | `Minor_AnOrderIntoVacuumIsRefusedAtTheClick` |
+> | dwell scale halved | **RED** | `TheDwellAndBreakDurations_ArePinnedAsAbsoluteLiterals` |
+> | pre-v10 read default zeroed | **RED** | `APreV10Save_LeavesTheThresholdAtItsDefault_*` |
+>
+> ⚠️ **TWO LEGS HAD TO BE REBUILT ON A DIFFERENT OBSERVABLE, and both failures are worth carrying.**
+> (1) The pre-emption leg first watched for the pawn ARRIVING on repair — but `TryPreempt` ends at
+> `sim.CancelJob` and nothing more; the repair is claimed later, **through gate 4**. So it was
+> measuring gate 4, and reverting gate 2 left it green. The observable is the job being **taken
+> away**. (2) Its fixture authored the machine already worn, and the pawn went straight to `Maintain`
+> at tick 0 without ever touching the haul — there was no job to pre-empt. The better work has to
+> appear **second**.
+>
+> ⛔ **AND ONE MINOR-TIER SITE IS PINNED AT THE SEAM RATHER THAN END-TO-END, DELIBERATELY.**
+> `JobWork.TryPathToAdjacent`'s own header records that it is *"UNREACHABLE FROM THIS SEAM TODAY"*:
+> the only writer of `HeldByOrder` is `PrioritiseJobCommand`, which issues `Maintain`, and
+> `IsRecruitableForWork` excludes a held pawn, so no dig/build/deconstruct source can claim one.
+> There is no end-to-end fixture to build, and building a scenario that reached it would be testing
+> a state the sim cannot author. The seam is public and static and is pinned where it lives.
+
+⛔ **NEEDS AND FLEE ARE UNTOUCHED.** `SustenanceSystem` and `RestSystem` gate on `IsIdleForWork` and
+`SafetySystem` on neither, so a broken crew member still eats, drinks, sleeps and runs from lethal
+air. **A break stops WORK.** It is not a way to starve someone — `IsRecruitableForWork`'s own
+standing ruling, applied unchanged.
+⚠️ **"WALKS SOMEWHERE AND STAYS" IS REDUCED TO "STAYS", AND THE REDUCTION IS MEASURED**:
+`Citizen.AutoWander` boots FALSE on every ship this game ships, so there is no idle-movement channel
+to withdraw *along*. She lets go of the job and stands.
+
+#### WHAT THE PLAYER SEES
+
+- **The Chronicle** — one line per break, `HistoryKind.MentalBreak = 17`, severity **6** (the work
+  tier). It out-ranks a brownout for D1's reasoning run backwards (the break is often WHY the repair
+  the brownout was about never happened) and stays below the crew tier, which is owner-ruled.
+  ⚠️ **6 is the highest slot available without an owner ruling** — §10 item 5 forbids re-ordering
+  anything above it — so the break/repair tie is currently answered by CLOCK (earliest wins, item
+  5's own rule). **Filed for the owner.**
+- **The Persona window's fifth band, HOW SHE IS** — M4-2 shipped four bands and reported the exit
+  gate's *how she is* clause PARTIAL, because DESIGN QUESTION (e)'s sequencing rule says the band
+  *"ships with, or after, the first break behaviour"*. **M4-9 ships it and closes the clause.** One
+  composed sentence on `roster.state`: an adjective clause from her needs, then **what it means she
+  will refuse**. ⛔ **No number from the mood formula crosses the wire** — the host reads the scalars
+  and ships words, so `dossier-honesty.test.js`'s equality-pinned meter census stays green **by
+  construction rather than by restraint**: a bar cannot be drawn from a string.
+- The second clause has three states, and every one changes a decision: **broken** (what she is
+  refusing), **arming** (`BreakDwell > 0` — *"She has been at the end of her rope for 3.4 h"*, which
+  is what makes the band a warning rather than an epitaph), **steady**.
+
+#### ⛔ THE INSTRUMENT, AND THE VACUITY SAID OUT LOUD
+
+`MentalBreakTests` (40 legs) and `HowSheIsTests` (10) are the mechanism's **only** cover, and the
+charter said so in advance: under OD-H
+every work type boots OFF, no pinned fixture enqueues a command, and on `--ship slice` and P1's
+hand-built `BuildScenario` the crew do essentially nothing. **No determinism pin can see the tier
+derivation, the reset rule, or any of the three behaviours.** A held pin here is a *vacuously* held
+pin — M2-12's *"no pin sees the generation term"*, M3-7's *"no pin sees the rate term"* and D1/D6's
+*"the hold is VACUOUS ×4"* in a fourth costume. The one exception the charter named is the sleep
+pause, which M3-9 proved is reachable on P1's own fixture; the measured answer for this tree is in
+this package's re-pin notes.
+
+#### THE MEASUREMENT HARNESS
+
+`~/.dotnet/dotnet run --project hosts/scenario -- mood [--ship wreck|slice|grid] [--days D]` —
+`hosts/scenario/MoodHarness.cs`. Read-only (ticks and samples; no command, no designation, no file),
+reached only through its own verb, so `ci.sh`'s pinned verb-less path is byte-identical with it
+present or absent. It prints the charter's four required outputs (day-means, the envelope, the
+sawtooth's amplitude, the sawtooth's period) plus a **dwell sweep** — for each candidate threshold,
+the share of the run below it, the number of crossings, and the **longest contiguous run below**,
+which is the ceiling on any `dwell_ticks` that can ever complete.

@@ -169,8 +169,15 @@ test('M1-F: morale moves NOTHING on the dossier — and the same fixture proves 
   //
   // ⚠️ THE CHARTER NAMED `Citizen.Hunger` FOR THIS LEG. IT CANNOT BE USED, AND THAT IS A FINDING,
   // NOT A SHORTCUT: hunger reaches no client surface. `BuildRoster` (hosts/web/GameSession.cs)
-  // emits cid/name/role/mood/task/portrait/morale/deck/x/y/traits; the `citizen` message carries
-  // role/mood/traits/portrait/log; `grep -ri "hunger\|thirst\|fatigue" client/src` is EMPTY. The
+  // emits cid/name/role/mood/task/portrait/morale/deck/x/y/traits/fx/fy/state; the `citizen`
+  // message carries role/mood/traits/portrait/log; `grep -ri "hunger\|thirst\|fatigue" client/src`
+  // is EMPTY — re-run on this tree, still empty.
+  // ⭐ AND M4-9 IS THE PACKAGE THAT COULD HAVE BROKEN THAT AND DELIBERATELY DID NOT. `state` is the
+  // Persona window's HOW SHE IS band, and it is composed HOST-SIDE from Hunger/Thirst/Fatigue/
+  // Suffocation/mood into WORDS. The scalars stay behind the wire on purpose: a client that received
+  // them could draw the bar this whole file exists to keep deleted, and the next lane that wanted
+  // one would find it already paid for. The census above is green BY CONSTRUCTION, not by
+  // restraint. The
   // dossier's NEEDS meters — Health/Food/Water/Rest — are ◇ SAMPLE, seeded from the cid, and say so
   // on the card. So the substitute is `mood`, which IS real: the host reads it from
   // `mind.ActiveEmotion(tick)` every roster rebuild, and the card paints it as the `.dsr-emo` chip.

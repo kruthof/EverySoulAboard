@@ -41,7 +41,8 @@
 //   · THE ROOM ZOOM'S WALL SLAB (`w = 95, h = 228`) — 100 × 240 cm, i.e. a one-metre wall run at the
 //     compartment's real 2.4 m ceiling (`room-model.js` `ROOM_HEIGHT_M`), laid on the front face of
 //     the slab `oblique.box()` has just extruded.
-//   · THE PALETTE SWATCH CHIP (`paintMatStrip`, `w = h = 26`) — a SQUARE box, so a 100 × 100 cm
+//   · THE BUILD TRAY'S MATERIAL CARD (`build-tray-view.js`, `w = h = 62`; it was `paintMatStrip`'s
+//     26 px chip until 2026-08-05) — a SQUARE box, so a 100 × 100 cm
 //     CROP at the same pattern scale. A wall's crop is its bottom metre (see below); a floor's is
 //     the whole tile. It is a thumbnail of the real material, never a squashed whole wall — a
 //     squashed picture would be the one thing this module exists to stop.

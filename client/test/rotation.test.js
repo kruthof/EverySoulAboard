@@ -559,10 +559,15 @@ const devicesMsg = (face) => ({
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast',
-  'rz-nudge', 'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-cost',
+  'rz-nudge', 'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-cost',
   'rz-minimap', 'rz-hint', 'rz-ctx', 'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
-const TAG_RE = /<(button|span)\b([^>]*)>/g;
+// ⚠️ `div` JOINED THE SCANNER ON 2026-08-05 (the build tray). The flat strip was buttons and spans
+// only; the tray's three SECTIONS — the category rail, the leaf rail and the card row — are `div`s,
+// and without them here `querySelector('.rz-tray-cats')` answers null, `makeBuildTray` paints into
+// nothing, and every driven leg below passes over an empty menu. That is the 4th trap shape (a scope
+// filter that excludes the subject), so the filter is widened rather than the markup bent.
+const TAG_RE = /<(button|span|div)\b([^>]*)>/g;
 const ATTR_RE = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/g;
 class RtEl extends DomEl {
   constructor(doc, tag) {

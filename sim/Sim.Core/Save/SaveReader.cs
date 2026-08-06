@@ -356,6 +356,30 @@ namespace Perilune.Sim
                     }
                     c.HeldByOrder = reader.ReadBoolean();
                 }
+                // ⭐⭐ v10 (M4-9) — THE MENTAL BREAK, and the pre-v10 read is the BEHAVIOUR-PRESERVING
+                // one in all five fields rather than a guess:
+                //   BreakDwell 0 / BreakTier None / BreakEndsAtTick 0 / BreakReprieveUntilTick 0 —
+                //     nothing could BE broken before this chapter existed, so "not broken, nothing
+                //     accumulated, no reprieve owed" is both the constructor default and the
+                //     historically accurate read. (This is DEVC v6's case, not DEVC v5's: v5 had to
+                //     read TRUE because every pre-v5 device really was MOSS-addressable.)
+                //   BreakThresholdPct — left at the CONSTRUCTOR DEFAULT (43), NOT at zero. ⛔ Zero is
+                //     not a valid threshold at all (the clamp's floor is 1) and a save reader that
+                //     wrote one would hand a citizen a ladder her own class can never produce. The
+                //     asymmetry with the two arrays above is deliberate and is the same one they
+                //     document: the reader is permissive about bytes another build wrote, and
+                //     silent about a field that build never had.
+                // ⚠️ Note the branch is OUTSIDE the `version >= 8` block above — a v10 record is a v9
+                // record plus a suffix, and nesting it would make v10 unreachable for any pre-v8 save
+                // that a later writer might legitimately produce.
+                if (version >= 10)
+                {
+                    c.BreakDwell = reader.ReadUInt32();
+                    c.BreakThresholdPct = reader.ReadByte();
+                    c.BreakTier = (BreakTier)reader.ReadByte();
+                    c.BreakEndsAtTick = reader.ReadInt64();
+                    c.BreakReprieveUntilTick = reader.ReadInt64();
+                }
                 sim.Citizens.Add(c, id);
             }
         }

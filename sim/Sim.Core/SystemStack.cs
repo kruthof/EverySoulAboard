@@ -84,6 +84,18 @@ namespace Perilune.Sim
                 new NeedsSystem(),
                 new SafetySystem(),        // after Needs: acts on this tick's fresh Suffocation — a crew
                                            // member in lethal air drops its job and flees to breathable air
+                // ⭐⭐ M4-9 — THE BREAK LADDER, AND BOTH HALVES OF ITS POSITION ARE LOAD-BEARING.
+                // AFTER Needs, because the ladder is a pure function of the Mood that Needs writes —
+                // SafetySystem's own comment one line up makes the identical argument about
+                // Suffocation. AFTER Safety, because a crew member who crossed `flee_suffocation`
+                // this tick has ALREADY dropped her job and started running, so a break can never
+                // fire on somebody the ship is in the middle of rescuing and an EXTREME break can
+                // never cancel a flee. BEFORE Social, so mood's two behavioural consumers see the
+                // same settled tick. ⛔ NOT an IStatefulSystem — every bit of its state is on the
+                // Citizen (CITZ v10), so this registration adds no SYSS chapter and no seed; it
+                // still fixes the SYSS fold ORDER of everything after it, which is why moving it
+                // later is another pin move.
+                new MentalBreakSystem(),
                 new SocialSystem(),        // after Needs: positions and deaths settled this tick
                 new ExplorationSystem(),
                 new GoalSystem(),

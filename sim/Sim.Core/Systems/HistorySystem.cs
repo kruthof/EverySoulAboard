@@ -48,6 +48,12 @@ namespace Perilune.Sim
         // channel that CAN hold them: a badge says what is true now, history says what happened.
         // ALL SIX write the line, badge or no badge, for that reason.
         OrderDropped = 16,         // "ORDER DROPPED — <who> let go of <machine>: <why>" (MaintenanceSystem.Abandon)
+
+        // ⭐⭐ M4-9 (OD-R's TWoM pillar, first mechanism). A crew member crossed a derived mood
+        // threshold and stayed there for the dwell, and her BEHAVIOUR changed. Appending a member
+        // moves no pin on its own — the fold reads `e.Kind` off the entries that exist, and no
+        // existing entry's value changed — the ENTRIES do.
+        MentalBreak = 17,          // "<name> has stopped working." (MentalBreakSystem)
     }
 
     /// <summary>One line of ship history, day-stamped ("Day 142.12 — Blight detected in Bay 3").</summary>
@@ -185,6 +191,36 @@ namespace Perilune.Sim
             foreach (var drop in sim.Events.Read<OrderDroppedEvent>())
                 Add(tick, OrderDroppedText(sim, drop), HistoryKind.OrderDropped,
                     drop.CitizenId, drop.DeviceId);
+
+            // ⭐⭐ M4-9 — SHE BROKE, AND THE SHIP REMEMBERS IT. `MentalBreakSystem` publishes once per
+            // break (the STATE lives on the citizen; this is its edge), so like OrderDropped this
+            // stream is rare by construction and needs no coalescer: a break requires six sim-hours
+            // of continuous sub-threshold mood, and the catharsis reprieve then makes her 18 points
+            // harder to break for two and a half sim-days.
+            foreach (var brk in sim.Events.Read<MentalBreakEvent>())
+                Add(tick, MentalBreakText(sim, brk), HistoryKind.MentalBreak, brk.CitizenId);
+        }
+
+        /// <summary>
+        /// The break's line. ⛔ <b>IT NAMES THE BEHAVIOUR, NOT A FEELING</b> — `TARGET.md:66-69`
+        /// forbids a misery meter and `:65` forbids a cosmetic operator, and "Rell is very sad" is
+        /// both. Each tier's sentence is the consequence the player can act on, which is the same
+        /// discipline the `blocked` channel's sentences follow.
+        /// </summary>
+        private static string MentalBreakText(Simulation sim, in MentalBreakEvent e)
+        {
+            string who = !string.IsNullOrEmpty(e.Name) ? e.Name : NameOf(sim, e.CitizenId);
+            switch ((BreakTier)e.Tier)
+            {
+                case BreakTier.Minor:
+                    return $"{who} will not cross into unbreathable air, whatever the orders say.";
+                case BreakTier.Major:
+                    return $"{who} has stopped working.";
+                case BreakTier.Extreme:
+                    return $"{who} has withdrawn: she takes no work and no orders.";
+                default:
+                    return $"{who} broke.";
+            }
         }
 
         // ═══════════════════════════════════════════════════════════════════════════════════════

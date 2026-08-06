@@ -33,11 +33,12 @@ import {
 } from '../src/ui/room-model.js';
 // The built layer's own floor-swatch size, read from the surface rather than restated here.
 import { FLOOR_MAT_PX } from '../src/ui/roomzoom-view.js';
-import { ITEMS, buildItem } from '../src/items/index.js';
+import { ITEMS, buildItem, itemSpecCm } from '../src/items/index.js';
 import { itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { materialItemId } from '../src/ui/build-material-model.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { codeOnly } from './code-only.js';
+import { makeTrayDriver } from './tray-arm.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIX = JSON.parse(readFileSync(join(HERE, 'fixtures/overview-grid.json'), 'utf8'));
@@ -59,12 +60,17 @@ function slotFocus(anchor) {
 /** ⭐ `rz-ghost` IS IN THIS LIST AND THE FIRST TEST PINS IT — see the vacuity note in the header. */
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast',
-  'rz-nudge', 'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-cost',
+  'rz-nudge', 'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-cost',
   'rz-minimap', 'rz-hint', 'rz-ctx',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
 
-const TAG_RE = /<(button|span)\b([^>]*)>/g;
+// ⚠️ `div` JOINED THE SCANNER ON 2026-08-05 (the build tray). The flat strip was buttons and spans
+// only; the tray's three SECTIONS — the category rail, the leaf rail and the card row — are `div`s,
+// and without them here `querySelector('.rz-tray-cats')` answers null, `makeBuildTray` paints into
+// nothing, and every driven leg below passes over an empty menu. That is the 4th trap shape (a scope
+// filter that excludes the subject), so the filter is widened rather than the markup bent.
+const TAG_RE = /<(button|span|div)\b([^>]*)>/g;
 const ATTR_RE = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/g;
 
 class GhEl extends DomEl {
@@ -164,9 +170,9 @@ const layers = doc.getElementById('rz-layers');
 const ghost = doc.getElementById('rz-ghost');
 const canvas = doc.getElementById('rz-canvas');
 const root = doc.getElementById('roomzoom-view');
-const palette = doc.getElementById('rz-palette');
+const tray = doc.getElementById('rz-tray');
 layers._rect = sceneRect;
-palette.parentNode = root;
+tray.parentNode = root;
 
 function fire(el, type, extra) {
   const e = {
@@ -200,6 +206,7 @@ function armTool(tool) {
   btn.parentNode = root;
   fire(btn, 'click', {});
 }
+const trayDrv = makeTrayDriver({ doc, assert, click: (b) => fire(b, 'click', { target: b }) });
 /** Move the pointer to a tile's floor centre. */
 function hover(tx, ty) { fire(canvas, 'mousemove', { button: 0, ...atTile(tx, ty) }); }
 /** Move the pointer to a raw client point (for the off-room legs). */
@@ -369,15 +376,17 @@ test('⭐⭐ WALL and FLOOR ghosts DRAW THE SWATCH THE BUILT LAYER DRAWS — sam
     'the superseded 62-px swatch idiom is still being emitted somewhere');
 });
 
+// ⭐ THE PICKER IS A TRAY CARD NOW, AND THIS LEG DRIVES THE REAL ONE. It used to synthesise a bare
+// `[data-rzmat]` chip, which was fair while `#rz-matstrip` existed; the six materials are
+// `STRUCTURE › WALL`'s own CARDS today, so a synthetic chip would be testing an attribute nothing
+// paints. `tray-arm.js` walks the rails and presses the shipped `<button>`.
 test('the swatch FOLLOWS THE PICKER — the signature guard carries the material term', () => {
-  armTool('wall');
+  trayDrv.arm('wall', 0);
   hover(FLOOR.x, FLOOR.y);
   const first = ghost.innerHTML;
-  const chip = new GhEl(doc, 'button');
-  chip.dataset.rzmat = '2';
-  chip.setAttribute('data-rzmat', '2');
-  chip.parentNode = root;
-  fire(chip, 'click', {});
+  const blast = trayDrv.cardFor('wall', 2);
+  assert.ok(blast, 'no BLAST wall card in the shipped tray — this leg would nothing');
+  fire(blast, 'click', { target: blast });
   assert.notEqual(ghost.innerHTML, first,
     'a material change must re-draw the ghost — the signature guard has to carry the material term');
   // NON-VACUITY: the two materials really are different art, so the inequality above means something.
@@ -398,15 +407,39 @@ test('DOOR is structural but owns no picker — its ghost invents no material', 
 // 2. THE DIALECT — unbuilt ink dash, reduced opacity, NO oxblood
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
+// ⚠️ THE "NO OXBLOOD" ASSERTION IS NARROWED, AND THE NARROWING IS DECLARED RATHER THAN QUIET
+// (TRAPS 9th shape: an instrument narrowed goes blind, so say what it can no longer see).
+//
+// WHAT IT SAID: no `#7B2C22` anywhere in `#rz-ghost`. WHAT IT SAYS NOW: no `#7B2C22` in the PIECE.
+// WHY: the owner's build-tray design (2026-08-05) puts an in-room CALLOUT beside the armed piece —
+// a dashed leader reading `PLACE · 3 PARTS` in the accent, plus a dimension line. That is not a new
+// claim on the one accent: `ghostSvg` has drawn exactly that annotation, in exactly that colour,
+// over every QUEUED design since VR-P3 (`WALL · 3 PARTS` on an oxblood leader), and this is the same
+// label arriving before the click instead of after it. The RULE the old assertion protected — a
+// preview of a click nobody has made must not be painted like a fault — is about the PIECE, and the
+// piece is still ink-only.
+//
+// ⛔ WHAT THE NARROWED LEG CAN NO LONGER SEE, AND WHAT CLOSES IT: it would not notice the accent
+// leaking into the drawing THROUGH the callout group — so the leg below asserts the callout is a
+// SIBLING of the wrapper (the split point is the wrapper's end) and the next test asserts the
+// callout exists at all, so neither half can go vacuous by the other's absence.
 test('the ghost wears the charter\'s UNBUILT dialect: ink dashed 6 5, dimmed, and never oxblood', () => {
   armTool('table');
   hover(FLOOR.x, FLOOR.y);
   const html = ghost.innerHTML;
   assert.match(html, /stroke-dasharray="6 5"/, 'the charter\'s UNBUILT/PLANNED dash (ruling E3)');
   assert.match(html, /opacity="0\.55"/, 'reduced opacity — this is not built yet');
-  assert.ok(!html.includes('#7B2C22'),
-    'NO OXBLOOD: the one accent is spent on a QUEUED order (ghostSvg) and a REFUSED one '
-    + '(blockedLayerSvg). A preview of a click nobody has made is not an alert.');
+  const parts = html.split('<g class="rz-ghost-callout"');
+  assert.equal(parts.length, 2,
+    'non-vacuity: the callout must be present AND emitted exactly once, or the split below hands '
+    + 'the piece-only assertion the whole document (or nothing) and it stops meaning anything');
+  assert.ok(!parts[0].includes('#7B2C22'),
+    'NO OXBLOOD IN THE PIECE: the one accent is spent on a QUEUED order (ghostSvg), a REFUSED one '
+    + '(blockedLayerSvg) and — since the build tray — on the armed piece\'s PRICED CALLOUT, which '
+    + 'is the same annotation idiom. The drawing itself is still not an alert.');
+  assert.ok(parts[1].includes('#7B2C22'),
+    'the callout must carry the accent — it is the price of a click the player is about to make, '
+    + 'and `ghostSvg` says the same number in the same colour one gesture later');
 });
 
 test('the ghost is NOT a press target — neither the layer nor the group takes pointer events', () => {
@@ -516,7 +549,9 @@ test('a tool the ship CANNOT PAY FOR still previews — dimmer, and struck throu
   assert.match(html, /class="rz-buildghost refused"/, 'the state is on the group, readable by a rig');
   assert.match(html, /opacity="0\.3"/, 'dimmer than the affordable ghost');
   assert.match(html, /stroke-dasharray="1 3"/, 'the strike, in this surface\'s own dotted dialect');
-  assert.ok(!html.includes('#7B2C22'), 'and STILL no oxblood — the refusal sentence is the toast\'s job');
+  assert.ok(!html.split('<g class="rz-ghost-callout"')[0].includes('#7B2C22'),
+    'and STILL no oxblood IN THE PIECE — a refused preview is struck through in ink, not painted '
+    + 'like a fault (the sentence is the callout\'s and the toast\'s job)');
   assert.ok(html.includes('rz-gh-table'), 'and it is still the REAL piece, not a substitute');
 });
 
@@ -609,10 +644,28 @@ test('a functional tool\'s ghost art is DERIVED from the registry\'s own deviceK
     const pc = paletteCommand(tool);
     if (pc.cls !== 'functional') continue;
     if (tool === 'lamp') {
-      assert.equal(pc.itemId, 'wall-lamp',
-        'LAMP states its art because DeviceKind.Light has no functional ITEMS row — see the '
-        + 'PALETTE_CMD comment. If a real luminaire lands, delete the field and this branch.');
+      // ⛔⛔ PINNED AGAINST THE SUBSTITUTION TABLE, NOT AGAINST A TYPED STRING — and the reason is a
+      // measured defect, not tidiness. This assertion used to read `assert.equal(pc.itemId,
+      // 'wall-lamp')`: two hand-written copies of one fact, agreeing with each other and with
+      // NOTHING. `GLYPH_SUBSTITUTE['*']` moved to `lamp-sconce` on 2026-08-05 and both copies stayed
+      // put, so the PLACED Light drew the paper sconce while the ghost — and then the build tray's
+      // card — drew the retired warm piece, and this test was green through all of it.
+      // The fact has ONE authority now: whatever glyph `'*'` resolves to is what `PALETTE_CMD.lamp`
+      // must state, so the next move reddens here BY NAME instead of shipping a split.
+      const substituted = itemIdForGlyphChar('*');
+      assert.ok(substituted, "GLYPH_SUBSTITUTE no longer answers '*' — the Light's art has no source at all");
+      assert.equal(pc.itemId, substituted,
+        'LAMP states its art because DeviceKind.Light has no functional ITEMS row (see the PALETTE_CMD '
+        + 'comment) — and the art it states must be the one a PLACED Light actually draws, which is '
+        + "`GLYPH_SUBSTITUTE['*']`. They have split: the player would preview one lamp and get another. "
+        + 'If a real luminaire lands, delete the field and this branch.');
       assert.ok(!byKind.has('Light'), 'the hole this exception exists for is still open');
+      // …and the piece it names really is in the registry, with the `SPECS` row the build tray's card
+      // prints its dimensions from. `wall-lamp` had none, which is how the stale value stayed
+      // invisible for a day: the card just dropped the dimension term and said nothing.
+      assert.ok(ITEMS[substituted], substituted + ' is not a registry id');
+      assert.ok(itemSpecCm(substituted) && itemSpecCm(substituted).d > 0,
+        substituted + ' has no SPECS depth — the LAMP card would print a power figure and no size');
       continue;
     }
     assert.ok(!pc.itemId, tool + ' must DERIVE its art, not state it');

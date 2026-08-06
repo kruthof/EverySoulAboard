@@ -314,7 +314,21 @@ namespace Perilune.Sim
             // rule is asked the same way every tick she carries it — issue-time and drive-time
             // cannot come to different answers about the same job. Released with the job by
             // `Citizen.JobKind`'s setter, so the very tick the service ends this reads false again.
-            bool forced = worker.HeldByOrder;
+            // ⭐ M4-9 — see JobWork.TryPathToAdjacent: a broken crew member's order no longer waives
+            // the air (`Citizen.OrderOverridesSafety`).
+            // ⚠️ THE SCOPE, STATED EXACTLY, BECAUSE AN EARLIER DRAFT SAID "the two forced-flag
+            // computation sites" AND THE CLASS HAS THREE MEMBERS: this one,
+            // `JobWork.TryPathToAdjacent` (the job board's staging seam) and
+            // `PrioritiseJobCommand`'s acceptance gate. ⛔ A FOURTH SITE READS THE HOLD DIRECTLY AND
+            // IS DELIBERATELY NOT CONVERTED — `SafetySystem.cs:284`, M3-14's rung 4 (a held crew
+            // member does not flee lethal air). That is a fact about the ORDER, not about whether an
+            // order waives a STAGING rule, and converting it would change who dies rather than who
+            // is staged. On a minor break the same outcome arrives one step later and through this
+            // flag: `forced withdrawn -> staging refused -> Abandon -> job ends -> hold released ->
+            // she flees`, driven end to end by
+            // `MentalBreakTests.Minor_TheOrderNoLongerCrossesTheFrontier_Driven`. THREE sites
+            // convert; the fourth is named here so a later reader does not "finish the job".
+            bool forced = worker.OrderOverridesSafety;
             if (!TryFindStagingTile(sim, device.Pos, out var staging, forced))
             {
                 DropCarried(sim, worker); // machine walled in mid-job
@@ -590,6 +604,10 @@ namespace Perilune.Sim
                 {
                     var c = citizens[i];
                     if (!c.IsRecruitableForWork) continue;
+                    // ⭐ M4-9 (BREAK GATE 4 of 6) — the second PUSH recruiter. Same placement
+                    // argument as CraftingSystem's copy: before `anyIdle`, beside M2-2's veto, so a
+                    // person's break is never recorded as a refusal by the MACHINE.
+                    if (c.BreakRefusesWork) continue;
                     // ⭐ M2-2 (G3) — THE WORK-TYPE VETO, and this is the gate OD-G's opening beat
                     // rests on: without it MaintenanceSystem recruits the wreck's boot pawn for a
                     // Maintain service at ~tick 201 and the game plays itself. Placed BEFORE

@@ -44,6 +44,7 @@ import {
 import { ITEMS, ITEM_IDS, isDeviceItem } from '../src/items/index.js';
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { dragModeForTool } from '../src/ui/build-drag-model.js';
+import { trayCards, trayLeafFor } from '../src/ui/build-tray-model.js';
 import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
 import { APPLIES_NEXT_LABEL, mismatchLabel } from '../src/ui/accepts-row.js';
@@ -60,6 +61,7 @@ import { fhId, monoTextWidth } from '../src/render/oblique.js';
 // `min(w,h)/TILE`) — how the true-size leg recovers the box side the surface asked for.
 import { TILE } from '../src/items/helpers.js';
 import { codeOnly } from './code-only.js';
+import { makeTrayDriver } from './tray-arm.js';
 import { Cmd } from '../src/wire/session.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
@@ -1468,7 +1470,10 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  // ⚠️ `rz-cost` JOINED THE LIST AT THE BUILD TRAY (2026-08-05). The armed COST row is the ACCEPTS
+  // row's surviving mutually-exclusive sibling — the material strip that used to play that part is
+  // gone — so the exclusion leg needs a node to read.
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-cost', 'rz-minimap',
   // ⭐ THE HINT LINE, registered here because the neutral-first-screen package gave it two texts
   // and therefore a node reference. It is a `<div>`, so the start-tag scanner below (which lifts
   // `button|span` only) cannot resolve it and `_el.hint` would be null — every hint assertion in
@@ -1510,7 +1515,12 @@ const RZ_IDS = [
  * before this existed. A parser that populated `childNodes` would have quietly changed the meaning
  * of assertions written years apart from it.
  */
-const TAG_RE = /<(button|span)\b([^>]*)>/g;
+// ⚠️ `div` JOINED THE SCANNER ON 2026-08-05 (the build tray). The flat strip was buttons and spans
+// only; the tray's three SECTIONS — the category rail, the leaf rail and the card row — are `div`s,
+// and without them here `querySelector('.rz-tray-cats')` answers null, `makeBuildTray` paints into
+// nothing, and every driven leg below passes over an empty menu. That is the 4th trap shape (a scope
+// filter that excludes the subject), so the filter is widened rather than the markup bent.
+const TAG_RE = /<(button|span|div)\b([^>]*)>/g;
 const ATTR_RE = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/g;
 
 /** dom-lite + the four extras roomzoom-view.js needs: innerHTML, querySelector(All), closest,
@@ -1707,15 +1717,15 @@ rzApi.enter('hold');                       // the Overview's own entry point, by
 const rzLayers = rzDoc.getElementById('rz-layers');
 const rzCanvas = rzDoc.getElementById('rz-canvas');
 const rzRoot = rzDoc.getElementById('roomzoom-view');
-const rzPalette = rzDoc.getElementById('rz-palette');
+const rzTray = rzDoc.getElementById('rz-tray');
 // The scene's own viewBox at 1:1 (fit scale s = 1), so a scene coordinate IS a client coordinate.
 rzLayers._rect = sceneRectFor(HOLD);
 // `makeRzDoc` registers every chrome node by id and parents NONE of them, so a click on a real
-// palette button would die at the palette instead of reaching the delegated handler on the root.
-// Parenting it is what the shipped DOM already does (`#rz-palette` lives inside `.rz-palette-wrap`
-// inside `#roomzoom-view`), and it is what lets the aria test below drive the SHIPPED button rather
-// than a stand-in it built itself.
-rzPalette.parentNode = rzRoot;
+// tray card would die at the tray instead of reaching the delegated handler on the root. Parenting
+// it is what the shipped DOM already does (`#rz-tray` lives inside `.rz-palette-wrap` inside
+// `#roomzoom-view`), and it is what lets the aria tests below drive the SHIPPED buttons rather than
+// stand-ins they built themselves.
+rzTray.parentNode = rzRoot;
 
 /** The client-space point at the FLOOR CENTRE of tile (tx,ty), under the rect above — through the
  *  shipped projection, never through a restatement of it. */
@@ -1787,20 +1797,39 @@ afterEach(() => {
   rzSent.length = 0;
 });
 
-/** Arm a tool the way a player does — a click on a palette button carrying `data-rztool`, dispatched
- *  through the surface root's real delegated handler. Clicking the armed tool again disarms it. */
-const rzToolBtns = new Map();
-function rzArm(tool) {
-  let b = rzToolBtns.get(tool);
-  if (!b) {
-    b = new RzEl(rzDoc, 'button');
-    b.dataset.rztool = tool;
-    b.setAttribute('data-rztool', tool);
-    rzRoot.appendChild(b);
-    rzToolBtns.set(tool, b);
-  }
-  rzFire(b, 'click', {});
+/**
+ * Arm a tool the way a player does — and since the build tray replaced the flat strip, that is
+ * THREE presses: the category, the leaf, then the card. All three are the SHIPPED `<button>`s and
+ * every click goes through the surface root's real delegated handler.
+ *
+ * ⭐ THIS USED TO SYNTHESISE A BARE `[data-rztool]` NODE, which was honest while every tool had its
+ * own always-visible chip: the resolution path was identical and the palette's markup was pinned
+ * separately. It is NOT honest any more — a tool lives behind a navigation now, and a synthetic chip
+ * would arm a tool the player might have no way to reach. The walk is `tray-arm.js`'s and it asserts
+ * BY NAME when a rail row or a card is missing.
+ *
+ * Pressing the card of the tool already armed disarms it, exactly as the chip did.
+ */
+const trayDrv = makeTrayDriver({ doc: rzDoc, assert, click: (b) => rzFire(b, 'click', {}) });
+function rzArm(tool) { return trayDrv.arm(tool); }
+
+/** The CARD ROW's own markup for the leaf that holds `tool` — NAVIGATED TO FIRST, exactly as a
+ *  player must. It is the string the painter wrote (this stub never re-serialises from attributes),
+ *  so it stays the BUILDER's output the way `#rz-palette`'s innerHTML used to be. */
+function rzCardsHtml(tool) {
+  trayDrv.open(tool);
+  const row = rzTray.querySelector('.rz-tray-cards');
+  return row ? row.innerHTML : '';
 }
+/** Every card currently on screen, and which of them wear `.on`. OBSERVATION, never a mirror. */
+const rzCardState = () => {
+  const all = trayDrv.cards();
+  return {
+    all: all.map((b) => b.getAttribute('data-rzcard')),
+    lit: all.filter((b) => b.classList.contains('on')).map((b) => b.getAttribute('data-rzcard')),
+    pressed: Object.fromEntries(all.map((b) => [b.getAttribute('data-rzcard'), b.getAttribute('aria-pressed')])),
+  };
+};
 
 // ── the three chrome sentences, read back off the LIVE nodes ───────────────────────────────────
 // ⚠️ THE HINT IS READ FROM ITS NODE, NOT FROM `rzRoot.innerHTML`, and the change is not cosmetic.
@@ -1809,7 +1838,7 @@ function rzArm(tool) {
 // string could never see a hint that stopped being repainted — the assertion would pass on a
 // surface whose hint was frozen at boot, which is the precise defect this instrument now guards.
 const rzHint = () => rzDoc.getElementById('rz-hint').textContent;
-const rzLabel = () => rzPalette.querySelector('.rz-place-label').textContent;
+const rzLabel = () => rzTray.querySelector('.rz-place-label').textContent;
 // The caption is its TWO spans joined (VS-Z-12 colours the count separately). Read off the scanned
 // start tags rather than the container's `textContent`: the scanner deliberately keeps its nodes
 // out of `childNodes`, so the container reads '' here and an assertion against it would be vacuous.
@@ -1917,18 +1946,26 @@ test('the Light regression is REAL on the captured grid ship — every lamp tile
     + 'the assertions above stop describing anything a player can reach.');
 });
 
-// The palette BAR itself, read out of the markup `buildChrome` actually wrote. Without this, every
-// assertion below could be satisfied by a tool the player has no button for: the tests arm through a
-// `data-rztool` node they construct themselves, so they would pass against an unrendered palette.
-// (This reads the innerHTML string the builder wrote, not the scanned nodes — deliberately kept as
-// a string assertion, because it is the MARKUP contract, and it predates the tag scanner.)
-test('WP-4: the palette actually PAINTS a DIG and a STRIP button, labelled and armable', () => {
-  const html = rzDoc.getElementById('rz-palette').innerHTML;
-  assert.ok(html.length > 0, 'the palette painted nothing — this assertion would be vacuous');
-  for (const [tool, label] of [['dig', '⛏ DIG'], ['strip', '⚒ STRIP'], ['wall', 'WALL']]) {
-    assert.ok(html.includes('data-rztool="' + tool + '"'), `no palette button for '${tool}'`);
-    assert.ok(html.includes('>' + label + '<'), `the '${tool}' button is missing its label '${label}'`);
+// The BUILD MENU itself, read out of the markup the tray actually wrote. Without this, every
+// assertion below could be satisfied by a tool the player has no control for.
+//
+// ⚠️ IT READS THE **CARD ROW OF THE LEAF THE TOOL LIVES IN**, not one flat strip, and WALL moved out
+// of this leg for a reason rather than being dropped: under the build tray WALL is a rail LEAF whose
+// cards are the six MATERIALS (`STEEL`, `TIMBER`, …), so `>WALL<` is the leaf row's label and not a
+// card's. Its own leg is two lines down, and it asserts the shape that is actually true of it.
+test('WP-4: the build tray actually PAINTS a DIG and a STRIP card, labelled and armable', () => {
+  const html = rzCardsHtml('dig');
+  assert.ok(html.length > 0, 'the card row painted nothing — this assertion would be vacuous');
+  for (const [tool, label] of [['dig', '⛏ DIG'], ['strip', '⚒ STRIP']]) {
+    assert.ok(html.includes('data-rztool="' + tool + '"'), `no tray card for '${tool}'`);
+    assert.ok(html.includes('>' + label + '<'), `the '${tool}' card is missing its label '${label}'`);
   }
+  // WALL: a rail LEAF, and its cards are the six wall materials driven by `materialsForTool`.
+  const wallCards = rzCardsHtml('wall');
+  assert.ok(rzTray.querySelector('.rz-tray-subs').innerHTML.includes('data-rzsub="structure/wall"'),
+    'no WALL row in STRUCTURE\'s leaf rail — the tool has no way in');
+  assert.ok(wallCards.includes('data-rztool="wall"') && wallCards.includes('data-rzmat="0"'),
+    'the WALL leaf paints no material cards — the swatch strip was re-housed here, not deleted');
   // And the hint line names the two new hotkeys. ⚠️ AMENDED BY THE NEUTRAL-FIRST-SCREEN PACKAGE:
   // the hint has TWO texts now, and the crib sheet is the ARMED one — with nothing armed the line
   // says what a disarmed room offers instead (select a pawn, right-click to prioritise). So the
@@ -2258,12 +2295,12 @@ test('M1-C: C arms ERASE on the Room Zoom, both cases, and swallows the key', ()
 
 // MUTATION: remove 'erase' from ROOM_TOOLS ⇒ no button is painted ⇒ RED (and the census + the three
 //   derived button counts go red too — that is mutation 2, and it is deliberately spread).
-test('M1-C: the palette PAINTS an ERASE button, labelled, and the hint names its hotkey', () => {
-  const html = rzDoc.getElementById('rz-palette').innerHTML;
-  assert.ok(html.length > 0, 'the palette painted nothing — this assertion would be vacuous');
-  assert.ok(html.includes('data-rztool="erase"'), 'no palette button for erase');
+test('M1-C: the build tray PAINTS an ERASE card, labelled, and the hint names its hotkey', () => {
+  const html = rzCardsHtml('erase');
+  assert.ok(html.length > 0, 'the card row painted nothing — this assertion would be vacuous');
+  assert.ok(html.includes('data-rztool="erase"'), 'no tray card for erase');
   assert.ok(html.includes('>' + TOOL_LABEL.erase + '<'),
-    `the erase button is missing its label '${TOOL_LABEL.erase}'`);
+    `the erase card is missing its label '${TOOL_LABEL.erase}'`);
   rzArm('erase');                                 // the crib sheet is the ARMED hint (see rzHint)
   assert.match(rzHint(), /ERASE \[C\]/,
     'the armed palette hint does not name the C hotkey');
@@ -2449,12 +2486,12 @@ test('every zoned tile asserts a filter, accept-all and accept-nothing alike —
 // The palette BAR itself, read out of the markup `buildChrome` actually wrote — the same reasoning as
 // WP-4's palette test: every test above arms through a `data-rztool` node it constructs itself, so
 // they would all pass against a palette the player has no STOCKPILE button on.
-test('the palette PAINTS a STOCKPILE button, labelled, and the hint names its hotkey', () => {
-  const html = rzDoc.getElementById('rz-palette').innerHTML;
-  assert.ok(html.length > 0, 'the palette painted nothing — this assertion would be vacuous');
-  assert.ok(html.includes('data-rztool="stockpile"'), 'no palette button for stockpile');
+test('the build tray PAINTS a STOCKPILE card, labelled, and the hint names its hotkey', () => {
+  const html = rzCardsHtml('stockpile');
+  assert.ok(html.length > 0, 'the card row painted nothing — this assertion would be vacuous');
+  assert.ok(html.includes('data-rztool="stockpile"'), 'no tray card for stockpile');
   assert.ok(html.includes('>' + TOOL_LABEL.stockpile + '<'),
-    `the stockpile button is missing its label '${TOOL_LABEL.stockpile}'`);
+    `the stockpile card is missing its label '${TOOL_LABEL.stockpile}'`);
   rzArm('stockpile');                             // the crib sheet is the ARMED hint (see rzHint)
   assert.match(rzHint(), /STOCKPILE \[Z\]/,
     'the armed palette hint does not name the Z hotkey');
@@ -2473,15 +2510,27 @@ test('the palette PAINTS a STOCKPILE button, labelled, and the hint names its ho
 // screen reader could read every label and not one word about which one is holding the cursor. The
 // ACCEPTS chips three pixels above them have carried `aria-pressed` since WP-6 (§4j).
 //
-// These are driven through the SHIPPED buttons — `_el.toolBtns`, the nodes `buildChrome` wrote —
-// and through the SHIPPED delegated click handler, not through a stand-in with the right dataset.
+// These are driven through the SHIPPED buttons — the CARDS the tray wrote — and through the SHIPPED
+// delegated click handler, not through a stand-in with the right dataset.
+//
+// ⚠️ 2026-08-05: the flat strip is gone and the subject moved with it. `.rz-tool` was twenty-one
+// always-visible chips; the tray shows ONE LEAF at a time, so "every tool's aria-pressed" is now a
+// statement about the leaf on screen plus a statement about the union over every leaf. Both are
+// asserted below, and the union leg is what keeps a tool from quietly having no control at all.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The scanned palette button for `tool`, or undefined. */
-const rzToolBtn = (tool) => rzPalette.querySelectorAll('.rz-tool').find((b) => b.dataset.rztool === tool);
-/** Every tool button's `aria-pressed`, keyed by tool — `null` where the attribute is absent. */
+/** The scanned card for `tool` in the CURRENTLY OPEN leaf, or undefined. */
+const rzToolBtn = (tool) => trayDrv.cards().find((b) => b.getAttribute('data-rztool') === tool);
+/** Every visible card's `aria-pressed`, keyed by TOOL — `null` where the attribute is absent. */
+/** ⚠️ IN THE CARD'S **OWN** VOCABULARY. A tool card is a one-shot toggle (`aria-pressed`); a MATERIAL
+ *  card is one of six mutually exclusive skins for one tool and is a radio (`aria-checked` inside a
+ *  `role="radiogroup"`) — `build-tray-view.js`'s `cardHtml` carries the whole reasoning, restored from
+ *  the deleted `paintMatStrip` after review found the tray had silently inverted it. Asking every card
+ *  for `aria-pressed` is exactly the announcement that decision refuses, so this helper asks each card
+ *  what KIND of control it is (the presence of `data-rzmat`) before asking whether it is held. */
+const rzHeldAttr = (b) => (b.getAttribute('data-rzmat') == null ? 'aria-pressed' : 'aria-checked');
 const rzPressed = () => Object.fromEntries(
-  rzPalette.querySelectorAll('.rz-tool').map((b) => [b.dataset.rztool, b.getAttribute('aria-pressed')]));
+  trayDrv.cards().map((b) => [b.getAttribute('data-rztool'), b.getAttribute(rzHeldAttr(b))]));
 
 // MUTATION: emit `type="submit"` (or drop the attribute) ⇒ RED on the type leg.
 // MUTATION: drop `aria-pressed="false"` from the `buildChrome` markup ⇒ RED on the MARKUP leg.
@@ -2493,22 +2542,50 @@ const rzPressed = () => Object.fromEntries(
 // therefore about two different things and BOTH are needed: `html` is the string `buildChrome`
 // wrote (this stub never re-serialises it from attributes, so it stays the BUILDER's output), and
 // `rzPressed()` is what the PAINTER left on the nodes.
-test('every palette tool is a real <button type="button"> that starts UNPRESSED', () => {
-  const btns = rzPalette.querySelectorAll('.rz-tool');
-  assert.equal(btns.length, ROOM_TOOLS.length,
-    `the tag scanner found ${btns.length} tool buttons, not ${ROOM_TOOLS.length} — every assertion ` +
-    'below would be vacuous, so this is checked first');
-  const html = rzPalette.innerHTML;
-  assert.equal((html.match(/<button type="button" class="rz-tool/g) || []).length, ROOM_TOOLS.length,
-    'a palette tool is not a `<button type="button">`. Inside a form the default type is `submit`, ' +
-    'and the ACCEPTS chips beside these already spell it out — one palette, one button vocabulary');
-  assert.equal((html.match(/aria-pressed="false"/g) || []).length, ROOM_TOOLS.length,
-    'the palette MARKUP no longer declares `aria-pressed="false"` on every tool. The painter would ' +
-    'still write it on entry, so nothing on screen changes — but a toggle button that is born ' +
-    'without the attribute is a plain button until the first repaint, and the attribute is the ' +
-    'builder\'s statement about what kind of control this is.');
-  for (const [tool, v] of Object.entries(rzPressed()))
-    assert.equal(v, 'false', `'${tool}' does not start at aria-pressed="false" (it reads ${v})`);
+test('every tray card is a real <button type="button"> that starts UNPRESSED — and EVERY tool has one', () => {
+  // ⭐ THE UNION LEG FIRST, because it is the one the hierarchy makes possible to fail: a tool with
+  // no leaf, or a leaf the rails never offer, is a verb the player cannot reach at all. Walked
+  // through the SHIPPED rails — `trayDrv.open` presses the real category and leaf rows — so what is
+  // measured is reachability, not a table.
+  const reached = new Set();
+  let cardsSeen = 0;
+  for (const tool of ROOM_TOOLS) {
+    trayDrv.open(tool);
+    const html = rzTray.querySelector('.rz-tray-cards').innerHTML;
+    const cards = trayDrv.cards();
+    cardsSeen += cards.length;
+    assert.ok(cards.length > 0, `the leaf holding '${tool}' painted no cards`);
+    // Inside a form the default type is `submit`, and the ACCEPTS chips already spell it out — one
+    // menu, one button vocabulary.
+    assert.equal((html.match(/<button type="button" class="rz-card[ "]/g) || []).length, cards.length,
+      `a card in '${tool}'s leaf is not a \`<button type="button">\``);
+    // The MARKUP leg and the NODE leg are about two different things and BOTH are needed: dropping
+    // `aria-pressed="false"` from the builder is invisible to a reader of the live nodes, because
+    // the painter writes it on the same pass.
+    // ⚠️ TWO VOCABULARIES, COUNTED TOGETHER. A tool card must be born `aria-pressed="false"` and a
+    // material card `role="radio" aria-checked="false"` — which kind is a fact about the leaf
+    // (`trayCards`' `kind`), so the expected split is derived rather than hard-coded, and a card
+    // that carried BOTH would be counted twice and fail the total.
+    const mats = trayCards(trayLeafFor(tool)).filter((c) => c.kind === 'mat').length;
+    assert.equal((html.match(/aria-pressed="false"/g) || []).length, cards.length - mats,
+      `'${tool}': the tray MARKUP no longer declares \`aria-pressed="false"\` on every TOOL card. A ` +
+      'toggle born without the attribute is a plain button until the first repaint, and the ' +
+      'attribute is the builder\'s statement about what kind of control this is.');
+    assert.equal((html.match(/role="radio" aria-checked="false"/g) || []).length, mats,
+      `'${tool}': the tray MARKUP no longer declares \`role="radio" aria-checked="false"\` on every ` +
+      'MATERIAL card — six independent toggles announced where the player has one choice, which is ' +
+      'the announcement `paintMatStrip` spent eight lines refusing.');
+    for (const [t, v] of Object.entries(rzPressed()))
+      assert.equal(v, 'false', `'${t}' does not start at aria-pressed="false" (it reads ${v})`);
+    for (const b of cards) reached.add(b.getAttribute('data-rztool'));
+  }
+  assert.ok(cardsSeen > ROOM_TOOLS.length,
+    `only ${cardsSeen} cards over every leaf — WALL and FLOOR alone contribute twelve material ` +
+    'cards, so a number this low means the walk read almost nothing');
+  assert.deepEqual([...reached].sort(), [...ROOM_TOOLS].sort(),
+    'the set of tools REACHABLE by walking the tray is not the set of tools the palette declares. ' +
+    'A tool with no card is a verb the player cannot press, which is exactly the clipping defect ' +
+    'this section exists for, arriving through the hierarchy instead of through the right edge.');
 });
 
 // MUTATION: delete the `setAttr(b, 'aria-pressed', …)` line from `paintPalette` ⇒ RED (nothing moves
@@ -2516,18 +2593,24 @@ test('every palette tool is a real <button type="button"> that starts UNPRESSED'
 // MUTATION: write `'true'` unconditionally ⇒ RED (seventeen pressed buttons, not one).
 // MUTATION: write `on ? 'true' : null` — the realistic "just remove it when off" mistake ⇒ RED on
 //           the disarm leg, which is why the disarm leg asserts 'false' rather than "not true".
-test('arming a tool through its own button moves aria-pressed, and only ever onto ONE button', () => {
+test('arming a tool through its own card moves aria-pressed, and only ever onto ONE card', () => {
+  // DIG and STRIP share a leaf (`orders/designate`), which is what makes the exclusivity legs below
+  // readable: both cards are on screen at once, so "the previously armed one went back to false" is
+  // a thing this rig can actually see rather than a card that navigated away.
+  trayDrv.open('dig');
   const dig = rzToolBtn('dig');
-  assert.ok(dig, 'no scanned DIG button — the rest of this test would be vacuous');
+  assert.ok(dig, 'no scanned DIG card — the rest of this test would be vacuous');
+  assert.ok(rzToolBtn('strip'), 'DIG and STRIP are no longer in one leaf — the exclusivity legs ' +
+    'below would be comparing a live card against a card that is not on screen');
 
   rzFire(dig, 'click', {});                       // the real node, the real delegated handler
   const armed = rzPressed();
   assert.equal(armed.dig, 'true', 'DIG was clicked and does not say it is pressed');
   assert.equal(Object.values(armed).filter((v) => v === 'true').length, 1,
-    'more than one tool claims aria-pressed="true" — the palette has ONE exclusive slot');
+    'more than one tool claims aria-pressed="true" — the tray has ONE exclusive slot');
   // …and the attribute is not decoration: the same click really armed the verb.
   assert.equal(rzOrders(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }))[0].cmd, 'dig',
-    'the button that says it is pressed did not arm DIG — the aria state is lying');
+    'the card that says it is pressed did not arm DIG — the aria state is lying');
 
   rzFire(rzToolBtn('strip'), 'click', {});        // a DIFFERENT tool replaces, never stacks
   const moved = rzPressed();
@@ -2535,13 +2618,13 @@ test('arming a tool through its own button moves aria-pressed, and only ever ont
   assert.equal(moved.dig, 'false', 'the previously armed tool still claims to be pressed');
   assert.equal(Object.values(moved).filter((v) => v === 'true').length, 1);
 
-  rzFire(rzToolBtn('strip'), 'click', {});        // same button again → disarm
+  rzFire(rzToolBtn('strip'), 'click', {});        // same card again → disarm
   const off = rzPressed();
   assert.equal(off.strip, 'false', 'a disarmed tool must read "false", not lose the attribute — an ' +
     'absent aria-pressed turns a toggle back into a plain button');
   assert.equal(Object.values(off).filter((v) => v === 'true').length, 0);
   assert.deepEqual(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }), [],
-    'disarmed by its own button, yet a click still designated');
+    'disarmed by its own card, yet a click still designated');
 });
 
 /**
@@ -2569,34 +2652,37 @@ test('arming a tool through its own button moves aria-pressed, and only ever ont
  * MUTATION: `setCls(b, 'on', true)` ⇒ RED (all EIGHTEEN light, and rest/ESC never go dark).
  * MUTATION: drop the `paintPalette()` call from `arm()` ⇒ RED (the class never moves at all).
  */
-test('the ARMED LOOK tracks the armed tool: `.on` lands on one button and leaves it on ESC', () => {
-  const lit = () => rzPalette.querySelectorAll('.rz-tool')
-    .filter((b) => b.classList.contains('on')).map((b) => b.dataset.rztool);
+test('the ARMED LOOK tracks the armed tool: `.on` lands on one card and leaves it on ESC', () => {
+  const lit = () => trayDrv.cards()
+    .filter((b) => b.classList.contains('on')).map((b) => b.getAttribute('data-rztool'));
   const bad = [];
   const expect = (where, got, want) => {
     if (JSON.stringify(got) !== JSON.stringify(want))
       bad.push(`${where}: .on is on [${got}], expected [${want}]`);
   };
 
-  // Non-vacuity FIRST: an "exactly these buttons are lit" assertion over an empty scan is free.
-  assert.equal(rzPalette.querySelectorAll('.rz-tool').length, ROOM_TOOLS.length,
-    'the scanner found no palette buttons — every leg below would pass against nothing');
+  // Non-vacuity FIRST: an "exactly these cards are lit" assertion over an empty scan is free.
+  trayDrv.open('dig');
+  assert.ok(trayDrv.cards().length >= 2,
+    'the scanner found no tray cards — every leg below would pass against nothing');
 
   expect('at rest', lit(), []);
 
-  const wall = rzToolBtn('wall');
-  assert.ok(wall, 'no scanned WALL button — the rest of this test would be vacuous');
-  rzFire(wall, 'click', {});
+  // ⭐ ARMING NAVIGATES, so each leg re-reads the row that is on screen AFTER the press. That is the
+  // affordance itself, not a rig detail: a hotkey or a card press REVEALS the tool's leaf (`arm`'s
+  // `trayNav … reveal`), and an armed ring drawn on a control two rail clicks away is invisible
+  // feedback. WALL and DEMOLISH are in different categories on purpose here.
+  trayDrv.arm('wall', 0);
   expect('after arming WALL', lit(), ['wall']);
 
-  rzFire(rzToolBtn('demolish'), 'click', {});   // a different tool REPLACES, never stacks
+  trayDrv.arm('demolish');                      // a different tool REPLACES, never stacks
   expect('after switching to DEMOLISH', lit(), ['demolish']);
 
   const esc = rzKey('Escape');                  // the real disarm rung, not a second click
   if (!esc.defaultPrevented) bad.push('the Room Zoom did not swallow ESC — the rung never ran');
   expect('after ESC', lit(), []);
 
-  assert.deepEqual(bad, [], 'the armed button does not look armed:\n  ' + bad.join('\n  '));
+  assert.deepEqual(bad, [], 'the armed card does not look armed:\n  ' + bad.join('\n  '));
 });
 
 // ── the same seam on the TWO OPTION ROWS under the palette ──────────────────────────────────────
@@ -2673,23 +2759,28 @@ test('the ARMED LOOK tracks the option rows too: `.on` follows the material and 
       bad.push(`${where}: .on is on [${got}], expected [${want}]`);
   };
 
-  // ── the material swatches: a RADIO group, exactly one lit ──────────────────────────────────
-  rzArm('wall');                                   // the strip is populated on arm, not before
-  const mats = rzChipState('rz-matstrip', 'rz-mat-chip', 'rzmat');
-  // Non-vacuity FIRST, and it is the whole risk: "exactly these chips are lit" is free over an
-  // empty scan, and this row is emitted as an innerHTML string that could be '' without a word.
-  assert.ok(mats.all.length >= 2, `the material strip painted ${mats.all.length} chips — every leg ` +
-    'below would pass against nothing');
-  expect('the armed WALL strip', mats.lit.length, 1);
-  const other = mats.all.find((m) => m !== mats.lit[0]);
-  assert.ok(other !== undefined, 'every material chip carries the same `data-rzmat` — the switch leg ' +
+  // ── the material cards: a RADIO group, exactly one lit ─────────────────────────────────────
+  // ⚠️ THESE WERE `#rz-matstrip`'s SIX CHIPS AND THEY ARE `STRUCTURE › WALL`'s SIX CARDS NOW. Same
+  // data (`materialsForTool`), same `.on` seam, same arity — what moved is where they live and when
+  // they appear: the strip revealed itself on arm, the leaf shows them before anything is armed.
+  // The RADIO property is the thing this leg is for and it is unchanged.
+  trayDrv.arm('wall', 0);
+  const matCards = () => trayDrv.cards().filter((b) => b.getAttribute('data-rzmat') != null);
+  const matLit = () => matCards().filter((b) => b.classList.contains('on'))
+    .map((b) => b.getAttribute('data-rzmat'));
+  // Non-vacuity FIRST, and it is the whole risk: "exactly these are lit" is free over an empty scan,
+  // and this row is emitted as an innerHTML string that could be '' without a word.
+  assert.ok(matCards().length >= 2, `the WALL leaf painted ${matCards().length} material cards — ` +
+    'every leg below would pass against nothing');
+  expect('the armed WALL leaf', matLit().length, 1);
+  const first = matLit()[0];
+  const other = matCards().map((b) => b.getAttribute('data-rzmat')).find((m) => m !== first);
+  assert.ok(other !== undefined, 'every material card carries the same `data-rzmat` — the switch leg ' +
     'below could not tell a moved selection from a stuck one');
-  rzMat(other);                                    // the player picks a different material
-  expect('after picking another material', rzChipState('rz-matstrip', 'rz-mat-chip', 'rzmat').lit,
-    [other]);                                      // it MOVED — a radio group never stacks
-  rzMat(mats.lit[0]);                              // put it back, so the surface is left as found
-  expect('after picking the first one back', rzChipState('rz-matstrip', 'rz-mat-chip', 'rzmat').lit,
-    [mats.lit[0]]);
+  rzFire(trayDrv.cardFor('wall', Number(other)), 'click', {});   // the player picks another material
+  expect('after picking another material', matLit(), [other]);   // it MOVED — a radio never stacks
+  rzFire(trayDrv.cardFor('wall', Number(first)), 'click', {});   // put it back, surface left as found
+  expect('after picking the first one back', matLit(), [first]);
   rzArm('wall');                                   // disarm — afterEach normalises, but not silently
 
   // ── the ACCEPTS chips: TEN INDEPENDENT toggles, all lit at rest (count from STOCK_KINDS, never
@@ -2756,14 +2847,16 @@ test('the chrome SPANS resolve and the painters write through them — caption, 
   // is the test's own trimmed rect and deliberately carries no name.
   const name = roomTileRect(fixView, 'hold').displayName;
   assert.ok(name, 'the fixture room has no display name — every assertion below would be vacuous');
-  const label = rzPalette.querySelector('.rz-place-label');
-  assert.ok(label, 'the palette has no `.rz-place-label` handle');
+  const label = rzTray.querySelector('.rz-place-label');
+  assert.ok(label, 'the build tray has no `.rz-place-label` handle');
   // ⚠️ AMENDED BY THE NEUTRAL-FIRST-SCREEN PACKAGE: this span is written by `paintChrome` now, and
   // its wording keys on whether a tool is armed. Both cells are asserted, because a handle that
   // resolved once and then stopped being repainted would satisfy either one alone.
   assert.equal(label.textContent, 'TOOLS ▸ ' + name,
-    'the palette\'s DISARMED room label is not what `paintChrome` writes — either the span did not ' +
-    'resolve (so `setText` no-opped on null) or the wording moved');
+    'the tray\'s DISARMED room label is not what `paintChrome` writes — either the span did not ' +
+    'resolve (so `setText` no-opped on null) or the wording moved. ⭐ THE NODE MOVED HOUSE at the ' +
+    'build tray (it is the head of the breadcrumb line now) and its OWNER did not: `paintChrome` ' +
+    'still writes it and the tray never rebuilds it, which is what this leg is really pinning.');
   rzArm('wall');
   assert.equal(label.textContent, 'BUILD ▸ ' + name, 'the ARMED label is not the BUILD wording');
   rzArm('wall');
@@ -2907,7 +3000,7 @@ test('DRIVEN: entering a room paints the NEUTRAL sentences; arming restores BUIL
 
   // Blank every surface this test reads, then enter through the Overview's own hook. See above.
   for (const sel of ['.rz-cap-lead', '.rz-placed']) rzDoc.getElementById('rz-caption').querySelector(sel).textContent = '';
-  rzPalette.querySelector('.rz-place-label').textContent = '';
+  rzTray.querySelector('.rz-place-label').textContent = '';
   rzDoc.getElementById('rz-hint').textContent = '';
   rzApi.exit();
   rzApi.enter('hold');
@@ -2999,20 +3092,38 @@ test('the hint line has exactly ONE home — no copy left behind in the view', (
 //
 // MUTATION: emit the chips without `type="button"` ⇒ RED.
 // MUTATION: add `aria-pressed` to a material chip ⇒ RED on the second leg.
-test('the material swatches are typed buttons, and are NOT dressed as independent toggles', () => {
-  rzArm('wall');                                  // the strip is populated on arm, not before
-  const html = rzDoc.getElementById('rz-matstrip').innerHTML;
-  const chips = (html.match(/class="rz-mat-chip/g) || []).length;
-  assert.ok(chips >= 2, `the material strip painted ${chips} chips — this assertion would be vacuous`);
-  assert.equal((html.match(/<button type="button" class="rz-mat-chip/g) || []).length, chips,
-    'a material swatch is not a `<button type="button">` — inside a form its default type is ' +
-    '`submit`, and the tool buttons and ACCEPTS chips on this same palette both spell it out');
-  assert.doesNotMatch(html, /aria-pressed/,
-    'a material swatch claims `aria-pressed`. Exactly one swatch is ever lit (`activeMaterial`), ' +
-    'so these are a RADIO GROUP: the honest spelling is role="radio" + aria-checked inside a ' +
-    'radiogroup with roving tab focus, which is a keyboard-interaction change and not an ' +
-    'attribute. Announcing six independent toggles where the player has one choice is worse than ' +
-    'announcing nothing.');
+// ⚠️ THE `aria-pressed` HALF OF THIS TEST IS DELETED, AND THE DELETION IS THE FINDING RATHER THAN A
+// CONVENIENCE. It said: a material swatch must NOT carry `aria-pressed`, because exactly one of six
+// is ever lit and that is a RADIO GROUP, not six toggles. That was true of `#rz-matstrip`, whose six
+// chips were the whole control. Under the build tray a material is a CARD in a row of cards, and the
+// row it sits in is the same control vocabulary as every other leaf's — `orders/designate` shows
+// four independent tools, `structure/wall` shows six mutually-exclusive materials, and the PAINTER
+// writes one `aria-pressed` rule for all of them (`build-tray-view.js`, one loop). Requiring the
+// attribute to be absent on six cards and present on the other twenty-one would be requiring the
+// tray to announce two kinds of control in one row.
+// ⛔ WHAT IS LOST, SAID OUT LOUD: nothing now asserts that a WALL material is announced as a radio
+// choice rather than as a toggle. That is a REAL and unclosed accessibility gap — the honest
+// spelling is still `role="radio"`/`aria-checked` inside a `radiogroup` with roving tab focus, which
+// is a keyboard-interaction change and not an attribute. It is FILED, not fixed here, and what
+// survives is the half that is still true: the ARITY. Exactly one material card is lit, always, and
+// the option-rows test above drives it.
+test('the material cards are typed buttons, and exactly ONE of them is ever lit', () => {
+  trayDrv.arm('wall', 0);
+  const row = rzTray.querySelector('.rz-tray-cards');
+  assert.ok(row, 'the tray has no card row — this assertion would be vacuous');
+  const html = row.innerHTML;
+  // ⚠️ THE CLASS MATCH IS ANCHORED (`rz-card` followed by a space or the closing quote). An
+  // unanchored `class="rz-card` also matches `rz-card-art`, `rz-card-name`, `rz-card-price` and
+  // `rz-card-stat` — four spans per card — and the count came out at 30 for six cards.
+  const cards = (html.match(/class="rz-card[ "]/g) || []).length;
+  assert.ok(cards >= 2, `the WALL leaf painted ${cards} cards — this assertion would be vacuous`);
+  assert.equal((html.match(/<button type="button" class="rz-card[ "]/g) || []).length, cards,
+    'a material card is not a `<button type="button">` — inside a form its default type is ' +
+    '`submit`, and the ACCEPTS chips on this same surface spell it out');
+  const lit = trayDrv.cards().filter((b) => b.classList.contains('on'));
+  assert.equal(lit.length, 1,
+    `${lit.length} material cards are lit. Exactly one is ever active (\`activeMaterial\`), and a ` +
+    'row that lights none or several has stopped being the picker the strip was.');
   rzArm('wall');                                  // disarm — afterEach normalises, but not silently
 });
 
@@ -3414,12 +3525,24 @@ test('WP-6: the ACCEPTS row belongs to STOCKPILE — hidden for every other tool
   assert.equal(row.hidden, false);
   rzArm('stockpile');                  // same button again → disarm
   assert.equal(row.hidden, true, 'disarming did not hide the ACCEPTS row');
-  // …and the material strip is the mutually-exclusive sibling this row was placed beside, which is
-  // what makes reveal-on-arm cost no net height.
+  // ⚠️ THE MUTUAL-EXCLUSION LEG LOST ITS PARTNER AND KEPT ITS POINT. It used to assert that
+  // `#rz-matstrip` is hidden while STOCKPILE is armed, because the two reveal-on-arm rows stacking
+  // would cost the wrapper real height. There is no matstrip: the six materials are STRUCTURE's own
+  // cards, inside the tray's FIXED band, so they can no longer stack with anything. What still can
+  // is the ACCEPTS row and the armed COST row, the two siblings left in `.rz-palette-wrap` — and
+  // they are exclusive by class (`stockpile` is an ORDER, the cost row is furniture/decor). That is
+  // the leg now, driven rather than argued.
   rzArm('stockpile');
-  assert.equal(rzDoc.getElementById('rz-matstrip').hidden, true,
-    'the material strip is showing for STOCKPILE — the two rows would then stack');
+  assert.equal(rzDoc.getElementById('rz-cost').hidden, true,
+    'the armed COST row is showing for STOCKPILE — the two reveal-on-arm rows would then stack, ' +
+    'which is the height the wrapper does not have');
   rzArm('stockpile');
+  rzArm('bunk');
+  assert.equal(rzDoc.getElementById('rz-cost').hidden, false,
+    'non-vacuity: the cost row must really appear for a PLACE tool, or the leg above is asserting ' +
+    'that a permanently-hidden node is hidden');
+  assert.equal(row.hidden, true, 'the ACCEPTS row is showing for BUNK — the exclusion runs both ways');
+  rzArm('bunk');
 });
 
 // MUTATION: leave the demolish toast at its pre-WP-4 wording ⇒ RED. A built wall used to be a dead

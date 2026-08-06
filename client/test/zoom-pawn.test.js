@@ -256,7 +256,7 @@ class RzDoc extends DocumentLite {
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-minimap',
   'rz-crewdock',
   // console ids `hud.js`'s frame/roster dispatch writes through — the same set the sibling rigs
   // register, for the same reason: `renderFrame`/`renderRoster` are the real receive path.
@@ -323,7 +323,7 @@ function prime(selCid) {
     // The parent chain the delegated `onHudClick` walks, and the geometry `tileFromCanvasXY` needs.
     // 6 px of `.rz-layers` inset is irrelevant here: the rect IS the layer's box.
     const root = el('roomzoom-view');
-    for (const id of ['rz-canvas', 'rz-crewdock', 'rz-palette', 'rz-toast']) el(id).parentNode = root;
+    for (const id of ['rz-canvas', 'rz-crewdock', 'rz-tray', 'rz-toast']) el(id).parentNode = root;
     el('rz-layers').parentNode = el('rz-canvas');
     el('rz-layers')._rect = sceneRectFor(QUARTERS);
     Hud.renderDecks(decode(DECKS_JSON));
@@ -906,8 +906,11 @@ test('the M hotkey arms MOVE — and does not steal a key an existing tool answe
   prime(ADA.cid);
   for (const [k, marker] of [['g', 'dig'], ['v', 'strip'], ['o', 'operate'], ['c', 'erase']]) {
     pressKey(k);
-    const html = el('rz-palette').innerHTML;
-    assert.ok(html.length > 0, 'the palette is not painted in this rig — the leg below reads nothing');
+    // NON-VACUITY: the tray really is painted in this rig, so "no MOVE was sent" below is a
+    // statement about a surface rather than about an empty document. (It read `#rz-palette`'s
+    // markup until the build tray replaced the flat strip.)
+    const html = el('rz-tray').innerHTML;
+    assert.ok(html.length > 0, 'the build tray is not painted in this rig — the leg below reads nothing');
     sent.length = 0;
     clickTile(QUARTERS.rx + 2, QUARTERS.ry + 2);
     assert.deepEqual(sent.map((o) => o.cmd).includes('move'), false,

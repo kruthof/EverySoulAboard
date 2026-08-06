@@ -13,7 +13,8 @@
         the player cannot see is indistinguishable from a verb that does not work;
      2. the two shrink-to-fit rows state `width:max-content` + `max-width:100%`, or they wrap at
         every width;
-     3. every ARMABLE control (`.rz-tool` / `.rz-mat-chip` / `.rz-acc-chip` / `.rz-crew`) keeps the
+     3. every ARMABLE control (`.rz-card` / `.rz-tray-cat` / `.rz-tray-sub` / `.rz-acc-chip` /
+        `.rz-crew` — it was `.rz-tool` / `.rz-mat-chip` until the build tray replaced both) keeps the
         shared grammar: `:hover` is a NEUTRAL that says "clickable", `:active` is a press, and the
         CHOSEN state owns a channel neither pointer state touches — an inset well plus an outer ring,
         as `box-shadow`, because shadows do not participate in layout and these rows wrap.
@@ -39,7 +40,11 @@ body.moss-open #roomzoom-view{display:none !important}
 /* THE PLATE — the sheet the cutaway is drawn on. The inset steel bezel and the amber top-light are
    gone with the void: a plate is a plate. Border + drop shadow are the design's own (`1px solid
    #C6BBA2`, `--plate-shadow`), measured off every framed panel in both documents. */
-.rz-canvas{position:absolute;left:240px;right:40px;top:74px;bottom:150px;border-radius:2px;
+.rz-canvas{position:absolute;left:240px;right:40px;top:74px;
+  /* ⭐ THE RESERVE IS DERIVED FROM THE TRAY BAND IN ONE EXPRESSION — 24px of margin under the
+     wrapper, the hint line and the two 8px gaps above it, and 18px of clearance. A second literal
+     here is how the tray and the plate come to overlap at one viewport height nobody tried. */
+  bottom:calc(var(--rz-tray-h) + 62px);border-radius:2px;
   overflow:hidden;background:var(--paper-plate,#EBE4D1);
   border:1px solid var(--paper-border,#C6BBA2);box-shadow:var(--plate-shadow)}
 .rz-layers{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);display:block}
@@ -264,72 +269,13 @@ body.moss-open #roomzoom-view{display:none !important}
  */
 .rz-palette-wrap{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;
   flex-direction:column;align-items:center;gap:8px;z-index:21;max-width:calc(100vw - 64px)}
-.rz-palette{display:flex;flex-wrap:wrap;justify-content:center;gap:7px;align-items:center;
-  padding:9px 12px;border-radius:2px;width:max-content;max-width:100%}
 .rz-place-label{font-size:9px;letter-spacing:.22em;text-transform:uppercase;
   color:var(--ink-section,#8A7F6C);flex:none;padding-right:2px;white-space:nowrap}
-/* THE TOOL BUTTONS, AND THEIR THREE STATES — rest, hover, ARMED.
- *
- * ⚠️ WHY THE ARMED RULE IS SO LOUD. The owner's 2026-08-03 live-play note was that the palette
- * "reads as an INERT placeholder": clicking a tool announced itself in the label, the hint and the
- * caption, but "the BUTTON itself never changes state". The arming was never broken — `paintPalette`
- * has always toggled `.on` off `_armed`. The defect was entirely HERE, and it was one shared colour:
- * `:hover` borrowed `#cf7a33`, the armed border, and a player's cursor is ALWAYS on the button they
- * just clicked.
- *
- * ⭐ THE PAPER ANSWER IS STRUCTURAL RATHER THAN CHROMATIC: ARMED is SOLID INK with paper type — the
- * design's own inverted selected row — which is a channel a paper hover state cannot reach whatever
- * colour it is given. The ring is still a `box-shadow`, NOT a wider border: shadows do not
- * participate in layout, and a thicker border or a bolder weight would re-measure the button and
- * reflow the twenty-one-tool wrapping row, which is `palette-shot.mjs`'s whole subject. */
-.rz-tool{flex:none;padding:8px 13px;border-radius:2px;font-size:10px;letter-spacing:.14em;
-  text-transform:uppercase;cursor:pointer;
-  background:var(--paper-inset-3,#E1D9C5);color:var(--ink-prose,#4E463A);
-  border:1px solid var(--paper-hairline,#CFC3A9);white-space:nowrap;
-  transition:background-color .09s ease,border-color .09s ease,color .09s ease,box-shadow .09s ease}
-/* "you can click this" — deliberately NOT the armed ink. */
-.rz-tool:hover{color:var(--ink,#14120F);border-color:var(--paper-border,#C6BBA2);
-  background:var(--paper-inset-1,#DED6C2)}
-/* the press itself, so the row answers under the finger as well as after it */
-.rz-tool:active{background:var(--paper-inset-2,#DCD3BE);border-color:var(--ink-offline,#8A8272)}
-/* ARMED — inverted and lit. `:hover`/`:active` are repeated so the cursor that armed the tool can
-   never wash the state back out; without them the player would disarm the look by not moving. */
-.rz-tool.on,.rz-tool.on:hover,.rz-tool.on:active{background:var(--ink,#14120F);
-  color:var(--paper-plate,#EBE4D1);border-color:var(--ink,#14120F);
-  box-shadow:inset 0 2px 4px rgba(0,0,0,.45),0 0 0 2px rgba(20,18,15,.18)}
-/* DEMOLISH is the one destructive tool, so its armed state is the ONE ACCENT rather than the ink —
-   the charter's "attention" spelling, on the control whose mis-click costs a building. */
-.rz-tool.demo.on,.rz-tool.demo.on:hover,.rz-tool.demo.on:active{background:var(--attend,#7B2C22);
-  color:var(--paper-plate,#EBE4D1);border-color:var(--attend,#7B2C22);
-  box-shadow:inset 0 2px 4px rgba(0,0,0,.45),0 0 0 2px rgba(123,44,34,.22)}
-/* ⭐⭐ THE PRICE ON THE CHIP (palette-honesty). A furniture button carries a second line — `3 PARTS`,
-   or `NOT YET` for the two cosmetic tools — so the cost is on the surface before the player arms
-   anything. The button becomes a two-row column; nothing else about it moves.
 
-   ⚠️ THE COST LINE MUST NEVER BECOME AN ARMED-STATE RULE. `palette-layout.test.js` censuses the
-   rules whose selector contains `.rz-tool` AND `.on` and requires EXACTLY TWO; it then rejects any
-   property in them that re-measures the button. These rules deliberately carry neither `.on` nor
-   `:hover`, so they join neither census.
-
-   ⛔ `.cant` IS PAINT-ONLY, for that same reason. It says "the ship cannot do this right now" (too
-   few Parts) or, for SHELF/RUG, "the ship cannot do this at all yet". It is deliberately NOT
-   `disabled`: the button still arms, still sends, and the sim still answers.
-
-   ⭐ THE COST LINE TAKES ITS COLOUR BY INHERITANCE (`currentColor` + `opacity`), NEVER BY AN ARMED
-   OVERRIDE — any rule spelled `.rz-tool.on .rz-tool-cost` would land in the armed census as a THIRD
-   armed rule and redden it. */
-.rz-tool.costed{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 9px 5px;
-  line-height:1.15}
-.rz-tool-name{display:block}
-.rz-tool-cost{display:block;font-size:8px;letter-spacing:.1em;opacity:.66}
-/* The one colour the price states for itself: a ship that cannot pay. The ONE accent, chosen to read
-   against BOTH the resting paper and the armed ink, because it must survive arming without an `.on`
-   rule. */
-.rz-tool.cant .rz-tool-cost{color:var(--attend,#7B2C22);opacity:1}
-.rz-tool.on.cant .rz-tool-cost{color:#E6A79B}
-.rz-tool.cant .rz-tool-name{opacity:.72}
-/* THE COST ROW — price + stock for the armed tool, third sibling of `.rz-matstrip`/`.rz-accepts` in
-   `.rz-palette-wrap` and mutually exclusive with both, so the reveal costs zero net height. */
+/* THE COST ROW — price + stock for the armed tool. It was the THIRD sibling of `.rz-matstrip` /
+   `.rz-accepts` in `.rz-palette-wrap`; the matstrip is gone (STRUCTURE's cards are the materials
+   now) and the mutual exclusion with what is left still holds — this is furniture/decor, ACCEPTS is
+   STOCKPILE — so the reveal still costs zero net height. */
 .rz-cost{display:flex;justify-content:center;align-items:center;padding:6px 11px;border-radius:2px;
   width:max-content;max-width:100%}
 .rz-cost[hidden]{display:none}
@@ -340,43 +286,228 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-cost-line.fault{color:var(--attend,#7B2C22)}
 .rz-hint{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-micro,#6B6252)}
 
-/* material picker strip (shown when WALL/FLOOR armed) — item-set swatches, active one lit. Wraps for
-   the reason above: it is narrower than the palette and so was never observed clipping, but it
-   carried the identical hide-the-scrollbar idiom, and "narrower today" is not a property a sixth
-   material or a longer label preserves. */
-.rz-matstrip{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;align-items:center;
-  padding:7px 10px;border-radius:2px;width:max-content;max-width:100%}
-.rz-matstrip[hidden]{display:none}
-.rz-mat-label{font-size:9px;letter-spacing:.22em;text-transform:uppercase;
-  color:var(--ink-section,#8A7F6C);flex:none;padding-right:2px;white-space:nowrap}
-/* ⚠️ THE SAME COLLISION THE TOOL BUTTONS HAD, ON THE ROW DIRECTLY UNDER THEM — `:hover` and `.on`
-   both wore `#cf7a33`, so the chip under the cursor was already wearing the armed edge before the
-   click, and the player's pointer is always on the chip they just picked.
-   ⭐ FIXED AS A CLASS, NOT AS TWO RULES: `.rz-tool`, `.rz-mat-chip`, `.rz-acc-chip` and `.rz-crew`
-   share one grammar — hover is a warm neutral, `:active` is a darker press, and CHOSEN owns a
-   channel neither can touch (solid ink + an inset well + an outer ring).
-   ⛔ AND THE SWEEP'S REACH IS NARROWER THAN "EVERY ARMABLE CONTROL": its predicate is a `.rz-` class
-   carrying a state spelling it knows (`.on`, `.sel`). `.rz-mini-slot.cur` is the standing
-   counterexample — not today's defect (it declares only `cursor`), but the shape the third instance
-   had. FILED, not chased. */
-.rz-mat-chip{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 7px 4px;
-  border-radius:2px;cursor:pointer;background:var(--paper-inset-3,#E1D9C5);
-  border:1px solid var(--paper-hairline,#CFC3A9);
-  transition:background-color .09s ease,border-color .09s ease,box-shadow .09s ease}
-/* "you can click this" — deliberately NOT the chosen ink. */
-.rz-mat-chip:hover{border-color:var(--paper-border,#C6BBA2);background:var(--paper-inset-1,#DED6C2)}
-.rz-mat-chip:active{background:var(--paper-inset-2,#DCD3BE);border-color:var(--ink-offline,#8A8272)}
-.rz-mat-chip.on,.rz-mat-chip.on:hover,.rz-mat-chip.on:active{background:var(--ink,#14120F);
-  border-color:var(--ink,#14120F);
-  box-shadow:inset 0 1px 3px rgba(0,0,0,.45),0 0 0 2px rgba(20,18,15,.18)}
-.rz-mat-sw{display:block;border-radius:1px;overflow:hidden;background:var(--paper-plate,#EBE4D1)}
-.rz-mat-name{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-micro,#6B6252);
-  white-space:nowrap}
-.rz-mat-chip.on .rz-mat-name{color:var(--paper-plate,#EBE4D1)}
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   ⭐⭐ THE BUILD TRAY (2026-08-05) — the owner's *"the building menu in zoom mode looks like a
+   nightmare — too crowded"*, drawn to his design (`design-import/Perilune Build Menu - Tray.html`).
 
-/* ACCEPTS chip row (WP-6) — shown when STOCKPILE is armed. A SIBLING of .rz-matstrip in the same
-   wrapper and by the same rule: the options belonging to the armed tool. The two are mutually
-   exclusive, so it costs no net height. Column, because the row carries a caption the chips do not:
+   ⛔ WHAT IT REPLACES AND WHAT IT KEEPS. `.rz-palette` + its twenty-one `.rz-tool` chips and
+   `.rz-matstrip` + its six `.rz-mat-chip` swatches are DELETED — the four selectors and every rule
+   under them. Nothing they DID is deleted (ruling E4: DROP NONE): the price line, the `.cant`
+   cannot-pay state, the hover title, the armed announcement and the six materials are all facts
+   about a CARD now, and `.rz-cost`, `.rz-accepts`, `.rz-hint` and the wrapper are untouched.
+
+   ⛔⛔ THE LAYOUT CONTRACT, RESTATED HONESTLY, BECAUSE ONE HALF OF IT CHANGES AND THE OTHER MUST NOT.
+   The 2026-08-03 clipping bug was `overflow-x:auto` **plus a HIDDEN scrollbar** on a row of controls:
+   tools past the right edge were invisible, unclickable, and nothing on screen said they were there.
+   The fix then was `flex-wrap:wrap`, chosen because NOTHING IS EVER HIDDEN.
+     · The RAILS and the ACCEPTS chips keep that answer exactly — they never scroll and never clip.
+     · The CARD ROW cannot: a card is ~150 px and a leaf holds up to seven of them, so wrapping would
+       need a second 126 px row and the tray would grow taller than the band the plate can spare.
+       It scrolls horizontally — WITH ITS SCROLLBAR VISIBLE, which is the half of the old bug that
+       actually hid the tools. `scrollbar-width:none` and `::-webkit-scrollbar{display:none}` stay
+       forbidden on every row in this file, and `palette-layout.test.js` now pins the card row's
+       `overflow-x` as EXACTLY `auto` — so `hidden`/`clip` (a silent clip with no scrollbar at all)
+       reddens just as loudly as the idiom that caused the original defect.
+
+   ⚠️ THE BAND IS RESERVED, NOT CONTENT-DRIVEN, AND THAT IS A DELIBERATE TRADE. A tray whose height
+   followed its contents would resize `.rz-canvas` every time the player opened a category — and the
+   cutaway is `preserveAspectRatio="xMidYMid meet"`, so THE WHOLE ROOM WOULD RESCALE under the
+   pointer on a menu click. `--rz-tray-h` is a fixed band, `.rz-canvas`'s `bottom` is derived from it
+   in ONE expression, and the two media queries below shrink both together for short viewports. The
+   room's size then depends only on the window, which is what a player expects.
+
+   ⚠️⚠️ THE TRADE HAS TWO COSTS AND NEITHER WAS WRITTEN DOWN (review observation 1). Both are
+   MEASURED in Chrome by `client/tools/build-tray-shot.mjs`, which logs the first on every run.
+
+   1. THE PLATE PAYS ~19-21% OF THE WINDOW AT EVERY VIEWPORT, PERMANENTLY — the band is reserved
+      whether or not the player has opened a category, so the room is smaller even at the root where
+      the card row holds one line of instruction. Measured in Chrome, band / window (plate height):
+        1600x1000  186/1000 = 18.6%  (plate 678px)     1440x900  186/900 = 20.7%  (plate 578px)
+        1366x768   158/768  = 20.6%  (plate 474px)     1280x800  158/800 = 19.8%  (plate 506px)
+        1440x720   146/720  = 20.3%  (plate 438px)
+      The flat palette's wrap band cost less at the root and MORE with a tool armed (it grew the
+      material strip); this is the flat cost that replaced it. It is the price of never rescaling the
+      cutaway under the pointer, and it is an owner-visible trade — if the plate ever needs that
+      height back the answer is a COLLAPSED band, not a content-driven one.
+
+   2. ⛔⛔ THE **LARGER** VIEWPORT SHOWED **FEWER** CARDS — AND THE SAME LINE ALSO CUT THE STAT LINE.
+      ⭐ CLOSED, and the two symptoms turned out to be ONE CAUSE: `.rz-card`'s WIDTH was overridden
+      inside these HEIGHT media queries (150 -> 132 -> 122px). Width has nothing to do with viewport
+      height — the ART's size does (vertical room is what shrinks) and the BAND's does, but a card
+      that is narrower because the window is SHORTER is a coupling nobody argued for, and it did two
+      wrong things at once:
+        (a) THE COUNT INVERTED. The row's width barely moves (`min(1180px, 100vw - 80px)` minus two
+            rails = 906px, 942px where the rail narrows), so card width decided how many cards were
+            on screen. FURNITURE > FITTED, seven cards, measured BEFORE:
+              >=880px  card 150px -> 1134px of cards in a 906px row, 2 past the edge
+              <=880px  card 132px -> 1008px in 906px, 1 past
+              <=740px  card 122px ->  942px in 942px, 0 past (all seven)
+            i.e. making the window TALLER showed LESS of the leaf. AFTER: 1134px at all five
+            viewports, 2 past the edge everywhere — the same five cards on screen whatever the window
+            is doing, which is the only answer that is not a surprise.
+        (b) THE STAT LINE WAS CUT — found only because review observation 2's `overflow:hidden` fix
+            made the ellipsis real and a live probe then measured it. On the two short bands the
+            three MACHINE cards did not fit their own numbers:
+              1440x720   lamp needs 131px in 102px · growbed 108 in 102 · heater 114 in 102
+              1366x768 / 1280x800   lamp 131 in 112 · heater 114 in 112
+            ⚠️ THAT WAS ALREADY BROKEN BEFORE THE ELLIPSIS FIX — it just drew straight over the
+            neighbouring card instead of admitting it, which is the same defect wearing the
+            "invisible feedback is FUNCTIONAL" costume. AFTER: 0 truncated rows at all five
+            viewports, `client/tools/build-tray-shot.mjs`'s own check.
+      ⚠️ TWO CHANGES, AND THE SECOND IS A REAL ONE: the width overrides are GONE (the card is 150px
+      everywhere), and `.rz-card-stat`'s tracking went `.1em -> .04em`. The tracking matters because
+      150px is only 132px of content and the longest honest stat needed 131 of them — one pixel of
+      slack is not a margin, it is a coincidence. At `.04em` it needs ~120px, so a longer stat has
+      somewhere to go. ⛔ THE COST, STATED: at the short bands the art is 34-46px inside a 150px card,
+      so the card reads airier than the design's proportion there. That is the price of a card that
+      can hold its own sentence, and it is the trade the owner should overrule if they want the other
+      one — the numbers above are what it would cost. */
+#roomzoom-view{--rz-tray-h:186px}
+.rz-tray{display:flex;flex-direction:column;padding:0;border-radius:2px;box-sizing:border-box;
+  width:min(1180px,calc(100vw - 80px));height:var(--rz-tray-h);overflow:hidden}
+/* the head: the surface's own label + the crumb trail, and what ESC does, at the far end */
+.rz-tray-head{display:flex;align-items:baseline;gap:8px;padding:8px 14px 7px;
+  border-bottom:1px solid var(--paper-hairline,#CFC3A9)}
+.rz-tray-crumbs{display:flex;align-items:baseline;gap:6px;flex:1 1 auto;min-width:0}
+.rz-tray-sep{font-size:10px;color:var(--ink-section,#8A7F6C);flex:none}
+.rz-tray-crumb{flex:none;background:none;border:0;padding:0;cursor:pointer;font:inherit;
+  font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-micro,#6B6252)}
+.rz-tray-crumb:hover{color:var(--ink,#14120F)}
+.rz-tray-esc{flex:none;font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-micro,#6B6252);white-space:nowrap}
+.rz-tray-body{display:flex;flex:1 1 auto;min-height:0;align-items:stretch}
+/* THE RAILS. `overflow:visible` is stated rather than left to the default, because the default is
+   what a later edit reaches for when a rail looks a row too tall — and a clipped rail row is the
+   2026-08-03 defect in a second costume. If a category ever grows past the band, the band grows. */
+.rz-tray-rail{display:flex;flex-direction:column;gap:1px;padding:9px 10px;flex:none;width:136px;
+  overflow:visible;border-right:1px solid var(--paper-hairline,#CFC3A9)}
+.rz-tray-rail:empty{display:none}
+/* THE CARD ROW — the one scrolling surface in this file, and its scrollbar is VISIBLE on purpose. */
+.rz-tray-cards{display:flex;gap:10px;padding:9px 12px;flex:1 1 auto;min-width:0;
+  align-items:flex-start;overflow-x:auto;overflow-y:hidden}
+
+/* The empty row's one line — a de-emphasised instruction, never a control. */
+.rz-tray-empty{align-self:center;font-size:9px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--ink-section,#8A7F6C);padding-left:8px}
+
+/* The rail rows and the cards share the armable grammar every control on this surface uses:
+   `:hover` is a warm NEUTRAL that says "clickable", `:active` is a press, and the CHOSEN state owns
+   a channel neither pointer state can reach — solid ink with paper type, plus an inset well and an
+   outer ring as `box-shadow`. Shadows do not participate in layout, so arming re-measures nothing. */
+.rz-tray-cat,.rz-tray-sub{display:block;text-align:left;flex:none;cursor:pointer;
+  padding:5px 8px;border-radius:2px;border:1px solid transparent;background:none;
+  font:inherit;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-section,#8A7F6C);white-space:nowrap;
+  transition:background-color .09s ease,border-color .09s ease,color .09s ease,box-shadow .09s ease}
+.rz-tray-cat:hover,.rz-tray-sub:hover{color:var(--ink,#14120F);
+  border-color:var(--paper-border,#C6BBA2);background:var(--paper-inset-1,#DED6C2)}
+.rz-tray-cat:active,.rz-tray-sub:active{background:var(--paper-inset-2,#DCD3BE);
+  border-color:var(--ink-offline,#8A8272)}
+.rz-tray-cat.on,.rz-tray-cat.on:hover,.rz-tray-cat.on:active{background:var(--ink,#14120F);
+  color:var(--paper-plate,#EBE4D1);border-color:var(--ink,#14120F);
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.45),0 0 0 2px rgba(20,18,15,.18)}
+.rz-tray-sub.on,.rz-tray-sub.on:hover,.rz-tray-sub.on:active{background:var(--ink,#14120F);
+  color:var(--paper-plate,#EBE4D1);border-color:var(--ink,#14120F);
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.45),0 0 0 2px rgba(20,18,15,.18)}
+
+/* ⭐⭐ THE CARD. The design's own proportions: the piece's real drawing above, then the name, then
+   the price, then one honest stat line. The art is 62 px rather than a thumbnail because
+   `docs/design/perilune-art-style.md` §4 states the rule — at 22 px only WEIGHT survives — and a
+   card is where the sketch treatment is supposed to read. */
+.rz-card{flex:none;width:150px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  padding:8px 9px 7px;border-radius:2px;cursor:pointer;text-align:left;
+  background:var(--paper-inset-3,#E1D9C5);border:1px solid var(--paper-hairline,#CFC3A9);
+  transition:background-color .09s ease,border-color .09s ease,color .09s ease,box-shadow .09s ease}
+.rz-card:hover{border-color:var(--paper-border,#C6BBA2);background:var(--paper-inset-1,#DED6C2)}
+.rz-card:active{background:var(--paper-inset-2,#DCD3BE);border-color:var(--ink-offline,#8A8272)}
+.rz-card.on,.rz-card.on:hover,.rz-card.on:active{background:var(--ink,#14120F);
+  border-color:var(--ink,#14120F);
+  box-shadow:inset 0 2px 5px rgba(0,0,0,.45),0 0 0 2px rgba(20,18,15,.18)}
+.rz-card-art{display:block;width:62px;height:62px;margin:0 auto 3px;
+  background:var(--paper-plate,#EBE4D1);border-radius:1px;overflow:hidden}
+.rz-card-art svg{display:block;width:100%;height:100%}
+/* A tool that puts no THING down (the order verbs) has no art, and draws no placeholder either — a
+   neutral box would read as a piece nobody could name. */
+.rz-card-noart{background:none}
+/* ⚠️ `overflow:hidden` IS THE HALF THAT MAKES THE ELLIPSIS EXIST (review observation 2). `nowrap` +
+   `text-overflow:ellipsis` with the default `overflow:visible` is INERT — CSS only clips, and only
+   then substitutes the ellipsis, on a box that actually overflows-hidden; without it a long label
+   simply draws past the card and over its neighbour, and the declaration reads as a fallback nobody
+   has. Both text rows on this card had it; both are closed here rather than deleted, because the
+   card is a fixed 150/132/122px and the labels come from `TOOL_LABEL` and `materialLabel` — a
+   twenty-second tool with a long name is a matter of course, not a hypothetical. */
+.rz-card-name{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-prose,#4E463A);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* THE PRICE. Oxblood on the card the player is holding — the design's own treatment, and the same
+   accent the armed cost row and the ghost's leader spend on the same number. */
+.rz-card-price{font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-micro,#6B6252)}
+.rz-card.on .rz-card-name{color:var(--paper-plate,#EBE4D1)}
+.rz-card.on .rz-card-price{color:#E6A79B}
+.rz-card.on .rz-card-stat{color:var(--paper-plate,#EBE4D1);opacity:.62}
+/* THE SHIP CANNOT PAY — paint only, never `disabled`: the button still arms, still sends, and the
+   sim still answers (`build-cost-model.js`'s rule; the client never gates the wire). */
+.rz-card.cant .rz-card-price{color:var(--attend,#7B2C22)}
+.rz-card.cant .rz-card-name{opacity:.72}
+.rz-card.on.cant .rz-card-price{color:#E6A79B}
+.rz-card-stat{font-size:8px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-section,#8A7F6C);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
+/* SHORT VIEWPORTS — the band, the ART and the RAIL shrink together with `.rz-canvas`'s reserve
+   (which is derived from `--rz-tray-h` in one expression), so the plate never leaves the screen and
+   the tray never covers the room. Nothing is hidden at any height: the type stays, the stat line
+   stays, and the row still scrolls to every card.
+
+   ⛔ WHAT IS **NOT** IN HERE, ON PURPOSE: `.rz-card{width}`. These are HEIGHT queries. A card's ART
+   box is a vertical budget and belongs here; a card's WIDTH is not, and overriding it here inverted
+   the card count and cut the stat line — see the two-cost block above `#roomzoom-view` for the
+   measurements. If a future band needs narrower cards, that is a WIDTH query and it has to answer
+   the truncation check in `client/tools/build-tray-shot.mjs` before it lands. */
+@media (max-height:880px){
+  #roomzoom-view{--rz-tray-h:158px}
+  .rz-card-art{width:46px;height:46px}
+}
+/* ⚠️ 146px, NOT 132px, AND THE NUMBER WAS MEASURED RATHER THAN REASONED. The first draft set 132
+   and `client/tools/build-tray-shot.mjs` reported `1 card(s) overflow the tray's own band
+   vertically` at 1440x720 — the stat line was cut in half, which is precisely the "a control the
+   player cannot read is a control that does not work" defect this surface has shipped once. The
+   content at this band is 34 (art) + 3 + 13 + 12 + 11 (four text lines) + 3 (gaps) + 15 (padding)
+   = 91 for the card, + 18 body padding + 29 head = 138; 146 leaves ~8px of slack. Re-measure with
+   the rig, never by eye.
+
+   ⛔⛔ AND THE CARD WAS THE WRONG TERM TO PRICE THE BAND ON — THE **RAIL** IS TALLER, WHICH IS THE
+   DEFECT REVIEW FOUND (MAJOR 4) AND THE REASON THE TWO RAIL RULES BELOW EXIST. The band has to hold
+   `max(card, rail)`, and this file only ever costed the card. The category rail is FOUR rows at
+   every depth (its membership is a fact about the taxonomy, not about where the player is), so at
+   the shipped 7px rail padding and 5px row padding it stood
+     4 x 27 (rows) + 3 (gaps) + 14 (rail padding) + 29 (head) = 154
+   against a 146 band — and `.rz-tray{overflow:hidden}` simply CUT the fourth row. Measured in
+   Chrome at 1440x720 before the fix: `rz-tray-cat "ORDERS" runs 4px past the band [529,675]
+   (652..679)`, i.e. the ORDERS row's lower third was gone. ⚠️ It was invisible to the rig for the
+   4th-trap reason: that tool's containment sweep filtered `.rz-card` and nothing else, so it could
+   see a clipped CARD and was structurally blind to a clipped RAIL. The sweep is over every tray
+   control now.
+   ⚠️ CLOSED BY SHRINKING THE RAIL, NOT BY GROWING THE BAND, and the trade is deliberate: 1440x720 is
+   where the plate is scarcest (474-512px of room), so paying 12 more px of band there to fit a rail
+   is the wrong direction. 5px rail padding + 4px row padding takes the rail to
+     4 x 25 + 3 + 10 + 29 = 142, inside 146 with ~4px more slack than the card's own 8 — measured,
+   not reasoned: the rig now reports every control inside the band at all five viewports.
+   ⛔ A FIFTH TOP-LEVEL CATEGORY WOULD RE-OPEN THIS AT BOTH SHORT BANDS. `TRAY_CATEGORIES` is four;
+   a fifth adds ~26px to the rail and the 146 and 158 bands both have less than that in hand. The
+   band is priced on the rail, so the rail's row count is a layout input — re-run
+   `client/tools/build-tray-shot.mjs` at all five viewports when it changes. */
+@media (max-height:740px){
+  #roomzoom-view{--rz-tray-h:146px}
+  .rz-card-art{width:34px;height:34px}
+  .rz-tray-rail{width:118px;padding:5px 8px}
+  .rz-tray-cat,.rz-tray-sub{padding:4px 8px}
+}
+
+/* ACCEPTS chip row (WP-6) — shown when STOCKPILE is armed. It was a SIBLING of `.rz-matstrip` in
+   this wrapper, by the same rule: the options belonging to the armed tool. ⚠️ THE SIBLING IS GONE —
+   the six materials are STRUCTURE's own CARDS now — but the rule and the wrapper are unchanged, and
+   the mutual exclusion still holds (accepts is STOCKPILE, the cost row is furniture/decor), so it
+   still costs no net height. Column, because the row carries a caption the chips do not:
    the chips apply to tiles painted NEXT, and that has to be readable without hovering anything. */
 .rz-accepts{display:flex;flex-direction:column;gap:5px;align-items:stretch;padding:7px 10px;
   border-radius:2px;max-width:100%}
@@ -386,7 +517,7 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-acc-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:100%}
 .rz-acc-label{font-size:9px;letter-spacing:.22em;text-transform:uppercase;
   color:var(--ink-section,#8A7F6C);flex:none;padding-right:2px;white-space:nowrap}
-/* Lit = accepted, dark = kept out. Same on/off vocabulary as .rz-tool and .rz-mat-chip, because a
+/* Lit = accepted, dark = kept out. Same on/off vocabulary as `.rz-card` and `.rz-tray-cat`, because a
    filter toggle IS an on/off tool. This row carried the palette's defect exactly (`:hover` and `.on`
    both `border-color:#cf7a33`) and is fixed on the shared grammar above. */
 .rz-acc-chip{flex:none;padding:5px 9px;border-radius:2px;font-size:9px;letter-spacing:.14em;
