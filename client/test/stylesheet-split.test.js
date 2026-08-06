@@ -28,8 +28,13 @@ import { join, dirname } from 'node:path';
 
 import { CLIENT_DIR, INDEX_HTML, styleLinks, stylesSource } from './styles-source.js';
 
-/** The six surface files, in the cascade order the page must link them in. */
-const SURFACES = ['base', 'console', 'moss', 'overview', 'roomzoom', 'relations'];
+/** The surface files, in the cascade order the page must link them in.
+ *  ⭐ `persona` is the SEVENTH (M4-2, 2026-08-05) and the first that was never part of the old single
+ *  `styles.css`: the Persona window is a new surface, and this split's own rule — one surface, one
+ *  stylesheet — is what `relations.css`'s header argues for the sixth. It sits after `relations` and
+ *  before the token layer, which is where a new surface goes: it overrides nothing above it and
+ *  declares no token. */
+const SURFACES = ['base', 'console', 'moss', 'overview', 'roomzoom', 'relations', 'persona'];
 const EXPECTED_LINKS = [...SURFACES.map((s) => `styles/${s}.css`), 'src/theme/paper.css'];
 const PREVIEW = join(CLIENT_DIR, 'tools/moss-preview.html');
 

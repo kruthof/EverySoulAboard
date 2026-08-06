@@ -551,11 +551,19 @@ function buildIslands() {
       // ATMOS row above it.
       '<div class="ov-atmos-row"><span>PRES · TEMP · PWR</span><span class="ov-atmos-v amber ov-ro-atmosB"></span></div>' +
     '</div>' +
+    // ⭐⭐ M4-2 — TWO BUTTONS, NOT THREE, AND THE ONE THAT WENT IS GONE RATHER THAN DISABLED.
+    // `[T] OPEN CHANNEL — TALK` opened a conversation window inside the deprecated `#panels` shell
+    // and `[B] BIO` opened a card that was four-of-eight fabricated; both are deleted with their
+    // `hud.js` seams (`talkSelectedCrew`, `openBioForSelected`). `[U] PERSONA` replaces BOTH — one
+    // door from the map to a person (`CLAUDE.md:84-85`, and `surface-boundary.test.js`'s
+    // CREW_INTERACTION census, now exactly one member).
+    // ⚠️ THE KEY IN THE LABEL IS `U`, NOT `P` AND NOT `E` — see `controls.js`'s re-measured keymap
+    // census. Both were taken on this tree and the label must never print a key that is not bound
+    // (`onboarding.test.js` mechanises that rule for the help card; this label is the same promise).
     '<div class="ov-actions">' +
-      '<button class="ov-act ov-talk" data-ov-talk>[T] OPEN CHANNEL — TALK</button>' +
+      '<button class="ov-act ov-persona" data-ov-persona>[U] PERSONA</button>' +
       '<div class="ov-act-row">' +
         '<button class="ov-act" data-ov-move>[M] MOVE</button>' +
-        '<button class="ov-act" data-ov-bio>[B] BIO</button>' +
       '</div>' +
     '</div>';
   _el.roEmpty = _root.querySelector('.ov-ro-empty');
@@ -571,9 +579,8 @@ function buildIslands() {
   _el.roAtmosLbl = _root.querySelector('.ov-ro-atmos .ov-atmos-lbl');
   _el.roAtmosA = _root.querySelector('.ov-ro-atmosA');
   _el.roAtmosB = _root.querySelector('.ov-ro-atmosB');
-  _el.roTalk = _root.querySelector('[data-ov-talk]');
+  _el.roPersona = _root.querySelector('[data-ov-persona]');
   _el.roMove = _root.querySelector('[data-ov-move]');
-  _el.roBio = _root.querySelector('[data-ov-bio]');
 
   // lens — a FIXED button set (membership never changes); only `.on` toggles.
   $('ov-lens').innerHTML = '<div class="ov-hdr">LENS</div><div class="ov-lensrow">' +
@@ -1668,14 +1675,13 @@ function paintCrewWatch(crew, selCid, blocked) {
 function paintReadout(frame, rosterMsg, dView, activeDeck, blocked) {
   const sel = selectedRosterEntry(frame, rosterMsg);
   // The empty↔selected states, the traits, task and atmos box are all pre-built and toggled — the
-  // TALK/MOVE/BIO buttons are never rebuilt, so an armed/hovered action survives every repaint.
+  // PERSONA/MOVE buttons are never rebuilt, so an armed/hovered action survives every repaint.
   const has = !!sel;
   setHidden(_el.roEmpty, has);
   setHidden(_el.roGuide, has);
   setHidden(_el.roSel, !has);
-  setDisabled(_el.roTalk, !has);
+  setDisabled(_el.roPersona, !has);
   setDisabled(_el.roMove, !has);
-  setDisabled(_el.roBio, !has);
   if (!has) {
     setHidden(_el.roTraits, true);
     setHidden(_el.roTask, true);
@@ -2146,9 +2152,8 @@ function onHudClick(e) {
   else if ('ovPause' in d) { _send(Cmd.pause()); }
   // The nudge IS its own fix: it complains that the ship is stopped, so clicking it starts it.
   else if ('ovNudge' in d) { _send(Cmd.pause()); }
-  else if ('ovTalk' in d) { Hud.talkSelectedCrew(); }
+  else if ('ovPersona' in d) { Hud.openPersonaForSelected(); }
   else if ('ovMove' in d) { Hud.armTool('move'); afterToolToggle(btn, e); }
-  else if ('ovBio' in d) { Hud.openBioForSelected(); }
 }
 
 // ── transient toast (room-zoom stub) ──

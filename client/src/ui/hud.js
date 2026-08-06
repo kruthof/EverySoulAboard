@@ -193,14 +193,63 @@ export function armTool(kind) {
 }
 /** Select a crew member by cid through the ONE shared selection flow (same as a CREW WATCH row). */
 export function selectCrewByCid(cid) { selectCrew(Number(cid)); }
-/** Open a channel with the currently selected crew (Overview [T] TALK). */
-export function talkSelectedCrew() { const cid = selectedCrewCid(_frame); if (cid != null) _send(Cmd.talk(cid)); }
-/** Open the biography card for the selected crew (Overview [B] BIO), enabled iff cached. */
-export function openBioForSelected() {
-  const sel = selectedRosterEntry(_frame, _roster);
-  if (!sel || !_citizens.has(sel.cid)) return;
-  _send(Cmd.bio(sel.cid));
-  panels().citizen(enrichCitizen(_citizens.get(sel.cid)), PORTRAIT_REGISTRY);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ M4-2 — THE ONE DOOR FROM THE MAP TO A PERSON.
+//
+// `talkSelectedCrew` (the Overview's `[T] OPEN CHANNEL — TALK`) and `openBioForSelected` (its
+// `[B] BIO`, which opened the four-of-eight-fabricated dossier) are DELETED, not hidden, and
+// `openPersonaForSelected` replaces BOTH. `surface-boundary.test.js`'s `CREW_INTERACTION` census —
+// the mechanised form of `CLAUDE.md:84-85`'s owner decision — now holds exactly ONE member, and its
+// own failure text says why: *"the census shrinking to one is the whole point"*.
+//
+// ⚠️ THE WINDOW IS NOT IMPORTED HERE, AND THAT IS A MEASURED CONSTRAINT RATHER THAN TASTE.
+// `surface-boundary.test.js`'s `HUD_IMPORT_SPECIFIERS = 10` is pinned by EQUALITY on a file that is
+// CLOSED TO NEW WORK ("every one of these can only go DOWN"), so an eleventh import in this file is
+// red by construction. `main.js` mounts `persona-view.js` and registers the controller here, the
+// same shape as `onDialogueSend`/`onShipUpdate`. It also keeps this file free of the window's DOM —
+// the pinned counts 38/27/9 are strict `===`, and the charter's conflict matrix requires that the
+// seam be *"a function that hands off"*.
+//
+// ⛔ THIS SEAM SENDS NOTHING ON THE WIRE. Every band of the window is drawn from channels that
+// already ship (`roster`, `workcaps`, `relations`, `blocked`, `decks`, `rooms`), so there is no
+// `Cmd.bio` round-trip to wait for and no new channel to add — which is why M4-2 is pin-neutral BY
+// CONSTRUCTION rather than by argument.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+let _persona = null;      // the Persona window's controller (persona-view.js), registered by main.js
+
+/** Register the Persona window controller. Called once from main.js at mount. */
+export function setPersonaWindow(w) {
+  _persona = (w && typeof w.open === 'function' && typeof w.isOpen === 'function') ? w : null;
+}
+
+/** Is the Persona window on screen? Read by the Escape stacks of BOTH standard surfaces. */
+export function isPersonaOpen() { return !!(_persona && _persona.isOpen()); }
+
+/** Dismiss the Persona window. The Overview's Escape runs through `handleEscape` below; the Room
+ *  Zoom owns its own capture-phase stack (`room-model.escStackRung`) and performs this verdict
+ *  itself, which is why the close is a seam rather than private to `handleEscape`. */
+export function closePersona() { if (_persona) _persona.close(); }
+
+/**
+ * ⭐ OPEN THE PERSONA WINDOW — the one sanctioned crew-interaction entry (`console-retirement.plan.md`
+ * §1.5.4, an owner decision). Reached from the Overview's action button, the Overview keymap
+ * (`[U]` / Enter-on-selected-crew) and the Room Zoom's crew dock.
+ *
+ * ⚠️ `cid` IS OPTIONAL AND THE OPTION IS LOAD-BEARING, not a convenience. Selection is
+ * WIRE-AUTHORITATIVE: `selectCrewByCid` sends `Cmd.click` and the selection only exists once the
+ * host echoes a frame back. So a caller that SELECTS AND OPENS IN ONE GESTURE — the Room Zoom's crew
+ * dock does exactly that — would, with no argument, open the window for the PREVIOUS selection or
+ * for nobody. Callers that already know the cid pass it; callers acting on the current selection
+ * (the button, the key) omit it and it is resolved from the frame.
+ * @param {number} [cid]
+ */
+export function openPersonaForSelected(cid) {
+  if (!_persona) return;
+  const id = Number.isFinite(Number(cid)) ? Number(cid) : selectedCrewCid(_frame);
+  if (id == null || !Number.isFinite(Number(id))) return;
+  _persona.open(Number(id));
 }
 
 /** Join the roster + relations caches onto a raw `citizen` payload so the DOSSIER card can show the
@@ -211,9 +260,15 @@ export function openBioForSelected() {
  *  2026-07-29). `Citizen.Morale` is carried by the wire but no system in `sim/` ever changes it, so
  *  it is a CONSTANT, not a reading — and the dossier's MORALE meter has been removed. This ledger is
  *  corrected even though `hud.js` is the deprecated console shell and is closed to new work, because
- *  it is not a console ledger: `openBioForSelected` above is the STANDARD surface's [B] BIOGRAPHY
- *  button (`overview-view.js`'s `ovBio` → here → `panels().citizen(...)`), so this sentence
- *  describes the SAME card `panels.js`'s REAL/SAMPLE ledger describes. M1-F's `hud.js` exclusion
+ *  it was not a console ledger.
+ *
+ *  ⚠️ CORRECTED AT M4-2 (2026-08-05), and the correction is the package: this sentence used to read
+ *  *"`openBioForSelected` above is the STANDARD surface's [B] BIOGRAPHY button (`overview-view.js`'s
+ *  `ovBio` → here → `panels().citizen(...)`)"*. That seam is DELETED — the standard surface's door to
+ *  a person is `openPersonaForSelected` → `persona-view.js`, which draws no meter of any kind. What
+ *  is left below this comment is the DEPRECATED CONSOLE's own `#b-bio` button, so the card
+ *  `panels.js`'s REAL/SAMPLE ledger describes is now reachable only from the shell M4-8 deletes.
+ *  M1-F's `hud.js` exclusion
  *  covers DRAW SITES and the equality-pinned widget census — and that census reads `codeOnly(raw)`,
  *  so it is comment-blind and this edit cannot move it (measured: 1004/1004, census unchanged).
  *
@@ -650,12 +705,14 @@ export function handleEscape() {
   const act = escapeTarget({
     armed: _armed != null,
     dialogueOpen: !!(_panels && _panels.activeDialogueSid != null),
+    personaOpen: isPersonaOpen(),
     dossierOpen: !!(_panels && _panels.hasOpenCitizen()),
     mossActive: !!(_moss && _moss.isOpen()),
     relationsActive: _tab === 'relations',
   });
   if (act === 'disarm') { _armed = null; reflectArmed(); }
   else if (act === 'dialogue') closeActiveDialogue();
+  else if (act === 'persona') closePersona();
   else if (act === 'dossier') _panels.closeActiveCitizen();
   else if (act === 'moss') _moss.escape();
   else if (act === 'relations') setTab('build');

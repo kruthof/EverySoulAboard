@@ -44,3 +44,5 @@ client/tools/shots-material-pawn/
 client/tools/shots-pawn-tween/
 # — lane/build-ghost —
 client/tools/shots-build-ghost/
+# — lane/m4-2 (the Persona window) —
+client/tools/shots-persona/

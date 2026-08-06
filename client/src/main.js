@@ -19,6 +19,7 @@ import { initOverview } from './ui/overview-view.js';
 import { initRoomZoom } from './ui/roomzoom-view.js';
 import { initRelations } from './ui/relations-view.js';
 import { initOnboarding } from './ui/onboarding.js';
+import { initPersona } from './ui/persona-view.js';
 
 const PROC_TILE = 26;
 const params = new URLSearchParams(location.search);
@@ -345,6 +346,14 @@ initOverview({
 // visibility from the shared tab state, so leaving it is the ordinary tab flow (the same rung
 // Escape already uses).
 initRelations({ onExit: () => Hud.selectTab('build') });
+// ⭐⭐ M4-2 — THE PERSONA WINDOW: the ONE door from the map to a person, a body-level sibling that
+// opens over BOTH standard surfaces (that is the whole point — `#panels`, where the old BIO card
+// lived, is `display:none` under `body.roomzoom-open`, so the surface with no readout could never
+// have shown it). It is REGISTERED with the HUD rather than imported by it: `hud.js`'s import list is
+// pinned by EQUALITY at 10 on a file closed to new work (`surface-boundary.test.js`), so an eleventh
+// import there is red by construction. `Hud.openPersonaForSelected` — the one entry on the
+// CREW_INTERACTION census — lowers to the controller registered here.
+Hud.setPersonaWindow(initPersona());
 // First-run onboarding: the one-time intro (premise + the two verbs) and the persistent `?` help.
 initOnboarding();
 Hud.buildLensButtons((name) => session.send(Cmd.lens(name)));

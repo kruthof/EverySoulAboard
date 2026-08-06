@@ -1,13 +1,14 @@
 // Input map — camera-aware mouse + keyboard, a faithful port of the handlers in
 // hosts/web/Client.html. Mouse: wheel zoom (anchored on the cursor tile), drag pan, click
 // select/toggle, shift-click move, hover cursor. Keyboard: WASD pan, arrows/hjkl cursor,
-// R/F deck, 1–7 lens, space pause, +/− speed, m move, Enter click, P sprite toggle. P2 (C5):
-// T (or Enter on a selected crew) opens a talk with them; Esc closes the active dialogue (bye).
+// R/F deck, 1–7 lens, space pause, +/− speed, m move, Enter click, P sprite toggle. M4-2:
+// U (or Enter on a selected crew) opens her PERSONA WINDOW — the one door from the map to a person;
+// Esc runs the shared escape stack. (P2's `T` = talk is DELETED with the conversation surface.)
 
 import { tileFromPoint, zoomAt, panPixels, panByStep, transform } from '../render/camera.js';
 import { Cmd } from '../wire/session.js';
 import { selectedCrewCid } from '../wire/messages.js';
-import { LENSES } from '../ui/hud.js';
+import { LENSES, openPersonaForSelected } from '../ui/hud.js';
 import { isBuildTool } from '../ui/console-model.js';
 import { ACCEPT_ALL } from '../ui/stock-filter-model.js';
 
@@ -168,12 +169,29 @@ export function installInput(opts) {
   /** Keys the deprecated keymap still answers while suspended: the ship's clock, nothing else. */
   const TIME_KEYS = new Set([' ', '+', '=', '-', '_']);
 
-  // Open a conversation with the currently selected crew (T, or Enter when a crew is selected).
-  // Resolves the cid from the selected tile; a non-crew selection (or a cid-less older frame) is
-  // a no-op, so the key never sends a malformed talk.
-  function talkSelected() {
+  // ⭐⭐ M4-2 — OPEN THE PERSONA WINDOW FOR THE SELECTED CREW (U, or Enter when a crew is selected).
+  //
+  // ⛔ THIS FUNCTION WAS `talkSelected` AND IT WAS THE THIRD DOOR — the one no test could see.
+  // It sent `Cmd.talk(cid)` DIRECTLY on the session, bypassing `hud.js` entirely, so
+  // `surface-boundary.test.js`'s CREW_INTERACTION census — which enumerates symbols reached OUT OF
+  // hud.js — pinned two of the three routes from the map to a person while this one stayed live and
+  // invisible. That is `CLAUDE.md`'s 4th trap shape (a guard whose scope filter excludes the
+  // violation), and closing it is half of this package: the send is gone, the seam is
+  // `Hud.openPersonaForSelected`, and the census's own scan is WIDENED in the same commit to see a
+  // direct `Cmd.<crew-verb>` send from any non-console module.
+  //
+  // ⚠️ AND THE IMPORT IS THE POINT, not an accident. This file's design note says it "stays free of
+  // UI imports beyond LENSES", and an injected callback would have honoured that — while leaving the
+  // door invisible to the census a second time, because a `main.js` closure is inside a
+  // CONSOLE_OWNER and never appears in the reach. Naming the seam here is what puts the third door
+  // ON the pinned list. The rule the file was protecting (controls.js must not learn what a Room
+  // Zoom is) is untouched: this is the same shared state layer `LENSES` comes from.
+  //
+  // Resolves the cid from the selected tile; a non-crew selection (or a cid-less older frame) is a
+  // no-op that returns false, so Enter falls through to its keyboard "click" exactly as before.
+  function personaForSelected() {
     const cid = selectedCrewCid(getFrame());
-    if (cid != null) { session.send(Cmd.talk(cid)); return true; }
+    if (cid != null) { openPersonaForSelected(cid); return true; }
     return false;
   }
   // All listeners are bound to this controller's signal so a single dispose() (returned below)
@@ -281,7 +299,40 @@ export function installInput(opts) {
     if (isSuspended() && !TIME_KEYS.has(k)) return;
     if (k === 'P' || k === 'p') { toggleSprites(); return; }
     if (k === 'Escape') { onEscape(); }
-    else if (k === 't' || k === 'T') { talkSelected(); }
+    // ⭐⭐ [U] — OPEN THE PERSONA WINDOW FOR THE SELECTED CREW MEMBER (M4-2).
+    //
+    // ⛔ `T` IS RETIRED WITH THE VERB IT NAMED. It meant TALK, and there is no talk any more; a key
+    // whose mnemonic describes a deleted verb is worse than a key with no mnemonic.
+    //
+    // ⛔ ⭐ THE KEYMAP CENSUS, RE-MEASURED ON THIS TREE (2026-08-05) BECAUSE IT IS A MEASUREMENT AND
+    // THE M4-1 CHARTER'S ANSWER IS STALE. The charter recommended `E`; `E` HAS SINCE BEEN TAKEN.
+    //   · THIS handler (the Overview): `Escape` · `P` toggleSprites · `T` talk (deleted here) ·
+    //     `W/A/S/D` pan · arrows + `k/j/h/l` cursor · `R/F/>/<` deck · `1`–`7` lens · `Space` pause ·
+    //     `+/=/-/_` speed · `M` move · `B` build · `X` cancel · `G` dig · `Z` stockpile · `V` strip ·
+    //     `C` erase · `Enter`.  ⇒ BOUND: A B C D F G H J K L M P R S T V W X Z.
+    //   · `ui/roomzoom-view.js`'s capture-phase handler (Level 2, where this keymap stands DOWN):
+    //     `Escape` · `B` wall · `X` demolish · `G` dig · `Z` stockpile · `V` strip · `C` erase ·
+    //     ⭐ `E` ROTATE THE ARMED PIECE (merged 2026-08-05, the owner's "4× rotation") · `M` move.
+    //   ⇒ FREE ON BOTH STANDARD SURFACES: **I · N · O · Q · U · Y**, and five of the six carry a
+    //     warning written by the file that freed them:
+    //       `I` — "vim-adjacent", discouraged three branches below by this very file.
+    //       `O` — free only because M3-15 DELETED the OPERATE verb; `surface-boundary.test.js` keeps
+    //             an anti-resurrection guard on its identifiers. Legal, and the charter says: do not.
+    //       `N`/`Y` — soft-reserved for a future confirm (roomzoom-view.js's own census).
+    //       `Q` — the conventional quit (same census).
+    //       `U` — free, no history, no guard, adjacent to nothing it could be confused with.
+    //   ⇒ **`U`**, by the charter's own stated method ("free, no history, no guard, adjacent to
+    //     nothing"), and it is the ONLY remaining letter that meets all four. ⚠️ THE COST, SAID OUT
+    //     LOUD: it has no mnemonic. `P` for *persona* is taken (`toggleSprites`, two lines above) and
+    //     the charter priced re-homing it — five code sites in two files plus three test doubles —
+    //     as REFUSED unless the owner asks. This is a deviation from the charter's `E` and it is
+    //     recorded rather than quietly taken.
+    //
+    // ⚠️ IT IS BOUND ON THE OVERVIEW ONLY. Inside a room this whole keymap stands down
+    // (`isSuspended`), and the Room Zoom reaches the same window through its crew dock. A second
+    // binding in the Level-2 handler is a key the help card would also have to teach, and M4-5 owns
+    // that card — filed, not smuggled in.
+    else if (k === 'u' || k === 'U') { personaForSelected(); }
     else if (k === 'w' || k === 'W') pan(0, -1);
     else if (k === 's' || k === 'S') pan(0, 1);
     else if (k === 'a' || k === 'A') pan(-1, 0);
@@ -328,7 +379,10 @@ export function installInput(opts) {
       const tool = getArmedTool();
       const orders = paletteOrders(tool, cur.x, cur.y, getStockFilter());
       if (orders.length) { for (const o of orders) session.send(o); onToolUsed(tool, cur.x, cur.y); }
-      else if (!talkSelected()) { session.send(Cmd.click(cur.x, cur.y)); onCanvasClick(cur.x, cur.y); }
+      // ⭐⭐ M4-2 — Enter on a SELECTED CREW MEMBER now opens her Persona window instead of sending
+      // `Cmd.talk`. The keyboard contract is unchanged (Enter-on-a-selected-thing acts on it, and
+      // falls through to a keyboard click otherwise); only the destination moved, to the one door.
+      else if (!personaForSelected()) { session.send(Cmd.click(cur.x, cur.y)); onCanvasClick(cur.x, cur.y); }
     }
     else return;
     e.preventDefault();

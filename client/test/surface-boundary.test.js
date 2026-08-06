@@ -649,9 +649,16 @@ test('the deprecated console shell is CLOSED — its id census is frozen', () =>
 
 /** The body-level surface roots — one per full-window surface, IN PAGE ORDER. `relations-view`
  *  joined at the WP-7 merge, lifted out of `.app`'s `.stage` where it used to drag the player back
- *  into the console. */
+ *  into the console.
+ *
+ *  ⭐⭐ `persona` JOINED AT M4-2 (2026-08-05) — a genuinely NEW surface, and body-level for a reason
+ *  that was MEASURED. The window it replaces (`[B] BIO` → the dossier card) opened inside `#panels`,
+ *  which is `display:none` under `body.roomzoom-open` (`styles/roomzoom.css:32`) — and the Room
+ *  Zoom's crew dock is precisely the surface with NO readout at all (`docs/ROADMAP.md:55`). A door to
+ *  a person that cannot open where the readout is missing does not close that filing. Being outside
+ *  `.app` also means M4-8's console deletion cannot take the window with the shell. */
 const SURFACE_ROOTS = Object.freeze([
-  'overview-view', 'roomzoom-view', 'relations-view', 'disc', 'panels', 'moss-view',
+  'overview-view', 'roomzoom-view', 'relations-view', 'persona', 'disc', 'panels', 'moss-view',
 ]);
 
 // MUTATION: add a sixth body-level `<div id="…">` ⇒ fails. Same trick moss-screen.test.js:115-117
@@ -842,7 +849,11 @@ const SHIP_STATE_REACH = Object.freeze([
   // that brownout spam evicts before the player opens the console (finding D6). Sorted here by the
   // rule the list already follows (`shipStateReach()` returns a sorted array, so `armTool` and
   // `getAlerts` land where JS sort puts them).
-  'armTool', 'getAlerts', 'getArmedTool',
+  'armTool',
+  // ⭐⭐ M4-2 — see the Persona block at the foot of this list; `closePersona` lands here because
+  // `shipStateReach()` returns a SORTED array and JS sort puts it between `armTool` and `getAlerts`.
+  'closePersona',
+  'getAlerts', 'getArmedTool',
   // The `blocked` channel's cache — which of the player's dig/strip/build orders the sim refuses to
   // staff, and why. Sorted here by the same rule the list already follows (`shipStateReach()` returns
   // a sorted array, so `getBlocked` lands before `getDecks`).
@@ -903,8 +914,20 @@ const SHIP_STATE_REACH = Object.freeze([
   // (`overview-view.js` `workCapsFor` → `paintWork`), and the reach is COMPUTED from actual reaches,
   // so this list is being brought level with the code rather than granting a permission.
   'getWorkCaps',
-  'getZones', 'isMossActive', 'onShipUpdate',
-  'openBioForSelected', 'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
+  'getZones',
+  // ⭐⭐ M4-2 — THE PERSONA WINDOW'S THREE SEAMS, AND ONE OF THEM REPLACES TWO THAT LEFT.
+  // `closePersona` / `isPersonaOpen` are SHIP STATE in exactly `isMossActive`'s sense: a takeover's
+  // open/closed bit and its dismissal, with no DOM of their own, read by the ESCAPE STACKS OF BOTH
+  // STANDARD SURFACES. The Room Zoom needs them specifically: it installs its keydown on `window` in
+  // the CAPTURE phase at mount, so a listener the window registered later would run second and
+  // Escape would exit the room out from under an open Persona window. `openPersonaForSelected`
+  // SUPERSEDES `talkSelectedCrew` + `openBioForSelected`, which are gone from hud.js entirely.
+  // ⚠️ A CENSUS MOVE, added in the same commit as the reach and said out loud, exactly as
+  // `getEnding`/`getWorkCaps`/`getAlerts` were. It is a NET ZERO on this list (three in, two out,
+  // plus the two that were never here) and a NET MINUS ONE on the crew-interaction census below,
+  // which is the number the milestone is about.
+  'isMossActive', 'isPersonaOpen', 'onShipUpdate', 'openPersonaForSelected',
+  'selectCrewByCid', 'selectTab', 'toolUsed',
 ]);
 
 /** ⚠️ THE DOM HATCHES. Exported by hud.js, and reachable by nobody outside it. `setChip(id, value)`
@@ -912,8 +935,20 @@ const SHIP_STATE_REACH = Object.freeze([
 const FORBIDDEN_REACH = Object.freeze(['setChip', 'initConsole', 'paintStageOverlays', 'buildLensButtons']);
 
 /** ⚠️ PLAN §1.5.4 — the crew-interaction census. Exactly the entries through which a player may be
- *  taken from the map to a person. The Persona window replaces these; it does not join them. */
-const CREW_INTERACTION = Object.freeze(['openBioForSelected', 'talkSelectedCrew']); // sorted
+ *  taken from the map to a person. The Persona window replaces these; it does not join them.
+ *
+ *  ⭐⭐ M4-2 (2026-08-05) — **IT IS ONE.** `openPersonaForSelected` replaced `talkSelectedCrew` and
+ *  `openBioForSelected`; both are deleted from `hud.js`, not merely unreferenced (asserted by name
+ *  below, because an unreferenced export simply falls off the computed reach and nothing would
+ *  notice). `CLAUDE.md:84-85` is the owner decision this array is the mechanised form of, and the
+ *  failure text further down already said what this commit did: *"the census shrinking to one is
+ *  the whole point."*
+ *
+ *  ⛔ AND THE THIRD DOOR THIS ARRAY COULD NOT SEE IS CLOSED IN THE SAME COMMIT. `controls.js:174`
+ *  sent `Cmd.talk(cid)` DIRECTLY on the session, bypassing hud.js, so it matched nothing in a scan
+ *  that enumerates symbols reached OUT OF hud.js — the 4th trap's shape exactly. The send is gone
+ *  and `NO_DIRECT_CREW_VERBS` below is the guard that keeps it gone. */
+const CREW_INTERACTION = Object.freeze(['openPersonaForSelected']);
 
 /** Symbols a non-owner module reaches out of hud.js, by either import form: `import * as Hud` +
  *  `Hud.x`, or a named `import { x } from './hud.js'`. Both are counted, because pinning only the
@@ -994,16 +1029,31 @@ test('the ship-state reach is pinned — no module may bridge into console DOM',
     '(update the list in the same commit — `setChip`-shaped exports are what it exists to catch) or ' +
     'they are genuinely gone, in which case say so and retire the list deliberately.');
 
-  // PLAN §1.5.4 — the crew-interaction census.
+});
+
+// ⭐⭐ M4-2 — SPLIT OUT OF THE TEST ABOVE, AND THE SPLIT IS THE 5th TRAP'S OWN LESSON.
+//
+// This census used to be the LAST assertion inside "the ship-state reach is pinned". `assert` throws,
+// so any move in the 35-name reach list — a new getter, a renamed cache — aborted the test before the
+// crew census ran, and the one assertion this milestone is ABOUT could not report. Measured while
+// taking M4-2's mutation receipts: planting two crew seams back reddens the reach FIRST and the
+// census leg never executes, so its red was inherited rather than earned. One test per claim.
+test('PLAN §1.5.4 — exactly ONE door from the map to a person', () => {
+  const hudSource = readOrNull('src/ui/hud.js');
+  if (hudSource === null) return; // WP-9: hud.js is ship-state.js; re-pin the reach then.
+  const reach = shipStateReach();
+  // Non-vacuity FIRST, because a broken scan returns [] and an empty census would then read as
+  // "zero doors", which is a PASS-shaped answer to the wrong question.
+  assert.ok(reach.length >= 10, `the reach scan found only ${reach.length} symbols — it is broken`);
   const crew = reach.filter((n) => /^(talk|openPersona|openBio|converse|chat)/i.test(n));
   assert.deepEqual(crew, [...CREW_INTERACTION],
     `crew-interaction entries reachable from the map are ${JSON.stringify(crew)}, pinned as ` +
     `${JSON.stringify(CREW_INTERACTION)}.\n` +
     '\n' +
-    'THE BOUNDARY (docs/design/perilune-console-retirement.plan.md §1.5.4, an OWNER DECISION): all ' +
-    'crew interaction consolidates into ONE Persona window. Its design is deferred; what is decided ' +
-    'is that there is exactly one door from the map to a person, so the Persona window replaces one ' +
-    'function body instead of being threaded through five surfaces.\n' +
+    'THE BOUNDARY (docs/design/perilune-console-retirement.plan.md §1.5.4 + CLAUDE.md:84-85, an ' +
+    'OWNER DECISION): all crew interaction consolidates into ONE Persona window. It was designed by ' +
+    'M4-1 and BUILT by M4-2 (client/src/ui/persona-view.js), so there is exactly one door from the ' +
+    'map to a person and it is `openPersonaForSelected`.\n' +
     '\n' +
     'THE TWO LEGITIMATE EXITS:\n' +
     '  (1) You are BUILDING the Persona seam: replace an entry here rather than adding beside it — ' +
@@ -1012,6 +1062,140 @@ test('the ship-state reach is pinned — no module may bridge into console DOM',
     '  (2) You are scattering a second crew-interaction affordance. Do not. That is the thing this ' +
     'assertion was requested to prevent.');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ 2b. M4-2 — THE ONE DOOR, THE OTHER TWO HALVES OF IT
+//
+// The census above is necessary and it is NOT sufficient, and the M4-1 charter measured exactly why:
+//
+//   (i)  IT CANNOT SEE AN ABANDONED EXPORT. `shipStateReach()` is COMPUTED from actual reaches, so
+//        `talkSelectedCrew` left exported and simply unreferenced falls off the list and the census
+//        goes green while the seam is still there for the next lane to re-wire. ⇒ the deletion is
+//        asserted BY NAME.
+//   (ii) IT CANNOT SEE THE THIRD DOOR AT ALL. `controls.js:174` used to send `Cmd.talk(cid)` DIRECTLY
+//        on the session, bypassing hud.js entirely, and the census enumerates symbols reached OUT OF
+//        hud.js — so a direct send matched nothing in it. **Two doors were pinned; three were live.**
+//        That is `CLAUDE.md`'s 4th trap in its purest form: *a guard whose scope filter excludes the
+//        violation*. ⇒ the scan is WIDENED here, in the same commit as the retarget, because a
+//        widened guard landing a week later pins a hole that has already been filled and proves
+//        nothing.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** The hud.js exports the Persona window superseded. They are DELETED, not deprecated. */
+const RETIRED_CREW_SEAMS = Object.freeze(['openBioForSelected', 'talkSelectedCrew']);
+
+/** Every `export function|const|let` name in a source. */
+function exportsOf(source) {
+  return [...codeOnly(source).matchAll(/^export\s+(?:function|const|let)\s+([A-Za-z_]\w*)/gm)].map((m) => m[1]);
+}
+
+test('M4-2: the two superseded crew seams are GONE from hud.js, by name', () => {
+  const hudSource = readOrNull('src/ui/hud.js');
+  if (hudSource === null) return; // WP-9: hud.js is ship-state.js; re-point this then.
+  const names = exportsOf(hudSource);
+
+  assert.deepEqual(RETIRED_CREW_SEAMS.filter((n) => names.includes(n)), [],
+    'hud.js still exports a crew seam the Persona window replaced.\n' +
+    '\n' +
+    'THE BOUNDARY: `CREW_INTERACTION` above is COMPUTED FROM ACTUAL REACHES, so an export nobody ' +
+    'calls silently drops off it — the census goes green while the door is still cut in the wall, ' +
+    'waiting for the next lane to hang something on it. `openPersonaForSelected` SUPERSEDES these ' +
+    'two (console-retirement.plan.md §1.5.4, an owner decision); superseding means deleting.\n' +
+    '\n' +
+    'THE EXIT: delete the export. If the deprecated console still needs the behaviour for its own ' +
+    '`#b-talk`/`#b-bio` buttons, inline it there — those are console chrome and die at M4-8.');
+
+  // ⚠️ NON-VACUITY, AND IT IS AN INCLUSION TEST RATHER THAN A COUNT. A broken `exportsOf` returns []
+  // and satisfies the assertion above for every possible tree. It must find the seam that REPLACED
+  // them, by name, in the same file.
+  assert.ok(names.includes('openPersonaForSelected'),
+    'the export scan cannot find `openPersonaForSelected` in hud.js, so the deletion assertion ' +
+    'above is guarding air — either the scan is broken or the replacement seam is missing');
+});
+
+/** ⚠️ THE CREW VERBS — the wire commands that address a PERSON rather than a tile. `talk`/`say`/`bye`
+ *  are the conversation surface (deliberately retained host-side and unreferenced by this client,
+ *  `console-retirement.plan.md:249`) and `bio` re-requests the dossier payload. A module outside the
+ *  console that sends one of these has opened a door from the map to a person WITHOUT going through
+ *  `hud.js`, which is precisely what the crew-interaction census cannot see. */
+const CREW_VERBS = Object.freeze(['bio', 'bye', 'say', 'talk']);
+
+/** Which crew verbs `source` sends as CODE (comments and their prose stripped by the shared
+ *  stripper — trap 1's first half; the negative control below is its second). */
+function directCrewVerbSends(source) {
+  const code = codeOnly(source);
+  return CREW_VERBS.filter((v) => new RegExp('\\bCmd\\s*\\.\\s*' + v + '\\s*\\(').test(code));
+}
+
+// MUTATION (this is the charter's mutation 3, and NOTHING caught it before this test existed):
+// retarget the `[U]`/Enter branch but leave `controls.js` sending `Cmd.talk` ⇒ RED, naming the file
+// and the verb. Applied physically below as an INCLUSION control, per verb, blinded.
+test('M4-2: no module outside the console sends a CREW VERB directly (the third door stays shut)', () => {
+  const offenders = [];
+  const files = srcFiles();
+  assert.ok(files.length >= 40, `only ${files.length} client sources walked — the scan is broken`);
+  for (const abs of files) {
+    const path = rel(abs);
+    if (CONSOLE_OWNERS.includes(path)) continue;
+    for (const v of directCrewVerbSends(readFileSync(abs, 'utf8'))) offenders.push(`${path}:Cmd.${v}`);
+  }
+  // ⚠️ ONE `deepEqual` ON THE WHOLE LIST rather than a loop of `ok`s: `assert` throws, so a loop
+  // would report only the first offender and a resurrection that re-added TWO doors would read as
+  // a one-line slip (`CLAUDE.md`'s fifth trap shape).
+  assert.deepEqual(offenders, [],
+    `crew-verb commands are sent directly from ${JSON.stringify(offenders)}.\n` +
+    '\n' +
+    'THE BOUNDARY: `CLAUDE.md:84-85` — ALL crew interaction consolidates into the single Persona ' +
+    'window, and `CREW_INTERACTION` above mechanises that by enumerating the seams reached OUT OF ' +
+    'hud.js. A module that builds the command itself never appears in that list. That is not ' +
+    'hypothetical: `controls.js` bound `T` and Enter to `session.send(Cmd.talk(cid))` for four ' +
+    'months while the census sat green, so THREE doors were live and TWO were pinned.\n' +
+    '\n' +
+    'THE TWO LEGITIMATE EXITS:\n' +
+    '  (1) Call `Hud.openPersonaForSelected(...)` — the one sanctioned entry.\n' +
+    '  (2) You are the deprecated console (`hud.js`/`main.js`, the CONSOLE_OWNERS this scan skips), ' +
+    'in which case you are already excluded and did not reach this message.');
+});
+
+// ⚠️ THE NEGATIVE CONTROL, AND IT IS A LIVE ONE RATHER THAN A FIXTURE. `controls.js` still DESCRIBES
+// the deleted send in two comment blocks — the `isSuspended` history ("`T` sent `Cmd.talk(cid)` into
+// a dialogue window inside `#panels`") and `personaForSelected`'s own header. Those paragraphs are
+// why the deletion will not be undone by someone who thinks it was an oversight, and a guard that
+// fired on them would teach the next author to delete the explanation.
+test('NEGATIVE CONTROL: a crew verb named in a COMMENT does not trip the direct-send guard', () => {
+  const raw = readOrNull('src/input/controls.js');
+  assert.ok(raw, 'controls.js is gone — this control cannot see what it is controlling for');
+  // Non-vacuity FIRST: the prose really is in the shipped file, so this control is testing the
+  // stripper and not an empty string.
+  assert.match(raw, /Cmd\.talk\(cid\)/,
+    'controls.js no longer mentions the deleted send in prose — this control has lost its subject; ' +
+    're-point it at whichever file explains the deletion, do not delete it (the 9th trap shape)');
+  assert.deepEqual(directCrewVerbSends(raw), []);
+  // …and the second half of trap 1: a stripper that gave up at the first comment would also pass
+  // the line above. A LATER real comment plus a LIVE send in between must still be seen.
+  const fixture = [
+    "// historical: session.send(Cmd.talk(cid));   <- the third door, deleted at M4-2",
+    "    session.send(Cmd.bio(sel.cid));",
+    '/* a later real comment, so a stripper that gave up early is not silently fine */',
+  ].join('\n');
+  assert.deepEqual(directCrewVerbSends(fixture), ['bio'],
+    'the stripper is eating code, or stopping at the first comment');
+});
+
+// ⚠️ THE INCLUSION HALF, PER VERB. A search that finds nothing and a search that CANNOT find
+// anything look identical; each verb is planted as real code into the real shipped source and the
+// guard must name it. One test per verb — blinded, so a matcher that broke for `bye` alone cannot
+// hide behind `talk` failing first.
+for (const verb of CREW_VERBS) {
+  test(`INCLUSION: a planted \`Cmd.${verb}(\` in src/input/controls.js IS caught`, () => {
+    const raw = readOrNull('src/input/controls.js');
+    assert.ok(raw, 'controls.js is gone');
+    const planted = raw.replace('function personaForSelected() {',
+      `function personaForSelected() {\n    session.send(Cmd.${verb}(1));`);
+    assert.notEqual(planted, raw, 'the plant did not apply — the anchor moved, and this control is inert');
+    assert.deepEqual(directCrewVerbSends(planted), [verb]);
+  });
+}
 
 // MUTATION: add `$('stockfilter')` to overview-view.js — a modern view reaching into console DOM,
 // the inverse of the WP-5 mistake and the way the two skins would fuse back together ⇒ fails.
