@@ -294,6 +294,101 @@ export function isSweepTool(tool) {
 }
 
 /**
+ * ⭐⭐ THE TOOLS WHOSE SUBJECT IS A **PIECE**, not the tile under it — the one input to which of
+ * `roomzoom-view.js tileAt`'s two tiers gets asked first.
+ *
+ * ⛔ THE DEFECT IT SPLITS, measured live on the shipped cryo bay (2026-08-06): pressing a bare-floor
+ * tile AT ITS OWN CENTRE — `scenePlacement.foot`, the exact point the build ghost is drawn on —
+ * resolved to a DIFFERENT tile 40 times out of 96, because `tileAt`'s first tier takes the
+ * `data-tile` of whatever ink is under the pointer and a 2.4 m cryopod's drawn ink covers the floor
+ * centre of the tile in front of it. Rows `ty=2` and `ty=4` are pure floor, and 9 of 10 and 8 of 10
+ * presses on them came back "SOMETHING IS ALREADY STANDING HERE" about a pod one row away. That is
+ * the other half of the owner's *"the actual building only works in some areas"*.
+ *
+ * ⭐ THE SPLIT IS ABOUT WHAT THE VERB IS ABOUT, and it is the only line that keeps BOTH fixes. STRIP,
+ * ERASE and DEMOLISH act ON A THING — the piece, the designation, the ghost — so the ink the player
+ * pointed at IS the answer, and that is VR-P3-a's whole finding (16 of 18 drawn fittings designated
+ * the wrong tile through the floor inverse). Every other tool addresses THE TILE ITSELF: furniture is
+ * set down on empty floor, a wall/floor/door is built on a square, a dig or a stockpile paints a
+ * region. For those the floor plane is exactly right — it is the plane they act in — and
+ * piece-picking is what makes them miss.
+ *
+ * ⛔ **MOVE IS NOT ON THIS LIST, AND THE FIRST DRAFT PUT IT HERE ON A WRONG ARGUMENT** (independent
+ * review, 2026-08-06). The rationale said MOVE "acts on a person". It does not: the person is
+ * ALREADY SELECTED when the tool is armed, and `doMove` sends `Cmd.cursor(tile)` then `Cmd.move()` —
+ * the click is purely the DESTINATION, which is a tile like any other. Left on the piece list, a
+ * move aimed at the bare floor in front of a tall piece walked the crew member onto the PIECE's tile
+ * instead: the owner's own defect wearing a different verb. It resolves on the floor plane, driven by
+ * `room-model.test.js`'s destination leg.
+ *
+ * ⛔ A NAMED LIST AND NOT A CLASS TEST, deliberately, because the classes do not cut here: `strip`
+ * and `dig` are BOTH `cls:'order'` and they sit on opposite sides of this line (a strip is aimed at
+ * a machine; a dig is aimed at rubble that has no fitting ink at all). Naming the four with the
+ * argument beside them is honest; a class test would be a rule that happens to agree today.
+ * PURE.
+ */
+export const PIECE_SUBJECT_TOOLS = Object.freeze(['strip', 'erase', 'demolish']);
+
+/**
+ * True when the armed tool should resolve a pointer on the FLOOR PLANE rather than off the ink under
+ * it. False with nothing armed — an inspect press wants the piece it is pointing at. PURE.
+ */
+export function resolvesByFloor(tool) {
+  if (tool == null || tool === '') return false;
+  return !PIECE_SUBJECT_TOOLS.includes(tool);
+}
+
+/**
+ * True when (tx,ty) is on the focus rect's PERIMETER RING — the wall-inclusive window's hull band.
+ * Pure rect geometry, and deliberately NOT the pressability rule: see `isHullPocheTile`. PURE.
+ */
+export function isRingTile(tx, ty, focusRoom) {
+  if (!focusRoom) return false;
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const x1 = rx + (focusRoom.rw | 0) - 1, y1 = ry + (focusRoom.rh | 0) - 1;
+  return tx === rx || tx === x1 || ty === ry || ty === y1;
+}
+
+/**
+ * ⭐⭐ **THE ONE FACT THAT DRIVES BOTH THE PICTURE AND THE PRESS**: is this tile DRAWN as hull poché?
+ *
+ * ⛔ IT REPLACES A RECT TEST, AND THE RECT TEST WAS A SECOND LEGALITY AUTHORITY THAT WENT STALE
+ * SILENTLY (independent review, 2026-08-06). The first cut of the hull-ring fix refused placement on
+ * `!clampTileToInterior(...)` — pure geometry, computed from the slot rect and nothing else. But the
+ * ring is not permanently wall:
+ *   • THE SIM ACCEPTS STRIPPING A RING WALL on a carved ship (`IsPressureHull` is false there —
+ *     review drove it: strip accepted, the tile then went Blocked → ACCEPTED for placement). After
+ *     that the tile IS floor, the cutaway draws it as floor, and a geometric clamp went on swallowing
+ *     every press on it — no ghost, no command, no sentence. That is strictly WORSE than the defect
+ *     the clamp was added for: the original at least got a refusal sentence back from the sim.
+ *   • AND IT WAS ALREADY LIVE, before any strip, on the ring's DOOR tile: a doorway carries no poché
+ *     (it is an opening, not wall), so the picture said "floor" while the clamp said NOT-SENT — where
+ *     the sim would have answered "something is already standing here".
+ *
+ * ⭐ SO THE RULE IS NOW A STATEMENT ABOUT THE DRAWING, WHICH IS THE THING THE PLAYER CAN SEE: the
+ * surface will not send a placement onto a tile it has just drawn as wall. It reads the SAME
+ * `roomMaterialTiles` list the poché is built from, so a stripped wall becomes floor in the picture
+ * and pressable in the same frame, by construction rather than by two rules agreeing.
+ *
+ * ⛔ AND IT IS STILL NOT A LEGALITY PREDICATE. It answers "did I draw a wall here", never "will the
+ * sim accept this" — the sim remains the only authority on that, and every tile this returns false
+ * for goes down the wire and gets the sim's own sentence back.
+ *
+ * @param {number} tx @param {number} ty
+ * @param {{tx:number,ty:number,kind:string}[]} matTiles  `roomMaterialTiles` output
+ * @param {{rx:number,ry:number,rw:number,rh:number}} focusRoom
+ * PURE.
+ */
+export function isHullPocheTile(tx, ty, matTiles, focusRoom) {
+  if (!isRingTile(tx, ty, focusRoom)) return false;
+  if (!Array.isArray(matTiles)) return false;
+  for (const t of matTiles) {
+    if (t && t.kind === 'wall' && (t.tx | 0) === (tx | 0) && (t.ty | 0) === (ty | 0)) return true;
+  }
+  return false;
+}
+
+/**
  * The drag mode a Room-Zoom tool sweeps with (build-drag-model.js vocabulary). ORDER tools sweep a
  * FILLED rectangle — a dig or a strip is a region of intent (RimWorld's mine/deconstruct gesture),
  * not an outline; the wall tool's `perimeter` would leave the middle of a swept wreck untouched,
@@ -567,7 +662,20 @@ export function roomScene(focusRoom) {
   const frame = roomFrame(wM, dM, hM, s, { x: x0, y: y0 });
   return Object.freeze({
     wM, dM, hM, s, frame, rw, rh,
-    areaM2: rw * rh * M_PER_TILE * M_PER_TILE,
+    // ⭐⭐ THE AREA IS THE INTERIOR'S, NOT THE DRAWN BOX'S — 2026-08-06, and it was a LIE of 60%.
+    //
+    // `focusRoom`'s rect is the WALL-INCLUSIVE compartment window (`SlotGridPlanner`'s
+    // `SlotDescriptor`: `X = interior.X0 - 1`, `W = InteriorW + 2`), so `rw × rh` counts the 1-tile
+    // perimeter of HULL as room. Measured on the shipped cryo bay: the masthead read `96.0 M²` for a
+    // compartment whose floor is 10 × 6 = `60.0 M²`. The player is quoted the size of a box that
+    // includes its own walls, which is not a number anybody wants.
+    // ⛔ THE SCENE ITSELF STILL SPANS `rw × rh` and that is deliberate at this step: the cutaway's
+    // wall planes and its door plates are placed off that box, and insetting the SCENE is the
+    // design-true follow-up (FILED as A — origin +1, extent −2, with the channel-clamp inner/outer
+    // split and the golden churn priced). This line needs none of that to stop lying today.
+    // `Math.max(0, …)` because a 1- or 2-tile rect has no interior at all, and a NEGATIVE area is
+    // worse than a wrong one.
+    areaM2: Math.max(0, rw - 2) * Math.max(0, rh - 2) * M_PER_TILE * M_PER_TILE,
     viewBox: Object.freeze({
       x: 0, y: 0,
       w: nn(x0 + wPx + depthX + SCENE_PAD.right),

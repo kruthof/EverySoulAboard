@@ -389,7 +389,16 @@ const WEAR_SEAM_CENSUS = Object.freeze({
   // the `let` declaration, the repaint assignment, the accessor's own `.get`, the map handed to
   // `furnitureSvg` (the draw), and the map handed to the TWO `roomCells` calls (which tiles hold a
   // device — once for the picture, once for the caption's count)
-  _deviceCond: 6,
+  // ⭐ 6 → 7 AT THE DRAW-IN (lane/draw-reveal, 2026-08-06), AND THE QUESTION THIS CENSUS ASKS WAS
+  // ASKED BEFORE THE NUMBER WAS MOVED. The seventh reference is `startReveal`'s `_deviceCond.get(key)`
+  // — the wear (and facing) of the piece a builder has just finished, for the copy that draws itself
+  // in on `#rz-reveal`. ⛔ IT IS NOT A SECOND ANSWER TO "WHICH PICTURE": the value goes straight into
+  // `standItem`, the ONE placement helper `furnitureSvg` already draws every piece through, so the
+  // overlay's copy and the layer's copy are produced by one function from one map. That is precisely
+  // why `buildTileItem` is still 3 — a genuine second answer would have moved that one too, and the
+  // rule to apply next time is the same: a new `_deviceCond` reader is legitimate only while it is
+  // feeding `standItem` rather than deciding anything itself.
+  _deviceCond: 7,
   // the exported declaration + M2-10's `onCanvasContext`, which asks the same "is there anything
   // here?" question for the right-click PRIORITISE menu. It reads NOTHING but presence — `cond` and
   // `oper` still have exactly one consumer each — and it is here because the `devices` channel is the
@@ -456,8 +465,12 @@ const PLANTED_LAYERS = [
     // the boundary-door tiles the cutaway has already plated — so the plant is re-aimed at the
     // `_deviceCond, place, doorTiles)` tail rather than deleted. Re-aiming is the whole instruction
     // this control's own failure message gives.
-    (s) => s.replace('itemStackTileKeys(_itemTiles), _deviceCond, place, doorTiles);',
-      'itemStackTileKeys(_itemTiles), roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus), place, doorTiles);')],
+    // ⚠️ AND IT MOVED AGAIN AT THE DRAW-IN (2026-08-06), TWICE OVER: `furnitureSvg` takes a SIXTH
+    // argument now (the tiles whose piece is drawing itself in), and the stocked-tile set is hoisted
+    // to a local because the draw-in's trigger needs the same derivation. So the tail is re-aimed
+    // once more rather than the row deleted. Same instruction, same reason.
+    (s) => s.replace('furnitureSvg(cells, stockedTiles, _deviceCond, place, doorTiles, _revealing);',
+      'furnitureSvg(cells, stockedTiles, roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus), place, doorTiles, _revealing);')],
   ['a bare threshold comparison in this file — a SECOND answer to "which picture"',
     (s) => s.replace(DRAW_ANCHOR,
       DRAW_ANCHOR + "\n  body += wearSvg(deviceConditionAt(0, 0), buildTileItem);")],
