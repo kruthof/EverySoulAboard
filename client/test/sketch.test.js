@@ -144,6 +144,9 @@ test('the levels are an ordered ramp and `hand` differs from `medium` in the kno
   // knockout is the only thing wrong with medium") stops being true of the code that shipped it.
   const diff = Object.keys(LEVELS.medium)
     .filter((k) => LEVELS.medium[k] !== LEVELS.hand[k]);
+  assert.equal(LEVELS.hand.interiorOvershoot, LEVELS.medium.interiorOvershoot,
+    'hand and medium disagree about the interior overshoot trim, so the pair is no longer a clean '
+    + 'knockout-on / knockout-off control and the memo\'s attribution is no longer driven by them');
   assert.deepEqual(diff.sort(), ['haloScope', 'haloWiden', 'interior', 'label'].sort(),
     'hand and medium differ in more than the knockout (plus the label and the interior trim), so the '
     + 'memo\'s attribution no longer describes this code');

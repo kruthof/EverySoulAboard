@@ -213,13 +213,14 @@ if (!stable) process.exit(3);
 const OFF = Object.freeze({
   label: 'off', overshoot: 0, wave: 0, waveMax: 0, lump: 0,
   ramp: 1, silBoost: 1, interior: 1, haloWiden: 0, haloScope: 'none', doubles: false, hatch: false,
-  ground: false,
+  ground: false, interiorOvershoot: 1,
 });
 const M = LEVELS.medium;
 const KNOBS = [
   ['original', null],
   ['caps only', { ...OFF }],
-  ['+ overshoot', { ...OFF, overshoot: M.overshoot }],
+  ['+ overshoot (flat)', { ...OFF, overshoot: M.overshoot, interiorOvershoot: 1 }],
+  ['+ overshoot (silhouette only)', { ...OFF, overshoot: M.overshoot, interiorOvershoot: M.interiorOvershoot }],
   ['+ bow', { ...OFF, wave: M.wave, waveMax: M.waveMax, lump: M.lump }],
   ['+ pressure', { ...OFF, ramp: M.ramp, silBoost: M.silBoost, interior: M.interior }],
   ['+ knockout', { ...OFF, haloWiden: M.haloWiden, haloScope: M.haloScope }],

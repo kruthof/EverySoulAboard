@@ -114,6 +114,7 @@ export const LEVELS = Object.freeze({
     doubles: false,     // draw the silhouette twice, the second pass light
     hatch: false,       // loosen the `#fh` pattern
     ground: false,      // the pawn's own faint floor rule, under the piece
+    interiorOvershoot: 1, // …scaled DOWN on interior detail; see the note under `handRun`
   }),
   // The knockout arrives, on the silhouette only. Runs bow. The ramp opens up.
   medium: Object.freeze({
@@ -121,6 +122,7 @@ export const LEVELS = Object.freeze({
     overshoot: 2.0, wave: 0.013, waveMax: 3.2, lump: 0.045,
     ramp: 1.55, silBoost: 1.28, interior: 0.85,
     haloWiden: 1.1, haloScope: 'sil', doubles: false, hatch: true, ground: true,
+    interiorOvershoot: 0.45,
   }),
   // Everything on. This is the level that answers "is there such a thing as too far".
   strong: Object.freeze({
@@ -128,6 +130,7 @@ export const LEVELS = Object.freeze({
     overshoot: 3.6, wave: 0.024, waveMax: 5.5, lump: 0.075,
     ramp: 1.9, silBoost: 1.5, interior: 0.74,
     haloWiden: 1.9, haloScope: 'all', doubles: true, hatch: true, ground: true,
+    interiorOvershoot: 0.45,
   }),
   // ⭐ THE RECOMMENDATION, and it is `medium` WITH THE KNOCKOUT TAKEN OUT — which is the finding the
   // knob sheet produced rather than a taste I arrived with. See the file header's structural rule:
@@ -144,6 +147,7 @@ export const LEVELS = Object.freeze({
     overshoot: 2.0, wave: 0.013, waveMax: 3.2, lump: 0.045,
     ramp: 1.55, silBoost: 1.28, interior: 0.88,
     haloWiden: 0, haloScope: 'none', doubles: false, hatch: true, ground: true,
+    interiorOvershoot: 0.45,
   }),
 });
 
@@ -268,12 +272,19 @@ function parsePath(d) {
  * bench edge looks like). Picking between them by length rather than by a coin is what stops the set
  * reading as noise: short parts are confident, long parts waver, exactly as a real drawing does.
  *
+ * ⭐ OVERSHOOT IS SCALED DOWN ON INTERIOR DETAIL (`oScale`), AND THAT CAME OFF THE KNOB SHEET RATHER
+ * THAN OUT OF A THEORY. Applied flat, the locker's six louvre runs and its two vent panels grow past
+ * the door edges they belong to, and a piece whose whole readability is small parallel detail turns
+ * untidy — while the SAME amplitude on the same piece's corner posts is exactly the architect's tell
+ * the experiment is after. An architect's pencil runs past a corner it is establishing; it does not
+ * run past a louvre. So the amplitude follows the same silhouette/interior split the pen does.
+ *
  * ⚠️ OVERSHOOT IS CLAMPED TO A QUARTER OF THE RUN. Without the clamp, the 3.7-unit foot boxes every
  * fitting stands on (`foot()` is 7 × 4 × 6 cm) would grow past themselves at `strong` and the standoff
  * would read as a scribble instead of a foot — measured on the first render, which is what put the
  * clamp here.
  */
-function handRun(p0, p1, L, seed, el, seg) {
+function handRun(p0, p1, L, seed, el, seg, oScale = 1) {
   const [x0, y0] = p0;
   const [x1, y1] = p1;
   const dx = x1 - x0, dy = y1 - y0;
@@ -282,8 +293,9 @@ function handRun(p0, p1, L, seed, el, seg) {
   const ux = dx / len, uy = dy / len;
   const px = -uy, py = ux;              // the perpendicular
 
-  const o0 = Math.min(L.overshoot * (0.6 + 0.4 * Math.abs(noise(seed, el, seg, 'o0'))), len * 0.25);
-  const o1 = Math.min(L.overshoot * (0.6 + 0.4 * Math.abs(noise(seed, el, seg, 'o1'))), len * 0.25);
+  const over = L.overshoot * (oScale > 0 ? oScale : 0);
+  const o0 = Math.min(over * (0.6 + 0.4 * Math.abs(noise(seed, el, seg, 'o0'))), len * 0.25);
+  const o1 = Math.min(over * (0.6 + 0.4 * Math.abs(noise(seed, el, seg, 'o1'))), len * 0.25);
   const ax = x0 - ux * o0, ay = y0 - uy * o0;
   const bx = x1 + ux * o1, by = y1 + uy * o1;
   const eLen = len + o0 + o1;
@@ -600,11 +612,12 @@ function drawShape(sh, L, seed, el, gBand, maxArea) {
       const last = s.closed ? P.length : P.length - 1;
       for (let k = 0; k < last; k += 1) {
         const p0 = P[k], p1 = P[(k + 1) % P.length];
-        const d = handRun(p0, p1, L, seed, el, seg);
+        // the run's class is decided BEFORE it is drawn, because the amplitude reads it too
+        const sil = elSil || (p0[1] >= gBand && p1[1] >= gBand);
+        const io = L.interiorOvershoot == null ? 1 : L.interiorOvershoot;
+        const d = handRun(p0, p1, L, seed, el, seg, sil ? 1 : io);
         seg += 1;
-        if (!d) continue;
-        const onGround = p0[1] >= gBand && p1[1] >= gBand;
-        runs.push({ d, sil: elSil || onGround });
+        if (d) runs.push({ d, sil });
       }
     }
   }
