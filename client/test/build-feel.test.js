@@ -29,7 +29,7 @@ import { dirname, join } from 'node:path';
 
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { deckSlots, TOOL_LABEL, roomScene, scenePlacement } from '../src/ui/room-model.js';
+import { deckSlots, TOOL_LABEL, roomScene, scenePlacement, tileFromCanvasXY } from '../src/ui/room-model.js';
 import {
   PLACE_REFUSAL_TEXT, placeRefusedText, DEVICE_PLACE_COST_PARTS,
 } from '../src/ui/build-cost-model.js';
@@ -312,28 +312,98 @@ test('⭐⭐ A REPAINT BETWEEN DOWN AND UP NO LONGER EATS THE PRESS', async () =
  * MUTATION: use `tileAt(e)` at pointerup instead of `press.tile` ⇒ RED whenever the 3 px crosses a
  * tile edge; the fixture picks a point near the edge so it does.
  */
-test('the command goes to the tile the press STARTED on (the ghost agreement)', () => {
+/**
+ * ⛔⛔ THIS LEG WAS SPLIT IN TWO ON 2026-08-06 BECAUSE ONE OF THEM HAD GONE BLIND, AND THE BLINDING
+ * IS CLAUDE.md's 9th SHAPE HAPPENING INSIDE THIS FILE.
+ *
+ * It used to be a single test arming `table` and modelling the mid-press repaint with two stand-in
+ * `data-tile` NODES. That model was itself a correction — the quoted paragraph is kept below because
+ * it is still true of the family it was written for. But the place-resolution package made `table` a
+ * FLOOR-RESOLVING tool (`resolvesByFloor`), so `tileAt` never consults `e.target` for it any more:
+ * both stand-in nodes are ignored, both ends of the gesture resolve to the same pointer pixels, and
+ * the leg passes no matter what the release does. MEASURED: the named mutation
+ * (`resolveCanvasPress(e, tileAt(e))` at pointerup) is RED on base and **GREEN** on the fixed tree —
+ * the guard survived, still green, holding nothing.
+ *
+ * ⇒ TWO LEGS, ONE PER RESOLUTION FAMILY, because after that package there are two and a single
+ * fixture cannot cover both:
+ *   A. the PLACE family resolves on the FLOOR PLANE, so the repaint that matters is the POINTER
+ *      crossing a tile edge — and the offset must be small enough to stay a press (6 px slop).
+ *   B. the PIECE family (strip/erase/move/demolish) still resolves off the ink, so the NODE model
+ *      is the right one there and is kept verbatim.
+ * Both must red under the same mutation, or "the command goes to the tile the press started on"
+ * is a claim about only half the palette.
+ */
+test('the command goes to the tile the press STARTED on — A, the PLACE family on the floor plane', () => {
   armViaButton('table');
   const a = { x: HOLD.rx + 3, y: HOLD.ry + 3 };
+  const b = { x: HOLD.rx + 4, y: HOLD.ry + 3 };   // ADJACENT IN X — same projected y, so the move is pure dx
+  const pa = at(a.x, a.y), pb = at(b.x, b.y);
+  // The tile boundary is exactly halfway between two adjacent tile centres (the oblique is affine
+  // and a step in tx moves only px), so a 4 px straddle of the midpoint crosses ONE edge and stays
+  // inside the 6 px press slop. A press at the tile's CENTRE could not: the tile is ~95 px wide.
+  const midX = Math.round((pa.clientX + pb.clientX) / 2);
+  const down = { clientX: midX - 2, clientY: pa.clientY };
+  const up = { clientX: midX + 2, clientY: pa.clientY };
+  // ⛔ THE PRECONDITION IS THE WHOLE LEG. If the two points do not actually resolve to two DIFFERENT
+  // tiles then "the command followed the down tile" is satisfied by any implementation at all — the
+  // vacuity the node model fell into. Asserted through the SHIPPED inverse, not by arithmetic.
+  const rect = sceneRectFor(HOLD);
+  const tDown = tileFromCanvasXY(down.clientX, down.clientY, rect, HOLD);
+  const tUp = tileFromCanvasXY(up.clientX, up.clientY, rect, HOLD);
+  assert.deepEqual([tDown.x, tDown.y], [a.x, a.y], 'the DOWN point does not resolve to tile a');
+  assert.deepEqual([tUp.x, tUp.y], [b.x, b.y],
+    'the UP point resolves to the same tile as the down point, so this leg cannot tell a '
+    + 'down-capture from a release-time re-read and would pass either way');
+  sent.length = 0;
+  firePointer(canvas, 'pointerdown', { button: 0, ...down });
+  firePointer(canvas, 'pointerup', { button: 0, ...up });
+  const p = places();
+  assert.equal(p.length, 1, `${p.length} commands for one press`);
+  assert.equal(`${p[0].x},${p[0].y}`, `${a.x},${a.y}`,
+    'the command followed the RELEASE pixels, not the tile the press started on. The build ghost '
+    + 'draws at the tile the last mousemove resolved, so a release-time re-read moves the order out '
+    + 'from under a gesture the player had already aimed.');
+  armViaButton('table');
+});
+
+/**
+ * B — THE PIECE FAMILY, and the paragraph below is the original leg's, unchanged, because it is
+ * exactly right about the tools that still resolve off the ink:
+ *
+ *   "THE REPAINT IS MODELLED AT THE SEAM `tileAt` ACTUALLY READS. Tier one of `tileAt` is
+ *    `e.target.closest('[data-tile]')` — the tile a standing piece was DRAWN for — so what a repaint
+ *    changes mid-press is WHICH NODE is under the pointer, not the pointer's pixels. Two stand-in
+ *    nodes carrying the two `data-tile` values reproduce exactly that, and a pixel offset cannot:
+ *    the first draft moved the release 3 px, which does not cross a ~95 px tile edge, and the
+ *    'resolve at UP' mutation SURVIVED GREEN against it. Measured, then fixed."
+ *
+ * DEMOLISH is the tool used here because it is the only PIECE-subject tool committed by this same
+ * single-press path — strip and erase are SWEEP tools and go through `onCanvasDown`/`onCanvasUp`,
+ * a different gesture with its own legs. A pending design is put on BOTH candidate tiles so the
+ * command fires whichever tile wins, and the leg is purely about WHICH.
+ */
+test('the command goes to the tile the press STARTED on — B, the PIECE family on the ink', () => {
+  const a = { x: HOLD.rx + 3, y: HOLD.ry + 3 };
   const b = { x: HOLD.rx + 5, y: HOLD.ry + 5 };
-  // ⭐⭐ THE REPAINT IS MODELLED AT THE SEAM `tileAt` ACTUALLY READS. Tier one of `tileAt` is
-  // `e.target.closest('[data-tile]')` — the tile a standing piece was DRAWN for — so what a repaint
-  // changes mid-press is WHICH NODE is under the pointer, not the pointer's pixels. Two stand-in
-  // nodes carrying the two `data-tile` values reproduce exactly that, and a pixel offset cannot:
-  // the first draft moved the release 3 px, which does not cross a ~95 px tile edge, and the
-  // "resolve at UP" mutation SURVIVED GREEN against it. Measured, then fixed.
+  Hud.renderDesigns({ type: 'designs', cells: [
+    [a.x, a.y, DECK1, 0, 2, 3], [b.x, b.y, DECK1, 0, 2, 3],
+  ] });
+  armViaButton('demolish');
   const nodeFor = (t) => { const n = new RzEl(doc, 'g'); n.dataset.tile = `${t.x},${t.y}`; n.parentNode = canvas; return n; };
   const pt = at(a.x, a.y);
   sent.length = 0;
   firePointer(nodeFor(a), 'pointerdown', { button: 0, ...pt });
   firePointer(nodeFor(b), 'pointerup', { button: 0, ...pt });   // the piece under the pointer changed
-  const p = places();
-  assert.equal(p.length, 1, `${p.length} commands for one press`);
-  assert.equal(`${p[0].x},${p[0].y}`, `${a.x},${a.y}`,
-    'the command followed the RELEASE target, not the tile the press started on. The build ghost '
-    + 'draws at the tile the last mousemove resolved, so a release-time re-read moves the order out '
-    + 'from under a gesture the player had already aimed at a piece they could see.');
-  armViaButton('table');
+  const cancels = sent.filter((o) => o && o.cmd === 'build');
+  assert.equal(cancels.length, 1,
+    `${cancels.length} build-cancels for one press — the fixture put a pending design on both tiles, `
+    + 'so exactly one command must go');
+  assert.equal(`${cancels[0].x},${cancels[0].y}`, `${a.x},${a.y}`,
+    'DEMOLISH followed the RELEASE target, not the tile the press started on — a release-time '
+    + 're-read revokes an order the player never aimed at.');
+  Hud.renderDesigns({ type: 'designs', cells: [] });
+  armViaButton('demolish');
 });
 
 /**

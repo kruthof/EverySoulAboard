@@ -145,7 +145,7 @@ await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
 // ───────────────────────────────────────────────────────────── 3. into the room
 await verifiedClick({
   what: `the Room Zoom is open on ${ROOM.s.anchorName}`,
-  target: () => centre(`.pl-room[data-anchor="${ROOM.s.anchorName}"] rect`),
+  target: () => centre(`.pl-room[data-anchor="${ROOM.s.anchorName}"]`),
   // ⛔ SETTLE ON A STATE, NOT ON `centre('.rz-canvas')` — that node exists while the room is SHUT and
   // answers a zero-size (truthy) rect. `body.roomzoom-open` is the class the surface itself sets.
   settled: async () => (await evaluate("document.body.classList.contains('roomzoom-open')?1:0")) === 1,

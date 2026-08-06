@@ -179,7 +179,7 @@ await dismissOnboarding({ centre, clickAt, evaluate, log, chrome });
 
 await verifiedClick({
   what: `the Room Zoom is open on ${ROOM.s.anchorName}`,
-  target: () => centre(`.pl-room[data-anchor="${ROOM.s.anchorName}"] rect`),
+  target: () => centre(`.pl-room[data-anchor="${ROOM.s.anchorName}"]`),
   settled: async () => (await evaluate("document.body.classList.contains('roomzoom-open')?1:0")) === 1,
   clickAt, log, chrome, code: 7,
 });

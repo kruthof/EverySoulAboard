@@ -778,6 +778,47 @@ test('VR-P3-a: right-clicking a drawn MACHINE offers that machine, not the tile 
     'the order names the tile the floor inverse chose rather than the piece that was pressed');
 });
 
+/**
+ * ⭐⭐ …AND IT STILL DOES **WITH A BUILD TOOL IN HAND** — the override the 2026-08-06 package added,
+ * and the leg that makes it observable.
+ *
+ * ⛔ WHY IT IS NEEDED NOW. `tileAt` no longer asks the piece tier unconditionally: it derives the
+ * tier order from the ARMED TOOL, because a placement aimed at bare floor was being answered with the
+ * tile of whatever tall piece's ink covered that floor's own centre (measured live: 40 of 96 presses
+ * on the cryo bay, two entire rows of clean floor). Tools whose subject is a piece — strip, erase,
+ * move, demolish — keep the ink's answer; every tile-subject tool now resolves on the floor plane.
+ *
+ * ⛔ THE RIGHT-CLICK IS NEITHER, AND THAT IS THE HOLE THIS CLOSES. Its subject is ALWAYS a machine,
+ * whatever happens to be armed, so `onCanvasContext` passes `tileAt(e, 'piece')` explicitly. The leg
+ * above cannot see that: it right-clicks with NOTHING armed, and with nothing armed the derived mode
+ * is already 'piece', so the override is invisible there. MEASURED — deleting the `'piece'` argument
+ * left the ENTIRE suite green (mutation M8, 1819 tests, zero red). This leg is what changed that.
+ *
+ * MUTATION: `tileAt(e, 'piece')` → `tileAt(e)` in `onCanvasContext` ⇒ RED here, and ONLY here.
+ */
+test('VR-P3-a: the right-click takes the piece even with a PLACE tool armed — its subject is never '
+  + 'the armed verb\'s', () => {
+  prime([ADA], null);
+  arm('lamp');   // `cls: functional` — a tile-subject tool, so `tileAt` would resolve by FLOOR
+  const piece = new RzEl(doc, 'g');
+  piece.setAttribute('data-tile', WING[0] + ',' + WING[1]);
+  piece.dataset.tile = WING[0] + ',' + WING[1];
+  piece.parentNode = canvas();
+  // Pointer over CELL's floor, ink of the WING machine under it — the two answers differ by
+  // construction, which is what makes this leg able to fail.
+  fire(piece, 'contextmenu', atTile(CELL));
+  assert.equal(menu().hidden, false,
+    'the menu did not open at all with a build tool armed. A right-click whose answer follows the '
+    + 'ARMED tool resolves a machine press onto the floor plane and offers nothing.');
+  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR SOLAR WING',
+    'with LAMP armed the right-click offered the machine the FLOOR point landed on rather than the '
+    + 'one whose ink the player pointed at');
+  clickRow();
+  assert.deepEqual(orders(),
+    [{ cmd: 'prioritise', cid: ADA.cid, x: WING[0], y: WING[1], deck: RECT.deck }],
+    'the order names the floor tile under the pointer instead of the machine that was pressed');
+});
+
 // ⭐ MUTATION 2 — "send the machine at the wrong tile". The two-machine fixture: the SECOND device,
 // at a different x AND a different y from the first, so sending the first machine's tile, the focus
 // origin, or the room's corner all fail here while passing the leg above.

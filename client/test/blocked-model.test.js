@@ -801,6 +801,14 @@ const canvasMountOrder = () => {
     // nothing whatsoever to say about the layer now sitting between them. That is CLAUDE.md's 4th
     // shape exactly: a guard whose SCOPE excludes the violation. A two-member order pin over a
     // three-member stack is not a weaker pin, it is a pin about a different stack.
+    // ⭐⭐ WIDENED TO FOUR FOR THE DRAW-IN (lane/draw-reveal, 2026-08-06), BY HAND AGAIN AND FOR THE
+    // SAME REASON THE NOTE ABOVE GIVES: `#rz-reveal` mounts between `#rz-layers` and `#rz-ghost`,
+    // and a three-member order pin over a four-member stack would have gone on comparing three
+    // indices while saying nothing about the new sibling between two of them. The widening is
+    // MEASURED rather than asserted — the leg below drives it in BOTH directions (move the reveal
+    // above the ghost ⇒ red; move it below the scene ⇒ red), because a pin whose only evidence is
+    // that it stayed green is a pin about a different stack.
+    reveal: block.indexOf("id=\"rz-reveal\""),
     ghost: block.indexOf("id=\"rz-ghost\""),
     pawnlay: block.indexOf("id=\"rz-pawnlay\""),
   };
@@ -1000,11 +1008,13 @@ test('DRIVEN: the blocked layer is ADDITIVE — over the mark, under the pawns',
     'a figure is being drawn INSIDE the repainted scene as well. That copy is destroyed ten times a '
     + 'second (so it cannot be tweened) and it sits UNDER the blocked wash, which is the exact defect '
     + 'the overlay removes — with the overlay copy on top, nobody would ever notice.');
-  const { layers: iLayers, ghost: iGhost, pawnlay: iPawnLay } = canvasMountOrder();
-  assert.ok(iLayers >= 0 && iGhost >= 0 && iPawnLay >= 0,
-    'the THREE mounts are not all inside the `.rz-canvas` block of `buildSkeleton` — the stacking '
+  const {
+    layers: iLayers, reveal: iReveal, ghost: iGhost, pawnlay: iPawnLay,
+  } = canvasMountOrder();
+  assert.ok(iLayers >= 0 && iReveal >= 0 && iGhost >= 0 && iPawnLay >= 0,
+    'the FOUR mounts are not all inside the `.rz-canvas` block of `buildSkeleton` — the stacking '
     + 'guarantee has no basis and this leg is vacuous. (Widened from two at the build-ghost × '
-    + 'pawn-tween merge; see canvasMountOrder.)');
+    + 'pawn-tween merge and from three at the draw-in; see canvasMountOrder.)');
   assert.ok(iPawnLay > iLayers,
     'the pawn overlay is stacked UNDER the scene, so a near-black scrim washes over every crew member '
     + 'standing on a blocked tile. Both view files state this ordering as load-bearing: a layer that '
@@ -1019,10 +1029,22 @@ test('DRIVEN: the blocked layer is ADDITIVE — over the mark, under the pawns',
   assert.ok(iPawnLay > iGhost,
     'the BUILD GHOST is stacked OVER the crew. A layer that explains the floor must never hide a '
     + 'person: hovering a tile a crew member is standing on would draw the preview across her.');
-  // …and the whole order in one statement, so a future fourth sibling has one line to read.
-  assert.deepEqual([iLayers, iGhost, iPawnLay].slice().sort((a, b) => a - b), [iLayers, iGhost, iPawnLay],
-    'the three canvas siblings are not mounted in the pinned paint order '
-    + '`rz-layers < rz-ghostlayer < rz-pawnlay`');
+  // ⛔ AND THE SAME RULE APPLIED TO THE FOURTH LAYER, in both directions, because the draw-in is the
+  // only sibling whose position is a JUDGEMENT rather than a consequence.
+  assert.ok(iReveal > iLayers,
+    'the DRAW-IN overlay is stacked UNDER the scene, so a piece drawing itself in is hidden behind '
+    + 'the floor, the zone tint and every mark on its own tile — and the furniture layer is '
+    + 'deliberately drawing NOTHING there for the duration, so the tile reads as empty.');
+  assert.ok(iGhost > iReveal,
+    'the BUILD GHOST is stacked UNDER the draw-in, so hovering the tile a builder has just finished '
+    + 'draws the preview behind the piece it is previewing over. The reveal is the LAST thing the '
+    + 'player put down; the ghost is the NEXT one, and the next one goes on top.');
+  // …and the whole order in one statement, so a future fifth sibling has one line to read.
+  assert.deepEqual(
+    [iLayers, iReveal, iGhost, iPawnLay].slice().sort((a, b) => a - b),
+    [iLayers, iReveal, iGhost, iPawnLay],
+    'the four canvas siblings are not mounted in the pinned paint order '
+    + '`rz-layers < rz-revealer < rz-ghostlayer < rz-pawnlay`');
 });
 
 // ═════════════════════════════════════════════════════════════════════ the scan controls, both ways

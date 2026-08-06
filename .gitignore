@@ -60,3 +60,5 @@ client/tools/shots-polish/
 client/tools/shots-build-tray/
 # — lane/m4-2 (the Persona window) —
 client/tools/shots-persona/
+# — lane/draw-reveal (the build-completion draw-in: the frame sequence + its timeline.json) —
+client/tools/shots-draw-reveal/

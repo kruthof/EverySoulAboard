@@ -139,16 +139,41 @@ namespace Perilune.Tests
             Leg("not-placeable", DeviceKind.Door, clear, PlaceRefusal.NotPlaceable);
             // (2) OUT OF BOUNDS.
             Leg("out-of-bounds", DeviceKind.Table, new Int3(-1, -1, 0), PlaceRefusal.OutOfBounds);
-            // (3) NOT WALKABLE — found by asking the world, never hand-written. ⚠️ THE PREDICATE IS
-            //     JUST "unwalkable", and the first draft's extra `&& GetWall == Void` term was wrong
-            //     in a way worth recording: `Execute` tests Walkable BEFORE it tests the wall, so a
-            //     rubble tile reaches the NotWalkable arm and never the Blocked one. The narrower
-            //     predicate matched NOTHING on the wreck and the leg went red for the wrong reason.
-            Assert.IsTrue(TryFindTile(sim, p => (sim.World.GetFlags(p) & TileFlags.Walkable) == 0, out var unwalkable),
-                "no unwalkable tile on the wreck at all — the NotWalkable arm cannot be reached here");
-            Leg("not-walkable", DeviceKind.Table, unwalkable, PlaceRefusal.NotWalkable);
-            // (4) BLOCKED is NOT driven here, and the leg below says why with a census rather than
-            //     with prose. See `TheBlockedArmIsABackstop_NotAPath`.
+            // (4) BLOCKED — A WALL SAYS IT IS A WALL, and this leg is the owner's own defect.
+            //     ⛔ THE PARAGRAPH THAT STOOD HERE IS KEPT, QUOTED, BECAUSE IT DOCUMENTED THE BUG AS
+            //     IF IT WERE A RULE: *"`Execute` tests Walkable BEFORE it tests the wall, so a rubble
+            //     tile reaches the NotWalkable arm and never the Blocked one."* True as written, and
+            //     it is exactly what the owner hit — he pressed a wall and the game answered "no one
+            //     could stand there", which he reported as wrong because it IS wrong. Walkable is
+            //     DERIVED from the wall (`World.RecomputeFlags`), so asking it first reports the
+            //     symptom and hides the cause. `Execute` now asks floor, then wall, then the flag.
+            //     ⭐ MEASURED BEFORE THE REORDER on the shipped wreck: 552 walled tiles, 552 ×
+            //     NotWalkable, Blocked fired 0 times in 1620 presses.
+            Assert.IsTrue(TryFindTile(sim, p => sim.World.GetWall(p) != TileDefs.Void, out var walled),
+                "no walled tile on the wreck at all — the Blocked arm cannot be reached here");
+            Leg("blocked-by-wall", DeviceKind.Table, walled, PlaceRefusal.Blocked);
+
+            // (9) NO FLOOR — open space, not a room. ⚠️ AUTHORED RATHER THAN FOUND, and that is a
+            //     statement about the SHIPS rather than a shortcut: all three authored ships are
+            //     fully carved, so a census finds ZERO void-floor tiles in bounds and there is
+            //     nothing to point at (the wreck's 1620 tiles are 995 clear + 73 device + 552 wall
+            //     and not one void). The tile is made void here through `World.SetFloor` — the same
+            //     writer the world uses — and the precondition is asserted so this can never become a
+            //     leg that passes because it pressed something else.
+            //     ⛔ IT MATTERS BECAUSE IT WAS THE OTHER SWALLOWED CAUSE: `Execute` never asked the
+            //     `GetFloor == Void` clause at all (the build-feel reviewer FILED that hole), so a
+            //     press on open space also came out as "nobody could stand here".
+            Assert.IsTrue(TryFindTile(sim, p => sim.World.GetFloor(p) == TileDefs.Void, out _) == false,
+                "a void-floor tile already exists in bounds — then this leg should FIND it rather "
+                + "than author one, and the sentence above about fully-carved ships is now false");
+            var voidTile = new Int3(clear.X, clear.Y, clear.Z);
+            sim.World.SetFloor(voidTile, TileDefs.Void);
+            Assert.AreEqual(TileDefs.Void, sim.World.GetFloor(voidTile), "the void write did not take");
+            Leg("no-floor", DeviceKind.Table, voidTile, PlaceRefusal.NoFloor);
+            sim.World.SetFloor(voidTile, TileDefs.Floor);   // put the deck back for the control below
+            Assert.AreNotEqual(0, sim.World.GetFlags(voidTile) & TileFlags.Walkable,
+                "restoring the floor did not restore Walkable, so the control press below would "
+                + "measure the hole this leg just dug rather than a legal placement");
             // (5) OCCUPIED — an AUTHORED device's tile. ⚠️ THIS LEG USED TO PLACE ONE FIRST AND PRESS
             //     AGAIN, AND THE BLUEPRINT PACKAGE INVALIDATED THAT: a successful press now lays a
             //     SITE, not a device, so pressing the same tile twice is `AlreadyQueued`. The two
@@ -192,12 +217,14 @@ namespace Perilune.Tests
                 "two different causes ship the SAME reason byte, so the player is told the same thing "
                 + "about two different problems: " + string.Join(", ",
                     byReason.Select(g => string.Join(" and ", g.Select(kv => kv.Key)) + " both = " + g.Key)));
-            // SIX arms are driven HERE — not-placeable, out-of-bounds, not-walkable, occupied,
-            // already-queued, cannot-pay. The enum has eight members: `None` is the sentinel that is
-            // never published, `Blocked` is unreachable by construction
-            // (`TheBlockedArmIsABackstop_NotAPath`) and `TooManyQueued` needs a full queue and has its
-            // own test (`TheQueueCapNamesItself`). Every member is accounted for, in exactly one place.
-            Assert.AreEqual(6, seen.Count, "not all six arms driven here were driven");
+            // SEVEN arms are driven HERE — not-placeable, out-of-bounds, blocked-by-wall, no-floor,
+            // occupied, already-queued, cannot-pay. The enum has NINE members: `None` is the sentinel
+            // that is never published, `TooManyQueued` needs a full queue and has its own test
+            // (`TheQueueCapNamesItself`), and `NotWalkable` is the one that is now unreachable by
+            // construction — the census in `NoWallEverSaysNobodyCouldStandHere` is what says so, and
+            // it is the SAME instrument that used to say it about `Blocked`. The two swapped places
+            // on 2026-08-06 and the accounting swapped with them. Every member, in exactly one place.
+            Assert.AreEqual(7, seen.Count, "not all seven arms driven here were driven");
             GC.KeepAlive(gs);
         }
 
@@ -217,28 +244,49 @@ namespace Perilune.Tests
         /// at an absence claim.</para>
         /// </summary>
         [Test]
-        public void TheBlockedArmIsABackstop_NotAPath()
+        public void NoWallEverSaysNobodyCouldStandHere()
         {
             foreach (var ship in new[] { ShipChoice.Wreck, ShipChoice.Grid, ShipChoice.Slice })
             {
                 var host = SimHost.Build(SimHost.DefaultSeedFor(ship), ship: ship);
-                var w = host.Sim.World;
-                int walkableAndWalled = 0, unwalkable = 0;
+                var sim = host.Sim;
+                var w = sim.World;
+                // Fund it past any price so `CannotPay` can never be the answer a wall gets.
+                Assert.IsTrue(TryFindPlaceableTile(sim, out var purse),
+                    ship + ": nowhere to stock Parts, so every press below could refuse for money");
+                StockParts(sim, purse, 99999);
+                sim.Tick();
+
+                int walls = 0, saidWall = 0, saidStand = 0, saidOther = 0;
+                var otherReasons = new SortedSet<string>();
                 for (int z = 0; z < w.Depth; z++)
                     for (int y = 0; y < w.Height; y++)
                         for (int x = 0; x < w.Width; x++)
                         {
                             var p = new Int3(x, y, z);
-                            bool walk = (w.GetFlags(p) & TileFlags.Walkable) != 0;
-                            if (!walk) unwalkable++;
-                            else if (w.GetWall(p) != TileDefs.Void) walkableAndWalled++;
+                            if (w.GetWall(p) == TileDefs.Void) continue;
+                            walls++;
+                            var evs = PlaceAndRead(sim, DeviceKind.Table, p);
+                            if (evs.Length != 1) { saidOther++; otherReasons.Add("published " + evs.Length); continue; }
+                            var r = (PlaceRefusal)evs[0].Reason;
+                            if (r == PlaceRefusal.Blocked) saidWall++;
+                            else if (r == PlaceRefusal.NotWalkable) saidStand++;
+                            else { saidOther++; otherReasons.Add(r.ToString()); }
                         }
-                Assert.Greater(unwalkable, 0, ship + ": the scan found no unwalkable tile at all, so "
-                    + "this census is not looking at a real world and its zero below means nothing");
-                Assert.AreEqual(0, walkableAndWalled,
-                    ship + ": " + walkableAndWalled + " tiles are WALKABLE and WALLED. The Blocked "
-                    + "arm of PlaceDeviceCommand is now reachable by an ordinary press and must be "
-                    + "DRIVEN in EveryRefusalArmNamesItsOwnReason rather than left as a backstop.");
+
+                // NON-VACUITY BY INCLUSION (the 4th trap shape): a census that pressed nothing proves
+                // nothing, and "0 said NotWalkable" is satisfied perfectly by pressing zero walls.
+                Assert.Greater(walls, 0,
+                    ship + ": the census found no walled tile at all, so its zero below is vacuous");
+                Assert.AreEqual(walls, saidWall,
+                    ship + ": " + saidWall + " of " + walls + " walled tiles named the wall. "
+                    + saidStand + " said NOBODY-COULD-STAND (the owner's defect, 2026-08-06 — the "
+                    + "derived Walkable flag asked before the wall that sets it), " + saidOther
+                    + " said something else [" + string.Join(",", otherReasons) + "].");
+                Assert.AreEqual(0, saidStand,
+                    ship + ": a wall reported PlaceRefusal.NotWalkable. That member is the "
+                    + "corrupt-state backstop now — if the arm order in PlaceDeviceCommand.Execute "
+                    + "has been swapped back, this is the leg that says so.");
             }
         }
 
