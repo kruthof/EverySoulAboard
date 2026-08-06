@@ -295,12 +295,18 @@ export function scene(idPrefix) {
 // is bounded and pinned — `sketch.amplitudeBound()` is the bound, `client/test/sketch-adoption.test.js`
 // measures it over all four catalogues, every piece, both directions.
 //
-// ⚠️ IT IS OPT-IN PER CATALOGUE, and the opt-outs are as deliberate as the opts-in. The four PAPER
-// catalogues (fittings 34, machines 13, paper-fixtures 14, paper-resources 9) pass `sketched: true`.
-// MATERIALS (`paper-materials.js`) do NOT: a wall/floor skin's hatch is a different idiom — a
-// tiled `<pattern>` over a full-bleed face rather than a drawn object — and the owner has not seen
-// one treated. That is FILED, not decided. The pre-redesign WARM set (`objects.js`, `fixtures.js`,
-// `resources.js`, `cryo.js`) is not treated either: it is the idiom the redesign is replacing.
+// ⚠️ IT IS OPT-IN PER CATALOGUE, and the opt-outs are as deliberate as the opts-in. All FIVE paper
+// catalogues pass `sketched: true` — fittings 34, machines 13, paper-fixtures 14, paper-resources 9
+// and, since the owner's *"we need to update ALL with the sketch style we defined"* (2026-08-05),
+// the 12 MATERIAL skins. The pre-redesign WARM set (`objects.js`, `fixtures.js`, `resources.js`,
+// `cryo.js`) is not treated: it is the idiom the redesign is replacing.
+//
+// ⭐ AND THE `cfg` BAG IS WHERE A CATALOGUE SAYS THE REST OF ITS CHOICE, one named knob at a time.
+// `paper-materials.js` passes `ground: false` — the ground rule is the line a thing STANDING on a
+// deck is drawn resting on, and a tiling skin IS the deck. Measured before the knob existed: all
+// twelve skins drew their rule OUTSIDE their own tile edge, and one 12 × 8 room floor drew 96 of
+// them. Naming it here rather than special-casing materials inside `sketch()` keeps the catalogue
+// split in the catalogues, which is the only place that knows it.
 
 /** THE ADOPTED LEVEL. One string, read by the seam and by every guard — never re-typed. */
 export const SKETCH_LEVEL = 'strong';
@@ -314,8 +320,10 @@ export const SKETCH_LEVEL = 'strong';
  *   fragment (the geometry guards' door: they ask about the projection, which the treatment is not
  *   allowed to move) and `sketchSeed` to override the hand's identity.
  * @param {(s: object, env: object) => void} paint
- * @param {{sketched?: boolean, seed?: string}} [cfg] the CATALOGUE's standing choice (and, for a
- *   wrecked twin, the identity whose hand it must share); `opts.sketch === false` wins over both.
+ * @param {{sketched?: boolean, seed?: string, ground?: boolean}} [cfg] the CATALOGUE's standing
+ *   choice (and, for a wrecked twin, the identity whose hand it must share); `opts.sketch === false`
+ *   wins over both. `ground: false` turns off the treatment's floor rule for this catalogue —
+ *   see the paragraph above and `sketch()`'s own `ground` option.
  */
 export function item(itemId, opts, paint, cfg = {}) {
   const w = opts.w == null ? 100 : opts.w;

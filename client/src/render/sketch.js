@@ -14,19 +14,28 @@
 //
 // ── WHO CALLS IT ──────────────────────────────────────────────────────────────────────────────
 // `items/helpers.js`'s `item()` — the one door every builder already goes through — with
-// `{ sketched: true }` from the four PAPER catalogues' harnesses and from `wrecked.buildWrecked`
-// for their twins. That is 34 fittings + 13 machines + 14 paper-fixtures + 9 paper-resources, plus
-// the 47 twins of those pieces. MATERIALS (`paper-materials.js`) are NOT treated: a wall or floor
-// skin is a tiled `<pattern>` over a full-bleed face, a different idiom from a drawn object, and
-// the owner has not seen one treated. FILED, not decided. The pre-redesign WARM set is not treated
-// either — it is the idiom being replaced.
+// `{ sketched: true }` from the FIVE paper catalogues' harnesses and from `wrecked.buildWrecked`
+// for their twins. That is 34 fittings + 13 machines + 14 paper-fixtures + 9 paper-resources +
+// 12 material skins, plus the 47 twins of those pieces.
+//
+// ⭐ MATERIALS JOINED MID-PACKAGE, ON THE OWNER'S WORDS — *"we need to update ALL with the sketch
+// style we defined"* (2026-08-05). The brief had FILED them as an open question; the owner closed
+// it. Two things came out of the extension and both are load-bearing: the hatch knob was rewriting
+// EVERY `<pattern>` and would have deleted four skins' identifying fields (see `isKitHatch`), and
+// the GROUND RULE has no meaning on a tiling skin — `paper-materials.js` passes `ground: false` at
+// the seam. See the `ground` option on `sketch()` for the measurement that decided it.
+//
+// The pre-redesign WARM set is not treated — it is the idiom being replaced.
 //
 // ── GEOMETRY AUTHORITY — the owner's caveat, as a structure ───────────────────────────────────
 // This module's INPUT is a string and its OUTPUT is a string. The oblique projection, every `SPECS`
 // centimetre, `roomFrame`/`frameFor`, the per-piece drawing scale and every placement transform
 // have already run when it is called, and it can reach none of them: it can only move an EMITTED
 // PATH POINT, and by how much is bounded by `amplitudeBound()` below and measured — every piece of
-// all four catalogues, both directions, per element — by `client/test/sketch-adoption.test.js`.
+// the four STANDING catalogues and all 47 twins, both directions, per element — by
+// `client/test/sketch-adoption.test.js`. The twelve MATERIAL skins carry their own amplitude and
+// exact-pitch legs in `client/test/paper-materials.test.js`, because what must survive on a skin is
+// a centimetre PITCH rather than a member's position.
 // The catalogues' own projection guards therefore keep asking their questions of the RAW fragment
 // (`item(..., { sketch: false })`), which is the geometry, and each carries a treated leg with the
 // amplitude tolerance stated EXPLICITLY. The displacement pin is the bridge between the two.
@@ -198,15 +207,29 @@ export const GROUND_CLASS = 'pl-sk-ground';
 /**
  * The class the DOUBLED silhouette pass carries.
  *
- * ⛔ IT EXISTS FOR A GUARD, AND THE GUARD IS THE STRONGEST STATEMENT IN THIS PACKAGE. Every primary
- * run this module emits is COLLINEAR with the segment it replaces — `handRun` moves its ends ALONG
- * the run's own axis and bows the curve about it, so the chord from first point to last lies on the
- * original line to within rounding (measured across the 34 fittings: 0.0069 units, worst case). That
- * makes "the treatment did not move the drawing" an EXACT test rather than a bounded one, and it
- * catches what the amplitude bound cannot: a systematic error SMALLER than the amplitude — a 2%
- * scale, a translation, a rotation. The doubled pass is the one exception (`shiftRun` nudges it off
- * its own line on purpose), so it has to be identifiable, and a class is how a guard names a thing
- * instead of inferring it from an opacity that a builder is also allowed to set.
+ * ⛔ IT EXISTS FOR A GUARD, AND THAT GUARD IS **ONE OF TWO** — say the pair out loud, because the
+ * first draft of this paragraph claimed the collinearity leg covered everything and it does not.
+ * "The treatment did not move the drawing" is an EXACT statement rather than a bounded one, which is
+ * what catches a systematic error SMALLER than the amplitude (a 2% scale, a translation, a
+ * rotation) — but it takes two sentences, because this module draws two kinds of thing:
+ *
+ *   STRAIGHT RUNS → COLLINEARITY. `handRun` moves a run's ends ALONG its own axis and bows the curve
+ *   ABOUT that axis, so the chord from first emitted point to last lies on the original segment's
+ *   own line to within rounding (measured across the 34 fittings: 0.0069 units, worst case).
+ *
+ *   ROUND MEMBERS → EXACT PER-AXIS RADII. A chord has no meaning for `handEllipse`, which replaces a
+ *   whole closed curve rather than a segment — so the round members are pinned by RECOVERING the
+ *   per-sample radius nudge from each axis separately (`k = (x − cx)/(rx·cos t)`, and the same in y)
+ *   and requiring `|k − 1| ≤ lump`, the two axes to AGREE, and the twelve samples' mean to be the
+ *   centre. ⛔ That leg exists because its absence was measured, and so was its size: 234 of 1548
+ *   pristine geometry rows are round (464 of 2719 with the twins). With only the bound under them,
+ *   scaling every ellipse by ×1.02 through ×1.06 ran the whole suite GREEN, and so did an ry-only
+ *   ×1.05 — a HEADING on a thing the catalogue draws LEVEL.
+ *
+ * Both legs live in `client/test/sketch-adoption.test.js`. The doubled pass is the one exception to
+ * the first (`shiftRun` nudges it off its own line on purpose), so it has to be identifiable, and a
+ * class is how a guard names a thing instead of inferring it from an opacity that a builder is also
+ * allowed to set.
  */
 export const DOUBLE_CLASS = 'pl-sk-2nd';
 
@@ -568,6 +591,12 @@ function pen(sw, L, sil) {
 /**
  * IS THIS PATTERN THE KIT'S `#fh` HATCH, or somebody's structural field?
  *
+ * ⚠️ MODULE-PRIVATE, DELIBERATELY, and prose elsewhere used to write it `sketch.isKitHatch` as
+ * though it were an export. It is not one, and it does not need to be: what a guard should pin is
+ * the BEHAVIOUR either side of it — the kit's hatch really is loosened, a material's own field
+ * really is passed through untouched — and `paper-materials.test.js` drives both, on the shipped
+ * output. A predicate exported only so a test can call it is a test of the implementation.
+ *
  * ⛔ THE ANSWER USED TO BE "EVERY PATTERN IS THE HATCH", AND THAT WAS A LATENT DEFECT THE MATERIALS
  * EXTENSION FOUND (2026-08-05). `loosenHatch` REPLACES a pattern's whole interior with three
  * jittered rules on a paper ground and widens its cell to 3×. Applied to the kit's hatch that is
@@ -628,6 +657,17 @@ function loosenHatch(tag, seed) {
  *           fragment UNCHANGED, which is what makes 'original' a legal column on the sheet.
  *   seed  — the stable identity the wobble hangs off. USE THE PIECE ID: two dining tables in one room
  *           should be the same drawing, and a table should be the same drawing next frame.
+ *   ground — OVERRIDE the level's own `ground` knob for this call, `true`/`false`; absent ⇒ the
+ *           level decides. ⛔ THIS IS A NAMED PER-CATALOGUE KNOB AND NOT A SPECIAL CASE BURIED
+ *           HERE, because the rule it turns off is a rule about STANDING THINGS. The ground rule is
+ *           the pawns' sixth tell — the faint line an object standing on a deck is drawn resting on
+ *           — and a MATERIAL is not a standing thing: a wall or floor skin is a tiling field that
+ *           IS the deck. Measured before the knob existed (2026-08-05, review): all twelve skins
+ *           emitted their rule 1.5–3.7 units OUTSIDE their own tile edge, and one 12 × 8 room floor
+ *           drew NINETY-SIX of them through `materialLayerSvg` — a grid of ink ticks across the
+ *           deck, at the pitch of the tiling, which is the one thing a floor skin must not add.
+ *           `items/paper-materials.js` passes `ground: false` at the seam; the four standing
+ *           catalogues pass nothing and keep theirs.
  *   trace — an ARRAY to record `{src, out, nm, radius}` into, one row per shape the treatment saw.
  *           ⭐ THIS IS THE MEASUREMENT SEAM AND IT EXISTS FOR TRAPS-4. "Did the treatment move this
  *           element's geometry, and by how much" is a question about a PAIRING between an input
@@ -647,6 +687,8 @@ export function sketch(fragment, opts = {}) {
   if (!L) return src;
   const seed = String(o.seed == null ? 'sk' : o.seed);
   const trace = Array.isArray(o.trace) ? o.trace : null;
+  // the level's knob unless the CALLER named one — see `ground` in this function's own doc
+  const wantGround = o.ground == null ? L.ground : !!o.ground;
 
   // ── pass 1: tokenise, and measure the whole body so "silhouette" and "ground" mean something ──
   const toks = src.match(TAG) || [];
@@ -773,7 +815,7 @@ export function sketch(fragment, opts = {}) {
   // rule behave in a room exactly as `W.mid` already does: constant in local units, therefore varying
   // in centimetres with each piece's own drawing scale. Inheriting the set's existing behaviour is the
   // point; a rule with its own scaling law would be a second convention, which is the disease.
-  if (L.ground && Number.isFinite(maxY) && Number.isFinite(minX) && maxX > minX) {
+  if (wantGround && Number.isFinite(maxY) && Number.isFinite(minX) && maxX > minX) {
     const pad = (maxX - minX) * 0.03;
     const y = maxY + Math.max(0.6, (maxY - minY) * 0.012);
     const closer = scaleGroupCloser(out);

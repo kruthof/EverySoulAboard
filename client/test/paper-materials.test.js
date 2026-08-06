@@ -412,8 +412,10 @@ test('every skin\'s feature pitch is the CENTIMETRES it claims — measured off 
 // treatment's `hatch` knob replaced the interior of EVERY `<pattern>` with three jittered rules and
 // tripled its cell. Four material skins carry a pattern that is not a hatch — the matting's woven
 // lattice, the grating's bar, the carpet's pile, the blast wall's hazard block — and all four would
-// have lost their art AND their pitch. `sketch.isKitHatch` now recognises the kit's hatch by its own
-// shape (a square cell, a ground rect, one `M0 0 L0 <period>` rule); everything else passes through.
+// have lost their art AND their pitch. `sketch.js`'s module-private `isKitHatch` now recognises the
+// kit's hatch by its own shape (a square cell, a ground rect, one `M0 0 L0 <period>` rule);
+// everything else passes through. ⚠️ It is NOT exported and this suite does not call it — what is
+// pinned is the behaviour on BOTH sides of it, which is the pair of legs below.
 // This leg is what says so, in centimetres.
 test('the treated skin keeps every pitch it claims — EXACTLY, not within the amplitude', () => {
   for (const id of MATERIAL_IDS) {
@@ -544,7 +546,7 @@ test('the treated skin still reaches its own edges, in the same three colours', 
 // jittered rules, cell tripled. That is right for the kit's `#fh` and it would have DELETED the
 // matting's woven lattice, the grating's bar and edge rule, the carpet's eighteen pile ticks and
 // the blast wall's hazard block, replacing four identifying fields with one generic hatch at three
-// times the spacing. `sketch.isKitHatch` now recognises the kit's hatch by its own shape.
+// times the spacing. `sketch.js`'s private `isKitHatch` recognises the kit's hatch by its own shape.
 test('a material\'s own pattern field is NOT the kit hatch, and the treatment leaves it alone', () => {
   const FIELDS = ['blast-wall', 'grow-matting', 'metal-grating', 'carpet-floor'];
   for (const id of FIELDS) {
@@ -560,7 +562,7 @@ test('a material\'s own pattern field is NOT the kit hatch, and the treatment le
   const insulTre = /<pattern [\s\S]*?<\/pattern>/.exec(treated('insulated-wall'))[0];
   assert.notEqual(insulTre, insulRaw,
     'the insulated wall carries the KIT hatch (a square cell, a ground rect, one M0 0 L0 rule) and\n'
-    + 'the treatment did not loosen it — `isKitHatch` has stopped recognising the thing it is for');
+    + 'the treatment did not loosen it — `sketch.js`\'s `isKitHatch` has stopped recognising the thing it is for');
   // three periods wide, one period high — the loosened cell's own rule, at the skin's own scale
   const cell = /<pattern id="[^"]+" width="([\d.]+)" height="([\d.]+)"/.exec(insulTre);
   assert.ok(Math.abs(+cell[1] - 3 * +cell[2]) < 0.05,

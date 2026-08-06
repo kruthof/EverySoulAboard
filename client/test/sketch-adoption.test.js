@@ -8,12 +8,26 @@
 // argument about how the code is structured.
 //
 // ── WHY A SEPARATE FILE ───────────────────────────────────────────────────────────────────────
-// The four catalogue suites each keep asking their own questions of their own RAW fragments, which
-// is where the geometry is. What none of them can state — because it is a relation BETWEEN the raw
+// The catalogue suites each keep asking their own questions of their own RAW fragments, which is
+// where the geometry is. What none of them can state — because it is a relation BETWEEN the raw
 // drawing and the shipped one — is the bridge: that the treated drawing is the raw drawing, moved by
 // no more than a bound derived from the preset's knobs, per element, in both directions, on every
-// piece of all four catalogues and on all forty-seven twins. That bridge is what makes the raw legs
-// legitimate authority over what ships, and it lives here.
+// piece of the four STANDING catalogues and on all forty-seven twins. That bridge is what makes the
+// raw legs legitimate authority over what ships, and it lives here. (The twelve MATERIAL skins are
+// treated too and are bridged in `paper-materials.test.js`: what has to survive on a tiling skin is
+// an exact centimetre PITCH, not a member's position, so it is a different measurement.)
+//
+// ── THE BRIDGE IS THREE STATEMENTS, NOT ONE, AND THE THIRD WAS MISSING ────────────────────────
+//   §2  the AMPLITUDE BOUND — bounded, both directions, every element. Blind by construction to any
+//       systematic error smaller than itself (CLAUDE.md's 7th shape).
+//   §2  COLLINEARITY — exact, for STRAIGHT runs: a treated run's chord lies on the segment's own
+//       line. This is what sees a 2% scale, a rotation, a translation.
+//   §2  THE ROUND MEMBERS — exact, per axis: the radius nudge recovered from x and from y separately
+//       must each be within `lump` and must AGREE. ⛔ Added 2026-08-05 after review measured the
+//       hole: the collinearity leg cannot speak about a closed curve, so it excluded ellipses and
+//       circles — 234 of 1548 geometry rows pristine, 464 of 2719 with the twins, RE-MEASURED on
+//       this tree — and with only the bound under them, scaling every
+//       ellipse ×1.02…×1.06 ran the whole suite 148/148 GREEN, as did an ry-only ×1.05.
 //
 // ⛔ AND THE HONEST LIMIT, SAID FIRST. Nothing in this file can see whether `strong` LOOKS right.
 // The pristine/twin pairs sheet (`client/tools/sketch-pairs-sheet.mjs`), the catalogue sheets and
@@ -46,6 +60,7 @@ import {
   buriedMembers, unbackedKnockouts,
 } from './sketch-geom.js';
 import { codeOnly } from './code-only.js';
+import { materialLayerSvg } from '../src/ui/roomzoom-view.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
@@ -151,7 +166,7 @@ test('every piece of all four catalogues really is treated — and the treatment
 // the sketch style we defined."* The brief this package started from had FILED them as an open
 // question — a wall or floor skin is a tiled field over a full-bleed face, a different idiom from a
 // drawn object, and nobody had seen one treated. The owner answered it. What the extension found is
-// recorded in `paper-materials.test.js` and in `sketch.isKitHatch`: the treatment's hatch knob was
+// recorded in `paper-materials.test.js` and in `sketch.js`'s private `isKitHatch`: the hatch knob was
 // rewriting EVERY `<pattern>`, which would have deleted four skins' identifying fields.
 //
 // The WARM set stays untreated and that is still a decision: it is the idiom the redesign replaces.
@@ -354,6 +369,241 @@ test('⭐⭐ every treated run is COLLINEAR with the segment it replaces — the
   assert.ok(worst > 0, `worst collinearity is exactly 0 at ${worstWho} — nothing was measured`);
   assert.ok(worst < EPS / 2, `measured worst ${worst.toFixed(4)} at ${worstWho} — the headroom under `
     + 'the limit has gone, so re-derive it rather than widening it');
+});
+
+// ⭐⭐ THE SECOND EXACT LEG — THE ROUND MEMBERS, WHICH THE FIRST ONE CANNOT SEE.
+//
+// ⛔ SAY THE HOLE THAT PUT THIS HERE, IN ITS OWN WORDS AND WITH THE RECEIPT (2026-08-05, review).
+// The collinearity leg above `continue`s on `r.nm === 'ellipse' || r.nm === 'circle'`, and it has to:
+// `handEllipse` does not replace a SEGMENT, it replaces a whole closed curve, so "the chord lies on
+// the original line" is not a sentence about it. That exclusion was 234 of the set's 1548 measured
+// pristine geometry rows (464 of 2719 counting the twins; review reported 254/1700 on the PRE-MERGE
+// tree, and main's rotation package moved the faced geometry — both are right about their own tree,
+// which is why the rule is re-measure, never quote) — and every one of them fell back to the amplitude bound alone, which is exactly the
+// instrument the leg above exists because it is not enough. MEASURED, by applying it: scale
+// `handEllipse`'s sample radius by ×1.02 through ×1.06 and the whole sketch + catalogue suite runs
+// 148/148 GREEN each time; scale ONLY `ry` by ×1.05 — a HEADING on a thing the catalogue's own rule
+// says is drawn LEVEL — and it is green too. ×1.08 is the first value that reds, and it reds on the
+// bound, by accident. The round-things ratio guards in the three standing catalogues cannot help:
+// they compare `ry/rx`, so they are scale-INVARIANT (CLAUDE.md's 7th shape) and blind to ×1.02 in
+// both axes; and an ry-only drift is exactly what a ratio CAN see, except that under the treatment
+// there is no `rx` attribute left for them to read at all.
+//
+// ⇒ THE LEG, AND IT IS EXACT RATHER THAN BOUNDED. `handEllipse` samples twelve angles that this test
+// knows independently — `t_i = (i/12)·2π` — and nudges only the RADIUS at each: the emitted on-curve
+// point is `(cx + cos t_i · rx · k_i, cy + sin t_i · ry · k_i)` with `|k_i − 1| ≤ lump`. So `k_i` can
+// be RECOVERED from each axis separately:
+//
+//     kx_i = (x_i − cx) / (rx · cos t_i)        ky_i = (y_i − cy) / (ry · sin t_i)
+//
+// and three things must hold, each of which kills a different error:
+//   (a) |kx_i − 1| ≤ lump and |ky_i − 1| ≤ lump — a UNIFORM scale ≥ 1.02 breaks both;
+//   (b) kx_i = ky_i, because there is ONE nudge per sample — an ry-only drift breaks this on every
+//       qualifying sample at once, and it is the leg a per-axis magnitude alone would let past on
+//       the low side;
+//   (c) the twelve samples' MEAN is the centre, within `lump` of its own radius — a TRANSLATION
+//       moves that and nothing else here would.
+// Rounding is carried per sample rather than as one blanket number: both sides round to 2 dp, so a
+// coordinate's slack in `k` is `ROUND_EPS / (r · |cos t|)`, which is small where the measurement is
+// tight and honestly large on a 1-unit tick.
+const ROUND_KINDS = new Set(['ellipse', 'circle']);
+
+/** The ON-CURVE points of a treated round member's ink run — `M`'s pair, then each `C`'s third. */
+function onCurve(d) {
+  const out = [];
+  const re = /([MC])([^MC]*)/g;
+  let m = re.exec(d);
+  while (m) {
+    const a = (m[2].match(/-?\d*\.?\d+/g) || []).map(Number);
+    if (m[1] === 'M') { if (a.length >= 2) out.push([a[0], a[1]]); } else {
+      for (let i = 0; i + 5 < a.length; i += 6) out.push([a[i + 4], a[i + 5]]);
+    }
+    m = re.exec(d);
+  }
+  return out;
+}
+
+/**
+ * Every treated ROUND member of a fragment: the raw ellipse's own centre and radii, beside the
+ * on-curve points of the freehand curve that replaced it.
+ *
+ * ⛔ THE INK RUN IS PICKED BY NAME, NOT BY POSITION. The treatment emits up to four paths per round
+ * element — a fill path (its own colour), the paper HALO (inside a `<g stroke="paper">`, and it
+ * carries no `fill` of its own), the ink run (`fill="none"`), and the doubled pass (`DOUBLE_CLASS`,
+ * nudged OFF its own curve on purpose). Taking "the second path" would silently measure the halo the
+ * day a knob changes.
+ */
+function roundMembers(rawFragment, seed) {
+  const out = [];
+  for (const r of measurePiece(rawFragment, seed).rows) {
+    if (r.kind !== 'geom' || !ROUND_KINDS.has(r.nm)) continue;
+    const a = attrsOf(r.src);
+    const cx = +a.cx || 0, cy = +a.cy || 0;
+    const rx = r.nm === 'circle' ? (+a.r || 0) : (+a.rx || 0);
+    const ry = r.nm === 'circle' ? (+a.r || 0) : (a.ry == null ? rx : (+a.ry || 0));
+    if (!(rx > 0 && ry > 0)) continue;
+    const ink = (r.out.match(/<[^>]*>/g) || []).filter((t) => {
+      const b = attrsOf(t);
+      return /^<\s*path\b/.test(t) && b.d && b.fill === 'none' && b.class !== DOUBLE_CLASS;
+    });
+    assert.equal(ink.length, 1, 'a treated round member emitted no single ink run to measure');
+    out.push({ cx, cy, rx, ry, pts: onCurve(attrsOf(ink[0]).d) });
+  }
+  return out;
+}
+
+/** The three deviations of one round member: per-axis, their disagreement, and the centre. */
+function fitRound(m, lump) {
+  let kx = 0, ky = 0, dis = 0, tight = 0;
+  let sx = 0, sy = 0, n = 0;
+  for (let i = 0; i < m.pts.length; i += 1) {
+    const t = (i / 12) * Math.PI * 2;
+    const c = Math.cos(t), sN = Math.sin(t);
+    const [x, y] = m.pts[i];
+    let a = null, b = null;
+    if (Math.abs(c) >= 0.35) {
+      const slack = ROUND_EPS / (m.rx * Math.abs(c));
+      a = (x - m.cx) / (m.rx * c);
+      kx = Math.max(kx, Math.abs(a - 1) - slack);
+      if (slack <= 0.01) tight += 1;
+    }
+    if (Math.abs(sN) >= 0.35) {
+      const slack = ROUND_EPS / (m.ry * Math.abs(sN));
+      b = (y - m.cy) / (m.ry * sN);
+      ky = Math.max(ky, Math.abs(b - 1) - slack);
+      if (slack <= 0.01) tight += 1;
+    }
+    if (a != null && b != null) {
+      const slack = ROUND_EPS / (m.rx * Math.abs(c)) + ROUND_EPS / (m.ry * Math.abs(sN));
+      dis = Math.max(dis, Math.abs(a - b) - slack);
+    }
+    if (i < 12) { sx += x; sy += y; n += 1; }
+  }
+  // ⚠️ THE CENTRE IS THE MEAN OF THE TWELVE DISTINCT SAMPLES, and the bound is derived rather than
+  // chosen: `Σ cos t_i = 0` over a full turn, so `mean_x − cx = (rx/12)·Σ cos t_i·(k_i − 1)`, which
+  // is at most `rx · lump · (Σ|cos t_i|)/12`.
+  // ⚠️ THAT SUM IS **0.6220** FOR TWELVE SAMPLES, NOT 2/π — the constant below is the CONTINUOUS
+  // limit (`2/π = 0.63662`), which is the larger of the two and therefore a valid over-bound. Said
+  // rather than quietly left, because a first draft's comment asserted the two were the same number.
+  // Worst measured across the four catalogues: 0.265 of `r · lump`, so the choice buys nothing
+  // either way and the honest constant is the one whose derivation is written down.
+  const CMEAN = 2 / Math.PI;
+  return {
+    kx, ky, dis, tight,
+    dcx: n ? Math.abs(sx / n - m.cx) - ROUND_EPS : 0,
+    dcy: n ? Math.abs(sy / n - m.cy) - ROUND_EPS : 0,
+    cbx: m.rx * lump * CMEAN,
+    cby: m.ry * lump * CMEAN,
+  };
+}
+
+test('⭐⭐ every treated ROUND member is the raw one, per axis and within `lump` — the exact leg', () => {
+  const L = LEVELS[SKETCH_LEVEL];
+  let members = 0, tight = 0;
+  let wKx = 0, wKy = 0, wDis = 0, who = '';
+  for (const cat of CATALOGUES) {
+    for (const id of cat.ids) {
+      const frags = [['pristine', cat.raw(id)]];
+      if (PAPER_TWIN_IDS.includes(id)) {
+        frags.push(['twin', buildWrecked(id, { w: 240, h: 240, idPrefix: `e-${id}`, sketch: false })]);
+      }
+      for (const [what, frag] of frags) {
+        for (const m of roundMembers(frag, id)) {
+          const f = fitRound(m, L.lump);
+          members += 1;
+          tight += f.tight;
+          if (f.kx > wKx) { wKx = f.kx; who = `${cat.name}/${what}/${id}`; }
+          if (f.ky > wKy) wKy = f.ky;
+          if (f.dis > wDis) wDis = f.dis;
+          assert.ok(f.kx <= L.lump, `${cat.name}/${what}/${id}: a treated round member's X radius is `
+            + `${(1 + f.kx).toFixed(4)}× the raw \`rx\` at some sample, past the \`lump\` of ${L.lump}. `
+            + 'The treatment nudges a RADIUS; it does not resize the object.');
+          assert.ok(f.ky <= L.lump, `${cat.name}/${what}/${id}: a treated round member's Y radius is `
+            + `${(1 + f.ky).toFixed(4)}× the raw \`ry\` at some sample, past the \`lump\` of ${L.lump}.\n`
+            + 'Asserted SEPARATELY from X on purpose: an ry-only drift is a HEADING given to a thing\n'
+            + 'the catalogue draws LEVEL, and no ratio guard can see it once the `rx` attribute is gone.');
+          assert.ok(f.dis <= L.lump * 0.5, `${cat.name}/${what}/${id}: the radius nudge recovered from `
+            + `X disagrees with the one recovered from Y by ${f.dis.toFixed(4)}.\n`
+            + 'There is ONE nudge per sample, so the two axes must agree — a disagreement is the two\n'
+            + 'axes scaled by different factors, which is an ellipse that has been given a heading.');
+          assert.ok(f.dcx <= f.cbx && f.dcy <= f.cby,
+            `${cat.name}/${what}/${id}: the treated round member's twelve samples average `
+            + `(${f.dcx.toFixed(3)}, ${f.dcy.toFixed(3)}) from the raw centre, past `
+            + `(${f.cbx.toFixed(3)}, ${f.cby.toFixed(3)}). The object MOVED.`);
+          assert.ok(Math.max(f.dcx, f.dcy) <= amplitudeBound(SKETCH_LEVEL, Math.max(m.rx, m.ry)),
+            `${cat.name}/${what}/${id}: the round member's centre left the displacement bound`);
+        }
+      }
+    }
+  }
+  // ⛔ FOUR NON-VACUITY FLOORS, because a leg that measured no round member reads exactly as green.
+  assert.ok(members > 300, `only ${members} round members measured — the exact round leg is vacuous`);
+  assert.ok(tight > 2000, `only ${tight} samples were measured tightly (rounding slack ≤ 0.01) — the\n`
+    + 'leg is all slack and would not see a 2% scale on any piece big enough to have one');
+  assert.ok(wKx > L.lump * 0.7 && wKy > L.lump * 0.7,
+    `the worst per-axis radius deviation is ${wKx.toFixed(4)}/${wKy.toFixed(4)} against a lump of `
+    + `${L.lump} (${who}) — either the treatment stopped lumping round things, or this leg is\n`
+    + 'reading something that is not the freehand curve');
+  assert.ok(wDis < L.lump * 0.5, `axis disagreement ${wDis.toFixed(4)}`);
+});
+
+// ⭐ AND IT IS DRIVEN, WITH THE EXACT MUTATIONS THE HOLE WAS FOUND BY — applied to the measured
+// points rather than to `sketch.js`, so nobody has to edit the shipped module to find out whether
+// this leg can fail. The identity control runs FIRST, or the reds below prove nothing.
+//
+// THE WHOLE MATRIX, MEASURED ON THE MERGED TREE (118 round members across the 34 fittings):
+//   identity          0 / 118    ← the control: unmutated, the leg is silent
+//   ×1.02 both axes  89 / 118    ← the scale the WHOLE SUITE was green on before this leg existed
+//   ×1.04 both axes 117 / 118
+//   ×1.06 both axes 118 / 118
+//   ry-only ×1.05   117 / 118    ← a HEADING on a thing drawn level
+//   translate 1 unit 118 / 118
+//
+// ⛔ AND SAY WHAT THE 29 MISSES AT ×1.02 ARE, BECAUSE A FLOOR OF 75% LOOKS LIKE A TUNED NUMBER AND
+// IS NOT ONE. They are the members whose smaller radius is 0.44 … 1.85 local units: 2% of 1.1 units
+// is 0.022, and BOTH sides of this measurement round to 2 dp, so a 2% error on a tick that small is
+// not a thing this instrument — or any instrument reading the emitted string — can resolve at all.
+// That is a LIMIT and it is stated, not a HOLE and hidden: every member big enough to carry the
+// error is caught, and the same mutation on the same members at ×1.04 is caught 117/118.
+test('the round-member leg FAILS at ×1.02, ×1.06, ry-only ×1.05 and a translation — all driven', () => {
+  const L = LEVELS[SKETCH_LEVEL];
+  const scaled = (m, sx, sy) => ({
+    ...m,
+    pts: m.pts.map(([x, y]) => [m.cx + (x - m.cx) * sx, m.cy + (y - m.cy) * sy]),
+  });
+  const moved = (m, dx, dy) => ({ ...m, pts: m.pts.map(([x, y]) => [x + dx, y + dy]) });
+  const bad = (m) => {
+    const f = fitRound(m, L.lump);
+    return f.kx > L.lump || f.ky > L.lump || f.dis > L.lump * 0.5 || f.dcx > f.cbx || f.dcy > f.cby;
+  };
+  let total = 0;
+  const hit = { identity: 0, s102: 0, s104: 0, s106: 0, ry105: 0, shift: 0 };
+  for (const id of FITTING_IDS) {
+    const frag = FT[camel(id)]({ w: 240, h: 240, idPrefix: `y-${id}`, sketch: false });
+    for (const m of roundMembers(frag, id)) {
+      total += 1;
+      if (bad(m)) hit.identity += 1;
+      if (bad(scaled(m, 1.02, 1.02))) hit.s102 += 1;
+      if (bad(scaled(m, 1.04, 1.04))) hit.s104 += 1;
+      if (bad(scaled(m, 1.06, 1.06))) hit.s106 += 1;
+      if (bad(scaled(m, 1, 1.05))) hit.ry105 += 1;
+      if (bad(moved(m, 1, 0))) hit.shift += 1;
+    }
+  }
+  assert.ok(total > 80, `only ${total} round members in the fittings — the control is vacuous`);
+  assert.equal(hit.identity, 0,
+    `${hit.identity} of ${total} round members fail the leg UNMUTATED. Every red below is then the\n`
+    + 'instrument rather than the mutation, and the leg above is measuring its own bug.');
+  assert.ok(hit.s102 >= total * 0.6,
+    `a ×1.02 scale was caught on only ${hit.s102} of ${total} (measured 89) — the leg has stopped\n`
+    + 'seeing the scale error it exists for, which is the one the amplitude bound admits.');
+  assert.ok(hit.s104 >= total - 2, `×1.04 caught on ${hit.s104} of ${total} (measured 117)`);
+  assert.equal(hit.s106, total, `×1.06 caught on ${hit.s106} of ${total} — measured 118/118`);
+  assert.ok(hit.ry105 >= total - 2,
+    `an ry-only ×1.05 was caught on ${hit.ry105} of ${total} (measured 117). This is the mutation a\n`
+    + 'per-axis MAGNITUDE alone lets past on the low side; the axis-agreement leg is what catches it.');
+  assert.equal(hit.shift, total,
+    `a one-unit translation was caught on ${hit.shift} of ${total} — the centre leg is not working`);
 });
 
 // ⭐ AND THE CONTROL THAT SAYS THE BOUND IS A BOUND. Doubling the treatment's amplitude must break
@@ -781,4 +1031,93 @@ test('every treated piece stands on a ground rule, inside its own scaling group'
         + 'stroke across the piece rather than the line it stands on');
     }
   }
+});
+
+// ⭐⭐ …AND NO MATERIAL SKIN DOES — AN ORCHESTRATOR RULING, 2026-08-05, OVERRIDABLE BY THE OWNER.
+//
+// THE RULE'S OWN SEMANTICS ARE WHAT DECIDED IT, not taste. The ground rule is the pawns' sixth tell
+// (`pawn-svg.js`'s `M3.4 23.5 L12.6 23.5`): the faint line a thing STANDING on a deck is drawn
+// resting on — "a figure on paper does not cast a shadow, it stands on a line". A material is not a
+// standing thing. A wall or floor skin IS the deck, tiled; there is no floor under it for it to meet.
+//
+// MEASURED BEFORE THE KNOB EXISTED, which is why this is a ruling and not an opinion:
+//   · all TWELVE skins emitted their rule 1.5–3.7 units OUTSIDE their own tile edge — `sketch()`
+//     puts it at `maxY + max(0.6, 1.2% of the drawn height)`, and a full-bleed skin's `maxY` IS the
+//     tile edge, so the mark lands in the next tile;
+//   · one 12 × 8 room floor drew NINETY-SIX of them through `roomzoom-view.materialLayerSvg` — a
+//     grid of ink ticks across the deck at the tiling pitch, which is precisely the artefact a floor
+//     skin exists to avoid.
+// Regenerated for the ruling so it can be vetoed from the PICTURE and not from this paragraph: the
+// materials sheet and one live room-floor shot.
+//
+// ⛔ IT IS A NAMED PER-CATALOGUE KNOB (`item(..., { sketched: true, ground: false })`), NOT A SPECIAL
+// CASE INSIDE `sketch()`. A treatment that asked "is this a material?" would be a second authority on
+// the catalogue split, in the module furthest from it; a knob is a sentence the catalogue says about
+// itself, and the day the owner overrules this it is one word.
+test('⭐⭐ NO material skin stands on a ground rule, and every standing piece still does', () => {
+  let skins = 0;
+  for (const id of MATERIAL_IDS) {
+    const svg = MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt' });
+    assert.equal((svg.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 0,
+      `${id}: a MATERIAL skin draws a ground rule. A tiling field has no floor under it to meet, and\n`
+      + 'one room floor draws ninety-six of these — a grid of ink ticks at the tiling pitch.');
+    // …and it is ONLY the ground knob that is off: the skin is still treated in every other respect.
+    assert.notEqual(svg, MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt', sketch: false }),
+      `${id}: turning the ground rule off turned the whole treatment off`);
+    skins += 1;
+  }
+  assert.equal(skins, 12, 'the material set changed size — six walls and six floors');
+
+  // ⛔ THE INCLUSION CONTROL, BOTH WAYS, DRIVEN — a scan that finds nothing and a scan that CANNOT
+  // find anything read exactly alike, and this is the shape that has bitten this repo repeatedly.
+  //   (a) the same twelve skins, with the knob forced ON, must each draw exactly one;
+  //   (b) a standing piece with the knob forced OFF must draw none.
+  // Both go through the shipped `sketch()` rather than a re-derivation, so the knob is what is pinned.
+  let forcedOn = 0;
+  for (const id of MATERIAL_IDS) {
+    const raw = MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt', sketch: false });
+    const on = sketch(raw, { level: SKETCH_LEVEL, seed: id, ground: true });
+    assert.equal((on.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 1,
+      `${id}: with the ground knob forced ON the skin still draws no rule — the guard above passes\n`
+      + 'because nothing could ever be found, not because the knob is doing anything.');
+    forcedOn += 1;
+  }
+  assert.equal(forcedOn, 12);
+  const off = sketch(FT.diningTable({ w: 240, h: 240, idPrefix: 'g', sketch: false }),
+    { level: SKETCH_LEVEL, seed: 'dining-table', ground: false });
+  assert.equal((off.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 0,
+    'the ground knob does not turn OFF on a standing piece — it is not a knob, it is a catalogue test');
+
+  // …and the four standing catalogues keep exactly one each, which the §7 sweep above already says
+  // per piece; restated here as a TOTAL so the two halves of the ruling sit in one place.
+  let standing = 0;
+  for (const cat of CATALOGUES) {
+    for (const id of cat.ids) {
+      standing += (cat.ship(id).match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length;
+    }
+  }
+  assert.equal(standing, ALL_TREATED_IDS.length,
+    `${standing} ground rules across ${ALL_TREATED_IDS.length} standing pieces — it must be one each`);
+});
+
+// ⭐⭐ …AND THE RULING IS PINNED AT THE SURFACE THAT MEASURED IT, NOT ONLY AT THE BUILDER. The number
+// that decided this is not "one rule per skin", it is NINETY-SIX RULES ON ONE FLOOR — and that number
+// only exists where the skins are laid out, which is `roomzoom-view.materialLayerSvg`. A pin on the
+// builder alone would stay green the day someone re-enables the knob one layer up.
+test('⭐⭐ a room floor draws NO ground rules — the ninety-six, at the surface that counted them', () => {
+  const tiles = [];
+  for (let y = 0; y < 8; y += 1) for (let x = 0; x < 12; x += 1) tiles.push({ kind: 'floor', mat: 1, tx: x, ty: y });
+  const place = { cell: (x, y) => `translate(${x * 95} ${y * 95})`, front: (x, y) => [x * 95, y * 95] };
+  const svg = materialLayerSvg(tiles, place, { rx: 0, ry: 0, rw: 12, rh: 8 });
+  const marks = (svg.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length;
+  assert.equal(marks, 0,
+    `a 12 × 8 room floor draws ${marks} ground rules (it drew 96 before the ruling) — a grid of ink\n`
+    + 'ticks across the deck at the tiling pitch, which is the artefact the ruling exists to remove.');
+  // ⛔ NON-VACUITY, AS AN INCLUSION TEST: the layer really did lay ninety-six skins down. A layer
+  // that emitted nothing at all would satisfy the line above and say nothing.
+  const laid = (svg.match(/class="pl-item"/g) || []).length;
+  assert.equal(laid, 96, `the floor laid ${laid} skins, not 96 — the count above is about nothing`);
+  // …and the skins ARE treated on that floor: the doubled pass is a mark only the treatment writes.
+  assert.ok((svg.match(new RegExp(DOUBLE_CLASS, "g")) || []).length > 0,
+    'the room floor\'s skins are untreated — "no ground rule" is then just "no treatment"');
 });

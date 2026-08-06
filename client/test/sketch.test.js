@@ -146,7 +146,7 @@ test('an unknown or absent level returns the fragment byte-identical', () => {
 // 4. THE FOUR LEVELS ARE ORDERED, and `hand` is `medium` WITHOUT the knockout
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-test('the levels are an ordered ramp and `hand` differs from `medium` in the knockout alone', () => {
+test('the levels are an ordered ramp, and `hand` is `medium` minus the knockout — plus ONE more', () => {
   const ids = ['subtle', 'medium', 'strong'];
   for (let i = 1; i < ids.length; i += 1) {
     const a = LEVELS[ids[i - 1]], b = LEVELS[ids[i]];
@@ -154,17 +154,24 @@ test('the levels are an ordered ramp and `hand` differs from `medium` in the kno
     assert.ok(b.wave > a.wave, `${ids[i]} does not bow more than ${ids[i - 1]}`);
     assert.ok(b.ramp > a.ramp, `${ids[i]} does not open the ramp further than ${ids[i - 1]}`);
   }
-  // ⭐ The recommendation IS an experimental result, so it is pinned as one: `hand` must be `medium`
-  // with `haloWiden` and `haloScope` taken out and NOTHING else moved, or the memo's claim ("the
-  // knockout is the only thing wrong with medium") stops being true of the code that shipped it.
+  // ⭐ The recommendation IS an experimental result, so it is pinned as one — INCLUDING ITS ONE
+  // CONFOUND, which the first draft of this comment claimed away. `hand` is `medium` with
+  // `haloWiden`/`haloScope` taken out, AND `interior` lifted 0.85 → 0.88. That third term is small
+  // and it is real: with the knockout gone nothing is eating the interior detail any more, so it is
+  // drawn a shade heavier. ⛔ It means the pair is a knockout comparison WITH a confound rather than
+  // a clean one, and the memo's "the knockout is the only thing wrong with medium" is an attribution
+  // this pair cannot fully carry. Named here rather than absorbed; the `deepEqual` below is what
+  // actually holds the line, and it has always listed `interior`.
   const diff = Object.keys(LEVELS.medium)
     .filter((k) => LEVELS.medium[k] !== LEVELS.hand[k]);
   assert.equal(LEVELS.hand.interiorOvershoot, LEVELS.medium.interiorOvershoot,
     'hand and medium disagree about the interior overshoot trim, so the pair is no longer a clean '
     + 'knockout-on / knockout-off control and the memo\'s attribution is no longer driven by them');
   assert.deepEqual(diff.sort(), ['haloScope', 'haloWiden', 'interior', 'label'].sort(),
-    'hand and medium differ in more than the knockout (plus the label and the interior trim), so the '
-    + 'memo\'s attribution no longer describes this code');
+    'hand and medium differ in more than the knockout, the label and the ONE named confound '
+    + '(`interior`, 0.85 → 0.88), so the memo\'s attribution no longer describes this code');
+  assert.equal(LEVELS.hand.interior, 0.88);
+  assert.equal(LEVELS.medium.interior, 0.85);
   assert.equal(LEVELS.hand.haloWiden, 0);
   assert.equal(LEVELS.hand.haloScope, 'none');
 });

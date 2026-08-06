@@ -8,6 +8,13 @@ derivation lives in a module header, and this file points at it rather than repe
 stale** (TRAPS 8th shape — a number in a doc is not evidence). The deriving TESTS are named beside
 each claim; re-measure there, never quote this file.
 
+⛔ **AND THE PROMISE COVERS §1–§3, NOT JUST §4** — said out loud because it was broken there first.
+Review found three claims in the palette and pawn sections that had gone stale while the treatment
+section was being kept current: a palette-closure claim that named suites which do not do what it
+said, a `linejoin` claim that is true of the halo pass only, and a pawn weight range off at the
+bottom end. Every line-number citation and every hex, ratio and weight in §1–§3 was re-derived from
+the shipped modules on 2026-08-05 alongside §4's.
+
 ---
 
 ## 1 · The palette — four values, and one of them is not decoration
@@ -34,9 +41,19 @@ come to disagree about black.
 | offline | `#8A8272` | solid |
 | a cut edge of the room cutaway | ink | `7 5` |
 
-Closure is **tested, not intended**: `paper-fixtures.test.js`, `machines.test.js`,
-`paper-resources.test.js` and `sketch-adoption.test.js` each scan their whole catalogue — raw AND
-treated — and fail on a fifth hex.
+Closure is **tested, not intended** — and the suites do not all scan the same thing, which matters
+because the treatment sits between the two:
+
+| suite | scans |
+|---|---|
+| `fittings.test.js`, `machines.test.js`, `paper-fixtures.test.js` | the **RAW** fragment (`sketch: false`) |
+| `paper-resources.test.js` | **BOTH** — raw and treated, on/off |
+| `sketch-adoption.test.js` | the **TREATED** fragment, all four standing catalogues + the 47 twins |
+| `paper-materials.test.js` | the twelve skins, raw and treated |
+
+Between them every catalogue is scanned on the side that ships and fails on a fifth hex. The reason
+the treated side is worth scanning at all: a post-processor implying pressure with a **grey** instead
+of with weight and a paper knockout would be invisible to a raw-only scan.
 
 ## 2 · The projection — cabinet oblique, in centimetres
 
@@ -65,10 +82,16 @@ treated — and fail on a fifth hex.
 1. **Two passes.** `oblique.ghost()` writes every path in paper at `ink + widen` first, then the ink
    pass — a figure carves its own silhouette out of whatever it stands on. `GHOST.widen = 3.0`
    (`oblique.js:66`).
-2. **Round everything** — `linecap: round`, `linejoin: round`, on every element.
+2. **Round caps on every ink element; round JOINS on the halo.** Precisely, and the distinction is
+   `oblique.ghost()`'s own (`oblique.js:583` vs the ink pass below it): the knockout group carries
+   `stroke-linejoin="round"` and `stroke-linecap="round"`, while the ink pass defaults `cap: 'round'`
+   and leaves `join` to the individual path. `pawn-svg.js` sets no join, so **no pawn ink element
+   carries a `stroke-linejoin` at all** — the roundness a figure reads with is the halo's.
 3. **Freehand curves** — the load-bearing paths are `C`/`Q`; no ruled line carries a silhouette.
-4. **Implied pressure** — weights run 1.0 (a mouth) to 1.5 (folded arms): the range is spent on what
-   matters, not on distance.
+4. **Implied pressure** — weights run **0.9** (the slate's inner rules, `pawn-svg.js:342`) to **1.5**
+   (folded arms), across **nine** distinct authored values (0.9, 1, 1.1, 1.2, 1.25, 1.3, 1.35, 1.4,
+   1.5): the range is spent on what matters, not on distance. `figurePaths` then scales all nine by
+   one per-figure `w` (`:432`), so the ramp's SHAPE is what is authored and its size is not.
 5. **No ruler**, and **a ground line**: `M3.4 23.5 L12.6 23.5` at `stroke-width 0.45`, opacity 0.35
    (`pawn-svg.js:496`) — a figure on paper does not cast a shadow, it stands on a line.
 
@@ -84,6 +107,13 @@ seam). It runs on the **five paper catalogues**: 34 fittings, 13 machines, 14 pa
 paper-resources, 12 materials, plus the **47 twins** whose own painting is paper. The pre-redesign
 WARM set is not treated; nor are the 21 fittings still wearing a warm mock twin (filed).
 
+⚠️ **"Five catalogues" is the treated POPULATION; the guarantees below are measured over FOUR of
+them.** `sketch-adoption.test.js`'s `CATALOGUES` array is the four **standing** catalogues (+ twins),
+because its instrument compares a member's treated position against the raw member it replaced. A
+material skin is a tiling field, so what has to survive on it is an exact centimetre **pitch** — a
+different measurement, and it lives in `paper-materials.test.js` (which carries its own amplitude and
+outside-the-box legs). Do not read "all five" onto a leg below.
+
 **The preset is `LEVELS.strong`** (`sketch.js`), knob by knob:
 
 | knob | value | what it does |
@@ -95,7 +125,18 @@ WARM set is not treated; nor are the 21 fittings still wearing a warm mock twin 
 | `silBoost` / `interior` | 1.5 / 0.74 | silhouette and ground-contact runs press; interior detail lifts |
 | `haloWiden` / `haloScope` | 1.9 / `all` | the paper knockout, **under every element** |
 | `doubles` | true | a second, lighter pass over each silhouette run |
+| `interiorOvershoot` | 0.45 | overshoot is scaled DOWN on interior detail — a pencil runs past a corner it is establishing, not past a louvre |
 | `hatch` / `ground` | true / true | the kit hatch loosens; the pawns' floor rule is appended |
+
+**⛔ THE GROUND EXCEPTION — an orchestrator ruling, 2026-08-05, overridable by the owner from the
+sheet.** `paper-materials.js` passes `ground: false` at the seam. The ground rule is the pawns' sixth
+tell: the faint line a thing **standing** on a deck is drawn resting on. A material is not a standing
+thing — it *is* the deck — so the rule has nothing to meet. Measured before the knob existed: all
+twelve skins drew their rule **1.5–3.7 units outside their own tile edge**, and one 12 × 8 room floor
+drew **ninety-six** of them through `roomzoom-view.materialLayerSvg` — a grid of ink ticks across the
+deck at the tiling pitch. Pinned both ways in `sketch-adoption.test.js` (zero on every skin, exactly
+one on every standing piece, with the knob forced on and off as the inclusion control) and at the
+room-floor surface itself. It is the **only** knob the materials turn off.
 
 **⛔ THE HALO EXCEPTION, MEASURED.** `haloScope: 'all'` is the expensive knob and the experiment
 measured why: a fitting's paper-filled faces are ALREADY a knockout, so a second one can only reach
@@ -105,7 +146,9 @@ and the owner took it after seeing both. The one thing it may not do is DELETE a
 `sketch-adoption.test.js` pins in both forms (a later opaque face; a knockout with no ink over it).
 
 **⛔ THE PATTERN EXCEPTION.** The hatch knob loosens the **kit's** `#fh` only — recognised by shape
-(square cell, ground rect, one `M0 0 L0 <period>` rule; `sketch.isKitHatch`). Four material skins
+(square cell, ground rect, one `M0 0 L0 <period>` rule; `isKitHatch`, module-private inside
+`sketch.js` — the guards drive the BEHAVIOUR either side of it, in `paper-materials.test.js`, not the
+predicate). Four material skins
 carry a `<pattern>` that is a structural FIELD (the matting's weave, the grating's bar, the carpet's
 pile, the blast wall's hazard block) and are passed through untouched.
 
@@ -114,11 +157,25 @@ output is a string: the projection, the `SPECS` centimetres, the frames and ever
 transform have already run and it cannot reach them. What it CAN move is an emitted point, bounded
 by `amplitudeBound(level)` = **6.78 local units at `strong`** (6.1% of the 112 drawing box), derived
 term by term from the knobs. Pinned in `client/test/sketch-adoption.test.js`, both directions, per
-element, every piece of all five catalogues and all 47 twins.
+element, every piece of the four standing catalogues and all 47 twins.
 
-⭐ **And an EXACT leg, because a bound cannot see an error smaller than itself** (7th trap shape): a
-treated run's chord lies on the original segment's own line — worst measured 0.0069 units. A 2%
-scale, a rotation or a translation moves it off; the bound alone would admit all three.
+⭐ **And TWO EXACT legs, because a bound cannot see an error smaller than itself** (7th trap shape) —
+two, because the module draws two kinds of thing and one sentence does not cover both:
+
+* **straight runs → collinearity.** A treated run's chord lies on the original segment's own line —
+  worst measured 0.0069 units. A 2% scale, a rotation or a translation moves it off.
+* **round members → exact per-axis radii.** A chord means nothing for a closed curve, so the radius
+  nudge is *recovered* from each axis separately (`k = (x − cx)/(rx·cos t)`, and the same in y) and
+  must be within `lump` on both, must **agree** between them, and the twelve samples' mean must be
+  the centre.
+
+⛔ **The second leg exists because its absence was measured, not anticipated** (review, 2026-08-05).
+The collinearity leg excluded ellipses and circles — **234 of 1548** geometry rows pristine, **464
+of 2719** counting the twins (re-measured 2026-08-05 on the merged tree) — and with only
+the bound under them, scaling every ellipse by ×1.02 … ×1.06 ran the whole sketch + catalogue suite
+**148/148 green**, and so did an **ry-only ×1.05**: a heading given to a thing this catalogue draws
+level. The round-things ratio guards cannot help — a `ry/rx` ratio is scale-invariant, and under the
+treatment there is no `rx` attribute left for them to read.
 
 **Determinism**: every wobble comes from `hash32(seed | element | segment | channel)`. No RNG, no
 clock, no locale API, no memo table. Seeded by the **piece id**, so two of a kind in one room are the
@@ -129,9 +186,26 @@ material skin is exact, not tolerant — `paper-materials.test.js`), the palette
 and the tile-size expectation — at 22 px only WEIGHT survives, so a piece must read by silhouette and
 mass, never by detail.
 
-**Cost, measured** (`client/tools/sketch-repaint-bench.mjs`, the wreck cryo bay, 7 fittings): 296 →
-1102 elements (×3.7), 0.96 → 4.73 ms to build the plate. Inside the 16 ms interactive budget. A
-cache keyed on `(itemId, side)` would make the furniture 39× cheaper and is NOT built.
+**Cost, re-measured on the merged tree, 2026-08-05** (`client/tools/sketch-repaint-bench.mjs`, the
+wreck cryo bay, 7 fittings + 2 crew; five runs × 60 reps):
+
+| | raw | treated |
+|---|---|---|
+| elements | 296 | 1102 (×3.72, byte-stable across runs) |
+| build ms | 0.382 – 0.405 | 3.19 – 3.32 (×8.0 – ×8.5, **+2.80 – 2.93 ms**) |
+
+⚠️ **Quote the range, not a point.** An earlier draft of this section said "0.96 → 4.73 ms" from a
+single run on a loaded box; review measured 3.6 – 5.4 ms on theirs. The treated figure moves with
+machine load by more than the whole raw figure, so a single number here is not evidence — the stable
+statement is the **element ratio** (×3.72, identical on every run) and "comfortably inside the 16 ms
+interactive budget", which holds across every measurement anyone has taken.
+
+**The memo is NOT shipped, and that is a decision.** The bench measures it: the 7 fittings alone cost
+2.57 – 2.61 ms treated and 0.057 – 0.061 ms from a cache keyed on `(itemId, side, facing)` — about
+**43× cheaper**. It is not built because 3.2 – 5.4 ms is not a problem against 16 ms, and a cache is
+a second source of truth about what a piece looks like. ⚠️ If it is ever built, **`facing` is part of
+the key** (main threaded rotation through `roomBox` and the builder on 2026-08-05): a two-term key
+serves a turned bench its unturned drawing, at the unturned size.
 
 ## 5 · The rulings trail
 
@@ -139,8 +213,12 @@ cache keyed on `(itemId, side)` would make the furniture 39× cheaper and is NOT
   rulings, §4 ruling **E8**'s six defect classes (the ones every catalogue's tests are named after),
   §5 the hard constraints.
 * **2026-08-05, `strong`** — the owner's words at the top of §4. The experiment's own recommendation
-  was `hand` (`medium` without the knockout); it is kept in `sketch.js` as a superseded finding and
-  as the control the halo comparison is driven against.
+  was `hand`; it is kept in `sketch.js` as a superseded finding and as the control the halo
+  comparison is driven against. ⚠️ **`hand` is `medium` minus the knockout PLUS one more term**, and
+  the shorthand "`medium` without the knockout" was wrong: `interior` is also lifted, 0.85 → 0.88
+  (with nothing eating the interior detail any more it is drawn a shade heavier). So the pair is a
+  knockout comparison **with a named confound**, not a clean one — pinned as such, with both values
+  asserted, in `client/test/sketch.test.js`.
 * **2026-08-05, materials** — "update ALL", which closed the filed question about wall/floor skins.
 * The receipts live on `lane/sketch-experiment` (`9fda9e9`): the knob sheet, the level sheet and the
   room plates that the ruling was made from.
