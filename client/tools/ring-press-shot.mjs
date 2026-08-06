@@ -162,18 +162,92 @@ const screenOf = (tx, ty) => {
   const [sx, sy] = place.foot(tx, ty);
   return { x: layerBox.x + fit.offX + sx * fit.s, y: layerBox.y + fit.offY + sy * fit.s };
 };
+// ⭐⭐ ARMING IS A THREE-STEP WALK NOW, NOT ONE CLICK — the BUILD TRAY (2026-08-05) put every tool
+// behind a category rail and a leaf rail, so `[data-rztool]` does not exist in the DOM until the
+// player has navigated to it. A rig that clicked straight for the card found nothing and died at the
+// gate; this walks the rails exactly as a player must. The leaf is asked of the SHIPPED taxonomy
+// (`build-tray-model.js`) rather than hard-coded, so a re-shuffle moves this rig with it.
+const { trayLeafFor, categoryOf } = await import('../src/ui/build-tray-model.js');
+const LEAF = trayLeafFor(TOOL);
+if (!LEAF) die(chrome, 9, `\`${TOOL}\` is in no tray leaf — the taxonomy does not know this tool`);
+// ⚠️ `settled` ASKS THIS CATEGORY'S OWN PRESSED STATE. A first draft asked whether ANY leaf/card rail
+// existed — true before the click as well as after — so `verifiedClick` reported "open already",
+// pressed nothing, and the run died two steps later with a misleading message. The tray sets
+// `aria-pressed="true"` on the selected `.rz-tray-cat` (`build-tray-view.js`), which is the state
+// that actually changes.
 await verifiedClick({
-  what: `${TOOL} armed`,
-  target: () => centre(`[data-rztool="${TOOL}"]`),
-  settled: async () => (await evaluate(`document.querySelector('[data-rztool="${TOOL}"]')?.getAttribute('aria-pressed')==='true'?1:0`)) === 1,
+  what: `the ${categoryOf(LEAF)} category is open`,
+  target: () => centre(`[data-rzcat="${categoryOf(LEAF)}"]`),
+  settled: async () => (await evaluate(
+    `document.querySelector('[data-rzcat="${categoryOf(LEAF)}"]')?.getAttribute('aria-pressed')==='true'?1:0`)) === 1,
   clickAt, log, chrome, code: 9,
 });
+// A one-leaf category is entered in ONE press, so the leaf rail may legitimately be absent — its
+// absence is the design (`tray-arm.js` says so), not a miss, and clicking is conditional on it.
+// ⚠️ POLLED, NOT READ ONCE. The rail is painted on the NEXT frame after the category press, so a
+// single immediate read finds nothing and the run dies at the card gate having navigated correctly.
+// The loop ends as soon as EITHER the leaf row or the card itself is on screen, so a one-leaf
+// category costs one extra poll rather than a timeout.
+let subBox = null;
+for (let i = 0; i < 20; i++) {
+  subBox = await centre(`[data-rzsub="${LEAF}"]`);
+  if (subBox || await centre(`[data-rztool="${TOOL}"]`)) break;
+  await sleep(150);
+}
+if (subBox) {
+  await verifiedClick({
+    what: `the ${LEAF} leaf is open`,
+    target: () => centre(`[data-rzsub="${LEAF}"]`),
+    settled: async () => (await evaluate(
+      `document.querySelector('[data-rzsub="${LEAF}"]')?.getAttribute('aria-pressed')==='true'?1:0`)) === 1,
+    clickAt, log, chrome, code: 9,
+  });
+}
+// ⛔⛔ A TOOL CARD IS A **TOGGLE**, SO IT IS PRESSED ONCE AND THEN WAITED ON — `verifiedClick` is the
+// wrong instrument here and using it cost two runs. That helper re-clicks until its `settled`
+// predicate reads true, which on a toggle means arm, disarm, arm, disarm: it pressed the TABLE card
+// 49 times in 30 s and read false at the end of every cycle. `tray-arm.js` (the node rigs' shared
+// driver) presses exactly once for the same reason.
+// The armed signal is the `.on` class, which is what the tray's own shot rig reads
+// (`build-tray-shot.mjs`: `!!document.querySelector('.rz-card.on')`).
+const cardSel = `.rz-card[data-rztool="${TOOL}"]`;
+const isArmed = async () => (await evaluate(
+  `document.querySelector(${JSON.stringify(cardSel)})?.classList.contains('on')?1:0`)) === 1;
+let armedOk = false;
+for (let attempt = 0; attempt < 3 && !armedOk; attempt++) {
+  // ⚠️ SCROLLED INTO VIEW FIRST. The card rail scrolls, and a card past its right edge still has a
+  // bounding rect — one that lies OUTSIDE the viewport, so the press landed on nothing and the run
+  // reported "pressed but never armed" about a card it had never actually hit. `table` is the last
+  // of seven in `furniture/fitted`, which is why this bit at all.
+  await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(cardSel)});
+    if (e && e.scrollIntoView) e.scrollIntoView({block:'nearest', inline:'center'}); return 1;})()`);
+  await sleep(250);
+  const box = await centre(cardSel);
+  if (!box) die(chrome, 9, `the ${TOOL} card is not in the tray after navigating to its leaf`);
+  await clickAt(box.x, box.y);
+  for (let i = 0; i < 20 && !armedOk; i++) { await sleep(150); armedOk = await isArmed(); }
+}
+if (!armedOk) {
+  const diag = await evaluate(`JSON.stringify({
+    cards: Array.from(document.querySelectorAll('.rz-card')).map(b=>b.getAttribute('data-rztool')+(b.classList.contains('on')?'*':'')),
+    anyOn: (document.querySelector('.rz-card.on')||{}).outerHTML ? document.querySelector('.rz-card.on').getAttribute('data-rztool') : null,
+    hint: (document.getElementById('rz-hint')||{}).textContent,
+    label: (document.querySelector('.rz-tray-label')||{}).textContent,
+  })`);
+  log('  DIAG ' + diag);
+  die(chrome, 9, `${TOOL} never armed — the card was pressed but never wore \`.on\``);
+}
+log(`  verified: ${TOOL} armed`);
 await png('00-armed.png');
 
 // ── press EVERY tile of the drawn rect ──
+// ⚠️ MIRRORS `Perilune.Sim.PlaceRefusal` AND MUST BE EXTENDED WITH IT. A code this table does not
+// know printed as a bare number and read as noise; `NoFloor = 9` was appended on 2026-08-06 and this
+// rig went out with tables that stopped at 8, so its own map could not name the arm the same package
+// added. `?` is kept as the fallback so a future gap is LOUD rather than silently blank.
 const REASON = { 0: 'NONE(sentinel)', 1: 'NotPlaceable', 2: 'OutOfBounds', 3: 'NotWalkable', 4: 'Blocked',
-  5: 'Occupied', 6: 'CannotPay', 7: 'AlreadyQueued', 8: 'TooManyQueued' };
-const CODE = { 3: 'W', 4: '#', 5: 'D', 6: '$', 7: 'Q', 8: 'M', 1: 'P', 2: 'O' };
+  5: 'Occupied', 6: 'CannotPay', 7: 'AlreadyQueued', 8: 'TooManyQueued', 9: 'NoFloor' };
+const CODE = { 1: 'P', 2: 'O', 3: 'W', 4: '#', 5: 'D', 6: '$', 7: 'Q', 8: 'M', 9: 'V' };
 const rows = [];
 for (let ty = focus.ry; ty < focus.ry + focus.rh; ty++) {
   for (let tx = focus.rx; tx < focus.rx + focus.rw; tx++) {
@@ -196,7 +270,9 @@ for (let ty = focus.ry; ty < focus.ry + focus.rh; ty++) {
   }
 }
 log('\n=== ACCEPTANCE / REFUSAL MAP, per tile of the DRAWN + CLICKABLE rect ===');
-log('  glyph: # wall, . floor, other = a device/item.   said: . ACCEPTED  W NotWalkable  D Occupied  $ CannotPay  ! not sent');
+log('  glyph: # wall, . floor, other = a device/item.');
+log('  said:  . ACCEPTED  # Blocked(wall)  W NotWalkable  D Occupied  $ CannotPay  Q AlreadyQueued'
+  + '  M TooManyQueued  V NoFloor  P NotPlaceable  O OutOfBounds  ! not sent  ? code this rig does not know');
 let i = 0;
 for (let ty = focus.ry; ty < focus.ry + focus.rh; ty++) {
   let g = '', a = '', o = '';

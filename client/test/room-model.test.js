@@ -34,7 +34,7 @@ import {
   // VR-P3 REVISION — the assembly seam's own parity sources: the surface's id namespace, its
   // drawing scale, its margins, the title builder and the ground-stack layer.
   RZ_ID, ROOM_SCALE, SCENE_PAD, roomTitleSvg, itemStackSvg,
-  clampTileToRoom, clampTileToInterior, resolvesByFloor, PIECE_SUBJECT_TOOLS,
+  clampTileToRoom, isHullPocheTile, isRingTile, resolvesByFloor, PIECE_SUBJECT_TOOLS,
   roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
   zoomChrome, ZOOM_HINT_IDLE, ZOOM_HINT_ARMED,
@@ -4328,8 +4328,17 @@ test('VR-P3-a leg 3 (REVERSED): a PLACE click resolves on the FLOOR PLANE, so th
  * must never grow a second one — and DIG in particular has to keep reaching a ring tile that really
  * is debris. Furniture is the verb that can never legally land there.
  *
- * MUTATION: drop the `isPlaceTool(_armed) && !clampTileToInterior(...)` line in `tileAt` ⇒ RED on
- * the first half. MUTATION: widen it to every tool ⇒ RED on the second.
+ * ⛔⛔ THE GATE IS THE **DRAWING**, NOT THE RECT — rewritten 2026-08-06 after independent review.
+ * The first cut asked `!clampTileToInterior(...)`, pure geometry, and that was a second legality
+ * authority that went stale SILENTLY: a ring wall can be STRIPPED (the sim accepts it on a carved
+ * ship), after which the tile is floor, is drawn as floor, and a geometric clamp went on swallowing
+ * every press with no ghost, no command and no sentence — worse than the defect it closed. It now
+ * asks `isHullPocheTile`, the same `roomMaterialTiles` list the poché is built from, so the picture
+ * and the press move together. The two legs below drive exactly that pair.
+ *
+ * MUTATION: drop the `isPlaceTool(_armed) && isHullPocheTile(...)` line in `tileAt` ⇒ RED on the
+ * first half. MUTATION: widen it to every tool ⇒ RED on the DIG half. MUTATION: put the rect test
+ * `!clampTileToInterior` back ⇒ RED on the stripped-wall and door legs below.
  */
 test('VR-P3-a leg 3b: a PLACE press on the wall-inclusive rect\'s hull ring sends NOTHING, and a '
   + 'DIG press on the same tile still reaches the sim', () => {
@@ -4337,9 +4346,14 @@ test('VR-P3-a leg 3b: a PLACE press on the wall-inclusive rect\'s hull ring send
   const inside = { x: HOLD.rx + 1, y: HOLD.ry + 2 };      // one tile in = real floor
   // Precondition: the two tiles really are on opposite sides of the interior boundary, or this leg
   // is comparing a tile with itself (the 4th trap shape — non-vacuity by INCLUSION).
+  const matOf = (f) => roomMaterialTiles(f, HOLD, []);
   assert.equal(clampTileToRoom(ring.x, ring.y, HOLD), true, 'the ring tile is outside the ROOM rect');
-  assert.equal(clampTileToInterior(ring.x, ring.y, HOLD), false, 'the ring tile is not on the ring');
-  assert.equal(clampTileToInterior(inside.x, inside.y, HOLD), true, 'the control tile is not interior');
+  assert.equal(isRingTile(ring.x, ring.y, HOLD), true, 'the ring tile is not on the ring');
+  assert.equal(isHullPocheTile(ring.x, ring.y, matOf(wreck), HOLD), true,
+    'the ring tile is not DRAWN as hull poché, so refusing a press on it would be a rule about '
+    + 'geometry rather than about the picture');
+  assert.equal(isHullPocheTile(inside.x, inside.y, matOf(wreck), HOLD), false,
+    'the control tile is drawn as hull too, so the two legs below are about the same thing');
 
   rzArm('lamp');
   rzSent.length = 0;
@@ -4364,6 +4378,132 @@ test('VR-P3-a leg 3b: a PLACE press on the wall-inclusive rect\'s hull ring send
     'DIG can no longer reach a ring tile. The clamp is for PLACEMENT — a ring tile that is really '
     + 'debris must stay diggable, and the sim stays the only authority on the rest.');
   rzArm('lamp');
+});
+
+/**
+ * ⭐⭐ **STRIP THE HULL WALL AND THE TILE BECOMES PRESSABLE, IN THE SAME FRAME AS IT BECOMES FLOOR.**
+ * This is MAJOR 2's own case (independent review, 2026-08-06) and the reason the ring gate reads the
+ * DRAWING instead of the rect.
+ *
+ * ⛔ THE DEFECT IT CLOSES. The sim ACCEPTS stripping a ring wall on a carved ship (`IsPressureHull`
+ * is false there — review drove it end to end: the strip was accepted, and the tile then went from
+ * Blocked to ACCEPTED for placement). With a geometric clamp the client went on swallowing every
+ * press on that tile forever: no ghost, no command, no sentence. That is worse than the original
+ * defect, which at least got a refusal sentence back.
+ *
+ * The strip is modelled where the client actually learns of it — the FRAME, which is what
+ * `roomMaterialTiles` reads. One glyph, `#` → `.`, is exactly what the wire delivers when the wall
+ * comes down.
+ *
+ * MUTATION: put `!clampTileToInterior(...)` back in `tileAt` ⇒ RED (the tile stays dead forever).
+ */
+test('VR-P3-a leg 3c: a ring wall that has been STRIPPED is floor — it draws as floor and it takes '
+  + 'a placement', () => {
+  const ring = { x: HOLD.rx, y: HOLD.ry + 3 };
+  try {
+    // BEFORE: it is hull, drawn as poché, and refuses furniture.
+    assert.equal(isHullPocheTile(ring.x, ring.y, roomMaterialTiles(wreck, HOLD, []), HOLD), true,
+      'precondition: the tile is not hull poché before the strip, so "it changed" says nothing');
+    rzArm('lamp');
+    rzSent.length = 0;
+    rzPress(rzCanvas, { button: 0, ...atTile(ring.x, ring.y) });
+    assert.deepEqual(rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place').map(xy), [],
+      'precondition: the un-stripped hull tile already took a placement');
+
+    // THE STRIP LANDS — the wire replaces the wall glyph with floor.
+    const cells = wreck.cells.slice();
+    cells[ring.y * wreck.w + ring.x] = ['.'.charCodeAt(0), 0, 0, 0];
+    const stripped = { ...wreck, cells };
+    assert.equal(isHullPocheTile(ring.x, ring.y, roomMaterialTiles(stripped, HOLD, []), HOLD), false,
+      'the stripped tile is STILL drawn as hull poché — the picture did not follow the wire');
+    Hud.renderFrame(stripped);
+    rzEnter('hold');
+
+    // AFTER: it is floor in the picture, so it is floor to the press.
+    rzArm('lamp');
+    rzSent.length = 0;
+    rzPress(rzCanvas, { button: 0, ...atTile(ring.x, ring.y) });
+    assert.deepEqual(rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place').map(xy),
+      [[ring.x, ring.y]],
+      'the stripped hull tile still swallows every placement. The player took the wall down, the '
+      + 'room draws floor there, and the surface refuses the press with no ghost and no sentence — '
+      + 'which is the stale second authority this gate was rewritten to remove.');
+  } finally { Hud.renderFrame(wreck); rzEnter('hold'); rzArm('lamp'); }
+});
+
+/**
+ * ⭐ AND THE DOORWAY ON THE RING IS SENDABLE, because a door is not wall and is never drawn as
+ * poché. Before the rewrite the geometric clamp swallowed it too — measured live on the shipped
+ * cryo bay, where the whole `ty=7` row including the door read NOT-SENT while the sim would have
+ * answered "something is already standing here". The client's job is to stop offering what it has
+ * drawn as wall; everything else goes to the sim and comes back with the sim's own sentence.
+ */
+test('VR-P3-a leg 3d: the DOORWAY on the hull ring reaches the sim — the client refuses only what '
+  + 'it drew as wall', () => {
+  try {
+    const cells = wreck.cells.slice();
+    const door = { x: HOLD.rx, y: HOLD.ry + 4 };
+    cells[door.y * wreck.w + door.x] = ['+'.charCodeAt(0), 0, 0, 0];
+    const withDoor = { ...wreck, cells };
+    assert.equal(isRingTile(door.x, door.y, HOLD), true, 'the fixture door is not on the ring');
+    assert.equal(isHullPocheTile(door.x, door.y, roomMaterialTiles(withDoor, HOLD, []), HOLD), false,
+      'a doorway is being drawn as hull poché, so the gap in the hatch is gone');
+    Hud.renderFrame(withDoor);
+    rzEnter('hold');
+    rzArm('lamp');
+    rzSent.length = 0;
+    rzPress(rzCanvas, { button: 0, ...atTile(door.x, door.y) });
+    assert.deepEqual(rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place').map(xy),
+      [[door.x, door.y]],
+      'the press on a ring DOORWAY was swallowed by the client. Nothing is drawn as wall there, so '
+      + 'the sim must be the one to answer — and it would say what is standing on the tile.');
+  } finally { Hud.renderFrame(wreck); rzEnter('hold'); rzArm('lamp'); }
+});
+
+/**
+ * ⭐⭐ **MOVE'S CLICK IS A DESTINATION, SO IT RESOLVES ON THE FLOOR** — MINOR 4 (independent review,
+ * 2026-08-06), driven rather than argued away.
+ *
+ * The first cut of `PIECE_SUBJECT_TOOLS` listed `move` with the reason "it acts on a person". That is
+ * wrong about the gesture: the person is ALREADY SELECTED before the tool is armed, and `doMove`
+ * sends `Cmd.cursor(tile)` + `Cmd.move()` — the click names WHERE THEY SHOULD GO. On the piece list,
+ * a move aimed at the bare floor in front of a tall piece walked the crew member onto the PIECE's
+ * tile: the owner's own "the floor between the pods is not clickable" defect, wearing a different
+ * verb. The frame carries `sel` at the pawn's tile so a crew member really is selected — without
+ * that `doMove` toasts and returns, and this leg would pass having sent nothing.
+ *
+ * MUTATION: put `'move'` back in `PIECE_SUBJECT_TOOLS` ⇒ RED.
+ */
+test('VR-P3-a leg 3e: with MOVE armed, a press over bare floor names THAT floor tile as the '
+  + 'destination — not the piece whose ink covers it', () => {
+  const pawn = { x: HOLD.rx + 5, y: HOLD.ry + 3 };
+  const dest = { x: HOLD.rx + 4, y: HOLD.ry + 5 };   // bare floor the player is aiming at
+  const fit = { x: HOLD.rx + 4, y: HOLD.ry + 4 };    // a piece whose ink hangs over it
+  const CID = 4242;
+  try {
+    Hud.renderFrame({ ...wreck, sel: [pawn.x, pawn.y], crew: [[pawn.x, pawn.y, 0, CID]] });
+    Hud.renderRoster({ type: 'roster', crew: [
+      { cid: CID, name: 'Ada Ozawa', role: 'engineer', deck: HOLD.deck, x: pawn.x, y: pawn.y, task: '' },
+    ] });
+    rzEnter('hold');
+    rzArm('move');
+    rzSent.length = 0;
+    // The event TARGET is the piece's node; the POINTER is over the destination floor tile.
+    rzPress(rzFitNode(fit.x, fit.y), { button: 0, ...atTile(dest.x, dest.y) });
+    // ⚠️ READ OFF `rzSent` DIRECTLY, NOT THROUGH `rzOrders` — that helper strips `cursor` as hover
+    // chatter, and `cursor` IS the payload here (`doMove` sends `Cmd.cursor(tile)` then `Cmd.move()`).
+    // The first draft filtered it out and reported "0 cursor commands" for a move that had worked.
+    const cursors = rzSent.slice().filter((o) => o && o.cmd === 'cursor');
+    assert.equal(cursors.length, 1,
+      `${cursors.length} cursor commands for one MOVE press — if 0, no crew member was selected and `
+      + 'this leg asserts nothing. Sent: ' + JSON.stringify(rzSent.slice()));
+    assert.deepEqual([cursors[0].x, cursors[0].y], [dest.x, dest.y],
+      'the MOVE destination was taken from the ink under the pointer rather than from the floor the '
+      + 'player was aiming at, so the crew member walks to the piece instead of to the empty square.');
+  } finally {
+    Hud.renderFrame(wreck); Hud.renderRoster({ type: 'roster', crew: [] });
+    rzEnter('hold'); rzArm('lamp');
+  }
 });
 
 test('VR-P3-a leg 4: both ENDPOINTS of a sweep take the element tier', () => {
@@ -5250,7 +5390,7 @@ test('VR-P3 (assembled): the hull-ring poché has a GAP at the boundary door —
     // Precondition: the door really is ON the ring, or this leg is about an interior tile and the
     // claim is vacuous (the 4th trap shape — non-vacuity by INCLUSION).
     assert.equal(clampTileToRoom(VR_BACK_DOOR.x, VR_BACK_DOOR.y, VR), true, 'the door is off the rect');
-    assert.equal(clampTileToInterior(VR_BACK_DOOR.x, VR_BACK_DOOR.y, VR), false,
+    assert.equal(isRingTile(VR_BACK_DOOR.x, VR_BACK_DOOR.y, VR), true,
       'the door tile is not on the perimeter ring, so this leg is not about the poché at all');
     assert.ok(!pocheAt(VR_BACK_DOOR),
       'the doorway is hatched as solid wall. The cutaway draws a door plate on that same tile, so '

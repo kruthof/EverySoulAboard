@@ -61,7 +61,7 @@ import {
   // unit is the TILE'S OWN WIDTH ON SCREEN (`scene.s * 100 * M_PER_TILE`, derived per repaint), and
   // an unused import of the plan view's 32 is the next reader's invitation to draw at the wrong size.
   ROOM_TOOLS, TOOL_LABEL, paletteCommand, isSweepTool, roomDragMode,
-  resolvesByFloor, clampTileToInterior,
+  resolvesByFloor, isHullPocheTile, isRingTile,
   nextRoomTool, roomTileRect,
   // VR-P3 — the cutaway's own derivations: the scene, the placement object every tile-addressed
   // layer is drawn through, the pieces of the drawing, and the two inverses (pointer→tile, and
@@ -1543,7 +1543,10 @@ export function materialLayerSvg(tiles, place, focus = _focus) {
     //
     // ⛔ AHEAD OF THE `materialItemId` GUARD, deliberately: the poché is STRUCTURE, not a material
     // skin, and must not be able to vanish because a material byte failed to resolve to art.
-    if (t.kind === 'wall' && (t.tx === rx || t.tx === x1 || t.ty === ry || t.ty === y1)) {
+    // ⭐ ASKED THROUGH `isHullPocheTile`, WHICH IS ALSO WHAT `tileAt` ASKS. One derivation decides
+    // what is drawn as hull and what may be pressed; see that function for the stale-clamp defect
+    // that came of having two. (`tiles` here IS the `roomMaterialTiles` list it reads.)
+    if (isHullPocheTile(t.tx, t.ty, tiles, focus)) {
       poche.push('<path class="rz-poche" d="' + place.quad(t.tx, t.ty) + '" fill="' + fhRef(RZ_ID)
         + '" stroke="' + INK + '" stroke-width="1.1" stroke-linejoin="round"/>');
       continue;
@@ -2854,16 +2857,26 @@ function tileAt(e, mode) {
     }
   }
   if (!hit) hit = tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
-  // ⭐ THE HULL RING IS NOT A PLACE TO PUT FURNITURE, AND THE GHOST STOPS PROMISING IT IS.
-  // `_focus`'s rect is wall-inclusive, so its perimeter is 36 of the 96 tiles the cutaway draws and
-  // every one of them is solid wall. They now CARRY WALL INK (`materialLayerSvg`'s poché), and this
-  // is the pressability half of the same fact: a place tool resolves to null there, so the ghost
-  // hides and no command is sent — instead of previewing a piece and being refused.
-  // ⛔ PLACE TOOLS ONLY. A wall/floor/door/dig/stockpile press on the ring still resolves and is
-  // still refused by the SIM, which is the one authority on legality (this file must never grow a
-  // second one) — and DIG must keep reaching a ring tile that really is debris. Furniture is the
-  // verb that can never legally land there, and the verb the owner was fighting.
-  if (hit && isPlaceTool(_armed) && !clampTileToInterior(hit.x, hit.y, _focus)) return null;
+  // ⭐⭐ THE SURFACE DOES NOT OFFER FURNITURE ON A TILE IT HAS DRAWN AS WALL — and it asks the
+  // DRAWING, not the rect. `_focus`'s rect is wall-inclusive, so its perimeter is 36 of the 96 tiles
+  // the cutaway draws; the ones that are really wall carry poché (`materialLayerSvg`), and a place
+  // tool resolves to null on exactly those, so the ghost hides and no command is sent.
+  //
+  // ⛔ THIS USED TO BE `!clampTileToInterior(...)` — PURE RECT GEOMETRY — AND THAT WAS A SECOND
+  // LEGALITY AUTHORITY THAT WENT STALE SILENTLY. A ring wall can be STRIPPED (the sim accepts it on
+  // a carved ship), after which the tile is floor, is DRAWN as floor, and the geometric clamp went on
+  // swallowing every press on it with no ghost, no command and no sentence — worse than the defect it
+  // was added for. The same hole was already live on the ring's DOOR tile, which never carries poché.
+  // `isHullPocheTile` reads the SAME `roomMaterialTiles` list the poché is built from, so the picture
+  // and the press change together in one frame. Full argument at that function.
+  //
+  // ⛔ PLACE TOOLS ONLY, unchanged: a wall/floor/door/dig/stockpile press anywhere still reaches the
+  // SIM, which is the one authority on legality, and DIG must keep reaching a ring tile that really
+  // is debris.
+  if (hit && isPlaceTool(_armed)
+    && isHullPocheTile(hit.x, hit.y, roomMaterialTiles(Hud.getFrame(), _focus, decodeMaterials(Hud.getMaterials())), _focus)) {
+    return null;
+  }
   return hit;
 }
 
