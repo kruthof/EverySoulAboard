@@ -1049,33 +1049,71 @@ test('the thirteen twins are ledgered, badged, and none is its own pristine piec
 // correct art. Measured, not assumed: reversing the two lines below leaves the whole node suite —
 // all of it, including `sketch-adoption.test.js`'s ledger — green.
 //
-// This is not hypothetical. `fab-cell`'s recess IS that construction: an opaque mouth quad with a
-// hatched wall set 16 cm back INSIDE it, and the designer patch that introduced it drew them in the
-// wrong order on its first pass (the module header's own seventh fault). The order is therefore
-// pinned here, as a PAIR: an inner member entirely contained by an opaque outer one must be emitted
-// AFTER it.
+// ⛔ THE PAIR THIS TEST WAS BORN ON IS GONE, BY OWNER RULING — 2026-08-06, on the polish gallery:
+// nine pieces go back to their pre-polish drawings, `fab-cell` among them. The row that stood here
+// named `fab-cell`'s recess (an opaque mouth quad with a hatched wall set 16 cm back inside it), and
+// that construction was created BY the designer-polish pass — the reverted piece draws a flat inset
+// outline coplanar with the mouth instead, which is a STROKE, and a stroke buried by a later area is
+// NOT the fault this test is named for: `buriedMembers()` counts strokes as victims and sees it.
+// ⭐ MEASURED, NOT ARGUED — the whole justification for dropping the row rests on it, so it was
+// driven: emit the reverted `fab-cell`'s inset outline BEFORE its opaque mouth quad and the node
+// suite reds at `sketch-adoption.test.js`'s "no member … is erased" ledger (1817/1818, and this test
+// is not the one that fails). Keeping `fab-cell` in the table would therefore have kept a row whose
+// subject another instrument already covers, while falsifying this one's headline.
+//
+// ⭐ THE RULE ITSELF IS NOT POLISH-SPECIFIC AND IS RESTATED, NOT DROPPED. `reclaimer-stack`'s sight
+// glass is the same construction and predates the polish entirely: an opaque `PAPER_FLAT` pane, then
+// the water standing in it drawn as a HATCHED quad inside that pane. It is the very piece the
+// deleted `fab-cell` comment cited as its own precedent ("the same `fill: hatch` for what is behind
+// the glass the reclaimer's sight glass uses"). Drawn in the other order, the water contributes zero
+// pixels and the glass reads as an empty window — and the blindness leg still holds exactly, because
+// `fill="url(#fh)"` satisfies `opaqueTail`, so the water is classified as an AREA and can never be a
+// victim. Measured on this tree, not inherited: reversing the two lines leaves the whole node suite
+// green except this test.
 //
 // ⛔ WHY A NAMED PAIR RATHER THAN A SWEEP OVER THE SET. Swept, this question has a large
 // pre-existing population — every `pad()` standoff in the module is a filled member the body's own
 // face contains — and those are E8-3b's subject, with their own rule and their own reasoning. A
 // sweep would therefore need a ledger of ~20 rows before it asserted anything, which is a package,
-// not a pin. The pair table below states the one relationship this lane created and can defend.
+// not a pin. (Re-measured on the reverted tree with a throwaway probe: EIGHT of the thirteen
+// machines carry at least one opaque-outer / opaque-inner nesting — `book-case`, `fab-cell`,
+// `med-cot`, `paste-column`, `plant-pot`, `reactor-plant`, `reclaimer-stack`, `sleeper-pod` — and
+// several carry more than one, so the ~20-row figure is the right order.) The pair table below
+// states the one relationship this module can defend as load-bearing.
 const NESTED_PAIRS = [
   // [id, outer opaque member (drawn FIRST), inner member (drawn INSIDE it, SECOND), what]
-  ['fab-cell',
-    [[16, 0, 60], [134, 0, 60], [134, 0, 140], [16, 0, 140]],
-    [[20, 16, 64], [126, 16, 64], [126, 16, 128], [20, 16, 128]],
-    'the chamber: a hatched recess wall inside an opaque mouth'],
+  ['reclaimer-stack',
+    [[24, 0, 62], [80, 0, 62], [80, 0, 132], [24, 0, 132]],
+    [[24, 0, 62], [80, 0, 62], [80, 0, 98], [24, 0, 98]],
+    'the sight glass: the hatched water standing inside an opaque pane'],
 ];
 
 test('⭐⭐ a member nested inside an opaque one is drawn AFTER it — the fault no ledger sees', () => {
-  const inPoly = (poly, [x, y]) => {
+  // ⚠️ CONTAINED means inside OR ON, and the change is forced by the subject rather than convenient.
+  // Water standing in a glass shares the pane's own sill — two of the four inner vertices ARE outer
+  // vertices — so a strictly-interior test condemns the correct drawing. `EDGE_TOL` is 0.01 local
+  // units against a 112-unit box: it admits a shared edge and nothing else. The leg still bites, and
+  // the mutation that proves it is named below (a) — moving the water 8 cm past the pane's left lip
+  // is caught, so this is not a tolerance that has swallowed the assertion.
+  const EDGE_TOL = 0.01;
+  const onEdge = (poly, [x, y]) => {
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+      const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
+      const dx = xj - xi; const dy = yj - yi; const L2 = dx * dx + dy * dy;
+      if (L2 === 0) { if (Math.hypot(x - xi, y - yi) <= EDGE_TOL) return true; continue; }
+      const t = Math.max(0, Math.min(1, ((x - xi) * dx + (y - yi) * dy) / L2));
+      if (Math.hypot(x - (xi + t * dx), y - (yi + t * dy)) <= EDGE_TOL) return true;
+    }
+    return false;
+  };
+  const inPoly = (poly, p) => {
+    const [x, y] = p;
     let inside = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
       const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
       if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
     }
-    return inside;
+    return inside || onEdge(poly, p);
   };
   for (const [id, outerPts, innerPts, what] of NESTED_PAIRS) {
     const svg = build(id);
@@ -1102,8 +1140,8 @@ test('⭐⭐ a member nested inside an opaque one is drawn AFTER it — the faul
       `${id}: ${what} — the outer member is not opaque, so nothing is at stake in the order.\n`
       + `  ${outer.tag.slice(0, 120)}`);
     // (b) THE INNER REALLY IS CONTAINED — the whole reason the order is load-bearing. If a later
-    // redraw moves the wall so it pokes out of the mouth, this assertion says so instead of the
-    // pin silently becoming a statement about two unrelated strokes.
+    // redraw moves the inner member so it pokes out of the outer one, this assertion says so
+    // instead of the pin silently becoming a statement about two unrelated strokes.
     const outerPoly = points(outer.d);
     const innerPoly = points(inner.d);
     assert.ok(innerPoly.every((p) => inPoly(outerPoly, p)),

@@ -597,41 +597,25 @@ const drawReclaimerStack = (s, { F, hatch }) => {
   for (const x of [8, 82]) { pad(s, F, x, 4, 20, 10, 14, hatch); pad(s, F, x, 52, 20, 10, 14, hatch); }
   bx(s, F, 0, 0, 10, 110, 152, 70, { hatch, sw: W.mass });
   bx(s, F, 2, 2, 162, 106, 8, 66, { hatch, sw: W.heavy });
-  // GREY IN — a full-height STANDPIPE up the left flank, forward of the body plane so its own face
-  // clears the body's opaque front. It runs the deck to the collar, so it reads as PLUMBING rather
-  // than as the trim a locker wears, and it breaks the box's flat silhouette on purpose: a blind read
-  // of the old drawing called this piece "a storage locker", and a 10 cm nub sitting on the lid was
-  // not enough plumbing to say otherwise. The collar keeps the accent: "not this one".
-  cyl(s, F, 12, 4, 10, 168, 7, { sw: W.heavy });
-  disc(s, F, 12, 4, 152, 10, { fill: 'none', sw: W.mid, stroke: ATTEND });
-  // the sight glass, and the water standing in it — with a curved MENISCUS at the fill line instead
-  // of a ruled one, so the fill reads as standing liquid rather than as a second shelf. ⚠️ THE GLASS
-  // KEEPS ITS OWN CORNERS (24…80 × 62…132, water at z = 98): `machines.test.js` asks that the water
-  // line be the HEAVIEST stroke running through those two lips, which is the one mark that says the
-  // glass holds water rather than being a window.
-  quad(s, F, [[24, 0, 62], [80, 0, 62], [80, 0, 132], [24, 0, 132]], { fill: PAPER_FLAT, sw: W.heavy });
+  // the sight glass, and the water standing in it
+  quad(s, F, [[24, 0, 62], [80, 0, 62], [80, 0, 132], [24, 0, 132]], { fill: PAPER_FLAT, sw: W.mid });
   quad(s, F, [[24, 0, 62], [80, 0, 62], [80, 0, 98], [24, 0, 98]], { fill: hatch, sw: W.hair });
-  curve(s, F, [24, 0, 98], [52, 0, 92], [80, 0, 98], { sw: W.heavy });
-  line(s, F, [[38, 0, 112], [72, 0, 112]], { sw: W.hair, opacity: 0.4 });
-  // the mark: two arrows chasing each other — same construction, thickened, and clear of the
-  // standpipe (x = 12, well left of it) so it stays the strongest single tell on the front face
-  curve(s, F, [42, 0, 152], [55, 0, 164], [68, 0, 152], { sw: W.heavy });
-  line(s, F, [[63, 0, 156], [68, 0, 152], [64, 0, 147]], { sw: W.mid });
-  curve(s, F, [68, 0, 144], [55, 0, 132], [42, 0, 144], { sw: W.heavy });
-  line(s, F, [[47, 0, 140], [42, 0, 144], [46, 0, 149]], { sw: W.mid });
-  // CLEAN OUT — the spigot: a pipe falling from the glass's own bottom-right corner, clear of the
-  // pane, to a valve near the deck, and then the drip. Attached at both ends, so the flow has
-  // somewhere to come from and somewhere to go — and big enough to register, which a ∅5 disc with a
-  // 12 cm stub was not.
-  line(s, F, [[80, 4, 62], [98, 4, 62], [98, 4, 22]], { sw: W.heavy });
-  disc(s, F, 98, 4, 22, 5, { fill: 'none', sw: W.fine });
-  curve(s, F, [98, 4, 16], [101, 4, 8], [98, 4, 0], { sw: W.fine });
-  // the access HATCH — a maintenance panel, not a wardrobe door: the old full-width outline with a
-  // vertical pull bar at mid-height was the strongest "cabinet" cue in the piece, so it is a small
-  // hatch with a recessed latch that no longer competes with the glass for the "front door" read
-  line(s, F, [[18, 0, 16], [58, 0, 16], [58, 0, 40], [18, 0, 40]],
+  line(s, F, [[24, 0, 98], [80, 0, 98]], { sw: W.heavy });
+  // GREY IN — the riser, high, with a caution collar. The accent says "not this one".
+  cyl(s, F, 16, 35, 170, 180, 7, { sw: W.mid });
+  disc(s, F, 16, 35, 170, 10, { fill: 'none', sw: W.mid, stroke: ATTEND });
+  // CLEAN OUT — the spigot, low, on the other flank
+  disc(s, F, 92, 0, 40, 5, { fill: 'none', sw: W.fine });
+  line(s, F, [[92, 0, 40], [104, 0, 40], [104, 0, 26]], { sw: W.mass });
+  // the mark: two arrows chasing each other
+  curve(s, F, [42, 0, 152], [55, 0, 164], [68, 0, 152], { sw: W.mid });
+  line(s, F, [[63, 0, 156], [68, 0, 152], [64, 0, 147]], { sw: W.fine });
+  curve(s, F, [68, 0, 144], [55, 0, 132], [42, 0, 144], { sw: W.mid });
+  line(s, F, [[47, 0, 140], [42, 0, 144], [46, 0, 149]], { sw: W.fine });
+  // the access door
+  line(s, F, [[14, 0, 20], [96, 0, 20], [96, 0, 54], [14, 0, 54]],
     { sw: W.fine, close: true, cap: false });
-  disc(s, F, 50, 0, 28, 3, { fill: INK, sw: W.hair });
+  line(s, F, [[80, 0, 32], [80, 0, 42]], { sw: W.heavy });
   for (const y of [14, 34, 54]) line(s, F, [[6, y, 170], [104, y, 170]], { sw: W.hair, opacity: 0.5 });
 };
 export const reclaimerStack = (opts = {}) => machine('reclaimer-stack', opts, drawReclaimerStack);
@@ -644,32 +628,16 @@ export const reclaimerStack = (opts = {}) => machine('reclaimer-stack', opts, dr
 // stub on a wall; a spout inside a recess is a place you put a bowl.
 const drawPasteColumn = (s, { F, hatch }) => {
   for (const x of [8, 48]) { pad(s, F, x, 4, 16, 8, 12, hatch); pad(s, F, x, 40, 16, 8, 12, hatch); }
-  // ⭐ THE LOCKER READ, 2026-08-05 — the cold guess was "a storage locker", and the piece IS the
-  // ship's food dispenser. Two causes, both measured off the drawing rather than argued: the
-  // 7 cm-tall hopper read as a LID on a cabinet instead of a tank, and the alcove was a rectangle
-  // outlined on a flat front face — which is exactly what a locker door looks like. The spout, the
-  // declared identifying feature, hung 40 cm clear of the serving floor and vanished at tile size.
-  bx(s, F, 0, 0, 8, 70, 132, 55, { hatch, sw: W.mass });                     // the column, 8 → 140
-  bx(s, F, 8, 6, 140, 54, 25, 44, { hatch, sw: W.heavy });                   // the reservoir — tall
-                                                                             // enough to read as a
-                                                                             // tank, not a lid
-  line(s, F, [[10, 0, 152], [58, 0, 152]], { sw: W.hair, opacity: 0.5 });    // its fill line
-  disc(s, F, 54, 0, 148, 3, { fill: 'none', sw: W.fine });                   // a gauge on its flank
-  // the alcove: a hatched back, TWO SIDE WALLS so the cavity reads as a cut-in recess rather than a
-  // door outline (the locker misread), a flat serving floor, and the opening cut in the front face
+  bx(s, F, 0, 0, 8, 70, 150, 55, { hatch, sw: W.mass });
+  bx(s, F, 8, 6, 158, 54, 7, 44, { hatch, sw: W.heavy });                    // the hopper
+  // the alcove: a hatched back, a flat serving floor, and the opening cut in the front face
   quad(s, F, [[10, 30, 44], [60, 30, 44], [60, 30, 96], [10, 30, 96]], { fill: hatch, sw: W.fine });
-  quad(s, F, [[10, 0, 44], [10, 30, 44], [10, 30, 96], [10, 0, 96]], { fill: PAPER_FLAT, sw: W.fine });
-  quad(s, F, [[60, 0, 44], [60, 30, 44], [60, 30, 96], [60, 0, 96]], { fill: PAPER_FLAT, sw: W.fine });
   quad(s, F, [[10, 0, 44], [60, 0, 44], [60, 30, 44], [10, 30, 44]], { fill: PAPER_FLAT, sw: W.fine });
   line(s, F, [[10, 0, 44], [60, 0, 44], [60, 0, 96], [10, 0, 96]],
     { sw: W.mid, close: true, cap: false });
-  // the spout: a collar at the recess ceiling, a thick body hanging LOW over the counter (clearing
-  // the serving floor by 18 cm, not 40), a forward bend toward where a bowl sits, and the drip at
-  // the tip — the identifying feature, kept and made to hold at tile size
+  for (const y of [10, 17, 24]) line(s, F, [[16, y, 44], [54, y, 44]], { sw: W.hair, opacity: 0.6 });
   disc(s, F, 35, 18, 96, 6, { sw: W.fine });                                 // the spout's collar …
-  cyl(s, F, 35, 18, 62, 96, 5, { sw: W.heavy, cap: false });                 // … and the spout
-  line(s, F, [[35, 18, 62], [35, 9, 50]], { sw: W.heavy });                  // … its forward bend …
-  disc(s, F, 35, 9, 50, 2.2, { fill: INK, sw: W.hair });                     // … and the drip
+  cyl(s, F, 35, 18, 84, 96, 4, { sw: W.mid, cap: false });                   // … and the spout
   // the screen — a readout, deliberately unreadable at the size a tile draws (the `cryo.js` ruling)
   quad(s, F, [[12, 0, 112], [58, 0, 112], [58, 0, 140], [12, 0, 140]], { fill: PAPER_FLAT, sw: W.mid });
   for (const z of [120, 128]) line(s, F, [[17, 0, z], [45, 0, z]], { sw: W.hair, opacity: 0.55 });
@@ -735,32 +703,19 @@ const drawFabCell = (s, { F, hatch, powered }) => {
   for (const x of [10, 122]) { pad(s, F, x, 4, 18, 10, 14, hatch); pad(s, F, x, 72, 18, 10, 14, hatch); }
   bx(s, F, 0, 0, 10, 150, 150, 90, { hatch, sw: W.mass });
   bx(s, F, 4, 4, 160, 142, 8, 82, { hatch, sw: W.heavy });
-  cyl(s, F, 128, 45, 168, 175, 6, { sw: W.mid });                            // the extract, alone on
-                                                                             // the lid now the lamp
-                                                                             // has moved to the panel
-  // the chamber is a CUT, not a plaque. A flat PAPER_FLAT rectangle coplanar with the front face read
-  // as a stencilled panel on a crate — which is what a blind read of this piece called it. The mouth
-  // is drawn first and its outline HEAVY, then a HATCHED wall set 16 cm BACK inside it: the same
-  // "fill: hatch for what is behind the glass" the reclaimer's sight glass uses, and the reason the
-  // order matters is the seventh fault in this module's header — a wall drawn behind an opaque quad
-  // contributes zero pixels.
-  quad(s, F, [[16, 0, 60], [134, 0, 60], [134, 0, 140], [16, 0, 140]], { fill: PAPER_FLAT, sw: W.heavy });
-  quad(s, F, [[20, 16, 64], [126, 16, 64], [126, 16, 128], [20, 16, 128]], { fill: hatch, sw: W.hair });
-  // the gantry: two struts off the mouth's own top edge and a rail slung between them, BOLD — at tile
-  // size this crossing bar is the whole silhouette difference between "machine" and "crate", and E8-3
-  // holds literally (each strut ends on the mouth's top edge above and on the rail's own end below).
-  for (const x of [22, 128]) line(s, F, [[x, 0, 140], [x, 0, 128]], { sw: W.mid });
-  line(s, F, [[22, 0, 128], [128, 0, 128]], { sw: W.heavy });                // the gantry rail
+  cyl(s, F, 128, 45, 168, 175, 6, { sw: W.mid });                            // the extract
+  disc(s, F, 20, 30, 168, 6, { fill: powered ? INK : PAPER, sw: W.fine });   // the ready lamp
+  // the chamber
+  quad(s, F, [[16, 0, 60], [134, 0, 60], [134, 0, 140], [16, 0, 140]], { fill: PAPER_FLAT, sw: W.mid });
+  line(s, F, [[21, 0, 65], [129, 0, 65], [129, 0, 135], [21, 0, 135]],
+    { sw: W.hair, close: true, cap: false, opacity: 0.6 });
+  line(s, F, [[22, 0, 128], [128, 0, 128]], { sw: W.mid });                  // the gantry rail
   bx(s, F, 58, 8, 62, 34, 26, 24, { sideFill: 'flat', sw: W.mid });          // the billet, forming
-  line(s, F, [[64, 0, 118], [86, 0, 118], [86, 0, 132], [64, 0, 132]], {
+  line(s, F, [[64, 0, 114], [86, 0, 114], [86, 0, 126], [64, 0, 126]], {
     sw: W.mid, close: true, cap: false, fill: powered ? ATTEND : PAPER, stroke: powered ? ATTEND : INK,
-  });                                                                        // the print head, riding
-                                                                             // the rail it straddles
-  line(s, F, [[75, 0, 118], [75, 8, 88]],
-    { sw: W.hair, dash: '2 2', opacity: 0.7, stroke: powered ? ATTEND : INK }); // the feed, to the billet
-  disc(s, F, 142, 0, 118, 5, { fill: powered ? INK : PAPER, sw: W.fine });   // the ready lamp — on the
-                                                                             // control panel, not the
-                                                                             // lid beside the extract
+  });                                                                        // the print head
+  line(s, F, [[75, 0, 114], [75, 0, 106]], { sw: W.mid, stroke: powered ? ATTEND : INK });
+  line(s, F, [[75, 0, 106], [75, 8, 88]], { sw: W.hair, dash: '2 2', opacity: 0.7 });
   // the output tray, and the slot it comes out of
   quad(s, F, [[20, 0, 26], [130, 0, 26], [130, 0, 44], [20, 0, 44]], { fill: PAPER_FLAT, sw: W.mid });
   bx(s, F, 18, 0, 20, 114, 6, 22, { sideFill: 'flat', sw: W.fine });
@@ -778,19 +733,11 @@ export const fabCell = (opts = {}) => machine('fab-cell', opts, drawFabCell);
 // The contact is the accent. A blip is the single most attention-shaped mark this ship can draw.
 const RING_Z = 110;
 const drawRingArray = (s, { F }) => {
-  // the base — a rotating pedestal
   cyl(s, F, 70, 70, 0, 14, 32, { sw: W.heavy });
   for (const a of [0.6, 2.7, 4.6]) {
     disc(s, F, 70 + 24 * Math.cos(a), 70 + 24 * Math.sin(a), 14, 3, { fill: 'none', sw: W.hair });
   }
-  // the mast. ⚠️ NOTHING RIDES ABOVE THE PLATE ANY MORE, 2026-08-05: a feed spike with a floating
-  // collar ring used to sit above RING_Z here, and on the render it read as a pole with a lens rim
-  // on it — an eyepiece, not an antenna — which is what pulled a cold read to "telescope" instead
-  // of the declared identity (concentric rings + a sweep + a contact). `dish-mast`'s "feed at the
-  // focus" is THAT piece's own part, not this one's: a level, headingless array has no focus to
-  // feed, so the spike was borrowing a neighbour's silhouette and losing its own.
   cyl(s, F, 70, 70, 14, RING_Z, 9, { sw: W.mass, cap: false });
-  // the four struts that carry the array off the mast head — attached at both ends (E8-1)
   for (let i = 0; i < 4; i += 1) {
     const a = Math.PI / 6 + (i * Math.PI) / 2;
     line(s, F, [[70 + 12 * Math.cos(a), 70 + 12 * Math.sin(a), RING_Z],
@@ -808,24 +755,14 @@ const drawRingArray = (s, { F }) => {
   }
   line(s, F, [[70, 70, RING_Z], [70 + 62 * Math.cos(A0), 70 + 62 * Math.sin(A0), RING_Z]],
     { sw: W.heavy });
-  // the rings — the outer is the array's own RIM, drawn heavier than the two scan bands it encloses,
-  // so the plate reads as ONE bordered disc with concentric detail inside it rather than as three
-  // equal-weight loops competing with the struts and the sweep for the eye.
-  // ⛔ RECONCILED, AND THE GUARD FOUND IT RATHER THAN REVIEW: the patch drew this rim with
-  // `levelRing`, which breaks TWO legs of `machines.test.js` at once. E8-2's COMPLEMENT names
-  // `reactor-plant` as the only piece in the set permitted a closed level ring — `levelRing` here
-  // makes that list two long — and the radii leg reads `<ellipse>` elements, which `levelRing` does
-  // not emit (it emits a two-`A` path), so the array's rings would have measured ∅46/24 and the
-  // "three concentric rings is the piece" assertion would have failed on its own subject. `disc`
-  // with `fill:'none'` at `W.heavy` is the same drawing — a heavier outer rim — through the
-  // primitive both guards already speak. The weight is the patch's intent; the element is the pin's.
-  for (const [r, sw] of [[68, W.heavy], [46, W.fine], [24, W.fine]]) {
-    disc(s, F, 70, 70, RING_Z, r, { fill: 'none', sw });
-  }
+  for (const r of [68, 46, 24]) disc(s, F, 70, 70, RING_Z, r, { fill: 'none', sw: W.fine });
   disc(s, F, 70, 70, RING_Z, 12, { sw: W.mid });
-  // the contact — the single most attention-shaped mark this ship can draw
+  // the contact
   disc(s, F, 70 + 52 * Math.cos(-0.75), 70 + 52 * Math.sin(-0.75), RING_Z, 5,
     { fill: ATTEND, stroke: ATTEND, sw: W.hair });
+  cyl(s, F, 70, 70, RING_Z, 132, 4, { sw: W.mid, cap: false });              // the feed spike
+  disc(s, F, 70, 70, 126, 8, { fill: 'none', sw: W.hair });
+  disc(s, F, 70, 70, 132, 4, { sw: W.fine });
 };
 export const ringArray = (opts = {}) => machine('ring-array', opts, drawRingArray);
 

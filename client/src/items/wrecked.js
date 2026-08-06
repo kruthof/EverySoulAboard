@@ -1291,14 +1291,24 @@ const deckMarker = (s) => paintPaperFixture(s, 'deck-marker', (_s, { F }) => {
   inkCrack(s, F, [[60, 4, 196], [68, 4, 192]]);               // the far stud, out of the wall
 });
 
+// ⛔ RE-ANCHORED 2026-08-06, WITH THE PIECE IT DAMAGES. `drawLampSconce` was redrawn on the owner's
+// ruling ("i have no clue what lamp-sconce does show") and every mark below was authored in ABSOLUTE
+// centimetres against the drawing it replaced — the cone that ran z 190…204 narrow-side-up, and the
+// 24 × 24 plate at z 208…232. Left alone they would have hung in clean paper inside the box, which is
+// exactly the defect `paper-resources.test.js`'s anchoring guard is named for, one catalogue over.
+// The four marks below were re-derived against the shipped geometry: the shade is now the tapered
+// `cone(23, 6, 206, 220, 9, 12)` at y = 6, the bulb is a ∅11 face circle at (23, 6, 199), and the
+// backplate is `bx(16, 17, 222, 14, 18, 5)`. Verified with `paper-resources.test.js`'s own anchoring
+// instrument, run over the fixture twins from a scratch probe: all four anchors land on the piece.
 const lampSconce = (s) => paintPaperFixture(s, 'lamp-sconce', (_s, { F }) => {
-  inkCrack(s, F, [[13, 6, 194], [26, 6, 202]]);               // the shade, split along a rib
-  // ⚠️ ON THE CONE AND NOT AT THE MOUTH: the lit mouth is an INK disc, so a hole drawn over it merges
-  // with the light and reads as a bigger lamp rather than as damage — the same ink-on-ink trap the
-  // porthole's twin above records, in its milder form.
-  inkHole(s, F, 23, 6, 198, 3);
-  inkScorch(s, F, 23, 14, 218, 10);
-  inkWire(s, F, [16, 14, 206], [12, 10, 196], [8, 6, 190]);   // the flex, hanging out of the plate
+  inkCrack(s, F, [[15, 6, 210], [28, 6, 216]]);               // the shade, split along a rib
+  // ⚠️ ON THE CONE AND NOT ON THE BULB: the bulb is an INK disc, so a hole drawn over it merges with
+  // the light and reads as a bigger lamp rather than as damage — the same ink-on-ink trap the
+  // porthole's twin above records, in its milder form. (Before the redraw the INK was the mouth; the
+  // rule is the same and its subject moved.)
+  inkHole(s, F, 18, 6, 209, 3);
+  inkScorch(s, F, 23, 17, 230, 8);                            // the backplate, burned
+  inkWire(s, F, [17, 17, 223], [13, 12, 212], [9, 6, 200]);   // the flex, hanging out of the plate
 });
 
 const growLamp = (s) => paintPaperFixture(s, 'grow-lamp', (_s, { F }) => {

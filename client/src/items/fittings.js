@@ -623,31 +623,17 @@ const drawBench = (s, { F, hatch }) => {
 export const bench = (opts = {}) => fitting('bench', opts, drawBench);
 
 // 02 CHAIR · ∅46 × 43 · "Round, so it cannot be set down facing the wrong way."
-// ⚠️ RECOGNISABILITY, 2026-08-05. The catalogue's pedestal — a ∅40 floor puck with three deck bolts,
-// one uniform ∅14 column and a domed seat — is foot / pole / shade, which is this very catalogue's
-// standing lamp (25) in silhouette; a blind read of the render called it "a standing lamp or work
-// light". The seat and its inset padding ring are kept; the base is now a five-point wheeled star and
-// the column is broken into a gas-lift collar under a thinner shaft, which is the two-diameter tell a
-// lamp pole never has. Still round in the round-fittings sense: the star is radially arranged, so a
-// facing only turns it and the piece still cannot be set down the wrong way about.
+// The catalogue's pedestal to the centimetre: a ∅40 base puck with three deck bolts, a ∅14 column, a
+// ∅46 seat with an inset ring. Round ⇒ level ellipses, no heading.
 const drawChair = (s, { F }) => {
   const c = 23;
-  // A 5-point star wheelbase, regular pentagon unit vectors (the stool's own precomputed-unit-vector
-  // idiom, four lines down).
-  const LEGS = [[0, -1], [0.951, -0.309], [0.588, 0.809], [-0.588, 0.809], [-0.951, -0.309]];
-  // ⚠️ THE COLLAR IS EMITTED BEFORE THE LEGS, AND THE ORDER IS A MEASUREMENT. Drawn after them, its
-  // opaque body swallowed the deep-left caster whole (the buried-member probe named it): a level
-  // ellipse lying at depth 37 rides UP the page by 0.6 cm a centimetre, straight into a collar that
-  // stands at the centre. The legs now cross it, which is what a star base does anyway.
-  cyl(s, F, c, c, 0, 2, 5, { sw: W.mid });
-  cyl(s, F, c, c, 2, 9, 7, { sw: W.mid });                    // the gas-lift collar
-  for (const [ux, uy] of LEGS) {
-    line(s, F, [[c + ux * 5, c + uy * 5, 1], [c + ux * 18, c + uy * 18, 1]], { sw: W.heavy });
-    disc(s, F, c + ux * 18, c + uy * 18, 0, 2.2, { fill: 'none', sw: W.fine });
+  cyl(s, F, c, c, 0, 3, 20, { sw: W.fine });
+  for (const [dx, dy] of [[10, -6], [-10, -4], [0, 8]]) {
+    disc(s, F, c + dx, c + dy, 3, 1.9, { fill: 'none', sw: W.hair });
   }
-  cyl(s, F, c, c, 9, 35, 4, { sw: W.mid });                   // … and the thinner shaft above it
-  cyl(s, F, c, c, 35, 43, 21, { sw: W.heavy });
-  disc(s, F, c, c, 43, 15, { fill: 'none', sw: W.hair, opacity: 0.5 });
+  cyl(s, F, c, c, 3, 38, 7, { sw: W.mid });
+  cyl(s, F, c, c, 38, 43, 23, { sw: W.heavy });
+  disc(s, F, c, c, 43, 16, { fill: 'none', sw: W.hair, opacity: 0.5 });
 };
 export const chair = (opts = {}) => fitting('chair', opts, drawChair);
 
@@ -989,18 +975,6 @@ const drawCooler = (s, { F, hatch }) => {
 export const cooler = (opts = {}) => fitting('cooler', opts, drawCooler);
 
 // 13 WORKTOP → DESK · 160 × 60 × 90 · "Two drawers, one open bay, rail along the top."
-// ⛔ RECOGNIZABILITY FIX (design review, 2026-08-05). A blind read of the catalogue card called this
-// piece a "storage locker" — two drawer fronts and a hatched cubby are the vocabulary of a cabinet,
-// and nothing on the original card marked the box as somewhere a person WORKS rather than stows. The
-// carcass, drawers and open bay are kept exactly as ported; what is added is what belongs on a
-// worktop and nowhere on a locker: a short pile of paper (three fanned leaves, a pen laid across
-// them) and a desk lamp — bezel base, canted mast, shade — using the SAME level-ellipse construction
-// the cooler's dial and the o2-scrubber's intake already use for a round part on a non-level face.
-// ⚠️ THE LAMP IS SHORTER AND FURTHER FORWARD THAN THE PATCH DREW IT, AND THE LIMIT IS MEASURED. A
-// 160 × 60 top makes the WIDTH axis the one that fills BOX, so the piece's own drawn extent is
-// 112 × 77 and the vertical tolerance is ±39.1 units — the worktop's back-top corner already sits at
-// −38.34. A shade at z = 108 / y = 44 projects to −43.4 and leaves that extent, which is the one
-// thing `fittings.test.js`'s box rule forbids. At (134, 24, 104) the shade's lowest point is −35.9.
 const drawDesk = (s, { F, hatch }) => {
   for (const x of [5, 145]) { foot(s, F, x, 6, hatch); foot(s, F, x, 46, hatch); }
   bx(s, F, 0, 0, 8, 160, 77, 60, { hatch });
@@ -1013,16 +987,6 @@ const drawDesk = (s, { F, hatch }) => {
   }
   quad(s, F, [[78, 0, 12], [152, 0, 12], [152, 0, 80], [78, 0, 80]], { fill: hatch, sw: W.fine });
   line(s, F, [[78, 0, 46], [152, 0, 46]], { sw: W.mid });
-  // ⭐ THE IDENTIFYING FEATURE — a worked surface, not just a cased body.
-  for (let i = 0; i < 3; i += 1) {
-    const yy = 18 + i * 3;
-    quad(s, F, [[100, yy, 90], [128, yy, 90], [128, yy + 14, 90], [100, yy + 14, 90]],
-      { sw: W.hair, opacity: 0.8 });
-  }
-  line(s, F, [[100, 18, 90], [128, 32, 90]], { sw: W.hair, opacity: 0.4 });   // a pen across the pile
-  disc(s, F, 138, 26, 90, 6.5, { sw: W.mid });                                // the lamp's base
-  line(s, F, [[138, 26, 90], [134, 24, 104]], { sw: W.heavy });               // the canted mast
-  disc(s, F, 134, 24, 104, 6, { sw: W.mid, opacity: 0.9 });                   // the shade
 };
 export const desk = (opts = {}) => fitting('desk', opts, drawDesk);
 
@@ -1248,45 +1212,14 @@ export const herbPlanter = (opts = {}) => fitting('herb-planter', opts, drawHerb
 // the posts and ends in mid-air between two trays — a 134-px stroke attached to nothing at either
 // end. It now runs from the top tray to the bottom one with a tee at every tray it feeds, and the
 // posts are capped by a top rail so none of them ends as a stub.
-// ⚠️ RECOGNIZABILITY FIX, 2026-08-05 (blind read: "storage shelf/shelving unit"). The lamp bar and
-// drip line alone are too faint at tile size to separate this from generic shelving — the silhouette
-// was a bare rectangular grid. It borrows `herbPlanter`'s own fix for the identical problem ("what
-// makes a trough read as growing rather than empty"): a small curve+leaf sprout, height varied per
-// tray, rooted in each tray's soil. The under-tray ticks (barely visible hairlines) become small
-// filled discs so the light source reads as a fixture, using the same powered/unpowered duality the
-// bar already carries.
 const drawHydroponics = (s, { F, hatch, powered }) => {
   for (const x of [3, 97]) for (const y of [4, 41]) line(s, F, [[x, y, 0], [x, y, 190]], { sw: W.mass });
   for (const y of [4, 41]) line(s, F, [[3, y, 190], [97, y, 190]], { sw: W.heavy });
   const TRAYS = [42, 86, 130, 174];
-  // Heights vary per tray so the four levels don't repeat identically — an irregular growing mass is
-  // what separates a grow rack from a shelf at any tile size. The top tray is shortest: only 10 cm of
-  // clearance sits between its soil line and the rail. The leaf fractions are named for the same
-  // reason `herbPlanter`'s are — a plant's proportion is not the projection's ratio.
-  const SPROUT_H = [8, 9, 7, 6];
-  const STEM_BOW = 0.55, LEAF_LOW = 0.4, LEAF_TOP = 0.7;
-  for (let i = 0; i < TRAYS.length; i += 1) {
-    const z = TRAYS[i];
+  for (const z of TRAYS) {
     bx(s, F, 3, 2, z, 94, 6, 41, { hatch, sw: W.fine });
     line(s, F, [[8, 0, z - 3], [92, 0, z - 3]], { sw: W.heavy, opacity: powered ? 0.9 : 0.35 });
-    // The three lamp housings under each bar. ⚠️ FILLED BOXES, NOT DISCS, AND THE REASON IS THE
-    // ROUND-MEMBER LEG: a ∅6 cm bulb on this piece is a level ellipse 1.55 × 0.93 units across, and
-    // `sketch-adoption.test.js` cannot resolve an ry-only 5% error on an ry that small — twelve of
-    // them push the set past the two sub-resolution members that guard allows (measured: enlarging
-    // them does not help, the misses are per-element jitter). A box carries the same fact the ticks
-    // could not — there is a FIXTURE here, and it is lit or it is not — and the guard can read it.
-    for (const x of [22, 50, 78]) {
-      quad(s, F, [[x - 4, 0, z - 7], [x + 4, 0, z - 7], [x + 4, 0, z - 3], [x - 4, 0, z - 3]],
-        { fill: powered ? INK : PAPER, sw: W.hair, opacity: powered ? 0.9 : 0.5 });
-    }
-    const hgt = SPROUT_H[i];
-    for (const x of [20, 74]) {
-      const base = z + 6;
-      curve(s, F, [x, 20, base], [x + 1, 20, base + hgt * STEM_BOW], [x - 1, 20, base + hgt],
-        { sw: W.fine });
-      leaf(s, F, x + 0.5, 20, base + hgt * LEAF_LOW, -5, 3.5);
-      leaf(s, F, x + 0.5, 20, base + hgt * LEAF_TOP, 5, 3.5);
-    }
+    for (const x of [22, 50, 78]) line(s, F, [[x, 0, z - 3], [x, 0, z - 7]], { sw: W.hair, opacity: 0.5 });
   }
   line(s, F, [[7, 40, TRAYS[0] + 2], [7, 40, TRAYS[3] + 2]], { sw: W.mid, opacity: 0.7 });
   for (const z of TRAYS) line(s, F, [[7, 40, z + 2], [12, 40, z + 2]], { sw: W.fine, opacity: 0.7 });
@@ -1387,29 +1320,18 @@ const drawVicePost = (s, { F, hatch }) => {
 export const vicePost = (opts = {}) => fitting('vice-post', opts, drawVicePost);
 
 // 24 TERMINAL → RESEARCH-CONSOLE · 60 × 45 × 132 · "Where MOSS can be argued with in person."
-// ⚠️ RECOGNIZABILITY, 2026-08-05: a blind read of the render called this "a cryopod on a pedestal
-// stand", and the cause is one proportion. The shelf under the head was 60 × 8 × 45 — wide but only
-// 8 cm tall against a 14 cm-deep head — and in cabinet oblique DEPTH reaches much further across the
-// picture than height does, so its back corners flared past the head on both sides as wing-like
-// struts round a capsule. The head now sits squarely on a plain post, and the piece gains the one
-// silhouette element a pod structurally cannot have: a cantilevered control ledge with a button row
-// jutting off its own front edge.
 const drawResearchConsole = (s, { F, hatch, powered }) => {
-  bx(s, F, 6, 6, 0, 48, 8, 28, { hatch });                        // floor plate, bolted down
-  bx(s, F, 21, 13, 8, 18, 74, 14, { hatch });                     // pedestal — a post, not a flared plate
-  bx(s, F, 2, 4, 82, 56, 44, 22, { hatch, sw: W.heavy });         // the console head
-  quad(s, F, [[8, 4, 88], [50, 4, 88], [50, 4, 120], [8, 4, 120]],
-    { fill: powered ? PAPER_FLAT : PAPER, sw: W.hair });           // the screen
-  for (const z of [96, 104, 112]) {
-    line(s, F, [[12, 4, z], [46, 4, z]], { sw: W.hair, opacity: 0.55, cap: false });
+  bx(s, F, 6, 6, 0, 48, 10, 30, { hatch });
+  bx(s, F, 20, 12, 10, 20, 78, 20, { hatch });
+  bx(s, F, 0, 0, 88, 60, 8, 45, { hatch, sw: W.heavy });
+  bx(s, F, 4, 4, 96, 52, 36, 14, { hatch });
+  quad(s, F, [[9, 4, 100], [51, 4, 100], [51, 4, 128], [9, 4, 128]],
+    { fill: powered ? PAPER_FLAT : PAPER, sw: W.hair });
+  for (const z of [106, 113, 120]) {
+    line(s, F, [[13, 4, z], [40, 4, z]], { sw: W.hair, opacity: 0.55, cap: false });
   }
-  // the control ledge — cantilevered off the head's own base, a button row along its front lip.
-  // A pod never carries one; this is the tell that reads TERMINAL, not CAPSULE.
-  quad(s, F, [[6, 4, 82], [52, 4, 82], [52, 0, 76], [6, 0, 76]], { fill: hatch, sw: W.mid });
-  for (const kx of [14, 22, 30, 38, 46]) {
-    disc(s, F, kx, 2, 79, 1.2, { fill: 'none', sw: W.hair, opacity: 0.6 });
-  }
-  curve(s, F, [40, 8, 2], [52, 20, 0], [58, 34, 0], { sw: W.fine, opacity: 0.6 });   // trailing cable
+  line(s, F, [[6, 2, 92], [54, 2, 92]], { sw: W.hair, opacity: 0.6, cap: false });
+  curve(s, F, [40, 8, 2], [52, 20, 0], [58, 34, 0], { sw: W.fine, opacity: 0.6 });
 };
 export const researchConsole = (opts = {}) => fitting('research-console', opts, drawResearchConsole);
 

@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-// polish-gallery.mjs — BEFORE / AFTER for the designer-polish lane, one row per CHANGED piece.
+// polish-gallery.mjs — BEFORE / AFTER for a catalogue-art lane, one row per CHANGED piece.
+//
+// ⚠️ THE COLUMNS ARE `--main` AND THE TREE YOU RUN IT IN, NOT "before the polish" AND "after it". The
+// tool was written on `lane/designer-polish`, where those happened to coincide, and its page said so
+// in prose. `lane/polish-feedback` (2026-08-06) runs it with the POLISHED tree as `--main` and the
+// reverted one as the lane, i.e. with the two columns meaning the opposite of what that prose said —
+// so the caption names the two TREES and lets the reader supply the direction.
 //
 // ⚠️ THE POPULATION IS MEASURED, NOT TYPED. Every catalogue id is rendered from BOTH trees and the
 // emitted SVG compared byte-for-byte; a piece is in this gallery only if its drawing actually moved.
@@ -135,7 +141,7 @@ for (const [mod, list] of Object.entries(byMod)) {
   body += `</div>\n`;
 }
 
-const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>designer-polish before/after</title><style>
+const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>catalogue art before/after</title><style>
   html,body{margin:0;background:#3E3A33;color:#E8E2D2;font:13px/1.4 ui-sans-serif,system-ui,sans-serif}
   header{padding:20px 24px 4px}
   h1{font-size:20px;margin:0 0 6px} header p{margin:0;color:#B5AC97;max-width:80ch}
@@ -159,9 +165,11 @@ const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>designer-p
   .tile{display:block;background:${PAPER_BG}}
   .tcell span{font:9px/1 ui-monospace,monospace;color:#8A8272}
 </style></head><body>
-<header><h1>designer-polish — before / after</h1>
-<p>Left of each pair is <b>main</b>, right is <b>lane/designer-polish</b>. Twin columns are the
-post-raid drawing. The strips at the right are the pieces at <b>22 px and 32 px, true device
+<header><h1>catalogue art — <code>--main</code> / this lane</h1>
+<p>Left of each pair is the tree passed as <b>--main</b>, right is the tree this tool was RUN
+in. Which of those is "before" is the caller's to know — on <code>lane/designer-polish</code> the
+left column was the pre-polish art, on <code>lane/polish-feedback</code> it is the polished art the
+owner sent back. Twin columns are the post-raid drawing. The strips at the right are the pieces at <b>22 px and 32 px, true device
 pixels</b> — 22 px is the size the Overview draws furniture at on the wreck's decks. The population
 is derived by rendering every catalogue id in both trees and diffing the emitted SVG, so a piece
 appears here only if its drawing actually moved.</p></header>

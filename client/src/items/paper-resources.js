@@ -506,22 +506,12 @@ const drawPlateOffcut = (s, { F, hatch }) => {
   // TWO flats, not three: they cross at one angle, so the pile has a shape rather than a texture.
   slab([[2, 4], [22, 3], [26, 8], [30, 2], [42, 2], [54, 16], [36, 30], [8, 22]], 0, 2);
   slab([[26, 22], [46, 18], [49, 24], [53, 16], [64, 14], [72, 32], [50, 44], [30, 40]], 6, 2.5);
-  // THE STANDING SHEET — the piece's one vertical, leaning back off the heap, with a TORN top edge
-  // rather than a straight one. A cold read of the earlier render (clean near-rectangle, straight
-  // top edge retraced heavier) called this piece a fabricator/3D printer: a crisp hatched panel with
-  // a horizontal bar across the top reads as an enclosure, not as torn plate, and it also broke this
-  // module's own rule that no edge is parallel to its neighbour. The fix states the SAME fact the
-  // rest of the pile already states — every edge here is a tear — including the top one. Hatched,
-  // because a sheet seen on edge is showing its cut face.
-  quad(s, F,
-    [[6, 30, 0], [9, 37, 23], [16, 35, 18], [22, 36, 24], [30, 34, 21], [26, 26, 0]],
-    { fill: hatch, sw: W.mid });
-  // a folded bracket — welded angle, thrown LOW across the pile. It used to rise to its own near
-  // vertical post on the right (z 9→20), pairing with the standing sheet's post on the left into a
-  // twin-tower gantry with the flat plates read as the bed between them — the other half of the
-  // fabricator misread. A debris bracket is thrown, not erected: it now kinks once, low, well under
-  // the standing sheet's own height, and does not stand.
-  line(s, F, [[44, 20, 3], [56, 24, 5], [50, 30, 12]], { sw: W.heavy });
+  // THE STANDING SHEET — the piece's one vertical, leaning back off the heap. Hatched, because a
+  // sheet seen on edge is showing its cut face and that is what a hatched face means here.
+  quad(s, F, [[6, 30, 0], [10, 38, 24], [30, 34, 22], [26, 26, 0]], { fill: hatch, sw: W.mid });
+  line(s, F, [[10, 38, 24], [30, 34, 22]], { sw: W.mid });
+  // a folded bracket — welded angle, thrown on top
+  line(s, F, [[44, 22, 9], [58, 26, 9], [58, 26, 20]], { sw: W.heavy });
   // and one small offcut, still square, on the deck at the front
   slab([[46, 46], [60, 48], [58, 54], [44, 52]], 0, 1.5, { sw: W.fine });
 };

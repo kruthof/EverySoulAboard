@@ -67,7 +67,9 @@
 // piece is under the object (the sconce's rays, the conduit's drop). TEN OF THE ELEVEN ROWS THAT
 // CARRY A `z0` therefore captioned a mounting height that was not the fitting's — counted off the
 // captions themselves, before and after: a conduit tray hung at 220 cm read "HUNG 204", a sconce at
-// 190 read 182, a flood lamp at 240 read 232. (The eleventh, `door-airlock`, printed the right
+// 190 read 182, a flood lamp at 240 read 232. (⚠️ THAT COUNT IS A HISTORICAL MEASUREMENT AND IS LEFT
+// AT THE NUMBERS IT WAS TAKEN WITH: the sconce was redrawn on 2026-08-06 and now hangs at 206. The
+// eleventh, `door-airlock`, printed the right
 // number under the wrong word — SILL 20 as "HUNG 20" — beside a box that was still the picture's.)
 // A field the tool reads is one source of truth; a hand-typed table in the tool would have been a
 // second one, which is the defect one level up.
@@ -144,7 +146,7 @@ export const SPECS = Object.freeze({
 
   // ── LIGHT (3) ──
   'lamp-sconce':     { w: 46, d: 22, h: 240, z0: 182,           // + wall + the spill
-    dim: 'bowl ∅24 × 14 on a 24 × 24 × 8 plate, HUNG 190' },
+    dim: 'bowl ∅24 × 14 on a 14 × 18 × 5 plate, HUNG 206' },
   'grow-lamp':       { w: 96, d: 38, h: 224, z0: 178,           // + deckhead + the spill
     dim: 'fixture 90 × 30 × 20 CM, HUNG 190' },
   'flood-lamp':      { w: 78, d: 44, h: 286, z0: 232,           // + wall + the cone
@@ -259,6 +261,34 @@ function tube(s, F, x, y0, y1, z, rCm, o = {}) {
       { sw, cap: false });
   }
   s.circle({ cx: fx, cy: fy, r, fill: o.fill === undefined ? PAPER : o.fill, stroke: INK, sw });
+}
+
+/**
+ * A TRUNCATED CONE standing on the z axis — `fittings.js`'s `cyl()` with two radii instead of one.
+ * The body is ONE closed path: the left side, the front half of the lower rim, the right side, and
+ * the back half of the upper rim, exactly the winding `cyl` uses so the back edge never shows.
+ *
+ * ⛔ WHY A PRIMITIVE AND NOT THREE CALLS AT THE SITE, MEASURED RATHER THAN PREFERRED. The obvious
+ * composition — a `quad` body with an opaque `disc` closing each rim — does not survive the sketch
+ * treatment: at `strong` every element carries its own paper knockout (`haloScope: 'all'`, the style
+ * guide's HALO EXCEPTION, the same effect that bites white out of the table's legs), so the two rim
+ * discs eat the quad's side runs where they cross and a tapered shade comes back as two black bars
+ * between two floating ellipses. One path has one knockout and closes into one silhouette, which is
+ * the only thing that survives at 22 px.
+ *
+ * `rTop === rBot` reproduces `cyl`'s body exactly; the sconce is this module's first caller and the
+ * grow-lamp family is where a second would come from.
+ */
+function cone(s, F, x, y, z0, z1, rBot, rTop, o = {}) {
+  const [cx, yb] = F.project(x, y, z0);
+  const [, yt] = F.project(x, y, z1);
+  const rxB = F.s * rBot; const ryB = DY * F.s * rBot;
+  const rxT = F.s * rTop; const ryT = DY * F.s * rTop;
+  ink(s,
+    `M${nn(cx - rxT)} ${nn(yt)} L${nn(cx - rxB)} ${nn(yb)}`
+    + ` A${nn(rxB)} ${nn(ryB)} 0 0 0 ${nn(cx + rxB)} ${nn(yb)}`
+    + ` L${nn(cx + rxT)} ${nn(yt)} A${nn(rxT)} ${nn(ryT)} 0 0 1 ${nn(cx - rxT)} ${nn(yt)} Z`,
+    { fill: o.fill === undefined ? PAPER : o.fill, sw: o.sw == null ? W.mid : o.sw, cap: false });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -756,55 +786,119 @@ export const deckMarker = (opts = {}) => fixture('deck-marker', opts, drawDeckMa
 // LIGHT — three luminaires that must not be each other at tile size
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-// 12 LAMP, SCONCE · bowl ∅24 × 14 on a 24 × 24 × 8 plate, HUNG 190 · "Light down a wall, no more."
+// 12 LAMP, SCONCE · bowl ∅24 × 14 on a 14 × 18 × 5 plate, HUNG 206 · "Light down a wall, no more."
 //
 // ⚠️ THE THREE LAMPS ARE SEPARATED BY SILHOUETTE, NOT BY SIZE, and that is a decision made once for
 // all three: `GLYPH_SUBSTITUTE['*']` puts DeviceKind.Light on this piece, so it is the one a player
-// meets most and it has to be unmistakable beside the other two. SCONCE = a bowl on a wall plate with
-// a short splay of rays. GROW LAMP = a wide bar under a deckhead with tubes across it. FLOOD LAMP = a
-// box head on a knuckle bracket throwing a hard cone sideways. Different outline, different mounting,
-// different spill.
+// meets most and it has to be unmistakable beside the other two. SCONCE = a shade on a wall bracket
+// with a bulb hanging out of it. GROW LAMP = a wide bar under a deckhead with tubes across it. FLOOD
+// LAMP = a box head on a knuckle bracket throwing a hard cone sideways. Different outline, different
+// mounting, different spill.
 //
-// The bowl's mouth is a LEVEL ellipse and that is correct: it is a horizontal opening seen from
-// slightly above, the same construction the catalogue's deck lamp uses for its shade.
+// Both of the shade's rims are LEVEL ellipse geometry and that is correct: they are horizontal
+// openings seen from slightly above, the same construction the catalogue's deck lamp uses for its
+// shade (the lower one is drawn as the front half of one, inside `cone`). ⚠️ THE BULB IS
+// NOT — it is an upright `faceDisc`, because a sphere projects to a true circle here and a level
+// ellipse would lay it on the floor.
 //
-// ⛔ THE DIMENSION LINE WAS THE THING THAT WAS WRONG HERE, NOT THE DRAWING, AND IT IS WORTH SAYING
-// WHICH WAY ROUND. It read "bowl 30 × 16 × 14 on a 30 × 32 plate" — a first draft's intent, kept
-// after the render moved the piece. Measured off the ink below: the plate is `bx(11, 14, 208, 24,
-// 24, 8)`, i.e. 24 across × 24 up × 8 deep, flush to the wall at y = 22; and the bowl is a CONE, not
-// a box — its mouth is `disc(…, r 12)`, ∅24, its throat `disc(…, r 4)` at z 204, and the two sit at
-// a constant depth y = 6, so it has no third dimension to give. ∅24 × 14 is what it is. Prose loses
-// to the ink whenever they disagree: the drawing was corrected by looking at the render, and the
-// sentence never was.
+// ⛔ THE DIMENSION LINE HAS BEEN WRONG TWICE, IN OPPOSITE DIRECTIONS, AND BOTH ARE WORTH KEEPING.
+// FIRST it was prose that had gone stale under a correct drawing: it read "bowl 30 × 16 × 14 on a
+// 30 × 32 plate", a first draft's intent kept after the render moved the piece, and the fix was to
+// re-read the numbers off the ink. SECOND (2026-08-06) the DRAWING moved under a correct caption —
+// see the redraw note below — and the fix is the same direction of travel: prose loses to the ink
+// whenever they disagree, so `HUNG 190` became `HUNG 206` and the plate's three numbers were
+// re-read off `bx(16, 17, 222, 14, 18, 5)`.
+// ⛔⛔ REDRAWN 2026-08-06, ON THE OWNER'S WORDS: *"i have no clue what lamp-sconce does show."* The
+// drawing that produced that sentence is in git at 9e9ca46 and it was, member for member, a HOPPER —
+// which is also what the blind cold reader of the polish sheet called it, so the two readings agree
+// and the piece failed its own recognisability criterion twice. The three causes, read off that
+// render rather than argued:
+//
+//   1. THE CONE POINTED THE WRONG WAY. The shade was NARROW AT THE TOP (a ∅10 throat under the arm)
+//      and WIDE AT THE BOTTOM (a ∅24 mouth). That is a funnel. Every lampshade in the world — and
+//      `fittings.js`'s own standing lamp (25), which a cold reader DOES read as a lamp — is the other
+//      way round: wide where it meets the fitting, narrowing to the aperture it throws light out of.
+//   2. THE WALL PLATE WAS THE BIGGEST MASS ON THE CARD. 24 × 24 × 8 at `mid` weight against a 24 cm
+//      bowl: a hatched cube on the wall with a spout under it, i.e. the bin half of the hopper. The
+//      plate is a bracket and should recede; it is 14 × 18 × 5 now — a third of the footprint — and
+//      the SHADE is the mass.
+//   3. NOTHING IN THE PIECE WAS BULB-SHAPED. "Lit" was carried entirely by an INK disc filling the
+//      mouth — which at any distance is a dark HOLE, the single most hopper-ish mark available. The
+//      set's other lights do not rely on that alone: the standing lamp puts its ink INSIDE a rim with
+//      the shade around it, the flood lamp and the grow lamp draw a lens face plus a spill fan.
+//
+// ⭐ WHAT IT DRAWS NOW, AND EVERY CUE IS THE SET'S OWN, NOT A NEW INVENTION. A slim backplate, a
+// bracket arm, a cone shade wide-at-top (the standing lamp's proportion), a fixing boss, and a BULB
+// hanging below the shade's own bottom arc as an upright `faceDisc` — `door-sliding`'s own state-lamp
+// convention,
+// `fill: powered ? INK : PAPER` — and a five-ray spill fanning off it (the flood lamp's and the grow
+// lamp's). A bulb protruding out of the bottom of the thing is what no hopper has.
+//
+// ⚠️ THE BOWL MOVED UP 16 cm AND THE DIMENSION LINE MOVED WITH IT — `HUNG 190` → `HUNG 206`. The
+// spill needs vertical room and `z0 = 182` is a hard floor: the drawn extent is measured from it
+// (`geometryFor`: `ey = (h − z0) + 0.6·d`), so ink below 182 leaves the box and the box guards say
+// so. With the mouth at 190 there were eight centimetres under it for a bulb AND a fan, which is not
+// enough for either. The bowl is still ∅24 × 14 and the plate is still flush to the wall at y = 22;
+// what changed is where on the wall it is fixed. Per this module's own SPECS rule — "every number in
+// `dim` is read off the painter, not off the box" — the caption was corrected, not preserved.
+//
+// ⚠️ THE ARM STILL HANGS CLEAR OF THE PLATE, and that rule is older than this redraw. Drafted with
+// the shade's top inside the plate's own front face, the arm drew as a stray diagonal ACROSS it —
+// the heater's supply pipe again (`fittings.js`, ruling E8 class 3), in a piece where the arm is the
+// only thing connecting the lamp to the wall. `paper-fixtures.test.js` pins four centimetres of
+// clear drop and it was re-derived onto the new coordinates rather than deleted.
 const drawLampSconce = (s, { F, hatch, powered }) => {
   wallStub(s, F, 'back', 22, 0, 46, 182, 240, hatch);
-  bx(s, F, 11, 14, 208, 24, 24, 8, { hatch, sw: W.mid });             // the wall plate
-  // ⚠️ THE ARM LEAVES THE PLATE'S FRONT-BOTTOM EDGE AND THE SHADE HANGS CLEAR OF IT, which is the
-  // second thing the render corrected. Drafted with the shade's top at z = 210 the whole arm lay
-  // inside the plate's own front face and drew as a stray diagonal ACROSS it — the heater's supply
-  // pipe again (`fittings.js`, ruling E8 class 3), in a piece where the arm is the only thing
-  // connecting the lamp to the wall.
-  // ⚠️ AND THE SAME CONSTRUCTION MOVED FROM "DETAIL" WEIGHT TO "MASS" WEIGHT, which is the only half
-  // of it §4 of the style guide says survives: at 22 px the arm at `mid` all but disappeared and the
-  // plate and the shade read as two separate floating bodies — a bin over a narrow-necked chute. A
-  // blind read of the sheet came back "a hopper". Not one centimetre moved; the pen did.
-  line(s, F, [[23, 14, 208], [23, 6, 204]], { sw: W.heavy });         // the arm — the shade HANGS
-  for (const g of [-1, 1]) {                                          // the shade, a cone
-    line(s, F, [[23 + g * 5, 6, 204], [23 + g * 12, 6, 190]], { sw: W.heavy });
-  }
-  disc(s, F, 23, 6, 204, 5, { sw: W.fine });
-  // ⭐ ITS MOUTH, AND "LIT" IS NOW AN AREA RATHER THAN A STROKE. Drawn `fill:'none'` in both states
-  // the aperture — the piece's clearest "this is a light, not a pipe" cue — contributed zero mass to
-  // the silhouette and only a tiny inner dot moved with power. The flat tone is `bulkhead-screen`'s
-  // and `flood-lamp`'s own convention for a lit face.
-  disc(s, F, 23, 6, 190, 12, { fill: powered ? PAPER_FLAT : 'none', sw: W.heavy });
+  bx(s, F, 16, 17, 222, 14, 18, 5, { hatch, sw: W.mid });             // the backplate — a BRACKET
+  line(s, F, [[23, 17, 222], [23, 6, 220]], { sw: W.heavy });         // the arm — the shade HANGS
+  // ⭐ THE SHADE IS ONE SOLID TAPERED BODY, AND THE FOUR REJECTED DRAFTS ARE WORTH THEIR EIGHT LINES
+  // because each failed for a different reason and the reasons are the design.
+  //   · TWO `line`s, the standing lamp's construction — the treated render came back as two detached
+  //     black bars with bare paper between them. Under `strong` every run carries its own paper
+  //     knockout, so two heavy strokes ∅24 apart never close into a silhouette.
+  //   · A `quad` ALONE — it closed, and read as a bucket: a straight bottom edge is not what a shade
+  //     shows when you look slightly down into it.
+  //   · `cyl`, the kit's own solid cylinder — the arc fixed the bottom edge and the piece then read
+  //     as a COOKING POT, because an untapered drum under an opaque cap is one.
+  //   · A `quad` with an opaque `disc` closing each rim — closed, tapered, and it came back SEGMENTED:
+  //     the two rim discs' knockouts bit the quad's side runs away and left two black bars between
+  //     two floating ellipses. That one is the halo exception, not a drawing mistake, and it is why
+  //     `cone()` above exists.
+  // What ships is `cone()` — ONE closed path — TAPERED: ∅24 where it meets the arm, ∅18 at the
+  // aperture. A shade narrows toward the light; a funnel widens, and the drawing this replaces was
+  // drawn as a funnel. The cap goes over it opaque, the kit's own order for a cylinder, which is also
+  // what covers the arm's free end so the arm meets the shade instead of crossing it.
+  cone(s, F, 23, 6, 206, 220, 9, 12, { sw: W.heavy });                // the shade, ∅24 → ∅18 × 14
+  // ⚠️ THE CAP IS `fine` AND THE BODY IS `heavy`, WHICH IS THE OPPOSITE OF THE OBVIOUS CHOICE. Drawn
+  // at the body's weight the top face is a wide blank oval with an outline as strong as the
+  // silhouette's, and the piece reads as an OPEN POT; the thing that has to survive at 22 px is the
+  // shade's outline, so the cap recedes to a top face like any other. The boss on it is what an open
+  // pot does not have — the fixing the shade hangs from, and the reason the arm can stop there.
+  disc(s, F, 23, 6, 220, 12, { sw: W.fine });                         // … and its top rim
+  disc(s, F, 23, 6, 220, 3, { fill: 'none', sw: W.mid });             // … and the fixing boss
+  // ⭐ THE BULB — an UPRIGHT circle, because a sphere is a true circle in this projection and
+  // `faceDisc` is the module's vocabulary for one (a level ellipse would lay it on the floor). It is
+  // centred so that 7.1 cm of it hangs BELOW the shade's own bottom arc (which dips to z 200.6 in
+  // screen centimetres against the bulb's 193.5), which is the whole point:
+  // the silhouette gains a ball under the shade, and no hopper, funnel or bucket has one. Drawn last,
+  // so it is over the shade's paper rather than under it.
+  faceDisc(s, F, 23, 6, 199, 5.5, { fill: powered ? INK : PAPER, sw: W.fine });
   if (powered) {
-    disc(s, F, 23, 6, 190, 7, { fill: INK, sw: W.hair });             // ⭐ the lit part
-    for (const [a, b] of [[11, 7], [23, 23], [35, 39]]) {
-      line(s, F, [[a, 4, 188], [b, 4, 182]], { sw: W.mid, opacity: 0.75 });
+    // The spill, radial off the bulb's own rim — five ticks, the flood lamp's construction.
+    // ⚠️ TWO NUMBERS ARE SET BY SOMETHING OTHER THAN TASTE. The reach stops at 17 cm because
+    // `z0 = 182` is the drawn extent's floor — the straight-down ray ends exactly there and one
+    // centimetre more leaves the box the guards measure. The length is then 10 cm, which at
+    // `k = 1.573` px/cm is 15.7 px on an 86 × 112 piece whose diagonal is 141 px: 11%, well inside
+    // ruling E8-1's 25%, at which a diagonal stops reading as a mark and starts reading as a
+    // strike-through.
+    // ⚠️ AND THE PEN IS `fine`, NOT `hair`, WHICH IS THIS PIECE'S OWN PRECEDENT AND NOT A NEW LICENCE:
+    // the drawing this replaced spilled at `W.mid` / 0.75. At `hair` the fan measured as ink but did
+    // not read against the bulb beside it, and the fan is half of what makes the piece a light.
+    for (const [ux, uz] of [[-0.87, -0.5], [-0.5, -0.87], [0, -1], [0.5, -0.87], [0.87, -0.5]]) {
+      line(s, F, [[23 + 7 * ux, 6, 199 + 7 * uz], [23 + 17 * ux, 6, 199 + 17 * uz]],
+        { sw: W.fine, opacity: 0.8 });
     }
   }
-  line(s, F, [[14, 14, 228], [32, 14, 228]], { sw: W.hair, opacity: 0.5, cap: false });
 };
 export const lampSconce = (opts = {}) => fixture('lamp-sconce', opts, drawLampSconce);
 

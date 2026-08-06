@@ -781,10 +781,36 @@ test('no member of any TREATED piece is erased — not by a later face, not by a
 // shade's top at z = 210, which put the whole member inside the wall plate's own front face and drew
 // a stray diagonal across it (seen on the sheet, fixed by dropping the shade to 204). The rule is
 // therefore the one the picture states: the arm must draw BELOW the plate's lowest ink.
+// ⚠️ THE COORDINATES MOVED ON 2026-08-06 AND THE RULE DID NOT. `drawLampSconce` was redrawn on the
+// owner's ruling ("i have no clue what lamp-sconce does show"), so the plate is `bx(16, 17, 222, 14,
+// 18, 5)` and the arm runs (23, 17, 222) → (23, 6, 220).
+//
+// ⛔⛔ AND RE-DERIVING THOSE COORDINATES EXPOSED THAT THIS TEST WAS VACUOUS FOR ITS OWN SUBJECT —
+// CLAUDE.md's 4th shape, found by DRIVING it rather than by reading it. As written, `armLow` was a
+// hand-typed `F.project(…)` of where the arm was BELIEVED to end, so moving the painter's free end up
+// into the plate's silhouette did not move the number the rule reads; and the `hasPoint` leg that was
+// supposed to catch that instead passed, because `hasPoint` also accepts `cx="…" cy="…"` and the
+// shade's own cap disc sits at exactly the arm's endpoint. Measured: with the arm's free end moved
+// z 220 → 230 the whole `paper-fixtures` suite ran 26/26 GREEN. (The hole is older than the redraw —
+// main's arm ended on the shade's `disc(23, 6, 204, 5)` throat, the same coincidence.)
+// ⭐ THE FIX IS THE ONE THE TRAP LEDGER PRESCRIBES: read the free end OFF THE EMITTED DRAWING (trap
+// 4 — pin how the API was called by recording the seam, never by re-typing the argument). The arm is
+// found by the point at which it LEAVES the plate, which no other member draws through, and its
+// second point is then whatever the painter actually put there.
 test('the sconce\'s arm hangs BELOW its wall plate, where it can be seen', () => {
   const F = frameFor('lamp-sconce');
-  const [, plateBottom] = F.project(11, 14, 208);      // the plate's front-bottom-left corner
-  const [, armLow] = F.project(23, 6, 204);            // the arm's free end, on the shade's cap
+  const svg = build('lamp-sconce');
+  const [, plateBottom] = F.project(16, 17, 222);      // the plate's front-bottom-left corner
+  const [jx, jy] = F.project(23, 17, 222);             // where the arm leaves the plate
+  const arms = [...svg.matchAll(/<path[^>]* d="M([^"]*)"/g)].map((m) => m[1])
+    .filter((d) => d.startsWith(`${nn(jx)} ${nn(jy)} L`));
+  assert.equal(arms.length, 1,
+    `expected exactly ONE run leaving the wall plate at (23, 17, 222) ⇒ "${nn(jx)} ${nn(jy)}", found `
+    + `${arms.length}. Either the arm no longer starts on the plate's front-bottom edge — in which `
+    + 'case the piece has lost its only connection to the wall — or a second member now shares that '
+    + 'point and the free end read below is no longer the arm\'s.');
+  const armLow = Number(arms[0].split(' L')[1].trim().split(/\s+/)[1]);
+  assert.ok(Number.isFinite(armLow), `the arm's free end did not parse out of "${arms[0]}"`);
   // ⚠️ FOUR CENTIMETRES OF CLEAR DROP, NOT "BELOW THE EDGE", AND THE DIFFERENCE IS MEASURED. The
   // drafted arm's free end WAS technically below the plate's bottom — by 0.8 cm, which at this
   // piece's 1.45 px/cm is 1.2 px, i.e. less than the two 1.4-px strokes that meet there. A member
@@ -797,11 +823,12 @@ test('the sconce\'s arm hangs BELOW its wall plate, where it can be seen', () =>
     + ` ${((armLow - plateBottom) / F.s).toFixed(1)} cm. Inside that silhouette it is a diagonal`
     + ' painted ACROSS the plate — the heater\'s supply pipe, on the piece whose arm is its only'
     + ' connection to the wall.');
-  // …and it really is drawn there, asked at the seam rather than assumed from the numbers.
-  hasPoint(build('lamp-sconce'), 'lamp-sconce', [23, 6, 204], 'the sconce\'s arm does not reach the shade');
-  hasPoint(build('lamp-sconce'), 'lamp-sconce', [23, 14, 208], 'the sconce\'s arm does not leave the plate');
-  // INCLUSION CONTROL: the drafted geometry must FAIL the rule, or it proves nothing.
-  const [, drafted] = F.project(23, 6, 210);            // the shipped-then-fixed draft's free end
+  // INCLUSION CONTROL: an arm that ends inside the plate's own silhouette must FAIL the rule, or it
+  // proves nothing. 230 is the redraw's equivalent of the historical draft's 210: it puts the free
+  // end 1.4 cm ABOVE the plate's bottom edge, i.e. inside it. ⭐ AND IT IS NOW DRIVEN FOR REAL, not
+  // only arithmetically — with the painter's own arm moved to 230 this test reds on the clearance
+  // leg at −1.4 cm, and with the arm deleted it reds on the count above. Both were run.
+  const [, drafted] = F.project(23, 6, 230);
   assert.ok(!(drafted - plateBottom >= CLEAR_CM * F.s),
     'the clear-drop rule can no longer see the arm that lay inside the plate — it is vacuous');
 });
