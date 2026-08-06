@@ -1,311 +1,68 @@
-// THE LEVEL-1 SHIP PLATE — the paper-and-ink drawing of the whole ship. A PURE, DOM-free composer
-// that turns one captured wire snapshot (frame + decks/rooms view + roster + designs + marks +
-// device wear) into a single self-contained SVG string: the hull capsule, the COMPARTMENT GRID of
-// live miniature room interiors, the debris/designation marks, the build ghosts, the MOSS terminal
-// chips and the ink crew figures. No DOM, no clock, no randomness beyond the seeded starfield —
-// same `state` yields a byte-identical string.
+// THE LEVEL-1 SHIP PLATE — the paper-and-ink SIDE-ELEVATION CUTAWAY of the whole ship. A PURE,
+// DOM-free composer that turns one captured wire snapshot (decks/rooms view + devices + items +
+// roster + designs + marks + terminals) into a single self-contained SVG string.
 //
-// Authority: `design-import/Perilune Game.dc.html` Screen 01 (THE SHIP) + the visual-redesign
-// charter (`docs/design/perilune-visual-redesign.charter.md` §1 the dialect, §2 rulings E3/E4/E6,
-// §3 package P4). THE .dc.html MARKUP IS THE SPEC: every literal below was measured off it and the
-// element it came from is named inline, so the next reader re-measures instead of trusting a comment.
-//
-// ⚠️ WHAT REPLACED WHAT (the warm layer is gone from this file, and the replacements are not
-// cosmetic renames):
-//   · the void/nebula/cream-star backdrop  → PAPER. `starLayerSvg` still emits the persistent
-//     drifting field, but in INK DOTS ON PAPER at three parallax depths (the design's `starsInk`).
-//   · the navy hull silhouette + engine glow + nacelles → ONE CLOSED CAPSULE PATH, ink on paper,
-//     with the raked bow hatch, the bow cone + ribs and three dashed exhaust plumes.
-//   · the projected deck floor-plan (tile rects washed with material colours) → THE COMPARTMENT
-//     GRID: one tile per compartment, each tile a LIVE MINIATURE of the Level-2 room cutaway with
-//     the compartment's real fittings standing in it.
-//   · amber glow pools (a room with an authored PURPOSE) → the tile's own SHELL TREATMENT: a
-//     purposed compartment is drawn in solid ink, an unpurposed one in the dash dialect's UNBUILT
-//     stroke (`#14120F` "6 5"). Same predicate (`roomType`), same set, one accent fewer. The tile
-//     carries `data-purpose` so a test can read the predicate off the emitted string.
+// Authority: `design-import/Perilune Ship - Drawn.html` — the owner's drawing, imported verbatim in
+// this package's commit. It is a JS-bundled page, so it was RENDERED HEADLESS and its markup read
+// out of the live DOM; every literal below is a number off that markup and names the element it came
+// from (`data-dc-tpl="…"`) so the next reader re-measures instead of trusting a comment.
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// THE COORDINATE CONTRACT — AND IT IS PIECEWISE NOW, WHICH IS THE ONE THING TO READ BEFORE EDITING
+// ⚠️⚠️ WHAT REPLACED WHAT. THIS IS A REPLACEMENT OF VR-P4's PLATE, NOT AN EDIT OF IT.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// The warm scene mapped sim TILE space onto the hull's deck-floor envelope with ONE affine
-// transform, because it drew a floor plan: tile (tx,ty) was at a fixed place on the deck. The plate
-// draws a GRID OF COMPARTMENTS instead — cell 3 is compartment 3 wherever compartment 3 physically
-// is — so a single affine map can no longer be both truthful about the drawing and invertible for a
-// click. `makeTransform(slots, frame)` is therefore PIECEWISE:
+//   · the top-down hull capsule + one deck's 4×2 COMPARTMENT GRID  →  a SIDE ELEVATION of the whole
+//     ship with BOTH DECKS drawn at once, as one continuous cutaway inside the hull.
+//   · four bordered tiles floating on the capsule                  →  compartments that TILE one
+//     continuous deck floor, separated by shared PARTITION WALLS standing on that floor. There is no
+//     tile border left to draw, because there is no tile.
+//   · the CORRIDOR STRIP (a reserved row-gap with its own linear map) →  the WALKWAY: the front
+//     third of each deck's own floor plane, addressed by the SAME projection as everything else.
+//     The piecewise-band special case is gone; so is its stated resolution limit's worst half.
+//   · the FRAME as the source of what stands in a compartment      →  the `devices` + `items`
+//     channels (`ship-fittings.js`), which carry EVERY DECK. That substitution is the finding that
+//     made a two-deck drawing possible without a host change, and it is measured tile-for-tile —
+//     read that file's header before changing where a fitting comes from.
+//   · `makeTransform(slots, frame)` (one deck, piecewise over 8 grid cells) → `makeShipTransform(
+//     decksView, frame)` (every deck, ONE affine floor plane each). `ship-elevation.js` owns it and
+//     its header owns the coordinate contract INCLUDING ITS ONE HONESTY LIMIT — read it.
 //
-//     project(tx,ty) → the slot whose rect contains (tx,ty) → that slot's GRID CELL, THROUGH THE
-//                      MINIATURE'S OWN OBLIQUE FLOOR PLANE (`floorToMini` + `miniToScene`)
-//     invert(sx,sy)  → the grid cell containing (sx,sy)      → the same two maps, inverted
-//     …and a tile inside NO slot → the CORRIDOR STRIP (`corridorBand`), linearly, both ways.
+// ⭐ THE SKETCH HAND. The ship's architecture — hull, fins, engine block, bow window, deck slabs,
+// partition walls — is drawn as clean geometry and then run through `render/sketch.js`'s `strong`
+// preset, which is the treatment the owner adopted and the third of the three complaints this
+// package answers ("it should look sketchier"). It is applied ONLY to strokes authored HERE; the
+// FITTINGS are another lane's (`lane/sketch-adoption`) and are drawn by their own builders,
+// untouched, so the two packages cannot fight over the same ink.
 //
-// ⛔ THE OBLIQUE HALF IS NOT DECORATION — IT IS THE FIX FOR A MEASURED DEFECT. See the block above
-// `floorToMini`: while the drawing used the oblique and the click map used an axis-aligned box, 57
-// of 59 drawn fittings on the wreck's deck 0 clicked a different tile than the one they were drawn
-// on. One projection, two directions, is the whole of the correction.
-//
-// The two are exact inverses FOR EVERY TILE ON THE DECK, which is the property `tileAt` (and
-// therefore the order verbs' click→tile path, BUG-B's `getScreenCTM().inverse()` route) needs.
-//
-// ⚠️ **THE PARAGRAPH THAT STOOD HERE WAS FACTUALLY WRONG AND IS REPLACED, NOT EDITED.** It claimed
-// *"a tile inside no compartment has no place on the plate … `invert` never returns it"*. Review
-// measured the opposite on the running wreck: 672 sampled points in the gaps between cells DID
-// invert to out-of-slot tiles, and the corridor tile round-tripped exactly — the fallback map was
-// live, unowned and undrawn. And the half that was true was worse than the half that was wrong:
-// **83 deck-0 floor tiles, two ground items and the HATCH LADDER at (22,8) — the visible
-// deck-to-deck route — were on no surface at Level 1 at all.**
-//
-// So the deck's SPINE is now a drawn thing: `corridorBand` reserves the grid's own ROW GAP, every
-// no-slot tile projects into that strip through the same transform, `corridorLayer` draws the
-// corridor's items and the ladder in it, and the round trip there is exact. There is no tile on the
-// deck the plate cannot address.
-//
-// ⛔ WHAT REMAINS A LIMIT, STATED HONESTLY: the strip is ~23 design px tall for a corridor that may
-// be a dozen tiles deep, so two corridor tiles a row apart are a fraction of a pixel apart on
-// screen. The mapping is exact; the RESOLUTION is coarse, and a player who wants to designate one
-// particular spine tile should be in the Room Zoom. `overview-scene.test.js` pins the round trip in
-// both regions, and pins that a corridor tile really lands in the strip.
+// PURITY: no DOM, no clock, no randomness beyond the seeded starfield and `sketch()`'s own seeded
+// noise — same `state` yields a byte-identical string. The static ship art is sketched ONCE at module
+// load and cached, so a repaint costs nothing for it.
 
 import { buildItem } from '../items/index.js';
 // THE WEAR JOIN — the ONLY door from a surface to the 70 post-raid twins. The threshold and its
-// justification live in `client/src/items/wear.js`, once, for both surfaces: a second copy of
-// "below what condition does a tile wear its twin?" is how the two SVG views would come to disagree
-// about the same machine, each agreeing with itself and every test green.
+// justification live in `client/src/items/wear.js`, once, for both surfaces.
 import { buildTileItem } from '../items/wear.js';
 import { pawnSprite } from '../render/pawn-svg.js';
-// The ONE glyph → itemId derivation, straight out of the `ITEMS` registry and SHARED verbatim with
-// the Level-2 Room Zoom (`room-model.js` itemForGlyph), so the two SVG surfaces cannot come to skin
-// the same glyph differently.
-import { itemIdForGlyphChar } from '../items/glyph-map.js';
-// The work-tag classifier (console-model.js is misnamed, not console-only — see the retirement plan
-// §1: `taskTag` is a PURE roster-label → tag mapping and is the SAME source the console's on-map
-// WORK markers used, so the two surfaces cannot disagree about who is working).
+// The work-tag classifier (console-model.js is misnamed, not console-only — `taskTag` is a PURE
+// roster-label → tag mapping and is the SAME source the console's on-map WORK markers used).
 import { taskTag } from './console-model.js';
 // The debris/designation mark vocabulary. SHARED verbatim with the Level-2 Room Zoom so one mark
 // kind cannot come to mean two different things on the two surfaces.
 import { markVariant, markCellSvg } from './mark-overlay.js';
-// The glyph codes that are NOT an item on a tile, OWNED by room-model.js and imported rather than
-// re-declared — see the NON_FURNITURE note below for the bug the second copy hid.
-import { NON_FURNITURE_CODES, itemForDeviceRow, CITIZEN_GLYPH_CODE } from './room-model.js';
-// THE OBLIQUE KIT (charter §1). The miniature interiors are built on it DIRECTLY — `roomFrame` for
-// the projection, `boxFaces`/`poly` for geometry — rather than through `oblique.room()`, because a
-// tile is drawn at ~1/7 scale and every stroke in it must carry `vector-effect="non-scaling-stroke"`
-// (the design's own tiles do, on every path). `room()` emits no such attribute and it is shared
-// with P3, so the weights and the vector-effect are applied here instead of widening the kit.
-import { roomFrame, poly, INK, PAPER, PAPER_FLAT, ATTEND, FONT } from '../render/oblique.js';
+// ⭐ THE ALL-DECK FITTING SOURCE. See its header for the measurement that replaced the frame.
+import { deckFittings, fogTiles, slotUnsurveyed, surveyedDecks } from './ship-fittings.js';
+// ⭐⭐ THE PROJECTION. One file, one contract, one inverse.
+import {
+  VIEW_W, VIEW_H, K, SHIP_XF, BAY, V_SPINE,
+  makeShipTransform, floorPoint,
+  INK, PAPER, PAPER_FLAT, ATTEND, FONT, poly, n,
+} from './ship-elevation.js';
+import { sketch } from '../render/sketch.js';
 
 /* eslint-disable no-multi-spaces */
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// The plate's design space.
-//
-// MEASURED off Screen 01: the hull sits in a 1028 × 320 box (`Perilune Game.dc.html:52`), and the
-// compartment grid is absolutely positioned inside it at `left:236px top:100px width:616px`, four
-// columns, `grid-template-rows: repeat(2, 56px)`, `column-gap:10px row-gap:18px` (`:63`). This module
-// scales that box UNIFORMLY to 1300 wide (K = 1300/1028 = 1.2646), which is why every constant below
-// is a design number times K and the hull path is emitted verbatim under one transform.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-export const VIEW_W = 1300;
-/** 320 × K, rounded — the hull box's own aspect, kept so the capsule is never stretched. */
-export const VIEW_H = 405;
-
-/** The scale from the design document's hull box to this module's design space. */
-const K = 1.2646;
-/** The hull svg's own viewBox is 1028 × 300 inside a 320-tall box (`preserveAspectRatio="none"`), so
- *  its y scale is 320/300 × K. Emitted as ONE transform over the design's verbatim path data. */
-const HULL_TRANSFORM = `scale(${n(K)} ${n(K * 320 / 300)})`;
-
-/**
- * THE GRID BOX — where every compartment tile is laid out, in design px. `x`/`y`/`w` are the
- * design's own 236/100/616 × K; `h` is two 56px rows plus one 18px gap × K, i.e. the box the design
- * draws four-by-two into. A census with more rows keeps the SAME box and shrinks its rows (see
- * `gridLayout`), so the hull never has tiles hanging out of it.
- */
-export const DECK = Object.freeze({ x: 298.4, y: 126.5, w: 779, h: 164.4 });
-
-/** Gaps, × K. */
-const COL_GAP = 12.6;
-const ROW_GAP = 22.8;
-
-/**
- * ⭐ RULING E6 — THE GRID IS DERIVED FROM THE ROOM CENSUS, never from the design's four-by-two.
- *
- * The design draws ONE authored ship and the charter files that it "does not generalise as drawn":
- * the wreck has three decks with different compartment counts, and `--ship grid` has eight per deck
- * on eight decks. So the rule is
- *
- *     cols = clamp(ceil(n / 2), 1, GRID_MAX_COLS)      rows = ceil(n / cols)
- *
- * which reproduces the design exactly at n = 8 (4 × 2 — the shipped shape on BOTH ships) and stays
- * legible as n grows: the cap is what stops a 20-room deck drawing 10 unreadable slivers, and the
- * extra rows are absorbed by shrinking the row height inside the FIXED box rather than by growing
- * the hull. `cells` is `cols * rows`, so a census that does not fill its last row leaves EMPTY
- * CELLS — drawn in the dash dialect's UNBUILT stroke, which is the design's own third tile.
- *
- * ⛔ THE ROW HEIGHT HAS A POSITIVE FLOOR, AND IT WAS ADDED BECAUSE THE ARITHMETIC WENT NEGATIVE.
- * Review measured it: with the box height fixed and the gaps constant, `tileH` crosses zero at
- * rows ≥ 9 (n ≥ 49) and goes NEGATIVE — which draws inverted rects, inverts the click map inside
- * them, and is trivially "inside the box" for any containment check. `MIN_TILE` clamps both axes;
- * when the clamp binds the grid is TALLER than `DECK.h` and says so through `overflows`, so a
- * caller (and the test) can see the degradation rather than infer it from a shape.
- *
- * ⚠️ AND THE HONEST NOTE ABOUT WHAT THE SHIPPED GAME ACTUALLY DOES: every authored ship in this repo
- * lays **8 compartments per deck** (`--ship wreck` and `--ship grid` alike — measured on the wire in
- * `overview-plate-shot.mjs`'s own instrument check, which dies if deck 0 is not 8). So the shape the
- * player sees is always the design's own 4 × 2. The degradation above 12 compartments a deck is
- * REAL and is stated rather than hidden: 3 rows draw 39.6 design-px miniatures (n 13–18), 4 rows 24
- * (n 19–24), and from FIVE rows up (n ≥ 25) the floor binds, the grid grows taller than its box and
- * `overflows` says so. Below `MIN_TILE.h` a miniature would be a silhouette rather than a drawing. That is a legibility limit of the
- * plate at Level 1, not a lost compartment — every one of them still draws, still carries its
- * `data-anchor`, still clicks into the Room Zoom, and is still named in the `compartments` column.
- *
- * PURE, and exported so the view (deck caption) and the tests read the same derivation the drawing
- * does — a second copy of this arithmetic is how the caption and the grid would come to disagree
- * about how many compartments a deck has.
- * @param {number} n how many compartments this deck has
- * @returns {{cols:number, rows:number, cells:number, tileW:number, tileH:number, overflows:boolean}}
- */
-export function gridLayout(n) {
-  const count = Math.max(0, Math.floor(Number.isFinite(n) ? n : 0));
-  const cols = Math.max(1, Math.min(GRID_MAX_COLS, Math.ceil(count / 2) || 1));
-  const rows = Math.max(1, Math.ceil(count / cols) || 1);
-  const fitW = (DECK.w - (cols - 1) * COL_GAP) / cols;
-  const fitH = (DECK.h - (rows - 1) * ROW_GAP) / rows;
-  const tileW = Math.max(MIN_TILE.w, fitW);
-  const tileH = Math.max(MIN_TILE.h, fitH);
-  return { cols, rows, cells: cols * rows, tileW, tileH, overflows: tileH > fitH || tileW > fitW };
-}
-
-/** The column cap. Six 118-px tiles is the narrowest a miniature interior still reads at (measured
- *  against the design's own 154-px tile: below ~110 px the fittings collapse into their strokes). */
-export const GRID_MAX_COLS = 6;
-
-/** The smallest tile the grid will draw. Below this a miniature is a silhouette, not a drawing —
- *  and, more importantly, the unclamped arithmetic goes NEGATIVE past rows 8 (see `gridLayout`). */
-export const MIN_TILE = Object.freeze({ w: 40, h: 18 });
-
-/** The design-px rect of grid cell `i` (row-major, left→right then top→bottom). PURE. */
-function cellRect(i, lay) {
-  const c = i % lay.cols, r = Math.floor(i / lay.cols);
-  return {
-    x: DECK.x + c * (lay.tileW + COL_GAP),
-    y: DECK.y + r * (lay.tileH + ROW_GAP),
-    w: lay.tileW, h: lay.tileH,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// The miniature's own space — one tile's inner viewBox.
-//
-// MEASURED: every tile in Screen 01 is `viewBox="-10 -10 992 428" preserveAspectRatio="xMidYMid
-// meet"` and its floor quad reads `M0 408 L860 408 L972 240 L112 240 Z`. That is EXACTLY
-// `roomFrame(8.6, 2.8, 2.4, 1.0, {x:0, y:408})` — an 8.6 m × 2.8 m × 2.4 m room at the plate scale
-// (PX_PER_CM.plate = 1.00), depth 280 cm displacing (+112, −168). Verified corner for corner:
-//   back  M112 240 L972 240 L972 0 L112 0     left  M0 408 L112 240 L112 0 L0 168
-// so the plate miniature and the Level-2 cutaway are the SAME drawing at two scales, which is the
-// whole point of the shared oblique.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-const MINI_VIEWBOX = '-10 -10 992 428';
-const MINI = Object.freeze({ wM: 8.6, dM: 2.8, hM: 2.4, s: 1.0, x: 0, y: 408 });
-/** cm across / cm back — the room the miniature draws, used to place fittings inside it. */
-const MINI_W_CM = MINI.wM * 100;
-const MINI_D_CM = MINI.dM * 100;
-/** The box one fitting is normalised into, in miniature px. */
-const MINI_ITEM = 128;
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// ⭐⭐ THE ONE FLOOR PROJECTION — THE FIX FOR THE TWO-COORDINATE-SYSTEMS DEFECT.
-//
-// ⛔ WHAT WAS WRONG, MEASURED IN THE RUNNING GAME BY REVIEW. Inside a compartment tile the DRAWING
-// and the CLICK MAP were two different mappings: fittings were placed through the oblique frame
-// (`roomFrame(...).project`) while `makeTransform` mapped a tile linearly onto the axis-aligned CELL
-// box. On `--ship wreck` deck 0 that made **57 of 59 drawn fittings click a DIFFERENT tile** (dy up
-// to +7 tiles) and **49 of them had not one pixel of their own ink that clicked their own tile**;
-// the crew figure drew standing inside the back wall while the pods beside her were oblique; and the
-// debris band ran as an axis-aligned row across an oblique floor. Every one of those is the same
-// bug: a surface that shows you one thing and orders another.
-//
-// THE FIX IS THAT THERE IS NOW ONE MAPPING AND IT IS DERIVED FROM THE KIT, NOT RE-TYPED. The room's
-// FLOOR PLANE is an affine map of `(u, v)` — fraction across, fraction back — and its two basis
-// vectors are read straight out of `MINI_FRAME.project`, so if the oblique's ratios ever move, the
-// drawing and the click map move together by construction. The inverse is the plain 2×2 solve of
-// the same basis, which is the closed form the Room Zoom uses for its own floor plane (P3's
-// `room-model.js`; the MATH is replicated here rather than the file imported, because that module is
-// another package's and importing it would couple the two surfaces' layouts).
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/** The nested tile `<svg>`'s viewBox, as numbers (the design's own `-10 -10 992 428`). */
-export const MINI_BOX = Object.freeze({ x: -10, y: -10, w: 992, h: 428 });
-
-/** The miniature's projection frame — one per tile, but identical, so it is built once. */
-const MINI_FRAME = roomFrame(MINI.wM, MINI.dM, MINI.hM, MINI.s, { x: MINI.x, y: MINI.y });
-
-/** The floor plane's origin and its two basis vectors, in MINI viewBox px. READ OFF THE KIT. */
-const F_O = MINI_FRAME.project(0, 0, 0);
-const F_U = MINI_FRAME.project(MINI_W_CM, 0, 0);
-const F_V = MINI_FRAME.project(0, MINI_D_CM, 0);
-const BU = [F_U[0] - F_O[0], F_U[1] - F_O[1]];   // across  → (+860,    0) at s = 1
-const BV = [F_V[0] - F_O[0], F_V[1] - F_O[1]];   // back    → (+112, −168) at s = 1
-const B_DET = BU[0] * BV[1] - BU[1] * BV[0];
-
-/**
- * `(u, v)` — fraction across the room, fraction back into it — → MINI viewBox px on the FLOOR.
- * THE ONLY PLACE ANYTHING IN A COMPARTMENT TILE IS POSITIONED: fittings, marks, ghosts, terminal
- * chips, crew figures, and the inverse the click map runs. PURE.
- */
-export function floorToMini(u, v) {
-  // ⛔ NOT ROUNDED. `n()` is for the STRING emitters; rounding here costs the round trip its
-  // exactness — measured: 2 dp in mini units divided back through a ~0.18 `meet` factor is ~1.4e-4
-  // of a tile, which fails the identity leg and, worse, would put a click one tile out near a tile
-  // boundary. The emitters round their own output (`miniContents`' translate, `markCellSvg`'s box).
-  return [F_O[0] + u * BU[0] + v * BV[0], F_O[1] + u * BU[1] + v * BV[1]];
-}
-
-/** The exact inverse of `floorToMini` — the 2×2 solve of the same basis. PURE. */
-export function miniToFloor(mx, my) {
-  const px = mx - F_O[0], py = my - F_O[1];
-  if (!B_DET) return [0, 0];
-  return [(px * BV[1] - py * BV[0]) / B_DET, (BU[0] * py - BU[1] * px) / B_DET];
-}
-
-/**
- * The `xMidYMid meet` fit of the mini viewBox inside one plate-space CELL — i.e. exactly what the
- * browser does with the nested `<svg x y width height viewBox preserveAspectRatio>` the tile emits.
- * Anything drawn at PLATE level that must line up with a tile's interior goes through this.
- */
-export function miniFit(cell) {
-  const k = Math.min(cell.w / MINI_BOX.w, cell.h / MINI_BOX.h);
-  return {
-    k,
-    ox: cell.x + (cell.w - MINI_BOX.w * k) / 2 - MINI_BOX.x * k,
-    oy: cell.y + (cell.h - MINI_BOX.h * k) / 2 - MINI_BOX.y * k,
-  };
-}
-
-/** MINI viewBox px → plate design px, for a given cell. PURE. */
-export function miniToScene(cell, mx, my) {
-  const f = miniFit(cell);
-  return [f.ox + mx * f.k, f.oy + my * f.k];
-}
-
-/** Plate design px → MINI viewBox px, for a given cell. The exact inverse. PURE. */
-export function sceneToMini(cell, sx, sy) {
-  const f = miniFit(cell);
-  return [(sx - f.ox) / f.k, (sy - f.oy) / f.k];
-}
-
-/** Stroke weights inside a tile, measured off the design's tiles (1.1 shell / 0.7 detail). */
-const MINI_WEIGHT = Object.freeze({ shell: 1.1, detail: 0.7, cutDash: '5 4', unbuiltDash: '6 5' });
-
-// Glyph code points handled by the floor/wall/structure layers or otherwise not an item on a tile.
-// ⚠️ IT IS NOT A HAND MIRROR — it is IMPORTED from `room-model.js`, which owns the list, so the two
-// surfaces cannot come to disagree about what "not furniture" means. That mattered the day `'&'`
-// (38, CORPSE) was removed from it: while it sat in BOTH sets it reached NEITHER furniture layer.
-const NON_FURNITURE = new Set(NON_FURNITURE_CODES); // . # space % @ /
+export { VIEW_W, VIEW_H, BAY, K, makeShipTransform };
 
 // ── tiny deterministic string helpers (no locale APIs, InvariantCulture-safe) ──
-function n(v) { const r = Math.round(v * 100) / 100; return Object.is(r, -0) ? 0 : r; }
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -320,183 +77,14 @@ function surnameOf(name) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// The transform (the coordinate contract, above).
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/** Tile bounding box of a deck's slots; falls back to a frame's w/h, else a unit box. */
-function tileExtent(slots, frame) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const s of (slots || [])) {
-    const r = s.rect || s;
-    minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
-    maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
-  }
-  if (!isFinite(minX)) {
-    if (frame && frame.w && frame.h) return { minX: 0, minY: 0, maxX: frame.w, maxY: frame.h };
-    return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-  }
-  // ⭐ UNIONED WITH THE FRAME, and that is what makes the CORRIDOR STRIP cover the whole deck. The
-  // extent used to be the slots' bounding box alone, which is fine for the cells (they carry their
-  // own rects) and wrong for the band: a spine tile beyond the last compartment's rect then
-  // EXTRAPOLATED past the strip instead of landing in it. Measured on a synthetic one-room deck —
-  // the ladder projected 10 px below the band and 480 px past its right edge.
-  if (frame && frame.w > 0 && frame.h > 0) {
-    minX = Math.min(minX, 0); minY = Math.min(minY, 0);
-    maxX = Math.max(maxX, frame.w); maxY = Math.max(maxY, frame.h);
-  }
-  return { minX, minY, maxX, maxY };
-}
-
-/** True when tile (tx,ty) lies inside the slot's tile rect. */
-function coversTile(rect, tx, ty) {
-  return !!rect && rect.w > 0 && rect.h > 0
-    && tx >= rect.x && tx < rect.x + rect.w && ty >= rect.y && ty < rect.y + rect.h;
-}
-
-/**
- * Build the shared TILE→PLATE transform for a deck. PIECEWISE — see the module header.
- *
- * `project(tx,ty)` → `[sx,sy]`; `rect({x,y,w,h})` → the projected pixel rect (scaled by the slot the
- * rect's origin falls in); `invert(sx,sy)` → the fractional tile the pixel fell in; `cellOf(slot)` →
- * that slot's grid cell; `tileSize` = the smallest px-per-tile any cell draws at, for art sizing.
- *
- * Exposed so the view can invert it for clicks (BUG-B's `getScreenCTM()` route) and can lay the lens
- * wash over the SAME cells the drawing uses.
- */
-export function makeTransform(slots, frame) {
-  const list = Array.isArray(slots) ? slots : [];
-  const lay = gridLayout(list.length);
-  const ext = tileExtent(list, frame);
-  const spanX = Math.max(1e-6, ext.maxX - ext.minX);
-  const spanY = Math.max(1e-6, ext.maxY - ext.minY);
-  // The fallback map — the whole tile extent onto the whole grid box. It exists so a tile inside no
-  // compartment still HAS a place rather than throwing or landing at NaN; `invert` never produces
-  // such a tile (the known limit in the header).
-  const FKX = DECK.w / spanX, FKY = DECK.h / spanY;
-
-  const cells = list.map((s, i) => ({ slot: s, rect: s && s.rect, cell: cellRect(i, lay), index: i }));
-
-  // THE CORRIDOR BAND — where every tile that is inside NO compartment is drawn and clicked.
-  const band = corridorBand(lay);
-
-  // Art sizing: the smallest a single tile draws at, ON THE FLOOR PLANE, in plate px. One tile is
-  // `BU/rect.w` across and `BV/rect.h` back in mini units, scaled by the cell's own `meet` factor.
-  let tileSize = Infinity;
-  for (const c of cells) {
-    if (!c.rect || !(c.rect.w > 0) || !(c.rect.h > 0)) continue;
-    const k = miniFit(c.cell).k;
-    tileSize = Math.min(tileSize, (BU[0] / c.rect.w) * k, (-BV[1] / c.rect.h) * k);
-  }
-  if (!isFinite(tileSize) || tileSize <= 0) tileSize = Math.min(FKX, FKY);
-  tileSize = Math.max(3, tileSize);
-
-  const findByTile = (tx, ty) => cells.find((c) => coversTile(c.rect, tx, ty)) || null;
-  const findByPoint = (sx, sy) => cells.find((c) => c.rect && sx >= c.cell.x && sx <= c.cell.x + c.cell.w
-    && sy >= c.cell.y && sy <= c.cell.y + c.cell.h) || null;
-
-  /** A no-slot tile → the corridor strip, linearly. Injective over the deck's tile extent, so the
-   *  round trip below is exact for a corridor tile too. */
-  const bandProject = (tx, ty) => [
-    DECK.x + ((tx - ext.minX) / spanX) * DECK.w,
-    band.y + ((ty - ext.minY) / spanY) * band.h,
-  ];
-  const bandInvert = (sx, sy) => [
-    ext.minX + ((sx - DECK.x) / DECK.w) * spanX,
-    ext.minY + ((sy - band.y) / band.h) * spanY,
-  ];
-
-  const project = (tx, ty) => {
-    const c = findByTile(Math.floor(tx), Math.floor(ty));
-    if (!c) return bandProject(tx, ty);
-    const u = (tx - c.rect.x) / c.rect.w;
-    const v = (ty - c.rect.y) / c.rect.h;
-    const [mx, my] = floorToMini(u, v);
-    return miniToScene(c.cell, mx, my);
-  };
-
-  return {
-    ext, lay, cells, tileSize, band,
-    KX: FKX, KY: FKY,
-    project,
-    /** The grid cell a slot occupies, by identity first and slotIndex second. */
-    cellOf(slot) {
-      if (!slot) return null;
-      const hit = cells.find((c) => c.slot === slot)
-        || cells.find((c) => c.slot && c.slot.slotIndex === slot.slotIndex);
-      return hit ? hit.cell : null;
-    },
-    /**
-     * The pixel box of a TILE-SPACE rect. ⚠️ ON AN OBLIQUE FLOOR A TILE IS A PARALLELOGRAM, not an
-     * axis rect, so this returns the BOUNDING BOX of the four projected corners. Its callers
-     * (`markCellSvg`, the build ghosts) draw inside a box by contract; a box that contains the real
-     * parallelogram keeps the mark on its own tile, which is the property that matters.
-     */
-    rect(r) {
-      const pts = [project(r.x, r.y), project(r.x + r.w, r.y),
-        project(r.x + r.w, r.y + r.h), project(r.x, r.y + r.h)];
-      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-      const x = Math.min(...xs), y = Math.min(...ys);
-      return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
-    },
-    /**
-     * A plate point → the fractional TILE it addresses.
-     *
-     * ⭐ THE (u, v) CLAMP IS THE AFFORDANCE, not a rounding detail. A cell's BOX is bigger than the
-     * floor PARALLELOGRAM drawn inside it — the back wall, the ceiling cut and the `meet` letterbox
-     * are all cell and none of them are floor — so a press up in the back wall solves to `v > 1` and
-     * would address a tile the compartment does not contain, i.e. `tileAt` would clamp it to `null`
-     * and an armed DIG would silently do nothing over a third of every tile. Clamping to the floor
-     * means EVERY PIXEL OF A COMPARTMENT TILE ADDRESSES A TILE IN THAT COMPARTMENT, including the
-     * upper body of a fitting that stands up off its own floor point.
-     * ⚠️ It does not weaken the identity: `project` only ever emits `u, v ∈ [0,1]`, so the clamp is
-     * inert on the round trip and bites only on points that are not on the floor at all.
-     */
-    invert(sx, sy) {
-      const c = findByPoint(sx, sy);
-      if (!c) return bandInvert(sx, sy);
-      const [mx, my] = sceneToMini(c.cell, sx, sy);
-      const [u0, v0] = miniToFloor(mx, my);
-      const u = Math.min(1, Math.max(0, u0));
-      const v = Math.min(1, Math.max(0, v0));
-      const EPS = 1e-9;
-      return [
-        Math.min(c.rect.x + c.rect.w - EPS, c.rect.x + u * c.rect.w),
-        Math.min(c.rect.y + c.rect.h - EPS, c.rect.y + v * c.rect.h),
-      ];
-    },
-  };
-}
-
-/**
- * THE CORRIDOR STRIP — the band of plate the deck's SPINE is drawn in.
- *
- * ⛔ IT EXISTS BECAUSE ITS ABSENCE DELETED THE DECK'S OWN ROUTE. Review measured it on `--ship
- * wreck`: **83 deck-0 floor tiles, two ground items and the HATCH LADDER at (22,8) — the visible
- * deck-to-deck route — lie inside no slot rect**, so with the grid alone they were on no surface at
- * Level 1 at all. A plate that draws every room and none of the corridor between them is a floor
- * plan with the doors painted out.
- *
- * It is the ROW GAP, which is space the grid already reserves: the corridor really is between the
- * two banks of compartments, so the strip is where a player expects it. With a single row (a deck of
- * one or two compartments) there is no gap, so it sits just under the grid box instead.
- */
-function corridorBand(lay) {
-  if (lay.rows >= 2) return { x: DECK.x, y: DECK.y + lay.tileH, w: DECK.w, h: ROW_GAP };
-  return { x: DECK.x, y: DECK.y + lay.tileH + 4, w: DECK.w, h: 16 };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
 // Layer 0 — the INK STARFIELD (the design's `starsInk`, three parallax layers).
 //
-// It is NOT part of the per-repaint scene: it is injected ONCE into the skeleton's `.ov-space` (see
-// overview-view.js) so its CSS drift survives the scene's `innerHTML` rebuilds. MEASURED off
-// `Perilune Game.dc.html:493-499`: three radial-gradient dot layers at dot radius 0.9/1.5/2.3 px,
-// opacity 0.5/0.34/0.2, drifting at dur × 1 / 1.8 / 3 (dur = 40 s at the default "Steady").
-// ⚠️ THE DOTS ARE INK ON PAPER NOW. The warm field's five cream/blue star colours are gone — there
-// is one ink in this dialect and the depth is carried by OPACITY and SPEED, not by hue.
+// UNCHANGED BY THIS PACKAGE. It is NOT part of the per-repaint scene: it is injected ONCE into the
+// skeleton's `.ov-space` (see overview-view.js) so its CSS drift survives the scene's `innerHTML`
+// rebuilds. Three radial-dot layers at radius 0.9/1.5/2.3 px, opacity 0.5/0.34/0.2, drifting at
+// dur × 1 / 1.8 / 3. Ink on paper: one ink in this dialect, depth carried by OPACITY and SPEED.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The three parallax layers: dot radius, opacity, and the CSS class that carries its drift. */
 const STAR_LAYERS = Object.freeze([
   Object.freeze({ r: 0.45, opacity: 0.5,  cls: 'ov-stars-a' }),
   Object.freeze({ r: 0.75, opacity: 0.34, cls: 'ov-stars-b' }),
@@ -514,7 +102,6 @@ export function starfield(count = 220) {
   return out;
 }
 
-/** One parallax layer's circles, tiled twice so the CSS translate loops seamlessly. */
 function starTile(layer, stars) {
   return stars
     .map((st) => `<circle cx="${n(st.x / 100 * VIEW_W)}" cy="${n(st.y / 100 * VIEW_H)}"`
@@ -522,12 +109,8 @@ function starTile(layer, stars) {
     .join('');
 }
 
-/**
- * The drifting ink starfield as a STANDALONE, self-animating SVG layer, injected once into the
- * skeleton. Each of the three layers is tiled twice side by side (x=0 and x=VIEW_W); a −VIEW_W CSS
- * translate loops seamlessly because the two tiles are identical. `slice` makes the field cover the
- * full backdrop, letterbox bands included.
- */
+/** The drifting ink starfield as a STANDALONE, self-animating SVG layer, injected once into the
+ *  skeleton. Each layer is tiled twice so a −VIEW_W CSS translate loops seamlessly. */
 export function starLayerSvg() {
   const stars = starfield();
   const layers = STAR_LAYERS.map((L) => {
@@ -541,307 +124,452 @@ export function starLayerSvg() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 1 — THE HULL CAPSULE.
+// Layer 1 — THE SHIP: the hull profile, the four fins, the engine block with its three nozzles, and
+// the bow window. STATIC ART — the decks inside are what carry the ship's state.
 //
-// Emitted VERBATIM from `Perilune Game.dc.html:55-60` under one transform: one closed path (fill
-// paper, stroke ink 2.2), the 0.7 inner repeat line, the raked bow hatch (six 0.6 strokes at 0.55),
-// the bow cone + four ribs, and three dashed exhaust plumes ("9 7" at 0.45). It is STATIC ART — the
-// grid is what carries the ship's state — and it is sized to the grid box rather than the other way
-// round, which is why `gridLayout` shrinks rows inside `DECK` instead of growing the capsule.
+// ⭐ THE GEOMETRY IS THE DESIGN'S, THE HAND IS `sketch.js`'s. The owner's file draws each of these
+// outlines two-to-four times with hand-wobbled `Q` curves at falling opacity — i.e. the sketch
+// treatment already baked in, as fixed paths. Embedding those verbatim would give a hull that can
+// never change; embedding the STRAIGHT geometry and running it through `sketch(…, 'strong')` gives
+// the same look from a seed, which is what makes the treatment a dial rather than a decision.
+//
+// MEASURED off the rendered design (`data-dc-tpl` in brackets):
+//   hull      [463] `M1046 177.4 L992 104 L932 90 L116 86 L86 100 L86 254.7 L116 268.7 L932 264.7
+//                    L992 250.7 Z`, filled `#D2C8B2` at 0.85 — bow to the RIGHT, stern block LEFT.
+//   fins      [455/457/459/461] four trapezoids, two above the hull line and two below.
+//   engine    [468] the block x 41.9..85.6, y 112.6..239.4; [470/472/474] three hex nozzles.
+//   bow win.  [476] `M935.9 143.9 L994.9 154.8 L993.1 200.1 L935.5 209.6 Z` + three mullions
+//             [478/480/482].
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The ship's silhouette, in the design's own coordinates. One closed path. */
+const HULL_D = 'M1046 177.4 L992 104 L932 90 L116 86 L86 100 L86 254.7 L116 268.7 L932 264.7 '
+  + 'L992 250.7 Z';
+
+/** The four fins, bow-right. Each is the design's own trapezoid, straightened. */
+const FIN_D = Object.freeze([
+  'M269.1 86.4 L370.8 84.5 L341.8 65.5 L284.8 63.4 Z',
+  'M634.5 87.2 L740.3 87.4 L711.7 62.9 L652.8 65 Z',
+  'M301.4 268.9 L404.9 267.2 L373.8 291.5 L315.2 291.8 Z',
+  'M666.3 270.2 L770.4 269.2 L743.5 289.2 L683.4 291.4 Z',
+]);
+
+/** One hexagonal engine nozzle around (cx,cy). The design's own three, at r ≈ 9.3. */
+function nozzle(cx, cy, r) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i + Math.PI / 6;
+    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return poly(pts);
+}
+
+/**
+ * The ship's static art, BEFORE the hand. Emitted as one fragment so `sketch()` can measure the
+ * whole body (its silhouette/interior split and its ground band are relative to the fragment's own
+ * bounding box — see that module's header).
+ */
+function shipGeometry() {
+  // ⚠️ THE AUTHORED WIDTHS ARE BELOW THE DESIGN'S, ON PURPOSE AND BY MEASUREMENT. The design's own
+  // hull outline is `stroke-width="1.8"` — but it is a FINISHED drawing, already hand-multiplied,
+  // whereas these paths are fed to `sketch('strong')`, whose `ramp: 1.9` / `silBoost: 1.5` widen a
+  // silhouette run by up to 2.85× and then draw it twice (`doubles: true`). Authoring 1.8 here
+  // photographed as a 5 px black rope around the ship. 0.62 × the design's widths puts the printed
+  // weight back where the design has it; the whole ship is drawn at ~0.8 scale by `SHIP_XF`'s
+  // K = 1.23 as well, which is why the numbers are not simply halved.
+  const fins = FIN_D.map((d) => `<path d="${d}" fill="${PAPER}" stroke="${INK}" stroke-width="0.85"/>`).join('');
+  const noz = [[35.4, 148.4], [35.9, 176.5], [35.4, 206.8]]
+    .map(([cx, cy]) => `<path d="${nozzle(cx, cy, 9.3)}" fill="${PAPER}" stroke="${INK}" stroke-width="0.7"/>`)
+    .join('');
+  return ''
+    + fins
+    // the hull body: a wash face under everything, then the outline the hand redraws
+    + `<path d="${HULL_D}" fill="#D2C8B2" stroke="none" opacity="0.85"/>`
+    + `<path d="${HULL_D}" fill="none" stroke="${INK}" stroke-width="0.95"/>`
+    // the engine block + its nozzles (stern, left)
+    + `<path d="M41.9 112.6 L85.6 112.5 L85.2 239.4 L42.3 239.1 Z" fill="${PAPER}" stroke="${INK}" stroke-width="0.8"/>`
+    + noz
+    // the bow window + its three mullions
+    + `<path d="M935.9 143.9 L994.9 154.8 L993.1 200.1 L935.5 209.6 Z" fill="${PAPER}" stroke="${INK}" stroke-width="0.8"/>`
+    + `<path d="M948.6 143.5 L950 213.4" fill="none" stroke="${INK}" stroke-width="0.7" opacity="0.5"/>`
+    + `<path d="M964.9 144.9 L962.2 208.8" fill="none" stroke="${INK}" stroke-width="0.7" opacity="0.5"/>`
+    + `<path d="M979.8 147.8 L977.2 205.6" fill="none" stroke="${INK}" stroke-width="0.7" opacity="0.5"/>`;
+}
+
+/**
+ * ⭐ SKETCHED ONCE, AT MODULE LOAD. The ship never changes shape, `sketch()` is a pure function of
+ * (fragment, level, seed), and a repaint runs ~10×/s — so computing it per call would spend the
+ * treatment's whole cost on a constant. The cache is a `const`, not a memo table: there is no key,
+ * no eviction and no mutable module state to make the composer non-deterministic.
+ */
+const SHIP_INK = sketch(shipGeometry(), { level: 'strong', seed: 'perilune-hull' });
 
 function hullLayer() {
-  return `<g class="pl-hull" pointer-events="none" transform="${HULL_TRANSFORM}">`
-    + `<path d="M56 150 C56 80 205 32 425 26 L785 26 C905 32 981 84 1022 150 C981 216 905 264 785 272`
-    +   ` L425 272 C205 266 56 220 56 150 Z" fill="${PAPER}" stroke="${INK}" stroke-width="2.2"/>`
-    + `<path d="M72 150 C72 88 212 46 428 40 L782 40 C896 46 966 92 1004 150 C966 208 896 254 782 258`
-    +   ` L428 258 C212 252 72 212 72 150 Z" fill="none" stroke="${INK}" stroke-width="0.7"/>`
-    + `<path d="M74 108 L196 138 M74 122 L196 152 M74 136 L196 166 M74 150 L196 180 M74 164 L196 194`
-    +   ` M74 178 L196 208" stroke="${INK}" stroke-width="0.6" opacity="0.55"/>`
-    + `<path d="M846 150 L972 102 L972 198 Z" fill="${PAPER}" stroke="${INK}" stroke-width="1.2"/>`
-    + `<path d="M862 130 L958 130 M862 142 L958 142 M862 154 L958 154 M862 166 L958 166"`
-    +   ` stroke="${INK}" stroke-width="0.5" opacity="0.4"/>`
-    + `<path d="M44 132 L4 126 M44 150 L0 150 M44 168 L4 174" stroke="${INK}" stroke-width="0.8"`
-    +   ` opacity="0.45" stroke-dasharray="9 7"/>`
-    + `</g>`;
+  return `<g class="pl-hull" pointer-events="none" transform="${SHIP_XF}">${SHIP_INK}</g>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 2 — THE COMPARTMENT GRID: tiles that are LIVE MINIATURE ROOM INTERIORS.
+// Layer 2 — THE DECKS: for each band, one continuous floor, the walkway at its front, the back wall
+// behind it, and the partition walls that divide it into compartments.
+//
+// ⭐ THE ARCHITECTURE IS SKETCHED, THE CONTENTS ARE NOT. Every stroke in `deckArchitecture` goes
+// through `sketch()`; the fittings and the pawns are drawn by their own builders and are appended
+// afterwards. That boundary is the reason this package and `lane/sketch-adoption` can both land: it
+// owns the ITEM catalogues' hand, this owns the SHIP's.
+//
+// ⚠️ THE ARCHITECTURE IS SKETCHED PER DECK AND PER SLOT-SHAPE, NOT PER REPAINT. Its geometry depends
+// only on the band and the compartment spans, both of which are functions of the `decks` channel —
+// which the host sends once and then dedupes. The seed is the deck index, so two decks get two
+// different hands (a ship drawn with one traced wall repeated is the thing the sketch treatment is
+// against) and the same deck gets the same hand every frame.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** Every path inside a tile carries this: at ~1/7 scale a scaled stroke vanishes (the design's own
- *  tiles set it on every element, `Perilune Game.dc.html:65`). */
+/** Stroke weights, measured off the design's deck lines: outer 1.5, partition 1.4, slab 1.1. */
+// ⚠️ AUTHORED BELOW THE DESIGN'S PRINTED WEIGHTS, for the reason `shipGeometry` states at length:
+// these strokes are fed to `sketch('strong')`, which widens a silhouette run and then draws it twice.
+const W = Object.freeze({ outer: 0.9, wall: 0.75, slab: 0.6, rule: 0.45, detail: 0.4, cut: '5 4', door: '3 2.5' });
+
+/** A line between two projected points. */
+function seg(a, b, stroke, width, dash, opacity) {
+  return `<path d="M${n(a[0])} ${n(a[1])} L${n(b[0])} ${n(b[1])}" fill="none" stroke="${stroke}"`
+    + ` stroke-width="${n(width)}"` + (dash ? ` stroke-dasharray="${dash}"` : '')
+    + (opacity != null ? ` opacity="${n(opacity)}"` : '') + '/>';
+}
+
+/** A point lifted off the floor by the deck's own wall height — the oblique's vertical. */
+function up(p, h) { return [p[0], p[1] - h]; }
+
+/**
+ * ONE DECK'S ARCHITECTURE — the strokes that make the band read as a cutaway rather than a strip.
+ *
+ * Draw order is a painter's algorithm back to front, which is what makes the oblique read as depth:
+ *   1. the BACK WALL face (paper), so everything else sits in front of it
+ *   2. the deck FLOOR (paper) with the WALKWAY's near strip in `PAPER_FLAT`
+ *   3. the floor's back and front edges, and the ceiling cut line
+ *   4. the PARTITION WALLS, each with its DASHED DOORWAY
+ *
+ * ⭐ THE PARTITIONS ARE SHARED, WHICH IS THE OWNER'S SECOND COMPLAINT FIXED AT THE ROOT. Compartment
+ * `i`'s right-hand wall IS compartment `i+1`'s left-hand wall: one stroke, drawn once, at the span
+ * boundary. VR-P4 drew four borders per compartment and the owner read the result as "rooms weirdly
+ * separated in boxes" — which was exactly what it was.
+ */
+function deckArchitecture(info) {
+  const P = (u, v) => floorPoint(info.plane, u, v);
+  const wall = info.plane.wall;
+  const out = [];
+  // 1. the back wall — one face across the whole deck, paper, with its top edge in ink
+  const bl = P(0, 1), br = P(1, 1);
+  out.push(`<path d="${poly([bl, br, up(br, wall), up(bl, wall)])}" fill="${PAPER}" stroke="none"/>`);
+  out.push(seg(up(bl, wall), up(br, wall), INK, W.slab));
+  // 2. the floor: the compartments' half in paper, the walkway's near strip in the flat tone
+  const fl = P(0, 0), fr = P(1, 0), sl = P(0, V_SPINE), sr = P(1, V_SPINE);
+  out.push(`<path d="${poly([sl, sr, br, bl])}" fill="${PAPER}" stroke="none"/>`);
+  out.push(`<path d="${poly([fl, fr, sr, sl])}" fill="${PAPER_FLAT}" stroke="none"/>`);
+  // 3. the edges: the front floor line is the deck's own solid edge; the walkway's back line is
+  //    where the compartments begin; the two ends are DASHED CUTS (the hull is cut away there).
+  out.push(seg(fl, fr, INK, W.outer));
+  out.push(seg(sl, sr, INK, W.rule, null, 0.55));
+  out.push(seg(bl, br, INK, W.slab, null, 0.85));
+  out.push(seg(fl, up(bl, wall), INK, W.detail, W.cut, 0.7));
+  out.push(seg(fr, up(br, wall), INK, W.detail, W.cut, 0.7));
+  // 4. the partitions — one per interior span boundary, plus the two deck ends
+  const edges = [];
+  for (let i = 0; i < info.spans.length; i++) {
+    if (i === 0) edges.push(info.spans[i].u0);
+    edges.push(info.spans[i].u1);
+  }
+  for (const u of edges) {
+    const a = P(u, V_SPINE), b = P(u, 1);
+    // ⭐ THE WALL IS A FACE, NOT TWO LINES, and that is the compartment's whole depth cue. The
+    // design gives every room a flat `#E1D9C5` LEFT WALL (`data-dc-tpl="14"`, and one per room in
+    // every symbol) — at thumbnail scale it is a solid tone rather than the `#fh` hatch, because a
+    // 7 px hatch period inside a 113 px room resolves to noise. Drawn as lines only, a partition
+    // reads as a hairline between two flat strips and the band goes back to looking like a plan.
+    out.push(`<path d="${poly([a, b, up(b, wall), up(a, wall)])}" fill="${PAPER_FLAT}"`
+      + ` stroke="${INK}" stroke-width="${n(W.wall)}" stroke-linejoin="round" opacity="0.92"/>`);
+    // ⭐ THE DASHED DOORWAY — the design's own "openings where doors join rooms". It is drawn on the
+    // wall's FRONT edge, the part that meets the walkway, because that is where a compartment really
+    // opens onto the spine on every authored ship (`--ship wreck`'s halls all door onto it).
+    out.push(seg(a, up(a, wall * 0.62), PAPER, W.wall * 1.6, null, 1));
+    out.push(seg(a, up(a, wall * 0.62), INK, W.detail, W.door, 0.65));
+  }
+  return out.join('');
+}
+
+/** The walkway's plank ticks and its centre rule — the design's own [533..566], at this scale. */
+function walkwayDetail(info) {
+  const P = (u, v) => floorPoint(info.plane, u, v);
+  const out = [seg(P(0, V_SPINE * 0.55), P(1, V_SPINE * 0.55), INK, 0.5, null, 0.4)];
+  const ticks = 17;
+  for (let i = 1; i < ticks; i++) {
+    const u = i / ticks;
+    out.push(seg(P(u, 0), P(u, V_SPINE), INK, 0.4, null, 0.22));
+  }
+  return out.join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Layer 3 — WHAT IS IN A COMPARTMENT: the real fittings, in miniature oblique, standing on the
+// deck's own floor plane at the point their own tile projects to.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The attribute every stroke inside a fitting must carry. The design sets it on EVERY element of
+ *  every compartment symbol (`Perilune Ship - Drawn.html`, e.g. `data-dc-tpl="12"`). */
 const NS = ' vector-effect="non-scaling-stroke"';
 
-/** One `<path>` in the miniature: `d`, fill, and the ink/dash the tile's state selected. */
-function miniPath(d, fill, stroke, width, dash) {
-  return `<path d="${d}" fill="${fill}"`
-    + (stroke ? ` stroke="${stroke}" stroke-width="${n(width)}"` : ' stroke="none"')
-    + (dash ? ` stroke-dasharray="${dash}"` : '') + NS + '/>';
+/** The shape elements a stroke can live on. */
+const SHAPE_TAG = /<(path|rect|circle|ellipse|line|polygon|polyline)\b(?![^>]*vector-effect)/g;
+
+/**
+ * ⭐⭐ MAKE A FITTING'S STROKES NON-SCALING. Injected into the builder's own emitted markup rather
+ * than authored by the builders, because the builders are the ITEM CATALOGUES' — shared with the
+ * catalogue sheets and the Room Zoom, where the pieces are drawn at full size and must NOT have it.
+ *
+ * ⛔ IT IS NOT COSMETIC, AND THE NUMBER IS THE ARGUMENT. `buildTileItem(id, {w: size, h: size})`
+ * emits its geometry under `scale(size/128)`; at the plate's ~20.8 px piece that is `scale(0.163)`,
+ * and the builders' authored widths of 0.7–1.8 land at **0.11–0.29 px on screen**. That is a stroke
+ * the browser antialiases to a grey suggestion, and it is exactly the failure the live rig's
+ * `vector-effect` check was written for.
+ *
+ * ⚠️⚠️ AND IT WAS ALREADY BROKEN ON VR-P4's PLATE — THE CHECK COULD NOT SEE IT. That rig probed
+ * `.ov-mini path` and passed if ANY of them resolved to `non-scaling-stroke`; the compartment
+ * SHELL's paths carried it and the FITTINGS' never did, so a guard whose scope included both was
+ * satisfied by the half that was fine. (CLAUDE.md's 4th shape: a guard whose scope filter excludes
+ * the violation.) The rig now probes `.pl-fit path` alone, which is what surfaced this.
+ *
+ * PURE and string-local: it only touches shape tags that do not already carry the attribute, so it
+ * is idempotent and cannot fight a builder that starts emitting its own.
+ */
+function nonScaling(fragment) {
+  return String(fragment).replace(SHAPE_TAG, (m, tag) => `<${tag}${NS}`);
 }
 
 /**
- * THE MINIATURE ROOM SHELL — the Level-2 cutaway at plate scale: floor quad, back wall, hatch-free
- * flat left wall, the solid front floor edge, the two dashed cut edges that say the right wall and
- * the ceiling are CUT AWAY rather than missing, and the left-wall door plate every design tile has.
+ * THE DECK'S FITTINGS, sorted BACK TO FRONT so nearer pieces overlap further ones.
  *
- * ⚠️ THE LEFT WALL IS FLAT `#E1D9C5`, NOT THE `#fh` HATCH, and that is the design's own choice at
- * this scale (charter §1: "flat `#E1D9C5` at thumbnail scale"). A 7-px hatch period inside a tile
- * scaled to ~1/7 resolves to noise, and a `<pattern>` here would also put one def per tile into the
- * document — the id-collision shape `overview-scene.test.js` pins against.
+ * ⛔ THE POSITION IS THE TILE'S OWN, THROUGH THE SAME FUNCTION THE CLICK MAP INVERTS. A piece stands
+ * on the floor point its own tile centre projects to, so a press on its footprint designates the
+ * tile it is drawn on. VR-P4's send-back was exactly this and its measurement stands as the reason:
+ * while the drawing used the oblique and the click map used an axis-aligned box, 57 of 59 drawn
+ * fittings clicked a different tile than the one they were drawn on.
  *
- * @param {'built'|'unbuilt'} state  `unbuilt` draws the whole shell in the dash dialect (UNBUILT =
- *        ink "6 5", charter §1) with no fills, which is the design's third tile.
+ * ⭐ NEEDS-ATTENTION FLIPS THE STROKE TO OXBLOOD (ruling E3), and the predicate is the `marks`
+ * channel's own word — a CONDEMNED tile — never a condition compared to a number. Wear is already
+ * expressed: `buildTileItem` swaps the piece for its post-raid twin through the one wear join
+ * (`items/wear.js`), which is where that threshold lives for both surfaces.
  */
-function miniShell(state) {
-  const c = MINI_FRAME.corners;
-  const unbuilt = state === 'unbuilt';
-  const dash = unbuilt ? MINI_WEIGHT.unbuiltDash : null;
-  const fill = unbuilt ? 'none' : PAPER;
-  const floor = poly([c.frontLeft, c.frontRight, c.backRight, c.backLeft]);
-  const back = poly([c.backLeft, c.backRight, c.backRightTop, c.backLeftTop]);
-  const left = poly([c.frontLeft, c.backLeft, c.backLeftTop, c.frontLeftTop]);
-  const frontEdge = poly([c.frontLeft, c.frontRight], false);
-  const cutV = poly([c.frontRight, c.frontRightTop], false);
-  const cutD = poly([c.frontRightTop, c.backRightTop], false);
-  return ''
-    + miniPath(floor, fill, unbuilt ? INK : null, MINI_WEIGHT.detail, dash)
-    + miniPath(back, fill, INK, MINI_WEIGHT.shell, dash)
-    + miniPath(left, unbuilt ? 'none' : PAPER_FLAT, INK, MINI_WEIGHT.shell, dash)
-    + miniPath(frontEdge, 'none', INK, MINI_WEIGHT.shell, dash)
-    + miniPath(cutV, 'none', INK, MINI_WEIGHT.detail, dash || MINI_WEIGHT.cutDash)
-    + miniPath(cutD, 'none', INK, MINI_WEIGHT.detail, dash || MINI_WEIGHT.cutDash)
-    // the spine door on the left wall — `Perilune Game.dc.html:65`, present in every tile
-    + miniPath('M38.4 350.4 L78.4 290.4 L78.4 85.4 L38.4 145.4 Z', unbuilt ? 'none' : PAPER,
-      INK, MINI_WEIGHT.detail, dash);
-}
-
-/**
- * The compartment's REAL CONTENTS, standing in the miniature: one fitting per frame cell inside this
- * slot's tile rect, drawn by the SAME builders the catalogue and the Room Zoom use (`buildTileItem`
- * → `buildItem`, plus the wear join that swaps a worn machine for its post-raid twin).
- *
- * ⛔ THE POSITION IS THE TILE'S OWN, NOT A DECORATIVE ARRANGEMENT. A cell at tile (tx,ty) inside a
- * rect lands at the same FRACTION across and back of the miniature room, projected through the
- * shared oblique frame — so the galley's cooker is on the side of the galley it is really on, and
- * two compartments with the same fittings in different places draw differently. Sorted BACK TO
- * FRONT so nearer pieces overlap further ones, which is what makes the oblique read as depth.
- *
- * ⚠️ NEEDS-ATTENTION FLIPS THE STROKE TO OXBLOOD (ruling E3): a piece whose tile carries a fault
- * mark (`condemn`) or whose device row is worn past the twin threshold is drawn in the accent. It is
- * applied as a `<g stroke>` override rather than by re-building the piece, because the builders own
- * their own weights and a second colour parameter through 30 fittings is the drift shape this
- * module's glyph-map note exists to prevent.
- */
-function miniContents(slot, frame, deck, deviceCond, marks, idPrefix) {
-  if (!frame || frame.deck !== deck || !Array.isArray(frame.cells)) return '';
-  const rect = slot && slot.rect;
-  if (!rect || !(rect.w > 0) || !(rect.h > 0)) return '';
-  const cond = deviceCond instanceof Map ? deviceCond : new Map();
-  const attention = marks instanceof Set ? marks : new Set();
+function fittingLayer(info, deck, fittings, attention, size, idPrefix) {
+  if (!(fittings instanceof Map) || !fittings.size) return '';
   const pieces = [];
-  const x1 = Math.min(frame.w, rect.x + rect.w);
-  const y1 = Math.min(frame.h, rect.y + rect.h);
-  for (let ty = Math.max(0, rect.y); ty < y1; ty++) {
-    for (let tx = Math.max(0, rect.x); tx < x1; tx++) {
-      const cell = frame.cells[ty * frame.w + tx];
-      if (!Array.isArray(cell)) continue;
-      const code = cell[0];
-      // ⭐ THE SAME PAWN-OCCLUSION REPAIR THE ROOM ZOOM MAKES, and it is here because the defect is
-      // the FRAME's, not the cutaway's: `GlyphMapper` pass 5 writes `Glyphs.Citizen` over the device
-      // glyph, so a plate miniature lost its machine the moment a crew member stood on it too.
-      // MEASURED on this surface, not assumed from the other one — `overview-scene.test.js` drives it.
-      // `cond` is the `deckDeviceConditions` Map this function is ALREADY handed; it was read for the
-      // wear byte and for nothing else.
-      const itemId = NON_FURNITURE.has(code)
-        ? (code === CITIZEN_GLYPH_CODE ? itemForDeviceRow(cond.get(tx + ',' + ty)) : '')
-        : itemIdForGlyphChar(String.fromCharCode(code));
-      if (!itemId) continue; // glyph nothing skins (or a floor/wall/doorway) → graceful skip
-      const u = (tx + 0.5 - rect.x) / rect.w;
-      const v = (ty + 0.5 - rect.y) / rect.h;
-      // ⭐ THE SAME FUNCTION THE CLICK MAP INVERTS. A piece stands on the floor point its own tile
-      // centre projects to, so a press on its footprint designates the tile it is drawn on.
-      const [px, py] = floorToMini(u, v);
-      const row = cond.get(tx + ',' + ty);
-      const g = buildTileItem(itemId, { w: MINI_ITEM, h: MINI_ITEM, idPrefix: `${idPrefix}-f${tx}-${ty}` },
-        row ? row.cond : undefined);
-      // ⛔ NEEDS-ATTENTION IS THE `marks` CHANNEL'S OWN WORD, NEVER A CONDITION COMPARED TO A NUMBER.
-      // The first draft flipped the stroke when `row.cond` fell under a literal, and that is a SECOND
-      // HOME FOR THE WEAR THRESHOLD — the exact defect `client/src/items/wear.js` exists to prevent
-      // and `wear-join.test.js` pins by name ("no surface compares a condition to a number"). Wear is
-      // already expressed here: `buildTileItem` swaps the piece for its post-raid twin, through that
-      // one function. What the accent adds is the SIM'S OWN judgement — a tile the player or the ship
-      // has CONDEMNED — which arrives as a mark kind and needs no threshold at all.
-      const attend = attention.has(tx + ',' + ty);
-      pieces.push({
-        yCm: v * MINI_D_CM,
-        // ⭐ `data-tile` IS THE PIN'S HANDLE, and it is emitted rather than inferred: it says which
-        // tile this piece was DRAWN for, so a test can take the piece's own base point and require
-        // the click map to hand back the same tile. Inferring it from the id namespace instead is
-        // what the first version of that test did, and it mis-paired every piece whose builder
-        // emits no `<defs>` id at all.
-        // ⭐ `pointer-events="visiblePainted"` — a press on a fitting's own INK designates that
-        // fitting's tile (`overview-view.js` `pointToTile` reads `data-tile` first). In an oblique
-        // view a piece stands UP off its floor point, so most of a tall locker's body hangs over the
-        // tiles BEHIND it; without this tier, pressing the part of the drawing a player is aiming at
-        // orders a different tile, which is the same "shows one thing, orders another" defect as the
-        // projection bug, one layer up. The gaps between pieces are unpainted and fall through to
-        // the floor map, which is what makes the two tiers agree rather than fight.
-        svg: `<g class="pl-fit" data-tile="${tx},${ty}" pointer-events="visiblePainted"`
-          + ` transform="translate(${n(px - MINI_ITEM / 2)} ${n(py - MINI_ITEM)})"`
-          + (attend ? ` stroke="${ATTEND}"` : '') + `>${g}</g>`,
-      });
-    }
+  for (const [key, f] of fittings) {
+    const c = key.indexOf(',');
+    const tx = +key.slice(0, c), ty = +key.slice(c + 1);
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) continue;
+    // ⭐⭐ EVERY PIECE CARRIES THE COMPARTMENT IT STANDS IN, AND THAT IS A DEFECT THIS PACKAGE
+    // CREATED AND CLOSES. VR-P4 drew each compartment's fittings INSIDE its `<g class="pl-room">`
+    // (they lived in the tile's own nested `<svg>`), so `target.closest('.pl-room')` found the room
+    // from any pixel of any piece. The elevation draws ONE fitting layer per BAND, above the
+    // compartments, because the pieces must sort back-to-front across the whole deck floor for the
+    // oblique to read — which made every fitting a SIBLING of the rooms and `closest` return null.
+    //
+    // ⛔ MEASURED IN THE RUNNING GAME, not reasoned: `elementFromPoint` at 50% and 75% of a
+    // compartment's height — where its contents stand — returned a fitting path whose
+    // `closest('.pl-room')` was null, and only at 90% (bare floor) did it find the room. So a press
+    // on a compartment's CONTENTS did not enter it and a hover over them did not wash it, which is
+    // most of the compartment's area. `data-anchor` restores the join without moving the drawing;
+    // `overview-view.js`'s `roomAnchorOf` is the one reader, shared by the hover and the click.
+    //
+    // A WALKWAY piece falls in no compartment and carries no anchor — correct, there is no room to
+    // enter — and the attribute is simply omitted rather than emitted empty, so a reader cannot
+    // mistake '' for a room called ''.
+    const span = info.spans.find((sp) => covers(sp.rect, tx, ty));
+    const uv = info.uv(tx + 0.5, ty + 0.5);
+    if (!uv) continue;
+    const [px, py] = floorPoint(info.plane, uv[0], uv[1]);
+    const g = nonScaling(
+      buildTileItem(f.itemId, { w: size, h: size, idPrefix: `${idPrefix}-f${tx}-${ty}` }, f.cond),
+    );
+    const attend = attention.has(key);
+    pieces.push({
+      v: uv[1],
+      // ⭐ `data-tile` IS THE PIN'S HANDLE, emitted rather than inferred: it says which tile this
+      // piece was DRAWN for, so a test — and the live rig's press census — can take the piece's own
+      // base point and require the click map to hand back the same tile.
+      // ⭐ `pointer-events="visiblePainted"` — a press on a fitting's own INK designates that
+      // fitting's tile (`overview-view.js` `pointToTile` reads `data-tile` first). In an oblique
+      // view a piece stands UP off its floor point, so most of a tall locker's body hangs over the
+      // tiles BEHIND it; the unpainted gaps fall through to the floor map, which is what makes the
+      // two tiers agree rather than fight.
+      svg: `<g class="pl-fit" data-tile="${tx},${ty}" data-deck="${deck}"`
+        + (span ? ` data-anchor="${esc(span.slot.anchorName)}"` : '')
+        + ` pointer-events="visiblePainted"`
+        + ` transform="translate(${n(px - size / 2)} ${n(py - size)})"`
+        + (attend ? ` stroke="${ATTEND}"` : '') + `>${g}</g>`,
+    });
   }
   if (!pieces.length) return '';
-  pieces.sort((a, b) => b.yCm - a.yCm);
+  pieces.sort((a, b) => b.v - a.v);
   return `<g class="pl-furniture" pointer-events="none">${pieces.map((p) => p.svg).join('')}</g>`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// The compartment as a CLICKABLE REGION + its state treatments.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The 45° oxblood hatch the design fills an unsurveyed compartment with (`#dmgb`, [8]). One def per
+ *  document, id-prefixed so two scenes in one page cannot collide. */
+function hatchDef(id) {
+  return `<defs><pattern id="${id}-dmgb" width="7" height="7" patternUnits="userSpaceOnUse"`
+    + ` patternTransform="rotate(45)"><rect width="7" height="7" fill="${PAPER}"/>`
+    + `<path d="M0 0 L0 7" stroke="${ATTEND}" stroke-width="1.1" opacity="0.5"/></pattern></defs>`;
+}
+
 /**
- * ONE COMPARTMENT TILE. The border is a real `<rect>` in plate space (an `<svg>` element cannot
- * carry a stroke) and the interior is a NESTED `<svg>` with the design's own viewBox, so the
- * miniature scales into whatever cell `gridLayout` gave it without any arithmetic here.
+ * ONE COMPARTMENT — the pressable region, its state treatment and its caption handle.
  *
- * THE THREE BORDER STATES ARE THE DIALECT, measured off Screen 01 and ruling E3:
- *   1.4 px ink       — a compartment (the design's ordinary tile)
- *   2.2 px ink       — SELECTED (the design's fourth tile)
- *   1.4 px oxblood + "8 5" — NEEDS ATTENTION: this compartment holds a crew member whose order the
- *                      ship cannot run (D5) or a condemned/faulted piece. ⭐ THIS IS D5's BADGE AND
- *                      THE BLOCKED-ORDER SCRIM RE-HOUSED (ruling E4): the warm surface drew a red
- *                      badge over a tile in the Room Zoom and a scrim here; the plate says the same
- *                      thing in the one accent plus the queued-order dash, and the SENTENCE that
- *                      goes with it is the oxblood serif line in the `compartments` column.
+ * `data-anchor` is what `overview-view.js`'s `hitTest` reads (unchanged, so a click still enters the
+ * room); `data-deck` is NEW and is what lets a press on the deck the host is not projecting say so
+ * (see `overview-view.js`'s `onScenePointerUp` — a compartment on the other deck moves the ORDER
+ * DECK rather than silently ordering on the wrong one). `data-purpose` is the predicate the amber
+ * glow pool used to carry (`roomType`).
  *
- * `data-anchor` is what `overview-view.js`'s `hitTest` reads — unchanged, so a click still enters the
- * room. `data-purpose` is the predicate the amber glow pool used to carry (`roomType`), emitted so a
- * test can read it rather than counting gradients that no longer exist.
+ * THE STATE TREATMENTS, and they are the dash dialect, not new vocabulary:
+ *   purposed     — the compartment's floor is solid paper; its partitions are solid ink.
+ *   unpurposed   — the UNBUILT dash (`"6 5"`), the design's third tile.
+ *   attention    — OXBLOOD `"8 5"` around the whole region: this compartment holds a crew member
+ *                  whose order the ship cannot run (D5) or a condemned piece. ⭐ THIS IS D5's BADGE
+ *                  AND THE BLOCKED-ORDER SCRIM RE-HOUSED (ruling E4).
+ *   selected     — a 2.2 px ink outline of the same region.
+ *   unsurveyed   — the design's hatched CROSS-BOX: the `#dmgb` fill plus its two diagonals.
+ *   hovered      — `pl-room-hover`, which the stylesheet washes the floor with.
+ *
+ * ⛔⛔ HOVER IS A COMPOSER INPUT, NOT A CSS `:hover`, AND THAT IS AN OWNER-REPORTED DEFECT CLOSED
+ * RATHER THAN A PREFERENCE. The owner: *"when I am on the ship level and hover my mouse for 2-3
+ * seconds above one of the rooms, that room starts flickering."* The mechanism, measured on the live
+ * host: `paintScene` assigns the whole plate to `_stage.innerHTML` on every wire repaint, and the
+ * `frame` channel lands every ~1 s even on a QUIET ship (20 messages in 20 s, median gap 1000 ms,
+ * p90 1098 ms — measured 2026-08-05 on `--ship wreck`). So the hovered element is DESTROYED under a
+ * stationary cursor about a second after the hover begins; Chrome re-evaluates `:hover` from pointer
+ * MOVEMENT, so across a rebuild the state drops and does not come back until the mouse moves. The
+ * highlight then oscillates at repaint cadence. The 2–3 s onset the owner reports is the first
+ * repaint after the hover plus the eye noticing the second one.
+ *
+ * ⭐ THE FIX IS THAT THE STATE LIVES WHERE IT SURVIVES THE REBUILD. `overview-view.js` tracks the
+ * hovered anchor from `pointerover`/`pointerout` and hands it in here exactly like `selectedAnchor`;
+ * every repaint re-emits the class from that state, so a stationary hover is bit-identical across
+ * arbitrarily many repaints and CANNOT blink. It is also the only shape that keeps the composer pure
+ * and node-testable — a class re-applied to the DOM after `innerHTML` would be a second writer.
+ *
+ * ⚠️ AND THE `:hover` RULE HAD ALREADY STOPPED MATCHING IN THIS LANE, SILENTLY. It read
+ * `.pl-room:hover rect:first-child` — VR-P4's compartment opened with a `<rect>` border. The
+ * elevation's opens with `<path class="pl-cfloor">`, so the selector matched NOTHING and the plate
+ * had no hover affordance at all. Two defects, one fix; the stylesheet now keys on the CLASS and on
+ * `.pl-cfloor`, both of which the composer emits and a test can read.
+ *
+ * ⛔ THE PURPOSE STATE IS `roomType` AND NOTHING ELSE. It deliberately does NOT ask `slot.occupied`:
+ * M1-L widened that flag to "this slot's walls enclose a real room", which is TRUE FOR EVERY SLOT ON
+ * EVERY SHIPPED SHIP, so a reader of it is a constant dressed as a predicate — and
+ * `no-add-room.test.js` census-pins that this module never reads it again.
  */
-function compartmentTile(slot, cell, opts) {
+function compartment(info, span, deck, opts, id) {
   const o = opts || {};
-  const selected = !!o.selected;
-  const attention = !!o.attention;
+  const hovered = !!o.hovered;
+  const slot = span.slot;
   const purposed = !!(slot && slot.roomType);
-  // ⛔ THE STATE IS `roomType` AND NOTHING ELSE. It deliberately does NOT ask `slot.occupied`: M1-L
-  // widened that flag to "this slot's walls enclose a real room", which is TRUE FOR EVERY SLOT ON
-  // EVERY SHIPPED SHIP, so a reader of it is a constant dressed as a predicate — and
-  // `no-add-room.test.js` census-pins that this module never reads it again.
   const state = purposed ? 'built' : 'unbuilt';
-  const stroke = attention ? ATTEND : INK;
-  const width = selected ? 2.2 : 1.4;
-  const dash = attention ? ' stroke-dasharray="8 5"' : '';
-  return `<g class="pl-room${selected ? ' pl-room-sel' : ''}${attention ? ' pl-room-attend' : ''}"`
-    + ` data-slot="${slot.slotIndex}" data-anchor="${esc(slot.anchorName)}"`
-    + ` data-purpose="${purposed ? 1 : 0}" data-state="${state}">`
-    + `<rect x="${n(cell.x)}" y="${n(cell.y)}" width="${n(cell.w)}" height="${n(cell.h)}"`
-    +   ` fill="${PAPER}" stroke="${stroke}" stroke-width="${n(width)}"${dash}/>`
-    + `<svg x="${n(cell.x)}" y="${n(cell.y)}" width="${n(cell.w)}" height="${n(cell.h)}"`
-    +   ` viewBox="${MINI_VIEWBOX}" preserveAspectRatio="xMidYMid meet" class="ov-mini">`
-    +   miniShell(state) + (o.contents || '')
-    + `</svg></g>`;
-}
-
-/** An EMPTY GRID CELL — the census did not fill the last row. The design's dashed third tile, with
- *  no border of its own: nothing has been built here, so nothing draws a line around it. */
-function emptyTile(cell) {
-  return `<g class="pl-room-empty" pointer-events="none">`
-    + `<rect x="${n(cell.x)}" y="${n(cell.y)}" width="${n(cell.w)}" height="${n(cell.h)}"`
-    +   ` fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="6 5" opacity="0.45"/>`
-    + `</g>`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 2b — THE SPINE. Everything on the deck that is inside no compartment: the corridor's own
-// floor line, its ground items and — the one that mattered — the HATCH LADDER, which is the visible
-// deck-to-deck route. Drawn in the corridor strip, through the SAME `t.project` the click map
-// inverts, so a press on the ladder designates the ladder's tile.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-function corridorLayer(frame, deck, t, slots, id) {
-  const band = t.band;
-  const rule = `<path d="M${n(band.x)} ${n(band.y + band.h / 2)} L${n(band.x + band.w)} ${n(band.y + band.h / 2)}"`
-    + ` fill="none" stroke="${INK}" stroke-width="0.6" opacity="0.4"/>`;
-  if (!frame || frame.deck !== deck || !Array.isArray(frame.cells)) {
-    return `<g class="pl-corridor" pointer-events="none">${rule}</g>`;
+  const P = (u, v) => floorPoint(info.plane, u, v);
+  const wall = info.plane.wall;
+  // The pressable VOLUME: the compartment's floor parallelogram plus the wall standing behind it.
+  const region = poly([P(span.u0, V_SPINE), P(span.u1, V_SPINE), P(span.u1, 1), P(span.u0, 1)]);
+  const volume = poly([
+    P(span.u0, V_SPINE), P(span.u1, V_SPINE), P(span.u1, 1),
+    up(P(span.u1, 1), wall), up(P(span.u0, 1), wall), P(span.u0, 1),
+  ]);
+  let g = '';
+  // The floor face. An UNPURPOSED compartment gets no fill and a dashed outline — the design's own
+  // third tile — so a deck the ship never gave a purpose to reads as drawn-but-empty rather than as
+  // a room whose contents are missing.
+  g += `<path class="pl-cfloor" d="${region}" fill="${purposed ? PAPER : 'none'}"`
+    + ` stroke="${INK}" stroke-width="${purposed ? 0.7 : 1}"`
+    + (purposed ? '' : ' stroke-dasharray="6 5" opacity="0.55"') + `${NS}/>`;
+  if (o.unsurveyed) {
+    // THE HATCHED CROSS-BOX. The contents are NOT drawn under it (the caller skips them), because a
+    // hatch over a drawing says "damaged" and this says "nobody has been in here".
+    const dl = P(span.u0, V_SPINE), dr = P(span.u1, 1);
+    const dl2 = P(span.u0, 1), dr2 = P(span.u1, V_SPINE);
+    g += `<path d="${volume}" fill="url(#${id}-dmgb)" stroke="none" opacity="0.85"/>`
+      + seg(dl, dr, INK, 1, null, 0.5) + seg(dl2, dr2, INK, 1, null, 0.5);
   }
-  const list = Array.isArray(slots) ? slots : [];
-  const side = Math.max(9, band.h * 0.82);
-  const out = [];
-  for (let ty = 0; ty < frame.h; ty++) {
-    for (let tx = 0; tx < frame.w; tx++) {
-      if (list.some((sl) => sl && coversTile(sl.rect, tx, ty))) continue;   // a compartment owns it
-      const cell = frame.cells[ty * frame.w + tx];
-      if (!Array.isArray(cell)) continue;
-      const code = cell[0];
-      if (NON_FURNITURE.has(code)) continue;
-      const itemId = itemIdForGlyphChar(String.fromCharCode(code));
-      if (!itemId) continue;
-      const [cx, cy] = t.project(tx + 0.5, ty + 0.5);
-      out.push(`<g transform="translate(${n(cx - side / 2)} ${n(cy - side / 2)})">`
-        + `${buildItem(itemId, { w: side, h: side, idPrefix: `${id}-c${tx}-${ty}` })}</g>`);
-    }
-  }
-  return `<g class="pl-corridor" pointer-events="none">${rule}${out.join('')}</g>`;
+  if (o.attention) g += `<path d="${volume}" fill="none" stroke="${ATTEND}" stroke-width="1.4" stroke-dasharray="8 5"${NS}/>`;
+  if (o.selected) g += `<path d="${volume}" fill="none" stroke="${INK}" stroke-width="2.2"${NS}/>`;
+  // The hit surface, last so it takes the pointer: transparent, exactly the drawn volume.
+  g += `<path class="pl-chit" d="${volume}" fill="transparent" stroke="none"/>`;
+  return `<g class="pl-room${o.selected ? ' pl-room-sel' : ''}${o.attention ? ' pl-room-attend' : ''}`
+    + `${o.unsurveyed ? ' pl-room-dark' : ''}${hovered ? ' pl-room-hover' : ''}" data-slot="${slot.slotIndex}"`
+    + ` data-anchor="${esc(slot.anchorName)}" data-deck="${deck}"`
+    + ` data-purpose="${purposed ? 1 : 0}" data-state="${state}">${g}</g>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 3 — DEBRIS + DESIGNATION MARKS, drawn at PLATE level through the piecewise transform, so a
-// mark lands inside the cell of the compartment that really holds it.
+// Layer 4 — DEBRIS + DESIGNATION MARKS, drawn through the SAME projection so a mark lands on the
+// tile that really holds it.
 //
 // ⚠️ IT DOES NOT READ THE FRAME. `GlyphMapper` writes `cell[1]` in pass 1 and OVERWRITES it in
 // passes 3/4/5, so a crew member walking over a designation made its mark blink out. The kinds come
 // from the sim's own registries over the wire, decoded once by `overview-view.js` and handed in.
+// ⭐ AND NOW EVERY DECK: the `marks` channel has always carried `deck`, and with both decks drawn a
+// designation on the other one is finally visible.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-function markLayer(marks, deck, t) {
+function markLayer(marks, t) {
   if (!Array.isArray(marks) || !marks.length) return '';
   const out = [];
   for (const m of marks) {
-    if (!m || (m.deck | 0) !== (deck | 0)) continue;
-    const r = t.rect({ x: m.x, y: m.y, w: 1, h: 1 });
+    if (!m) continue;
+    const deck = m.deck | 0;
+    if (!t.deckInfo(deck)) continue;
+    const r = t.rect({ x: m.x, y: m.y, w: 1, h: 1 }, deck);
     const g = markCellSvg(m.mark, r.x, r.y, r.w, r.h, markVariant(m.x, m.y));
     if (g) out.push(g);
   }
   return out.length ? `<g class="pl-marks" pointer-events="none">${out.join('')}</g>` : '';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// Build ghosts — wire-backed placement markers on this deck. THE DASH DIALECT'S QUEUED ORDER:
-// oxblood "8 5" (charter §1), replacing the warm amber dashed box.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-function ghostLayer(designs, deck, t) {
+/** Build ghosts — wire-backed placement markers, on any deck. THE DASH DIALECT'S QUEUED ORDER:
+ *  oxblood "8 5" (charter §1). */
+function ghostLayer(designs, t) {
   const cells = Array.isArray(designs) ? designs : (designs && designs.cells) || [];
   const out = [];
   for (const c of cells) {
-    if (!Array.isArray(c) || c[2] !== deck) continue;
-    const r = t.rect({ x: c[0], y: c[1], w: 1, h: 1 });
+    if (!Array.isArray(c)) continue;
+    const deck = c[2] | 0;
+    if (!t.deckInfo(deck)) continue;
+    const r = t.rect({ x: c[0], y: c[1], w: 1, h: 1 }, deck);
     const glyph = c[3] === 1 ? '/' : '#'; // door / wall
     out.push(`<g class="pl-ghost">`
       + `<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="none"`
       +   ` stroke="${ATTEND}" stroke-width="1.2" stroke-dasharray="8 5"/>`
-      + `<text x="${n(r.x + r.w / 2)}" y="${n(r.y + r.h / 2)}" font-size="${n(Math.max(6, r.h * 0.7))}"`
+      + `<text x="${n(r.x + r.w / 2)}" y="${n(r.y + r.h / 2)}" font-size="${n(Math.max(5, r.h * 0.7))}"`
       +   ` fill="${ATTEND}" text-anchor="middle" dominant-baseline="central"`
       +   ` font-family="${FONT.mono}">${esc(glyph)}</text></g>`);
   }
   return out.length ? `<g class="pl-ghosts" pointer-events="none">${out.join('')}</g>` : '';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// Terminals — clickable MOSS console chips, one per terminal device on the shown deck. Carries
-// `data-tid` so the click routes straight to that terminal's MOSS program.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-function terminalLayer(terminals, deck, t) {
+/** Terminals — clickable MOSS console chips, one per terminal device, on EVERY drawn deck. Carries
+ *  `data-tid` so the click routes straight to that terminal's MOSS program. */
+function terminalLayer(terminals, t) {
   const list = Array.isArray(terminals) ? terminals : [];
   const out = [];
   for (const term of list) {
-    if (!term || (term.deck | 0) !== deck) continue;
-    const [cx, cy] = t.project(term.x + 0.5, term.y + 0.5);
-    const w = Math.max(9, t.tileSize * 1.6), h = w * 0.72;
+    if (!term) continue;
+    const deck = term.deck | 0;
+    if (!t.deckInfo(deck)) continue;
+    const [cx, cy] = t.project(term.x + 0.5, term.y + 0.5, deck);
+    if (!Number.isFinite(cx)) continue;
+    const w = Math.max(9, t.tileSize * 1.8), h = w * 0.72;
     const x = cx - w / 2, y = cy - h * 0.7;
-    out.push(`<g class="pl-terminal" data-tid="${esc(term.tid)}">`
+    out.push(`<g class="pl-terminal" data-tid="${esc(term.tid)}" data-deck="${deck}">`
       + `<rect x="${n(cx - w / 2)}" y="${n(cy - h / 2)}" width="${n(w)}" height="${n(h)}" fill="transparent"/>`
       + `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" fill="${PAPER}"`
       +   ` stroke="${INK}" stroke-width="1"/>`
@@ -854,14 +582,12 @@ function terminalLayer(terminals, deck, t) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 4 — THE INK CREW MARKERS: one two-pass figure per on-deck crew member, standing in the cell
-// of the compartment they are in, each wearing its identity + WORK label.
+// Layer 5 — THE INK CREW MARKERS: one two-pass figure per crew member, standing in the compartment
+// she is in, on WHICHEVER DECK that is, each wearing her identity + WORK label.
 //
-// THE WORK MARKER (console-retirement plan §1(b) B4) SURVIVES THE REDESIGN UNCHANGED IN MEANING and
-// changed only in ink: the tag half appears ONLY for a crew member doing a job AT A PLACE. Idle,
-// merely walking and *en route* crew get no tag — `taskTag` returns null for all three, and the
-// ABSENCE is the information. The de-clutter sweep below is what keeps eight pawns in one
-// compartment from reading as `HALL(VE OKO NOV KAUR / SAT ITO YEMI`.
+// THE WORK MARKER (console-retirement plan §1(b) B4) SURVIVES UNCHANGED IN MEANING: the tag half
+// appears ONLY for a crew member doing a job AT A PLACE. Idle, merely walking and *en route* crew get
+// no tag — `taskTag` returns null for all three, and the ABSENCE is the information.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** How far each de-clutter row lifts a label, in design px (a pill is 11 tall, so 12 leaves 1 of air). */
@@ -869,16 +595,12 @@ const LABEL_ROW_STEP = 12;
 /**
  * Rows the sweep may stack before it gives up.
  *
- * ⚠️ IT WAS 8 — "one row per crew member in the densest room" — AND THE PLATE MADE THAT TOO FEW,
- * measured rather than guessed. On the old floor-plan projection the grid ship's eight-crew hold
- * spread across ~700 design px, so eight rows were plenty. A compartment TILE is ~190 × 70 px, so
- * those eight pawns now stand within one cell, and their pills alias: a pawn one tile further back
- * sits ~11.7 px lower while a row step is 12, so two labels a row apart in INDEX land within a
- * pixel of each other in SPACE and the sweep must skip a row to miss them. Eight rows therefore ran
- * out with eight pawns and the last-resort case fired — `8 servicing on alternating tile rows`
- * emitted a real 52.6 × 7.8 px overlap, caught by the emitted-rect acceptance.
- * 16 is 8 rows plus the aliasing headroom; the crowded case is still reachable (its own test drives
- * `LABEL_MAX_ROWS + 4` labels at one x) so nothing became unfalsifiable.
+ * ⚠️ IT WAS 8 — "one row per crew member in the densest room" — and VR-P4's plate made that too few,
+ * measured rather than guessed: eight pawns in one ~190 × 70 px tile alias against a 12 px row step,
+ * so the sweep must skip rows to miss them and ran out. 16 is 8 rows plus the aliasing headroom.
+ * ⚠️ THE ELEVATION MAKES A COMPARTMENT NARROWER AND SHALLOWER STILL (the wreck's are ~93 × 52 px
+ * against the grid's ~190 × 70), so the crowding this constant answers got WORSE, not better; the
+ * crowded case is still reachable (its own test drives `LABEL_MAX_ROWS + 4` labels at one x).
  */
 export const LABEL_MAX_ROWS = 16;
 /** Horizontal breathing room added to each side of a pill before testing it for overlap. */
@@ -890,8 +612,8 @@ export const LABEL_PILL_H = 11;
 export const LABEL_PILL_RISE = 8;
 
 /** The pill rect `[x0,x1,y0,y1]` a label would occupy on `row`. The single place this geometry is
- *  written down: `pawnLayer` emits from it too, so the sweep cannot reason about a different box than
- *  the one on screen (which is exactly how a row-index-only sweep came to certify overlapping pills). */
+ *  written down: `pawnLayerParts` emits from it too, so the sweep cannot reason about a different
+ *  box than the one on screen. */
 function labelRect(l, row) {
   const base = Number.isFinite(l.baseY) ? l.baseY : 0;
   const tagY = base - row * LABEL_ROW_STEP;
@@ -904,24 +626,20 @@ function labelRect(l, row) {
 /**
  * Assign each pawn label a de-clutter ROW so that no two visible pills overlap. PURE.
  *
- * A greedy sweep in PRIORITY order — WORKING crew first, then by cid — takes the lowest row (closest
- * to the pawns) whose rect misses every rect already claimed. Priority is what makes the result
- * principled rather than arbitrary: the work tags are the honesty affordance, so they get the legible
- * rows, and anything that has to give way is an idle crew member's name, which the CREW WATCH dock
- * also carries.
+ * A greedy sweep in PRIORITY order — WORKING crew first, then by cid — takes the lowest row whose
+ * rect misses every rect already claimed. Priority is what makes the result principled: the work tags
+ * are the honesty affordance, so they get the legible rows, and anything that has to give way is an
+ * idle crew member's name, which the CREW WATCH dock also carries.
  *
- * THE OCCUPANCY TEST IS 2-D, and it has to be. Each pill hangs off its OWN pawn's feet (`baseY`), so
- * two pawns a tile apart vertically are further apart than a row step — "same row" therefore neither
- * implies nor is implied by "same height", and a sweep that compared only horizontal spans within a
- * row index certified a genuinely overlapping pair as clean. It did: measured off the emitted rects,
- * the shipped `rosterDeck1` fixture produced ONE overlapping pair at ~91 % of a pill's height, and
- * eight crew on alternating rows produced four.
+ * THE OCCUPANCY TEST IS 2-D, and it has to be: each pill hangs off its OWN pawn's feet (`baseY`), so
+ * "same row" neither implies nor is implied by "same height", and a sweep that compared only
+ * horizontal spans within a row index certified a genuinely overlapping pair as clean. It did —
+ * measured off the emitted rects.
  *
- * When all `LABEL_MAX_ROWS` rows are taken the two cases are treated DIFFERENTLY, and this asymmetry
- * is the point: an IDLE label is marked `crowded` (the caller renders it transparent, revealed by
- * hovering its pawn), while a WORKING label is never marked — it draws on the top row and accepts the
- * overlap. A tag that is merely ugly is honest; a work tag that vanishes because the room is busy
- * would say "nobody here is working" at exactly the moment everybody is.
+ * ⭐ AND WITH BOTH DECKS DRAWN IT NOW SWEEPS ACROSS DECKS TOO, which is correct and is the reason the
+ * sweep was never keyed by deck: two pawns on two decks are two marks on ONE sheet of paper, and the
+ * bands are ~26 px apart while a lifted pill is 11 px tall — so a label lifted off a lower-deck pawn
+ * really can collide with an upper-deck one, and a per-deck sweep would certify that pair as clean.
  *
  * Ordering avoids `localeCompare` deliberately: it is locale-sensitive and this repo's dev machine is
  * de-DE, so a locale-dependent sort would make the SVG non-deterministic across machines.
@@ -956,64 +674,61 @@ export function layoutPawnLabels(labels) {
 }
 
 /**
- * ⭐⭐ THE PLATE'S PAWNS, AS FOOT-RELATIVE PARTS — one entry per drawn crew member, each carrying
- * the projected foot point and the markup drawn AROUND (0,0). PURE.
+ * ⭐⭐ THE PLATE'S PAWNS, AS FOOT-RELATIVE PARTS — one entry per drawn crew member, each carrying the
+ * projected foot point and the markup drawn AROUND (0,0). PURE.
  *
- * ⛔ IT NO LONGER RETURNS A STRING, AND `overviewScene` NO LONGER EMITS IT, because a figure inside
- * the scene string cannot be animated: `paintScene` assigns the whole scene to `innerHTML` ~10×/s,
- * so no pawn node survives long enough to move between two roster messages. The nodes live in the
- * surface's persistent overlay instead (`pawn-layer.js` — its header carries the measurement that
- * chose an overlay over re-adopting the nodes into the rebuilt scene). This function is the ONE
- * builder of that art; there is no second, scene-embedded copy to drift, and `overview-scene.test.js`
- * guards that `overviewScene` emits no `pl-pawn` at all.
+ * ⛔ IT RETURNS PARTS, NOT A STRING, and `overviewScene` emits none of it: `paintScene` assigns the
+ * whole scene to `innerHTML` ~10×/s, so no pawn node inside it would survive long enough to move
+ * between two roster messages. The nodes live in the surface's persistent overlay instead
+ * (`pawn-layer.js`). This function is the ONE builder of that art; `overview-scene.test.js` guards
+ * that `overviewScene` emits no `pl-pawn` at all.
  *
- * ⭐ THE SPLIT IS FOOT POINT vs BODY, and it is what makes a 60 Hz tween cost one attribute write:
- * everything that must move together — the figure, the selection underline, the leader line and the
- * label pill — is drawn relative to the feet, so moving the person is `translate(x y)` on their one
- * group. That is also a stronger guarantee than the old absolute geometry gave: a label CANNOT
- * detach from its pawn now, because it is inside the pawn.
+ * ⭐⭐⭐ THE DECK FILTER IS GONE, AND THAT IS THE PACKAGE'S BIGGEST BEHAVIOURAL CHANGE TO THIS LAYER.
+ * VR-P4 dropped every crew member whose `deck` was not the shown one, and its own comment recorded
+ * why that was safe: *"no figure ever glides between decks, which on a plate that draws one deck at
+ * a time would be a slide across the whole ship."* **Both premises are now false.** The plate draws
+ * every deck, so a crew member on the other one is standing in a compartment the player can SEE, and
+ * omitting her would be the "invisible feedback is functional" defect — the ship would report N
+ * souls aboard and draw fewer.
  *
- * ⚠️ THE DE-CLUTTER SWEEP STILL REASONS IN ABSOLUTE SPACE, and it has to. Two pawns a tile apart
- * vertically are further apart than a row step, so `layoutPawnLabels`' occupancy test is 2-D over
- * SCREEN rects (its own header carries the measured overlap that proved it). The sweep therefore
- * runs on absolute `cx`/`baseY` here, at message cadence, and only the EMISSION is relative — the
- * row a pill lands on re-slots ~5–8×/s while the figures glide continuously.
+ * ⚠️ AND THE LADDER STEP IS STILL NOT A GLIDE, because the tween already refuses it: rule 2 of
+ * `pawn-tween-model.js` SNAPS on a change of deck, by name, and that rule predates this package. So a
+ * crew member climbing between decks appears at her new band rather than sliding diagonally across
+ * the hull. The membership contract in `WireFormat.RosterEntry.Fx` is unchanged and still binds: a
+ * deck cannot go fractional (a ladder step keeps X/Y), the ORDER TARGET keeps the integer tile, and
+ * everything DRAWN follows the glide.
  *
- * @returns {Array<{cid:*, x:number, y:number, html:string}>} in roster order.
+ * @param {Array} crew the roster — EVERY deck; the transform decides who can be placed.
+ * @param {object} t `makeShipTransform` output.
+ * @returns {Array<{cid:*, x:number, y:number, deck:number, html:string}>} in roster order.
  */
-export function pawnLayerParts(crew, deck, t, selectedCid, id) {
+export function pawnLayerParts(crew, t, selectedCid, id) {
   const list = Array.isArray(crew) ? crew : [];
-  // Pass 1 — every on-deck pawn's geometry + label text, so the de-clutter sweep sees them all at once.
   const pawns = [];
   for (const c of list) {
-    if (!c || c.deck !== deck) continue; // off-deck / fogged crew simply do not render
+    if (!c) continue;
+    const deck = c.deck | 0;
+    // A crew member on a deck this transform does not draw simply does not render. That is a real
+    // case (a ship whose `decks` channel has not landed yet), not a deck filter.
+    if (!t.deckInfo(deck)) continue;
     // ⭐ THE GLIDE. `fx`/`fy` are the wire's sub-tile walk position in the SAME coordinate space as
-    // `x`/`y` (a tile coordinate, no centre offset — the convention is written down once, at
-    // `WireFormat.RosterEntry.Fx`), so the `+ 0.5` that puts the feet on the tile CENTRE is applied
-    // here exactly as it always was. An older host omits them and the integer tile is used, which is
-    // also what a standing crew member serializes (`fx === x`), so the fallback is never a jump.
-    // WHICH TILE DECIDES WHAT, on THIS surface (`WireFormat.RosterEntry.Fx` states the rule in full):
-    // this plate's only rect test is the DECK (`c.deck !== deck` above), and a deck cannot go
-    // fractional — a ladder step keeps X/Y — so the Room Zoom's room-boundary problem has no
-    // counterpart here. The ORDER TARGET keeps the integer tile (`crewClickTarget`, because the host
-    // resolves a click through `Citizen.Pos`). Everything DRAWN follows the glide, including the
-    // selection underline and the label pill below: both hang off `fx`/`fy`, so neither can detach
-    // from the figure. Selecting BY CLICK needs no tile at all here — the hit test is the drawn
-    // `.pl-pawn` element's own `data-cid`, which is why this surface never had the Room Zoom's bug.
+    // `x`/`y` (a tile coordinate, no centre offset — `WireFormat.RosterEntry.Fx` writes the
+    // convention down once), so the `+ 0.5` that puts the feet on the tile CENTRE is applied here
+    // exactly as it always was. An older host omits them and the integer tile is used, which is also
+    // what a standing crew member serializes (`fx === x`), so the fallback is never a jump.
     const gx = Number.isFinite(c.fx) ? c.fx : c.x;
     const gy = Number.isFinite(c.fy) ? c.fy : c.y;
-    const [fx, fy] = t.project(gx + 0.5, gy + 0.5); // feet on the tile centre
-    const S = Math.max(0.5, t.tileSize * 2.2 / 24);   // pawn box ≈ 2.2 tiles tall (viewBox 24)
+    const [fx, fy] = t.project(gx + 0.5, gy + 0.5, deck);
+    if (!Number.isFinite(fx) || !Number.isFinite(fy)) continue;
+    const S = Math.max(0.5, t.tileSize * 2.6 / 24);   // pawn box ≈ 2.6 tiles tall (viewBox 24)
     const sur = surnameOf(c.name);
     const tag = taskTag(c.task);                      // null ⇒ idle / walking / en route (no tag)
     const text = tag ? sur + ' · ' + tag : sur;
     pawns.push({
-      c, fx, fy, S, sur, tag,
+      c, fx, fy, S, sur, tag, deck,
       cid: c.cid, cx: fx, working: tag != null,
-      // The pill's UNLIFTED text baseline, derived from this pawn's own feet — so it is part of what
-      // the sweep must know: two pawns a tile apart vertically are further apart than a row step.
       baseY: fy - 24 * S - 4,
-      w: Math.max(16, text.length * 5 + 8),           // same metric the surname pill always used
+      w: Math.max(16, text.length * 5 + 8),
     });
   }
   const layout = layoutPawnLabels(pawns);
@@ -1031,36 +746,29 @@ export function pawnLayerParts(crew, deck, t, selectedCid, id) {
     const bx = 0, by = 0;
     let g = '';
     if (selected) {
-      // ⚠️ SELECTION IS A RULE, NOT A GLOW. The warm surface put a radial amber gradient under the
-      // selected pawn — a `<defs>` + `<radialGradient>` per selection, i.e. an id per repaint. In the
-      // paper dialect selection is a solid ink underline through the figure's feet, which needs no
-      // def at all, and the plate's OTHER selection cue (the 2.2 px tile border) says which
-      // compartment she is in.
+      // ⚠️ SELECTION IS A RULE, NOT A GLOW — a solid ink underline through the figure's feet, which
+      // needs no `<defs>` at all, and the compartment's own 2.2 px outline says which room she is in.
       g += `<path d="M${n(bx - S * 7)} ${n(by + S * 1.5)} L${n(bx + S * 7)} ${n(by + S * 1.5)}"`
         + ` stroke="${INK}" stroke-width="${n(Math.max(1, S * 1.2))}" fill="none"/>`;
     }
     // seat the pawn so its feet (local 8,23 in the 16×24 viewBox) land on the group's origin
     g += `<g transform="translate(${n(bx - 8 * S)} ${n(by - 23 * S)}) scale(${n(S)})">${body}</g>`;
-    // identity + WORK label above the head
     const lay = layout.get(String(c.cid)) || { row: 0, crowded: false };
-    // The sweep's `baseY` is ABSOLUTE (it had to be — see the header); the emission is the same
-    // quantity measured from this pawn's own feet, which is exactly `baseY - fy`.
+    // The sweep's `baseY` is ABSOLUTE (it had to be — see `layoutPawnLabels`); the emission is the
+    // same quantity measured from this pawn's own feet, which is exactly `baseY - fy`.
     const baseY = p.baseY - fy;
     const tagY = baseY - lay.row * LABEL_ROW_STEP;
     const cls = 'pl-tag' + (p.tag ? ' pl-tag-work' : '') + (lay.crowded ? ' pl-tag-crowded' : '');
     g += `<g class="${cls}">`
-      // leader line: a lifted pill would otherwise be ambiguous about which pawn it belongs to
       + (lay.row > 0
         ? `<line x1="${n(bx)}" y1="${n(tagY + 3)}" x2="${n(bx)}" y2="${n(baseY + 3)}" stroke="${INK}" stroke-width="0.7" opacity="0.45"/>`
         : '')
-      // The pill box comes from the SAME two constants the sweep reasoned about (LABEL_PILL_*), so a
-      // change to either cannot silently make the sweep certify a box that is no longer emitted.
       + `<rect x="${n(bx - p.w / 2)}" y="${n(tagY - LABEL_PILL_RISE)}" width="${n(p.w)}" height="${LABEL_PILL_H}" fill="${PAPER}" stroke="${INK}" stroke-width="0.7"/>`
       + `<text x="${n(bx)}" y="${n(tagY - 2)}" font-size="7.5" letter-spacing=".5" fill="${INK}" text-anchor="middle" dominant-baseline="central" font-family="${FONT.mono}">`
       + `${esc(p.sur)}`
       + (p.tag ? `<tspan fill="${ATTEND}"> · ${esc(p.tag)}</tspan>` : '')
       + `</text></g>`;
-    out.push({ cid: c.cid, x: fx, y: fy, html: g });
+    out.push({ cid: c.cid, x: fx, y: fy, deck: p.deck, html: g });
   }
   return out;
 }
@@ -1069,24 +777,7 @@ export function pawnLayerParts(crew, deck, t, selectedCid, id) {
 // The composer.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The tiles that carry an ATTENTION treatment, as a Set of anchor names. PURE — derived from the
- *  same `blocked` rows the `compartments` column words, so the tile and the sentence cannot
- *  disagree about which compartment is in trouble (ruling E4). */
-function attentionAnchors(state, slots) {
-  const out = new Set();
-  const anchors = Array.isArray(state.attentionAnchors) ? state.attentionAnchors : [];
-  for (const a of anchors) if (a) out.add(String(a));
-  // A compartment whose tile carries a condemned/faulted mark is in trouble too, and the mark layer
-  // alone is 4 px of ✕ inside a 70 px cell — too small to find without the border saying so.
-  const marks = Array.isArray(state.marks) ? state.marks : [];
-  for (const m of marks) {
-    if (!m || (m.deck | 0) !== (state.deck | 0) || m.mark !== 'condemn') continue;
-    for (const s of slots) if (s && coversTile(s.rect, m.x, m.y)) out.add(String(s.anchorName));
-  }
-  return out;
-}
-
-/** The `"x,y"` keys of every tile carrying a fault mark on this deck — the fittings' oxblood flip. */
+/** The tiles carrying a fault mark, as `"x,y"` keys per deck — the fittings' oxblood flip. */
 function attentionTiles(marks, deck) {
   const out = new Set();
   for (const m of (Array.isArray(marks) ? marks : [])) {
@@ -1096,81 +787,159 @@ function attentionTiles(marks, deck) {
   return out;
 }
 
+/** True when tile (tx,ty) lies inside the rect. */
+function covers(rect, tx, ty) {
+  return !!rect && rect.w > 0 && rect.h > 0
+    && tx >= rect.x && tx < rect.x + rect.w && ty >= rect.y && ty < rect.y + rect.h;
+}
+
+/**
+ * The anchors that carry an ATTENTION treatment. PURE — derived from the same `blocked` rows the
+ * `compartments` column words, so the compartment and the sentence cannot disagree (ruling E4).
+ *
+ * ⛔ THE SECOND SOURCE IS THE `marks` CHANNEL, AND DROPPING IT WAS A REGRESSION THIS PACKAGE
+ * BRIEFLY SHIPPED. A compartment holding a CONDEMNED tile is in trouble too, and its only other
+ * signal is the mark itself — which at plate scale is a few px of ✕ inside a ~93 px compartment,
+ * too small to find without the outline saying so. VR-P4 derived it here; the elevation's first cut
+ * lost it in the rewrite and `overview-scene.test.js`'s own D5 leg caught it.
+ *
+ * ⭐ AND THE TWO ARMS HAVE DIFFERENT DECK SCOPES ON PURPOSE. It is worth spelling out, because with
+ * both decks drawn the asymmetry is visible and would otherwise look like a bug:
+ *
+ *   · THE CONDEMN ARM IS ALL-DECK. A condemned tile's ✕ is DRAWN on whichever band it is on, so the
+ *     outline is pointing at something the player can already see; it is telling them where to look,
+ *     not making a claim they cannot check. The mark is matched against the slot rects of ITS OWN
+ *     deck, so a condemned piece on the lower band accents the lower band's compartment rather than
+ *     a same-coordinates compartment on the active one.
+ *   · THE STUCK-ORDER ARM (`attentionAnchors`, D5) FOLLOWS THE ORDER DECK, because it arrives from
+ *     `compartmentLines(dView, activeDeck, …)` — the SAME derivation that words the oxblood sentence
+ *     in the `compartments` column. That pairing is the point of ruling E4: the outline and the
+ *     sentence are one row rendered twice. Widening the outline to both decks without widening the
+ *     column would put a warning on the plate that NOTHING anywhere explains, which is D5's own
+ *     defect inverted — the package existed to make the ship say WHY an order is stuck.
+ *
+ * ⚠️ SO THE LIMIT, STATED RATHER THAN HIDDEN: a stuck order on the band that is not the order deck
+ * shows no outline until the player steps to that deck. FILED for the owner — closing it means
+ * deciding whether the `compartments` column becomes ship-wide, which is a design question about a
+ * prose column's length, not a bug in this layer.
+ */
+function attentionAnchors(state, t) {
+  const out = new Set();
+  for (const a of (Array.isArray(state.attentionAnchors) ? state.attentionAnchors : [])) {
+    if (a) out.add(String(a));
+  }
+  for (const m of (Array.isArray(state.marks) ? state.marks : [])) {
+    if (!m || m.mark !== 'condemn') continue;
+    const info = t.deckInfo(m.deck | 0);
+    if (!info) continue;
+    for (const sp of info.spans) if (covers(sp.rect, m.x, m.y)) out.add(String(sp.slot.anchorName));
+  }
+  return out;
+}
+
 /**
  * Build the whole Level-1 ship plate as one self-contained SVG string. PURE — same `state` yields a
  * byte-identical result.
  *
  * @param {object} state
- * @param {number} state.deck            the deck to render.
- * @param {Array}  state.decksView       decksView(decks,rooms) output — [{deck, slots:[…]}].
- * @param {object} [state.frame]         the frame message (the miniatures' contents come from its cells).
- * ⚠️ `state.crew` IS GONE FROM THIS BUILDER. The figures moved to `pawnLayerParts` + the surface's
- * persistent overlay (see the ⛔ note in the body); passing a roster here now does nothing at all,
- * which is why the field was removed rather than left as a silently-ignored input.
- * @param {Array}  [state.designs]       build-ghost design cells (or a {cells} message).
- * @param {Array}  [state.terminals]     MOSS terminal directory [{tid,deck,x,y}] — clickable chips.
- * @param {Array}  [state.marks]         decoded `marks` cells — the debris / dig / stockpile / strip
- *                                       layer. NOT derived from `frame`.
- * @param {Map}    [state.deviceCond]    `deckDeviceConditions(...)` for THIS deck — per-tile device
- *                                       wear off the `devices` channel, which chooses a machine's
- *                                       post-raid twin.
- * @param {string[]} [state.attentionAnchors]  anchors whose compartment needs attention (D5's stuck
- *                                       orders, re-housed per ruling E4).
- * @param {*}      [state.selectedCid]   the selected crew cid.
- * @param {string} [state.selectedAnchor] the compartment drawn with the 2.2 px selected border.
- * @param {string} [state.lens]          the active lens (recorded on the root for the wash overlay).
- * @param {string} [state.idPrefix]      def-id namespace (default 'ov') so many scenes can coexist.
+ * @param {number} state.deck        the ACTIVE deck — the one orders land on. It no longer decides
+ *                                   what is DRAWN (every deck is), only what is marked active.
+ * @param {Array}  state.decksView   `decksView(decks, rooms)` output — [{deck, slots:[…]}], all decks.
+ * @param {object} [state.frame]     the frame message. ⚠️ ITS CELLS ARE NO LONGER THE FITTING SOURCE
+ *                                   (see `ship-fittings.js`); only its `w`/`h` (the walkway's extent)
+ *                                   and its FOG are read, and fog is available for its own deck only.
+ * @param {Array}  [state.devices]   `decodeDevices` output — ALL decks. THE fitting source.
+ * @param {Array}  [state.items]     `decodeItems` output — ALL decks. The ground-stack half of it.
+ * @param {Array}  [state.designs]   build-ghost design cells (or a {cells} message).
+ * @param {Array}  [state.terminals] MOSS terminal directory [{tid,deck,x,y}] — clickable chips.
+ * @param {Array}  [state.marks]     decoded `marks` cells. NOT derived from `frame`.
+ * @param {string[]} [state.attentionAnchors] anchors whose compartment needs attention (D5, E4).
+ * @param {*}      [state.selectedCid]    the selected crew cid.
+ * @param {string} [state.selectedAnchor] the compartment drawn with the selected outline.
+ * @param {string} [state.hoverAnchor]    the compartment the pointer is over. ⛔ IT IS AN INPUT AND
+ *                                   NOT A CSS `:hover` — see `compartment`'s header for the
+ *                                   owner-reported flicker that makes this load-bearing.
+ * @param {string} [state.lens]      the active lens (recorded on the root for the wash overlay).
+ * @param {string} [state.idPrefix]  def-id namespace (default 'ov') so many scenes can coexist.
  * @returns {string} an `<svg>…</svg>` document string.
  */
 export function overviewScene(state) {
   const st = state || {};
   const id = st.idPrefix || 'ov';
-  const deck = st.deck | 0;
-  const deckView = (Array.isArray(st.decksView) ? st.decksView : []).find((d) => d.deck === deck)
-    || { deck, slots: [] };
-  const slots = deckView.slots || [];
-  const t = makeTransform(slots, st.frame);
-  const lay = t.lay;
+  const active = st.deck | 0;
+  const views = Array.isArray(st.decksView) ? st.decksView : [];
+  const t = makeShipTransform(views, st.frame);
+  const attend = attentionAnchors(st, t);
+  const surveyed = surveyedDecks(st.frame);
 
-  const attend = attentionAnchors(st, slots);
-  const faultTiles = attentionTiles(st.marks, deck);
-
-  const tiles = [];
-  for (let i = 0; i < lay.cells; i++) {
-    const cell = cellRect(i, lay);
-    const slot = slots[i];
-    if (!slot) { tiles.push(emptyTile(cell)); continue; }
-    tiles.push(compartmentTile(slot, cell, {
-      selected: st.selectedAnchor != null && String(st.selectedAnchor) === String(slot.anchorName),
-      attention: attend.has(String(slot.anchorName)),
-      contents: miniContents(slot, st.frame, deck, st.deviceCond, faultTiles, `${id}-s${i}`),
-    }));
+  const decks = [];
+  for (const deck of t.deckOrder) {
+    const raw = t.deckInfo(deck);
+    if (!raw) continue;
+    // A per-deck view of the transform: `uv` is the SAME `tileUV` the projection and its inverse use.
+    const info = {
+      plane: raw.plane, band: raw.band, spans: raw.spans,
+      uv: (tx, ty) => t.tileUV(tx, ty, deck),
+    };
+    const fog = fogTiles(st.frame, deck);
+    const faults = attentionTiles(st.marks, deck);
+    const fittings = deckFittings(st.devices, st.items, deck);
+    // A compartment nobody has ever entered draws no contents — see `slotUnsurveyed`. Its tiles are
+    // dropped from the fitting map so the hatch is not laid over a drawing.
+    const dark = new Set();
+    for (const sp of raw.spans) {
+      if (slotUnsurveyed(fog, sp.rect)) dark.add(sp.index);
+    }
+    if (dark.size) {
+      for (const key of Array.from(fittings.keys())) {
+        const c = key.indexOf(',');
+        const tx = +key.slice(0, c), ty = +key.slice(c + 1);
+        if (raw.spans.some((sp) => dark.has(sp.index) && covers(sp.rect, tx, ty))) fittings.delete(key);
+      }
+    }
+    const rooms = raw.spans.map((sp) => compartment(info, sp, deck, {
+      selected: st.selectedAnchor != null && String(st.selectedAnchor) === String(sp.slot.anchorName),
+      // ⭐ THE HOVER SURVIVES THE REBUILD because it arrives as STATE, exactly like the selection.
+      // See `compartment`'s header for the owner-reported flicker this closes.
+      hovered: st.hoverAnchor != null && String(st.hoverAnchor) === String(sp.slot.anchorName),
+      attention: attend.has(String(sp.slot.anchorName)),
+      unsurveyed: dark.has(sp.index),
+    }, id)).join('');
+    const art = sketch(deckArchitecture(info) + walkwayDetail(info),
+      { level: 'strong', seed: `perilune-deck-${deck}` });
+    decks.push(`<g class="pl-deck" data-deck="${deck}" data-active="${deck === active ? 1 : 0}"`
+      + ` data-survey="${surveyed.indexOf(deck) >= 0 ? 1 : 0}">`
+      + `<g class="pl-arch" pointer-events="none">${art}</g>`
+      + `<g class="pl-rooms">${rooms}</g>`
+      // ⭐ 2.2 TILES, which is the design's own ~20 px piece in a 126 px room. See `tileSize`'s
+      // header in `ship-elevation.js` for why that number is the ACROSS span and not the min of the
+      // two axes — taking the min drew every compartment empty.
+      + fittingLayer(info, deck, fittings, faults, Math.max(10, t.tileSize * 2.2), `${id}-d${deck}`)
+      + `</g>`);
   }
 
   // The paper ground + the drifting ink starfield are NOT drawn here: they live in the persistent
   // `.ov-space` skeleton layer (starLayerSvg + CSS) so the drift survives the scene's repaints.
   const body = ''
+    + hatchDef(id)
     + hullLayer()
-    + `<g class="pl-rooms">${tiles.join('')}</g>`
-    + corridorLayer(st.frame, deck, t, slots, id)
-    // `markLayer` sits ABOVE the tiles (whose own `pl-furniture` is inside them) — the same order,
-    // for the same reason, as the Room Zoom's: a condemned DEVICE carries fg 26, and beneath its own
-    // fitting its ✕ would be invisible.
-    + markLayer(st.marks, deck, t)
-    + ghostLayer(st.designs, deck, t)
-    + terminalLayer(st.terminals, deck, t);
-  // ⛔ NO PAWN LAYER HERE, AND ITS ABSENCE IS THE POINT (2026-08-05, the client-side tween). The
-  // figures are built by `pawnLayerParts` above and mounted into a PERSISTENT overlay `<svg>` that
-  // this string is never assigned into — because `paintScene` does `innerHTML = svg` ~10×/s and a
-  // node that is destroyed ten times a second cannot be interpolated between two roster samples.
-  // The old layer-order guarantee ("a crew member is never hidden by a mark, a ghost or a wash")
-  // did not weaken: the overlay is a LATER SIBLING of the scene mount, so it is above every layer
-  // in this document unconditionally, rather than above the ones that happen to be concatenated
-  // before it. `overview-scene.test.js` asserts this string carries no `pl-pawn`, so a later lane
-  // cannot quietly re-home the figures here and leave two copies of every crew member on the plate.
+    + decks.join('')
+    // `markLayer` sits ABOVE the compartments (whose own `pl-furniture` is inside them) — the same
+    // order, for the same reason, as the Room Zoom's: a condemned DEVICE carries fg 26, and beneath
+    // its own fitting its ✕ would be invisible.
+    + markLayer(st.marks, t)
+    + ghostLayer(st.designs, t)
+    + terminalLayer(st.terminals, t);
+  // ⛔ NO PAWN LAYER HERE, AND ITS ABSENCE IS THE POINT. The figures are built by `pawnLayerParts`
+  // and mounted into a PERSISTENT overlay `<svg>` this string is never assigned into — because
+  // `paintScene` does `innerHTML = svg` ~10×/s and a node destroyed ten times a second cannot be
+  // interpolated between two roster samples. The old layer-order guarantee ("a crew member is never
+  // hidden by a mark, a ghost or a wash") did not weaken: the overlay is a LATER SIBLING of the scene
+  // mount, so it is above every layer in this document unconditionally.
 
   return `<svg class="pl-overview" viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet"`
-    + ` xmlns="http://www.w3.org/2000/svg" data-deck="${deck}" data-lens="${esc(st.lens || 'none')}">`
+    + ` xmlns="http://www.w3.org/2000/svg" data-deck="${active}" data-decks="${t.deckOrder.join(' ')}"`
+    + ` data-lens="${esc(st.lens || 'none')}">`
     + body + `</svg>`;
 }
 

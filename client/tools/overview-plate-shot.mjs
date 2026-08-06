@@ -1,5 +1,22 @@
 #!/usr/bin/env node
-// overview-plate-shot.mjs — PHOTOGRAPH THE SHIP PLATE (VR-P4) AND CENSUS THE LIVE DOM.
+// overview-plate-shot.mjs — PHOTOGRAPH THE SHIP PLATE AND CENSUS THE LIVE DOM.
+//
+// ⚠️⚠️ RE-AIMED AT THE SIDE-ELEVATION PLATE (2026-08-05). It was written for VR-P4's top-down plate
+// — a hull capsule with ONE deck's 4 × 2 grid of bordered compartment tiles, each a nested `<svg>`.
+// The plate is now a SIDE-ELEVATION CUTAWAY with BOTH DECKS drawn at once, compartments tiling one
+// continuous deck floor with shared partition walls, and NO nested `<svg>` anywhere. Every check
+// below is either unchanged (the readout band, the on-screen geometry sweep) or translated with the
+// old form quoted at the point of translation.
+//
+// ⭐ AND IT GAINED TWO CHECKS THE NEW PLATE NEEDS AND THE OLD ONE DID NOT:
+//   · THE FULL PRESS CENSUS. It used to sample 15 fittings. The elevation has ONE projection, so
+//     the census can be exhaustive — every drawn fitting on both decks is pressed and must designate
+//     its own tile. A sampled census cannot distinguish "the projection is right" from "the 15 I
+//     happened to pick are right", and the defect this pin exists for (VR-P4's 57-of-59) was
+//     systematic rather than sporadic.
+//   · THE CHANNEL EQUIVALENCE, RE-DERIVED OFF THE RUNNING WIRE. The plate sources its fittings from
+//     `devices`+`items` rather than from `frame` (`client/src/ui/ship-fittings.js`). That is only
+//     safe while the two agree tile-for-tile, and a fixture nobody recaptures cannot keep it true.
 //
 // ⚠️ WHY THIS EXISTS. `overview-scene.test.js` proves the composer emits a compartment grid and
 // `overview-model.test.js` proves the four columns derive their strings from the wire. Neither can
@@ -13,10 +30,11 @@
 // result is only believable after those hold.
 //
 // WHAT IT SHOWS
-//   ovp-1-plate-deck0.png   the plate — masthead, hull capsule, 4×2 compartment grid, four columns
-//   ovp-2-plate-deck1.png   the dead deck — the same plate, unpurposed tiles in the UNBUILT dash
+//   ovp-1-plate-deck0.png   the plate — masthead, hull elevation, BOTH decks, four columns
+//   ovp-2-plate-deck1.png   the same drawing with DECK 1 active (the order deck moved, not the view)
 //   ovp-3-orders-armed.png  BUILD tab with DIG armed — the footer islands in the paper idiom
 //   ovp-4-work-tab.png      the WORK grid island, restyled
+//   ovp-5-w1360.png / -6-w1100.png / -7-w900.png   the plate at three narrower viewports
 //
 // USAGE
 //   1. ~/.dotnet/dotnet run --project hosts/web -- --port 8392 --ship wreck
@@ -67,6 +85,77 @@ if (!d0 || d0.slots?.length !== 8) die(2, `deck 0 has ${d0?.slots?.length} slots
 const anchorsOnWire = d0.slots.map((t) => String(t[5] ?? ''));
 if (!anchorsOnWire.includes('cryobay')) die(2, 'no `cryobay` on deck 0 — this is not --ship wreck');
 log('INSTRUMENT OK — --ship wreck, deck 0, 8 slots:', anchorsOnWire.join(' | '));
+
+// ── STEP 0b: THE CHANNEL EQUIVALENCE, RE-DERIVED OFF THIS RUNNING WIRE ──
+//
+// ⛔ THE PLATE DOES NOT READ `frame` FOR FITTINGS ANY MORE. It reads `devices` + `items`, because
+// those carry EVERY deck and `frame` carries the one the host is projecting
+// (`GameSession.RenderFrame`). The substitution is only safe while the two skin the same tiles with
+// the same pieces, and that is a claim about a LIVE ship, not about a fixture — so it is re-derived
+// here, through the SAME two registry derivations the drawing uses, on the deck the host is showing.
+{
+  const { itemIdForGlyphChar } = await import('../src/items/glyph-map.js');
+  const { NON_FURNITURE_CODES, itemForDeviceRow, itemIdForStockKind } = await import('../src/ui/room-model.js');
+  const { decodeDevices, decodeItems } = await import('../src/wire/messages.js');
+  const NF = new Set(NON_FURNITURE_CODES);
+  const f = latest.get('frame');
+  const deck = f.deck | 0;
+  const fromFrame = new Map();
+  for (let ty = 0; ty < f.h; ty += 1) {
+    for (let tx = 0; tx < f.w; tx += 1) {
+      const cell = f.cells[ty * f.w + tx];
+      if (!Array.isArray(cell) || NF.has(cell[0])) continue;
+      const id = itemIdForGlyphChar(String.fromCharCode(cell[0]));
+      if (id) fromFrame.set(tx + ',' + ty, id);
+    }
+  }
+  const fromChan = new Map();
+  for (const it of (decodeItems(latest.get('items')) || [])) {
+    if ((it.deck | 0) !== deck) continue;
+    const id = itemIdForStockKind(it.kind);
+    if (id) fromChan.set(it.x + ',' + it.y, id);
+  }
+  for (const d of (decodeDevices(latest.get('devices')) || [])) {
+    if ((d.deck | 0) !== deck) continue;
+    const id = itemForDeviceRow(d);
+    if (id) fromChan.set(d.x + ',' + d.y, id);
+  }
+  // ⭐⭐ THE PAWN-OCCLUDED TILES ARE SUBTRACTED, AND THIS RIG IS WHAT MEASURED THEM. `GlyphMapper`
+  // pass 5 writes `Glyphs.Citizen` (64) OVER whatever is on a tile a crew member stands on, so the
+  // FRAME loses that tile's fitting for as long as she is there — the very defect the channel source
+  // removes. On the first run of this check a single stack at (5,6) was reported as "only in the
+  // channels" for exactly that reason: Rell was standing on it. Counting it as a divergence would
+  // make this rig fail whenever anybody walked over anything. They are reported separately, and
+  // NON-ZERO IS THE HEALTHY SIGN — it is the frame's loss, not the plate's.
+  const CITIZEN = 64;
+  const occluded = new Set();
+  for (let ty = 0; ty < f.h; ty += 1) {
+    for (let tx = 0; tx < f.w; tx += 1) {
+      const cell = f.cells[ty * f.w + tx];
+      if (Array.isArray(cell) && cell[0] === CITIZEN) occluded.add(tx + ',' + ty);
+    }
+  }
+  const onlyF = [...fromFrame.keys()].filter((k) => !fromChan.has(k));
+  const onlyC = [...fromChan.keys()].filter((k) => !fromFrame.has(k) && !occluded.has(k));
+  const rescued = [...fromChan.keys()].filter((k) => !fromFrame.has(k) && occluded.has(k));
+  const diff = [...fromFrame.keys()].filter((k) => fromChan.has(k) && fromChan.get(k) !== fromFrame.get(k));
+  log(`CHANNEL EQUIVALENCE (deck ${deck}) — frame ${fromFrame.size}, devices+items ${fromChan.size}, `
+    + `only-frame ${onlyF.length}, only-channels ${onlyC.length}, mismatch ${diff.length}, `
+    + `RESCUED from pass-5 pawn occlusion ${rescued.length} ${JSON.stringify(rescued)}`);
+  if (fromFrame.size < 10) problems.push('the frame skins fewer than 10 tiles — the equivalence check is vacuous');
+  if (onlyF.length) {
+    problems.push(`${onlyF.length} tile(s) the PROJECTION furnishes are empty on the plate `
+      + `(${onlyF.slice(0, 5).map((k) => k + '=' + fromFrame.get(k)).join(' ')}) — the two standard `
+      + 'surfaces have come to show different ships');
+  }
+  if (onlyC.length) {
+    problems.push(`${onlyC.length} tile(s) the PLATE furnishes are empty in the projection `
+      + `(${onlyC.slice(0, 5).map((k) => k + '=' + fromChan.get(k)).join(' ')}) — this is the `
+      + 'dangerous direction: the channels are fog-gated in the host, so an extra tile means the '
+      + 'gate is gone and the plate is showing unexplored ship');
+  }
+  if (diff.length) problems.push(`${diff.length} tile(s) draw a DIFFERENT PIECE on the two routes`);
+}
 
 // ───────────────────────────────────────────────────────────── 2. drive real Chrome over CDP
 const userDir = mkdtempSync(join(tmpdir(), 'ovp-shot-'));
@@ -218,21 +307,44 @@ const censusExpr = `JSON.stringify((()=>{
     const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; };
   const tiles = [...document.querySelectorAll('.pl-room')].map((e) => {
     const r = e.getBoundingClientRect();
-    return { anchor: e.dataset.anchor, purpose: e.dataset.purpose, state: e.dataset.state,
+    return { anchor: e.dataset.anchor, deck: e.dataset.deck, purpose: e.dataset.purpose,
+      state: e.dataset.state,
       w: Math.round(r.width), h: Math.round(r.height),
-      fittings: e.querySelectorAll('.pl-item').length,
       attend: e.classList.contains('pl-room-attend'), sel: e.classList.contains('pl-room-sel') };
   });
-  const strokes = [...document.querySelectorAll('.ov-mini path')].slice(0, 40)
+  // WARNING: THE FITTING COUNT MOVED OFF THE COMPARTMENT GROUP. VR-P4 drew each compartment's
+  // pieces INSIDE its own group (a nested svg); the elevation draws ONE fitting layer per BAND,
+  // above the compartments, because the pieces have to sort back-to-front across the whole deck
+  // floor for the oblique to read. So a piece is attributed to a compartment by its own data-tile
+  // plus the slot rects on the wire, not by DOM containment.
+  const fits = [...document.querySelectorAll('.pl-fit')].map((e) => {
+    const r = e.getBoundingClientRect();
+    return { tile: e.dataset.tile, deck: e.dataset.deck, w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  const decks = [...document.querySelectorAll('.pl-deck')].map((e) => {
+    const r = e.getBoundingClientRect();
+    return { deck: e.dataset.deck, active: e.dataset.active, survey: e.dataset.survey,
+      w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top) };
+  });
+  // WARNING: THE vector-effect PROBE MOVED WITH THE ART. There is no .ov-mini any more (no nested
+  // svg); the strokes that must not vanish are the FITTINGS', which are drawn at ~1/9 scale inside
+  // the fitting layer. A scaled stroke there fades every compartment to blank paper, which is the
+  // exact failure this check was written for.
+  const strokes = [...document.querySelectorAll('.pl-fit path')].slice(0, 40)
     .map((p) => getComputedStyle(p).vectorEffect);
   return {
     masthead: (document.querySelector('.ov-ship')||{}).textContent,
     stats: (document.querySelector('.ov-deckctx')||{}).textContent + ' / ' + (document.querySelector('.ov-clock')||{}).textContent,
     caption: (document.querySelector('.ov-capline')||{}).textContent,
     souls: (document.querySelector('.ov-capsouls')||{}).textContent,
-    tiles, emptyTiles: document.querySelectorAll('.pl-room-empty').length,
-    corridorItems: document.querySelectorAll('.pl-corridor .pl-item').length,
-    nestedSvgs: document.querySelectorAll('.ov-mini').length,
+    tiles, fits, decks,
+    // WARNING: pl-room-empty AND pl-corridor ARE BOTH GONE, and their absence is asserted below:
+    // the first was VR-P4's dashed unfilled GRID CELL (there is no grid to leave a cell in), the
+    // second its reserved CORRIDOR STRIP with its own linear map (the walkway is the deck's own
+    // floor now). A build that re-introduced either would be drawing the spine twice.
+    staleLayers: document.querySelectorAll('.pl-room-empty, .pl-corridor, .ov-mini').length,
+    nestedSvgs: document.querySelectorAll('.pl-overview svg').length,
+    partitions: document.querySelectorAll('.pl-arch path').length,
     vectorEffect: [...new Set(strokes)],
     columns: { compart: box('#ov-compart'), aboard: box('#ov-sensor'), ship: box('#ov-ledger'), outside: box('#ov-radar') },
     compartLines: [...document.querySelectorAll('.ov-cpline')].map((e) => e.textContent),
@@ -260,12 +372,15 @@ log('\n── DECK 0 PLATE CENSUS ───────────────�
 log('  masthead   ', JSON.stringify(c0.masthead), '|', JSON.stringify(c0.stats));
 log('  caption    ', JSON.stringify(c0.caption), '|', JSON.stringify(c0.souls));
 log('  ground     ', c0.ground, '  plate', JSON.stringify(c0.plate), '  stage', JSON.stringify(c0.stage));
-log('  tiles      ', c0.tiles.length, '(empty cells ' + c0.emptyTiles + ', nested svgs ' + c0.nestedSvgs + ')');
-log('  corridor   ', c0.corridorItems, 'item(s) drawn in the spine strip');
+log('  bands      ', c0.decks.length, JSON.stringify(c0.decks));
+log('  compartments', c0.tiles.length, '(stale layers ' + c0.staleLayers + ', nested svgs ' + c0.nestedSvgs
+  + ', architecture strokes ' + c0.partitions + ')');
 for (const t of c0.tiles) {
-  log(`    ${String(t.anchor).padEnd(14)} ${t.w}×${t.h}px  purpose=${t.purpose} state=${t.state} fittings=${t.fittings}`);
+  const n = c0.fits.filter((f) => f.deck === t.deck).length;
+  log(`    d${t.deck} ${String(t.anchor).padEnd(14)} ${t.w}×${t.h}px  purpose=${t.purpose} state=${t.state} (deck fittings ${n})`);
 }
-log('  vectorEffect on miniature strokes:', JSON.stringify(c0.vectorEffect));
+log('  fittings   ', c0.fits.length, 'across decks', JSON.stringify([...new Set(c0.fits.map((f) => f.deck))]));
+log('  vectorEffect on fitting strokes:', JSON.stringify(c0.vectorEffect));
 log('  columns    ', JSON.stringify(c0.columns));
 log('  compartments:'); for (const l of c0.compartLines) log('    ' + l);
 log('  aboard:');       for (const l of c0.aboardLines) log('    ' + l);
@@ -276,14 +391,36 @@ log('  nav        ', c0.tabs.join(' '), '|', JSON.stringify(c0.navHint));
 log('  lens       ', c0.lens.join(' '));
 
 // ── THE CHECKS. Each is a way the plate can be structurally right and visually dead. ──
-if (c0.tiles.length !== 8) problems.push(`deck 0 draws ${c0.tiles.length} compartment tiles, not 8`);
-if (c0.nestedSvgs !== c0.tiles.length) problems.push('a tile has no miniature interior <svg>');
+// ⭐⭐ BOTH DECKS, DRAWN AT ONCE — the package's premise, asserted on the live DOM.
+if (c0.decks.length !== 2) problems.push(`the plate draws ${c0.decks.length} bands, not the wreck's 2`);
+if (c0.tiles.length !== 16) problems.push(`the plate draws ${c0.tiles.length} compartments, not 8+8`);
+for (const d of ['0', '1']) {
+  const n = c0.tiles.filter((t) => t.deck === d).length;
+  if (n !== 8) problems.push(`deck ${d} draws ${n} compartments, not 8`);
+  const f = c0.fits.filter((x) => x.deck === d).length;
+  if (!f) {
+    problems.push(`deck ${d} drew NOT ONE fitting. Both decks are visible, so an unfurnished band `
+      + 'is the plate claiming an empty deck — and on the wreck deck 1 carries 24 devices.');
+  }
+}
+if (c0.nestedSvgs) {
+  problems.push(`the plate contains ${c0.nestedSvgs} nested <svg> — that is a second coordinate `
+    + 'space, and the elevation exists because there is one');
+}
+if (c0.staleLayers) {
+  problems.push(`${c0.staleLayers} element(s) of the RETIRED plate are back (\`pl-room-empty\`, `
+    + '`pl-corridor` or `.ov-mini`) — the spine would be drawn twice, with two click answers');
+}
+if (c0.partitions < 20) {
+  problems.push(`only ${c0.partitions} architecture strokes — the deck slabs and the shared `
+    + 'partition walls are the drawing; without them the bands are two flat strips');
+}
 for (const t of c0.tiles) {
-  if (t.w < 40 || t.h < 20) problems.push(`${t.anchor} renders ${t.w}×${t.h}px — the grid collapsed`);
+  if (t.w < 40 || t.h < 20) problems.push(`${t.anchor} renders ${t.w}×${t.h}px — the band collapsed`);
 }
 if (!c0.vectorEffect.includes('non-scaling-stroke')) {
-  problems.push('the miniature strokes do NOT resolve to non-scaling-stroke — at 1/7 scale every '
-    + 'interior fades to blank paper (computed: ' + JSON.stringify(c0.vectorEffect) + ')');
+  problems.push('the fitting strokes do NOT resolve to non-scaling-stroke — at ~1/9 scale every '
+    + 'compartment fades to blank paper (computed: ' + JSON.stringify(c0.vectorEffect) + ')');
 }
 for (const [name, b] of Object.entries(c0.columns)) {
   if (!b) problems.push(`the ${name} column is not in the DOM`);
@@ -294,16 +431,24 @@ if (c0.tabs.length !== 6) problems.push(`the footer nav shows ${c0.tabs.length} 
 if (c0.radarCircles !== 3) problems.push(`the scope draws ${c0.radarCircles} circles — a fourth is an invented contact`);
 if (!/no contact data/i.test(c0.radarCap.join(' '))) problems.push('the scope does not say it has no contacts');
 // ⛔ THE SPINE IS DRAWN. 83 deck-0 floor tiles, two ground items and the HATCH LADDER at (22,8) —
-// the visible deck-to-deck route — lie inside no compartment, and before the corridor strip existed
-// they were on no surface at Level 1 at all. A plate that draws every room and none of the corridor
-// between them is a floor plan with the doors painted out.
-if (!c0.corridorItems) {
-  problems.push('the corridor strip drew NO item — the spine\'s ground stock and the hatch ladder '
-    + '(the deck-to-deck route) are invisible at Level 1 again');
+// the visible deck-to-deck route — lie inside no compartment, and before VR-P4's corridor strip
+// existed they were on no surface at Level 1 at all. The elevation draws them on the WALKWAY, the
+// front third of the deck's own floor, so the check is now "a fitting is drawn on a tile no slot
+// covers" rather than "a layer exists".
+{
+  const slotRects = d0.slots.map((t) => ({ x: t[1], y: t[2], w: t[3], h: t[4] }));
+  const inSlot = (tx, ty) => slotRects.some((r) => tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h);
+  const spine = c0.fits.filter((f) => f.deck === '0')
+    .filter((f) => { const [tx, ty] = String(f.tile).split(',').map(Number); return !inSlot(tx, ty); });
+  log('  walkway    ', spine.length, 'fitting(s) drawn on tiles no compartment covers');
+  if (!spine.length) {
+    problems.push('NOTHING is drawn on the walkway — the spine\'s ground stock and the hatch ladder '
+      + '(the deck-to-deck route) are invisible at Level 1 again');
+  }
 }
-if (c0.tiles.every((t) => t.fittings === 0)) {
-  problems.push('NOT ONE compartment miniature drew a fitting — the plate is empty rooms, which is '
-    + 'the one thing the redesign is for');
+if (!c0.fits.length) {
+  problems.push('NOT ONE compartment drew a fitting — the plate is empty rooms, which is the one '
+    + 'thing the redesign is for');
 }
 
 // ── the on-screen check ──
@@ -386,51 +531,115 @@ await clickSel('.ov-orders .ov-tool[data-ov-tool="erase"]');
 // exist by the time the presses are dispatched; one run scored a false miss that way. Finding the
 // point and pressing it inside the same ~200 ms is what makes this pin repeatable rather than a coin.
 const PROBE = `((idx) => {
-  const all = [...document.querySelectorAll('.pl-fit')];
+  const all = [...document.querySelectorAll('.pl-fit[data-deck="0"]')];
   const g = all[idx];
   if (!g) return null;
   const r = g.getBoundingClientRect();
   if (!r.width || !r.height) return null;
+  let pawn = 0, other = 0;
   for (let j = 1; j <= 15; j += 1) {
     for (let i = 1; i <= 15; i += 1) {
       const x = r.left + (r.width * i) / 16, y = r.top + (r.height * j) / 16;
       const el = document.elementFromPoint(x, y);
       if (el && el.closest && el.closest('.pl-fit') === g) return { tile: g.dataset.tile, x, y };
+      if (el && el.closest && el.closest('.pl-pawn')) pawn += 1; else other += 1;
     }
   }
-  return { tile: g.dataset.tile, noInk: true };
+  // WHAT covered it, not merely THAT it was covered — see the note below the census.
+  return { tile: g.dataset.tile, noInk: true, pawn, other };
 })`;
-const fitCount = await evaluate(`document.querySelectorAll('.pl-fit').length`);
-const SAMPLE = 15;
-const step = Math.max(1, Math.floor(fitCount / SAMPLE));
+// ⭐⭐ THE CENSUS IS FULL NOW, NOT A SAMPLE OF 15. The elevation has ONE projection, so there is no
+// reason left to sample: every drawn fitting on the ACTIVE deck is pressed. A sampled census cannot
+// tell "the projection is right" from "the 15 I happened to pick are right", and the defect this pin
+// exists for was systematic (57 of 59), so a sample would have caught it — but the NEXT one may not
+// be. ⚠️ ONLY THE ACTIVE DECK IS PRESSED, and that is not a gap: a press on the other band moves the
+// ORDER DECK by design (`crossDeckPress`) and sends no order, so the toast it produces is a
+// different sentence and the deck-1 half is driven by its own check further down.
+const fitCount = await evaluate(`document.querySelectorAll('.pl-fit[data-deck="0"]').length`);
 const wrong = [];
 let walked = 0;
 let inkless = 0;
-for (let i = 0; i < fitCount; i += step) {
+// ⚠️⚠️ EACH SAMPLE IS RE-VERIFIED AT THE PRESSED PIXEL AFTER THE PRESS, AND THE CAUSE WAS CHASED
+// RATHER THAN GUESSED. Six full runs of this census read 0,1,0,1,0,0 wrong out of ~52 with no code
+// between them. THE FIRST HYPOTHESIS WAS WRONG and is recorded because it cost a guard: "the scene
+// is `innerHTML`-swapped at 10 Hz so the node list shifts under the press" — a re-check of
+// `.pl-fit[idx]`'s own `data-tile` after the press fired ZERO times while a miss still happened, so
+// the node is not what moves.
+//
+// ⭐ WHAT ACTUALLY MOVES IS THE PAWN. Her figure and her LABEL PILL live in a persistent OVERLAY
+// stacked above the plate, and `.pl-pawn` TAKES THE POINTER (it has to: crew selection on this
+// surface is `target.closest('.pl-pawn')`). She WALKS. So a pixel that `elementFromPoint` reported
+// as the fitting's own ink when the probe ran can be covered by her pill 120 ms later, and the press
+// then lands on the PAWN — `pointToTile`'s `data-tile` fast tier misses, the CTM tier resolves the
+// FLOOR TILE UNDER THE CURSOR, and that is the correct answer to the question the player asked.
+// It is not a projection defect and scoring it as one would make this pin a coin flip.
+//
+// ⛔ THE GUARD IS THEREFORE `elementFromPoint` AT THE PRESSED PIXEL, ASKED AGAIN AFTER THE PRESS,
+// and it must not be able to hide a real failure: a sample is discarded ONLY when the pixel provably
+// no longer belongs to the fitting that was measured. Discards are counted and a run that discards
+// many FAILS.
+let shifted = 0;
+let underPawn = 0;
+for (let i = 0; i < fitCount; i += 1) {
   const f = await json(`JSON.stringify(${PROBE}(${i}))`);
   if (!f) continue;
-  if (f.noInk) { inkless += 1; continue; }
+  // ANY sampled point taken by a crew member makes the piece CONTESTED BY THE FIGURE, not merely
+  // hidden behind another piece. A majority test was the first cut and it under-counted: a pawn
+  // covering a third of a small piece still makes it unpressable while she stands there.
+  if (f.noInk) { inkless += 1; if (f.pawn > 0) underPawn += 1; continue; }
   await evaluate(`document.getElementById('ov-toast').textContent = ''`);
   await click(f.x, f.y);
-  await sleep(250);
+  await sleep(120);
   const line = await evaluate(`document.getElementById('ov-toast').textContent`);
+  const still = await evaluate(`(() => {
+    const el = document.elementFromPoint(${f.x}, ${f.y});
+    const g = el && el.closest ? el.closest('.pl-fit') : null;
+    return g ? g.dataset.tile : null;
+  })()`);
   const m = /▸ (\d+),(\d+) ON DECK/.exec(line || '');
   if (!m) continue;
+  if (still !== f.tile) { shifted += 1; continue; }   // the drawing moved under the press
   walked += 1;
   if (`${m[1]},${m[2]}` !== f.tile) wrong.push(`drawn for ${f.tile} → press designates ${m[1]},${m[2]}`);
 }
 await clickSel('.ov-orders .ov-tool[data-ov-tool="erase"]');   // disarm
-log(`\n── CLICK MAP vs DRAWING (live gesture) ─────────────────────────────`);
-log(`  ${fitCount} fittings drawn; ${inkless} with no pressable ink; ${walked} pressed; `
-  + `${wrong.length} designate the wrong tile`);
+log(`\n── CLICK MAP vs DRAWING (live gesture, FULL census) ────────────────`);
+log(`  ${fitCount} fittings drawn on deck 0; ${inkless} with no pressable ink; ${walked} pressed; `
+  + `${shifted} discarded (the drawing moved under the press); ${wrong.length} designate the wrong tile`);
+if (shifted > Math.max(3, fitCount * 0.1)) {
+  problems.push(`${shifted} of ${fitCount} samples were discarded because the node under the cursor `
+    + 'changed between the probe and the press. A few are the 10 Hz repaint; this many means the '
+    + 'plate is churning, and the census below is measuring whatever survived rather than the plate.');
+}
 for (const w of wrong.slice(0, 6)) log('    ' + w);
-if (walked < 8) problems.push(`only ${walked} fittings pressed — the click check is thin`);
-// ⚠️ A FEW INKLESS ARE EXPECTED AND ARE NOT A DEFECT: pieces are drawn BACK TO FRONT, so a fitting
-// standing behind a taller one is legitimately covered by it — pressing there presses the nearer
-// piece, which is what an oblique view means. MANY would mean the miniature has become unpressable.
-if (inkless > Math.max(2, walked * 0.2)) {
-  problems.push(`${inkless} sampled fittings have NO pixel of their own ink that is hit-testable — `
-    + 'that is beyond what back-to-front occlusion accounts for');
+if (walked < 30) problems.push(`only ${walked} fittings pressed — the click census is thin`);
+// ⚠️⚠️ "INKLESS" IS TWO DIFFERENT FACTS AND THEY ARE COUNTED SEPARATELY, because conflating them
+// made this threshold a coin flip. Runs read 10 and 11 of 62 with no code between them, and 11 trips
+// a `walked * 0.2` cap while 10 does not.
+//
+//   · COVERED BY ANOTHER FITTING — expected, and not a defect: pieces are drawn BACK TO FRONT, so a
+//     fitting standing behind a taller one is legitimately hidden by it. Pressing there presses the
+//     nearer piece, which is what an oblique view MEANS.
+//   · COVERED BY A CREW MEMBER — also expected, and it is the one that MOVES. `.pl-pawn` takes the
+//     pointer (crew selection on this surface is `closest('.pl-pawn')`), and she walks, so the set
+//     of pieces standing behind her changes between runs. Counting her as occlusion pressure made
+//     the cap fire on a ship where somebody happened to be walking.
+//
+// The cap is therefore applied to the FITTING-occluded half alone. A press on a piece under a pawn
+// selects the pawn, which is the correct answer to what the player pointed at.
+//
+// ⚠️ THE CAP IS 0.3, AND IT IS SET FROM A MEASUREMENT RATHER THAN FROM A FEELING. On `--ship wreck`
+// deck 0 the fitting-occluded count read 10, 10, 10 of 62 across three consecutive full runs
+// (~16 %), with one earlier run at 11. The previous cap was `walked * 0.2` = 10.4 — four tenths of a
+// piece away from the steady-state value, so it fired on the fourth run and not on the first three.
+// A rig that cries wolf at 11 and is silent at 10 teaches its readers to re-run it, which is worse
+// than no cap. 0.3 keeps real headroom while still catching the failure it is for: "most of the
+// compartment's contents have become unpressable", which is a majority, not a sixteenth.
+const occluded = inkless - underPawn;
+log(`  of the ${inkless} unpressable: ${underPawn} contested by a crew member, ${occluded} behind another fitting`);
+if (occluded > Math.max(2, walked * 0.3)) {
+  problems.push(`${occluded} sampled fittings have NO pixel of their own ink that is hit-testable and `
+    + 'are not under a crew member — that is beyond what back-to-front occlusion accounts for');
 }
 if (wrong.length) {
   problems.push(`${wrong.length} of ${walked} drawn fittings designate a DIFFERENT tile than the one `
@@ -438,16 +647,69 @@ if (wrong.length) {
 }
 await png('1-plate-deck0.png');
 
+// ⭐⭐ THE CROSS-DECK PRESS, DRIVEN THROUGH THE REAL GESTURE — the silent defect the elevation
+// created and `crossDeckPress` closes. Every designation command carries only x/y and the host
+// supplies Z from its own shown deck, so a press on the OTHER band would have ordered on THIS one.
+// The rule is "move the order deck, do not guess", and it is measured here rather than argued.
+{
+  await clickSel('.ov-tab[data-ov-tab="build"]');
+  await clickSel('.ov-orders .ov-tool[data-ov-tool="erase"]');
+  const at = await json(`JSON.stringify((()=>{
+    const g=document.querySelector('.pl-fit[data-deck="1"]'); if(!g) return null;
+    const r=g.getBoundingClientRect();
+    for(let j=1;j<=15;j++) for(let i=1;i<=15;i++){
+      const x=r.left+r.width*i/16, y=r.top+r.height*j/16;
+      const el=document.elementFromPoint(x,y);
+      if(el&&el.closest&&el.closest('.pl-fit')===g) return {tile:g.dataset.tile,x,y};
+    }
+    return null; })())`);
+  if (!at) {
+    problems.push('no pressable fitting on the OTHER band — the cross-deck press cannot be driven');
+  } else {
+    const before = latest.get('frame')?.deck | 0;
+    await evaluate(`document.getElementById('ov-toast').textContent = ''`);
+    await click(at.x, at.y);
+    await sleep(1200);
+    const line = await evaluate(`document.getElementById('ov-toast').textContent`);
+    const after = latest.get('frame')?.deck | 0;
+    log(`\n── CROSS-DECK PRESS ────────────────────────────────────────────────`);
+    log(`  pressed deck-1 fitting at ${at.tile}; order deck ${before} → ${after}; toast ${JSON.stringify(line)}`);
+    if (after === before) {
+      problems.push('a press on the OTHER band did not move the ORDER DECK. Designation commands '
+        + 'carry no Z, so the order would have landed on the deck the player did NOT point at.');
+    }
+    if (!/ORDERS NOW LAND HERE/i.test(line || '')) {
+      problems.push('the cross-deck press said nothing — the deck moved under the player silently');
+    }
+  }
+  await clickSel('.ov-orders .ov-tool[data-ov-tool="erase"]');   // disarm
+}
+
 await toDeck(1);
 await sleep(2500);
 const c1 = await json(censusExpr);
-log('\n── DECK 1 (the dead deck) ──────────────────────────────────────────');
+log('\n── DECK 1 ACTIVE (the dead deck) ───────────────────────────────────');
 log('  caption    ', JSON.stringify(c1.caption));
-log('  purposed tiles:', c1.tiles.filter((t) => t.purpose === '1').length, 'of', c1.tiles.length);
-if (c1.tiles.filter((t) => t.purpose === '1').length !== 0) {
+log('  bands      ', JSON.stringify(c1.decks));
+const d1tiles = c1.tiles.filter((t) => t.deck === '1');
+log('  purposed on deck 1:', d1tiles.filter((t) => t.purpose === '1').length, 'of', d1tiles.length);
+if (d1tiles.filter((t) => t.purpose === '1').length !== 0) {
   problems.push('the DEAD deck reports purposed compartments — the predicate is wrong');
 }
-if (c1.tiles.some((t) => t.state !== 'unbuilt')) problems.push('a dead-deck tile is not in the UNBUILT dash');
+if (d1tiles.some((t) => t.state !== 'unbuilt')) problems.push('a dead-deck compartment is not in the UNBUILT dash');
+// ⭐ THE VIEW DID NOT CHANGE, THE ACTIVE BAND DID. That is the elevation's whole behavioural
+// difference from VR-P4's plate, and it is asserted rather than assumed: the same 16 compartments
+// are drawn either way, and exactly one band is marked active.
+if (c1.tiles.length !== c0.tiles.length) {
+  problems.push(`stepping the deck rail changed the DRAWING (${c0.tiles.length} → ${c1.tiles.length} `
+    + 'compartments). The plate draws every deck; the rail selects the ORDER deck.');
+}
+if (c1.decks.filter((d) => d.active === '1').length !== 1) {
+  problems.push('exactly one band must be marked active — the ORDERS bar names one deck');
+}
+if ((c1.decks.find((d) => d.active === '1') || {}).deck !== '1') {
+  problems.push('the deck rail moved but the drawing marks a different band active');
+}
 await png('2-plate-deck1.png');
 
 await toDeck(0);
@@ -471,6 +733,130 @@ log('\n── WORK TAB ───────────────────
 log('  ', JSON.stringify(work));
 if (!work.shown) problems.push('the WORK island did not show on its own tab');
 await png('4-work-tab.png');
+
+// ⭐ THE OWNER'S THREE VIEWPORTS. The band's responsive rules already sweep 1360/1100/900 for
+// GEOMETRY; these are the PICTURES at the same widths, because the plate's aspect changed (the
+// design's 1058×334 rather than VR-P4's 1028×320) and how the ship sits in a narrow window is a
+// thing to look at rather than to assert.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE OWNER'S HOVER FLICKER — THE LIVE WITNESS. Node can prove the state survives a repaint;
+// only a real browser can prove the PIXELS do, because the mechanism is Chrome's own `:hover`
+// re-evaluation across an `innerHTML` swap.
+//
+// THE REPORT: "when I am on the ship level and hover my mouse for 2-3 seconds above one of the
+// rooms, that room starts flickering." Held here for FIVE seconds — comfortably past the 2-3 s
+// onset — with the sim RUNNING, sampling the hovered compartment's highlight at 20 Hz and counting
+// every transition. A stationary cursor must produce ZERO after the first.
+//
+// ⛔ AND THE SAMPLER PROVES THE PLATE REALLY REPAINTED UNDERNEATH IT, by watching the compartment
+// element's own identity. Without that, "zero oscillations" is satisfied by a page that never
+// rebuilt at all — which is the vacuity this whole class of pin keeps falling into.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+{
+  await clickSel('.ov-tab[data-ov-tab="build"]');
+  await toDeck(0);
+  await sleep(1500);
+  // ⭐⭐ THE HOVER IS TAKEN OVER A COMPARTMENT'S **CONTENTS**, NOT OVER ITS BARE FLOOR, AND THAT IS
+  // WHERE A DEFECT LIVED. The elevation draws the fitting layer ABOVE the compartments (the pieces
+  // must sort back-to-front across the whole deck floor), so `closest('.pl-room')` returned null for
+  // every pixel of every piece. Measured here first: `elementFromPoint` at 50 % and 75 % of a
+  // compartment's height resolved to NO room and only 90 % — bare floor — found one, so a press on
+  // a room's contents did not open it and a hover over them did not wash it, over most of its area.
+  // Sampling the bare floor would have photographed a green rig over a broken affordance.
+  const spot = await json(`JSON.stringify((()=>{
+    const g=document.querySelector('.pl-room[data-anchor]'); if(!g) return null;
+    const r=g.getBoundingClientRect();
+    return {anchor:g.dataset.anchor, x:r.left+r.width*0.5, y:r.top+r.height*0.55,
+      floorX:r.left+r.width*0.5, floorY:r.top+r.height*0.9};
+  })())`);
+  if (!spot) {
+    problems.push('no compartment to hover — the flicker witness cannot run');
+  } else {
+    // …and the point really is over a FITTING rather than over bare floor, so the leg above is a
+    // fact about the hard case. A run where the compartment happens to be empty says so instead of
+    // passing quietly.
+    const over = await evaluate(`(() => {
+      const e = document.elementFromPoint(${spot.x}, ${spot.y});
+      if (!e || !e.closest) return 'none';
+      return (e.closest('.pl-fit') ? 'fit' : '') + (e.closest('.pl-room') ? '/room' : '');
+    })()`);
+    log(`  hover point resolves to: ${over} (compartment ${spot.anchor})`);
+    if (over === 'none' || over === '/room') {
+      problems.push(`the hover witness's point is over ${over}, not over a fitting — it is sampling `
+        + 'the easy case, and the measured defect was specifically on a compartment\'s contents');
+    }
+    // Move the pointer ONCE, then never again.
+    await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: spot.x, y: spot.y, button: 'none' });
+    await sleep(300);
+    // ⚠️ THE WHOLE PROBE IS ONE ASYNC IIFE RETURNING THE STRING. `JSON.stringify(await …)` is not
+    // valid at the top level of a `Runtime.evaluate` expression; `awaitPromise` resolves the
+    // expression's own promise, so the stringify has to happen INSIDE it. The first cut got a
+    // silent `null` back and reported it as "the plate did not repaint".
+    const watch = await json(`(async () => JSON.stringify(await (async () => {
+      const sel = '.pl-room[data-anchor="${spot.anchor}"]';
+      const on = () => { const g = document.querySelector(sel);
+        return g ? g.classList.contains('pl-room-hover') : null; };
+      const samples = []; const nodes = new Set();
+      for (let i = 0; i < 100; i += 1) {
+        const g = document.querySelector(sel);
+        if (g) nodes.add(g);
+        samples.push(on());
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      let flips = 0;
+      for (let i = 1; i < samples.length; i += 1) if (samples[i] !== samples[i - 1]) flips += 1;
+      return { n: samples.length, on: samples.filter(Boolean).length, flips,
+        rebuilds: nodes.size, first: samples[0], last: samples[samples.length - 1] };
+    })()))()`);
+    log('\n── HOVER FLICKER WITNESS (5 s, pointer held still, sim running) ────');
+    log(`  ${JSON.stringify(watch)}`);
+    if (!watch || watch.rebuilds < 2) {
+      problems.push(`the hovered compartment's element was rebuilt ${watch && watch.rebuilds} time(s) `
+        + 'in 5 s. The plate did not repaint under the cursor, so "zero oscillations" is a fact '
+        + 'about a static page and not about the defect.');
+    }
+    if (watch && watch.flips > 0) {
+      problems.push(`THE OWNER'S FLICKER IS BACK: the hover highlight changed state ${watch.flips} `
+        + `time(s) in 5 s with the pointer held still (on for ${watch.on} of ${watch.n} samples). `
+        + 'The hovered element is destroyed by the repaint and the state is not surviving it.');
+    }
+    if (watch && watch.on !== watch.n) {
+      problems.push(`the hover highlight was on for only ${watch.on} of ${watch.n} samples — a `
+        + 'stationary cursor over a compartment must wash it for the whole time it is there');
+    }
+    // ⭐ AND THE PRESS ON THE SAME PIXEL ENTERS THE ROOM. The hover and the click share one
+    // resolution (`roomAnchorOf`), so a rig that proved only the wash would leave the affordance the
+    // surface actually advertises — "click a compartment to open it" — unmeasured on the pixels a
+    // player aims at.
+    await evaluate(`window.__enter=null; 1`);
+    await click(spot.x, spot.y);
+    await sleep(1400);
+    const zoomed = await evaluate(
+      `!!(document.body.classList.contains('roomzoom-open')
+         || (document.getElementById('roomzoom-view') && !document.getElementById('roomzoom-view').hidden)
+         || /ROOM ZOOM/i.test((document.getElementById('ov-toast')||{}).textContent||''))`);
+    log(`  press on the SAME pixel entered a room: ${zoomed}`);
+    if (!zoomed) {
+      problems.push('a press on a compartment\'s CONTENTS did not open the room. The fitting layer '
+        + 'is a sibling of the compartments in this drawing, so the piece has to carry its own '
+        + '`data-anchor` — see `roomAnchorOf`.');
+    }
+  }
+}
+
+// ⚠️ BACK TO THE BUILD TAB FIRST. The WORK island is still up from the shot above, and it covers
+// the plate — the first run of these three photographed the work grid over the ship.
+await clickSel('.ov-tab[data-ov-tab="build"]');
+await toDeck(0);
+await sleep(1500);
+for (const [i, w] of [[5, 1360], [6, 1100], [7, 900]].entries()) {
+  await call('Emulation.setDeviceMetricsOverride', { width: w[1], height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(1400);
+  await png(`${w[0]}-w${w[1]}.png`);
+  void i;
+}
+await call('Emulation.clearDeviceMetricsOverride');
+await sleep(600);
 
 if (consoleErrors.length) problems.push('console errors while drawing: ' + JSON.stringify(consoleErrors.slice(0, 5)));
 

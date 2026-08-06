@@ -45,7 +45,7 @@ import {
   buildTileItem,
   deviceKindsWithSeveralPieces,
 } from '../src/items/wear.js';
-import { deckDeviceConditions, roomDeviceConditions } from '../src/ui/room-model.js';
+import { deckDeviceConditions, roomDeviceConditions, itemForDeviceRow } from '../src/ui/room-model.js';
 import { codeOnly } from './code-only.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 
@@ -380,12 +380,22 @@ test('the Level-1 Overview paints a wrecked machine as its twin — driven, not 
   for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];   // '.' floor
   cells[TY * W + TX] = ['S'.charCodeAt(0), 0, 0, 0];                    // Glyphs.ForDevice(Scrubber)
   const frame = { deck: DECK, w: W, h: H, lens: 'none', cells };
-  const decksView = [{ deck: DECK, slots: [{ rect: { x: 0, y: 0, w: W, h: H }, occupied: true, displayName: 'HOLD' }] }];
+  const decksView = [{ deck: DECK, slots: [{ slotIndex: 0, anchorName: 'hold', roomType: 14, rect: { x: 0, y: 0, w: W, h: H }, occupied: true, displayName: 'HOLD' }] }];
   const base = { deck: DECK, decksView, frame, idPrefix: 'ov' };
 
-  const row = (cond) => [{ x: TX, y: TY, deck: DECK, kind: 3, cond, oper: cond > 25 ? 1 : 0 }];
-  const intact = overviewScene({ ...base, deviceCond: deckDeviceConditions(row(255), DECK) });
-  const wrecked = overviewScene({ ...base, deviceCond: deckDeviceConditions(row(0), DECK) });
+  // ⚠️ THE ROWS GO IN RAW NOW, not through `deckDeviceConditions`. The plate takes the `devices`
+  // channel directly (`ship-fittings.js`) because it draws EVERY deck and that adapter reshapes ONE.
+  // The wear join itself is untouched: each row's `cond` still reaches `buildTileItem`, which is
+  // still the only door to the 70 post-raid twins. The glyph on the frame is now irrelevant to which
+  // piece is drawn — it is left in the fixture deliberately, so that if a later lane re-introduces a
+  // frame read this test keeps working rather than going vacuous.
+  // ⚠️ KIND 2, NOT KIND 3, AND THE CHANGE IS THE POINT. The old fixture used kind 3 and drew a
+  // SCRUBBER anyway, because the picture came from the frame's `'S'` glyph and `kind` was read only
+  // for the wear byte — so the fixture was internally inconsistent and nothing could see it. Now the
+  // KIND chooses the piece, so it has to be the scrubber's: `DeviceKind 3` is the deck hatch.
+  const row = (cond) => [{ x: TX, y: TY, deck: DECK, kind: 2, cond, oper: cond > 25 ? 1 : 0 }];
+  const intact = overviewScene({ ...base, devices: row(255) });
+  const wrecked = overviewScene({ ...base, devices: row(0) });
 
   assert.notEqual(intact, wrecked,
     'the Overview renders identically whether the machine is pristine or destroyed — the wear join\n'
@@ -394,22 +404,28 @@ test('the Level-1 Overview paints a wrecked machine as its twin — driven, not 
   // NON-VACUITY: the scrubber is really on the frame and really drawn. Without this both scenes
   // could be furniture-free and the inequality above could come from anywhere.
   assert.ok(intact.includes('pl-furniture'), 'the Overview drew no furniture layer at all');
+  // The DEVICE-KIND route is what the plate uses now; the glyph equality is kept beside it because
+  // `itemForDeviceRow` resolves THROUGH a glyph internally and the two must not drift.
   assert.equal(itemIdForGlyphChar('S'), 'o2-scrubber', 'the fixture glyph no longer resolves');
+  assert.equal(itemForDeviceRow({ kind: 2, open: 0 }), 'o2-scrubber',
+    'DeviceKind 2 no longer resolves to the scrubber — the fixture is measuring the wrong machine');
 
   // …and it is the RIGHT twin, byte-identical to what `buildWrecked` gives for that id with the
   // surface's own idPrefix. `notEqual` alone would pass for ANY difference, including a bug.
-  // ⭐ VR-P4 — the idPrefix gained a SLOT segment (`ov-s<slot>-f<x>-<y>`). The plate draws each
-  // compartment's fittings inside that compartment's own nested `<svg>`, and two compartments can
-  // legitimately hold the same tile coordinates of a different room, so the namespace has to name
-  // the tile AND the room it is drawn in or the ids would collide across cells.
-  const opts = { w: 0, h: 0, idPrefix: `ov-s0-f${TX}-${TY}` };
+  // ⭐ THE ID NAMESPACE IS `ov-d<deck>-f<x>-<y>` NOW, not VR-P4's `ov-s<slot>-f<x>-<y>`. The reason
+  // the slot segment existed was that each compartment drew into its own nested `<svg>` with its own
+  // local viewBox, so two compartments could legitimately carry the same tile coordinates. The
+  // elevation draws every compartment on ONE deck plane in ONE coordinate system, so a tile
+  // coordinate is unique within a deck and the DECK is what has to be named — the plate now draws
+  // two decks at once and tile (2,2) exists on both.
+  const opts = { w: 0, h: 0, idPrefix: `ov-d${DECK}-f${TX}-${TY}` };
   const side = /translate\([^)]*\)">(<g class="pl-item">)/.test(wrecked);
   assert.ok(side, 'the furniture layer no longer wraps its pieces the way this test reads them');
   // The side length is a function of the transform, so rebuild with the scene's own by extracting
   // the piece fragment and comparing the DEFS/BODY shape through a size-free probe: both builders
   // are pure in `w`/`h`, so equality of the ID NAMESPACE plus the twin's distinguishing marks is the
   // strongest size-independent statement available here.
-  assert.ok(wrecked.includes(`id="ov-s0-f${TX}-${TY}__0"`),
+  assert.ok(wrecked.includes(`id="ov-d${DECK}-f${TX}-${TY}__0"`),
     'the piece on the device tile is not namespaced by this surface — the fixture missed the tile');
   const twinMarks = buildWrecked('o2-scrubber', opts).match(/fill="([^"]+)"/g) || [];
   const pieceMarks = buildItem('o2-scrubber', opts).match(/fill="([^"]+)"/g) || [];
@@ -497,71 +513,101 @@ test('the wreck threshold has exactly ONE home — no surface compares a conditi
 test('overview-view.js feeds the scene from the devices CHANNEL, not from the frame', () => {
   const src = codeOnly(readFileSync(join(HERE, '..', 'src', 'ui', 'overview-view.js'), 'utf8'));
   assert.ok(src.length > 200, 'overview-view.js stripped to nothing — this scan is vacuous');
-  assert.match(src, /deviceCond:\s*deckDeviceConditions\(decodeDevices\(Hud\.getDevices\(\)\),\s*deck\)/,
-    'client/src/ui/overview-view.js must hand the SCENE this deck\'s device conditions, derived from\n'
-    + 'the `devices` channel. Without it `st.deviceCond` is undefined, `furnitureLayer` falls back to\n'
-    + 'an empty Map, and EVERY machine on the Overview draws intact no matter how wrecked it is —\n'
-    + 'silently, and with every other assertion in this file still green.');
+  // ⚠️ THE SCANNED EXPRESSION CHANGED WITH THE PLATE'S FITTING SOURCE, and the claim under it did
+  // NOT. It used to be `deviceCond: deckDeviceConditions(decodeDevices(Hud.getDevices()), deck)` — a
+  // PER-DECK reshaping of the `devices` channel, which could only ever describe one deck. The side
+  // elevation draws every deck, so the view now hands the scene the RAW decoded rows and
+  // `ship-fittings.js` selects per deck (carrying each row's own `cond` into `buildTileItem`, which
+  // is still the one wear join). What must not be lost is the WIRING: without `devices` reaching the
+  // scene, every machine on the plate draws intact no matter how wrecked it is — silently, and with
+  // every other assertion in this file still green.
+  assert.match(src, /devices:\s*decodeDevices\(Hud\.getDevices\(\)\)/,
+    'client/src/ui/overview-view.js must hand the SCENE the decoded `devices` channel. Without it\n'
+    + '`st.devices` is undefined, `deckFittings` returns an empty Map, and the plate draws NO\n'
+    + 'machines at all — and, before that, no wear.');
   // NEGATIVE CONTROL, both comment forms, each with a LATER REAL COMMENT so a stripper that gives up
   // at the first marker is caught rather than flattered (CLAUDE.md's stripper trap).
   assert.doesNotMatch(
-    codeOnly('// deviceCond: deckDeviceConditions(decodeDevices(Hud.getDevices()), deck),\nconst live = 1;\n'),
-    /deviceCond:\s*deckDeviceConditions/,
+    codeOnly('// devices: decodeDevices(Hud.getDevices()),\nconst live = 1;\n'),
+    /devices:\s*decodeDevices/,
     'a line comment survived codeOnly — this scan is satisfiable by a commented-out wiring');
   assert.doesNotMatch(
-    codeOnly('const s = "/*";\n/* deviceCond: deckDeviceConditions(decodeDevices(Hud.getDevices()), deck), */\nconst live = 1;\n'),
-    /deviceCond:\s*deckDeviceConditions/,
+    codeOnly('const s = "/*";\n/* devices: decodeDevices(Hud.getDevices()), */\nconst live = 1;\n'),
+    /devices:\s*decodeDevices/,
     'a quoted block-comment opener blinded codeOnly, or the REAL later comment survived it');
 });
 
-// ⭐ THE OWNER'S 2026-08-05 DEFECT ON THE *OTHER* SURFACE. The Room Zoom's repro lives in
-// `devices-model.test.js`; this is the plate, driven, because "the fix must cover the Overview
-// miniatures IF they share the defect" is a question to be MEASURED and not inherited. They did
-// share it: `miniContents` read the same `NON_FURNITURE` skip off the same one-glyph-per-tile frame,
-// so a pawn standing anywhere on a plate deleted the machine under her there too.
+// ⭐⭐ THE OWNER'S 2026-08-05 DEFECT ON THE *OTHER* SURFACE — AND ITS WHOLE CLASS IS NOW GONE FROM
+// THE PLATE, WHICH IS A STRONGER RESULT AND A WEAKER TEST, SO SAY BOTH OUT LOUD.
 //
-// MUTATION: drop the `CITIZEN_GLYPH_CODE` arm from `overview-scene.js` ⇒ RED on leg 2.
+// WHAT THIS TEST USED TO DRIVE. The plate's `miniContents` read `NON_FURNITURE` off the same
+// one-glyph-per-tile FRAME the Room Zoom did, so `GlyphMapper` pass 5 writing `Glyphs.Citizen` over a
+// device glyph deleted the machine under a standing pawn — on both surfaces. The plate carried a
+// REPAIR for it: a `CITIZEN_GLYPH_CODE` arm that reached into the `devices` channel for exactly the
+// occluded tile. Leg 2 below drove that arm.
+//
+// WHAT IS TRUE NOW. The side elevation does not read frame glyphs for fittings at ALL — it takes
+// `devices` + `items` directly (`ship-fittings.js`, whose header carries the tile-for-tile
+// measurement that made the substitution safe, and the fog argument that kept it honest). So there is
+// no glyph to be overwritten and no repair to drive: the pawn cannot occlude anything, whatever the
+// frame says. The legs are therefore re-aimed at the property that still has to hold — THE PLATE'S
+// FITTINGS COME FROM THE CHANNEL AND CARRY ITS STATE — and leg 2 is re-stated as a HOSTILE FRAME:
+// the frame says `Citizen` on the tile and the plate must draw the machine anyway.
+//
+// ⚠️ AND THE HONEST LOSS IS NAMED: this file no longer instruments a `CITIZEN_GLYPH_CODE` arm,
+// because `overview-scene.js` no longer has one. The Room Zoom's copy of that arm is STILL LIVE and
+// is still instrumented — by `devices-model.test.js` and by `room-model.test.js`'s `roomCells`
+// legs — so the repair has not become untested; it has become untested HERE, on the surface that
+// stopped needing it.
+//
+// MUTATION: make `deckFittings` skip device rows ⇒ RED on legs 1 and 2.
 // MUTATION: make `itemForDeviceRow` ignore `open` ⇒ RED on leg 3.
-test('THE OWNER\'S DEFECT on the PLATE (driven): a pawn does not delete the machine she stands on', () => {
+// MUTATION: make `deckFittings` emit a row for a tile with no channel entry ⇒ RED on leg 4.
+test('THE PLATE\'S FITTINGS ARE THE CHANNEL\'S (driven): a hostile frame cannot delete a machine', () => {
   const W = 6, H = 5, DECK = 1, TX = 2, TY = 2;
   const floor = () => {
     const cells = new Array(W * H);
     for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];
     return cells;
   };
-  const decksView = [{ deck: DECK, slots: [{ rect: { x: 0, y: 0, w: W, h: H }, occupied: true, displayName: 'HOLD' }] }];
+  const decksView = [{ deck: DECK, slots: [{ slotIndex: 0, anchorName: 'hold', roomType: 14, rect: { x: 0, y: 0, w: W, h: H }, occupied: true, displayName: 'HOLD' }] }];
   const scene = (cells, rows) => overviewScene({
     deck: DECK, decksView, frame: { deck: DECK, w: W, h: H, lens: 'none', cells }, idPrefix: 'ov',
-    deviceCond: deckDeviceConditions(rows, DECK),
+    devices: rows,
   });
   const POD = (open) => [{ x: TX, y: TY, deck: DECK, kind: 27, cond: 255, oper: 1, open }];
+  const ID = `id="ov-d${DECK}-f${TX}-${TY}__0"`;
   const fails = [];
 
-  // 1 — PRECONDITION: with the pod's own glyph on the tile, the plate draws it.
-  const plain = floor(); plain[TY * W + TX] = ['K'.charCodeAt(0), 0, 0, 0];
+  // 1 — PRECONDITION: an ordinary floor frame + a pod on the channel ⇒ the plate draws the pod.
+  const plain = floor();
   const alone = scene(plain, POD(0));
-  if (!alone.includes(`id="ov-s0-f${TX}-${TY}__0"`)) {
+  if (!alone.includes(ID)) {
     fails.push('precondition: the plate draws no piece on the pod tile at all — this leg is vacuous');
   }
 
-  // 2 — THE DEFECT: `Glyphs.Citizen` (64) at `GlyphColor.Crew` (5), byte for byte what pass 5 writes.
+  // 2 — THE HOSTILE FRAME: `Glyphs.Citizen` (64) at `GlyphColor.Crew` (5), byte for byte what pass 5
+  //     writes over a device. The plate must be indifferent to it.
   const pawned = floor(); pawned[TY * W + TX] = [64, 5, 0, 0];
   const occupied = scene(pawned, POD(0));
-  if (!occupied.includes(`id="ov-s0-f${TX}-${TY}__0"`)) {
-    fails.push('THE PLATE LOST THE MACHINE UNDER THE PAWN. Same cause as the Room Zoom: one glyph '
-      + 'byte per tile, and pass 5 owns it.');
+  if (!occupied.includes(ID)) {
+    fails.push('THE PLATE LOST THE MACHINE UNDER A PAWN GLYPH. The elevation must not read frame '
+      + 'glyphs for fittings at all — see ship-fittings.js.');
+  }
+  if (occupied !== alone) {
+    fails.push('the plate draws DIFFERENTLY for a hostile frame and a plain one — some part of the '
+      + 'fitting layer is still reading `frame.cells`, which is the defect this source change removes');
   }
 
-  // 3 — AND THE STATE IS THE CHANNEL'S, not a default. An `open` pod under a pawn must not draw shut.
-  const openScene = scene(pawned, POD(1));
-  if (openScene === occupied) {
-    fails.push('an OPEN and a SHUT pod under a pawn render identically — the fallback ignores the '
-      + '`open` bit the wire carries, and every cycled capsule on the plate would read as sealed');
+  // 3 — AND THE STATE IS THE CHANNEL'S, not a default. An `open` pod must not draw shut.
+  if (scene(plain, POD(1)) === alone) {
+    fails.push('an OPEN and a SHUT pod render identically — the source ignores the `open` bit the '
+      + 'wire carries, and every cycled capsule on the plate would read as sealed');
   }
 
-  // 4 — NO GHOST: no device row, no piece, pawn or not.
-  if (scene(pawned, []).includes(`id="ov-s0-f${TX}-${TY}__0"`)) {
-    fails.push('the plate draws a machine that is not on the channel — the fallback is a cache');
+  // 4 — NO GHOST: no device row, no piece, whatever the frame says.
+  if (scene(pawned, []).includes(ID)) {
+    fails.push('the plate draws a machine that is not on the channel — the source is a cache');
   }
   assert.deepEqual(fails, [], fails.join('\n'));
 });

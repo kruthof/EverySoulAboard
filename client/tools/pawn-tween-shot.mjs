@@ -42,7 +42,7 @@ import { die, waitFor, sleep, dismissOnboarding } from './rig-lib.mjs';
 // rule the other rigs follow).
 import { selectedCrewCid, decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { makeTransform } from '../src/ui/overview-scene.js';
+import { makeShipTransform } from '../src/ui/overview-scene.js';
 
 const arg = (name, dflt) => {
   const i = process.argv.indexOf('--' + name);
@@ -336,27 +336,35 @@ if (!walking) {
     + 'measured on a ship where nobody walks.');
 }
 
-// ⭐ THE PLATE'S OWN DISCONTINUITIES, DERIVED FROM THE SHIPPED `makeTransform` ON THE LIVE `decks`
+// ⭐ THE PLATE'S OWN DISCONTINUITIES, DERIVED FROM THE SHIPPED TRANSFORM ON THE LIVE `decks`
 // CHANNEL — never from a literal. Scanning the projection along each axis at 1/20 of a tile finds
-// the compartment-cell boundaries this deck really has, so §4 can tell "the plate jumped" from "the
-// tween tore" on whatever ship it is pointed at.
+// the seams this deck really has, so §4 can tell "the plate jumped" from "the tween tore" on
+// whatever ship it is pointed at.
+//
+// ⚠️ THE SEAMS SHOULD NOW BE FEW OR NONE, AND THAT IS THE SIDE ELEVATION'S DOING RATHER THAN A
+// BROKEN SCAN. VR-P4's plate was a GRID: `makeTransform` was piecewise over eight compartment cells
+// with real gaps between them, and this scan found 3 discontinuities along x of 68.1 px each. The
+// elevation lays the compartments CONTIGUOUSLY on ONE continuous deck floor plane, so the only
+// remaining jump along a row is the compartment↔walkway split on the `v` axis. A run reporting zero
+// x-seams is the drawing having become continuous, not the instrument having gone blind — the
+// non-vacuity for that is §4's own measured tween positions, not this list.
 const seamsX = [], seamsY = [];
 {
   const dv = decksView(decodeDecks(decode(JSON.stringify(latest.get('decks')))),
     decodeRooms(decode(JSON.stringify(latest.get('rooms') || { type: 'rooms', rooms: [] }))));
   const entry = (dv || []).find((d) => d.deck === DECK);
   if (entry) {
-    const tf = makeTransform(entry.slots, null);
+    const tf = makeShipTransform(dv, null);
     const W = frame0 ? frame0.w : 44, H = frame0 ? frame0.h : 20;
     let prev = null;
     for (let v = 0; v <= W; v += 0.05) {
-      const q2 = tf.project(v + 0.5, 6.5);
+      const q2 = tf.project(v + 0.5, 6.5, DECK);
       if (prev && Math.hypot(q2[0] - prev[0], q2[1] - prev[1]) > 2) seamsX.push(v);
       prev = q2;
     }
     prev = null;
     for (let v = 0; v <= H; v += 0.05) {
-      const q2 = tf.project(6.5, v + 0.5);
+      const q2 = tf.project(6.5, v + 0.5, DECK);
       if (prev && Math.hypot(q2[0] - prev[0], q2[1] - prev[1]) > 2) seamsY.push(v);
       prev = q2;
     }

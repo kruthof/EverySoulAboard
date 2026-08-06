@@ -51,7 +51,18 @@ import { ITEMS, buildItem, RESOURCE_ITEM_BY_KIND_NAME } from '../src/items/index
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { itemForGlyph, roomCells, roomTileRect } from '../src/ui/room-model.js';
+import {
+  itemForGlyph, roomCells, roomTileRect,
+  // ⭐ THE PLATE'S OWN VOCABULARY. `DEVICE_KIND_NAMES` is the client's index→name mirror of
+  // `sim/Sim.Core/Devices/Device.cs`'s enum (pinned by-name-and-index in `prioritise-menu.test.js`);
+  // inverted it gives the BYTE the `devices` channel carries, which is the identity the side
+  // elevation resolves a fitting from. `itemForDeviceRow` / `itemIdForStockKind` are the two
+  // derivations `ship-fittings.js` runs, imported here so this file drives the SHIPPED route.
+  DEVICE_KIND_NAMES, itemForDeviceRow, itemIdForStockKind,
+} from '../src/ui/room-model.js';
+
+/** `DeviceKind` NAME → its byte, off the one shipped table. */
+const KIND_BYTE = Object.freeze(Object.fromEntries(DEVICE_KIND_NAMES.map((nm, i) => [nm, i])));
 import { overviewScene } from '../src/ui/overview-scene.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 
@@ -968,13 +979,45 @@ const QUARTERS = roomTileRect(VIEW, 'quarters');
  */
 const OV_DECK = 1;
 const OV_SLOT = (VIEW.find((d) => d.deck === OV_DECK) || { slots: [] }).slots[0];
-function ovProbe(code) {
+
+/**
+ * ⭐⭐ THE PROBE DRIVES THE CHANNELS, NOT THE FRAME, AND THAT IS THE PACKAGE'S CHANGE TO THIS FILE.
+ *
+ * ⚠️ IT USED TO PLANT A GLYPH IN `frame.cells` AND THAT NO LONGER EXPRESSES ANYTHING ABOUT THE
+ * PLATE. The side elevation draws EVERY deck at once, so it cannot source fittings from a channel
+ * that carries one — it takes `devices` + `items` instead (`ship-fittings.js`, whose header carries
+ * the tile-for-tile measurement that made the substitution safe and the one piece of art it costs).
+ * A frame-glyph probe against the new composer is not a weaker test, it is a VACUOUS one: it would
+ * pass or fail for reasons entirely unrelated to art coverage.
+ *
+ * So the Overview probe now takes a DEVICE ROW or an ITEM ROW — the two things the plate really
+ * reads — placed on the first tile of the first compartment of deck 1, which is where a real device
+ * would be. (The tile placement half of the old note stands and its reason is unchanged: a tile
+ * inside no compartment lands on the WALKWAY, which draws, but the compartment is where a device
+ * lives and the fixture should say so.)
+ */
+function ovFrame() {
   const r = OV_SLOT.rect;
   const w = r.x + r.w, h = r.y + r.h;
   const cells = new Array(w * h);
-  for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];   // floor everywhere else
-  cells[r.y * w + r.x] = [code, 8, 0, 0];
+  for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];   // floor everywhere
   return { type: 'frame', deck: OV_DECK, w, h, lens: 'none', cells };
+}
+/** The plate, with ONE device of `kind` standing in the compartment. */
+function ovDeviceScene(kind, open = 0) {
+  const r = OV_SLOT.rect;
+  return overviewScene({
+    deck: OV_DECK, decksView: VIEW, frame: ovFrame(), marks: [],
+    devices: [{ x: r.x, y: r.y, deck: OV_DECK, kind, cond: 255, oper: 1, open }],
+  });
+}
+/** The plate, with ONE ground stack of `kind` in the compartment. */
+function ovItemScene(kind) {
+  const r = OV_SLOT.rect;
+  return overviewScene({
+    deck: OV_DECK, decksView: VIEW, frame: ovFrame(), marks: [],
+    items: [{ x: r.x, y: r.y, deck: OV_DECK, kind, count: 1 }],
+  });
 }
 
 /** A frame for deck `d` whose (x,y) cells carry the given glyph chars, everything else floor. */
@@ -1000,16 +1043,24 @@ test('the Room Zoom MODEL skins every covered kind — no unknown chip (roomCell
 });
 
 test('the Overview COMPOSER draws furniture for every covered kind (overviewScene, driven)', () => {
+  // ⭐ DRIVEN BY DEVICE KIND, which is the identity the plate really consumes. `COVERED` is the set
+  // of `DeviceKind`s the C# `Glyphs.ForDevice` census says have a glyph, so the same set expresses
+  // the same claim on either side of the source change — what moved is the ROUTE, not the subject.
   const missing = [];
   for (const k of COVERED) {
-    const probe = ovProbe(FOR_DEVICE[k].charCodeAt(0));
-    const svg = overviewScene({ deck: OV_DECK, decksView: VIEW, frame: probe, crew: [], marks: [] });
-    if (!svg.includes('class="pl-furniture"')) missing.push(`${k} (${JSON.stringify(FOR_DEVICE[k])})`);
+    if (!ovDeviceScene(KIND_BYTE[k]).includes('class="pl-furniture"')) {
+      missing.push(`${k} (kind ${KIND_BYTE[k]})`);
+    }
   }
   assert.deepEqual(missing, [],
     'THE OVERVIEW DREW NOTHING for: ' + missing.join(', ') + '\n' +
-    'furnitureLayer does `if (!itemId) continue`, so on the Overview an unskinned device is not a\n' +
-    'chip — it is silently absent from the schematic, which is worse to find.');
+    '`fittingLayer` skips a row whose `itemForDeviceRow` is empty, so on the Overview an unskinned\n' +
+    'device is not a chip — it is silently absent from the drawing, which is worse to find.');
+  // NON-VACUITY, and it is an INCLUSION control rather than a count: a kind NOTHING skins must make
+  // this probe draw no furniture layer at all. Without it, a composer that emitted `pl-furniture`
+  // unconditionally would pass the loop above for every kind at once.
+  assert.ok(!ovDeviceScene(250).includes('class="pl-furniture"'),
+    'the probe reports a furniture layer for a DeviceKind nothing skins — it cannot see absence');
 });
 
 // ── the REAL Room Zoom controller, over dom-lite ──────────────────────────────────────────────
@@ -1131,17 +1182,22 @@ test("the CORPSE glyph reaches the Room Zoom's furniture layer at all (roomCells
     + 'in the items channel would draw two different pictures on the same tile.');
 });
 
-test('the CORPSE glyph reaches the OVERVIEW composer too (overviewScene, driven)', () => {
-  // The Overview has no unknown-chip fallback — `furnitureLayer` does `if (!itemId) continue` — so a
-  // corpse missing here is SILENT. The whole reason for the shared `NON_FURNITURE_CODES` import is
-  // that a fix applied to one file would leave this leg red and nobody looking.
-  const probe = ovProbe(CORPSE_GLYPH.charCodeAt(0));
-  const svg = overviewScene({ deck: OV_DECK, decksView: VIEW, frame: probe, crew: [], marks: [] });
-  assert.ok(svg.includes('class="pl-furniture"'),
-    'THE OVERVIEW DREW NOTHING for a corpse. Either 38 is back in this surface\'s NON_FURNITURE, or\n'
-    + 'the two surfaces have come to disagree about what "not furniture" means — which is exactly\n'
-    + 'the two-copies bug the shared NON_FURNITURE_CODES export exists to make impossible.');
+test('the CORPSE reaches the OVERVIEW composer too (overviewScene, driven)', () => {
+  // ⚠️ THE ROUTE CHANGED AND THE SUBJECT DID NOT. A corpse is not a device — it is `ItemKind` 2 on
+  // the `items` channel — so the plate reaches it through `itemIdForStockKind`, and the fact that
+  // the two routes agree about the SAME PIECE is what this asserts. The Overview has no unknown-chip
+  // fallback, so a corpse missing here is SILENT.
+  assert.equal(itemIdForGlyphChar(CORPSE_GLYPH), 'body-bag',
+    'the corpse glyph no longer skins the body bag — the fixture is measuring the wrong piece');
+  assert.equal(itemIdForStockKind(CORPSE_ITEM_KIND), 'body-bag',
+    'ItemKind ' + CORPSE_ITEM_KIND + ' no longer skins the body bag — the plate\'s route to a corpse '
+    + 'is gone, and with it the corpse itself, silently.');
+  assert.ok(ovItemScene(CORPSE_ITEM_KIND).includes('class="pl-furniture"'),
+    'THE OVERVIEW DREW NOTHING for a corpse on the `items` channel.');
 });
+/** `ItemKind.Corpse` — the byte `itemIdForStockKind` resolves to the body bag. Pinned by the test
+ *  above in BOTH directions so it cannot rot into a number nobody checks. */
+const CORPSE_ITEM_KIND = 2;
 
 test('EVERY glyph the registry skins is drawn by BOTH surfaces — no surface filters art away', () => {
   // The general form of the corpse bug, and an INCLUSION test rather than a population count: it
@@ -1150,33 +1206,81 @@ test('EVERY glyph the registry skins is drawn by BOTH surfaces — no surface fi
   const skinned = Object.keys(GLYPH_TO_ITEM);
   assert.ok(skinned.length >= 32, 'the skinned-glyph set is suspiciously small');
   const lost = { roomZoom: [], overview: [] };
+  // ⭐⭐ THE OVERVIEW LEG ASKS THE QUESTION IN THE PLATE'S OWN VOCABULARY, and the difference matters
+  // enough to be spelled out. The Room Zoom reads GLYPHS, so its leg stays a glyph sweep. The plate
+  // reads DEVICE KINDS and ITEM KINDS, so its leg sweeps every piece those two routes can NAME and
+  // requires each to be drawn. Sweeping glyphs on the plate would be asking a surface for something
+  // it never receives.
+  const byChannel = new Map();          // itemId → a probe that produces it
+  for (const k of Object.keys(KIND_BYTE)) {
+    for (const open of [0, 1]) {
+      const id = itemForDeviceRow({ kind: KIND_BYTE[k], open });
+      if (id && !byChannel.has(id)) byChannel.set(id, () => ovDeviceScene(KIND_BYTE[k], open));
+    }
+  }
+  for (let ik = 0; ik < 32; ik += 1) {
+    const id = itemIdForStockKind(ik);
+    if (id && !byChannel.has(id)) byChannel.set(id, () => ovItemScene(ik));
+  }
   for (const g of skinned) {
     const code = g.charCodeAt(0);
     const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
     const cells = roomCells({ deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 0, 0, 0]] }, focus);
     if (cells.length !== 1 || !cells[0].itemId) lost.roomZoom.push(JSON.stringify(g));
-    const probe = ovProbe(code);
-    const svg = overviewScene({ deck: OV_DECK, decksView: VIEW, frame: probe, crew: [], marks: [] });
-    if (!svg.includes('class="pl-furniture"')) lost.overview.push(JSON.stringify(g));
+  }
+  for (const [id, probe] of byChannel) {
+    if (!probe().includes('class="pl-furniture"')) lost.overview.push(JSON.stringify(id));
   }
   assert.deepEqual(lost, { roomZoom: [], overview: [] },
-    'A GLYPH WITH REAL ART IS FILTERED OUT BEFORE IT CAN BE DRAWN: ' + JSON.stringify(lost) + '\n'
+    'A PIECE WITH REAL ART IS FILTERED OUT BEFORE IT CAN BE DRAWN: ' + JSON.stringify(lost) + '\n'
     + 'A code in NON_FURNITURE is claimed by the floor/wall/structure layers. A code with a registry\n'
     + 'piece is claimed by the furniture layer. A code in both is drawn by neither, silently — that\n'
     + 'is what happened to the corpse for the whole life of the two SVG surfaces.');
+
+  // ⛔⛔ AND THE COST OF THE PLATE'S NEW SOURCE, PINNED BY NAME IN BOTH DIRECTIONS — because "34 of
+  // 35 pieces survive" is exactly the kind of claim that rots into "all of them do".
+  //
+  // `door-blast` is the LOCKED DOOR: `GlyphMapper.DeviceGlyph` returns `Glyphs.DoorLocked` for a
+  // `DeviceKind.Door` whose `IsLocked` is set, and `IsLocked` IS NOT ON THE `devices` CHANNEL —
+  // `hosts/web/WireFormat.Devices.cs`'s own "WHAT IS DELIBERATELY LEFT OUT" list names it. So the
+  // plate draws a locked door as an ordinary one, and the Room Zoom (which still reads the frame)
+  // does not. FILED; the fix is a one-element append to that tuple.
+  const glyphIds = new Set(skinned.map((g) => itemIdForGlyphChar(g)).filter(Boolean));
+  const unreachable = [...glyphIds].filter((id) => !byChannel.has(id)).sort();
+  assert.deepEqual(unreachable, ['door-blast'],
+    'THE SET OF ART THE PLATE CANNOT REACH HAS CHANGED. It is meant to be exactly one piece,\n'
+    + '`door-blast`, for the reason above. A NEW name here is art the Level-1 plate has silently\n'
+    + 'stopped drawing; an EMPTY list means the channel was widened and this exception should be\n'
+    + 'deleted along with the paragraph in `ship-fittings.js` that files it.');
+  assert.ok(glyphIds.size >= 30 && byChannel.size >= 29,
+    'non-vacuity: one of the two derivations came back nearly empty, so the difference above is '
+    + 'measuring the fixture rather than the surfaces (glyph ' + glyphIds.size
+    + ', channel ' + byChannel.size + ')');
 });
 
 test('NON_FURNITURE is ONE list: overview-scene.js imports it and declares no second copy', () => {
   // The structural half. The driven tests above catch a DIVERGENCE that costs art; this catches the
   // re-introduction of the hand mirror itself, before it has had a chance to diverge. Comment-
   // stripped (CLAUDE.md trap 1): the literal sitting in a comment must not satisfy it either way.
+  // ⚠️ THE SUBJECT MOVED WITH THE SOURCE, AND THE GUARD MOVED WITH IT RATHER THAN BEING DELETED.
+  // `overview-scene.js` no longer classifies GLYPHS at all — it does not import `NON_FURNITURE_CODES`
+  // and could not, because the plate never sees a glyph. So requiring the import would be requiring
+  // a dead dependency. What the hand-mirror rule was actually protecting is *"the two surfaces must
+  // not keep private copies of a shared classification"*, and on the plate the shared classification
+  // is now `ship-fittings.js`'s `deckFittings` — so the guard asserts that the composer imports it
+  // and declares no second glyph table of its own.
   const src = codeOnly(read('client/src/ui/overview-scene.js'));
-  assert.ok(src.includes('NON_FURNITURE_CODES'),
-    'overview-scene.js no longer imports the shared list — it has a private one again.');
+  assert.ok(src.includes('deckFittings'),
+    'overview-scene.js no longer imports the shared fitting source — it is deriving what stands on a\n'
+    + 'tile by itself again, which is the hand mirror in its new costume.');
   assert.ok(!/NON_FURNITURE\s*=\s*new Set\(\s*\[/.test(src),
-    'overview-scene.js declares a second NON_FURNITURE LITERAL. That is the hand mirror that hid\n'
+    'overview-scene.js declares a NON_FURNITURE LITERAL. That is the hand mirror that hid\n'
     + "the corpse: `'&'` had to be deleted from two places, and deleting it from one would have\n"
     + 'fixed one surface and left the other silently blank.');
+  assert.ok(!/itemIdForGlyphChar/.test(src),
+    'overview-scene.js resolves a GLYPH to a piece again. The plate draws every deck and `frame`\n'
+    + 'carries one, so a glyph route here can only ever furnish the deck the host is projecting —\n'
+    + 'and it would be a SECOND answer to "what stands here" beside `deckFittings`.');
   // NEGATIVE CONTROL, both directions, on synthetic sources so an edit to the real one cannot
   // invalidate them: the literal in a COMMENT must not trip the scan, and a live one must.
   const commented = codeOnly('// const NON_FURNITURE = new Set([46, 35]);\nconst live = 1;\n');
