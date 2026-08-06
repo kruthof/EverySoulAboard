@@ -37,3 +37,5 @@ client/tools/shots-paper-materials/
 client/tools/shots-paper-resources/
 # — lane/paper-fixtures —
 client/tools/shots-paper-fixtures/
+# — lane/sketch-experiment (unmerged visual experiment) —
+client/tools/shots-sketch/
