@@ -860,3 +860,38 @@ test('the stripper measurably removes a COMMENTED violation from the real styles
     'palette — `.tabrow` on the deprecated console shell carries one — but if it has gone, this ' +
     'control has lost its live half and should be re-derived rather than relaxed.');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// AN INERT DECLARATION IS AN AFFORDANCE NOBODY HAS — `text-overflow` without `overflow`.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⛔ FOUND BY REVIEW (observation 2) ON THE BUILD TRAY'S TWO CARD TEXT ROWS. `.rz-card-name` and
+// `.rz-card-stat` shipped `white-space:nowrap; text-overflow:ellipsis` and NO `overflow` — and the
+// initial value is `visible`, on which `text-overflow` has no effect whatsoever (CSS Overflow L3
+// §5.1: it applies to a block container "with `overflow` other than `visible`"). Computed
+// `overflow:visible`, measured in Chrome. So a label too long for a 122px card did not get an
+// ellipsis: it drew straight over the card next to it, and the declaration read to every later
+// reader as a truncation policy that was already handled.
+//
+// That is the same class as the hidden-scrollbar bug this file exists for — a property that LOOKS
+// like it manages an overflow while managing nothing — so it is guarded here beside it, over the
+// whole cascade rather than over the two rules that happened to have it.
+//
+// MUTATION: delete `overflow:hidden` from `.rz-card-name` ⇒ RED, naming the selector.
+// MUTATION: write `overflow:visible` beside the ellipsis ⇒ RED (the explicit form of the same hole).
+test('every `text-overflow:ellipsis` sits in a rule that actually CLIPS — an inert one is a policy nobody has', () => {
+  const rules = cssRules(CSS).filter((r) => /text-overflow\s*:\s*ellipsis/.test(r.decls));
+  // NON-VACUITY BY INCLUSION: the cascade must really carry some, or this asserts over an empty set.
+  assert.ok(rules.length >= 4,
+    `only ${rules.length} rule(s) in the whole cascade declare \`text-overflow:ellipsis\` — this scan ` +
+    'is reading almost nothing, which is how a guard passes without a subject');
+  const bad = [];
+  for (const r of rules) {
+    const m = /(?:^|;)\s*overflow\s*:\s*([a-z-]+)/.exec(r.decls);
+    const ov = m ? m[1] : '';
+    // `hidden`, `clip`, `scroll` and `auto` all make the ellipsis live; `visible` and absence do not.
+    if (!ov) bad.push(`${r.sels.join(', ')} — no \`overflow\` at all (the initial value is \`visible\`)`);
+    else if (ov === 'visible') bad.push(`${r.sels.join(', ')} — \`overflow:visible\``);
+  }
+  assert.deepEqual(bad, [], 'these rules declare an ellipsis that can never be drawn:\n  ' + bad.join('\n  '));
+});

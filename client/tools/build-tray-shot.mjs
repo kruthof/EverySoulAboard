@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// build-tray-shot.mjs — DRIVE and PHOTOGRAPH the build tray in a RUNNING game, at TWO viewport
-// heights.
+// build-tray-shot.mjs — DRIVE and PHOTOGRAPH the build tray in a RUNNING game, at FIVE viewport
+// sizes spanning all three of `roomzoom.css`'s bands.
 //
 // THE OWNER'S SENTENCE (2026-08-05): *"the building menu in zoom mode looks like a nightmare — too
 // crowded"*. `client/test/build-tray.test.js` proves the taxonomy, the card's numbers and the ESC
@@ -37,13 +37,21 @@ const CDP_PORT = +arg('cdp-port', '9379');
 const log = (...a) => console.log(...a);
 mkdirSync(OUT, { recursive: true });
 
-// ⭐ THE TWO VIEWPORT HEIGHTS ARE THE SUBJECT. `roomzoom.css` shrinks `--rz-tray-h` and the card at
-// `max-height:880px` and again at `740px`, and `.rz-canvas`'s bottom reserve is DERIVED from that
-// variable in one expression — so the pair below straddles the first breakpoint and the second
-// lands under the third band. A single height would photograph one arm of a media query.
+// ⭐ THE VIEWPORT HEIGHTS ARE THE SUBJECT. `roomzoom.css` shrinks `--rz-tray-h`, the card and the
+// rail at `max-height:880px` and again at `740px`, and `.rz-canvas`'s bottom reserve is DERIVED from
+// that variable in one expression — so a single height would photograph one arm of a media query.
+//
+// ⚠️ FIVE, NOT TWO, AND THE THREE NEW ONES ARE NOT DECORATION (review MAJOR 4). The first pair
+// straddled the outer breakpoints and never stood inside the MIDDLE band at all: 1440×900 and
+// 1366×768/1280×800 are the two bands a 13"/14" laptop actually opens the game at, and the 2px rail
+// overflow that review found lived at 1440×720 — a height the old pair covered only in its WIDE
+// form. Each row below is a real band boundary: >880 (base), ≤880 (middle), ≤740 (short).
 const VIEWPORTS = [
-  { w: 1600, h: 1000, name: 'tall' },
-  { w: 1440, h: 720, name: 'short' },
+  { w: 1600, h: 1000, name: 'tall' },      // base band   — --rz-tray-h:186
+  { w: 1440, h: 900,  name: 'tall-narrow' },// base band   — 900 > 880, the widest common laptop
+  { w: 1440, h: 720,  name: 'short' },     // short band  — --rz-tray-h:146, where the rail overflowed
+  { w: 1366, h: 768,  name: 'mid' },       // middle band — --rz-tray-h:158
+  { w: 1280, h: 800,  name: 'mid-narrow' },// middle band — the narrowest card row this tray gets
 ];
 
 let failures = 0;
@@ -63,7 +71,7 @@ const { decodeDecks, decodeRooms, decodeDevices } = await import('../src/wire/me
 const { decksView } = await import('../src/ui/decks-model.js');
 const { deckSlots } = await import('../src/ui/room-model.js');
 const { partsUnits } = await import('../src/ui/ledger-model.js');
-const { TRAY_LEAVES, trayCards, trayLeafFor, categoryOf, LEAF_LABEL } = await import('../src/ui/build-tray-model.js');
+const { TRAY_LEAVES, trayCards, trayLeafFor, categoryOf, LEAF_LABEL, trayStatText } = await import('../src/ui/build-tray-model.js');
 
 const DECK = (latest.get('frame')?.deck | 0);
 const dView = decksView(decodeDecks(latest.get('decks')), decodeRooms(latest.get('rooms')));
@@ -137,6 +145,40 @@ async function clickSel(sel) {
   return true;
 }
 
+// ⭐⭐ CONTAINMENT, OVER **EVERY** CONTROL THE TRAY PAINTS — not over the cards alone.
+//
+// ⛔ THE NARROW VERSION IS THE 4TH TRAP SHAPE AND IT COST THIS PACKAGE A SEND-BACK. The first draft
+// swept `.rz-card` only, so it could see a clipped CARD and was structurally blind to a clipped RAIL
+// — and the rail is exactly what overflowed: at 1440×720 the four-row category rail stood 2px past
+// `#rz-tray`, whose `overflow:hidden` cut it, and the rig reported ALL CHECKS PASSED. A containment
+// test whose selector excludes half the band is a scope filter that excludes the violation.
+//
+// The tray is the only clipper in the band (`.rz-tray{overflow:hidden}`; the rails are deliberately
+// `overflow:visible`, so a rail never hides its own row — it just runs past the tray's edge and is
+// cut there). So the honest question is per-control: is this box inside `#rz-tray`'s box?
+// Returns the offenders BY NAME, with the overflow in px, so a failure says which control and how far.
+const TRAY_CONTROLS = '.rz-card,.rz-tray-cat,.rz-tray-sub,.rz-tray-crumb,.rz-tray-esc,.rz-tray-empty';
+async function contained() {
+  const bad = await evalJson(`(()=>{const t=document.querySelector('#rz-tray');if(!t)return null;
+    const b=t.getBoundingClientRect();const out=[];
+    for(const e of document.querySelectorAll(${JSON.stringify(TRAY_CONTROLS)})){
+      const r=e.getBoundingClientRect();
+      if(r.width===0&&r.height===0)continue;
+      const over={top:b.top-r.top,bottom:r.bottom-b.bottom,left:b.left-r.left,right:r.right-b.right};
+      // ⚠️ THE CARD ROW SCROLLS HORIZONTALLY ON PURPOSE, so a card past the RIGHT edge is legitimate
+      // and is checked by the scroll leg above instead. Vertical overflow is never legitimate: no row
+      // in this band scrolls vertically, so a control past the top or the bottom is simply CUT.
+      const v=Math.max(over.top,over.bottom);
+      if(v>1)out.push({what:(e.className||e.tagName)+' "'+(e.textContent||'').trim().slice(0,18)+'"',
+        overflow:Math.round(v*10)/10,top:Math.round(r.top),bottom:Math.round(r.bottom),
+        band:[Math.round(b.top),Math.round(b.bottom)]});
+    }
+    return out;})()`);
+  if (bad === null) { console.error('  x FAIL #rz-tray is not in the DOM — the containment sweep read nothing'); failures++; return [{ what: 'no tray' }]; }
+  for (const o of bad) console.error(`     ${o.what} runs ${o.overflow}px past the band [${o.band}] (${o.top}..${o.bottom})`);
+  return bad;
+}
+
 await call('Page.enable');
 await call('Runtime.enable');
 
@@ -177,6 +219,12 @@ for (const vp of VIEWPORTS) {
   check(wrap && wrap.y >= canvas.b - 2,
     `the tray band starts at ${wrap && Math.round(wrap.y)} and the plate ends at ${canvas && Math.round(canvas.b)} — no overlap`);
   check(tray && tray.rr <= vp.w + 1, `the tray's right edge (${tray && Math.round(tray.rr)}) is inside the viewport`);
+  check((await contained()).length === 0, 'every tray control is inside the band (root)');
+  // ⭐ O1's FIRST UNSTATED COST, MEASURED RATHER THAN ASSERTED: what fraction of the window the band
+  // takes from the plate. Logged, not checked — the trade is the owner's, and a number in the log is
+  // how the next lane finds out it moved.
+  log(`  BAND COST: tray ${tray && Math.round(tray.h)}px of ${vp.h}px = ` +
+    `${tray ? (100 * tray.h / vp.h).toFixed(1) : '?'}% of the window; the plate keeps ${canvas && Math.round(canvas.h)}px`);
   await png(`tray-${vp.name}-01-root.png`);
 
   // ── (2) NAVIGATE: BUILD › MACHINES › (its leaves) ─────────────────────────────────────────
@@ -205,11 +253,8 @@ for (const vp of VIEWPORTS) {
   check(rowInfo && rowInfo.sbw !== 'none', `the card row does not hide its scrollbar (scrollbar-width: ${rowInfo && rowInfo.sbw})`);
   check(rowInfo && rowInfo.sw <= rowInfo.cw + 1 || rowInfo.sw > rowInfo.cw,
     `content ${rowInfo && rowInfo.sw}px in a ${rowInfo && rowInfo.cw}px row (${rowInfo && rowInfo.overflowing} card(s) past the edge, reachable by scroll)`);
-  // …and every card is fully inside the TRAY vertically, which is the height claim.
-  const vClip = await evalJson(`(()=>{const t=document.querySelector('#rz-tray').getBoundingClientRect();
-    return [...document.querySelectorAll('.rz-card')].filter(c=>{const r=c.getBoundingClientRect();
-      return r.top<t.top-1||r.bottom>t.bottom+1;}).length;})()`);
-  check(vClip === 0, `${vClip} card(s) overflow the tray's own band vertically`);
+  // …and every control the tray paints is fully inside the TRAY vertically, which is the height claim.
+  check((await contained()).length === 0, 'every tray control is inside the band (MACHINES)');
 
   // ── (3b) THE TWO CROWDED LEAVES — the ones the owner's complaint was about. FURNITURE › FITTED
   //    holds seven cards and STRUCTURE › WALL holds the six material swatches the flat strip used to
@@ -226,8 +271,80 @@ for (const vp of VIEWPORTS) {
     check(!!info && info.n === trayCards(leaf).length,
       `${LEAF_LABEL[leaf]} paints ${info && info.n} cards (the model says ${trayCards(leaf).length})`);
     log(`  ${LEAF_LABEL[leaf]}: ${info && info.sw}px of cards in a ${info && info.cw}px row, ${info && info.past} past the edge`);
+    check((await contained()).length === 0, `every tray control is inside the band (${LEAF_LABEL[leaf]})`);
     await png(`tray-${vp.name}-02b-${probe}.png`);
   }
+
+  // ── (3b-ii) THE LAMP CARD — the one card whose art is a hand-stated `itemId` rather than a
+  //    derivation, and therefore the one that can go stale silently. It did: `PALETTE_CMD.lamp`
+  //    still named `wall-lamp` after `GLYPH_SUBSTITUTE['*']` moved to `lamp-sconce` on 2026-08-05,
+  //    so this card drew the retired warm piece AND — because `wall-lamp` has no `SPECS` row —
+  //    dropped its dimensions without saying so (review MAJOR 3). Both halves are read off the LIVE
+  //    card here, because "the stat line silently lost a term" is precisely what a node assertion
+  //    over the same derivation cannot see: the model and the card agreed, and both were wrong.
+  {
+    const leaf = trayLeafFor('lamp');
+    await clickSel(`[data-rzcat="${categoryOf(leaf)}"]`);
+    await clickSel(`[data-rzsub="${leaf}"]`);
+    const lamp = await evalJson(`(()=>{const b=document.querySelector('.rz-card[data-rztool="lamp"]');
+      if(!b)return null;const svg=b.querySelector('.rz-card-art svg');
+      return {text:b.innerText.replace(/\\n/g,' | '),
+        stat:b.querySelector('.rz-card-stat')?.textContent||'',
+        artPaths:svg?svg.querySelectorAll('path,rect,circle,ellipse,line,polygon').length:0,
+        artIds:svg?[...svg.querySelectorAll('[id]')].map(e=>e.id).slice(0,3):[]};})()`);
+    check(!!lamp, 'the LAMP card is on screen');
+    log(`  LAMP card reads: ${lamp && lamp.text}`);
+    check(!!lamp && lamp.artPaths > 3, `the LAMP card draws a real piece (${lamp && lamp.artPaths} shapes)`);
+    // The stat line must carry BOTH terms — the draw AND the footprint. `trayStatText` is the
+    // authority for the string; what this checks is that the live card printed the same one and that
+    // it really has a dimension term in it (the shape the stale id deleted).
+    const want = trayStatText('lamp');
+    check(!!lamp && lamp.stat.trim() === want, `the LAMP stat reads "${lamp && lamp.stat}", the model says "${want}"`);
+    // ⚠️ BOTH TERMS PRESENT, ASSERTED SEPARATELY FROM THE EQUALITY ABOVE. The model and the card
+    // agreeing proves only that one derivation ran twice; what the stale `wall-lamp` actually did was
+    // make BOTH of them drop the dimension term in unison, silently. This is the leg that sees that.
+    check(/\d\s*KW/i.test(want) && /×/.test(want),
+      `the LAMP stat carries both a power term and a footprint ("${want}")`);
+    await png(`tray-${vp.name}-02d-lamp.png`);
+    check((await contained()).length === 0, 'every tray control is inside the band (COMFORT)');
+  }
+
+  // ── (3b-iii) NO CARD TEXT ROW IS TRUNCATED — the OTHER half of review observation 2.
+  //    `.rz-card-name` / `.rz-card-stat` now really clip (`overflow:hidden` was missing, so the
+  //    `text-overflow:ellipsis` beside it was inert). Making the ellipsis WORK is only half an
+  //    answer: an ellipsis a player actually meets is still a number they cannot read, and the stat
+  //    line is the card's only honest sentence. So the width is measured on the live nodes at every
+  //    viewport — `scrollWidth > clientWidth` is the browser's own answer to "did this get cut".
+  //    Swept over EVERY leaf, because the longest string is not the one a reader guesses.
+  {
+    const cut = [];
+    for (const leaf of Object.values(TRAY_LEAVES).flat()) {
+      if (!trayCards(leaf).length) continue;
+      await clickSel(`[data-rzcat="${categoryOf(leaf)}"]`);
+      await clickSel(`[data-rzsub="${leaf}"]`);
+      const rows = await evalJson(`(()=>[...document.querySelectorAll('.rz-card')].flatMap(c=>
+        [...c.querySelectorAll('.rz-card-name,.rz-card-stat')]
+          .filter(e=>e.scrollWidth>e.clientWidth+1)
+          .map(e=>({card:c.getAttribute('data-rzcard'),cls:e.className,
+                    text:e.textContent,want:e.scrollWidth,have:e.clientWidth}))))()`);
+      for (const r of rows || []) cut.push(`${r.card} ${r.cls}: "${r.text}" needs ${r.want}px, has ${r.have}px`);
+    }
+    for (const c of cut) console.error('     CUT ' + c);
+    check(cut.length === 0, `${cut.length} card text row(s) are truncated by the ellipsis`);
+  }
+
+  // ── (3c) ORDERS — the tallest state the band ever holds, and the one review found CLIPPED.
+  //    Four category rows beside three leaf rows, and the cards carry no art, so nothing about the
+  //    CARD row constrains the height here: it is the RAIL that decides whether the band is tall
+  //    enough. Swept at the root too, where the rails stand beside an empty card row.
+  await clickSel('[data-rzcat="orders"]');
+  check((await contained()).length === 0, 'every tray control is inside the band (ORDERS, rails at full height)');
+  await png(`tray-${vp.name}-02c-orders.png`);
+  for (const sub of ['orders/designate', 'orders/crew', 'orders/remove']) {
+    await clickSel(`[data-rzsub="${sub}"]`);
+    check((await contained()).length === 0, `every tray control is inside the band (${LEAF_LABEL[sub]})`);
+  }
+
   // …back to the heater's leaf for the arming legs below.
   await clickSel(`[data-rzcat="${categoryOf(heaterLeaf)}"]`);
   await clickSel(`[data-rzsub="${heaterLeaf}"]`);

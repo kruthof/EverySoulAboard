@@ -184,10 +184,33 @@ export const TOOL_LEAF = Object.freeze({
  * (`gen > 0`, `draw === 0` — SolarWing's shape) cannot fall through into FURNITURE on the strength
  * of drawing nothing.
  *
+ * ⭐⭐ THE SECOND PARAMETER IS A TEST SEAM AND IT EXISTS BECAUSE THE FIRST DRAFT'S PIN WAS TRAP 1
+ * (review MAJOR 1). No shipped tool GENERATES power, so the `gen > 0` half of the rule has no member
+ * to drive — and the first draft "pinned" it by `assert.match`ing this file's own SOURCE for the
+ * substring `row.draw > 0 || row.gen > 0`. That is the raw-text guard `CLAUDE.md` trap 1 forbids, and
+ * the reviewer defeated it in one line: keep the exact text in a `// was:` comment above a shipped
+ * `if (row && (row.draw > 0))` and the whole suite stays GREEN with the generation arm semantically
+ * deleted. Measured again here before the fix: 1838/1838 green, `deriveLeaf` no longer asking.
+ *
+ * So the arm is driven through the REAL function instead. `env` supplies the two facts the rule reads
+ * about a tool — its palette row and its machine row — and defaults to the shipped tables, so every
+ * caller in the client is byte-unchanged and every ARM below is the shipped one. A synthetic
+ * SolarWing (`draw 0 / gen 6`, read out of `MachineDefs.cs`) then walks the real code and lands in
+ * `machines/comfort`; drop `|| row.gen > 0` and it lands in `furniture/fitted` instead, which is a
+ * semantic red. `build-tray.test.js` carries the leg plus two negative controls.
+ *
+ * ⚠️ IT IS A SEAM, NOT A BACK DOOR: it can only ever ANSWER a question about a hypothetical tool. The
+ * twenty-one real ones are still derived through `paletteCommand` + `MACHINE_ROW` by the census,
+ * which passes no `env` at all.
+ *
  * PURE.
+ * @param {string} tool
+ * @param {{paletteRow?:object, machineRows?:object}} [env] test-only override of the two source
+ *        tables; omitted everywhere in the shipping client.
  */
-export function deriveLeaf(tool) {
-  const pc = paletteCommand(tool);
+export function deriveLeaf(tool, env) {
+  const pc = (env && env.paletteRow) || paletteCommand(tool);
+  const rows = (env && env.machineRows) || MACHINE_ROW;
   if (pc.cls === 'structural') {
     return TRAY_LEAVES.structure.includes('structure/' + pc.kind) ? 'structure/' + pc.kind : '';
   }
@@ -195,7 +218,7 @@ export function deriveLeaf(tool) {
   if (pc.cls === 'move') return 'orders/crew';
   if (pc.cls === 'demolish') return 'orders/remove';
   if (pc.cls !== 'functional' && pc.cls !== 'cosmetic') return '';
-  const row = pc.deviceKind ? MACHINE_ROW[pc.deviceKind] : undefined;
+  const row = pc.deviceKind ? rows[pc.deviceKind] : undefined;
   // A THING THAT MOVES POWER IS A MACHINE — draw OR generation, filed by the sim's own tier.
   if (row && (row.draw > 0 || row.gen > 0)) {
     const leaf = 'machines/' + (TIER_LEAF[row.tier] || '');

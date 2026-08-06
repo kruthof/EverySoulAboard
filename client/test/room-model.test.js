@@ -43,6 +43,7 @@ import {
 import { ITEMS, ITEM_IDS, isDeviceItem } from '../src/items/index.js';
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { dragModeForTool } from '../src/ui/build-drag-model.js';
+import { trayCards, trayLeafFor } from '../src/ui/build-tray-model.js';
 import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
 import { APPLIES_NEXT_LABEL, mismatchLabel } from '../src/ui/accepts-row.js';
@@ -2510,8 +2511,15 @@ test('the build tray PAINTS a STOCKPILE card, labelled, and the hint names its h
 /** The scanned card for `tool` in the CURRENTLY OPEN leaf, or undefined. */
 const rzToolBtn = (tool) => trayDrv.cards().find((b) => b.getAttribute('data-rztool') === tool);
 /** Every visible card's `aria-pressed`, keyed by TOOL — `null` where the attribute is absent. */
+/** ⚠️ IN THE CARD'S **OWN** VOCABULARY. A tool card is a one-shot toggle (`aria-pressed`); a MATERIAL
+ *  card is one of six mutually exclusive skins for one tool and is a radio (`aria-checked` inside a
+ *  `role="radiogroup"`) — `build-tray-view.js`'s `cardHtml` carries the whole reasoning, restored from
+ *  the deleted `paintMatStrip` after review found the tray had silently inverted it. Asking every card
+ *  for `aria-pressed` is exactly the announcement that decision refuses, so this helper asks each card
+ *  what KIND of control it is (the presence of `data-rzmat`) before asking whether it is held. */
+const rzHeldAttr = (b) => (b.getAttribute('data-rzmat') == null ? 'aria-pressed' : 'aria-checked');
 const rzPressed = () => Object.fromEntries(
-  trayDrv.cards().map((b) => [b.getAttribute('data-rztool'), b.getAttribute('aria-pressed')]));
+  trayDrv.cards().map((b) => [b.getAttribute('data-rztool'), b.getAttribute(rzHeldAttr(b))]));
 
 // MUTATION: emit `type="submit"` (or drop the attribute) ⇒ RED on the type leg.
 // MUTATION: drop `aria-pressed="false"` from the `buildChrome` markup ⇒ RED on the MARKUP leg.
@@ -2543,10 +2551,19 @@ test('every tray card is a real <button type="button"> that starts UNPRESSED —
     // The MARKUP leg and the NODE leg are about two different things and BOTH are needed: dropping
     // `aria-pressed="false"` from the builder is invisible to a reader of the live nodes, because
     // the painter writes it on the same pass.
-    assert.equal((html.match(/aria-pressed="false"/g) || []).length, cards.length,
-      'the tray MARKUP no longer declares `aria-pressed="false"` on every card. A toggle born ' +
-      'without the attribute is a plain button until the first repaint, and the attribute is the ' +
-      'builder\'s statement about what kind of control this is.');
+    // ⚠️ TWO VOCABULARIES, COUNTED TOGETHER. A tool card must be born `aria-pressed="false"` and a
+    // material card `role="radio" aria-checked="false"` — which kind is a fact about the leaf
+    // (`trayCards`' `kind`), so the expected split is derived rather than hard-coded, and a card
+    // that carried BOTH would be counted twice and fail the total.
+    const mats = trayCards(trayLeafFor(tool)).filter((c) => c.kind === 'mat').length;
+    assert.equal((html.match(/aria-pressed="false"/g) || []).length, cards.length - mats,
+      `'${tool}': the tray MARKUP no longer declares \`aria-pressed="false"\` on every TOOL card. A ` +
+      'toggle born without the attribute is a plain button until the first repaint, and the ' +
+      'attribute is the builder\'s statement about what kind of control this is.');
+    assert.equal((html.match(/role="radio" aria-checked="false"/g) || []).length, mats,
+      `'${tool}': the tray MARKUP no longer declares \`role="radio" aria-checked="false"\` on every ` +
+      'MATERIAL card — six independent toggles announced where the player has one choice, which is ' +
+      'the announcement `paintMatStrip` spent eight lines refusing.');
     for (const [t, v] of Object.entries(rzPressed()))
       assert.equal(v, 'false', `'${t}' does not start at aria-pressed="false" (it reads ${v})`);
     for (const b of cards) reached.add(b.getAttribute('data-rztool'));

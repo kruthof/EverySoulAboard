@@ -53,6 +53,7 @@ import * as FITTINGS from '../src/items/fittings.js';
 import * as MACHINES from '../src/items/machines.js';
 import * as PAPER_FIXTURES from '../src/items/paper-fixtures.js';
 import * as PAPER_RESOURCES from '../src/items/paper-resources.js';
+import * as PAPER_MATERIALS from '../src/items/paper-materials.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { makeTrayDriver } from './tray-arm.js';
 
@@ -128,35 +129,64 @@ test('every DECLARED leaf is either populated and OFFERED, or empty and hidden �
   assert.deepEqual(fails, [], fails.join('\n'));
 });
 
-// ⭐ THE RULE'S UNEXERCISED ARM, DRIVEN. `deriveLeaf` routes a device kind that MOVES POWER into
-// MACHINES by its tier — and today no palette tool GENERATES any, so the `gen > 0` half of that
-// condition is a rule nobody has checked. A rule no member exercises is a rule that is wrong the day
-// it is needed (the design's own HULL row is a SolarWing, i.e. exactly this case).
+// ⭐⭐ THE RULE'S UNEXERCISED ARM, DRIVEN THROUGH THE REAL FUNCTION. `deriveLeaf` routes a device kind
+// that MOVES POWER into MACHINES by its tier — and today no palette tool GENERATES any, so the
+// `gen > 0` half of that condition is a rule nobody has checked. A rule no member exercises is a rule
+// that is wrong the day it is needed (the design's own HULL row is a SolarWing, i.e. exactly this
+// case).
 //
-// MUTATION: drop `|| row.gen > 0` from `deriveLeaf` ⇒ RED (a solar wing files as FURNITURE).
-test('a device kind that GENERATES power is a MACHINE, not furniture — driven synthetically', () => {
+// ⛔⛔ THE FIRST DRAFT OF THIS LEG WAS TRAP 1 AND REVIEW DEFEATED IT IN ONE LINE. It re-implemented
+// the rule locally (`synthetic.draw > 0 || synthetic.gen > 0` — a SECOND authority, agreeing with
+// itself) and then `assert.match`ed the module's RAW SOURCE for the substring
+// `row.draw > 0 || row.gen > 0`. Both halves are satisfied by a module that no longer asks: keep the
+// exact text in a `// was:` comment and ship `if (row && (row.draw > 0))`, and the suite is
+// 1838/1838 GREEN with the generation arm semantically gone. Physically applied and re-measured for
+// this fix round: 23/23 green on this file with the arm deleted.
+//
+// So the arm is driven through the SHIPPED `deriveLeaf` instead, via its `env` seam (see that
+// function's header). No source text is scanned anywhere in this leg.
+//
+// MUTATION: drop `|| row.gen > 0` from `deriveLeaf` ⇒ RED here (a solar wing files as FURNITURE) —
+//           and RED whether or not the deleted text survives in a comment, which is the whole point.
+test('a device kind that GENERATES power is a MACHINE, not furniture — driven through the REAL rule', () => {
   // The real `SolarWing` row, read from the authority rather than typed: 0 kW draw, 6 kW generated.
   const cs = readFileSync(join(REPO, 'sim/Sim.Core/Entities/MachineDefs.cs'), 'utf8');
   const m = /\/\*\s*SolarWing\s*\*\/\s*new\(\s*([0-9.]+)f?\s*,\s*([0-9.]+)f?\s*,\s*PowerTier\.(\w+)/.exec(cs);
   assert.ok(m, 'the SolarWing row is not parseable out of MachineDefs.cs — this leg reads nothing');
-  const [, draw, gen, tier] = m;
-  assert.equal(Number(draw), 0, 'SolarWing draws power now — pick another generator for this leg');
-  assert.ok(Number(gen) > 0, 'SolarWing generates nothing now — this leg has no subject');
+  const [, drawS, genS, tier] = m;
+  const draw = Number(drawS), gen = Number(genS);
+  assert.equal(draw, 0, 'SolarWing draws power now — pick another generator for this leg');
+  assert.ok(gen > 0, 'SolarWing generates nothing now — this leg has no subject');
+  assert.ok(TIER_LEAF[tier], `SolarWing's tier '${tier}' has no leaf — a generator would have nowhere to go`);
+  const want = 'machines/' + TIER_LEAF[tier];
+  assert.ok(TRAY_LEAVES.machines.includes(want), `'${want}' is not a declared MACHINES leaf`);
 
-  // A synthetic row with EXACTLY that shape, fed through the shipped rule via a stand-in table.
-  const synthetic = { draw: Number(draw), gen: Number(gen), tier };
-  const leaf = synthetic.draw > 0 || synthetic.gen > 0
-    ? 'machines/' + TIER_LEAF[synthetic.tier] : 'furniture/fitted';
-  assert.equal(leaf, 'machines/' + TIER_LEAF[tier],
-    'a 0-draw generator does not route into MACHINES — it would land in FURNITURE, which is what ' +
-    'the design calls an outboard hull piece');
-  assert.ok(TRAY_LEAVES.machines.includes(leaf),
-    `'${leaf}' is not a declared MACHINES leaf — a generator would have nowhere to go`);
-  // …and the exact expression the module ships, applied to the same row, must agree. Read out of the
-  // source rather than restated, because a restated rule is the second authority this file refuses.
-  const src = readFileSync(join(REPO, 'client/src/ui/build-tray-model.js'), 'utf8');
-  assert.match(src, /row\.draw > 0 \|\| row\.gen > 0/,
-    'the shipped rule no longer asks about GENERATION — a solar wing would file as furniture');
+  // A SYNTHETIC TOOL with exactly SolarWing's shape — a `functional` palette row naming the kind, and
+  // the kind's real row in the mirror — walked through the SHIPPED rule.
+  const paletteRow = { cls: 'functional', verb: 'place', kind: 'solarwing', deviceKind: 'SolarWing' };
+  const withRow = { ...MACHINE_ROW, SolarWing: { draw, gen, tier } };
+  assert.equal(deriveLeaf('solarwing', { paletteRow, machineRows: withRow }), want,
+    'a 0-draw GENERATOR does not route into MACHINES — it lands in FURNITURE, which is what the ' +
+    'design calls an outboard hull piece. The `gen > 0` half of the rule is gone or unreachable.');
+
+  // ⭐ NEGATIVE CONTROL 1 — THE SEAM REALLY FEEDS THE RULE. Same synthetic tool, mirror WITHOUT the
+  // SolarWing row: the rule must answer '' (an unmapped functional kind is not "furniture"), never
+  // `machines/*`. If this also said `machines/comfort` the leg above would be reading a constant.
+  assert.equal(deriveLeaf('solarwing', { paletteRow, machineRows: MACHINE_ROW }), '',
+    'the rule answered a MACHINES leaf for a kind with no mirrored row — the leg above is not ' +
+    'reading the row it thinks it is');
+
+  // ⭐ NEGATIVE CONTROL 2 — THE ANSWER IS THE GENERATION TERM'S DOING, not something every
+  // `functional` row gets. The identical tool with a 0-draw / 0-gen row files as FURNITURE, which is
+  // exactly the wrong answer the shipped arm exists to prevent.
+  assert.equal(deriveLeaf('solarwing', { paletteRow, machineRows: { SolarWing: { draw: 0, gen: 0, tier } } }),
+    'furniture/fitted',
+    'a device that moves NO power still files under MACHINES — then the MACHINES answer above is ' +
+    'not evidence about the generation arm at all');
+
+  // …and the seam changes NOTHING for the real tools: `deriveLeaf(tool)` and
+  // `deriveLeaf(tool, undefined)` are the same function on every shipped row.
+  for (const t of ROOM_TOOLS) assert.equal(deriveLeaf(t, undefined), deriveLeaf(t), `the seam moved '${t}'`);
 });
 
 // MUTATION: swap ERASE into `orders/remove` beside DEMOLISH ⇒ RED.
@@ -239,7 +269,20 @@ test('the machine mirror equals BOTH authorities — machines.def and MachineDef
   assert.deepEqual(fails, [], fails.join('\n'));
 });
 
-// MUTATION: `itemSpecCm` returns `paper-materials.SPECS` too ⇒ RED (a tiling PITCH is not a footprint).
+// ⛔ THE MUTATION LINE THAT USED TO STAND HERE WAS DECORATION (review MAJOR 2). It read
+// *"`itemSpecCm` returns `paper-materials.SPECS` too ⇒ RED (a tiling PITCH is not a footprint)"* —
+// and it is GREEN both ways, measured: the loops below walk the FOUR catalogues and ask
+// `itemSpecCm` about their own ids, so a fifth table appended to that lookup chain is never
+// consulted for any id this test names. A named mutation that cannot bite is worse than no line at
+// all, because it reads as coverage.
+//
+// It is a real leg now, at the bottom of this test: `paper-materials`' ids must answer `undefined`.
+// Those rows are `{w, h, surface}` — a TILING PITCH for a wall/floor skin, `TILE_CM` across and
+// `WALL_H_CM` tall — and they carry NO `d` at all, so a card that took one would print a footprint
+// out of a repeat interval and an elevation. That is the fabricated number this package's third
+// non-negotiable forbids, arriving through a lookup chain rather than through a table.
+//
+// MUTATION: append `|| PM.SPECS[itemId]` to `itemSpecCm`'s chain ⇒ RED, naming the material id.
 test('the registry\'s spec door reads exactly the four catalogues, and no id is in two of them', () => {
   const cats = [['fittings', FITTINGS.SPECS], ['machines', MACHINES.SPECS],
     ['paper-fixtures', PAPER_FIXTURES.SPECS], ['paper-resources', PAPER_RESOURCES.SPECS]];
@@ -257,6 +300,25 @@ test('the registry\'s spec door reads exactly the four catalogues, and no id is 
   }
   assert.equal(itemSpecCm('no-such-piece'), undefined);
   assert.equal(itemSpecCm(null), undefined);
+
+  // ⭐ THE FIFTH CATALOGUE IS **OUT**, AND THIS IS THE LEG THAT SAYS SO. `paper-materials` publishes
+  // twelve ids through its own `SPECS`, and every one of them must be invisible to this door.
+  assert.ok(PAPER_MATERIALS.MATERIAL_IDS.length >= 12,
+    `paper-materials publishes ${PAPER_MATERIALS.MATERIAL_IDS.length} ids — this leg would read almost nothing`);
+  for (const id of PAPER_MATERIALS.MATERIAL_IDS) {
+    assert.ok(PAPER_MATERIALS.SPECS[id], `'${id}' has no paper-materials row — the sweep is reading the wrong table`);
+    assert.equal(PAPER_MATERIALS.SPECS[id].d, undefined,
+      `'${id}' has grown a DEPTH — if a material really has a footprint now, this leg is the ` +
+      'decision, not an obstacle');
+    assert.equal(itemSpecCm(id), undefined,
+      `itemSpecCm('${id}') answered ${JSON.stringify(itemSpecCm(id))}. That row is a TILING PITCH ` +
+      '(TILE_CM across, WALL_H_CM tall, no depth), not a piece\'s footprint — a card taking it would ' +
+      'print a repeat interval as a size.');
+  }
+  // …and the material cards, which is where such a row would actually surface, print the STRUCTURE
+  // geometry instead — the surface's own `M_PER_TILE × ROOM_HEIGHT_M`, never a catalogue row.
+  assert.equal(toolSpecCm('wall'), undefined, 'WALL resolved a SPECS row — its art is a box this surface authors');
+  assert.match(trayStatText('wall'), /M PER TILE$/, `WALL's stat reads "${trayStatText('wall')}"`);
 });
 
 // ⭐⭐ THE STAT LINE IS BUILT FROM SOURCES, NOT WRITTEN. Every term is re-derived here from the
@@ -619,7 +681,12 @@ test('DRIVEN: a HOTKEY arms the tool AND brings its card on screen', () => {
     const card = drv.cards().find((b) => b.getAttribute('data-rztool') === tool);
     if (!card) { fails.push(`[${k}] armed ${tool} and its card is NOT on screen`); key(k); continue; }
     if (!card.classList.contains('on')) fails.push(`[${k}]: ${tool}'s card is on screen but not lit`);
-    if (card.getAttribute('aria-pressed') !== 'true') fails.push(`[${k}]: ${tool}'s card does not say it is pressed`);
+    // …IN ITS OWN VOCABULARY. WALL's cards are radios (one of six materials), the other six are
+    // toggles — asking every card for `aria-pressed` is what silently converted the material strip's
+    // documented refusal into six announced toggles (review MAJOR 5).
+    const held = card.getAttribute('data-rzmat') == null
+      ? card.getAttribute('aria-pressed') : card.getAttribute('aria-checked');
+    if (held !== 'true') fails.push(`[${k}]: ${tool}'s card does not say it is held (reads ${held})`);
     // …and the crumb trail names where the surface went.
     const want = LEAF_LABEL[trayLeafFor(tool)];
     if (!crumbLabels().includes(want)) fails.push(`[${k}]: the breadcrumb reads [${crumbLabels()}], expected it to name ${want}`);
@@ -770,15 +837,108 @@ test('E4 SWEEP: every affordance the flat palette earned has a home on the tray'
   drv.arm('table');
 
   // (i) KEYBOARD REACHABILITY — every control the tray paints is a real, typed button.
+  //
+  // ⛔ COUNTED ONCE, AND THE FLOOR IS DERIVED RATHER THAN GUESSED (review observation 4). The first
+  // draft summed `trayEl.innerHTML` **and** its three rails' `innerHTML`: in a browser the parent's
+  // markup CONTAINS the children's, so every button was counted twice and the `> 6` floor was really
+  // `> 3` — against a tray that paints 15. Worse, the expression meant two different things in the
+  // two places it runs: this rig's `TrEl.innerHTML` returns the string that was ASSIGNED, and the
+  // tray's own assignment is the empty skeleton, so the same line counted 13 here (crumbs dropped)
+  // and would count 28 in Chrome. An arithmetic that disagrees with itself is not a floor.
+  // Each row is read from its OWN element exactly once now, and the target is what the MODEL says is
+  // on screen — so a painter that silently drops the crumb row or a rail fails BY ARITHMETIC.
   drv.open('bunk');
-  const html = trayEl.innerHTML + trayEl.querySelector('.rz-tray-cats').innerHTML
-    + trayEl.querySelector('.rz-tray-subs').innerHTML + trayEl.querySelector('.rz-tray-cards').innerHTML;
-  const buttons = (html.match(/<button /g) || []).length;
-  const typed = (html.match(/<button type="button"/g) || []).length;
-  note(buttons > 6 && buttons === typed,
+  const bunkLeaf = trayLeafFor('bunk');
+  const bunkCat = categoryOf(bunkLeaf);
+  const rows = ['.rz-tray-crumbs', '.rz-tray-cats', '.rz-tray-subs', '.rz-tray-cards']
+    .map((c) => { const n = trayEl.querySelector(c); assert.ok(n, `(i) '${c}' is not in the tray at all`); return String(n.innerHTML || ''); });
+  const buttons = rows.reduce((n, h) => n + (h.match(/<button /g) || []).length, 0);
+  const typed = rows.reduce((n, h) => n + (h.match(/<button type="button"/g) || []).length, 0);
+  const wantBtns = trayCrumbs({ cat: bunkCat, leaf: bunkLeaf }).length + categoriesWithTools().length
+    + leavesInCategory(bunkCat).length + trayCards(bunkLeaf).length;
+  note(wantBtns >= 12, `(i) the model says only ${wantBtns} controls — the count below reads too little`);
+  note(buttons === wantBtns,
+    `(i) the tray painted ${buttons} controls [crumbs/cats/subs/cards = ` +
+    `${rows.map((h) => (h.match(/<button /g) || []).length).join('/')}], the model says ${wantBtns}`);
+  note(buttons === typed,
     `(i) ${buttons - typed} of ${buttons} tray controls are not \`<button type="button">\``);
 
   assert.deepEqual(fails, [], fails.join('\n'));
+});
+
+// ⭐⭐ THE TWO CONTROL VOCABULARIES — restored after review MAJOR 5 found the first draft had SILENTLY
+// INVERTED a decision this repo had already made and written down. The deleted `paintMatStrip` spent
+// eight lines REFUSING `aria-pressed` on the six material swatches ("a radio group, not six
+// independent toggles … guessing `aria-pressed` here would announce six toggles where the player has
+// one choice"), and the tray's first draft wrote `aria-pressed` on every card, reasoning and all
+// gone with the strip. What ships now is the spelling that note named as correct.
+//
+// MUTATION: write `aria-pressed` on a material card ⇒ RED (six toggles for one choice).
+// MUTATION: drop `role="radiogroup"` from the card row ⇒ RED (six radios in no group).
+// MUTATION: leave `role="radiogroup"` on a row of TOOL cards ⇒ RED (a group of things that are not radios).
+// MUTATION: write `aria-checked="true"` from `activeMaterial` rather than from `.on` ⇒ RED (a material
+//           stays "checked" with the tool put down — a claim the player is placing a wall when they are not).
+// MUTATION: put `tabindex="-1"` on a card ⇒ RED (E4's keyboard reachability, deleted by the pattern's
+//           roving-focus half without its arrow keys).
+test('TWO VOCABULARIES: a tool card is a TOGGLE, a material card is one of six RADIOS', () => {
+  // PREMISE FIRST — the group role rests on a leaf being homogeneous, so that is a measured fact and
+  // not an assumption. A leaf that ever mixed a material card with a tool card would need a
+  // different answer than either branch gives.
+  let leaves = 0;
+  for (const leaf of Object.values(TRAY_LEAVES).flat()) {
+    const cards = trayCards(leaf);
+    if (!cards.length) continue;
+    leaves++;
+    assert.equal(new Set(cards.map((c) => c.kind)).size, 1,
+      `'${leaf}' mixes card kinds [${cards.map((c) => c.kind)}] — one row cannot be both a radiogroup ` +
+      'and a set of toggles, so the painter would have to choose and would announce one of them wrongly');
+  }
+  assert.ok(leaves >= 8, `only ${leaves} populated leaves — the homogeneity sweep reads too little`);
+
+  const row = () => trayEl.querySelector('.rz-tray-cards');
+  // ── THE RADIO LEAF ────────────────────────────────────────────────────────────────────────────
+  drv.arm('wall', 0);
+  const mats = drv.cards();
+  assert.equal(mats.length, 6, `the WALL leaf paints ${mats.length} cards — this leg reads too little`);
+  assert.equal(row().getAttribute('role'), 'radiogroup', 'the six materials are not announced as ONE choice');
+  assert.ok(row().getAttribute('aria-label'), 'the radiogroup has no name — "group" and nothing else');
+  for (const b of mats) {
+    assert.equal(b.getAttribute('role'), 'radio', 'a material card is not a radio');
+    assert.equal(b.getAttribute('aria-pressed'), null,
+      'a material card announces itself as an independent TOGGLE — this is the exact announcement ' +
+      '`paintMatStrip` refused, arriving through the tray');
+    assert.equal(b.getAttribute('tabindex'), null,
+      'a material card has been taken out of the tab order — the roving-focus half of the radiogroup ' +
+      'pattern without its arrow keys deletes ruling E4\'s keyboard reachability');
+    assert.equal(b.getAttribute('type'), 'button', 'one button vocabulary on one menu');
+  }
+  const checked = () => drv.cards().filter((b) => b.getAttribute('aria-checked') === 'true');
+  assert.equal(checked().length, 1, 'a one-of-six group announces exactly one chosen member');
+  assert.equal(checked()[0].getAttribute('data-rzmat'), '0');
+  // …and picking a second MOVES the choice rather than adding one, which is the whole reason this is
+  // a radio group: `.on` and `aria-checked` are one fact in two channels.
+  fire(drv.cardFor('wall', 3), 'click', {});
+  assert.equal(checked().length, 1, 'two materials are checked at once — that is a toggle set, not a choice');
+  assert.equal(checked()[0].getAttribute('data-rzmat'), '3', 'the announced choice did not follow the press');
+  assert.equal(drv.cards().filter((b) => b.classList.contains('on'))[0].getAttribute('data-rzmat'), '3',
+    'the paint and the announcement disagree about which material is chosen');
+  // …and with the tool PUT DOWN nothing is checked. That is true, not a gap: no wall is being placed.
+  drv.arm('wall', 3);
+  assert.equal(checked().length, 0,
+    'a material still announces itself as chosen with the tool put down — `aria-checked` is latching ' +
+    'on `activeMaterial` instead of following the armed state');
+
+  // ── THE TOGGLE LEAF ───────────────────────────────────────────────────────────────────────────
+  drv.arm('table');
+  const t = drv.cardFor('table');
+  assert.equal(t.getAttribute('aria-pressed'), 'true', 'the armed tool card does not say it is held');
+  assert.equal(t.getAttribute('role'), null, 'a one-shot tool card is announced as a radio');
+  assert.equal(t.getAttribute('aria-checked'), null, 'a one-shot tool card carries the radio vocabulary too');
+  assert.equal(row().getAttribute('role'), null,
+    'the card row is still a radiogroup on a leaf of independent toggles — the role survived the ' +
+    'navigation, which is the stale-signature shape this file has already caught once');
+  drv.arm('table');
+  assert.equal(drv.cardFor('table').getAttribute('aria-pressed'), 'false', 'the disarmed card still says pressed');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

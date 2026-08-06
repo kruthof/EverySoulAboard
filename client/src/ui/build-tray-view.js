@@ -15,9 +15,11 @@
 //      and the CARD ROW is rebuilt only when its own signature (the leaf, and the cards that leaf
 //      yields) changes. The live half — armed / cannot-pay / title — is a class toggle and an
 //      attribute write, never a re-render.
-//   2. THE ARMED STATE IS SAID IN WORDS AS WELL AS IN COLOUR (`aria-pressed`), on every card and
-//      every rail row, because a screen reader reading twenty-one labels and nothing about which one
-//      is held is the same defect as a button that does not change colour.
+//   2. THE ARMED STATE IS SAID IN WORDS AS WELL AS IN COLOUR, on every card and every rail row,
+//      because a screen reader reading twenty-one labels and nothing about which one is held is the
+//      same defect as a button that does not change colour. ⚠️ IN **TWO** VOCABULARIES, NOT ONE —
+//      see `cardHtml`'s ⛔⛔ block: a one-shot tool card is a TOGGLE (`aria-pressed`) and a material
+//      card is one of six MUTUALLY EXCLUSIVE choices (`role="radio"`/`aria-checked`).
 //   3. EVERY CONTROL IS A REAL `<button type="button">` — Tab reaches it, Enter/Space press it, and
 //      inside a form the default type is `submit`. One button vocabulary on one menu.
 //
@@ -138,16 +140,53 @@ export function makeBuildTray(host) {
         buildItem(card.artId, { w: ART, h: ART, idPrefix: 'rz-tc-' + card.key.replace(/[^\w-]/g, '-') }) +
         '</svg></span>'
       : '<span class="rz-card-art rz-card-noart" aria-hidden="true"></span>';
-    // ⚠️ BORN UNARMED AND UNPRICED-BY-STATE, ALWAYS. The `.on` / `.cant` classes, the `aria-pressed`
+    // ⚠️ BORN UNARMED AND UNPRICED-BY-STATE, ALWAYS. The `.on` / `.cant` classes, the pressed/checked
     // value and the hover `title` are the LIVE half and are written in place by the loop at the end
     // of `paint` — which runs on the same pass, so nothing is ever on screen in the wrong state. The
-    // markup declaring `aria-pressed="false"` is a separate claim from the painter writing it, and
+    // markup declaring the attribute `false` is a separate claim from the painter writing it, and
     // both are pinned (`build-tray.test.js`, the two-leg note): a toggle born without the attribute
     // is a plain button until the first repaint.
+    //
+    // ⛔⛔ TWO CONTROL VOCABULARIES, AND THE DISTINCTION IS A DECISION THIS REPO ALREADY MADE AND
+    // THIS PACKAGE FIRST DRAFT SILENTLY INVERTED (review MAJOR 5). The deleted `paintMatStrip`
+    // carried it in full, and its words are worth keeping:
+    //
+    //     *"`type="button"` and DELIBERATELY NOT `aria-pressed`. … The pressed state is a different
+    //     question and is left open on purpose: `activeMaterial` guarantees exactly ONE swatch is
+    //     `on`, which is a radio group, not six independent toggles. The right spelling is
+    //     `role="radio"`/`aria-checked` inside a `radiogroup` … guessing `aria-pressed` here would
+    //     announce six toggles where the player has one choice."*
+    //
+    // The first tray draft wrote `aria-pressed` on EVERY card, which is exactly the announcement that
+    // note refused, and the refusal's reasoning went out with the strip. Restored — and this time
+    // SPELLED rather than deferred, because the tray changed the fact the note was reasoning about:
+    // on the flat palette the six swatches sat BESIDE a WALL tool button that carried `aria-pressed`,
+    // so the armed state was announced SOMEWHERE. On the tray the six material cards are the ONLY
+    // wall controls there are, so refusing here would leave "this tool is in your hand" unsaid
+    // altogether — a regression the strip did not have.
+    //
+    //   · A TOOL CARD is a one-shot toggle: press to arm, press again to put down, nothing else on
+    //     the row is affected. `aria-pressed`.
+    //   · A MATERIAL CARD is one of six mutually exclusive skins for ONE tool: picking a second
+    //     moves the choice rather than adding one (`activeMaterial`). `role="radio"` +
+    //     `aria-checked`, in a `role="radiogroup"` (set on the row below, and only when every card
+    //     in it is a material — a mixed row has no single group to name).
+    //
+    // ⚠️ ONE DEVIATION FROM THE WAI-ARIA RADIOGROUP PATTERN, NAMED RATHER THAN HIDDEN: that pattern
+    // asks for ROVING TAB FOCUS (one tabbable radio, arrows moving the selection). This keeps EVERY
+    // card tabbable. Roving focus without arrow-key handling would make five of the six materials
+    // unreachable from the keyboard, which deletes ruling E4's "keyboard reachability" affordance
+    // outright; and arrow-key navigation is a keyboard-interaction change to a surface that already
+    // binds every letter on the palette — a package, not an attribute. What ships is therefore the
+    // honest half: the RELATIONSHIP is announced correctly (one-of-six, which one is chosen), and Tab
+    // + Enter/Space still reach and press all six. FILED for the M4 accessibility pass.
+    const state = card.kind === 'mat'
+      ? ' role="radio" aria-checked="false"'
+      : ' aria-pressed="false"';
     return '<button type="button" class="rz-card' +
       '" data-rztool="' + esc(card.tool) + '"' +
       (card.kind === 'mat' ? ' data-rzmat="' + (card.mat | 0) + '"' : '') +
-      ' data-rzcard="' + esc(card.key) + '" aria-pressed="false">' +
+      ' data-rzcard="' + esc(card.key) + '"' + state + '>' +
       art +
       '<span class="rz-card-name">' + esc(card.label) + '</span>' +
       '<span class="rz-card-price">' + esc(card.price) + '</span>' +
@@ -219,6 +258,19 @@ export function makeBuildTray(host) {
         ? cards.map((c) => cardHtml(c)).join('')
         : '<span class="rz-tray-empty">' + esc(trayEmptyText(tray)) + '</span>';
       cardBtns = Array.from(el.cards.querySelectorAll('.rz-card'));
+      // ⭐ THE GROUP, named only when there IS one. A leaf whose cards are ALL material cards is a
+      // single one-of-N choice and the row is that choice's `radiogroup`; any other row (tool cards,
+      // or a future mixed one) gets no role at all, because a radiogroup wrapping things that are
+      // not radios is a worse announcement than none. Homogeneity is a fact about `trayCards`, not
+      // an assumption — `build-tray.test.js` sweeps every leaf for it.
+      const allMat = cards.length > 0 && cards.every((c) => c.kind === 'mat');
+      if (allMat) {
+        setAttr(el.cards, 'role', 'radiogroup');
+        setAttr(el.cards, 'aria-label', (LEAF_LABEL[tray.leaf] || tray.leaf) + ' MATERIAL');
+      } else if (el.cards.removeAttribute) {
+        if (el.cards.getAttribute('role') != null) el.cards.removeAttribute('role');
+        if (el.cards.getAttribute('aria-label') != null) el.cards.removeAttribute('aria-label');
+      }
       cardSig = kSig;
     }
     // The LIVE half, in place: which card is held, and whether the ship can pay for it. `.cant` is
@@ -232,7 +284,11 @@ export function makeBuildTray(host) {
       setCls(b, 'on', on);
       const row = paletteCostRow(tool, parts);
       setCls(b, 'cant', !!(row && row.level === 'fault'));
-      setAttr(b, 'aria-pressed', on ? 'true' : 'false');
+      // …in the SAME vocabulary the markup was born in (see `cardHtml`'s ⛔⛔ block). One fact — is
+      // this card the one in the player's hand — written to whichever attribute this card's control
+      // TYPE uses. ⚠️ `aria-checked` follows `.on` exactly, so with the tool put DOWN nothing in the
+      // group is checked: that is true, not a gap. No wall is being placed.
+      setAttr(b, matAttr == null ? 'aria-pressed' : 'aria-checked', on ? 'true' : 'false');
       const title = chipTitleText(tool, parts);
       if (title) setAttr(b, 'title', title);
       else if (b.getAttribute('title') != null) b.removeAttribute('title');

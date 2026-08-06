@@ -147,15 +147,27 @@ const PALETTE_CMD = Object.freeze({
   // the SAME `itemId` column the two cosmetic rows below already carry, spent here for a hole in the
   // registry. Every other functional tool's art is DERIVED (the build ghost matches this row's
   // `deviceKind` against `ITEMS`' own `deviceKind` column — `roomzoom-view.js ghostArtId`), but
-  // `DeviceKind.Light` has NO functional `ITEMS` row at all: its art is `GLYPH_SUBSTITUTE['*'] →
-  // 'wall-lamp'` (`items/glyph-map.js`), a borrow reachable only from the glyph CHARACTER, and no
-  // client module maps a DeviceKind to a glyph — that switch is `sim/Sim.Glyph/Glyphs.cs`.
+  // `DeviceKind.Light` has NO functional `ITEMS` row at all: its art is `GLYPH_SUBSTITUTE['*']`
+  // (`items/glyph-map.js`), a borrow reachable only from the glyph CHARACTER, and no client module
+  // maps a DeviceKind to a glyph — that switch is `sim/Sim.Glyph/Glyphs.cs`.
   // ⇒ FILED, not fixed here: the general closure is either a real luminaire in the warm/paper set (a
   // `functional` row with `deviceKind:'Light'`, whereupon this field is deleted and the derivation
   // covers it) or a client mirror of `Glyphs.ForDevice` — and a hand mirror of a sim switch is
   // precisely the class of table `glyph-map.js`'s header spends forty lines retracting, so it is a
   // decision for the owner rather than a chore for this lane.
-  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light', itemId: 'wall-lamp' },
+  //
+  // ⛔⛔ THE VALUE IS `lamp-sconce` AND IT WAS `wall-lamp` UNTIL THIS COMMIT — a STALE MIRROR, found
+  // by review (MAJOR 3). `GLYPH_SUBSTITUTE['*']` moved from `wall-lamp` to `lamp-sconce` on
+  // 2026-08-05 (lane/paper-fixtures), so a PLACED Light has drawn the paper sconce since that day
+  // while this row still handed the ghost — and now the build tray's CARD — the retired warm piece.
+  // Two visible costs, both measured: the card and the ghost showed art nothing on the ship wears
+  // any more, and `wall-lamp` has NO `SPECS` row, so `itemSpecCm` answered `undefined` and the card's
+  // stat line silently dropped its dimensions (`0.15 KW` alone, where every other machine reads
+  // `<kW> · <w> × <d> M`). `lamp-sconce` carries `{w:46, d:22}` and the line is whole again.
+  // ⚠️ THIS FIELD IS A HAND MIRROR OF A TABLE IN ANOTHER FILE — exactly the shape that goes stale
+  // unwatched — so `build-ghost.test.js` now pins it AGAINST `GLYPH_SUBSTITUTE` rather than against a
+  // typed string: the day the substitution moves again, the pin moves with it or reddens by name.
+  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light', itemId: 'lamp-sconce' },
   // M3-10. `kind: 'heater'` is the wire string `GameSession.TryFurnitureKind` switches on, and
   // `deviceKind: 'Heater'` is the sim enum member the ghost/erase paths name; the two are different
   // vocabularies on purpose and every row here carries both.

@@ -1,4 +1,20 @@
 #!/usr/bin/env node
+//
+// ⛔⛔ STALE AS OF 2026-08-06 — THIS RIG ADDRESSES DOM THE BUILD TRAY DELETED, AND IT WILL DIE ON ITS
+// NEXT RUN. It is FILED, not fixed, and the filing is here rather than only in `HANDOVER.md` because
+// a rig that fails for a reason nobody wrote down reads as a regression in the game.
+//   WHAT IS GONE: `#rz-palette` and its twenty-one `.rz-tool` buttons. `[data-rztool="heater"]` still
+//     exists — it is the HEATER CARD — but only once MACHINES > LIFE SUPPORT is open.
+//   WHAT REPLACED IT: `#rz-tray` — a breadcrumb, two rails (`.rz-tray-cat` / `.rz-tray-sub`) and a
+//     row of `.rz-card`s. A tool's control now exists ONLY while its leaf is open, so every selector
+//     below needs a NAVIGATION step in front of it (press `[data-rzcat=…]`, then `[data-rzsub=…]`,
+//     both derivable from `build-tray-model.js`'s `trayLeafFor` / `categoryOf` — see
+//     `client/tools/build-tray-shot.mjs`, which does exactly this).
+//   ⚠️ NOTHING REDDENS TODAY: none of the four stale rigs is in `./ci.sh`.
+//   ⚠️ THE PORT IS TWO LINES: press `[data-rzcat="machines"]` then `[data-rzsub="machines/lifesupport"]`
+//   before reaching for the heater, and drop the "21 tools in one row" census (the tray never shows
+//   twenty-one controls at once — that is the whole point of it).
+//
 // ⭐⭐ M3-10 — "THE SHIP CAN BE WARMED", driven in real Chrome against the running game. This is the
 // package's acceptance script, automated so a reviewer can re-run it instead of re-clicking it.
 //

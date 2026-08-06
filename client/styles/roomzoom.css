@@ -314,7 +314,54 @@ body.moss-open #roomzoom-view{display:none !important}
    cutaway is `preserveAspectRatio="xMidYMid meet"`, so THE WHOLE ROOM WOULD RESCALE under the
    pointer on a menu click. `--rz-tray-h` is a fixed band, `.rz-canvas`'s `bottom` is derived from it
    in ONE expression, and the two media queries below shrink both together for short viewports. The
-   room's size then depends only on the window, which is what a player expects. */
+   room's size then depends only on the window, which is what a player expects.
+
+   ⚠️⚠️ THE TRADE HAS TWO COSTS AND NEITHER WAS WRITTEN DOWN (review observation 1). Both are
+   MEASURED in Chrome by `client/tools/build-tray-shot.mjs`, which logs the first on every run.
+
+   1. THE PLATE PAYS ~19-21% OF THE WINDOW AT EVERY VIEWPORT, PERMANENTLY — the band is reserved
+      whether or not the player has opened a category, so the room is smaller even at the root where
+      the card row holds one line of instruction. Measured in Chrome, band / window (plate height):
+        1600x1000  186/1000 = 18.6%  (plate 678px)     1440x900  186/900 = 20.7%  (plate 578px)
+        1366x768   158/768  = 20.6%  (plate 474px)     1280x800  158/800 = 19.8%  (plate 506px)
+        1440x720   146/720  = 20.3%  (plate 438px)
+      The flat palette's wrap band cost less at the root and MORE with a tool armed (it grew the
+      material strip); this is the flat cost that replaced it. It is the price of never rescaling the
+      cutaway under the pointer, and it is an owner-visible trade — if the plate ever needs that
+      height back the answer is a COLLAPSED band, not a content-driven one.
+
+   2. ⛔⛔ THE **LARGER** VIEWPORT SHOWED **FEWER** CARDS — AND THE SAME LINE ALSO CUT THE STAT LINE.
+      ⭐ CLOSED, and the two symptoms turned out to be ONE CAUSE: `.rz-card`'s WIDTH was overridden
+      inside these HEIGHT media queries (150 -> 132 -> 122px). Width has nothing to do with viewport
+      height — the ART's size does (vertical room is what shrinks) and the BAND's does, but a card
+      that is narrower because the window is SHORTER is a coupling nobody argued for, and it did two
+      wrong things at once:
+        (a) THE COUNT INVERTED. The row's width barely moves (`min(1180px, 100vw - 80px)` minus two
+            rails = 906px, 942px where the rail narrows), so card width decided how many cards were
+            on screen. FURNITURE > FITTED, seven cards, measured BEFORE:
+              >=880px  card 150px -> 1134px of cards in a 906px row, 2 past the edge
+              <=880px  card 132px -> 1008px in 906px, 1 past
+              <=740px  card 122px ->  942px in 942px, 0 past (all seven)
+            i.e. making the window TALLER showed LESS of the leaf. AFTER: 1134px at all five
+            viewports, 2 past the edge everywhere — the same five cards on screen whatever the window
+            is doing, which is the only answer that is not a surprise.
+        (b) THE STAT LINE WAS CUT — found only because review observation 2's `overflow:hidden` fix
+            made the ellipsis real and a live probe then measured it. On the two short bands the
+            three MACHINE cards did not fit their own numbers:
+              1440x720   lamp needs 131px in 102px · growbed 108 in 102 · heater 114 in 102
+              1366x768 / 1280x800   lamp 131 in 112 · heater 114 in 112
+            ⚠️ THAT WAS ALREADY BROKEN BEFORE THE ELLIPSIS FIX — it just drew straight over the
+            neighbouring card instead of admitting it, which is the same defect wearing the
+            "invisible feedback is FUNCTIONAL" costume. AFTER: 0 truncated rows at all five
+            viewports, `client/tools/build-tray-shot.mjs`'s own check.
+      ⚠️ TWO CHANGES, AND THE SECOND IS A REAL ONE: the width overrides are GONE (the card is 150px
+      everywhere), and `.rz-card-stat`'s tracking went `.1em -> .04em`. The tracking matters because
+      150px is only 132px of content and the longest honest stat needed 131 of them — one pixel of
+      slack is not a margin, it is a coincidence. At `.04em` it needs ~120px, so a longer stat has
+      somewhere to go. ⛔ THE COST, STATED: at the short bands the art is 34-46px inside a 150px card,
+      so the card reads airier than the design's proportion there. That is the price of a card that
+      can hold its own sentence, and it is the trade the owner should overrule if they want the other
+      one — the numbers above are what it would cost. */
 #roomzoom-view{--rz-tray-h:186px}
 .rz-tray{display:flex;flex-direction:column;padding:0;border-radius:2px;box-sizing:border-box;
   width:min(1180px,calc(100vw - 80px));height:var(--rz-tray-h);overflow:hidden}
@@ -382,8 +429,15 @@ body.moss-open #roomzoom-view{display:none !important}
 /* A tool that puts no THING down (the order verbs) has no art, and draws no placeholder either — a
    neutral box would read as a piece nobody could name. */
 .rz-card-noart{background:none}
+/* ⚠️ `overflow:hidden` IS THE HALF THAT MAKES THE ELLIPSIS EXIST (review observation 2). `nowrap` +
+   `text-overflow:ellipsis` with the default `overflow:visible` is INERT — CSS only clips, and only
+   then substitutes the ellipsis, on a box that actually overflows-hidden; without it a long label
+   simply draws past the card and over its neighbour, and the declaration reads as a fallback nobody
+   has. Both text rows on this card had it; both are closed here rather than deleted, because the
+   card is a fixed 150/132/122px and the labels come from `TOOL_LABEL` and `materialLabel` — a
+   twenty-second tool with a long name is a matter of course, not a hypothetical. */
 .rz-card-name{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--ink-prose,#4E463A);white-space:nowrap;text-overflow:ellipsis;max-width:100%}
+  color:var(--ink-prose,#4E463A);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 /* THE PRICE. Oxblood on the card the player is holding — the design's own treatment, and the same
    accent the armed cost row and the ghost's leader spend on the same number. */
 .rz-card-price{font-size:9px;letter-spacing:.12em;text-transform:uppercase;
@@ -396,16 +450,21 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-card.cant .rz-card-price{color:var(--attend,#7B2C22)}
 .rz-card.cant .rz-card-name{opacity:.72}
 .rz-card.on.cant .rz-card-price{color:#E6A79B}
-.rz-card-stat{font-size:8px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ink-section,#8A7F6C);white-space:nowrap;text-overflow:ellipsis;max-width:100%}
+.rz-card-stat{font-size:8px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-section,#8A7F6C);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 
-/* SHORT VIEWPORTS — the band and the card shrink TOGETHER with `.rz-canvas`'s reserve (which is
-   derived from `--rz-tray-h` in one expression), so the plate never leaves the screen and the tray
-   never covers the room. Nothing is hidden at any height: the type stays, the stat line stays, and
-   the row still scrolls to every card. */
+/* SHORT VIEWPORTS — the band, the ART and the RAIL shrink together with `.rz-canvas`'s reserve
+   (which is derived from `--rz-tray-h` in one expression), so the plate never leaves the screen and
+   the tray never covers the room. Nothing is hidden at any height: the type stays, the stat line
+   stays, and the row still scrolls to every card.
+
+   ⛔ WHAT IS **NOT** IN HERE, ON PURPOSE: `.rz-card{width}`. These are HEIGHT queries. A card's ART
+   box is a vertical budget and belongs here; a card's WIDTH is not, and overriding it here inverted
+   the card count and cut the stat line — see the two-cost block above `#roomzoom-view` for the
+   measurements. If a future band needs narrower cards, that is a WIDTH query and it has to answer
+   the truncation check in `client/tools/build-tray-shot.mjs` before it lands. */
 @media (max-height:880px){
   #roomzoom-view{--rz-tray-h:158px}
-  .rz-card{width:132px}
   .rz-card-art{width:46px;height:46px}
 }
 /* ⚠️ 146px, NOT 132px, AND THE NUMBER WAS MEASURED RATHER THAN REASONED. The first draft set 132
@@ -413,13 +472,35 @@ body.moss-open #roomzoom-view{display:none !important}
    vertically` at 1440x720 — the stat line was cut in half, which is precisely the "a control the
    player cannot read is a control that does not work" defect this surface has shipped once. The
    content at this band is 34 (art) + 3 + 13 + 12 + 11 (four text lines) + 3 (gaps) + 15 (padding)
-   = 91 for the card, + 18 body padding + 29 head = 138; 146 leaves the same ~8px of slack the
-   880px band carries. Re-measure with the rig, never by eye. */
+   = 91 for the card, + 18 body padding + 29 head = 138; 146 leaves ~8px of slack. Re-measure with
+   the rig, never by eye.
+
+   ⛔⛔ AND THE CARD WAS THE WRONG TERM TO PRICE THE BAND ON — THE **RAIL** IS TALLER, WHICH IS THE
+   DEFECT REVIEW FOUND (MAJOR 4) AND THE REASON THE TWO RAIL RULES BELOW EXIST. The band has to hold
+   `max(card, rail)`, and this file only ever costed the card. The category rail is FOUR rows at
+   every depth (its membership is a fact about the taxonomy, not about where the player is), so at
+   the shipped 7px rail padding and 5px row padding it stood
+     4 x 27 (rows) + 3 (gaps) + 14 (rail padding) + 29 (head) = 154
+   against a 146 band — and `.rz-tray{overflow:hidden}` simply CUT the fourth row. Measured in
+   Chrome at 1440x720 before the fix: `rz-tray-cat "ORDERS" runs 4px past the band [529,675]
+   (652..679)`, i.e. the ORDERS row's lower third was gone. ⚠️ It was invisible to the rig for the
+   4th-trap reason: that tool's containment sweep filtered `.rz-card` and nothing else, so it could
+   see a clipped CARD and was structurally blind to a clipped RAIL. The sweep is over every tray
+   control now.
+   ⚠️ CLOSED BY SHRINKING THE RAIL, NOT BY GROWING THE BAND, and the trade is deliberate: 1440x720 is
+   where the plate is scarcest (474-512px of room), so paying 12 more px of band there to fit a rail
+   is the wrong direction. 5px rail padding + 4px row padding takes the rail to
+     4 x 25 + 3 + 10 + 29 = 142, inside 146 with ~4px more slack than the card's own 8 — measured,
+   not reasoned: the rig now reports every control inside the band at all five viewports.
+   ⛔ A FIFTH TOP-LEVEL CATEGORY WOULD RE-OPEN THIS AT BOTH SHORT BANDS. `TRAY_CATEGORIES` is four;
+   a fifth adds ~26px to the rail and the 146 and 158 bands both have less than that in hand. The
+   band is priced on the rail, so the rail's row count is a layout input — re-run
+   `client/tools/build-tray-shot.mjs` at all five viewports when it changes. */
 @media (max-height:740px){
   #roomzoom-view{--rz-tray-h:146px}
-  .rz-card{width:122px}
   .rz-card-art{width:34px;height:34px}
-  .rz-tray-rail{width:118px;padding:7px 8px}
+  .rz-tray-rail{width:118px;padding:5px 8px}
+  .rz-tray-cat,.rz-tray-sub{padding:4px 8px}
 }
 
 /* ACCEPTS chip row (WP-6) — shown when STOCKPILE is armed. It was a SIBLING of `.rz-matstrip` in

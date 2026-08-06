@@ -33,7 +33,7 @@ import {
 } from '../src/ui/room-model.js';
 // The built layer's own floor-swatch size, read from the surface rather than restated here.
 import { FLOOR_MAT_PX } from '../src/ui/roomzoom-view.js';
-import { ITEMS, buildItem } from '../src/items/index.js';
+import { ITEMS, buildItem, itemSpecCm } from '../src/items/index.js';
 import { itemIdForGlyphChar } from '../src/items/glyph-map.js';
 import { materialItemId } from '../src/ui/build-material-model.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
@@ -644,10 +644,28 @@ test('a functional tool\'s ghost art is DERIVED from the registry\'s own deviceK
     const pc = paletteCommand(tool);
     if (pc.cls !== 'functional') continue;
     if (tool === 'lamp') {
-      assert.equal(pc.itemId, 'wall-lamp',
-        'LAMP states its art because DeviceKind.Light has no functional ITEMS row — see the '
-        + 'PALETTE_CMD comment. If a real luminaire lands, delete the field and this branch.');
+      // ⛔⛔ PINNED AGAINST THE SUBSTITUTION TABLE, NOT AGAINST A TYPED STRING — and the reason is a
+      // measured defect, not tidiness. This assertion used to read `assert.equal(pc.itemId,
+      // 'wall-lamp')`: two hand-written copies of one fact, agreeing with each other and with
+      // NOTHING. `GLYPH_SUBSTITUTE['*']` moved to `lamp-sconce` on 2026-08-05 and both copies stayed
+      // put, so the PLACED Light drew the paper sconce while the ghost — and then the build tray's
+      // card — drew the retired warm piece, and this test was green through all of it.
+      // The fact has ONE authority now: whatever glyph `'*'` resolves to is what `PALETTE_CMD.lamp`
+      // must state, so the next move reddens here BY NAME instead of shipping a split.
+      const substituted = itemIdForGlyphChar('*');
+      assert.ok(substituted, "GLYPH_SUBSTITUTE no longer answers '*' — the Light's art has no source at all");
+      assert.equal(pc.itemId, substituted,
+        'LAMP states its art because DeviceKind.Light has no functional ITEMS row (see the PALETTE_CMD '
+        + 'comment) — and the art it states must be the one a PLACED Light actually draws, which is '
+        + "`GLYPH_SUBSTITUTE['*']`. They have split: the player would preview one lamp and get another. "
+        + 'If a real luminaire lands, delete the field and this branch.');
       assert.ok(!byKind.has('Light'), 'the hole this exception exists for is still open');
+      // …and the piece it names really is in the registry, with the `SPECS` row the build tray's card
+      // prints its dimensions from. `wall-lamp` had none, which is how the stale value stayed
+      // invisible for a day: the card just dropped the dimension term and said nothing.
+      assert.ok(ITEMS[substituted], substituted + ' is not a registry id');
+      assert.ok(itemSpecCm(substituted) && itemSpecCm(substituted).d > 0,
+        substituted + ' has no SPECS depth — the LAMP card would print a power figure and no size');
       continue;
     }
     assert.ok(!pc.itemId, tool + ' must DERIVE its art, not state it');
