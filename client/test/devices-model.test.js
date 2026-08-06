@@ -561,7 +561,7 @@ test('the scanned sources are non-empty', () => {
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-minimap',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
 class DevEl extends DomEl {

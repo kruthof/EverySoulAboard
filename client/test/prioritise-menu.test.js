@@ -402,7 +402,7 @@ test('the phase recorder itself normalises all three spellings of the third argu
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-minimap',
   'rz-crewdock', 'rz-ctx',
   // console ids `hud.js`'s frame/roster dispatch writes through — the same set the sibling rigs
   // register, for the same reason: `renderFrame`/`renderRoster` are the real receive path.
@@ -503,7 +503,7 @@ function prime(crew, selCid) {
     RoomZoom.initRoomZoom({ send: (o) => sent.push(o) });
     const root = doc.getElementById('roomzoom-view');
     // The parent chain the delegated `onHudClick` walks, and the geometry `tileFromCanvasXY` needs.
-    for (const id of ['rz-canvas', 'rz-palette', 'rz-toast', 'rz-ctx']) {
+    for (const id of ['rz-canvas', 'rz-tray', 'rz-toast', 'rz-ctx']) {
       doc.getElementById(id).parentNode = root;
     }
     doc.getElementById('rz-layers').parentNode = doc.getElementById('rz-canvas');

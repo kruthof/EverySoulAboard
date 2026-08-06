@@ -125,12 +125,33 @@ function pseudoRules(rules, sel) {
 }
 
 /**
- * THE THREE ROWS OF THE ROOM-ZOOM PALETTE WRAPPER. All three carried the identical idiom; the
- * palette is the one that was measured clipping, and the other two are the same defect waiting for a
- * seventh material or an eighth ItemKind. Named by selector rather than discovered, because a scan
- * that discovers its own subject cannot fail when the subject disappears.
+ * ⭐⭐ THE ROWS OF CONTROLS UNDER THE ROOM ZOOM'S CANVAS — REWRITTEN AT THE BUILD TRAY (2026-08-05),
+ * AND THE SPLIT IS THE FINDING RATHER THAN A CONVENIENCE.
+ *
+ * It was `['.rz-palette', '.rz-matstrip', '.rz-acc-chips']`: three rows that all carried the
+ * identical clipping idiom, of which the palette was the one measured losing tools. `.rz-palette`
+ * and `.rz-matstrip` NO LONGER EXIST — the flat strip and the swatch row are the build tray's
+ * category rail, leaf rail and card row now — so the list is re-derived over what ships.
+ *
+ * ⛔ AND ONE MEMBER GENUINELY CANNOT KEEP THE ORIGINAL ANSWER, WHICH IS WHY IT IS SPLIT IN TWO.
+ * A card is ~150 px and a leaf holds up to seven of them; wrapping would need a second 126 px row
+ * inside a band the plate cannot spare, so `.rz-tray-cards` SCROLLS HORIZONTALLY. That is not a
+ * repeal of the rule this file exists for — re-read the measured bug: `overflow-x:auto` **plus
+ * `scrollbar-width:none` plus `::-webkit-scrollbar{display:none}`**. What hid STRIP was the hidden
+ * scrollbar, not the scroll. So:
+ *   · NO_CLIP_ROWS keep the original answer whole: they may not clip and they must wrap.
+ *   · SCROLL_ROWS may scroll on ONE axis, and are held to a STRICTER version of the other half —
+ *     `overflow-x` must be exactly `auto` (never `hidden`/`clip`, which is a silent clip with no
+ *     scrollbar at all) and `overflow-y` must not scroll.
+ *   · The hidden-scrollbar ban below applies to EVERY row in both lists, unchanged.
+ * ⚠️ WHAT THE SPLIT CAN NO LONGER SEE (TRAPS 9th shape, declared rather than discovered later): it
+ * cannot tell whether the scrolling row is WIDE ENOUGH that a player notices the overflow at all.
+ * Neither could the old guard — that is `client/tools/build-tray-shot.mjs`'s job, in real Chrome at
+ * two viewport heights, and this file must not pretend otherwise.
  */
-const ROWS = ['.rz-palette', '.rz-matstrip', '.rz-acc-chips'];
+const NO_CLIP_ROWS = ['.rz-tray-rail', '.rz-acc-chips'];
+const SCROLL_ROWS = ['.rz-tray-cards'];
+const ROWS = [...NO_CLIP_ROWS, ...SCROLL_ROWS];
 
 /** Overflow values that CLIP or SCROLL, i.e. that can put a control where the player cannot get it. */
 const CLIPPING = new Set(['auto', 'scroll', 'hidden', 'clip']);
@@ -146,10 +167,10 @@ test('the stylesheet parses and the three palette rows are all in it', () => {
     assert.ok(RULES.some((r) => r.sels.includes(sel)), `no rule for ${sel} — the guards are vacuous`);
 });
 
-// MUTATION: put `overflow-x:auto` back on `.rz-palette` ⇒ RED.
-// MUTATION: put it back inside `@media (max-width:1200px){ … }` ⇒ RED (the shallow walk sees it).
-test('no palette row may CLIP or SCROLL its own controls', () => {
-  for (const sel of ROWS) {
+// MUTATION: put `overflow-x:auto` on `.rz-tray-rail` ⇒ RED.
+// MUTATION: put it there inside `@media (max-width:1200px){ … }` ⇒ RED (the shallow walk sees it).
+test('no NON-SCROLLING build-menu row may CLIP or SCROLL its own controls', () => {
+  for (const sel of NO_CLIP_ROWS) {
     for (const prop of ['overflow', 'overflow-x', 'overflow-y']) {
       const v = lastValue(RULES, sel, prop);
       assert.ok(v === null || !CLIPPING.has(v),
@@ -176,12 +197,34 @@ test('no palette row may HIDE a scrollbar — that is the exact idiom that made 
   }
 });
 
-// MUTATION: drop `flex-wrap:wrap` from any of the three ⇒ RED.
-test('every palette row WRAPS, so a control that does not fit moves down instead of vanishing', () => {
-  for (const sel of ROWS)
-    assert.equal(lastValue(RULES, sel, 'flex-wrap'), 'wrap',
-      `${sel} does not declare flex-wrap:wrap. Wrapping is what makes the fix work at all: it is ` +
-      'the only arrangement in which nothing is ever hidden, as opposed to hidden-but-advertised.');
+// MUTATION: drop `flex-wrap:wrap` from `.rz-acc-chips` ⇒ RED.
+// MUTATION: change `.rz-tray-cards`' `overflow-x` to `hidden` ⇒ RED (a silent clip, no scrollbar).
+// MUTATION: give `.rz-tray-cards` an `overflow-y:auto` ⇒ RED (a card row that scrolls VERTICALLY is
+//           a second axis nothing advertises, on a row one card tall).
+test('every non-scrolling row WRAPS, and the scrolling row scrolls on exactly ONE axis', () => {
+  // `.rz-tray-rail` is a COLUMN (`flex-direction:column`), so "wrap" is not its answer — a rail row
+  // that does not fit makes the rail taller, and the CLIP leg above is what keeps that visible.
+  assert.equal(lastValue(RULES, '.rz-acc-chips', 'flex-wrap'), 'wrap',
+    '.rz-acc-chips does not declare flex-wrap:wrap. Wrapping is the only arrangement in which ' +
+    'nothing is ever hidden, as opposed to hidden-but-advertised.');
+  assert.equal(lastValue(RULES, '.rz-tray-rail', 'flex-direction'), 'column',
+    'the rail stopped being a column — if it is a wrapping ROW now it belongs in the wrap leg ' +
+    'above, and this exemption is no longer honest');
+  for (const sel of SCROLL_ROWS) {
+    assert.equal(lastValue(RULES, sel, 'overflow-x'), 'auto',
+      `${sel} does not declare exactly \`overflow-x:auto\`. \`hidden\`/\`clip\` is a SILENT clip ` +
+      'with no scrollbar at all — strictly worse than the 2026-08-03 bug, which at least left the ' +
+      'controls reachable by keyboard scroll. `scroll` is acceptable in principle but is not what ' +
+      'ships; if it is being changed deliberately, widen this pin and say why.');
+    const oy = lastValue(RULES, sel, 'overflow-y');
+    assert.ok(oy === null || oy === 'hidden' || oy === 'visible',
+      `${sel} declares overflow-y:${oy}. The card row is ONE card tall; a second scrolling axis is ` +
+      'a control the player has no reason to look for.');
+    const o = lastValue(RULES, sel, 'overflow');
+    assert.ok(o === null || !CLIPPING.has(o),
+      `${sel} declares the SHORTHAND overflow:${o}, which sets both axes and silently overrides ` +
+      'the per-axis pins above');
+  }
 });
 
 // MUTATION: drop `width:max-content` from `.rz-palette` ⇒ RED.
@@ -206,18 +249,22 @@ test('every palette row WRAPS, so a control that does not fit moves down instead
 // demonstrated — forcing `width:max-content` onto this row changed nothing, because there the
 // max-content width and the stretched width coincide. The exclusion rests on the measured stretch
 // behaviour above, which is the better argument anyway.
-const MAXCONTENT_ROWS = ['.rz-palette', '.rz-matstrip'];
-test('the wrapper\'s two shrink-to-fit rows state their single-line width', () => {
-  for (const sel of MAXCONTENT_ROWS)
-    assert.equal(lastValue(RULES, sel, 'width'), 'max-content',
-      `${sel} lost \`width:max-content\` — without it a wrapping flex container in this slot ` +
-      'under-reports its preferred width and wraps at 1600px, where nothing was ever wrong');
-});
-
-test('the palette states its ceiling too — the width without it regresses the other way', () => {
-  assert.equal(lastValue(RULES, '.rz-palette', 'max-width'), '100%',
-    'the palette lost `max-width:100%` — with `width:max-content` and no ceiling it simply ' +
-    'overflows the wrapper again, which is the original bug with extra steps');
+// ⛔ THE `width:max-content` PAIR IS GONE WITH ITS SUBJECTS, AND DELETING A PIN NEEDS ITS REASON
+// WRITTEN. Both rows it named (`.rz-palette`, `.rz-matstrip`) were WRAPPING FLEX ROWS that were
+// shrink-to-fit children of `.rz-palette-wrap`, and the measured failure was specific to exactly
+// that combination: a wrapping flex container in a shrink-to-fit slot stops offering its single-line
+// sum as its preferred width (798px offered against 1225px of content, read off the live layout), so
+// it wrapped at 1600px where one row had always fitted. NEITHER ROW EXISTS, and the tray is not that
+// shape: `.rz-tray` states an explicit `width:min(1180px, calc(100vw - 80px))` and its card row is a
+// non-wrapping scroller, so there is no preferred-width negotiation to get wrong.
+// ⇒ What replaces it is the pin below on the tray's own stated width, which is the property that
+// actually matters now: the menu must not be allowed to grow past the viewport.
+test('the tray states its own width, and it can never exceed the viewport', () => {
+  const w = lastValue(RULES, '.rz-tray', 'width');
+  assert.ok(w && /^min\(/.test(w) && /100vw/.test(w),
+    `.rz-tray declares width:${w}. It must state a viewport-relative CEILING (a \`min(…, calc(100vw ` +
+    '- …))\`), or the menu simply runs off the side of the screen at narrow widths — the 2026-08-03 ' +
+    'defect with the wrapper removed instead of the row.');
 });
 
 // ⚠️ THE WRAPPER, added in review, and the second half of it is a failure mode THIS PACKAGE CREATED.
@@ -616,9 +663,17 @@ const STATE_CLASSES = ['.on', '.sel'];
  * "spells a chosen state, and has a pointer state that can borrow its paint". Splitting the sweep by
  * which island a control lives on is how the second and third instances survived the first fix.
  */
+// ⭐ RE-DERIVED AT THE BUILD TRAY (2026-08-05), COUNTS MEASURED ON THE MERGED TREE RATHER THAN
+// CARRIED OVER. `.rz-tool` (2 rules — DEMOLISH overrode the other twenty) and `.rz-mat-chip` (1) are
+// GONE with the flat strip and the swatch row. Their replacements are the three controls the tray
+// paints, each with exactly ONE armed rule: a card, a category rail row and a leaf rail row. There
+// is no DEMOLISH override any more — the destructive tool is alone in its own leaf behind its own
+// rail click (`build-tray-model.js`'s ORDERS note), which is a structural separation rather than a
+// colour one, so the second `.rz-tool` rule has no successor and none was invented.
 const ARMABLE = [
-  { member: '.rz-tool', state: '.on', rules: 2 },
-  { member: '.rz-mat-chip', state: '.on', rules: 1 },
+  { member: '.rz-card', state: '.on', rules: 1 },
+  { member: '.rz-tray-cat', state: '.on', rules: 1 },
+  { member: '.rz-tray-sub', state: '.on', rules: 1 },
   { member: '.rz-acc-chip', state: '.on', rules: 1 },
   { member: '.rz-crew', state: '.sel', rules: 1 },
 ];
@@ -804,4 +859,39 @@ test('the stripper measurably removes a COMMENTED violation from the real styles
     'no live `scrollbar-width:none` survives anywhere in styles.css. That is not a failure of the ' +
     'palette — `.tabrow` on the deprecated console shell carries one — but if it has gone, this ' +
     'control has lost its live half and should be re-derived rather than relaxed.');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// AN INERT DECLARATION IS AN AFFORDANCE NOBODY HAS — `text-overflow` without `overflow`.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⛔ FOUND BY REVIEW (observation 2) ON THE BUILD TRAY'S TWO CARD TEXT ROWS. `.rz-card-name` and
+// `.rz-card-stat` shipped `white-space:nowrap; text-overflow:ellipsis` and NO `overflow` — and the
+// initial value is `visible`, on which `text-overflow` has no effect whatsoever (CSS Overflow L3
+// §5.1: it applies to a block container "with `overflow` other than `visible`"). Computed
+// `overflow:visible`, measured in Chrome. So a label too long for a 122px card did not get an
+// ellipsis: it drew straight over the card next to it, and the declaration read to every later
+// reader as a truncation policy that was already handled.
+//
+// That is the same class as the hidden-scrollbar bug this file exists for — a property that LOOKS
+// like it manages an overflow while managing nothing — so it is guarded here beside it, over the
+// whole cascade rather than over the two rules that happened to have it.
+//
+// MUTATION: delete `overflow:hidden` from `.rz-card-name` ⇒ RED, naming the selector.
+// MUTATION: write `overflow:visible` beside the ellipsis ⇒ RED (the explicit form of the same hole).
+test('every `text-overflow:ellipsis` sits in a rule that actually CLIPS — an inert one is a policy nobody has', () => {
+  const rules = cssRules(CSS).filter((r) => /text-overflow\s*:\s*ellipsis/.test(r.decls));
+  // NON-VACUITY BY INCLUSION: the cascade must really carry some, or this asserts over an empty set.
+  assert.ok(rules.length >= 4,
+    `only ${rules.length} rule(s) in the whole cascade declare \`text-overflow:ellipsis\` — this scan ` +
+    'is reading almost nothing, which is how a guard passes without a subject');
+  const bad = [];
+  for (const r of rules) {
+    const m = /(?:^|;)\s*overflow\s*:\s*([a-z-]+)/.exec(r.decls);
+    const ov = m ? m[1] : '';
+    // `hidden`, `clip`, `scroll` and `auto` all make the ellipsis live; `visible` and absence do not.
+    if (!ov) bad.push(`${r.sels.join(', ')} — no \`overflow\` at all (the initial value is \`visible\`)`);
+    else if (ov === 'visible') bad.push(`${r.sels.join(', ')} — \`overflow:visible\``);
+  }
+  assert.deepEqual(bad, [], 'these rules declare an ellipsis that can never be drawn:\n  ' + bad.join('\n  '));
 });

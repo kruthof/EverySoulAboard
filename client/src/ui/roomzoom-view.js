@@ -87,9 +87,23 @@ import { prioritiseOffer } from './prioritise-model.js';
 import { taskTag, surnameOf, watchTask, RZ_DOCK_TASK_CHARS } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
 import {
-  materialsForTool, materialItemId, activeMaterial, setMaterial, toolHasMaterial, defaultMaterials,
+  materialItemId, activeMaterial, setMaterial, toolHasMaterial, defaultMaterials,
   materialLabel, allTilesAlreadyMaterial,
 } from './build-material-model.js';
+// ⭐⭐ THE BUILD TRAY (2026-08-05) — the owner's *"the building menu in zoom mode looks like a
+// nightmare — too crowded"* and his design (`design-import/Perilune Build Menu - Tray.html`). The
+// flat twenty-one-chip strip is gone; the hierarchy is `build-tray-model.js` (pure taxonomy + card
+// data, DERIVED from `PALETTE_CMD` and the sim's own `machines.def`) and the DOM is
+// `build-tray-view.js`. THIS file keeps what it always kept: the armed slot, the press latch, the
+// key stack and the ghost.
+import { makeBuildTray } from './build-tray-view.js';
+import {
+  trayNav, trayDepth, trayCallout, TRAY_ROOT,
+  // The tool→art derivation moved into the pure layer because it now has TWO consumers that must
+  // never disagree — the ghost standing on the hovered tile and the CARD the player armed it from.
+  // Re-exported below, so `build-ghost.test.js` and every other importer keep their door.
+  ghostArtId as trayGhostArtId,
+} from './build-tray-model.js';
 // ⭐⭐ THE PALETTE'S HONESTY — price, stock, and the two refusals that were silent. See that file's
 // header for the owner complaint ("I cannot build anything except the walls"), the measured cause
 // (3 PARTS a wreck holding 1 cannot pay) and why the price is a pinned mirror rather than a wire read.
@@ -182,6 +196,16 @@ let _wasPaused = false;   // previous run state — the edge that dismisses the 
 let _open = false;
 let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomType, displayName, rx,ry,rw,rh}
 let _armed = null;        // the ONE Level-2 input slot (17 tools + null)
+// ⭐⭐ THE BUILD TRAY'S TWO PIECES OF STATE, AND THEY ARE DELIBERATELY NOT ONE.
+// `_tray` is the DOM controller (`build-tray-view.js`), built once at mount and never rebuilt.
+// `_trayNav` is WHERE THE PLAYER HAS NAVIGATED TO — `{cat, leaf}`, the pure reducer's value, and the
+// number `escStackRung` reads as `trayDepth`. It is view state and nothing else: the tray can be
+// two levels deep with nothing armed, and holding a tool does not pin the menu open.
+// ⛔ IT IS RESET TO THE ROOT ON EVERY ROOM ENTRY, beside `_armed = null` and for the same reason
+// (IX-Z-01): a menu left open on MACHINES from the last compartment is a mode the player did not
+// choose in this one.
+let _tray = null;
+let _trayNav = TRAY_ROOT;
 // ⛔ THE SESSION-LOCAL DECOR ARRAY, KEPT EMPTY ON PURPOSE. Nothing writes it any more (the
 // SHELF/RUG click that used to `addDecor` into it now says what it actually is — see
 // `onCanvasClick`'s cosmetic branch). It is not deleted because M4-6's wire-or-remove ruling is
@@ -406,19 +430,24 @@ function buildSkeleton() {
     // already makes with the identical island on the identical edge.
     '<div class="hud rz-crewdock" id="rz-crewdock"></div>' +
     '<div class="rz-palette-wrap">' +
-      '<div class="hud rz-matstrip" id="rz-matstrip" hidden></div>' +
       // WP-6 — THE ACCEPTS ROW, shown only while STOCKPILE is armed.
       //
-      // ⚠️ THE DESIGN CALL, ARGUED, because always-visible was the live alternative. It is a SIBLING
+      // ⚠️ THE DESIGN CALL, ARGUED, because always-visible was the live alternative. It was a SIBLING
       // OF `#rz-matstrip` in every sense: same wrapper, same place in the stack, same reveal rule,
-      // and the same job — the options belonging to the ARMED tool. That idiom already exists on this
-      // exact surface for WALL/FLOOR materials, so reveal-on-arm costs the player no new concept,
+      // and the same job — the options belonging to the ARMED tool. (That row is GONE as of
+      // 2026-08-05: the six materials are STRUCTURE's own cards in the build tray. The argument
+      // stands on its own; the sibling it was modelled on simply moved.) The idiom already existed on
+      // this exact surface for WALL/FLOOR materials, so reveal-on-arm costs the player no new concept,
       // and the console it replaces reveals its own row the same way (`hud.js` `reflectArmed`
       // toggling `#stockfilter-row`). Three further reasons, in order of weight:
       //   1. The two rows are MUTUALLY EXCLUSIVE — `toolHasMaterial` is wall/floor, this is stockpile
       //      — so the reveal costs ZERO net height. An always-visible ACCEPTS row would be a third
       //      permanent band under a palette that already clips below ~1140 px (a known-open defect,
       //      not this package's to fix, but emphatically this package's not to worsen).
+      //      ⚠️ 2026-08-05: the palette that clipped is GONE — the tray's card row scrolls with a
+      //      visible scrollbar instead — but the argument survives unchanged, because the ACCEPTS
+      //      row still sits in this wrapper's fixed band and a third permanent row in it would eat
+      //      height the cards need.
       //   2. A permanently-visible seven-chip filter next to seventeen tools reads as seventeen more
       //      tools. Arming STOCKPILE is what makes "which kinds?" a question the player is asking.
       //   3. The cost of hiding it — discoverability — is paid off elsewhere and cheaply: the hint
@@ -432,7 +461,11 @@ function buildSkeleton() {
       // still costs zero net height on a palette that wraps. It says the price and the stock BEFORE
       // the click — `build-cost-model.js`'s `paletteCostRow`.
       '<div class="hud rz-cost" id="rz-cost" hidden></div>' +
-      '<div class="hud rz-palette" id="rz-palette"></div>' +
+      // ⭐⭐ THE BUILD TRAY replaces `#rz-palette`. Its DOM is `build-tray-view.js`'s; this markup
+      // only reserves the box. It is a `.hud` island like every other row in this wrapper, and it
+      // sits in the SAME slot the flat strip did, so the crew dock, the toast, the nudge and the
+      // right-click menu keep their z-order and their corners.
+      '<div class="hud rz-tray" id="rz-tray"></div>' +
       // AN `id` AS WELL AS THE CLASS, and it is not decoration: the hint is the one chrome text
       // this file did not own a node reference for — it was a literal baked into this markup string
       // — and `paintChrome` has to be able to rewrite it. The id is what makes it reachable from a
@@ -544,35 +577,22 @@ function buildChrome() {
   _el.crumbDeck = bc.querySelector('[data-rz="deck"]');
   _el.crumbLeaf = bc.querySelector('.rz-crumb-leaf');
 
-  // palette — a FIXED label + one FIXED button per ROOM_TOOLS entry (membership never changes, so the
-  // set is built once from the table rather than counted here); repaint only toggles
-  // the `.on` armed class, so the button under the cursor is never rebuilt.
+  // ⭐⭐ THE BUILD TRAY — built once, painted in place, and it owns its own DOM
+  // (`build-tray-view.js`). What it does NOT own is the gesture: every control it draws carries a
+  // `data-rz*` attribute and is read by `onHudClick` below, exactly as the flat strip's chips were,
+  // so this surface keeps ONE answer to "what did the player press".
   //
-  // `type="button"` + `aria-pressed`, matching the ACCEPTS chips standing three pixels above them
-  // (WP-6 / §4j) rather than leaving two different button vocabularies on one palette. Until now the
-  // armed tool was announced by the `.on` class ALONE, i.e. by colour: a screen reader could read all
-  // fifteen labels (as it then was; seventeen today) and not one word about which of them is
-  // holding the cursor. That is the same
-  // complaint the clipping bug produced from a different cause — the control is present, and what it
-  // is doing is not on the surface — so it is fixed here rather than filed.
-  const pal = $('rz-palette');
-  let btns = '<span class="rz-place-label"></span>';
-  for (const tool of ROOM_TOOLS) {
-    const demo = tool === 'demolish' ? ' demo' : '';
-    // ⭐ THE COST LINE ON THE CHIP ITSELF. Built HERE, in the once-only pass, because the palette's
-    // buttons are deliberately never rebuilt (a node torn down between mousedown and mouseup eats
-    // the click — HANDOVER §4h). The line's TEXT is a constant per tool (`3 PARTS` / `NOT YET`), so
-    // nothing in it needs a repaint; the LIVE half — can the ship pay right now — is a class toggle
-    // and a `title`, both written in place by `paintPalette`.
-    const cost = chipCostText(tool);
-    btns += '<button type="button" class="rz-tool' + (cost ? ' costed' : '') + demo + '" data-rztool="' + tool +
-      '" aria-pressed="false"><span class="rz-tool-name">' + esc(TOOL_LABEL[tool]) + '</span>' +
-      (cost ? '<span class="rz-tool-cost">' + esc(cost) + '</span>' : '') + '</button>';
-  }
-  pal.innerHTML = btns;
-  _el.placeLabel = pal.querySelector('.rz-place-label');
-  _el.toolBtns = Array.from(pal.querySelectorAll('.rz-tool'));
-  _el.matStrip = $('rz-matstrip'); // material swatch row — populated on arm(wall|floor)
+  // ⛔ THE FLAT `#rz-palette` IS GONE, AND SO ARE ITS TWENTY-ONE `.rz-tool` CHIPS AND THE
+  // `#rz-matstrip` SWATCH ROW. Nothing they did is gone with them — ruling E4 is DROP NONE and the
+  // re-housing is listed in the package report — but the two nodes themselves have no successor:
+  // the price line, the `.cant` state, the `title`, the `aria-pressed` armed announcement and the
+  // six material swatches are all facts about a CARD now.
+  _tray = makeBuildTray($('rz-tray'));
+  // `zoomChrome`'s label keeps its node and its owner. It is the surface's own sentence (`TOOLS ▸
+  // CRYO BAY` / `BUILD ▸ CRYO BAY`) and `paintChrome` writes it; the tray parks it at the head of
+  // the breadcrumb so the crumb trail reads as one line (`TOOLS ▸ CRYO BAY › MACHINES › COMFORT`)
+  // and never rebuilds it — a node the tray tore down would take a chrome sentence with it.
+  _el.placeLabel = _tray.labelEl;
   _el.accepts = $('rz-accepts');   // ACCEPTS chip row — populated on arm(stockpile)
   _el.cost = $('rz-cost');         // PRICE + STOCK row — populated on arm(furniture|decor)
 
@@ -583,9 +603,11 @@ function buildChrome() {
   if (dock) {
     // BUILT WITH `createElement`, NOT `innerHTML`, and that is not a style preference: every other
     // chrome node in this file is looked up with `querySelector` after an `innerHTML` write, which is
-    // exactly why `_el.toolBtns` is an empty array in three of this repo's node harnesses (they model
-    // `innerHTML` as a string and implement no selector matching). A dock whose rows cannot be
-    // reached in node is a dock whose click cannot be DRIVEN in a test, and the click is the feature.
+    // exactly why a palette button used to come back as an empty array in this repo's node harnesses
+    // (they model `innerHTML` as a flat start-tag scan). A dock whose rows cannot be reached in node
+    // is a dock whose click cannot be DRIVEN in a test, and the click is the feature. (The build
+    // tray pays that cost knowingly and closes it in the harness instead — `build-tray.test.js`'s
+    // scanner lifts `div` as well as `button`/`span` so every rail and card is reachable.)
     dock.innerHTML = '';
     _el.crewHdr = dock.appendChild(mkEl('div', 'rz-crewhdr'));
     _el.crewList = dock.appendChild(mkEl('div', 'rz-crewlist'));
@@ -606,7 +628,6 @@ function buildChrome() {
     _el.ctxItem = item;
   }
 
-  _matSig = '';
   _accSig = '';
   _costSig = '';
   _crewSig = '';
@@ -614,8 +635,6 @@ function buildChrome() {
   _miniSig = ''; // force the first minimap paint to render
 }
 
-// The material strip's last-rendered signature (tool + active byte) — re-set only on change.
-let _matSig = '';
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Enter / exit.
@@ -627,6 +646,7 @@ export function enterRoom(anchor) {
   if (!f) { toast('ROOM ZOOM UNAVAILABLE — ' + esc(anchor)); return; }
   _focus = f;
   _armed = null;
+  _trayNav = TRAY_ROOT;   // a new room is a cold start for the MENU too — see `_trayNav`'s header
   _hoverTile = null;   // a room is entered by a click on ANOTHER surface — nothing is hovered here yet
   _open = true;
   // ⛔ A NEW ROOM IS A COLD START, and forgetting to say so is a walk-through-the-hull bug: the
@@ -646,6 +666,7 @@ export function exitRoom() {
   if (!_open) return;
   _open = false;
   _armed = null;
+  _trayNav = TRAY_ROOT;
   _drag = null;   // a sweep in progress is abandoned on exit (guards onCanvasUp against a null _focus)
   closeCtx();     // …and so is an open right-click menu: its target tile belongs to a room we are leaving
   // …and so is the build ghost. It is drawn in the LEAVING room's scene coordinates, and the ghost
@@ -807,8 +828,7 @@ function repaint() {
   paintChrome();
   paintBreadcrumb();
   paintMinimap();
-  paintPalette();
-  paintMatStrip();
+  paintTray();
   // AFTER `_zoneTiles` is derived, and that ordering is the whole point of calling it from here at
   // all: the row's second line counts the already-zoned tiles in this room whose filter differs from
   // the chips, so it has to be recomputed whenever the `zones` channel moves — a hauler filling the
@@ -1118,56 +1138,18 @@ function previewSvg(scene, place) {
 //    affordance meant to prevent it.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/**
- * The ART a tool previews, or `''` for a tool that places no THING (the order verbs, ERASE, MOVE,
- * DEMOLISH — all four are functions of what is ALREADY on the tile, so there is nothing to preview).
- *
- * ⛔ DERIVED FROM THE REGISTRY, NOT TRANSCRIBED. A functional tool's `deviceKind` is the sim enum
- * member, and `ITEMS` already states which piece skins that member (`dev('Bed','b')` on the
- * `bunk-bed` row) — so the ghost and the piece that lands afterwards are chosen by the same fact.
- * The alternative is an eleventh hand table of tool→art, which is the shape `glyph-map.js`'s header
- * spends forty lines retracting.
- *
- * ⚠️ ONE TOOL CANNOT BE DERIVED AND SAYS SO IN THE TABLE. `DeviceKind.Light` has NO `functional`
- * registry row at all — its art is `GLYPH_SUBSTITUTE['*'] → 'wall-lamp'`, a borrow reachable only
- * from the glyph CHARACTER, and the client has no DeviceKind → glyph map (that switch is
- * `sim/Sim.Glyph/Glyphs.cs`). So `PALETTE_CMD.lamp` states its art in the `itemId` vocabulary the
- * table already uses for the two cosmetic rows. FILED: the general fix is a client mirror of
- * `Glyphs.ForDevice`, which is a hand mirror and therefore a decision, not a chore.
- * PURE of DOM; reads only the frozen tables.
- */
-/* ⭐ EXPORTED so `build-ghost.test.js` can pin the GHOST's route against the PLACED piece's glyph
-   route by calling THIS function rather than restating its body — a restated derivation is the
-   second authority the whole `glyph-map.js` header exists to refuse. */
-export function ghostArtId(tool) {
-  const pc = paletteCommand(tool);
-  if (pc.itemId) return pc.itemId;
-  if (pc.cls !== 'functional' || !pc.deviceKind) return '';
-  // ⛔⛔ RESOLVE THROUGH THE **GLYPH**, NOT THROUGH THE FIRST MATCHING ROW — and this is a defect
-  // fix, not a tidy-up (lane/paper-machines merge, 2026-08-05). `DeviceKind → itemId` IS NOT A
-  // FUNCTION and the registry says so out loud (`wear.js deviceKindsWithSeveralPieces`); machines
-  // then made it concrete by adding `plant-pot` (glyph `'P'`) beside the existing `potted-plant`,
-  // whose row it re-pointed to `glyph: null`. BOTH carry `deviceKind: 'PlantPot'`. A first-match
-  // scan answers `potted-plant` — the OLD warm art — while a PLACED plant resolves glyph `'P'` and
-  // draws `plant-pot`. The player would have previewed one piece and got another, silently, and
-  // nothing but the agreement pin could see it.
-  // ⇒ The placed piece's answer is `itemIdForGlyphChar(glyph)`, so the ghost asks the registry which
-  // glyph this DeviceKind projects and then asks the SAME function. Two hops down ONE route, rather
-  // than a second route that happens to agree.
-  let fallback = '';
-  for (const id of Object.keys(ITEMS)) {
-    const e = ITEMS[id];
-    if (!e || e.kind !== 'functional' || e.deviceKind !== pc.deviceKind) continue;
-    if (typeof e.glyph === 'string' && e.glyph.length === 1) {
-      const viaGlyph = itemIdForGlyphChar(e.glyph);
-      if (viaGlyph) return viaGlyph;
-    }
-    // A row with no glyph is the honest last resort: some kinds project no glyph of their own and
-    // are skinned only by a substitution, and answering nothing at all would draw the unbuilt chip.
-    if (!fallback) fallback = id;
-  }
-  return fallback;
-}
+/* ⭐⭐ THE TOOL→ART DERIVATION MOVED, IT WAS NOT DELETED (2026-08-05, the build tray). The body is
+   `build-tray-model.js`'s `ghostArtId`, with its whole argument — derived from the registry through
+   the GLYPH rather than through the first matching row, and the one `itemId` the table has to state
+   because `DeviceKind.Light` has no functional row. It moved because it acquired a SECOND consumer
+   that must never disagree with this one: the tray CARD draws the very piece the ghost stands on the
+   hovered tile, and two answers to "what does BUNK look like" is the defect the glyph route exists
+   to prevent.
+   ⭐ STILL EXPORTED FROM HERE, so `build-ghost.test.js` keeps the door it pins through: its subject
+   is that the ghost's route and the PLACED piece's glyph route are ONE function, and moving a
+   function does not move that pin. */
+const ghostArtId = trayGhostArtId;
+export { ghostArtId };
 
 
 /**
@@ -1268,9 +1250,83 @@ function ghostPieceSvg(tool, tile, scene, place, refused) {
   // `stroke-dasharray` on the WRAPPER is what turns the real drawing into the unbuilt dialect —
   // every stroke inside that does not set its own inherits it. `class` carries the state so a rig
   // and a DOM test can read which of the two the player is looking at.
+  //
+  // ⛔ THE CALLOUT IS A SIBLING OF THE WRAPPER, NOT A CHILD OF IT, AND THAT IS RULE 1 HOLDING RATHER
+  // THAN BENDING. The wrapper's whole job is to dress the REAL DRAWING in the unbuilt dialect by
+  // inheritance — `stroke-dasharray="6 5"` and `opacity` reach every stroke inside it. A leader line
+  // and two labels are not part of the piece; inside the wrapper they would come out dashed and
+  // half-transparent, i.e. the annotation would wear the dialect of the thing it annotates.
   return '<g class="rz-buildghost' + (refused ? ' refused' : '') + '" data-ghost-tool="' + esc(tool) +
     '" data-ghost-tile="' + (tile.x | 0) + ',' + (tile.y | 0) + '" data-ghost-facing="' + (_facing & 3) +
-    '" pointer-events="none" opacity="' + dim + '" stroke-dasharray="6 5">' + art + mark + '</g>';
+    '" pointer-events="none" opacity="' + dim + '" stroke-dasharray="6 5">' + art + mark + '</g>'
+    + ghostCalloutSvg(tool, tile, place, refused);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ THE ARMED PIECE'S CALLOUT — the owner's design, 2026-08-05: a dashed leader from the ghost to
+// `PLACE · <price>` in oxblood, and a dimension line under it reading `2.1 M · DRAWS 6 KW`.
+//
+// ⛔ IT DOES NOT BREAK THE GHOST'S "NO OXBLOOD" RULE — IT IS THE EXCEPTION THAT RULE ALREADY NAMES.
+// Rule 2 above forbids painting the PIECE in the accent, because a preview must not shout in the
+// colour of a fault. This is not the piece: it is a PRICED ORDER'S LABEL, and this surface already
+// draws exactly that in exactly this colour — `ghostSvg` puts `WALL · 3 PARTS` on an oxblood leader
+// over every queued design, and has since VR-P3. So the callout is the shipped annotation idiom
+// arriving one step earlier (before the click instead of after it), not a new claim on the accent.
+// The piece itself stays ink-dashed, and the refusal cross stays ink.
+//
+// ⛔⛔ THE LEADER FLIPS SIDES RATHER THAN RUNNING OFF THE PLATE — VR-P4's MAJOR, which was an alert
+// drawn where nobody could see it, applied here before it could happen a second time. The scene has
+// a viewBox and anything outside it is CLIPPED, silently, so a leader that always ran right would
+// vanish on every tile in the right half of a wide room. The side is chosen from the tile's own
+// position in the room (`_focus.rw`), and both sides are driven in `build-tray.test.js`.
+//
+// ⚠️ AND IT IS NOT A PRESS TARGET, for rule 3's reason: it is emitted into `.rz-ghostlayer`, which is
+// `pointer-events:none`, and the group repeats the attribute — the leader crosses tiles the player
+// may well be about to click.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Scene-px geometry of the callout, all off ONE tile's projected corners. */
+function ghostCalloutSvg(tool, tile, place, refused) {
+  const { lead, dim } = trayCallout(tool, paletteCostRow(tool, partsAboard()));
+  if (!lead) return '';
+  const c = place.corners(tile.x, tile.y);
+  // The tile's own width on screen is the unit every offset below is stated in, so the callout
+  // scales with the room instead of with a hard-coded pixel guess (a 4 × 4 store and a 20 × 12 hold
+  // are drawn at very different px/cm by `sceneFit`).
+  const w = Math.max(8, c.nearRight[0] - c.nearLeft[0]);
+  // WHICH WAY THE LEADER RUNS. Rooms are wider than they are deep and the plate is letterboxed, so
+  // the horizontal edge is the one that clips; the tile's column decides the side.
+  const right = _focus ? ((tile.x | 0) - (_focus.rx | 0)) < ((_focus.rw | 0) / 2) : true;
+  const dirn = right ? 1 : -1;
+  const anchorX = right ? c.nearRight[0] : c.nearLeft[0];
+  const anchorY = (c.nearRight[1] + c.nearLeft[1]) / 2 - w * 0.55;   // about the piece's shoulder
+  const tipX = anchorX + dirn * w * 1.15;
+  const labelX = tipX + dirn * (w * 0.10);
+  const n = (v) => (Math.round(v * 10) / 10).toFixed(1);
+  let out = '<g class="rz-ghost-callout" data-callout-side="' + (right ? 'right' : 'left') +
+    '" pointer-events="none">';
+  // The leader: a dashed run in the accent at the design's own weight, from the piece to the label.
+  out += '<path d="M' + n(anchorX) + ' ' + n(anchorY) + ' L' + n(tipX) + ' ' + n(anchorY) +
+    '" fill="none" stroke="' + ATTEND + '" stroke-width="1" stroke-dasharray="4 4" opacity="0.75"/>';
+  out += haloText(lead, labelX, anchorY - w * 0.06, {
+    font: 'mono', size: Math.max(9, w * 0.13), tracking: 1.1, fill: ATTEND,
+    anchor: right ? 'start' : 'end',
+  });
+  // The dimension line, under the tile's NEAR edge, with the design's end ticks. Omitted when the
+  // tool has nothing dimensional to say — an empty rule under a piece is a measurement of nothing.
+  if (dim) {
+    const dy = c.nearLeft[1] + w * 0.30;
+    const tick = w * 0.07;
+    out += '<path d="M' + n(c.nearLeft[0]) + ' ' + n(dy - tick) + ' L' + n(c.nearLeft[0]) + ' ' + n(dy + tick) +
+      ' M' + n(c.nearLeft[0]) + ' ' + n(dy) + ' L' + n(c.nearRight[0]) + ' ' + n(dy) +
+      ' M' + n(c.nearRight[0]) + ' ' + n(dy - tick) + ' L' + n(c.nearRight[0]) + ' ' + n(dy + tick) +
+      '" fill="none" stroke="' + INK + '" stroke-width="0.8" opacity="' + (refused ? '0.35' : '0.55') + '"/>';
+    out += haloText(dim, (c.nearLeft[0] + c.nearRight[0]) / 2, dy + w * 0.20, {
+      font: 'mono', size: Math.max(8, w * 0.115), tracking: 1.1, fill: INK, anchor: 'middle',
+      opacity: 0.7,
+    });
+  }
+  return out + '</g>';
 }
 
 /** Take the ghost down and forget what was drawn. Idempotent; every clearing path calls it. */
@@ -1298,8 +1354,14 @@ function paintGhost() {
   // The MATERIAL is in the signature because the swatch is in the drawing: a player who flips WALL
   // from steel to wood while hovering one tile must see the swatch change, and without this term the
   // guard would hold the old chip up (the tile, the tool and the refusal are all unchanged).
+  // ⭐ PARTS IS IN THE SIGNATURE BECAUSE THE CALLOUT SAYS IT. The leader reads `PLACE · 3 PARTS`
+  // normally and the COST ROW'S OWN SENTENCE when the surface can prove a refusal (`NEEDS 3 PARTS —
+  // SHIP HAS 1`), so a hauler dropping the third unit under a stationary pointer has to redraw the
+  // label. Without this term the guard would hold the stale refusal up over an affordable placement
+  // — the same class of bug the MATERIAL term below was added for.
   const sig = _armed + '|' + _hoverTile.x + ',' + _hoverTile.y + '|' + (refused ? 1 : 0)
-    + '|' + activeMaterial(_materials, _armed) + '|' + _facing + '|' + scene.viewBoxAttr;
+    + '|' + activeMaterial(_materials, _armed) + '|' + _facing + '|' + partsAboard()
+    + '|' + scene.viewBoxAttr;
   if (sig === _ghostSig) return;
   const unit = scene.s * 100 * M_PER_TILE;
   const place = scenePlacement(scene, _focus, unit);
@@ -1947,63 +2009,42 @@ function partsAboard() {
   return partsUnits(Hud.getLedger());
 }
 
-// The BUTTONS only — the group label moved to `paintChrome`, which owns all three chrome sentences.
-function paintPalette() {
-  const parts = partsAboard();
-  for (const b of _el.toolBtns) {
-    const tool = b.dataset.rztool;
-    const on = _armed === tool;
-    setCls(b, 'on', on);
-    // ⭐ THE LIVE HALF OF THE PRICE. The chip's `3 PARTS` line is a constant written once by
-    // `buildChrome`; what changes tick to tick is whether the ship can PAY it, and that is a class
-    // toggle plus a `title` — never a re-render, because rebuilding a palette button detaches the
-    // node under the player's press and eats the click (HANDOVER §4h). `.cant` is a paint-only
-    // state for the same reason the armed ring is a shadow: it must not re-measure a wrapping row.
-    // ⚠️ THE DECOR TOOLS ARE PERMANENTLY `.cant` and that is not an affordability claim — SHELF and
-    // RUG reach no sim at all, so "the ship cannot do this" is simply true of them until M4-6 rules.
-    const row = paletteCostRow(tool, parts);
-    setCls(b, 'cant', !!(row && row.level === 'fault'));
-    setAttr(b, 'title', chipTitleText(tool, parts));
-    // The armed state, said in words as well as in colour. One exclusive slot, so exactly one button
-    // may read `true` — which is why this writes 'false' rather than removing the attribute: an
-    // absent `aria-pressed` turns a toggle back into a plain button, and sixteen plain buttons
-    // beside one pressed one is a different (and wrong) statement about the control set.
-    setAttr(b, 'aria-pressed', on ? 'true' : 'false');
-  }
+/**
+ * ⭐⭐ THE BUILD TRAY, PAINTED. One call, because the tray is ONE control: the breadcrumb, the ESC
+ * sentence, the two rails and the card row are four views of the same three facts (where the player
+ * has navigated to, what they are holding, and what the ship can pay for).
+ *
+ * ⛔ THE ESC SENTENCE IS COMPUTED FROM `escStackRung` — THE SAME REDUCER THE KEY HANDLER OBEYS — and
+ * not from `trayDepth` alone. The design writes `ESC · BACK A LEVEL` in the tray's corner; that is
+ * true only on the tray's own rung, and with a tool in hand or at the tray's root the key does
+ * something else. A label that names a key must be derived from what the key does or it is the
+ * `zoomChrome` defect again: the surface announcing a mode it is not in.
+ *
+ * ⚠️ `personaOpen` IS ASKED HERE TOO. It is a rung ABOVE the tray, so with the Persona window open
+ * the corner must not promise to walk the tray back — the next Escape closes the window.
+ */
+function paintTray() {
+  if (!_tray) return;
+  _tray.paint({
+    armed: _armed,
+    materials: _materials,
+    parts: partsAboard(),
+    tray: _trayNav,
+    escRung: escRung(),
+  });
 }
 
-/** The material swatch row: shown only when WALL or FLOOR is armed, listing that surface's 6
- *  materials as clickable item-set swatches with the active one lit. Re-rendered only when the
- *  (tool, active-byte) signature changes, so idle repaints and hovers leave the chips untouched. */
-function paintMatStrip() {
-  if (!_el.matStrip) return;
-  const tool = _armed;
-  if (!toolHasMaterial(tool)) {
-    if (_matSig !== 'off') { _el.matStrip.hidden = true; _el.matStrip.innerHTML = ''; _matSig = 'off'; }
-    return;
-  }
-  const active = activeMaterial(_materials, tool);
-  const sig = tool + ':' + active;
-  if (sig === _matSig) return;
-  let html = '<span class="rz-mat-label">' + esc(TOOL_LABEL[tool]) + ' ▸</span>';
-  for (const m of materialsForTool(tool)) {
-    const swatch = buildItem(m.id, { w: 26, h: 26, idPrefix: 'rz-mc-' + tool + '-' + m.mat });
-    // `type="button"` and DELIBERATELY NOT `aria-pressed`. The type is the same argument as the tool
-    // buttons' — one palette, one button vocabulary, and inside a form the default is `submit`. The
-    // pressed state is a different question and is left open on purpose: `activeMaterial` guarantees
-    // exactly ONE swatch is `on`, which is a radio group, not six independent toggles. The right
-    // spelling is `role="radio"`/`aria-checked` inside a `radiogroup` with roving tab focus, and
-    // that is a keyboard-interaction change (arrow keys move the selection) rather than an attribute
-    // — too much to bolt onto a layout fix, and guessing `aria-pressed` here would announce six
-    // toggles where the player has one choice.
-    html += '<button type="button" class="rz-mat-chip' + (m.mat === active ? ' on' : '') + '" data-rzmat="' + m.mat +
-      '" title="' + esc(m.label) + '">' +
-      '<svg class="rz-mat-sw" viewBox="0 0 26 26" width="26" height="26" xmlns="http://www.w3.org/2000/svg">' +
-      swatch + '</svg><span class="rz-mat-name">' + esc(m.label) + '</span></button>';
-  }
-  _el.matStrip.innerHTML = html;
-  _el.matStrip.hidden = false;
-  _matSig = sig;
+/**
+ * ⛔ WHAT ESCAPE WILL DO RIGHT NOW — ONE CALL, TWO READERS. The key handler acts on it and the tray's
+ * corner label advertises it, and a second construction of that argument object is exactly how a
+ * label comes to promise "back a level" on a rung that exits the room. (The 2026-08-05 draft had
+ * two; review of the persona rung's own note is what made it one.)
+ */
+function escRung() {
+  return escStackRung({
+    armed: _armed != null, dialogueOpen: false, personaOpen: Hud.isPersonaOpen(),
+    trayDepth: trayDepth(_trayNav), roomOpen: _open,
+  });
 }
 
 /**
@@ -2020,10 +2061,12 @@ function paintMatStrip() {
 /**
  * ⭐⭐ THE COST ROW: the price and the stock of the tool in hand, BEFORE the click.
  *
- * Shown only while a furniture or a decor tool is armed — a sibling of `#rz-matstrip` and
- * `#rz-accepts` in the same wrapper, on the same reveal-on-arm rule, and mutually exclusive with
- * both (materials are WALL/FLOOR, accepts is STOCKPILE, this is the seven place tools plus the two
- * cosmetic ones), so it costs the wrapping palette zero net height.
+ * Shown only while a furniture or a decor tool is armed — a sibling of `#rz-accepts` in the same
+ * wrapper, on the same reveal-on-arm rule and mutually exclusive with it (accepts is STOCKPILE, this
+ * is the place tools plus the two cosmetic ones), so it costs the wrapping band zero net height.
+ * ⚠️ THE THIRD SIBLING IS GONE: `#rz-matstrip` was the WALL/FLOOR swatch row, and the six materials
+ * are `STRUCTURE ▸ WALL`'s and `▸ FLOOR`'s own CARDS inside the build tray now. The exclusion
+ * argument is unchanged — it just has one fewer party.
  *
  * Re-rendered only when its (tool, text, level) signature changes — the ACCEPTS row's rule, and for
  * the same reason: this surface repaints at the wire's 10 Hz and a node rebuilt under a press eats
@@ -2072,9 +2115,17 @@ function arm(tool) {
   _armed = nextRoomTool(_armed, { t: 'toggle', tool });
   _drag = null; // arming/disarming cancels any in-progress sweep
   _facing = 0;  // …and so does the rotation — see `_facing`'s own header for why it is not sticky
+  // ⭐⭐ THE TRAY FOLLOWS THE ARMED SLOT, AND THIS LINE IS AN AFFORDANCE, NOT TIDINESS. Six tools
+  // have HOTKEYS (`B` wall, `X` demolish, `G` dig, `Z` stockpile, `V` strip, `C` erase, `M` move)
+  // and a hotkey does not touch the tray. Without this, pressing `B` would arm WALL while the tray
+  // sat on `FURNITURE › FITTED` — the held tool's card two rail clicks away, off screen, with the
+  // armed ring drawn on a control nobody can see. That is `invisible-feedback-is-FUNCTIONAL` exactly.
+  // ⚠️ ONLY ON ARMING. `nextRoomTool` toggles, so disarming passes `null` here and `trayNav` returns
+  // the state unchanged: putting a tool down must not also navigate the menu out from under the
+  // player's next click.
+  if (_armed != null) _trayNav = trayNav(_trayNav, { t: 'reveal', tool: _armed });
   paintChrome();  // label + hint + caption all key on `_armed` — see paintChrome's header
-  paintPalette();
-  paintMatStrip();
+  paintTray();
   paintAccepts();
   paintCostRow();
   paintCanvas();
@@ -2098,10 +2149,24 @@ function onHudClick(e) {
   closeCtx();
   // The nudge IS its own fix: it complains the ship is stopped, so clicking it starts it.
   if (t.closest('[data-rz-nudge]')) { _send(Cmd.pause()); return; }
+  // ⭐⭐ THE TRAY'S THREE GESTURES, ABOVE THE TOOL BRANCH because a CARD carries `data-rztool` too
+  // and a material card must not be read as a bare arm (it carries a material as well as a verb).
+  const cat = t.closest('[data-rzcat]');
+  if (cat) { onTrayNav({ t: 'cat', cat: cat.getAttribute('data-rzcat') }); releaseSpace(cat, e); return; }
+  const sub = t.closest('[data-rzsub]');
+  if (sub) { onTrayNav({ t: 'leaf', leaf: sub.getAttribute('data-rzsub') }); releaseSpace(sub, e); return; }
+  const crumbBtn = t.closest('[data-rzcrumb]');
+  if (crumbBtn) {
+    // A crumb names a category OR a leaf; `trayNav` is total for both and returns the state
+    // unchanged for anything else, so one call answers both without this file classifying the id.
+    const id = crumbBtn.getAttribute('data-rzcrumb');
+    onTrayNav(id && id.indexOf('/') > 0 ? { t: 'leaf', leaf: id } : { t: 'cat', cat: id });
+    releaseSpace(crumbBtn, e); return;
+  }
+  const card = t.closest('[data-rzcard]');
+  if (card) { onTrayCard(card); releaseSpace(card, e); return; }
   const tool = t.closest('[data-rztool]');
   if (tool) { arm(tool.getAttribute('data-rztool')); releaseSpace(tool, e); return; }
-  const mat = t.closest('[data-rzmat]');
-  if (mat) { onMatChip(mat); return; }
   const acc = t.closest('[data-rzaccept]');
   if (acc) { onAcceptChip(acc); releaseSpace(acc, e); return; }
   const row = t.closest('[data-rzcrew]');
@@ -2112,15 +2177,48 @@ function onHudClick(e) {
   if (slot) { onMinimapSlot(slot); return; }
 }
 
-/** Choose a wall/floor material from the strip; re-skins the strip + any live preview. */
-function onMatChip(el) {
-  const tool = _armed;
+/** Walk the tray. Pure state in, one paint out — nothing about the ARMED tool moves, because
+ *  browsing a menu is not picking up a tool (RimWorld's Architect categories behave the same way,
+ *  and a rail click that silently disarmed would lose the piece the player was about to place). */
+function onTrayNav(action) {
+  const next = trayNav(_trayNav, action);
+  if (next === _trayNav) return;
+  _trayNav = next;
+  paintTray();
+}
+
+/**
+ * ⭐⭐ A CARD PRESS. Two shapes on one control, and the split is the material strip re-housed:
+ *
+ *   · a TOOL card (`data-rztool` alone) — the flat chip's behaviour exactly: `arm` toggles the one
+ *     exclusive slot, so pressing the held card puts it down.
+ *   · a MATERIAL card (`data-rztool` + `data-rzmat`) — WALL/FLOOR and one of six swatches, which the
+ *     flat palette needed two controls and a reveal-on-arm row for. Arming and choosing are ONE
+ *     press now, and the toggle-off rule is preserved with its meaning intact: pressing the card
+ *     that is ALREADY armed AND already the active material puts the tool down; pressing a different
+ *     swatch of the same tool re-skins it without disarming, which is what the strip did.
+ *
+ * ⚠️ THE MATERIAL IS PARSED WITH A DIGIT TEST, NOT `parseInt`. `parseInt('nonsense', 10) | 0` is 0
+ * and 0 is a perfectly valid material byte (STEEL / STEEL-TAN), so a blanked attribute would
+ * silently select the first material instead of doing nothing — the identical hole `onAcceptChip`
+ * measured and closed on its own attribute.
+ */
+function onTrayCard(el) {
+  const tool = el.getAttribute('data-rztool');
+  const raw = el.getAttribute('data-rzmat');
+  if (raw == null) { arm(tool); return; }
   if (!toolHasMaterial(tool)) return;
-  const next = setMaterial(_materials, tool, parseInt(el.getAttribute('data-rzmat'), 10) | 0);
-  // …and the BUILD GHOST, whose swatch is the material the chip just changed. `scheduleRepaint` is
-  // rAF-coalesced and reaches `paintGhost` too, but only on a surface that is going to get a frame;
-  // this is the one seam that must answer on a PAUSED ship, which is where materials get chosen.
-  if (next !== _materials) { _materials = next; paintMatStrip(); paintGhost(); scheduleRepaint(); }
+  const mat = /^\d+$/.test(String(raw)) ? Number(raw) : -1;
+  if (mat < 0) return;
+  const alreadyActive = _armed === tool && (activeMaterial(_materials, tool) | 0) === mat;
+  if (alreadyActive) { arm(tool); return; }   // the held card, pressed again → put it down
+  const next = setMaterial(_materials, tool, mat);
+  if (next !== _materials) _materials = next;
+  if (_armed !== tool) { arm(tool); return; } // `arm` repaints the tray, the ghost and the chrome
+  // …already holding this tool, so only the SKIN moved. `scheduleRepaint` is rAF-coalesced and
+  // reaches `paintGhost` too, but only on a surface that is going to get a frame; this is the one
+  // seam that must answer on a PAUSED ship, which is where materials get chosen.
+  paintTray(); paintGhost(); scheduleRepaint();
 }
 
 /**
@@ -2202,6 +2300,7 @@ function onCrewRow(rawCid) {
   if (!target) { toast(who + ' IS IN ' + (row.roomName || row.anchor) + ' — CANNOT OPEN IT'); return; }
   _focus = target;
   _armed = null;
+  _trayNav = TRAY_ROOT;
   _drag = null;
   repaint();
   toast('▸ ' + who + ' · ' + target.displayName);
@@ -2217,6 +2316,7 @@ function onMinimapSlot(slotEl) {
   if (target.deck !== _focus.deck) _send(Cmd.deck(target.deck - _focus.deck)); // cross-deck (IX-Z-35)
   _focus = target;
   _armed = null;
+  _trayNav = TRAY_ROOT;
   _drag = null; // a room swap abandons any in-progress sweep
   repaint();
 }
@@ -2971,11 +3071,15 @@ function onKey(e) {
     // a room can reach a person at all — this surface has no readout), and without this rung the
     // room would exit out from under an open window: this handler is registered on `window` in the
     // CAPTURE phase at mount, so it runs before anything the window could register later.
-    const rung = escStackRung({
-      armed: _armed != null, dialogueOpen: false, personaOpen: Hud.isPersonaOpen(), roomOpen: true,
-    });
+    // ⭐⭐ THE TRAY'S RUNG (2026-08-05) — `BACK A LEVEL`, the sentence the design writes in the
+    // tray's own corner, on the key that already owned this stack. It sits BELOW `persona` and
+    // ABOVE `exit`: an armed tool and an open window are drawn over the surface, the tray IS the
+    // surface, and only a tray at its root lets Escape leave the room. The corner label is written
+    // from THIS SAME REDUCER (`paintTray`), so the key and its advertisement cannot disagree.
+    const rung = escRung();
     if (rung === 'disarm') arm(_armed);       // toggle the armed tool off
-    else if (rung === 'persona') Hud.closePersona();
+    else if (rung === 'persona') { Hud.closePersona(); paintTray(); }
+    else if (rung === 'tray') onTrayNav({ t: 'back' });
     else if (rung === 'exit') exitRoom();
     e.stopPropagation(); e.preventDefault();
   } else if (k === 'b' || k === 'B') {         // IX-Z-17: B toggles WALL

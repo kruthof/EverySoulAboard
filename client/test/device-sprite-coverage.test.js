@@ -1070,7 +1070,7 @@ test('the Overview COMPOSER draws furniture for every covered kind (overviewScen
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-tray', 'rz-accepts', 'rz-minimap',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
 class RzEl extends DomEl {

@@ -147,15 +147,27 @@ const PALETTE_CMD = Object.freeze({
   // the SAME `itemId` column the two cosmetic rows below already carry, spent here for a hole in the
   // registry. Every other functional tool's art is DERIVED (the build ghost matches this row's
   // `deviceKind` against `ITEMS`' own `deviceKind` column — `roomzoom-view.js ghostArtId`), but
-  // `DeviceKind.Light` has NO functional `ITEMS` row at all: its art is `GLYPH_SUBSTITUTE['*'] →
-  // 'wall-lamp'` (`items/glyph-map.js`), a borrow reachable only from the glyph CHARACTER, and no
-  // client module maps a DeviceKind to a glyph — that switch is `sim/Sim.Glyph/Glyphs.cs`.
+  // `DeviceKind.Light` has NO functional `ITEMS` row at all: its art is `GLYPH_SUBSTITUTE['*']`
+  // (`items/glyph-map.js`), a borrow reachable only from the glyph CHARACTER, and no client module
+  // maps a DeviceKind to a glyph — that switch is `sim/Sim.Glyph/Glyphs.cs`.
   // ⇒ FILED, not fixed here: the general closure is either a real luminaire in the warm/paper set (a
   // `functional` row with `deviceKind:'Light'`, whereupon this field is deleted and the derivation
   // covers it) or a client mirror of `Glyphs.ForDevice` — and a hand mirror of a sim switch is
   // precisely the class of table `glyph-map.js`'s header spends forty lines retracting, so it is a
   // decision for the owner rather than a chore for this lane.
-  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light', itemId: 'wall-lamp' },
+  //
+  // ⛔⛔ THE VALUE IS `lamp-sconce` AND IT WAS `wall-lamp` UNTIL THIS COMMIT — a STALE MIRROR, found
+  // by review (MAJOR 3). `GLYPH_SUBSTITUTE['*']` moved from `wall-lamp` to `lamp-sconce` on
+  // 2026-08-05 (lane/paper-fixtures), so a PLACED Light has drawn the paper sconce since that day
+  // while this row still handed the ghost — and now the build tray's CARD — the retired warm piece.
+  // Two visible costs, both measured: the card and the ghost showed art nothing on the ship wears
+  // any more, and `wall-lamp` has NO `SPECS` row, so `itemSpecCm` answered `undefined` and the card's
+  // stat line silently dropped its dimensions (`0.15 KW` alone, where every other machine reads
+  // `<kW> · <w> × <d> M`). `lamp-sconce` carries `{w:46, d:22}` and the line is whole again.
+  // ⚠️ THIS FIELD IS A HAND MIRROR OF A TABLE IN ANOTHER FILE — exactly the shape that goes stale
+  // unwatched — so `build-ghost.test.js` now pins it AGAINST `GLYPH_SUBSTITUTE` rather than against a
+  // typed string: the day the substitution moves again, the pin moves with it or reddens by name.
+  lamp:  { cls: 'functional', verb: 'place',  kind: 'lamp',   deviceKind: 'Light', itemId: 'lamp-sconce' },
   // M3-10. `kind: 'heater'` is the wire string `GameSession.TryFurnitureKind` switches on, and
   // `deviceKind: 'Heater'` is the sim enum member the ghost/erase paths name; the two are different
   // vocabularies on purpose and every row here carries both.
@@ -499,6 +511,17 @@ export function deckSlots(dView, deck) {
 export const M_PER_TILE = 1;
 /** The compartment's ceiling, in metres. Measured off the design; the wire carries no height. */
 export const ROOM_HEIGHT_M = 2.4;
+/**
+ * A DOOR's opening, in metres — 2.0 m in a 2.4 m wall.
+ *
+ * ⚠️ IT IS A CONSTANT HERE BECAUSE IT WAS A LITERAL IN TWO PLACES. `roomzoom-view.js` wrote
+ * `pc.kind === 'door' ? 200 : ROOM_HEIGHT_M * 100` in `ghostPieceSvg` and `g.kind === 1 ? 200 : …`
+ * in `ghostSvg` — the same 200 cm typed twice, one for the hover preview and one for the queued
+ * order — and the build tray now needs the same number a third time for the DOOR card's stat line.
+ * Three copies of a dimension is how a preview and the thing it previews come to be different sizes
+ * (`ghostPieceSvg`'s own swatch defect, 2026-08-05). One home; both call sites read it.
+ */
+export const DOOR_HEIGHT_M = 2;
 /** px per cm for the Level-2 cutaway — the charter's `room` scale, read from the kit, never typed. */
 export const ROOM_SCALE = PX_PER_CM.room;
 /** The ONE `#fh` hatch namespace this surface emits (`fhDef('rz')` → `<pattern id="rz-fh">`). */
@@ -2527,13 +2550,37 @@ export function removeDecor(list, deck, x, y) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * @param {{armed:boolean, dialogueOpen?:boolean, personaOpen?:boolean, roomOpen:boolean}} s
- * @returns {'disarm'|'dialogue'|'persona'|'exit'|'pass'}
+ * ⭐⭐ THE BUILD TRAY'S RUNG (2026-08-05), AND WHERE IT SITS IS THE WHOLE DECISION.
+ *
+ * The tray is a hierarchy — `BUILD › MACHINES › COMFORT` — and its design puts `ESC · BACK A LEVEL`
+ * in its own top-right corner. That sentence has to be TRUE of the same key the room already
+ * listens to, so the rung goes in this reducer rather than into a second handler; `roomzoom-view.js`
+ * installs ONE capture-phase keydown, and a tray listener registered later would run after it and
+ * the room would exit out from under an open tray (the exact argument the `persona` rung records).
+ *
+ * ⛔ IT SITS **BELOW** `persona` AND **ABOVE** `exit`, i.e. fourth. The rule the whole stack obeys is
+ * "take down the topmost thing first", and the topmost thing is whatever is drawn over everything
+ * else: an armed tool is in the player's hand, a dialogue and the Persona window are bodies-level
+ * siblings drawn OVER this surface, and the tray is part of the surface itself. So Escape puts the
+ * tool down, then closes whatever is covering the room, and only then walks the tray back — and
+ * only when the tray is at its root does it leave the room. `trayDepth` is `build-tray-model.js`'s
+ * own number (0 root / 1 category / 2 leaf), so the breadcrumb and this ladder read ONE state.
+ *
+ * ⚠️ THE COST, STATED, because the `persona` rung's own note states its twin: with a tool armed AND
+ * the tray two levels deep, leaving the room takes THREE Escapes. That is RimWorld's Architect menu
+ * exactly (designator, then category, then out) and it is the price of the hierarchy the owner
+ * asked for; the alternative — Escape always exits — deletes "back a level" from the one key the
+ * design labels with it.
+ *
+ * @param {{armed:boolean, dialogueOpen?:boolean, personaOpen?:boolean, trayDepth?:number,
+ *          roomOpen:boolean}} s
+ * @returns {'disarm'|'dialogue'|'persona'|'tray'|'exit'|'pass'}
  */
 export function escStackRung(s) {
   if (s && s.armed) return 'disarm';
   if (s && s.dialogueOpen) return 'dialogue';
   if (s && s.personaOpen) return 'persona';
+  if (s && (s.trayDepth | 0) > 0) return 'tray';
   if (s && s.roomOpen) return 'exit';
   return 'pass';
 }

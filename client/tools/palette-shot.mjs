@@ -1,4 +1,22 @@
 #!/usr/bin/env node
+//
+// ⛔⛔ STALE AS OF 2026-08-06 — THIS RIG ADDRESSES DOM THE BUILD TRAY DELETED, AND IT WILL DIE ON ITS
+// NEXT RUN. It is FILED, not fixed, and the filing is here rather than only in `HANDOVER.md` because
+// a rig that fails for a reason nobody wrote down reads as a regression in the game.
+//   WHAT IS GONE: `.rz-palette` (the flat wrapping chip strip), its `.rz-tool` buttons, `.rz-matstrip` and
+//     its `.rz-mat-chip` swatches. `.rz-palette-wrap` survives — it is the tray's own wrapper now.
+//   WHAT REPLACED IT: `#rz-tray` — a breadcrumb, two rails (`.rz-tray-cat` / `.rz-tray-sub`) and a
+//     row of `.rz-card`s. A tool's control now exists ONLY while its leaf is open, so every selector
+//     below needs a NAVIGATION step in front of it (press `[data-rzcat=…]`, then `[data-rzsub=…]`,
+//     both derivable from `build-tray-model.js`'s `trayLeafFor` / `categoryOf` — see
+//     `client/tools/build-tray-shot.mjs`, which does exactly this).
+//   ⚠️ NOTHING REDDENS TODAY: none of the four stale rigs is in `./ci.sh`.
+//   ⛔ AND THIS ONE IS A REWRITE RATHER THAN A PORT: its SUBJECT was the wrap/overflow
+//   behaviour of a chip row that no longer exists. The card row's equivalent question — is any card
+//   unreachable — is already asked by `build-tray-shot.mjs`. What is worth SALVAGING is its armed-look
+//   section (the `:hover` borrowing the armed border colour, found here and nowhere else): that defect
+//   class applies to `.rz-card` / `.rz-tray-cat` / `.rz-tray-sub` verbatim.
+//
 // palette-shot.mjs — MEASURE AND PHOTOGRAPH the Level-2 construction palette across viewport widths.
 //
 // ⚠️ WHY THIS EXISTS, and why it is committed rather than left in a scratchpad.
