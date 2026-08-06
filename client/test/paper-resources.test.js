@@ -36,8 +36,8 @@ import { ATTEND, PAPER, INK, SKETCH_LEVEL } from '../src/items/helpers.js';
 import { amplitudeBound, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
 import {
   measurePiece, bodyExtent, attrsOf, outsideBox,
-  nameOf as geomNameOf, shapePolys as geomShapePolys,
-  inkPolys as geomInkPolys, farFrom as geomFarFrom,
+  // — lane/warm-purge — the twin-damage instrument, shared with `wrecked.test.js` since 2026-08-06
+  damageMarks, offPieceAnchors, damageAnchors, isContainmentRing, DMG_TOL,
 } from './sketch-geom.js';
 import { PAPER_FLAT } from '../src/render/oblique.js';
 
@@ -157,20 +157,30 @@ test('the GLYPH join lands on the same nine rows (driven through glyph-map)', ()
     + 'same tile could draw one pile from the projection and another from the items channel.');
 });
 
-test('the nine WARM rows they displaced are unreached, and still build their own art', () => {
+// ⛔ THIS LEG CHANGED ITS SUBJECT ON 2026-08-06 AND IS STRICTLY STRONGER FOR IT. It read
+// `the nine WARM rows they displaced are unreached, and still build their own art`, and it held each
+// warm row to a HALF-MADE demotion being impossible: `kind: 'resource'`, `itemKind: null`,
+// `glyph: null`, `supersededBy: <the paper row>`, plus *"AND IT STILL DRAWS. 'Unreached' must mean
+// 'nothing routes to it', never 'it is broken'."* lane/warm-purge retired all nine rows, so the
+// demotion is now closed the only way that cannot be half-made: THE ROW IS NOT THERE.
+// ⇒ THE ASSERTION IS THE SAME ONE, TAKEN TO ITS END. `buildItem` is TOLERANT — an unknown id returns
+// the `?` placeholder rather than throwing — so a warm row silently re-added tomorrow would still
+// render; this compares against the placeholder BUILT WITH THE SAME OPTS, which is byte-for-byte what
+// a missed lookup returns, and that is the only form that can tell "absent" from "present".
+test('the nine WARM rows they displaced are GONE from the registry, not merely demoted', () => {
   for (const [paperId, warmId] of Object.entries(DISPLACED)) {
-    const e = ITEMS[warmId];
-    assert.ok(e, `${warmId} was deleted — the mock twin bijection needs it`);
-    assert.equal(e.kind, 'resource', `${warmId} is still a pile`);
-    assert.equal(e.itemKind, null, `${warmId} still claims a sim ItemKind`);
-    assert.equal(e.glyph, null, `${warmId} still claims a glyph`);
-    assert.equal(e.supersededBy, paperId, `${warmId} does not name the row that took its joins`);
-    // ⚠️ AND IT STILL DRAWS. "Unreached" must mean "nothing routes to it", never "it is broken":
-    // a row whose builder had rotted would still pass every join test above.
-    const svg = buildItem(warmId, { idPrefix: 'warm' });
-    assert.notEqual(svg, placeholderItem({ idPrefix: 'warm' }), `${warmId} builds the placeholder`);
-    assert.notEqual(svg, buildItem(paperId, { idPrefix: 'warm' }),
-      `${warmId} and ${paperId} render identically — one of them is pointing at the other's builder`);
+    assert.equal(ITEMS[warmId], undefined,
+      `${warmId} is back in the registry. Its glyph and its ItemKind were handed to ${paperId} on\n`
+      + '2026-08-05 and the row itself was retired on 2026-08-06; a warm pile re-registered above a\n'
+      + 'paper one wins BOTH first-wins joins, which is the defect this file exists to watch.');
+    assert.equal(buildItem(warmId, { idPrefix: 'warm' }), placeholderItem({ idPrefix: 'warm' }),
+      `${warmId} still BUILDS something. \`buildItem\` is tolerant, so the registry check above is\n`
+      + 'about the table and this one is about the art: an id that renders is an id some call site\n'
+      + 'can still put on a tile.');
+    // …and the paper row that took its place must still draw, or "gone" would be satisfied by a
+    // registry with nothing in it at all.
+    assert.notEqual(buildItem(paperId, { idPrefix: 'warm' }), placeholderItem({ idPrefix: 'warm' }),
+      `${paperId} does not build — the row that took ${warmId}'s joins draws the placeholder`);
   }
 });
 
@@ -635,41 +645,16 @@ test('the nine paint in ink, paper, the flat tone and the hatch — and nothing 
 // ⚠️ A SCORCH AND A HOLE ARE ANCHORED AT THEIR CENTRE, NOT THEIR RIM. They are REGIONS: a burn that
 // laps over the edge of the thing it burned is correct, and asking the rim to be contained would
 // condemn it. Every other mark is a run, and a run is anchored at every vertex it turns on.
-const DMG_TOL = 4;
-const DMG_SHAPES = ['path', 'ellipse', 'circle', 'rect'];
-const dmgShapesOf = (svg) => (svg.replace(/<defs>[\s\S]*?<\/defs>/g, '').match(/<[^>]*>/g) || [])
-  .filter((t) => DMG_SHAPES.includes(geomNameOf(t)) && !t.includes('sk-ground'));
-const dmgAnchorsOf = (tag) => {
-  if (geomNameOf(tag) === 'ellipse') { const a = attrsOf(tag); return [[+a.cx, +a.cy]]; }
-  return geomShapePolys(tag).flat();
-};
-const isContainmentRing = (tag) => /stroke-dasharray="3 3"/.test(tag);
-const inPoly2 = (poly, [x, y]) => {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
-    const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-};
-/** The damage marks of a twin = the shapes it emits beyond its pristine piece's own prefix. */
-function damageMarks(id, pristineSvg, twinSvg) {
-  const p = dmgShapesOf(pristineSvg);
-  const t = dmgShapesOf(twinSvg);
-  let i = 0;
-  while (i < p.length && i < t.length && p[i] === t[i]) i += 1;
-  assert.equal(i, p.length,
-    `${id}: the twin is not the pristine drawing PLUS damage — it diverges at element ${i} of `
-    + `${p.length}. Every anchoring claim below rests on the twin containing the piece it damages.`);
-  return t.slice(i);
-}
-/** Anchors of `marks` that lie neither inside nor within `tol` of the pristine ink. */
-function offPieceAnchors(pristineSvg, marks, tol = DMG_TOL) {
-  const base = geomInkPolys(pristineSvg);
-  const pts = marks.flatMap(dmgAnchorsOf);
-  return geomFarFrom(base, pts, tol)
-    .filter((q) => !base.some((poly) => poly.length > 2 && inPoly2(poly, q)));
-}
+// ⭐ THE FOUR HELPERS BELOW WERE PRIVATE TO THIS FILE AND ARE NOW SHARED — lifted verbatim into
+// `client/test/sketch-geom.js` on 2026-08-06 so `wrecked.test.js` can ask the same two questions of
+// all EIGHTY twins instead of these eight. ⛔ THEY ARE IMPORTED RATHER THAN RE-DECLARED: two copies
+// of one guard is two answers to "did this mark land on its piece", and the copy nobody is looking at
+// is the one that drifts. `DMG_TOL` in particular is now read by two files, and `wrecked.test.js`
+// asserts its value out loud so a re-tune here cannot silently loosen a guard over there.
+//
+// ⚠️ NOTHING LOCAL STAYED. `inPoly2` went too — `sketch-geom.js` already carried the identical
+// point-in-polygon under its own name (`inPolygon`), and the lift uses that one rather than shipping
+// a third copy of a ray cast.
 
 test('⭐⭐ every twin\'s damage lands ON the piece it damages, not merely inside its box', () => {
   let marksSeen = 0;
@@ -681,7 +666,7 @@ test('⭐⭐ every twin\'s damage lands ON the piece it damages, not merely insi
     const twin = buildWrecked(id, { w: 240, h: 240, idPrefix: 'z', sketch: false });
     const marks = damageMarks(id, pristine, twin).filter((t) => !isContainmentRing(t));
     marksSeen += marks.length;
-    anchorsSeen += marks.flatMap(dmgAnchorsOf).length;
+    anchorsSeen += marks.flatMap(damageAnchors).length;
     for (const m of marks) {
       const off = offPieceAnchors(pristine, [m]);
       if (off.length) {

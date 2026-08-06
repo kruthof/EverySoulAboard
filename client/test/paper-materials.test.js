@@ -27,18 +27,22 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import * as PM from '../src/items/paper-materials.js';
-import { CM, WALL_H_CM, TILE_CM, SPECS, SIZES, MATERIAL_IDS, BUILD } from '../src/items/paper-materials.js';
+import {
+  CM, WALL_H_CM, TILE_CM, SPECS, SIZES, MATERIAL_IDS, BUILD, DRAW, paintMaterial, frameForSkin,
+} from '../src/items/paper-materials.js';
 import { ITEMS, ITEM_IDS, buildItem } from '../src/items/index.js';
-import { INK, PAPER, ATTEND, TILE, r3, SKETCH_LEVEL } from '../src/items/helpers.js';
+import { INK, PAPER, ATTEND, TILE, r3, SKETCH_LEVEL, scene } from '../src/items/helpers.js';
 import { amplitudeBound, penSteps } from '../src/render/sketch.js';
 import { bodyExtent, outsideBox } from './sketch-geom.js';
 import { W } from '../src/items/fittings.js';
-import { PX_PER_CM } from '../src/render/oblique.js';
+import { PX_PER_CM, PAPER_FLAT } from '../src/render/oblique.js';
 import {
   roomScene, scenePlacement, M_PER_TILE, ROOM_HEIGHT_M, ROOM_SCALE,
 } from '../src/ui/room-model.js';
 import { materialLayerSvg } from '../src/ui/roomzoom-view.js';
 import { WALL_MATERIALS, FLOOR_MATERIALS, materialItemId } from '../src/ui/build-material-model.js';
+// — lane/warm-purge — the twelve twins; every leg in section 7 drives `buildWrecked`.
+import { buildWrecked } from '../src/items/wrecked.js';
 
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 const WALLS = MATERIAL_IDS.filter((id) => SPECS[id].surface === 'wall');
@@ -896,5 +900,441 @@ test('SIZES is the pieces\' own centimetres at the catalogue scale, not a card m
 test('every skin grounds on the surface\'s own PAPER', () => {
   for (const id of MATERIAL_IDS) {
     assert.ok(build(id).includes(`fill="${PAPER}"`), `${id} does not ground on the paper the room is`);
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 6 · THE PAINTER DOOR — `DRAW` / `paintMaterial` / `frameForSkin`
+//
+// The module gained a second entrance on 2026-08-06 so a DAMAGED TWIN can re-run a skin's paint on a
+// scene it does not own (`wrecked.js`, the twelve material twins). It is `fittings.paintFitting` and
+// `paper-resources.paintResource` in this module's shape, and everything below is about the two ways
+// that construction fails silently: a row pointing at another row's drawing, and a SECOND copy of the
+// frame arithmetic drifting from the harness's.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** A bare scene, rendered at the caller's box the way `helpers.item` would — no treatment. */
+function paintedFragment(id, box, extra) {
+  const s = scene('door-' + id);
+  paintMaterial(s, id, box, extra);
+  return s.render(box.w, box.h);
+}
+
+/**
+ * ⭐⭐ THE DOOR DRAWS THE SKIN, BYTE FOR BYTE — which is the whole claim `wrecked.js` leans on when it
+ * says a twin "is the same wall, damaged".
+ *
+ * ⛔ IT IS ALSO THE PIN ON THE ONE-DERIVATION RULE. `paintMaterial` resolves its own frame from the
+ * caller's `env`; the harness resolves one from `opts`. If those two ever stop being the same
+ * function, a twin would draw a 100 × 240 cm wall's damage on a 100 × 100 cm field and every other
+ * assertion in this file — which only ever reads the PRISTINE builder — would stay green. Byte
+ * equality across all three shipping boxes is the strongest statement available and it costs nothing.
+ *
+ * MUTATION: give `paintMaterial` its own `frameOf(TILE, TILE)` instead of `frameForSkin(env)` ⇒ RED
+ *           on both wall boxes (the damage frame would be square).
+ * MUTATION: `frameForSkin`'s default `w = h = 100 → 128` ⇒ RED on the bare-call leg below.
+ */
+test('paintMaterial paints exactly what the row\'s own builder paints, at every shipping box', () => {
+  const BOXES = [WALL_BOX, FLOOR_BOX, CHIP_BOX, { w: 62, h: 62 }];
+  for (const id of MATERIAL_IDS) {
+    for (const box of BOXES) {
+      const viaBuilder = BUILD[id]({ ...box, idPrefix: 'door-' + id, sketch: false });
+      assert.equal(paintedFragment(id, box), viaBuilder,
+        `${id} at ${box.w}x${box.h}: the painter door and the builder draw different pictures.\n`
+        + 'They must share ONE frame derivation (`frameForSkin`) — a second copy of the aspect\n'
+        + 'arithmetic is what this door exists to avoid.');
+    }
+  }
+  // …and the defaults are `helpers.item()`'s own, so a bare call is the same square metre.
+  //
+  // ⚠️ THE ASSERTION IS ON THE ASPECT, AND THE FIRST DRAFT'S WAS NOT — measured, by mutating it.
+  // Changing both defaults together (`100 → 128`) leaves `wCm`/`hCm` at 100 × 100, because the frame
+  // is derived from `w : h` and NOTHING else: `min(w,h)` normalises the magnitude away. So a leg that
+  // pinned the two centimetre extents was green under a mutation that really did change the defaults.
+  // What a wrong default can actually do is give a bare call the wrong SHAPE, so that is what is
+  // pinned — against `helpers.item()`'s own square, which is the thing it has to agree with.
+  const g0 = frameForSkin();
+  assert.equal(g0.wCm, TILE_CM, 'frameForSkin() must default to the 1 m tile helpers.item() defaults to');
+  assert.equal(g0.hCm, TILE_CM);
+  assert.equal(g0.hCm / g0.wCm, 1,
+    'a bare frameForSkin() is not SQUARE. `helpers.item()` defaults `w = h = 100`, so an unsized call\n'
+    + 'must draw the square metre it normalises — a defaulted aspect is a wall drawn as a floor.');
+  assert.equal(frameForSkin({}).hCm, frameForSkin({ w: 100, h: 100 }).hCm);
+  assert.equal(frameForSkin({ w: 40 }).hCm, frameForSkin({ w: 40, h: 100 }).hCm,
+    'a HALF-specified box must default its missing side to helpers.item()\'s 100, not to its sibling');
+  const gw = frameForSkin(WALL_BOX);
+  assert.ok(Math.abs(gw.wCm - TILE_CM) < 0.5 && Math.abs(gw.hCm - WALL_H_CM) < 0.5,
+    `a wall box derives ${gw.wCm.toFixed(1)} x ${gw.hCm.toFixed(1)} cm, not ${TILE_CM} x ${WALL_H_CM}`);
+  assert.equal(gw.full, true, 'a 2.4 m frame must gate `full` on, or the head rail never draws');
+  assert.equal(frameForSkin(CHIP_BOX).full, false, 'a 1 m crop is not a full-height wall');
+});
+
+/**
+ * THE SWAP, ON THE NEW MAP. `BUILD`'s comment already says why it is written out rather than derived:
+ * a row must not be able to point at another row's drawing, and `wrecked.test.js` records that the
+ * failure is invisible to every other guard in this repo. `DRAW` is the same table one level down —
+ * and it is the MORE dangerous of the two, because a twin reaches its picture through `DRAW` and a
+ * twin drawing the wrong wall still keys, sizes and classifies correctly.
+ */
+test('DRAW is the twelve rows, each naming its own drawing, and no two rows share one', () => {
+  assert.deepEqual(Object.keys(DRAW), [...MATERIAL_IDS], 'DRAW is not the id list, in order');
+  const seen = new Map();
+  for (const id of MATERIAL_IDS) {
+    const f = DRAW[id];
+    assert.equal(typeof f, 'function', `${id} has no painter`);
+    // the convention is load-bearing elsewhere in this tree (`fittings.js`, `paper-resources.js`,
+    // and `wrecked.test.js`'s painter-name guard): a painter is named after the ROW IT SERVES.
+    assert.equal(f.name, 'draw' + camel(id)[0].toUpperCase() + camel(id).slice(1),
+      `${id}'s painter is named ${f.name || '<anonymous>'} — a painter names the row it serves`);
+    assert.ok(!seen.has(f), `${id} and ${seen.get(f)} draw the same picture`);
+    seen.set(f, id);
+  }
+  assert.equal(seen.size, 12);
+  // …and the pictures really are different, measured rather than inferred from function identity:
+  // two distinct consts could still emit the same string, which is the swap wearing a second face.
+  const frags = new Set(MATERIAL_IDS.map((id) => paintedFragment(id, FLOOR_BOX).replace(/door-[a-z-]+/g, 'x')));
+  assert.equal(frags.size, 12, 'two material rows emit the same drawing');
+  // an unknown id is a NO-OP, like `paintFitting` — never a throw, never a placeholder
+  const s = scene('unknown');
+  paintMaterial(s, 'no-such-material', FLOOR_BOX);
+  assert.equal(s.render(FLOOR_BOX.w, FLOOR_BOX.h).includes('<path'), false,
+    'paintMaterial drew something for an id that does not exist');
+});
+
+/**
+ * `extra` runs AFTER the skin and on the SAME frame — the twins' whole contract.
+ *
+ * ⚠️ THE ORDER LEG NEEDS `extra` TO DRAW SOMETHING, and the first draft's did not — it only captured
+ * the frame, so "the skin is a prefix of the fragment" was true whichever order the two ran in and
+ * the leg was green under a `paintMaterial` with the two calls swapped. Measured, by swapping them.
+ * A damage mark drawn UNDER the field is not damage: the field's own paper ground would cover it.
+ */
+test('paintMaterial hands `extra` the skin\'s own frame, after the skin', () => {
+  for (const id of ['steel-bulkhead', 'carpet-floor']) {
+    const box = boxFor(id);
+    let got = null;
+    const MARK = `M${r3(-3)} ${r3(-3)} L${r3(3)} ${r3(3)}`;
+    const withExtra = paintedFragment(id, box, (s, g) => {
+      got = g;
+      s.path(MARK, { fill: 'none', stroke: INK, sw: W.mass });
+    });
+    assert.ok(got, `${id}: extra was never called`);
+    const want = frameForSkin(box);
+    assert.equal(got.wCm, want.wCm, `${id}: extra got a ${got.wCm} cm frame, the skin drew ${want.wCm}`);
+    assert.equal(got.hCm, want.hCm);
+    assert.equal(got.x(0), want.x(0), `${id}: extra's frame maps centimetres somewhere else`);
+    assert.equal(got.z(0), want.z(0));
+    // AFTER, not before — and non-vacuously: the mark is really in there, and the whole skin is
+    // still a PREFIX of the fragment it was added to.
+    assert.ok(withExtra.includes(MARK), `${id}: extra drew nothing — this leg cannot see the order`);
+    // `scene.render` closes TWO groups (`pl-item` then the placement transform), so the skin's own
+    // BODY is the fragment with both closers stripped — not with one.
+    const skinOnly = paintedFragment(id, box).replace(/(<\/g>)+$/, '');
+    assert.ok(withExtra.startsWith(skinOnly),
+      `${id}: extra's marks are not appended after the skin — a damage mark under the field is not damage`);
+  }
+});
+
+/**
+ * ⭐ THE PALETTE, CLOSED — every hex in the fragment, raw AND treated, against the charter's four.
+ *
+ * ⛔ THIS WAS A HOLE AND IT IS WORTH SAYING SO. `docs/design/perilune-art-style.md` §1 lists this
+ * suite in the table of files that close the palette on the twelve skins "raw and treated"; what the
+ * suite actually held was `!svg.includes(ATTEND)` — a check for ONE forbidden string, which cannot
+ * see a fifth colour that is not oxblood. A warm `#5f4a30` smuggled onto a skin passed every
+ * assertion in this file. This is the scan the doc already claims.
+ *
+ * MUTATION: any skin's `INK` → `'#3a2c1e'` ⇒ RED naming the skin and the hex.
+ */
+const PALETTE = Object.freeze([INK, PAPER, PAPER_FLAT]);
+function fifthHexes(svg) {
+  const ok = new Set(PALETTE.map((h) => h.toUpperCase()));
+  return [...new Set((svg.match(/#[0-9A-Fa-f]{3,8}\b/g) || []).map((h) => h.toUpperCase()))]
+    .filter((h) => !ok.has(h));
+}
+test('the twelve skins spend the charter\'s palette and nothing else — raw and treated', () => {
+  // NON-VACUITY FIRST: the reader must actually find hexes, or "no fifth colour" is "no colours".
+  const seen = new Set();
+  for (const id of MATERIAL_IDS) {
+    for (const svg of [build(id), treated(id), build(id, CHIP_BOX), treated(id, CHIP_BOX)]) {
+      for (const h of (svg.match(/#[0-9A-Fa-f]{3,8}\b/g) || [])) seen.add(h.toUpperCase());
+      assert.deepEqual(fifthHexes(svg), [],
+        `${id} spends a colour outside ink / paper / the flat side tone. The charter's palette is\n`
+        + 'four values and one of them (oxblood) is attention, which a wall never is.');
+    }
+    assert.ok(!build(id).includes(ATTEND) && !treated(id).includes(ATTEND), `${id} spends the oxblood accent`);
+  }
+  assert.ok(seen.has(INK.toUpperCase()) && seen.has(PAPER.toUpperCase()),
+    'the hex reader found neither ink nor paper across twelve skins — it is broken, not the skins');
+  assert.deepEqual([...seen].filter((h) => !PALETTE.map((x) => x.toUpperCase()).includes(h)), []);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 7 · THE TWELVE TWINS — the post-raid state of every skin (`wrecked.js`, lane/warm-purge)
+//
+// ⚠️ THESE LEGS WERE WRITTEN BEFORE THE TWINS WERE WIRED AND HELD OUT OF THE FILE UNTIL THEY WERE,
+// because every one of them DRIVES `buildWrecked` and against the WARM twins they reddened on the
+// palette (steel-grey `#2f3d4a`) rather than on anything they are for. Wired 2026-08-06.
+//
+// WHAT THESE LEGS ARE FOR, in one sentence: a material twin is the ONE twin in the set whose damage
+// cannot be authored in absolute centimetres — a skin is a tiling field with no intrinsic extent, so
+// the same mark has to land on the same part of the material on a 1 m floor tile, a 2.4 m wall slab
+// and a 26 px palette chip, and every one of those is a different frame.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** `<defs>` stripped, every drawn element of a fragment, in emission order. */
+const elementsOf = (svg) => [...bodyOf(svg).matchAll(/<(path|circle|rect|ellipse)\b[^>]*\/>/g)].map((m) => m[0]);
+
+/**
+ * THE DAMAGE, ISOLATED — the twin's elements MINUS the pristine skin's, as a multiset difference.
+ *
+ * ⭐ THIS WORKS AT ALL BECAUSE OF THE CONSTRUCTION UNDER TEST: a twin re-runs its own pristine
+ * painter on the same frame with the same `idPrefix`, so the skin's elements come out BYTE-IDENTICAL
+ * inside the twin. `leftover` is what the skin emitted and the twin did not — it must be empty, and
+ * that emptiness is the strongest available statement that the twin really is "the same wall,
+ * damaged" rather than a redraw of it.
+ */
+function damageOf(id, box) {
+  const opts = { ...box, idPrefix: 'tw-' + id, sketch: false };
+  const skin = elementsOf(buildItem(id, opts));
+  const twin = elementsOf(buildWrecked(id, opts));
+  const leftover = skin.slice();
+  const marks = [];
+  for (const el of twin) {
+    const i = leftover.indexOf(el);
+    if (i >= 0) leftover.splice(i, 1);
+    else marks.push(el);
+  }
+  return { marks, leftover, skinSvg: buildItem(id, opts) };
+}
+
+/** Points along an element's own geometry, in BODY px. A closed path is walked closed. */
+function samplePoints(el, n = 14) {
+  const out = [];
+  const c = /<circle cx="(-?[\d.]+)" cy="(-?[\d.]+)" r="([\d.]+)"/.exec(el);
+  if (c) {
+    const [cx, cy, r] = [+c[1], +c[2], +c[3]];
+    out.push([cx, cy]);
+    for (let i = 0; i < 24; i += 1) out.push([cx + r * Math.cos((i / 24) * 2 * Math.PI), cy + r * Math.sin((i / 24) * 2 * Math.PI)]);
+    return out;
+  }
+  const rc = /<rect x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)"/.exec(el);
+  if (rc) {
+    const [x, y, w, h] = [+rc[1], +rc[2], +rc[3], +rc[4]];
+    for (let i = 0; i <= n; i += 1) out.push([x + (w * i) / n, y], [x + (w * i) / n, y + h], [x, y + (h * i) / n], [x + w, y + (h * i) / n]);
+    return out;
+  }
+  const d = /d="([^"]+)"/.exec(el);
+  if (!d) return out;
+  let cur = null, first = null;
+  const seg = (a, b) => { for (let k = 1; k <= n; k += 1) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]); };
+  for (const cmd of d[1].matchAll(/([MLCZ])((?:\s*-?[\d.]+)*)/g)) {
+    const v = cmd[2].trim() ? cmd[2].trim().split(/\s+/).map(Number) : [];
+    if (cmd[1] === 'M') { cur = [v[0], v[1]]; first = cur; out.push(cur); continue; }
+    if (cmd[1] === 'Z') { if (cur && first) seg(cur, first); continue; }
+    if (cmd[1] === 'C') { const e = [v[4], v[5]]; if (cur) seg(cur, e); cur = e; continue; }
+    for (let i = 0; i + 1 < v.length; i += 2) { const e = [v[i], v[i + 1]]; if (cur) seg(cur, e); cur = e; }
+  }
+  return out;
+}
+
+/** Just the AUTHORED anchors of an element — a circle's centre, a path's own points. */
+function anchorsOf(el) {
+  const c = /<circle cx="(-?[\d.]+)" cy="(-?[\d.]+)"/.exec(el);
+  if (c) return [[+c[1], +c[2]]];
+  const d = /d="([^"]+)"/.exec(el);
+  if (!d) return samplePoints(el, 1);
+  const n = [...d[1].matchAll(/-?[\d.]+/g)].map(Number);
+  const out = [];
+  for (let i = 0; i + 1 < n.length; i += 2) out.push([n[i], n[i + 1]]);
+  return out;
+}
+
+/**
+ * THE INK A SKIN ACTUALLY DRAWS, as two populations, because a skin draws two kinds of thing and one
+ * of them is not a line: STROKES (sampled along their length) and FILLED FIELDS — a rect or path
+ * whose fill is `INK` or a `<pattern>`. The second half is not a convenience: four of the twelve draw
+ * their whole identity as a `<pattern>` over the tile (the matting's weave, the grating's bars, the
+ * carpet's pile, the blast wall's hazard block), so a rule stated over strokes alone would measure
+ * `grow-matting`'s damage against its PERIMETER and nothing else — 31 cm away, on a 100 cm tile.
+ * Measured, by writing it that way first.
+ */
+function skinInk(svg) {
+  const pts = [];
+  const areas = [];
+  for (const el of elementsOf(svg)) {
+    if (/fill="(#14120F|url\(#)/.test(el)) {
+      const s = samplePoints(el, 4);
+      if (s.length) {
+        areas.push([Math.min(...s.map((p) => p[0])), Math.min(...s.map((p) => p[1])),
+          Math.max(...s.map((p) => p[0])), Math.max(...s.map((p) => p[1]))]);
+      }
+    }
+    if (/stroke="#14120F"/.test(el)) pts.push(...samplePoints(el, 20));
+  }
+  return { pts, areas };
+}
+function distToInk(p, ink) {
+  for (const [x0, y0, x1, y1] of ink.areas) if (p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1) return 0;
+  let m = Infinity;
+  for (const [x, y] of ink.pts) { const d = Math.hypot(p[0] - x, p[1] - y); if (d < m) m = d; }
+  return m;
+}
+
+/** The body-px half-extents of the skin's own tile for a given box — `helpers.item`'s scale undone. */
+function tileHalf(box) {
+  const k = Math.min(box.w, box.h) / TILE;
+  return { hw: box.w / k / 2, hh: box.h / k / 2 };
+}
+
+/**
+ * ⭐⭐ THE CONSTRUCTION ITSELF: a twin IS its pristine skin, plus marks.
+ *
+ * `wrecked.js` states this for all five paper populations and it is the only construction under which
+ * "the twin is the same wall, damaged" survives a redraw of the wall. For the materials it carries a
+ * second load: the twin has no `SPECS` row to fall back on, so if it ever stopped re-running
+ * `paintMaterial` there would be nothing left that knows how many metres the caller asked for.
+ *
+ * MUTATION: give any twin a redraw instead of `paintMaterial(s, id, env, …)` ⇒ RED on `leftover`,
+ *           naming the skin elements that went missing.
+ * MUTATION: drop `env` from the painter's signature (`(s) =>` instead of `(s, env) =>`) ⇒ RED on
+ *           both WALL boxes, because the twin would then draw a 100 × 100 cm field under a
+ *           100 × 240 cm skin and every one of the skin's own elements would fail to match.
+ */
+test('every material twin is its own pristine skin PLUS damage — nothing redrawn, nothing lost', () => {
+  for (const id of MATERIAL_IDS) {
+    for (const box of [boxFor(id), CHIP_BOX]) {
+      const { marks, leftover } = damageOf(id, box);
+      assert.deepEqual(leftover, [],
+        `${id} at ${box.w}x${box.h}: the twin does not re-run its own pristine painter — `
+        + `${leftover.length} element(s) of the skin are missing from it. A twin that REDRAWS its `
+        + 'piece stops being the same piece the moment the piece is redrawn.');
+      assert.ok(marks.length >= 4,
+        `${id} at ${box.w}x${box.h} adds ${marks.length} marks. A twin with no damage on it is the `
+        + 'pristine piece under a different id, and nothing else in this repo can see that.');
+    }
+  }
+});
+
+/** THE PALETTE, CLOSED OVER THE TWINS TOO — raw and treated, the same scan the skins get above. */
+test('the twelve twins spend the charter\'s palette and nothing else — raw and treated', () => {
+  const seen = new Set();
+  for (const id of MATERIAL_IDS) {
+    const box = boxFor(id);
+    for (const svg of [
+      buildWrecked(id, { ...box, idPrefix: 'tw-' + id, sketch: false }),
+      buildWrecked(id, { ...box, idPrefix: 'tw-' + id }),
+      buildWrecked(id, { ...CHIP_BOX, idPrefix: 'twc-' + id }),
+    ]) {
+      for (const h of (svg.match(/#[0-9A-Fa-f]{3,8}\b/g) || [])) seen.add(h.toUpperCase());
+      assert.deepEqual(fifthHexes(svg), [],
+        `${id}'s TWIN spends a colour outside ink / paper / the flat side tone. Damage is not an `
+        + 'alert: `ATTEND` is attention, faults and queued orders, and a breached wall is a fact '
+        + 'about the ship rather than a claim on the player\'s eye.');
+      assert.ok(!svg.includes(ATTEND), `${id}'s twin spends the OXBLOOD accent`);
+    }
+  }
+  assert.ok(seen.has(INK.toUpperCase()) && seen.has(PAPER.toUpperCase()),
+    'the hex reader found neither ink nor paper across twelve twins — it is broken, not the twins');
+});
+
+/**
+ * ⭐ EVERY MARK IS ON THE MATERIAL — the two halves, and the second is the one that bites.
+ *
+ * 1. IN THE TILE. A damage anchor outside the skin's own box is drawn on the NEIGHBOUR's art: a floor
+ *    skin is laid tile by tile through `place.cell` and a wall skin face by face, so there is no
+ *    margin anywhere for a mark to overhang into.
+ * 2. ON DRAWN INK. "Inside the box" is nearly free — a skin fills its tile with paper edge to edge —
+ *    so the rule is stated against what the skin DRAWS: every mark's own geometry must come within
+ *    `TOL_CM` of a stroke or a filled field of the pristine skin. This is the shape of a real defect
+ *    already in this repo: `wrecked.js`'s `seal-set` tear was authored against geometry a later
+ *    polish pass narrowed, and its far end hung in clean paper with nothing under it — visible in a
+ *    render, invisible to every string assertion in the suite.
+ *
+ * ⚠️ `TOL_CM = 12` IS MEASURED, NOT CHOSEN. Worst across the twelve is 8.22 cm, on `steel-tan-floor`
+ * — deliberately the quietest skin in the set (one deck plate, four screws, an 18 cm centre tick), so
+ * its interior is the largest genuinely bare area any of the twelve draws. The tolerance is that
+ * number plus headroom, and both controls below are driven against fixtures that carry the failure.
+ */
+test('every twin\'s damage lands inside its tile AND on ink the skin actually draws', () => {
+  const TOL_CM = 12;
+  let worst = 0;
+  const probe = (id, box, marks, ink) => {
+    const { hw, hh } = tileHalf(box);
+    const out = [];
+    for (const el of marks) {
+      const off = Math.max(...anchorsOf(el).map(([x, y]) => Math.max(Math.abs(x) - hw, Math.abs(y) - hh)));
+      if (off > 0.01) out.push(`${id}: a mark's anchor is ${(off / CM).toFixed(1)} cm outside the tile`);
+      const near = Math.min(...samplePoints(el).map((p) => distToInk(p, ink))) / CM;
+      worst = Math.max(worst, near);
+      if (near > TOL_CM) out.push(`${id}: a mark lies ${near.toFixed(1)} cm from any ink the skin draws`);
+    }
+    return out;
+  };
+  for (const id of MATERIAL_IDS) {
+    for (const box of [boxFor(id), CHIP_BOX]) {
+      const { marks, skinSvg } = damageOf(id, box);
+      assert.deepEqual(probe(id, box, marks, skinInk(skinSvg)), []);
+    }
+  }
+  assert.ok(worst < TOL_CM, `the worst mark is ${worst.toFixed(2)} cm from ink — retune TOL_CM (${TOL_CM})`);
+
+  // ── THE CONTROLS, DRIVEN. Two fixtures, each carrying exactly one of the two failure shapes,
+  // built through the real `paintMaterial` door so the probe is reading the same kind of string it
+  // reads above. Without these, "no violations" and "the probe cannot see one" look identical.
+  const box = FLOOR_BOX;
+  const g = frameForSkin(box);
+  const bad = (id, extra) => {
+    const s = scene('bad-' + id);
+    paintMaterial(s, id, box, extra);
+    const svg = s.render(box.w, box.h);
+    const pristine = elementsOf(buildItem(id, { ...box, idPrefix: 'bad-' + id, sketch: false }));
+    const left = pristine.slice();
+    const marks = [];
+    for (const el of elementsOf(svg)) { const i = left.indexOf(el); if (i >= 0) left.splice(i, 1); else marks.push(el); }
+    return marks;
+  };
+  // (a) a mark a tile and a half to the right — the OVERHANG shape
+  const away = bad('cream-tile-floor', (s) => {
+    s.path(`M${g.x(150)} ${g.y(50)} L${g.x(170)} ${g.y(60)}`, { fill: 'none', stroke: INK, sw: W.heavy });
+  });
+  assert.equal(away.length, 1, 'the control fixture did not produce exactly one mark');
+  assert.ok(probe('control-a', box, away, skinInk(buildItem('cream-tile-floor', { ...box, idPrefix: 'bad-cream-tile-floor', sketch: false })))
+    .some((m) => m.includes('outside the tile')),
+  'the IN-THE-TILE half of this leg cannot see a mark drawn a tile and a half away');
+  // (b) a mark inside the tile but in the largest bare area the quietest skin has — the CLEAN PAPER
+  //     shape, which is the `seal-set` defect exactly
+  const empty = bad('steel-tan-floor', (s) => {
+    s.circle({ cx: g.x(30), cy: g.y(30), r: g.u(1), fill: INK });
+  });
+  assert.equal(empty.length, 1);
+  const msgs = probe('control-b', box, empty, skinInk(buildItem('steel-tan-floor', { ...box, idPrefix: 'bad-steel-tan-floor', sketch: false })));
+  assert.deepEqual(msgs.filter((m) => m.includes('outside the tile')), [],
+    'the control-b fixture is meant to be INSIDE the tile — it is testing the wrong half');
+  assert.ok(msgs.some((m) => m.includes('from any ink')),
+    'the ON-INK half of this leg cannot see a mark floating in the skin\'s own clean paper');
+});
+
+/**
+ * ⛔ THE GROUND EXCEPTION FOLLOWS THE TWIN — `art-style.md` §4, and it has to be threaded by hand.
+ *
+ * `paper-materials.js` passes `ground: false` at its own `item()` seam; `buildWrecked` calls `item()`
+ * itself, so a twin inherits NOTHING from the skin's harness. Un-threaded, a 12 × 8 room floor of
+ * damaged deck would draw ninety-six of the pawns' ground rules across it at the tiling pitch — the
+ * exact picture the ruling was taken from, on the surface it was measured on.
+ *
+ * ⚠️ NON-VACUITY IS THE SECOND ASSERTION: a twin with the treatment OFF also has no ground rule, and
+ * would pass the first half for the wrong reason. The doubled silhouette pass is what says the pen
+ * really did run.
+ */
+test('a material twin carries the sketch treatment WITHOUT the pawns\' ground rule', () => {
+  for (const id of MATERIAL_IDS) {
+    const svg = buildWrecked(id, { ...boxFor(id), idPrefix: 'tg-' + id });
+    assert.equal((svg.match(/class="pl-sk-ground"/g) || []).length, 0,
+      `${id}'s twin draws the ground rule. A material is not a standing thing — it IS the deck — and `
+      + 'a room floor of these draws one tick per tile at the tiling pitch (art-style.md §4).');
+    assert.ok(/class="pl-sk-2nd"/.test(svg),
+      `${id}'s twin carries no doubled pass, so the treatment never ran on it and the leg above is `
+      + 'vacuous. A paper twin beside a hand-drawn pristine skin is the mismatch this package closed.');
   }
 });

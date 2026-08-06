@@ -5,6 +5,8 @@
 // catalogue of things a crew BUILDS — benches, lockers, cots — and it draws none of the SHIP's own
 // plant. Reactor, solar wing, gas bottles, reclaimer, paste column, med cot, fab cell, ring array,
 // dish, plant pot, book case, turret and sleeper pod were still wearing `client/src/items/objects.js`'s
+// (RETIRED 2026-08-06 — that module and its thirteen rows are gone; the sentence is kept because it
+// is the reason this module exists)
 // steel-and-glow mock art after VR-P2, which is charter §4's filed P2b in its most conspicuous form:
 // on `--ship wreck` the SolarWing, the Reclaimer, the Fabricator, the MedBed, the Telescope and the
 // PlantPot are all glyphs the sim really projects, so six warm pieces were drawn straight beside the

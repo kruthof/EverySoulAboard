@@ -1,8 +1,32 @@
 # Perilune item mapping — the 68-piece warm set → sim reality
 
-**Status:** DATA CONTRACT (spec only). The authority for **Phase 1** (the item library,
-`client/src/items/*`) and **Phase 4** (furniture placement / decor). Maps every one of the
-68 pieces in `perilune-item-set.dc.html` to its class in the sim:
+> ## ⛔ THE PER-PIECE TABLES BELOW ARE HISTORY SINCE 2026-08-06. THE TALLY IS NOT.
+>
+> This document maps **the warm mock's 68 pieces** — that is its title and always was — and on
+> 2026-08-06 `lane/warm-purge` retired **thirty-eight** of the registry rows those pieces became, on
+> the owner's ruling, deleting `client/src/items/objects.js`, `fixtures.js`, `resources.js` and
+> `cryo.js` with them. So sections *Objects* through *Wrecked* describe rows that in many cases no
+> longer exist, and they are kept because the **reasoning** in them is still the authority for
+> everything that inherited it: which `DeviceKind` a piece claims, why a `—` in the glyph column is a
+> decision rather than an omission, and which five kinds wear another piece's art.
+>
+> **What is still live, and where to read it instead:**
+>
+> | section | state on 2026-08-06 |
+> |---|---|
+> | Objects (30) | **16 rows survive** (the catalogue pieces re-drawn in place at VR-P2). The other 14 were retired; six of their glyphs had already moved to `client/src/items/machines.js` on 2026-08-05. |
+> | Walls (6) · Floors (6) | **all 12 survive**, ids unchanged, drawn by `client/src/items/paper-materials.js`. |
+> | Fixtures (18) | **5 rows survive** (`pipe-run`, `space-heater`, `shelf-rack`, `supply-barrel`, `herb-planter`). The other 13 were retired; their glyphs had moved to `client/src/items/paper-fixtures.js` on 2026-08-05. |
+> | Resources — ground stacks (8) | **none survive.** All eight `ItemKind`s are drawn by `client/src/items/paper-resources.js`; `swarf`, the ninth row, went with them. |
+> | Cryo (2) | **neither survives.** `'K'`/`'k'` are claimed by catalogue 31/32 (`capsule-sealed`, `capsule-open`). |
+> | Wrecked — post-raid twins (70) | **the transcription is gone.** All 80 surviving twins re-run their own pristine painter and add ink damage; `client/test/wrecked.test.js` no longer opens `perilune-item-set.dc.html`. |
+>
+> ⚠️ **THE TALLY AT THE BOTTOM IS LIVE AND IS PARSED BY A TEST.** It is the one part of this file that
+> cannot rot quietly, and its numbers are the SHIPPED registry's — not this section's.
+
+**Status:** DATA CONTRACT (spec only) for the sections named live above. The authority for **Phase 1**
+(the item library, `client/src/items/*`) and **Phase 4** (furniture placement / decor). Maps every one
+of the 68 pieces in `perilune-item-set.dc.html` to its class in the sim:
 
 - **FUNCTIONAL** — a real interactive machine → a `DeviceKind` (`sim/Sim.Core/Entities/Device.cs`).
   Placing it lowers to a sim command (`PlaceDeviceCommand`). Sub-flagged **[exists]** (map to a
@@ -228,13 +252,13 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 42 |
-| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 5 |
-| **FUNCTIONAL total** | **47** |
-| COSMETIC (view-only `decor`, non-hashed) | 43 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 28 |
+| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
+| **FUNCTIONAL total** | **31** |
+| COSMETIC (view-only `decor`, non-hashed) | 30 |
 | MATERIAL (wall/floor tint) | 12 |
-| RESOURCE (ground stack, a sim `ItemKind`) | 18 |
-| **Total** | **120** |
+| RESOURCE (ground stack, a sim `ItemKind`) | 9 |
+| **Total** | **82** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -242,6 +266,15 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **120 → 82 ON 2026-08-06 (`lane/warm-purge`), AND IT IS THE FIRST TIME THIS TABLE HAS EVER GONE
+DOWN.** THREE classes moved and MATERIAL did not: FUNCTIONAL 47 → 31, COSMETIC 43 → 30, RESOURCE
+18 → 9, MATERIAL 12 → 12. The `[NEW]` split went 5 → 3 and **nothing changed in the sim to make it
+happen**: `reactor` and `oxygen-tank` were the WARM drawings of the two kinds `reactor-plant` and
+`bottle-rack` still wait on, and `DeviceKind.Reactor` / `DeviceKind.OxygenTank` still do not exist.
+Every number RE-DERIVED off the shipped registry with `node -e` over the real export, never
+subtracted from the previous row of this table (TRAPS 8th) — and the three deltas do not agree with
+each other by design: the registry moved by 38, the twin set by 37 and the no-twin ledger by 1.
 
 ⚠️ **107 → 120 ON THE MERGED TREE (main × lane/paper-machines, 2026-08-05), and TWO classes moved:
 FUNCTIONAL 39 → 47 and COSMETIC 38 → 43.** Every number in the Tally above is **RE-DERIVED off the

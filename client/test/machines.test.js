@@ -36,7 +36,7 @@ import { DEPTH_RATIO, PX_PER_CM, HATCH, PAPER_FLAT, n as nn } from '../src/rende
 import { INK, PAPER, ATTEND, SKETCH_LEVEL } from '../src/items/helpers.js';
 import { amplitudeBound, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
 import { measurePiece, bodyExtent, attrsOf, strokedPaths } from './sketch-geom.js';
-import { WRECKED, buildWrecked } from '../src/items/wrecked.js';
+import { WRECKED, buildWrecked, TWIN_SOURCE } from '../src/items/wrecked.js';
 import { codeOnly } from './code-only.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1027,8 +1027,13 @@ test('every machine twin paints its OWN pristine piece — measured, not trusted
 test('the thirteen twins are ledgered, badged, and none is its own pristine piece', () => {
   for (const id of MACHINE_IDS) {
     const e = WRECKED[id];
-    assert.equal(e.mockLabel, null, `${id}'s twin claims a mock label — no document draws it`);
-    assert.match(e.catalogue, /^M\d\d [A-Z]/, `${id}'s twin does not cite the machines sheet`);
+    // ⚠️ THE PROVENANCE MOVED OFF THE ROW ON 2026-08-06 and this leg followed it rather than being
+    // dropped. It read `assert.equal(e.mockLabel, null)` + `assert.match(e.catalogue, /^M\d\d [A-Z]/)`
+    // — two fields on the `WRECKED` row, one of them the ledger of "is this a mock transcription".
+    // `mockLabel` has no referent since the purge (no twin transcribes anything) and `catalogue` was
+    // a SECOND copy of what `TWIN_SOURCE` says; one home, so the two cannot disagree.
+    assert.match(TWIN_SOURCE[id] || '', /^M\d\d [A-Z]/,
+      `${id}'s twin does not cite the machines sheet in TWIN_SOURCE`);
     assert.match(e.state, /^\d+%$/, `${id}'s badge is not a repairable percentage`);
     assert.ok(Number(e.state.slice(0, -1)) <= 35,
       `${id} is badged ${e.state} — the mock's own post-raid band tops out at 35%`);

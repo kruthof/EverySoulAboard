@@ -39,7 +39,7 @@ import { INK, PAPER, ATTEND, SKETCH_LEVEL } from '../src/items/helpers.js';
 import { amplitudeBound, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
 import { measurePiece, bodyExtent, attrsOf, strokedPaths, outsideBox, flatten } from './sketch-geom.js';
 import { ITEMS } from '../src/items/index.js';
-import { WRECKED, buildWrecked } from '../src/items/wrecked.js';
+import { WRECKED, buildWrecked, TWIN_SOURCE } from '../src/items/wrecked.js';
 import { codeOnly } from './code-only.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -865,8 +865,11 @@ test('every fixture has a twin, and no twin is another piece\'s picture', () => 
     assert.ok(entry, `${id} has no wrecked twin at all`);
     assert.equal(entry.paint.name, camel(id),
       `${id}'s twin is painted by ${entry.paint.name} — a painter must be named after the ROW it serves`);
-    assert.equal(entry.mockLabel, null, `${id} claims a mock label; it is repo-authored`);
-    assert.match(entry.catalogue, /^PAPER FIXTURES · /, `${id}'s twin cites the wrong source`);
+    // ⚠️ FOLLOWED THE PROVENANCE OFF THE ROW ON 2026-08-06: it read `entry.mockLabel === null` +
+    // `entry.catalogue` matching this shape. `mockLabel` has no referent since the warm purge (no
+    // twin transcribes a document any more) and `catalogue` was a second copy of the same string;
+    // `TWIN_SOURCE` is the one home, and it is TOTAL, so an omitted row fails there too.
+    assert.match(TWIN_SOURCE[id] || '', /^PAPER FIXTURES · /, `${id}'s twin cites the wrong source`);
     // ⚠️ TREATED ON BOTH SIDES SINCE 2026-08-05, and that is the point rather than a detail: what a
     // player sees is the treated twin beside the treated pristine piece, and "these two are
     // different pictures" is a claim about THAT pair. Comparing a treated twin to a RAW pristine

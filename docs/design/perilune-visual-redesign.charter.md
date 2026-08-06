@@ -73,7 +73,8 @@ measured on this tree at `8186cad`.
 ## 3. Packages
 
 Order: **A (=P0+P1)** → **P2 fittings** ∥ **P5 pawns** → **P3 roomzoom** ∥ **P4 overview**
-∥ **P6 moss** → (filed: P2b wrecked-twin restyle + uncovered-row restyle; P7 story panels).
+∥ **P6 moss** → (filed: P7 story panels. P2b — the wrecked-twin restyle and the uncovered-row
+restyle — is CLOSED, 2026-08-06.)
 Every package: own worktree off `lane/visual-redesign`, one Opus implementer + one
 independent reviewer, full `./ci.sh` at final commit, merge back by the integrator with
 TRAPS-8 re-gate (merge lane→package first, re-run, then ff).
@@ -148,9 +149,17 @@ only where the skin demands it. ALL SIX VIEWS SURVIVE (E5). Width pins (`.c-bar`
 `moss-program-editor.test.js`.
 
 ### FILED (not this wave)
-- **P2b**: restyle the 70 wrecked twins + the **21** uncovered device rows + 12 materials +
-  9 resources into the paper idiom (no design exists — needs owner art direction or a
-  follow-up design doc).
+- **P2b**: ✅ **CLOSED 2026-08-06 by `lane/warm-purge`, on the owner's ruling.** The 21 uncovered
+  device rows and the 12 materials were re-authored as PAPER twins (each re-runs its own pristine
+  painter and adds ink damage), and every remaining warm registry row — 38 of them — was RETIRED,
+  with `objects.js`, `fixtures.js`, `resources.js` and `cryo.js` deleted. Registry 120 → 82, twins
+  117 → 80, treated twins 47 → 80: there is no untreated piece left in the game.
+  ⚠️ **THE FIRST TERM WAS NEVER RESTYLED — IT WAS DELETED**, and the distinction is the ruling. The
+  original scope below reads *"restyle the 70 wrecked twins"*; 37 of those twins went with their
+  rows, and the ones that remained had already been re-authored rather than restyled.
+  The original entry, for the record: *"restyle the 70 wrecked twins + the **21** uncovered device
+  rows + 12 materials + 9 resources into the paper idiom (no design exists — needs owner art
+  direction or a follow-up design doc)."*
   ⚠️ **23 → 21 ON 2026-08-05, RE-MEASURED, NOT ARITHMETIC.** The owner extended
   `design-import/Perilune Fittings.dc.html` to thirty-four with a "Capsules and cells"
   section, and cards 31/32 took `DeviceKind.CryoPod`'s two state glyphs off
@@ -162,6 +171,10 @@ only where the skin demands it. ALL SIX VIEWS SURVIVE (E5). Width pins (`.c-bar`
   REGISTERED and still carry their twins** (the 70-twin bijection), so P2b's first term is
   unchanged at 70 and its second term shrank; a restyle sweep must read the ledger, not
   this sentence.
+  ⛔ **THE LAST CLAUSE IS THE ONE THAT AGED WORST AND IT IS RIGHT TO KEEP IT**: the bijection it
+  names is what kept every displaced warm row registered, and retiring the rows meant retiring the
+  bijection first. `docs/design/perilune-item-set.dc.html` stays in the repo as HISTORY; nothing in
+  `client/` reads it.
 - **P7**: the story panels' DATA (per-room sentence + day-stamped emotional chronicle with
   oxblood beats) — sim+wire package, gated on M4 mood/Persona; the owner's core goal lands
   fully only with this.

@@ -644,7 +644,7 @@ await armTool('shelf');  // disarm
 //
 // ⛔ THE PIECE CANNOT BE NAMED FROM THE DOM, AND SAYING SO IS THE HONEST FORM OF THIS LEG. The
 // registry's `buildItem` is handed `idPrefix: 'rz-f-<tx>-<ty>'` (`roomzoom-view.js`'s
-// `furnitureSvg`) — the TILE, never the piece id — and `dining-table` and `med-bed` emit no gradient
+// `furnitureSvg`) — the TILE, never the piece id — and `dining-table` and `med-cot` emit no gradient
 // defs at all, so there is no string in the rendered markup that says "hydroponics". A first draft
 // of this leg matched `[id*="hydroponics"]` and would have counted ZERO forever while reporting it
 // as "the sim never sent the device back": a rig that cannot find anything and a rig that found
@@ -660,7 +660,13 @@ const rawChips = async (ch) => evaluate(
   `[...document.querySelectorAll('#rz-layers .rz-furniture text')].filter(t=>t.textContent.trim()===${JSON.stringify(ch)}).length`);
 const NEW_TOOLS = [
   { tool: 'growbed', label: 'GROWBED', piece: 'hydroponics', glyph: '"' },
-  { tool: 'medbed', label: 'MEDBED', piece: 'med-bed', glyph: 'd' },
+  // ⚠️ `piece: 'med-bed'` UNTIL 2026-08-06, AND IT WAS ALREADY STALE BEFORE THE PURGE: glyph `'d'`
+  // (`Glyphs.ForDevice(DeviceKind.MedBed)`) moved to `med-cot` at lane/paper-machines on 2026-08-05,
+  // so this row named the warm piece while the surface drew the paper one. The row was never load-
+  // bearing — `piece` only appears in the two log lines below, and the leg's real predicate is "did
+  // the tile draw ART rather than a raw-glyph `<text>` chip" — so the staleness cost nothing and
+  // showed nothing. `med-bed` has since been retired from the registry entirely.
+  { tool: 'medbed', label: 'MEDBED', piece: 'med-cot', glyph: 'd' },
   { tool: 'table', label: 'TABLE', piece: 'dining-table', glyph: 't' },
 ];
 // ⚠️ THE TARGET TILE IS TRIED, NOT ASSUMED — a FALSE RED guard (trap 3), and it is the one this leg

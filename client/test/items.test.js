@@ -3,20 +3,22 @@
 // deterministic (same opts → identical bytes), collision-free across idPrefixes, correctly
 // classified, and that buildItem() falls back safely. The count is pinned by equality.
 //
-// ⚠️ "THE 70-PIECE WARM SVG SET" WAS THIS FILE'S OPENING CLAUSE AND IS TWICE WRONG NOW, so it is
-// corrected rather than left: the registry is EIGHTY-FOUR, and it is no longer one set. Thirty-four
-// rows draw from `client/src/items/fittings.js` in the paper/ink idiom of the visual redesign; the
-// remaining fifty still wear the warm mock's art until charter §3's P2b lands. A file whose header names a
-// count is a file whose header goes stale — the numbers that matter are the assertions below.
+// ⛔ THE WARM SET IS GONE — lane/warm-purge, 2026-08-06, on the owner's ruling. THIRTY-EIGHT rows
+// were retired in one commit and four modules (`objects.js`, `fixtures.js`, `resources.js`,
+// `cryo.js`) were deleted with them, so the registry is EIGHTY-TWO and every row in it is drawn in
+// the paper/ink dialect by one of five catalogues. This file's own header history is the shortest
+// record of what that replaced, and it is quoted rather than deleted:
 //
-// 60 → 68 on 2026-07-27: the mock was re-imported with a "Resources & loose items" section — the
-// eight GROUND STACKS the `items` wire channel was built to carry. They are a FOURTH `kind`
-// (`resource`); see index.js's header for why none of the other three fitted.
+//   *"THE 70-PIECE WARM SVG SET WAS THIS FILE'S OPENING CLAUSE and is twice wrong now … the registry
+//   is EIGHTY-FOUR … Thirty-four rows draw from `client/src/items/fittings.js` in the paper/ink idiom
+//   of the visual redesign; the remaining fifty still wear the warm mock's art until charter §3's P2b
+//   lands."* — 60 → 68 (2026-07-27, the eight ground stacks and the fourth `kind`) → 70 (2026-07-28,
+//   the two cryo capsules) → 71 → 80 → 84 → 93 → 107 → 120 → **82**.
 //
-// 68 → 70 on 2026-07-28: the mock re-import added CRYO CAPSULE · OCCUPIED and CRYO CAPSULE · OPEN
-// (client/src/items/cryo.js). Both COSMETIC — there is no cryo `DeviceKind` — so the class tally
-// moves in `cosmetic` alone. The same import brought 70 WRECKED twins; they are NOT in this
-// registry and are pinned by `client/test/wrecked.test.js` instead.
+// ⇒ THIS IS THE FIRST TIME THE TOTAL HAS EVER GONE DOWN, and that is the one thing about it worth
+// saying: every guard in this file was written for a registry that only grew, so the legs below are
+// the ones re-derived off the shipped tree rather than adjusted. A file whose header names a count is
+// a file whose header goes stale — the numbers that matter are the assertions.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,7 +37,6 @@ import {
   isResourceItem,
   isDeviceItem,
 } from '../src/items/index.js';
-import { coilPath } from '../src/items/resources.js';
 import * as FITTINGS from '../src/items/fittings.js';
 import { FITTING_IDS, SIZES } from '../src/items/fittings.js';
 
@@ -99,16 +100,21 @@ function idsIn(svg) {
 // ⚠️ 120 IS RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines) with `node -e` over the real
 // export — never summed from either lane's literal. The lane's own tree said 93 and main said 107;
 // both were correct there and wrong here (TRAPS 8th shape).
-test('the registry holds exactly 120 items', () => {
-  assert.equal(ITEM_IDS.length, 120);
-  assert.equal(Object.keys(ITEMS).length, 120);
+// ⚠️ 120 → 82 (lane/warm-purge, 2026-08-06), RE-DERIVED OFF THE SHIPPED REGISTRY with `node -e` over
+// the real export. ⛔ THE FIRST DECREASE THIS LITERAL HAS EVER TAKEN, and the delta is NOT the number
+// of things that changed: thirty-eight rows were retired, thirty-seven of them had twins, and one
+// (`swarf`) was in `NO_WRECKED_TWIN` — so the registry, the twin set and the no-twin ledger each
+// moved by a DIFFERENT amount from one commit. Re-count all three at their own homes.
+test('the registry holds exactly 82 items', () => {
+  assert.equal(ITEM_IDS.length, 82);
+  assert.equal(Object.keys(ITEMS).length, 82);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 47 functional, 43 cosmetic, 12 material, 18 resource', () => {
+test('the class tally holds: 31 functional, 30 cosmetic, 12 material, 9 resource', () => {
   // ⚠️ RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines) with `node -e` over the real
   // export: FUNCTIONAL 47, COSMETIC 43, MATERIAL 12, RESOURCE 18, total 120. ⛔ NEITHER SIDE'S
   // TALLY IS RIGHT HERE — main read 39/38/12/18 and the lane read 37/35/12/9 — because each moved a
@@ -153,7 +159,12 @@ test('the class tally holds: 47 functional, 43 cosmetic, 12 material, 18 resourc
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 47, cosmetic: 43, material: 12, resource: 18 });
+  // ⚠️ 47/43/12/18 → 31/30/12/9 (2026-08-06), RE-DERIVED off the shipped registry. ⭐ EVERY CLASS BUT
+  // MATERIAL MOVED, AND MATERIAL IS THE INTERESTING ONE: the twelve wall/floor skins were re-drawn in
+  // place at lane/paper-materials and their TWINS were re-authored here, and neither is visible in a
+  // class tally — `kind` is a fact about what a piece IS, never about how it is drawn. The other
+  // three moved because rows LEFT: functional −16, cosmetic −13, resource −9, which is the 38.
+  assert.deepEqual(by, { functional: 31, cosmetic: 30, material: 12, resource: 9 });
 });
 
 // ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped
@@ -194,26 +205,29 @@ test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value
 // supersededBy: '<the row that took them>'`. Relaxing the old loop to "itemKind is a string OR null"
 // would have kept it green while making the uniqueness half unenforceable, which is the whole thing
 // it exists for. So the split is asserted first, and each half is then held to its OWN contract.
-test('every RESOURCE row is LIVE (a sim ItemKind + a glyph) or SUPERSEDED (neither, and it says by whom)', () => {
+test('every RESOURCE row is LIVE — a sim ItemKind and a glyph, and there is no superseded half left', () => {
   const res = ITEM_IDS.filter((id) => ITEMS[id].kind === 'resource');
   assert.deepEqual(res.sort(), [
-    'body-bag', 'control-card', 'controller-module', 'corpse', 'gear-set', 'ice', 'ice-block',
-    'parts', 'plate-offcut', 'potato', 'regolith', 'scrap', 'seal-set', 'seals', 'spoil-heap',
-    'swarf', 'tuber-crate', 'turnings',
+    'body-bag', 'control-card', 'gear-set', 'ice-block', 'plate-offcut', 'seal-set', 'spoil-heap',
+    'tuber-crate', 'turnings',
   ]);
   const live = res.filter((id) => ITEMS[id].supersededBy === undefined);
   const dead = res.filter((id) => ITEMS[id].supersededBy !== undefined);
   assert.equal(live.length, 9, 'nine ItemKinds have art; a tenth LIVE row means a kind grew a piece');
-  assert.equal(dead.length, 9, 'nine warm rows were superseded by the paper redraw');
-  // THE SUPERSEDED HALF: both joins really let go, and the row names its successor, which must be a
-  // LIVE resource row. A demotion that kept either field would silently keep winning the join.
-  for (const id of dead) {
-    const e = ITEMS[id];
-    assert.equal(e.itemKind, null, `${id} is superseded but still claims an ItemKind`);
-    assert.equal(e.glyph, null, `${id} is superseded but still claims a glyph`);
-    assert.ok(live.includes(e.supersededBy),
-      `${id}: supersededBy "${e.supersededBy}" is not a live resource row`);
-  }
+  // ⭐ THE SUPERSEDED HALF IS EMPTY, AND ASSERTING THAT IS STRICTLY STRONGER THAN THE EXCLUSIVE-OR IT
+  // REPLACES. Since lane/paper-resources a `resource` row could be LIVE or SUPERSEDED — *"its art is
+  // still registered and still builds, but another row took both joins and it carries
+  // `itemKind: null, glyph: null, supersededBy: '<the row that took them>'`"* — and the two halves
+  // were held to separate contracts because merging them into "itemKind is a string OR null" would
+  // have made the uniqueness half unenforceable. lane/warm-purge retired all nine superseded rows
+  // (2026-08-06), so the exit is closed the only way that cannot be half-made: THE ROWS ARE NOT
+  // THERE. ⛔ THE ARM IS KEPT RATHER THAN DELETED because it is now an INCLUSION test — a demoted row
+  // reappearing tomorrow fails here by name instead of passing as "well, it is superseded".
+  assert.deepEqual(dead, [],
+    'a SUPERSEDED resource row is back in the registry: ' + dead.join(', ') + '\n'
+    + 'Since 2026-08-06 a resource row either claims its sim ItemKind and its glyph, or it is not\n'
+    + 'registered at all. A row demoted to `itemKind: null, glyph: null, supersededBy: …` is warm-set\n'
+    + 'bookkeeping returning — retire the row instead, which is what the purge did to the nine.');
   const kinds = new Set();
   const glyphs = new Set();
   for (const id of live) {
@@ -242,22 +256,24 @@ test('RESOURCE_ITEM_BY_KIND_NAME is derived from the registry, not transcribed',
     assert.equal(RESOURCE_ITEM_BY_KIND_NAME[e.itemKind], id, `${e.itemKind} → ${id}`);
   }
   assert.equal(Object.keys(RESOURCE_ITEM_BY_KIND_NAME).length, 9);
-  // ⚠️ AND THE OTHER DIRECTION, WHICH IS THE ONE THE SUPERSEDING MOVE COULD BREAK SILENTLY: no
-  // superseded row may appear as a VALUE in the join. The loop above skips them, so on its own it
-  // would stay green if `regolith` were still what `Regolith` resolved to.
+  // ⚠️ THE OTHER DIRECTION USED TO BE THE ONE THE SUPERSEDING MOVE COULD BREAK SILENTLY — no
+  // superseded row may appear as a VALUE in the join, because the reducer takes the FIRST row that
+  // claims a kind name and the warm rows sat ABOVE the paper ones. Kept, as an inclusion test: it is
+  // vacuous only for as long as the registry carries no demoted rows, and the leg above is what pins
+  // that. Deleting it would leave nothing watching the direction that actually failed.
   const superseded = new Set(ITEM_IDS.filter((id) => ITEMS[id].supersededBy !== undefined));
   for (const [kind, id] of Object.entries(RESOURCE_ITEM_BY_KIND_NAME)) {
     assert.ok(!superseded.has(id),
       `ItemKind ${kind} still resolves to the SUPERSEDED row "${id}". The registry reducer takes the`
-      + ' FIRST row that claims a kind name, and the warm rows sit above the paper ones.');
+      + ' FIRST row that claims a kind name, and a demoted row declared above a live one wins.');
   }
   // and the two predicates the view layer classifies with
-  assert.equal(isResourceItem('regolith'), true, 'a superseded pile is still a pile');
   assert.equal(isResourceItem('spoil-heap'), true);
+  assert.equal(isResourceItem('turnings'), true);
   assert.equal(isResourceItem('locker'), false, 'a device is not a resource');
   assert.equal(isResourceItem('rug'), false, 'decor is not a resource');
   assert.equal(isDeviceItem('locker'), true);
-  assert.equal(isDeviceItem('regolith'), false, 'a pile is not a device — DEMOLISH depends on this');
+  assert.equal(isDeviceItem('spoil-heap'), false, 'a pile is not a device — DEMOLISH depends on this');
   for (const junk of ['', 'nope', null, undefined, 42, {}]) {
     assert.equal(isResourceItem(/** @type {any} */ (junk)), false);
     assert.equal(isDeviceItem(/** @type {any} */ (junk)), false);
@@ -309,14 +325,14 @@ test('idPrefix makes two placements collision-free: disjoint gradient/pattern id
 });
 
 test('the default idPrefix derives deterministically from itemId + index', () => {
-  const a = buildItem('reactor', { index: 0 });
-  const b = buildItem('reactor', { index: 1 });
+  const a = buildItem('reactor-plant', { index: 0 });
+  const b = buildItem('reactor-plant', { index: 1 });
   // different indices ⇒ different namespaces ⇒ disjoint ids (when the item has any defs)
   const aIds = new Set(idsIn(a).defIds);
   const bIds = new Set(idsIn(b).defIds);
   for (const x of aIds) assert.ok(!bIds.has(x), `index bump renames def ${x}`);
   // stable per (id,index)
-  assert.equal(buildItem('reactor', { index: 2 }), buildItem('reactor', { index: 2 }));
+  assert.equal(buildItem('reactor-plant', { index: 2 }), buildItem('reactor-plant', { index: 2 }));
 });
 
 test('every registry entry has a valid kind + a callable builder + a size', () => {
@@ -349,9 +365,16 @@ test('every registry entry has a valid kind + a callable builder + a size', () =
 // `oxygen-tank` have been waiting on: `DeviceKind.Reactor` and `DeviceKind.OxygenTank` still do not
 // exist in `sim/Sim.Core/Entities/Device.cs`. So the list grows because the ART grew, not because the
 // enum did — which is the honest reading and the reason the guard is a NAMED LIST rather than a count.
-test('the five NEW device kinds are flagged deviceStatus:new', () => {
+// ⚠️ FIVE BECAME THREE ON 2026-08-06, AND IT IS THE SECOND TIME THIS LIST HAS SHRUNK — the first was
+// M3-10, when `space-heater` left because `DeviceKind.Heater` arrived. This one is the opposite kind
+// of shrink and the difference matters: NOTHING CHANGED IN THE SIM. `reactor` and `oxygen-tank` were
+// the WARM drawings of the same two kinds `reactor-plant` and `bottle-rack` still wait on, and they
+// were retired as unreached art. `DeviceKind.Reactor` and `DeviceKind.OxygenTank` still do not exist
+// in `sim/Sim.Core/Entities/Device.cs` — checked on the shipped tree, not assumed — which is exactly
+// why the two paper rows are still flagged.
+test('the three NEW device kinds are flagged deviceStatus:new', () => {
   const news = ITEM_IDS.filter((id) => ITEMS[id].deviceStatus === 'new').sort();
-  assert.deepEqual(news, ['bottle-rack', 'cooker', 'oxygen-tank', 'reactor', 'reactor-plant']);
+  assert.deepEqual(news, ['bottle-rack', 'cooker', 'reactor-plant']);
   assert.equal(ITEMS['space-heater'].deviceStatus, 'exists',
     'space-heater must read `exists` — DeviceKind.Heater (28) projects it directly since M3-10');
   assert.equal(ITEMS['space-heater'].glyph, 'E', 'and it must carry the glyph the sim projects');
@@ -374,7 +397,11 @@ test('placeholder is deterministic and honours idPrefix', () => {
 });
 
 test('opts.state="off" changes glow-bearing devices but stays a valid fragment', () => {
-  for (const id of ['reactor', 'cooker', 'fabricator', 'standing-lamp', 'space-heater', 'sliding-door']) {
+  // ⚠️ THE LIST WAS `['reactor', 'cooker', 'fabricator', 'standing-lamp', 'space-heater',
+  // 'sliding-door']` and FOUR OF THE SIX WERE RETIRED WARM ROWS. Re-chosen off the shipped registry
+  // by DRIVING it — every id below was checked to really respond to `state`, which is the only thing
+  // this test is about; a piece that ignores `state` would make it vacuous.
+  for (const id of ['cooker', 'standing-lamp', 'space-heater', 'door-sliding', 'grow-lamp', 'lamp-sconce']) {
     const on = buildItem(id, { idPrefix: 'p', state: 'on' });
     const off = buildItem(id, { idPrefix: 'p', state: 'off' });
     assert.notEqual(on, off, `${id} responds to state`);
@@ -383,8 +410,8 @@ test('opts.state="off" changes glow-bearing devices but stays a valid fragment',
 });
 
 test('custom w/h scales the wrapper transform (fragment stays tile-normalised)', () => {
-  const small = buildItem('reactor', { w: 50, h: 50, idPrefix: 'z' });
-  const big = buildItem('reactor', { w: 200, h: 200, idPrefix: 'z' });
+  const small = buildItem('reactor-plant', { w: 50, h: 50, idPrefix: 'z' });
+  const big = buildItem('reactor-plant', { w: 200, h: 200, idPrefix: 'z' });
   assert.ok(small.includes('translate(25 25)'), 'small centres at 25,25');
   assert.ok(big.includes('translate(100 100)'), 'big centres at 100,100');
 });
@@ -464,86 +491,24 @@ test('the mapping doc\'s Tally table agrees with the shipped registry, row for r
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// THE SWARF PIECE (W0b) — the one registry row that is not in the mock.
+// ⛔ THE SWARF SECTION STOOD HERE — three tests, deleted 2026-08-06 WITH THE ROW THEY WATCHED.
 //
-// Everything above this line treats all 71 rows alike, and that is right for purity, determinism and
-// classification. What no generic assertion can see is the ONE property this piece was drawn for:
-// four of the nine resources are the same grey industrial granulate, hue cannot separate them at the
-// ~32 px a tile is finally shown at, and the set therefore separates them by SILHOUETTE. Swarf's is
-// the OPEN CURL — the only shape in the set whose middle is floor. If the curls silently closed into
-// rings, or lost their dark rim and dissolved into the floor tint, every test above would still
-// pass and a player would see a smudge where the first thing they ever made should be.
+// `swarf` was the first registry row that was not in the mock (W0b, `ItemKind.Swarf` from the wreck
+// start's salvage rule). Its three tests watched the ONE property no generic assertion could see:
+// *"four of the nine resources are the same grey industrial granulate, hue cannot separate them at
+// the ~32 px a tile is finally shown at, and the set therefore separates them by SILHOUETTE. Swarf's
+// is the OPEN CURL — the only shape in the set whose middle is floor."* They were
+// `a swarf coil is an OPEN path — a closed one is a ring, which is SEALS`,
+// `the swarf pile is drawn in STROKE, and every ribbon carries its dark rim`, and
+// `swarf does not look like the three pieces it could be confused with`. `coilPath`, the only export
+// of `client/src/items/resources.js` any test imported, went with the module.
+//
+// ⭐ THE PROPERTY IS NOT LOST, WHICH IS WHY THE TESTS COULD GO — VERIFIED BEFORE DELETING, not
+// assumed. `turnings` (`client/src/items/paper-resources.js`) took `ItemKind.Swarf` on 2026-08-05 and
+// carries the SAME argument in its own suite: `client/test/paper-resources.test.js` holds
+// *"every turning is an OPEN curl — a closed one is a ring, and a ring is the SEAL SET"* (no `Z`, the
+// ends apart, ≥12 segments so the spiral does not show its corners at 22 px) and, in
+// `the five named silhouettes are owned by exactly one piece each`, pins `turnings` as the sole owner
+// of "no filled body at all" as an EXCLUSION test. That is the same claim in the paper dialect, and
+// stricter — the old pair was a floor on swarf, this one is an exclusion over all nine.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-
-test('a swarf coil is an OPEN path — a closed one is a ring, which is SEALS', () => {
-  const d = coilPath(0, 0, 4, 14, 0, Math.PI * 3);
-  assert.ok(d.startsWith('M'), 'a path starts with a moveto');
-  assert.ok(d.includes('L'), 'the coil is a polyline');
-  assert.ok(!d.includes('Z') && !d.includes('z'),
-    'THE COIL CLOSED. `Z` makes the curl a ring, the floor stops showing through the middle, and\n'
-    + 'the piece becomes SEALS at tile size — the exact collision the silhouette rule exists to stop.');
-  // …and the ends really are apart: a spiral that returned to its start would be a ring drawn the
-  // long way round, which `Z`-freeness alone does not rule out.
-  const pts = d.slice(1).split('L');
-  assert.ok(pts.length >= 20, 'the polyline is fine enough not to show its corners when downscaled');
-  assert.notEqual(pts[0], pts[pts.length - 1], 'the coil returns to its own start — that is a ring');
-  // PURE: same arguments ⇒ byte-identical, and every coordinate is 3 dp (no engine last-place drift).
-  assert.equal(coilPath(0, 0, 4, 14, 0, Math.PI * 3), d);
-  for (const p of pts) {
-    for (const n of p.split(',')) {
-      assert.ok(/^-?\d+(\.\d{1,3})?$/.test(n), `coordinate ${n} is not rounded to 3 dp`);
-    }
-  }
-});
-
-test('the swarf pile is drawn in STROKE, and every ribbon carries its dark rim', () => {
-  const svg = buildItem('swarf', { idPrefix: 'sw' });
-  // Every ribbon is a stroked path with NO fill — the property that keeps a 3 px curl visible when
-  // the fill it would have had collapses to nothing at tile size.
-  const strokedPaths = [...svg.matchAll(/<path d="([^"]+)" fill="none" stroke="([^"]+)" stroke-width="([\d.]+)"/g)];
-  assert.ok(strokedPaths.length >= 10,
-    `the swarf pile has ${strokedPaths.length} stroked ribbons; it needs at least ten (five curls,`
-    + ' each drawn twice — a dark rim then a bright core).');
-  // THE RIM, PAIRWISE. Each curl's `d` must appear TWICE: once dark and wide, once bright and 2 px
-  // narrower. A single-stroke curl is a pale line over a pale floor tint and the pile reads as a
-  // smudge — invisible to every other assertion in this file, which only ever sees "a string".
-  const byPath = new Map();
-  for (const [, d, colour, width] of strokedPaths) {
-    if (!byPath.has(d)) byPath.set(d, []);
-    byPath.get(d).push({ colour, width: Number(width) });
-  }
-  assert.ok(byPath.size >= 5, `only ${byPath.size} distinct curls in the pile`);
-  for (const [d, strokes] of byPath) {
-    assert.equal(strokes.length, 2, `a curl is drawn ${strokes.length}× — it needs a rim and a core`);
-    const [under, over] = strokes;
-    assert.equal(under.colour, '#39424b', 'the UNDER-stroke is the set\'s dark rim colour');
-    assert.notEqual(over.colour, under.colour, 'the core is a different, brighter metal');
-    assert.equal(under.width - over.width, 2,
-      `the rim is ${under.width - over.width} px wider than the core, not 2 — one pixel of dark a`
-      + ' side at design scale is what separates the curl from the floor.'
-      + ` (curl ${d.slice(0, 24)}…)`);
-  }
-});
-
-test('swarf does not look like the three pieces it could be confused with', () => {
-  // NOT a byte comparison of whole fragments: every builder namespaces its own def ids, so any two
-  // rows differ trivially and such a check would pass for two identical drawings. Compare the
-  // GEOMETRY VOCABULARY instead, which is what a player actually reads at tile size.
-  const geo = (id) => {
-    const svg = buildItem(id, { idPrefix: 'x' });
-    return {
-      openStrokes: (svg.match(/fill="none" stroke="/g) || []).length,
-      rects: (svg.match(/<rect /g) || []).length,
-      circles: (svg.match(/<circle /g) || []).length,
-    };
-  };
-  const sw = geo('swarf');
-  assert.ok(sw.openStrokes >= 10, 'swarf is made of open strokes');
-  for (const other of ['regolith', 'scrap', 'parts', 'seals']) {
-    const g = geo(other);
-    assert.ok(g.openStrokes < sw.openStrokes,
-      `${other} now has as many open strokes as swarf (${g.openStrokes} vs ${sw.openStrokes}).\n`
-      + 'The four grey granulates separate by SILHOUETTE, not hue, and the open curl was the last\n'
-      + 'unused shape. If a redraw really needs open strokes there, swarf needs a new silhouette.');
-  }
-});
