@@ -406,6 +406,12 @@ namespace Perilune.Sim
         Occupied = 5,
         /// <summary>The ship cannot pay the Parts price out of LOOSE, UNRESERVED stacks.</summary>
         CannotPay = 6,
+        /// <summary>A blueprint is already standing on this tile, waiting to be built.</summary>
+        AlreadyQueued = 7,
+        /// <summary>The build queue is at <c>defs.Build.MaxStaged</c> — finish or cancel something
+        /// first. ⚠️ A REASON THE PLAYER CAN ACT ON, which is why it is not folded into
+        /// <see cref="AlreadyQueued"/>: the two say "not here" and "not yet, anywhere".</summary>
+        TooManyQueued = 8,
     }
 
     /// <summary>

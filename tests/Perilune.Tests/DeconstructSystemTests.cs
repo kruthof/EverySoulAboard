@@ -1676,7 +1676,12 @@ namespace Perilune.Tests
             Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "precondition: idle");
 
             // --- PLACE, through the real command over the real inbox.
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Bed, MachineTile));
+            // ⭐ PLACE **AND BUILD** — placement is a blueprint since 2026-08-05 (the owner's
+            // "it should stay as a ghost until the pawn assembles it"), so the device this test is
+            // about only exists once a builder finishes the site. `PlaceAndBuild` drives
+            // `BuildSystem.Complete`, the same entry point `BuildJobSource` calls — never `AddDevice`,
+            // which is the AUTHORING door and would leave `Scriptable` true.
+            sim.PlaceAndBuild(DeviceKind.Bed, MachineTile);
             sim.Tick();
             Assert.That(sim.TryGetDeviceAt(MachineTile, out var bed), Is.True, "the bed is placed…");
             Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(0),
@@ -1734,8 +1739,9 @@ namespace Perilune.Tests
             int cycles = 0;
             while (true)
             {
-                new PlaceDeviceCommand(DeviceKind.Bed, MachineTile).Execute(sim);
-                if (!sim.TryGetDeviceAt(MachineTile, out _)) break; // the ship could not pay
+                // ⚠️ THE NON-ASSERTING HELPER: this loop RUNS UNTIL THE PRESS IS REFUSED, so the
+                // asserting one would report the drain's own terminating condition as an error.
+                if (!sim.TryPlaceAndBuild(DeviceKind.Bed, MachineTile)) break; // the ship could not pay
                 Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
                 Assert.That(strip.Complete(sim, MachineTile, 0u), Is.True);
                 cycles++;
@@ -1786,6 +1792,10 @@ namespace Perilune.Tests
             var untouched = Build(63);
             Assert.That(acted.StateHash(), Is.EqualTo(untouched.StateHash()), "precondition: twins");
 
+            // ⚠️ THE RAW COMMAND, NOT A HELPER, AND THE REASON IS TICK PARITY. This is a TWIN-HASH
+            // test: `acted` and `untouched` must be ticked the same number of times, and both
+            // helpers tick internally. Applying one here gave `acted` an extra tick and the twins
+            // diverged — a red that looked like the refusal leaking state, and was the instrument.
             acted.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Bed, MachineTile));
             acted.Tick();
             untouched.Tick();
@@ -1833,7 +1843,7 @@ namespace Perilune.Tests
             Assert.That(PlaceDeviceCommand.Affordable(sim), Is.EqualTo(1),
                 "…but only ONE of them is loose, unclaimed ground stock");
 
-            new PlaceDeviceCommand(DeviceKind.Bed, MachineTile).Execute(sim);
+            sim.TryPlaceAndBuild(DeviceKind.Bed, MachineTile);     // EXPECTED to be refused
             Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.False,
                 "refused: a claimed stack is not the ship's to spend");
             Assert.That(claimed.Count, Is.EqualTo(1), "the reserved stack is untouched");
@@ -1844,7 +1854,7 @@ namespace Perilune.Tests
             claimed.ReservedBy = 0;
             carried.CarriedBy = 0;
             Assert.That(PlaceDeviceCommand.Affordable(sim), Is.EqualTo(3));
-            new PlaceDeviceCommand(DeviceKind.Bed, MachineTile).Execute(sim);
+            sim.PlaceAndBuild(DeviceKind.Bed, MachineTile);
             Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.True,
                 "…and with the claims released the identical request succeeds");
             Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(0), "all three spent");
@@ -1958,7 +1968,7 @@ namespace Perilune.Tests
                 var sim = NewSim(TwoRooms, seed, out _, defs);
                 sim.AddItem(ItemKind.Parts, purse, new Int3(1, 1, 0));
                 sim.Tick();
-                sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Desk, MachineTile));
+                sim.PlaceAndBuild(DeviceKind.Desk, MachineTile);
                 sim.Tick();
                 Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.True,
                     "precondition: the purse covers the tuned price, so the placement path was REACHED");
@@ -1978,6 +1988,7 @@ namespace Perilune.Tests
             broke.Tick();
             Assert.That(CountGround(broke, ItemKind.Parts), Is.EqualTo(0), "precondition: penniless");
             new PlaceDeviceCommand(DeviceKind.Chair, MachineTile).Execute(broke);
+            broke.BuildTheBlueprintAt(MachineTile);   // free, but still a blueprint a builder finishes
             Assert.That(broke.TryGetDeviceAt(MachineTile, out _), Is.True,
                 "device_place_cost = 0 restores pre-E0-5 free placement rather than bricking it");
             Assert.That(CountGround(broke, ItemKind.Parts), Is.EqualTo(0),

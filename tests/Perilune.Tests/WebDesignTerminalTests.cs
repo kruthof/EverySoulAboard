@@ -31,7 +31,7 @@ namespace Perilune.Tests
             };
             string json = WireFormat.Designs(rows);
             // element 7 = material variant (default 0), APPEND-ONLY after the delivered/required ledger.
-            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,1,2,0],[10,2,1,1,0,3,0]]}", json);
+            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,1,2,0,\"\",0],[10,2,1,1,0,3,0,\"\",0]]}", json);
             Assert.AreEqual("{\"type\":\"designs\",\"cells\":[]}", WireFormat.Designs(Array.Empty<WireFormat.Design>()));
             Assert.AreEqual("{\"type\":\"designs\",\"cells\":[]}", WireFormat.Designs(null));
         }
@@ -46,21 +46,37 @@ namespace Perilune.Tests
         public void Designs_Ledger_Is_AppendOnly_On_The_Tuple()
         {
             string legacy = WireFormat.Designs(new[] { new WireFormat.Design(3, 4, 0, 0) });
-            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,0,0,0]]}", legacy,
+            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,0,0,0,\"\",0]]}", legacy,
                 "the four-argument ctor still works; the ledger + material default to 0");
 
             string ledger = WireFormat.Designs(new[] { new WireFormat.Design(3, 4, 0, 0, 1, 2) });
             StringAssert.StartsWith("{\"type\":\"designs\",\"cells\":[[3,4,0,0,", ledger,
                 "x,y,deck,kind keep their positions — a reader that knows only the first four is unaffected");
-            StringAssert.EndsWith(",1,2,0]]}", ledger, "delivered, required, then material (0) trailing");
+            StringAssert.Contains(",1,2,0,", ledger, "delivered, required, then material (0) trailing");
 
             // The material variant rides as the 7th element (append-only after the ledger).
             string mat = WireFormat.Designs(new[] { new WireFormat.Design(3, 4, 0, 0, 1, 2, 5) });
-            StringAssert.EndsWith(",1,2,5]]}", mat, "material variant 5 trails delivered/required");
+            StringAssert.Contains(",1,2,5,", mat, "material variant 5 trails delivered/required");
+
+            // ⭐⭐ ELEMENTS 8 AND 9 — THE BLUEPRINT'S PIECE AND FACING (2026-08-05), and this is the
+            // APPEND-ONLY RECEIPT in both directions.
+            //
+            // A row constructed WITHOUT them still serialises the seven it always did, followed by
+            // `"",0` — so a client that reads only the first seven is unaffected, which is what
+            // "append-only" actually claims and what every assertion above now exercises.
+            string blueprint = WireFormat.Designs(new[] {
+                new WireFormat.Design(3, 4, 0, 3, 0, 0, 0, "table", 2) });
+            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,3,0,0,0,\"table\",2]]}", blueprint,
+                "the blueprint's piece and facing are the 8th and 9th elements");
+            // ⛔ THE PIECE IS A **STRING**, THROUGH THE HOUSE ESCAPER. It is the wire tool-string the
+            // client already resolves to art (`ghostArtId`), not the DeviceKind byte — a byte would
+            // oblige the client to hold a hand mirror of a sim enum, which is the join that is
+            // invisible when wrong.
+            StringAssert.Contains("\"table\"", blueprint, "the piece must be quoted, not bare");
 
             // A starved site (nothing delivered) and a ready one are distinguishable on the wire.
-            StringAssert.Contains("[9,9,0,1,0,2,0]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 0, 2) }));
-            StringAssert.Contains("[9,9,0,1,2,2,0]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 2, 2) }));
+            StringAssert.Contains("[9,9,0,1,0,2,0,\"\",0]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 0, 2) }));
+            StringAssert.Contains("[9,9,0,1,2,2,0,\"\",0]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 2, 2) }));
         }
 
         [Test]
@@ -126,7 +142,7 @@ namespace Perilune.Tests
                 // Negative on every SIGNED field of both tuples — a shape the sim never produces,
                 // chosen because it is the only shape that makes the property observable.
                 var loudDesigns = new[] { new WireFormat.Design(-1, -2, -3, 1, -4, -5) };
-                StringAssert.Contains("[-1,-2,-3,1,-4,-5,0]", WireFormat.Designs(loudDesigns),
+                StringAssert.Contains("[-1,-2,-3,1,-4,-5,0,\"\",0]", WireFormat.Designs(loudDesigns),
                     "the designs emitter picked up the ambient culture's negative sign. Every number " +
                     "on this channel must go through InvariantCulture — the dev machine is de-DE, and " +
                     "a wire payload that changes with the operator's locale is not a wire payload.");
@@ -195,8 +211,13 @@ namespace Perilune.Tests
             // A freshly designated site has delivered 0 of the def's required material — the
             // STARVED state the client now renders distinctly.
             Assert.IsTrue(build.TryGet(target.Value, out var pending));
-            StringAssert.Contains(tuple + "0," + pending.Required.ToString(CultureInfo.InvariantCulture) + ",0]", after,
-                "the ledger reports 0 delivered of the site's requirement; material 0 (default) trails");
+            // ⭐ ELEMENTS 8/9 TRAIL: a WALL site carries no piece and no facing, so it serialises
+            // `"",0` — the same seven elements this assertion always checked, plus the append-only
+            // pair. Written out rather than left open-ended, because a `Contains` that stops before
+            // the new elements would go green against a row that had lost them.
+            StringAssert.Contains(tuple + "0," + pending.Required.ToString(CultureInfo.InvariantCulture) + ",0,\"\",0]", after,
+                "the ledger reports 0 delivered of the site's requirement; material 0 (default) trails, "
+                + "then the blueprint's empty piece and facing");
 
             // Cancelling it drops the ghost off the authoritative channel.
             gs.ApplyForTest(new WebCommand(CmdKind.Build, target.Value.X, target.Value.Y, name: "cancel"));

@@ -32,6 +32,8 @@ client/tools/shots-overview/
 client/tools/shots-roomzoom/
 client/tools/shots-capsules/
 client/tools/shots-place-census/
+client/tools/shots-blueprint/
+client/tools/shots-blueprint-built/
 # — lane/paper-materials —
 client/tools/shots-paper-materials/
 # — lane/paper-resources —

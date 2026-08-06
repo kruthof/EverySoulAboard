@@ -54,6 +54,7 @@ namespace Perilune.Sim
         private readonly ISimSystem[] _systems;
         private readonly DeconstructSystem _deconstruct;
         private readonly StockZoneSystem _stockZones;
+        private readonly BuildSystem _build;
         private readonly ConcurrentQueue<ISimCommand> _inbox = new ConcurrentQueue<ISimCommand>();
         private readonly List<ISimCommand> _drain = new List<ISimCommand>(64);
         private readonly Dictionary<Int3, uint> _deviceGrid = new Dictionary<Int3, uint>();
@@ -73,6 +74,10 @@ namespace Perilune.Sim
             // (StockZoneSystem serialises and folds itself in its own ZONE chapter).
             for (int i = 0; i < _systems.Length; i++)
                 if (_systems[i] is StockZoneSystem z) { _stockZones = z; break; }
+            // …and the build registry, the SAME precedent again — resolved once so a COMMAND does
+            // not have to walk the stack. See the accessor's doc for why that mattered here.
+            for (int i = 0; i < _systems.Length; i++)
+                if (_systems[i] is BuildSystem b) { _build = b; break; }
         }
 
         /// <summary>
@@ -98,6 +103,24 @@ namespace Perilune.Sim
         /// kind) and the occupancy harness (WP-3). Nothing here mutates the sim.
         /// </summary>
         public StockZoneSystem StockZones => _stockZones;
+
+        /// <summary>
+        /// The pending-build registry, or <c>null</c> on a reduced stack without one. READ-ONLY
+        /// VIEW, and it adds no saved or hashed field — <see cref="BuildSystem"/> serialises and
+        /// folds itself in its own BULD chapter; this is only a reference resolved once at
+        /// construction, the <see cref="Deconstruct"/> / <see cref="StockZones"/> precedent.
+        ///
+        /// <para>⭐ IT EXISTS BECAUSE A **COMMAND** NEEDS IT NOW. <see cref="PlaceDeviceCommand"/>
+        /// lays a blueprint instead of spawning a device, so it must reach the registry — and the
+        /// first draft did that with the same <c>foreach (var s in sim.Systems)</c> walk
+        /// <c>DesignateBuildCommand</c> uses. <b>That went red, correctly</b>:
+        /// <c>ArchitectureBoundaryTests.Economy_ReachesIntoShipSystemsAtExactlyTheAllowlistedSites</c>
+        /// counts <c>sim.Systems</c> reaches in <c>Commands.cs</c> and reported *"expected ×2, found
+        /// ×3"*. The guard is right that the reach should stay tiny and enumerable, and the honest
+        /// answer was not to widen its allowlist but to stop reaching: one resolution at
+        /// construction, on a precedent this file already carries twice.</para>
+        /// </summary>
+        public BuildSystem Build => _build;
 
         /// <summary>Conduits and pipes are service-tray overlays: they share tiles with
         /// machines and never enter the tile grid (side-section world).</summary>

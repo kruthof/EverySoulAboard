@@ -563,12 +563,41 @@ test('roomCrew keeps only crew on the room deck inside the rect', () => {
 });
 
 test('roomDesigns clamps design cells to the room + deck and decodes the ledger', () => {
-  // element 6 = material (append-only); the 3rd design carries it, the others omit it → 0.
+  // element 6 = material, 7 = tool, 8 = facing — all APPEND-ONLY; rows that omit them read 0/''/0.
   const designs = { cells: [[5, 7, 1, 0, 0, 3, 2], [6, 8, 1, 1, 2, 2], [1, 1, 1, 0, 0, 1], [5, 7, 2, 0, 0, 1]] };
   const g = roomDesigns(designs, room);
   assert.equal(g.length, 2); // the out-of-rect and wrong-deck cells drop
-  assert.deepEqual(g[0], { x: 5, y: 7, kind: 0, delivered: 0, required: 3, material: 2 });
-  assert.deepEqual(g[1], { x: 6, y: 8, kind: 1, delivered: 2, required: 2, material: 0 });
+  assert.deepEqual(g[0], { x: 5, y: 7, kind: 0, delivered: 0, required: 3, material: 2, tool: '', facing: 0 });
+  assert.deepEqual(g[1], { x: 6, y: 8, kind: 1, delivered: 2, required: 2, material: 0, tool: '', facing: 0 });
+});
+
+/**
+ * ⭐⭐ THE APPEND-ONLY RECEIPT FOR THE BLUEPRINT'S TWO NEW ELEMENTS, in both directions — because
+ * "append-only" is a claim about what an OLD reader and a NEW reader each see, and only one of those
+ * is exercised by the test above.
+ *
+ * MUTATION: read `c[7]` without the `typeof === 'string'` guard ⇒ a legacy 7-element row decodes
+ * `tool: undefined` and the blueprint arm draws for a WALL. MUTATION: drop the `& 3` on facing ⇒ a
+ * corrupt facing reaches `standItem`.
+ */
+test('roomDesigns: the blueprint carries its PIECE and FACING, and an old row still parses', () => {
+  const cells = [
+    [5, 7, 1, 3, 0, 0, 0, 'table', 2],   // a DEVICE blueprint: kind 3, tool + facing
+    [6, 8, 1, 3, 0, 0, 0, 'bunk', 0],
+    [7, 7, 1, 0, 0, 3, 2],               // a SEVEN-element wall row from a host that predates this
+  ];
+  const g = roomDesigns({ cells }, room);
+  assert.equal(g.length, 3);
+  assert.deepEqual(g[0], { x: 5, y: 7, kind: 3, delivered: 0, required: 0, material: 0, tool: 'table', facing: 2 });
+  assert.deepEqual(g[1], { x: 6, y: 8, kind: 3, delivered: 0, required: 0, material: 0, tool: 'bunk', facing: 0 });
+  // THE OLD ROW IS THE POINT: no tool, no facing, and it must not become a blueprint by accident.
+  assert.equal(g[2].kind, 0);
+  assert.equal(g[2].tool, '', 'a legacy row grew a tool out of nowhere');
+  assert.equal(g[2].facing, 0);
+  // A garbage tool element is not a string and must read '' rather than reaching the art route.
+  const junk = roomDesigns({ cells: [[5, 7, 1, 3, 0, 0, 0, 17, 9]] }, room);
+  assert.equal(junk[0].tool, '', 'a non-string tool element reached the decoded row');
+  assert.equal(junk[0].facing, 1, 'facing is masked to 0..3 (9 & 3 === 1)');
 });
 
 test('roomMaterialTiles skins every in-room wall + only non-default floors', () => {

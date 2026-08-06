@@ -1674,15 +1674,48 @@ export function ghostSvg(list, scene, place) {
   const out = [];
   const s = scene.s;
   for (const g of list) {
-    const toolName = g.kind === 1 ? 'door' : g.kind === 2 ? 'floor' : 'wall';
+    const isBlueprint = g.kind === 3;
+    const toolName = isBlueprint ? (g.tool || 'furniture')
+      : g.kind === 1 ? 'door' : g.kind === 2 ? 'floor' : 'wall';
     const starved = g.required > 0 && g.delivered <= 0;
     const ready = g.required > 0 && g.delivered >= g.required;
-    const stroke = ready ? INK : ATTEND;
-    const dash = starved ? null : (ready ? '6 5' : '8 5');
+    // ⭐⭐ THE DASH-GRAMMAR DECISION FOR A FURNITURE BLUEPRINT — INK `6 5`, and the grammar table
+    // settles it rather than taste settling it.
+    //
+    // The charter's three states (§1, ruling E3) are already encoded three lines up:
+    //   oxblood `8 5`  QUEUED ORDER      — ordered, and something is still OWED to it
+    //   oxblood SOLID  ATTENTION/FAULT   — STARVED: nothing has been delivered
+    //   ink     `6 5`  UNBUILT/PLANNED   — it is PAID FOR and simply not built yet
+    // A device blueprint has `required === 0` because its whole price was charged in PARTS at
+    // designate (`PlaceDeviceCommand`; a Regolith `Required` would re-open WP-2's matter faucet).
+    // Nothing is owed to it. So the EXISTING predicate already classifies it as the third case, and
+    // the classification is semantically right rather than accidentally right: this is exactly a
+    // thing that is planned, fully paid, and waiting on labour.
+    //
+    // ⛔ AND THE OXBLOOD IS NEEDED ELSEWHERE ON THIS VERY TILE. When the wait becomes DISHONEST —
+    // nobody assigned to Construct, no air, no approach — `blockedLayerSvg` draws its oxblood scrim
+    // and ⚠ badge over the same square (`GameSession.BuildBlocked`'s third walk already visits
+    // `BuildSystem.Pending`, so a blueprint inherits that for free). Painting the blueprint itself
+    // oxblood would put two oxblood statements on one tile and the single accent would stop meaning
+    // anything — which is the one thing charter §1 spends its accent budget to prevent.
+    // ⇒ INK says "not built yet"; OXBLOOD says "and here is why it is stuck". They compose.
+    const stroke = (ready || isBlueprint) ? INK : ATTEND;
+    const dash = isBlueprint ? '6 5' : (starved ? null : (ready ? '6 5' : '8 5'));
     const [px, py] = place.front(g.x, g.y);
     const cm = M_PER_TILE * 100;
     let art;
-    if (g.kind === 2) {
+    if (isBlueprint) {
+      // ⭐⭐ THE PIECE'S OWN ART, THROUGH `standItem` — the EXACT function `furnitureSvg` places the
+      // BUILT piece with and the exact function `ghostPieceSvg` previews it with. Three states of
+      // one object drawn by one builder: preview → blueprint → built. The unbuilt dialect is applied
+      // by INHERITANCE on the wrapper (`stroke-dasharray` + `opacity`), so every stroke in the
+      // fitting set that does not set its own dash goes dashed without a path being re-authored —
+      // `ghostPieceSvg`'s rule 1, and the scar it cites (`oblique.js`) is one glyph skinned two ways.
+      // ⭐ AND IT CARRIES THE FACING off the wire, so the blueprint stands the way the player turned
+      // it and the finished piece lands the same way round.
+      const itemId = ghostArtId(g.tool);
+      art = itemId ? standItem(itemId, g.x, g.y, place, 'rz-bp-' + g.x + '-' + g.y, undefined, g.facing) : '';
+    } else if (g.kind === 2) {
       // A FLOOR has no height: it is the tile's own quad, dashed. Extruding it would draw a slab
       // where the player ordered a surface.
       art = '<path d="' + place.quad(g.x, g.y) + '" fill="none" stroke="' + stroke +
@@ -1697,11 +1730,26 @@ export function ghostSvg(list, scene, place) {
     // (a thin 0.65-opacity oxblood line from the object to a label set clear of the drawing).
     const [cx, cy] = place.foot(g.x, g.y);
     const lx = cx - 120, ly = cy + 46;
-    const price = g.required > 0
-      ? (g.delivered > 0 && !ready ? g.delivered + '/' + g.required + ' PARTS' : g.required + ' PARTS')
-      : 'NO PARTS';
+    // ⛔ A BLUEPRINT'S LABEL SAYS WHAT IT IS WAITING FOR, NOT WHAT IT COSTS. `required` is 0 for a
+    // device site and the generic arm would print `NO PARTS`, which is true and useless — the Parts
+    // were spent when the player pressed. What they need to know is that the piece is waiting on a
+    // PERSON. ⚠️ It deliberately does not say WHY nobody has come: that is the `blocked` channel's
+    // sentence, on its own badge, re-asked live every render — and a second, staler answer beside it
+    // is how one tile comes to carry two explanations that disagree.
+    const price = isBlueprint ? 'AWAITING A BUILDER'
+      : g.required > 0
+        ? (g.delivered > 0 && !ready ? g.delivered + '/' + g.required + ' PARTS' : g.required + ' PARTS')
+        : 'NO PARTS';
     const label = (TOOL_LABEL[toolName] || 'BUILD') + ' · ' + price;
-    out.push('<g class="rz-ghost">' + art +
+    // The BLUEPRINT's wrapper carries the dash + dim the hover ghost uses, so the two read as the
+    // same object in two states. A wall/door/floor ghost keeps its own per-path dash (its art is a
+    // box this function authored, not a registry piece) and takes no wrapper opacity.
+    const wrap = isBlueprint
+      ? '<g class="rz-ghost rz-blueprint" data-bp-tile="' + (g.x | 0) + ',' + (g.y | 0) +
+        '" data-bp-tool="' + esc(g.tool || '') + '" data-bp-facing="' + (g.facing & 3) +
+        '" opacity="0.55" stroke-dasharray="6 5">'
+      : '<g class="rz-ghost">';
+    out.push(wrap + art +
       '<path d="M' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' L' + lx.toFixed(1) + ' ' + ly.toFixed(1) +
       '" fill="none" stroke="' + stroke + '" stroke-width="0.8" opacity="0.65"/>' +
       haloText(label, lx, ly + 10, { size: 8.5, font: 'mono', tracking: 1.3, fill: stroke, anchor: 'start' }) +

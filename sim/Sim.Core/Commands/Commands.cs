@@ -740,6 +740,32 @@ namespace Perilune.Sim
             // to disagree, and the fact that only one of them is reachable is written down here
             // rather than left for the next reader to rediscover with a mutation that will not bite.
             if (sim.TryGetDeviceAt(_pos, out _)) { Refuse(sim, PlaceRefusal.Occupied); return; }
+
+            // ⭐⭐ THE BLUEPRINT — and this is where the command stopped being a SPAWN.
+            //
+            // The owner, 2026-08-05: *"after placing a new item, it should stay as a ghost until the
+            // pawn assembles it."* So a placement is now a `BuildSystem` SITE. Everything below the
+            // legality checks is `BuildSystem`'s: the piece is spawned by `BuildSystem.Complete`
+            // when a builder finishes the work, carrying the same name, the same
+            // `Scriptable = false` and the same facing this command used to write itself.
+            //
+            // ⛔ THE ORDER IS ASK-THEN-PAY-THEN-DESIGNATE, AND IT IS NOT INTERCHANGEABLE. `TryPay`
+            // is all-or-nothing but it is not a transaction: paying first and then finding
+            // `Designate` refuses would DESTROY the Parts and leave no site — a matter leak with a
+            // silent no-op on top, which is both defects of this package at once. So the site's own
+            // legality is asked FIRST (`CanDesignate`, the sim's authority, not a restatement of
+            // it), then the ship pays, and only a paid-for request designates.
+            var build = sim.Build;
+            if (build == null) { Refuse(sim, PlaceRefusal.NotPlaceable); return; } // a stack with no BuildSystem
+            if (build.TryGet(_pos, out _)) { Refuse(sim, PlaceRefusal.AlreadyQueued); return; }
+            if (!build.CanDesignate(sim, _pos, BuildKind.Device))
+            {
+                // The one clause left that `CanDesignate` can refuse and the checks above cannot:
+                // the concurrency cap. Naming it separately is the no-default-reason rule — a
+                // player who has queued the maximum needs to hear THAT, not "something".
+                Refuse(sim, PlaceRefusal.TooManyQueued);
+                return;
+            }
             // CHARGED LAST, so an illegal request never spends: every rejection above leaves the
             // ship's matter untouched, and this one leaves it untouched too when it cannot pay.
             //
@@ -751,23 +777,16 @@ namespace Perilune.Sim
             // with no tile involved at all. Sending both numbers is what lets the sentence say which.
             int price = sim.Defs.Build.DevicePlaceCost;
             if (!TryPay(sim, price)) { Refuse(sim, PlaceRefusal.CannotPay, price, Affordable(sim)); return; }
-            // Deterministic name (kind + tile) — no counters, no RNG; InvariantCulture ints.
-            string name = System.FormattableString.Invariant(
-                $"{_kind.ToString().ToLowerInvariant()}_{_pos.X}_{_pos.Y}_{_pos.Z}");
-            var placed = sim.AddDevice(_kind, _pos, name); // marks rooms + power dirty
-            // E0-6 — what the PLAYER bolts on is not commissioned. The device works physically the
-            // instant it is placed; what it does not have is a controller module, so MOSS cannot
-            // see it (MossBindings.RegisterAdapters skips it) until a CommissionDeviceCommand
-            // spends one. Authored and generated devices keep Device.Scriptable's true default, so
-            // no shipped ship, program or rule changes.
-            placed.Scriptable = false;
-            // ⭐ THE FACING, set on the RETURNED device rather than threaded through `AddDevice` —
-            // exactly as `Scriptable` is one line up, and for the same reason: `AddDevice` is the
-            // single spawn door for every authored ship and every save restore, and widening its
-            // signature for a DRAWING-ONLY field would touch every one of those call sites just to
-            // say 0. Already masked in the constructor.
-            placed.Facing = _facing;
+            // The site. `Designate` re-asks `CanDesignate` itself — deliberately not bypassed, so
+            // there is ONE authority on legality even though it costs a second call.
+            build.Designate(sim, _pos, BuildKind.Device, material: 0, device: _kind, facing: _facing);
         }
+
+        // ⛔ THE DEVICE SPAWN THAT USED TO LIVE HERE IS **DELETED**, NOT KEPT BESIDE THE NEW PATH.
+        // It moved verbatim into `BuildSystem.Complete`'s Device arm — the deterministic name, the
+        // `Scriptable = false` (E0-6), the facing. Leaving a second spawn door standing here is how
+        // this repo got two lowering paths for one verb before (`orderPayloads` vs `paletteOrders`,
+        // and the ghost-vs-placed art split); one of them then drifts and nothing can see it.
 
         /// <summary>
         /// Free <see cref="Currency"/> units lying loose aboard: on the ground

@@ -491,3 +491,165 @@ test('a refusal arriving after the room is closed says nothing', () => {
   assert.equal(toastText(), '', 'a refusal was toasted into a closed surface');
   api.enter('hold');   // restore the fixture for anything that runs after
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// 3. THE BLUEPRINT — the owner's second sentence, drawn.
+//
+// "After placing a new item, it should stay as a ghost until the pawn assembles it." A placement is
+// now a `BuildSystem` site (`BuildKind.Device`), and it reaches this surface on the `designs`
+// channel carrying the piece's WIRE TOOL-STRING and its facing. The sim half is
+// `tests/Perilune.Tests/BlueprintTests.cs`; these are the drawing and the gestures.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Feed the `designs` channel and let the surface repaint. `kind: 3` is `BuildKind.Device`. */
+async function renderDesigns(cells) {
+  Hud.renderDesigns({ type: 'designs', cells });
+  Hud.renderFrame(wreck);
+  await raf();
+  return layers.innerHTML || '';
+}
+/** A content digest of the DRAWING ALONE — every `d="…"` payload in the ghost group, concatenated.
+ *  Deliberately excludes attributes (`data-bp-facing` and friends), because a comparison that
+ *  includes them is satisfied by the attribute changing while the picture does not. */
+function inkOf(html) {
+  const g = html.slice(html.indexOf('<g class="rz-ghosts"'));
+  return [...g.matchAll(/\sd="([^"]*)"/g)].map((m) => m[1]).join('|');
+}
+const BP_TILE = { x: HOLD.rx + 2, y: HOLD.ry + 2 };
+const bpCell = (t, tool, facing) => [t.x, t.y, HOLD.deck, 3, 0, 0, 0, tool, facing];
+
+/**
+ * ⭐⭐ A PENDING PLACEMENT DRAWS THE PIECE ITSELF, AT ITS FACING — not a mark, not a box.
+ *
+ * MUTATION: drop the `isBlueprint` arm from `ghostSvg` ⇒ RED (it draws the wall box again).
+ * MUTATION: pass `undefined` instead of `g.facing` to `standItem` ⇒ RED on the facing leg.
+ */
+test('⭐⭐ a pending placement stands on its tile as THE PIECE, turned the way it was placed', async () => {
+  const html = await renderDesigns([bpCell(BP_TILE, 'table', 2)]);
+  assert.match(html, /class="rz-ghost rz-blueprint"/,
+    'no blueprint was drawn for a kind-3 design cell');
+  assert.match(html, new RegExp(`data-bp-tile="${BP_TILE.x},${BP_TILE.y}"`), 'the blueprint is on the wrong tile');
+  assert.match(html, /data-bp-tool="table"/, 'the blueprint does not know which piece it is');
+  assert.match(html, /data-bp-facing="2"/, 'the blueprint lost the facing the player turned it to');
+
+  // ⭐⭐ THE FACING IS IN THE **DRAWING**, not only in the attribute — and this comparison is over
+  // the PATH DATA ALONE, which is the fix for a survivor this test shipped with.
+  //
+  // ⛔ THE FIRST VERSION COMPARED THE WHOLE MARKUP AND COULD NOT BITE. `data-bp-facing="0"` versus
+  // `data-bp-facing="1"` is itself a difference, so two strings differed no matter what the art
+  // did — and the named mutation (drop the `isBlueprint` arm so the piece is drawn as a plain wall
+  // box that ignores facing entirely) SURVIVED GREEN against it. Measured, then fixed. `inkOf`
+  // digests only `d="…"` payloads, so it is a statement about the PICTURE, exactly as
+  // `build-ghost-shot.mjs`'s ink digest is.
+  const at0 = inkOf(await renderDesigns([bpCell(BP_TILE, 'table', 0)]));
+  const at1 = inkOf(await renderDesigns([bpCell(BP_TILE, 'table', 1)]));
+  assert.notEqual(at0, at1, 'turning the blueprint changed the attribute but not the picture');
+
+  // …and a DIFFERENT piece is a different drawing, so the art really is routed off `tool`.
+  const bunk = inkOf(await renderDesigns([bpCell(BP_TILE, 'bunk', 0)]));
+  assert.notEqual(at0, bunk, 'TABLE and BUNK blueprints draw the same picture — the art is not routed');
+  assert.ok(at0.length > 20, `the ink digest is empty (${at0}) — the comparisons above are between two nothings`);
+});
+
+/**
+ * ⭐⭐ THE DASH-GRAMMAR DECISION, PINNED: a furniture blueprint is INK `6 5` (UNBUILT/PLANNED), never
+ * the oxblood `8 5` of a QUEUED ORDER.
+ *
+ * The charter's three states are already encoded in `ghostSvg`: oxblood `8 5` = ordered and
+ * something is still OWED; oxblood SOLID = STARVED; ink `6 5` = paid for and simply not built. A
+ * device blueprint's `required` is 0 because its whole price was charged in PARTS at designate, so
+ * nothing is owed and the existing predicate classifies it as the third case — correctly, not
+ * accidentally. The oxblood on that tile is reserved for `blockedLayerSvg`, which is what appears
+ * when the wait becomes dishonest; two oxblood statements on one square would spend the charter's
+ * single accent twice.
+ *
+ * MUTATION: make `stroke` ATTEND for a blueprint ⇒ RED.
+ */
+test('the blueprint wears INK 6 5 — the accent is left for the BLOCKED badge', async () => {
+  const html = await renderDesigns([bpCell(BP_TILE, 'table', 0)]);
+  // ⛔ THE WHOLE GHOST GROUP, NOT A SLICE TO THE FIRST `</g>` — and that slice is why this test
+  // shipped with a survivor. `standItem` emits NESTED groups, so the first `</g>` after
+  // `rz-blueprint` closes an INNER one and cut the fragment short of the leader line and label —
+  // which are the only elements a blueprint's `stroke` actually reaches (the piece's own art
+  // ignores it). The named mutation (give a blueprint the ATTEND stroke) SURVIVED GREEN against
+  // the truncated fragment. The 4th trap shape: a scope filter that excludes the violation.
+  const ghosts = html.slice(html.indexOf('<g class="rz-ghosts"'));
+  assert.ok(ghosts.includes('rz-blueprint'), 'the slice does not contain the blueprint at all');
+  assert.match(ghosts, /stroke-dasharray="6 5"/, 'the blueprint is not in the UNBUILT dash');
+  assert.doesNotMatch(ghosts, /#7B2C22/i,
+    'the blueprint spends the oxblood accent. That accent belongs to the BLOCKED badge on this same '
+    + 'tile — two oxblood statements on one square and neither means anything.');
+  // NON-VACUITY BY INCLUSION: the slice must be able to SEE a colour, or "no oxblood" means nothing.
+  assert.match(ghosts, /#14120F/i, 'no INK anywhere in the ghost group — this slice sees no colours at all');
+});
+
+/**
+ * ⛔ IT IS NOT A PRESS TARGET. The blueprint stands ON the tile it describes and is drawn tall; if it
+ * could be hit it would win `tileAt`'s first tier and start answering for presses aimed at the tiles
+ * BEHIND it — VR-P3-a's measured defect (16 of 18 fittings designating the wrong tile), re-created by
+ * the affordance meant to show intent. `standItem` emits `data-tile`, so the guard is the
+ * `pointer-events="none"` on the enclosing group and nothing else.
+ *
+ * MUTATION: drop `pointer-events="none"` from `ghostSvg`'s wrapper ⇒ RED.
+ */
+test('the blueprint is inert to the pointer — presses fall through to the floor', async () => {
+  const html = await renderDesigns([bpCell(BP_TILE, 'locker', 0)]);
+  const i = html.indexOf('rz-ghosts');
+  assert.ok(i >= 0, 'no ghost group at all');
+  const groupTag = html.slice(html.lastIndexOf('<g', i), html.indexOf('>', i) + 1);
+  assert.match(groupTag, /pointer-events="none"/,
+    'the blueprint group is pointer-live: a tall piece would swallow presses aimed behind it');
+});
+
+/**
+ * ⭐ A PAWN STANDING ON THE TILE DOES NOT EVICT THE BLUEPRINT. The `designs` channel is authoritative
+ * and independent of the frame's glyph plane, which is exactly why the mark layer was moved off
+ * `cell[1]` in the first place (`WireFormat.Marks.cs`: a crew member crossing a condemned tile made
+ * its ✕ blink out). The sim half — that a pawn does not block the DESIGNATION either — is
+ * `BlueprintTests.ABlueprintMayBeLaidUnderSomebodysFeet`.
+ */
+test('a pawn standing on the tile does not evict the blueprint', async () => {
+  const withPawn = JSON.parse(JSON.stringify(wreck));
+  const idx = BP_TILE.y * withPawn.w + BP_TILE.x;
+  if (Array.isArray(withPawn.cells[idx])) withPawn.cells[idx][0] = 64; // '@' — a citizen glyph
+  Hud.renderDesigns({ type: 'designs', cells: [bpCell(BP_TILE, 'table', 0)] });
+  Hud.renderFrame(withPawn);
+  await raf();
+  assert.match(layers.innerHTML || '', /class="rz-ghost rz-blueprint"/,
+    'a pawn walking onto the tile took the blueprint off the screen');
+  Hud.renderFrame(wreck);
+  await raf();
+});
+
+/**
+ * THE LIFECYCLE'S OTHER TWO EDGES, both driven off the CHANNEL because the channel is the truth:
+ * a completed build drops off `designs` (and the piece arrives on the frame), and a cancelled one
+ * drops off too. Neither needs a client rule — which is the point of rendering from the wire.
+ */
+test('a completed or cancelled blueprint leaves the screen', async () => {
+  const before = await renderDesigns([bpCell(BP_TILE, 'table', 0)]);
+  assert.match(before, /rz-blueprint/, 'nothing was drawn, so its disappearance proves nothing');
+  const after = await renderDesigns([]);
+  assert.doesNotMatch(after, /rz-blueprint/,
+    'the blueprint outlived its own row on the designs channel');
+});
+
+/**
+ * ⭐ CANCEL, THROUGH THE GESTURE THE PLAYER ALREADY HAS. DEMOLISH on a pending tile sends
+ * `Cmd.build('cancel', …)` — `demolishTarget` classifies ANY design cell as `pending` regardless of
+ * its kind byte, so the blueprint inherited the verb with no client change. The sim half (the PARTS
+ * come back, exactly) is `BlueprintTests.PlaceThenCancelIsMatterNeutral`.
+ */
+test('DEMOLISH on a blueprint cancels it', async () => {
+  await renderDesigns([bpCell(BP_TILE, 'table', 0)]);
+  armViaButton('demolish');
+  sent.length = 0;
+  const pt = at(BP_TILE.x, BP_TILE.y);
+  firePointer(canvas, 'pointerdown', { button: 0, ...pt });
+  firePointer(canvas, 'pointerup', { button: 0, ...pt });
+  const cancels = sent.filter((o) => o && o.cmd === 'build' && o.kind === 'cancel');
+  assert.equal(cancels.length, 1, `${cancels.length} cancel commands, expected 1: ${JSON.stringify(sent)}`);
+  assert.equal(`${cancels[0].x},${cancels[0].y}`, `${BP_TILE.x},${BP_TILE.y}`, 'cancelled the wrong tile');
+  armViaButton('demolish');
+  await renderDesigns([]);
+});

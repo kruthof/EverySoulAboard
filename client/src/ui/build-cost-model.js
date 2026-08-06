@@ -187,6 +187,8 @@ export const PLACE_REFUSAL_TEXT = {
   4: 'SOMETHING IS BUILT ON THIS TILE',
   5: 'SOMETHING IS ALREADY STANDING HERE',
   // 6 (CannotPay) is composed from the two numbers on the wire — see `placeRefusedText`.
+  7: 'A BLUEPRINT IS ALREADY WAITING ON THIS TILE',
+  8: 'TOO MANY THINGS QUEUED — FINISH OR CANCEL ONE FIRST',
 };
 
 /**

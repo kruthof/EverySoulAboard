@@ -299,7 +299,12 @@ namespace Perilune.Tests
             int stock = cost + 4;                       // enough to pay, with a remainder to watch
             sim.AddItem(ItemKind.Parts, stock, new Int3(2, 2, 0));
 
-            new PlaceDeviceCommand(DeviceKind.Bed, new Int3(5, 2, 0)).Execute(sim);
+            // ⭐ PLACE **AND BUILD** — placement is a blueprint since 2026-08-05 (the owner's
+            // "it should stay as a ghost until the pawn assembles it"), so the device this test is
+            // about only exists once a builder finishes the site. `PlaceAndBuild` drives
+            // `BuildSystem.Complete`, the same entry point `BuildJobSource` calls — never `AddDevice`,
+            // which is the AUTHORING door and would leave `Scriptable` true.
+            sim.PlaceAndBuild(DeviceKind.Bed, new Int3(5, 2, 0));
             Assert.That(sim.TryGetDeviceAt(new Int3(5, 2, 0), out _), Is.True,
                 "NON-VACUITY: the device must really have been placed, or nothing below is a round trip");
             int afterPlace = Units(sim, ItemKind.Parts);

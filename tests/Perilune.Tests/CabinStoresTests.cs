@@ -141,8 +141,15 @@ namespace Perilune.Tests
 
             int devicesBefore = DeviceCount(sim);
             int affordableBefore = PlaceDeviceCommand.Affordable(sim);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Bed, BunkTile));
-            sim.Tick();
+            // ⭐ PLACE **AND BUILD**. This file's claim is about MATTER — can the ship afford
+            // furniture through the first hour's maintenance drain — and the bunk landing is its
+            // outcome. Since 2026-08-05 a press lays a blueprint, so the outcome needs the builder's
+            // half too; `PlaceAndBuild` drives `BuildSystem.Complete`, the same entry point
+            // `BuildJobSource` calls. ⛔ NOT a tick-until-a-pawn-turns-up loop: that would make a
+            // matter test depend on pathing, air and the job dispatcher.
+            // ⚠️ LEG 4 BELOW IS UNAFFECTED — the Parts are still charged at DESIGNATE, so the purse
+            // moves on the press exactly as it did before.
+            sim.PlaceAndBuild(DeviceKind.Bed, BunkTile);
 
             if (DeviceCount(sim) != devicesBefore + 1 || !BedIsAt(sim, BunkTile))
                 offenders.Add("LEG 3 — ⛔ THE OUTCOME: the bunk did not go down. Devices " +

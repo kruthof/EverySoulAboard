@@ -149,14 +149,26 @@ namespace Perilune.Tests
             Leg("not-walkable", DeviceKind.Table, unwalkable, PlaceRefusal.NotWalkable);
             // (4) BLOCKED is NOT driven here, and the leg below says why with a census rather than
             //     with prose. See `TheBlockedArmIsABackstop_NotAPath`.
-            // (5) OCCUPIED — place one for real, then press the same tile again. This leg is also the
-            //     proof that a placement CAN succeed, so nothing above is vacuous.
+            // (5) OCCUPIED — an AUTHORED device's tile. ⚠️ THIS LEG USED TO PLACE ONE FIRST AND PRESS
+            //     AGAIN, AND THE BLUEPRINT PACKAGE INVALIDATED THAT: a successful press now lays a
+            //     SITE, not a device, so pressing the same tile twice is `AlreadyQueued`. The two
+            //     causes are genuinely different and both are driven, separately, below.
+            Assert.IsTrue(TryFindTile(sim, p => sim.TryGetDeviceAt(p, out _), out var occupied),
+                "no device stands anywhere on the wreck — the Occupied arm cannot be reached here");
+            Leg("occupied", DeviceKind.Table, occupied, PlaceRefusal.Occupied);
+
+            //     …and the CONTROL that keeps every leg above non-vacuous: a legal, paid-for press
+            //     really does succeed. It lays a BLUEPRINT (`BlueprintTests` owns that claim in
+            //     full); here it only has to be silent and real.
             var okEvents = PlaceAndRead(sim, DeviceKind.Table, clear);
             Assert.AreEqual(0, okEvents.Length, "a legal, paid-for placement published a refusal");
-            Assert.IsTrue(sim.TryGetDeviceAt(clear, out _),
-                "the control placement did not actually land, so the OCCUPIED leg below would be "
-                + "measuring an empty tile and the whole file would be vacuous");
-            Leg("occupied", DeviceKind.Table, clear, PlaceRefusal.Occupied);
+            var build = sim.Systems.OfType<BuildSystem>().First();
+            Assert.IsTrue(build.TryGet(clear, out _),
+                "the control placement laid nothing at all, so every refusal leg above is measuring "
+                + "a command that never works and the whole file is vacuous");
+
+            // (7) ALREADY QUEUED — the same tile again, now that a blueprint stands on it.
+            Leg("already-queued", DeviceKind.Table, clear, PlaceRefusal.AlreadyQueued);
 
             // (6) CANNOT PAY — on a fresh ship with nothing loose.
             var (_, host2) = BootWreck();
@@ -180,9 +192,12 @@ namespace Perilune.Tests
                 "two different causes ship the SAME reason byte, so the player is told the same thing "
                 + "about two different problems: " + string.Join(", ",
                     byReason.Select(g => string.Join(" and ", g.Select(kv => kv.Key)) + " both = " + g.Key)));
-            Assert.AreEqual(5, seen.Count,
-                "not all five REACHABLE arms were driven (Blocked is the sixth and is a backstop — "
-                + "see TheBlockedArmIsABackstop_NotAPath)");
+            // SIX arms are driven HERE — not-placeable, out-of-bounds, not-walkable, occupied,
+            // already-queued, cannot-pay. The enum has eight members: `None` is the sentinel that is
+            // never published, `Blocked` is unreachable by construction
+            // (`TheBlockedArmIsABackstop_NotAPath`) and `TooManyQueued` needs a full queue and has its
+            // own test (`TheQueueCapNamesItself`). Every member is accounted for, in exactly one place.
+            Assert.AreEqual(6, seen.Count, "not all six arms driven here were driven");
             GC.KeepAlive(gs);
         }
 
@@ -225,6 +240,56 @@ namespace Perilune.Tests
                     + "arm of PlaceDeviceCommand is now reachable by an ordinary press and must be "
                     + "DRIVEN in EveryRefusalArmNamesItsOwnReason rather than left as a backstop.");
             }
+        }
+
+        /// <summary>
+        /// ⭐ THE QUEUE CAP SAYS SO BY NAME. `defs.Build.MaxStaged` (64) is a real wall a player can
+        /// hit by laying furniture, and "too many queued" is a reason they can ACT on — which is why
+        /// it is not folded into <see cref="PlaceRefusal.AlreadyQueued"/>: the two say "not here" and
+        /// "not yet, anywhere".
+        ///
+        /// <para>MUTATION: return <c>AlreadyQueued</c> from the cap arm ⇒ RED (the player is told to
+        /// try another tile, and every tile refuses).</para>
+        /// </summary>
+        [Test]
+        public void TheQueueCapNamesItself()
+        {
+            var (_, host) = BootWreck();
+            var sim = host.Sim;
+            var build = sim.Systems.OfType<BuildSystem>().First();
+            var spot = ClearTileFor(sim);
+            StockParts(sim, spot, 9999);
+            sim.Tick();
+
+            // Fill the queue with WALL designations — cheaper to author than 64 placements, and the
+            // cap is a property of the LIST, not of what is on it.
+            int cap = sim.Defs.Build.MaxStaged;
+            int laid = 0;
+            var w = sim.World;
+            for (int z = 0; z < w.Depth && laid < cap; z++)
+                for (int y = 0; y < w.Height && laid < cap; y++)
+                    for (int x = 0; x < w.Width && laid < cap; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if (build.Designate(sim, p, BuildKind.Wall)) laid++;
+                    }
+            Assert.AreEqual(cap, laid,
+                "the queue could not be filled (" + laid + "/" + cap + "), so the cap arm below is "
+                + "not the thing being measured");
+
+            var evs = PlaceAndRead(sim, DeviceKind.Table, spot);
+            Assert.AreEqual(1, evs.Length, "a press against a full queue published " + evs.Length + " events");
+            Assert.AreEqual((byte)PlaceRefusal.TooManyQueued, evs[0].Reason,
+                "a full build queue refused for the wrong reason");
+            Assert.AreEqual(cap, build.Pending.Count, "the refused press changed the queue");
+        }
+
+        /// <summary>`ClearTile`'s sibling that also avoids tiles already queued — used where the test
+        /// itself fills the queue.</summary>
+        private static Int3 ClearTileFor(Simulation sim)
+        {
+            TryFindPlaceableTile(sim, out var p);
+            return p;
         }
 
         private static bool TryFindTile(Simulation sim, Func<Int3, bool> pred, out Int3 found)
