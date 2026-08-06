@@ -1092,9 +1092,35 @@ test('⭐⭐ a member nested inside an opaque one is drawn AFTER it — the faul
   // ⚠️ CONTAINED means inside OR ON, and the change is forced by the subject rather than convenient.
   // Water standing in a glass shares the pane's own sill — two of the four inner vertices ARE outer
   // vertices — so a strictly-interior test condemns the correct drawing. `EDGE_TOL` is 0.01 local
-  // units against a 112-unit box: it admits a shared edge and nothing else. The leg still bites, and
-  // the mutation that proves it is named below (a) — moving the water 8 cm past the pane's left lip
-  // is caught, so this is not a tolerance that has swallowed the assertion.
+  // units against this piece's own 112-unit drawn box, and 0.01 is not a taste number: it is EXACTLY
+  // `oblique.n()`'s emit quantum, the 2-dp rounding every coordinate in the drawing passes through.
+  //
+  // ⛔ THE RECEIPT THAT STOOD HERE WAS TRAPS-3 — A RED FOR THE WRONG REASON — so it is replaced
+  // rather than reworded. It named "the water 8 cm past the pane's left lip" (inner x 24 → 16) as
+  // proof the tolerance had not swallowed the assertion. Driven: that mutation does go red, but at
+  // `find()`'s hand-typed LOCATOR — `expected exactly ONE member at the inner member (…), found 0`,
+  // because moving x 24 moves two of the four coordinates the locator searches for. It never reaches
+  // the containment leg at all, and it reds identically with `EDGE_TOL` widened to 1e9.
+  //
+  // ⭐ THE DISCRIMINATING MUTATION KEEPS ALL FOUR ANCHOR COORDINATES AND ADDS A FIFTH VERTEX, so the
+  // locator still finds exactly one member and only containment can speak. Insert `[X, 0, 80]` into
+  // `drawReclaimerStack`'s inner quad, on the pane's right lip (this frame is 0.5 local units per cm,
+  // so one cm of X is two emit quanta). Driven, `node --test client/test/machines.test.js`, 38 tests:
+  //     X = 80.00 — on the lip; projects to 5.55, the outer edge itself   → 38/38 GREEN
+  //     X = 80.02 — 5.56, ONE emit quantum clear of it                    → 38/38 GREEN
+  //     X = 80.04 — 5.57, TWO emit quanta clear of it                     → 37/38 RED, and the red is
+  //                 leg (b): "the inner member is NOT entirely inside the outer one any more"
+  //     X = 80.04 with `EDGE_TOL = 1e9`, control leg absent               → 38/38 GREEN
+  // ⚠️ SAY THE SECOND ROW OUT LOUD: ONE QUANTUM OUT IS ADMITTED, not rejected. `5.56 - 5.55` is
+  // 0.009999999999999787 in a double, which lands inside `<= EDGE_TOL`. The tolerance's guaranteed
+  // discrimination therefore begins at TWO quanta (0.02 local units, 0.04 cm on this piece) — that is
+  // the number the inclusion control below pins, and a control written at one quantum would be
+  // pinning a floating-point accident instead.
+  // ⭐ THE LAST ROW IS WHY THE CONTROL LEG EXISTS AT ALL: the leg reds because the tolerance is 0.01
+  // and for no other reason, and a widened `EDGE_TOL` used to take that away in silence. It no longer
+  // can — re-driven WITH the control shipped, `EDGE_TOL = 1e9` on its own, no painter mutation, reds
+  // 37/38 at the control itself: "EDGE_TOL (1000000000) admits a point TWO emit quanta clear of the
+  // outer member's edge".
   const EDGE_TOL = 0.01;
   const onEdge = (poly, [x, y]) => {
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
@@ -1144,6 +1170,21 @@ test('⭐⭐ a member nested inside an opaque one is drawn AFTER it — the faul
     // instead of the pin silently becoming a statement about two unrelated strokes.
     const outerPoly = points(outer.d);
     const innerPoly = points(inner.d);
+    // ⭐ THE INCLUSION CONTROL FOR `EDGE_TOL` ITSELF, run on the polygon this test actually read.
+    // Without it the tolerance is free — at 1e9 every leg here stays green (driven, header). A point
+    // ON the outer member's right-hand edge must read as contained; the same point two emit quanta
+    // clear of it must not. ⚠️ It reads that edge as axis-aligned, which the table's one row is; a
+    // row that is not fails HERE, loudly, instead of quietly widening what "contained" means.
+    const outerYs = outerPoly.map(([, y]) => y);
+    const edgeX = Math.max(...outerPoly.map(([x]) => x));
+    const midY = (Math.max(...outerYs) + Math.min(...outerYs)) / 2;
+    assert.ok(inPoly(outerPoly, [edgeX, midY]),
+      `${id}: a point ON the outer member's own edge (${edgeX}, ${midY}) reads as OUTSIDE it, so the\n`
+      + 'containment leg below now condemns the correct drawing — water in a glass shares the sill.');
+    assert.ok(!inPoly(outerPoly, [nn(edgeX + 0.02), midY]),
+      `${id}: EDGE_TOL (${EDGE_TOL}) admits a point TWO emit quanta clear of the outer member's edge\n`
+      + `(${nn(edgeX + 0.02)} against ${edgeX}), so the containment leg below can no longer see an\n`
+      + 'inner member poking out of the one that is supposed to hold it.');
     assert.ok(innerPoly.every((p) => inPoly(outerPoly, p)),
       `${id}: ${what} — the inner member is NOT entirely inside the outer one any more, so the\n`
       + 'containment this pin is about has changed. Re-derive the pair before editing the order.');

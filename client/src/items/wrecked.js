@@ -1298,8 +1298,20 @@ const deckMarker = (s) => paintPaperFixture(s, 'deck-marker', (_s, { F }) => {
 // exactly the defect `paper-resources.test.js`'s anchoring guard is named for, one catalogue over.
 // The four marks below were re-derived against the shipped geometry: the shade is now the tapered
 // `cone(23, 6, 206, 220, 9, 12)` at y = 6, the bulb is a ∅11 face circle at (23, 6, 199), and the
-// backplate is `bx(16, 17, 222, 14, 18, 5)`. Verified with `paper-resources.test.js`'s own anchoring
-// instrument, run over the fixture twins from a scratch probe: all four anchors land on the piece.
+// backplate is `bx(16, 17, 222, 14, 18, 5)`.
+// ⛔ AND THE RE-ANCHORING IS A JUDGED REDRAW, NOT A VERIFIED ONE. The claim that stood here named
+// `paper-resources.test.js`'s anchoring instrument as the check; that instrument CANNOT tell the two
+// apart. Driven from a scratch probe pointed at this twin: the marks below read `4 marks / 17 anchors
+// / 0 off-piece` — and the four PRE-redraw marks, authored against a drawing that no longer exists,
+// put on this same painter read `4 marks / 17 anchors / 0 off-piece` too. Identical, both green.
+// The cause is measured rather than guessed: `drawLampSconce`'s hatched `wallStub` is itself a drawn
+// AREA spanning x 0…46 × z 182…240, so every anchor EITHER set lands in is "on the piece". Deleting
+// the stub does separate them (stale 8 off-piece anchors, shipped 4) but is not an instrument
+// either — with the wall gone the flex, which correctly hangs onto it, reads off-piece as well.
+// ⭐ SO STATE WHAT IS ACTUALLY COVERED: gross detachment only — a mark clear of the piece AND of its
+// wall stub. A check that could speak to RE-ANCHORING has to tie each mark to the feature it names,
+// and that is the package this commit filed (extending the guard to the fourteen fixtures), not a
+// line in this header. Until it exists, the four coordinate sets below are the designer's judgement.
 const lampSconce = (s) => paintPaperFixture(s, 'lamp-sconce', (_s, { F }) => {
   inkCrack(s, F, [[15, 6, 210], [28, 6, 216]]);               // the shade, split along a rib
   // ⚠️ ON THE CONE AND NOT ON THE BULB: the bulb is an INK disc, so a hole drawn over it merges with

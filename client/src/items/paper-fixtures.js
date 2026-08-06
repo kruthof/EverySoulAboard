@@ -886,8 +886,15 @@ const drawLampSconce = (s, { F, hatch, powered }) => {
   if (powered) {
     // The spill, radial off the bulb's own rim — five ticks, the flood lamp's construction.
     // ⚠️ TWO NUMBERS ARE SET BY SOMETHING OTHER THAN TASTE. The reach stops at 17 cm because
-    // `z0 = 182` is the drawn extent's floor — the straight-down ray ends exactly there and one
-    // centimetre more leaves the box the guards measure. The length is then 10 cm, which at
+    // `z0 = 182` is the drawn extent's floor and the straight-down ray ends exactly there.
+    // ⛔ BUT THE SLACK IS THREE CENTIMETRES, NOT ONE — corrected against a measurement rather than
+    // against a reading of the formula. `z0` is the box's floor ON THE FRONT FACE, and this fan is
+    // drawn at y = 6, which the depth lift (0.6·y) raises 3.6 cm clear of it. Driven, reach 17 → 23
+    // through `paper-fixtures.test.js`: 18, 19 and 20 are all green — at 20 the bottom ray sits at
+    // y 55.06 against the 86 × 112 extent's own 56 — and the FIRST red is 21, "lamp-sconce (on)
+    // draws outside its own 86×112 extent: (-3.14, 56.63)"; 22 reds at (-3.14, 58.21). The reach
+    // stays 17 because `z0` is the honest datum, NOT because 18 would fail.
+    // The length is then 10 cm, which at
     // `k = 1.573` px/cm is 15.7 px on an 86 × 112 piece whose diagonal is 141 px: 11%, well inside
     // ruling E8-1's 25%, at which a diagonal stops reading as a mark and starts reading as a
     // strike-through.
