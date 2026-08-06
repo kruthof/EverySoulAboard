@@ -282,6 +282,60 @@ export function isSweepTool(tool) {
 }
 
 /**
+ * ⭐⭐ THE TOOLS WHOSE SUBJECT IS A **PIECE**, not the tile under it — the one input to which of
+ * `roomzoom-view.js tileAt`'s two tiers gets asked first.
+ *
+ * ⛔ THE DEFECT IT SPLITS, measured live on the shipped cryo bay (2026-08-06): pressing a bare-floor
+ * tile AT ITS OWN CENTRE — `scenePlacement.foot`, the exact point the build ghost is drawn on —
+ * resolved to a DIFFERENT tile 40 times out of 96, because `tileAt`'s first tier takes the
+ * `data-tile` of whatever ink is under the pointer and a 2.4 m cryopod's drawn ink covers the floor
+ * centre of the tile in front of it. Rows `ty=2` and `ty=4` are pure floor, and 9 of 10 and 8 of 10
+ * presses on them came back "SOMETHING IS ALREADY STANDING HERE" about a pod one row away. That is
+ * the other half of the owner's *"the actual building only works in some areas"*.
+ *
+ * ⭐ THE SPLIT IS ABOUT WHAT THE VERB IS ABOUT, and it is the only line that keeps BOTH fixes. STRIP,
+ * ERASE, MOVE and DEMOLISH act ON A THING — the piece, the designation, the ghost, the person — so
+ * the ink the player pointed at IS the answer, and that is VR-P3-a's whole finding (16 of 18 drawn
+ * fittings designated the wrong tile through the floor inverse). Every other tool addresses THE TILE
+ * ITSELF: furniture is set down on empty floor, a wall/floor/door is built on a square, a dig or a
+ * stockpile paints a region. For those the floor plane is exactly right — it is the plane they act
+ * in — and piece-picking is what makes them miss.
+ *
+ * ⛔ A NAMED LIST AND NOT A CLASS TEST, deliberately, because the classes do not cut here: `strip`
+ * and `dig` are BOTH `cls:'order'` and they sit on opposite sides of this line (a strip is aimed at
+ * a machine; a dig is aimed at rubble that has no fitting ink at all). Naming the four with the
+ * argument beside them is honest; a class test would be a rule that happens to agree today.
+ * PURE.
+ */
+export const PIECE_SUBJECT_TOOLS = Object.freeze(['strip', 'erase', 'move', 'demolish']);
+
+/**
+ * True when the armed tool should resolve a pointer on the FLOOR PLANE rather than off the ink under
+ * it. False with nothing armed — an inspect press wants the piece it is pointing at. PURE.
+ */
+export function resolvesByFloor(tool) {
+  if (tool == null || tool === '') return false;
+  return !PIECE_SUBJECT_TOOLS.includes(tool);
+}
+
+/**
+ * True when (tx,ty) is inside the room's rect AND OFF ITS PERIMETER RING — the compartment's actual
+ * FLOOR. `focusRoom`'s rect is wall-inclusive (`SlotGridPlanner`'s `SlotDescriptor` insets by one
+ * and grows by two), so its ring is the hull; `clampTileToRoom` accepts it and this does not.
+ *
+ * ⛔ USED ONLY TO GATE **PLACEMENT**, not every tool — see `roomzoom-view.js tileAt`. A wall, a dig
+ * or a stockpile on a ring tile is refused by the sim with a sentence that is now TRUE ("THIS IS A
+ * WALL"), and DIG in particular must keep reaching a ring tile that really is debris. Furniture is
+ * the verb the owner was fighting and the verb that can never legally land there. PURE.
+ */
+export function clampTileToInterior(tx, ty, focusRoom) {
+  if (!focusRoom) return false;
+  const rx = (focusRoom.rx | 0) + 1, ry = (focusRoom.ry | 0) + 1;
+  const w = (focusRoom.rw | 0) - 2, h = (focusRoom.rh | 0) - 2;
+  return tx >= rx && tx < rx + w && ty >= ry && ty < ry + h;
+}
+
+/**
  * The drag mode a Room-Zoom tool sweeps with (build-drag-model.js vocabulary). ORDER tools sweep a
  * FILLED rectangle — a dig or a strip is a region of intent (RimWorld's mine/deconstruct gesture),
  * not an outline; the wall tool's `perimeter` would leave the middle of a swept wreck untouched,
@@ -544,7 +598,20 @@ export function roomScene(focusRoom) {
   const frame = roomFrame(wM, dM, hM, s, { x: x0, y: y0 });
   return Object.freeze({
     wM, dM, hM, s, frame, rw, rh,
-    areaM2: rw * rh * M_PER_TILE * M_PER_TILE,
+    // ⭐⭐ THE AREA IS THE INTERIOR'S, NOT THE DRAWN BOX'S — 2026-08-06, and it was a LIE of 60%.
+    //
+    // `focusRoom`'s rect is the WALL-INCLUSIVE compartment window (`SlotGridPlanner`'s
+    // `SlotDescriptor`: `X = interior.X0 - 1`, `W = InteriorW + 2`), so `rw × rh` counts the 1-tile
+    // perimeter of HULL as room. Measured on the shipped cryo bay: the masthead read `96.0 M²` for a
+    // compartment whose floor is 10 × 6 = `60.0 M²`. The player is quoted the size of a box that
+    // includes its own walls, which is not a number anybody wants.
+    // ⛔ THE SCENE ITSELF STILL SPANS `rw × rh` and that is deliberate at this step: the cutaway's
+    // wall planes and its door plates are placed off that box, and insetting the SCENE is the
+    // design-true follow-up (FILED as A — origin +1, extent −2, with the channel-clamp inner/outer
+    // split and the golden churn priced). This line needs none of that to stop lying today.
+    // `Math.max(0, …)` because a 1- or 2-tile rect has no interior at all, and a NEGATIVE area is
+    // worse than a wrong one.
+    areaM2: Math.max(0, rw - 2) * Math.max(0, rh - 2) * M_PER_TILE * M_PER_TILE,
     viewBox: Object.freeze({
       x: 0, y: 0,
       w: nn(x0 + wPx + depthX + SCENE_PAD.right),

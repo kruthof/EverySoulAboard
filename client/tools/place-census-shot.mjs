@@ -30,6 +30,24 @@
 //        --out client/tools/shots-place-census
 //
 // Exits non-zero when fewer than `--floor` of the presses reach the wire (default 28/30).
+//
+// ⛔⛔ WHAT THIS CENSUS **CANNOT SEE**, WRITTEN DOWN BECAUSE IT COST A WEEK (2026-08-06, CLAUDE.md's
+// 9th trap shape: a correct finding that narrows an instrument creates a blind spot nothing closes).
+// `clearIn` below insets the slot rect BY ONE on every side — `ty = r.y + 1 … r.y + r.h - 2` — so it
+// only ever presses INTERIOR tiles. That inset is not arbitrary: the slot rect is WALL-INCLUSIVE
+// (`SlotGridPlanner`'s `SlotDescriptor` is `interior − 1` by `interior + 2`), so the inset is exactly
+// what makes "clear floor" true of every tile this file presses.
+//   ⇒ AND THAT IS PRECISELY WHY IT WAS BLIND TO THE BIGGER DEFECT. The Room Zoom DRAWS and ACCEPTS
+//     CLICKS ON the full wall-inclusive rect, so 36 of every compartment's 96 drawn tiles were solid
+//     wall rendered as clean, ghost-previewable floor — 37.5% of the picture — and this census
+//     pressed none of them. Its own numbers were right (the 29 silent refusals were `CannotPay`, a
+//     wreck holding 1 Part against a price of 3) and its conclusion was right (make refusals
+//     audible); what it could not report is that the SURFACE WAS OFFERING FLOOR THAT WAS NOT FLOOR.
+//     The ring was found by a probe that pressed all 96 (`ty=0`/`ty=7`/`tx=0`/`tx=11` came back "this
+//     is a wall"), not by widening this one.
+// ⚠️ SO: A GREEN CENSUS HERE IS A STATEMENT ABOUT INTERIOR FLOOR ONLY. Do not read it as "placement
+// works in this room". Any future question about what the surface OFFERS must press the drawn rect,
+// ring included.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -176,7 +194,7 @@ check((await evaluate('Array.isArray(window.__sent)?1:0')) === 1,
 // ───────────────────────────────────────────────────────────── 3. into the room, arm the tool
 await verifiedClick({
   what: `the Room Zoom is open on ${ROOM.s.anchorName}`,
-  target: () => centre(`.pl-room[data-anchor="${ROOM.s.anchorName}"] rect`),
+  target: () => centre(`.pl-room[data-anchor="${ROOM.s.anchorName}"]`),
   settled: async () => (await evaluate("document.body.classList.contains('roomzoom-open')?1:0")) === 1,
   clickAt, log, chrome, code: 7,
 });

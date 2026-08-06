@@ -729,9 +729,32 @@ namespace Perilune.Sim
         {
             if (!IsPlaceableFurniture(_kind)) { Refuse(sim, PlaceRefusal.NotPlaceable); return; }
             if (!sim.World.InBounds(_pos)) { Refuse(sim, PlaceRefusal.OutOfBounds); return; }
-            // A walkable non-wall floor tile, empty of any device (one-per-tile rule).
-            if ((sim.World.GetFlags(_pos) & TileFlags.Walkable) == 0) { Refuse(sim, PlaceRefusal.NotWalkable); return; }
+
+            // ⭐⭐ THE CAUSE BEFORE THE SYMPTOM — 2026-08-06, and the order below is the whole fix.
+            //
+            // ⛔ THE DEFECT, in the owner's words: he pressed a clear-looking tile and the game said
+            // *"no one could stand there"* — *"that is not correct, it would be perfect to place it
+            // here."* The tile was a WALL, drawn as floor by the Room Zoom (that half is closed in
+            // `roomzoom-view.js`'s poché layer). But the SENTENCE was wrong on its own terms, and it
+            // was wrong for every wall on every ship: `World.RecomputeFlags` derives
+            // `Walkable = floor.Walkable && wall == 0`, so a `Walkable` test asked FIRST fires on a
+            // wall, on a hole in the hull, and on anything else — and reports the DERIVED symptom
+            // instead of the cause that set it. MEASURED on `--ship wreck` before the reorder: 552
+            // walled tiles, 552 × `NotWalkable`, and `PlaceRefusal.Blocked` was UNREACHABLE — dead
+            // code carrying the only sentence that named the real blocker.
+            //
+            // ⛔ SO THE TWO CAUSES ARE ASKED BEFORE THE FLAG THEY BOTH SET, in `CanDesignate`'s own
+            // order (floor, then wall, then the rest) so the command and the sim's legality authority
+            // agree by CONSTRUCTION rather than by coincidence — they disagreed here for a week.
+            // ⚠️ AND THAT LEAVES `NotWalkable` UNREACHABLE ON THE SHIPPED TILE TABLE, which is said
+            // out loud rather than tidied away: `TileDefs` has exactly one unwalkable FLOOR (`Void`,
+            // caught above) and keeps `Debris` in the WALL slot (caught below), so nothing can reach
+            // it. It keeps its arm for the same reason the second `Occupied` arm below keeps its
+            // publish — the day someone adds an unwalkable floor def, it must refuse with a TRUE
+            // sentence rather than fall through to "there is a wall here".
+            if (sim.World.GetFloor(_pos) == TileDefs.Void) { Refuse(sim, PlaceRefusal.NoFloor); return; }
             if (sim.World.GetWall(_pos) != TileDefs.Void) { Refuse(sim, PlaceRefusal.Blocked); return; }
+            if ((sim.World.GetFlags(_pos) & TileFlags.Walkable) == 0) { Refuse(sim, PlaceRefusal.NotWalkable); return; }
             if ((sim.World.GetFlags(_pos) & TileFlags.HasDevice) != 0) { Refuse(sim, PlaceRefusal.Occupied); return; }
             // ⚠️ THE SECOND OCCUPIED ARM IS A CORRUPT-STATE BACKSTOP, NOT A PATH — measured, by
             // mutation. Blanking THIS arm's `Refuse` leaves `PlaceRefusalTests` fully GREEN, because

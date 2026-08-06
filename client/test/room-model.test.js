@@ -34,7 +34,8 @@ import {
   // VR-P3 REVISION — the assembly seam's own parity sources: the surface's id namespace, its
   // drawing scale, its margins, the title builder and the ground-stack layer.
   RZ_ID, ROOM_SCALE, SCENE_PAD, roomTitleSvg, itemStackSvg,
-  clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
+  clampTileToRoom, clampTileToInterior, resolvesByFloor, PIECE_SUBJECT_TOOLS,
+  roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
   zoomChrome, ZOOM_HINT_IDLE, ZOOM_HINT_ARMED,
   // The pawn-occlusion fallback (2026-08-05) — see its own section at the end of this file.
@@ -122,7 +123,17 @@ test('the metre mapping is ONE TILE = ONE METRE, and the ceiling is the design\'
   assert.equal(scene.wM, 12);
   assert.equal(scene.dM, 8);
   assert.equal(scene.hM, 2.4);
-  assert.equal(scene.areaM2, 96, 'the stat line\'s area clause is derived from this');
+  // ⭐⭐ THE AREA IS THE INTERIOR'S, NOT THE DRAWN BOX'S (2026-08-06). `room` is the WALL-INCLUSIVE
+  // rect the wire actually sends (`SlotGridPlanner`'s `SlotDescriptor` = interior−1 by interior+2), so
+  // its 12×8 holds a 10×6 FLOOR inside a 1-tile ring of hull. This pin was `96` and the masthead said
+  // `96.0 M²` about a 60 m² compartment — a 60% overstatement on every room of every ship.
+  // ⚠️ THE SCENE'S OWN EXTENT DELIBERATELY DOES NOT MOVE: `wM`/`dM` are still 12/8 above, because the
+  // cutaway's wall planes and door plates are placed off the full box. Insetting the SCENE is the
+  // design-true follow-up (FILED as A). These two lines disagreeing is the whole point of this step.
+  assert.equal(scene.wM * scene.dM, 96, 'the drawn box is no longer the wall-inclusive rect');
+  assert.equal(scene.areaM2, 60,
+    'the stat line\'s area clause is derived from this, and it must be the INTERIOR: '
+    + '(12−2) × (8−2) = 60, not the 96 of the box including its own walls');
   // The scene is BIGGER than the room it holds — margins for the title band, the dimension arrows
   // and their halo labels. A viewBox equal to the room's own extent clips all three away.
   assert.ok(scene.viewBox.w > scene.s * scene.wM * 100, 'the viewBox has no horizontal margin');
@@ -4123,18 +4134,112 @@ test('VR-P3-a leg 2: a STRIP sweep pressed on a piece marks the PIECE\'S tile, a
   rzArm('strip');
 });
 
-test('VR-P3-a leg 3: a single-click PLACE on a piece targets the piece\'s tile', () => {
+/**
+ * ⭐⭐ LEG 3 IS **REVERSED** SINCE 2026-08-06, AND THE OLD CLAIM IS QUOTED RATHER THAN DELETED.
+ * It used to read *"a single-click PLACE on a piece targets the piece's tile"* and asserted
+ * `[[VR_FIT.x, VR_FIT.y]]` from a press whose pointer was at `VR_FLOOR`'s coordinates. That was
+ * VR-P3-a's finding applied to every tool alike, and for PLACE it is the wrong half of a trade:
+ *
+ *   • ink-first  — pointing AT a piece names the piece ✓, and the bare floor in FRONT of a tall
+ *                  piece is unreachable, because the piece's drawn ink covers that tile's own centre.
+ *   • floor-first — the floor between pieces is clickable at its own centre ✓, and a press high up a
+ *                  piece's ink names a tile behind it.
+ *
+ * ⛔ MEASURED, LIVE, ON THE SHIPPED CRYO BAY, which is what decided it: pressing every one of the 96
+ * drawn tiles at its OWN CENTRE (`scenePlacement.foot` — the exact point the build ghost is drawn on)
+ * resolved to a DIFFERENT tile 40 times. Rows `ty=2` and `ty=4` are pure floor and 9 of 10 and 8 of
+ * 10 presses on them came back "SOMETHING IS ALREADY STANDING HERE" about a cryopod one row away.
+ * The owner's report is *"the actual building only works in some areas"*, and this was that half.
+ * You cannot put furniture on a tile that already has furniture, so ink-first buys PLACE nothing and
+ * costs it the empty floor — which is the only thing PLACE is ever aimed at.
+ *
+ * ⭐ VR-P3-a's FINDING IS UNTOUCHED WHERE IT WAS MADE. Legs 2, 4 and 5 drive STRIP and are unchanged
+ * and green: a tool whose subject is the PIECE still takes the ink's answer, and so does an inspect
+ * press and the right-click menu. The split is `PIECE_SUBJECT_TOOLS` in `room-model.js`.
+ *
+ * MUTATION: `resolvesByFloor` → `() => false` ⇒ RED here (place goes back to naming the piece).
+ * MUTATION: drop `PIECE_SUBJECT_TOOLS`' `strip` entry ⇒ RED on leg 2, not here.
+ */
+test('VR-P3-a leg 3 (REVERSED): a PLACE click resolves on the FLOOR PLANE, so the floor a tall '
+  + 'piece is drawn over is reachable at its own centre', () => {
   rzArm('lamp');   // `cls: functional` — exactly one click and exactly one `Cmd.place`
   rzSent.length = 0;
   rzPress(rzCanvas, { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
   const floor = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
   assert.deepEqual(floor.map(xy), [[VR_FLOOR.x, VR_FLOOR.y]], 'control: the floor tier answers');
+
+  // THE REVERSED CLAIM: the same coordinates, but with a PIECE's node as the event target — the
+  // shape a press on a pod's ink actually has. The answer must still be the tile the pointer is
+  // over, because that is the tile the ghost was previewing and the tile a piece can go on.
   rzSent.length = 0;
   rzPress(rzFitNode(VR_FIT.x, VR_FIT.y), { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
   const onPiece = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
-  assert.deepEqual(onPiece.map(xy), [[VR_FIT.x, VR_FIT.y]],
-    'a PLACE click on a drawn piece landed on the floor tile behind it — `onCanvasClick` is still '
-    + 'reaching for the floor-plane inverse directly instead of going through `tileAt`.');
+  assert.deepEqual(onPiece.map(xy), [[VR_FLOOR.x, VR_FLOOR.y]],
+    'a PLACE press whose pointer is over bare floor was answered with the tile of whatever piece '
+    + 'happened to own the ink under it. That is the owner\'s 2026-08-06 defect: two whole rows of '
+    + 'clean floor answered "something is already standing here" about a pod one row away.');
+
+  // …and the CONTROL that keeps the reversal honest — the piece tier is still there for the tools
+  // it was found for. Same node, same coordinates, STRIP armed ⇒ the PIECE wins.
+  rzArm('strip');
+  rzSent.length = 0;
+  rzFire(rzFitNode(VR_FIT.x, VR_FIT.y), 'mousedown', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzMouseUp();
+  assert.deepEqual(rzOrders(rzSent.slice()).map(xy), [[VR_FIT.x, VR_FIT.y]],
+    'STRIP stopped taking the ink\'s answer, so the reversal above was applied to every tool '
+    + 'instead of to the tile-subject ones — and VR-P3-a\'s own defect is back.');
+  rzArm('lamp');
+});
+
+/**
+ * ⭐⭐ THE HULL RING TAKES NO FURNITURE, AND THE GHOST STOPS OFFERING IT — the owner's own press.
+ *
+ * ⛔ THE DEFECT: `_focus`'s rect is WALL-INCLUSIVE (`SlotGridPlanner`'s `SlotDescriptor` insets the
+ * interior by one and grows it by two), the cutaway draws a floor quad across ALL of it, and
+ * `clampTileToRoom` accepted every tile in it. So 36 of a 12×8 compartment's 96 drawn tiles were
+ * solid wall offered as floor — 37.5% — and the sim refused every press on them. Measured live: 32
+ * of 96 presses on the shipped cryo bay came back as a wall.
+ *
+ * ⛔ PLACE TOOLS ONLY, AND THE SECOND HALF OF THIS LEG IS WHY. A wall/floor/door/dig/stockpile press
+ * on the ring must still REACH THE SIM — the sim is the one authority on legality and this client
+ * must never grow a second one — and DIG in particular has to keep reaching a ring tile that really
+ * is debris. Furniture is the verb that can never legally land there.
+ *
+ * MUTATION: drop the `isPlaceTool(_armed) && !clampTileToInterior(...)` line in `tileAt` ⇒ RED on
+ * the first half. MUTATION: widen it to every tool ⇒ RED on the second.
+ */
+test('VR-P3-a leg 3b: a PLACE press on the wall-inclusive rect\'s hull ring sends NOTHING, and a '
+  + 'DIG press on the same tile still reaches the sim', () => {
+  const ring = { x: HOLD.rx, y: HOLD.ry + 2 };            // the rect's own left column = hull
+  const inside = { x: HOLD.rx + 1, y: HOLD.ry + 2 };      // one tile in = real floor
+  // Precondition: the two tiles really are on opposite sides of the interior boundary, or this leg
+  // is comparing a tile with itself (the 4th trap shape — non-vacuity by INCLUSION).
+  assert.equal(clampTileToRoom(ring.x, ring.y, HOLD), true, 'the ring tile is outside the ROOM rect');
+  assert.equal(clampTileToInterior(ring.x, ring.y, HOLD), false, 'the ring tile is not on the ring');
+  assert.equal(clampTileToInterior(inside.x, inside.y, HOLD), true, 'the control tile is not interior');
+
+  rzArm('lamp');
+  rzSent.length = 0;
+  rzPress(rzCanvas, { button: 0, ...atTile(ring.x, ring.y) });
+  assert.deepEqual(rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place').map(xy), [],
+    'a furniture press on the hull ring still went down the wire. The ghost previews there, the sim '
+    + 'refuses it as a wall, and the player is told no for a tile the surface drew as floor.');
+  // CONTROL: one tile in, the same tool, the same gesture — a real placement.
+  rzSent.length = 0;
+  rzPress(rzCanvas, { button: 0, ...atTile(inside.x, inside.y) });
+  assert.deepEqual(rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place').map(xy),
+    [[inside.x, inside.y]],
+    'the clamp swallowed a press on REAL interior floor, so the leg above proves only that the tool '
+    + 'is broken everywhere');
+
+  // …and the ring is not made unpressable for the tools that legitimately address a wall.
+  rzArm('dig');
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(ring.x, ring.y) });
+  rzMouseUp();
+  assert.deepEqual(rzOrders(rzSent.slice()).map(xy), [[ring.x, ring.y]],
+    'DIG can no longer reach a ring tile. The clamp is for PLACEMENT — a ring tile that is really '
+    + 'debris must stay diggable, and the sim stays the only authority on the rest.');
   rzArm('lamp');
 });
 
@@ -4882,7 +4987,17 @@ test('VR-P3 (assembled): every piece of the cutaway is CONCATENATED into the mou
       ['the shared hatch def', (s) => s.includes('<pattern id="rz-fh"')],
       ['the in-SVG title + stat line', (s) => s.includes('<g class="rz-title">')],
       ['the room title in words', (s) => s.includes('>Compartment 7 · STORAGE<')],
-      ['the stat line', (s) => s.includes('96.0 M²')],
+      // DERIVED. The area clause is the INTERIOR's since 2026-08-06 — the wire's rect is
+      // wall-inclusive, so `rw × rh` counted a ring of hull as room and said 96 m² of a 60 m² floor.
+      ['the stat line', (s) => s.includes(
+        Math.max(0, VR.rw - 2) * Math.max(0, VR.rh - 2) + '.0 M²')],
+      // ⭐⭐ THE HULL RING IS DRAWN, AND THAT IS THE OWNER'S DEFECT OF 2026-08-06 IN ONE ROW.
+      // The ring of the wall-inclusive rect is 36 of the 96 tiles this cutaway draws, every one of
+      // them solid wall, and until this row existed they carried NO INK AT ALL — clean, unmarked,
+      // ghost-previewable floor that the sim then refused. `materialLayerSvg` skips them for the
+      // SLAB (VR-P3's "thirty dark slabs" finding stands) and gives them flat floor-plane POCHÉ
+      // instead. MUTATION: restore the bare `continue` at that skip ⇒ RED here.
+      ['the hull ring poché', (s) => s.includes('<g class="rz-poche-layer"')],
       ['the cutaway floor quad', (s) => s.includes(floorQuad)],
       ['the door plates', (s) => s.includes('<path class="rz-door-plate"')],
       ['the door labels', (s) => s.includes('<g class="rz-doors">')],
@@ -4986,6 +5101,46 @@ test('VR-P3 (assembled): a boundary door gets ONE plate and NO second sprite; an
  * MUTATION: `body += roomDimensionsSvg(scene)` deleted ⇒ RED.
  * MUTATION: any of the three labels derived from a constant instead of from the scene ⇒ RED.
  */
+/**
+ * ⭐⭐ THE DOOR IN THE HULL RING IS A **GAP IN THE POCHÉ** — an opening is not wall.
+ *
+ * The ring of the wall-inclusive rect is hatched flat as cut-wall poché (2026-08-06), which is what
+ * stops 36 of the 96 drawn tiles reading as clean floor. A DOORWAY on that ring is the one thing on
+ * it that is not wall, and it must stay a hole in the hatch — otherwise the cutaway draws a door
+ * plate over a tile the poché has just declared solid.
+ *
+ * ⛔ TODAY IT IS TRUE BY CONSTRUCTION AND THAT IS EXACTLY WHY IT NEEDS A LEG. `roomMaterialTiles`
+ * emits `kind:'wall'` only for glyph 35, and a door is 43/88/47 (`+ X /`), so a door tile never
+ * enters the list the poché is built from. The obvious future "tidy" — deriving the ring from
+ * `focus`'s own rect instead of from the material tiles, which reads simpler and needs no channel —
+ * hatches straight over every doorway, and nothing else in the suite would notice.
+ *
+ * MUTATION: build the poché by looping the rect's perimeter rather than filtering the wall tiles
+ * ⇒ RED here, green everywhere else.
+ */
+test('VR-P3 (assembled): the hull-ring poché has a GAP at the boundary door — an opening is not wall', () => {
+  try {
+    const svg = vrMount();
+    const sc = roomScene(VR);
+    const place = scenePlacement(sc, VR, sc.s * 100);
+    const pocheAt = (t) => svg.includes('<path class="rz-poche" d="' + place.quad(t.x, t.y) + '"');
+    // Precondition: the door really is ON the ring, or this leg is about an interior tile and the
+    // claim is vacuous (the 4th trap shape — non-vacuity by INCLUSION).
+    assert.equal(clampTileToRoom(VR_BACK_DOOR.x, VR_BACK_DOOR.y, VR), true, 'the door is off the rect');
+    assert.equal(clampTileToInterior(VR_BACK_DOOR.x, VR_BACK_DOOR.y, VR), false,
+      'the door tile is not on the perimeter ring, so this leg is not about the poché at all');
+    assert.ok(!pocheAt(VR_BACK_DOOR),
+      'the doorway is hatched as solid wall. The cutaway draws a door plate on that same tile, so '
+      + 'the room now says "wall" and "door" about one square.');
+    // THE INCLUSION HALF — the SAME row, one tile along, is real hull and DOES carry the hatch.
+    // Without it, "no poché at the door" is satisfied perfectly by a poché layer that drew nothing.
+    const neighbour = { x: VR_BACK_DOOR.x + 1, y: VR_BACK_DOOR.y };
+    assert.ok(pocheAt(neighbour),
+      'the hull tile beside the door carries no poché either, so the absence above says nothing '
+      + 'about doors — the ring simply is not being drawn');
+  } finally { vrRestore(); }
+});
+
 test('VR-P3 (assembled): the drawing STATES its own metres — all three dimension arrows', () => {
   try {
     const svg = vrMount();
@@ -5050,8 +5205,12 @@ test('VR-P3 (assembled): only the NO AIR clause takes the accent — the rest st
     assert.match(stat[1], /<tspan fill="#7B2C22">NO AIR<\/tspan>/,
       'the NO AIR clause is not the one carrying the accent');
     // …and the clauses either side of it are OUTSIDE the tspan, i.e. really do keep the base ink.
-    assert.ok(/96\.0 M²/.test(stat[1].split('<tspan')[0]),
-      'the area clause has been swept inside the accented run');
+    // DERIVED, not a literal: the area clause is the INTERIOR's since 2026-08-06 ((rw−2)×(rh−2)),
+    // and hard-coding `96.0` here is what made this leg red when that lie was fixed.
+    const wantArea = Math.max(0, VR.rw - 2) * Math.max(0, VR.rh - 2);
+    assert.ok(new RegExp(wantArea + '\\.0 M²').test(stat[1].split('<tspan')[0]),
+      'the area clause has been swept inside the accented run (or is no longer the interior\'s '
+      + wantArea + ' m²). The line said: ' + stat[1]);
     // The PRESSURISED room spends no accent on this line at all.
     const air = vrMount({ vacuum: false });
     const title = air.slice(air.indexOf('<g class="rz-title">'), air.indexOf('</g>', air.indexOf('<g class="rz-title">')));

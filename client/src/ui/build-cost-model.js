@@ -183,12 +183,19 @@ export function decorRefusalText(tool) {
 export const PLACE_REFUSAL_TEXT = {
   1: 'THAT PIECE CANNOT BE PLACED BY HAND',
   2: 'THAT IS OFF THE SHIP',
-  3: 'NOBODY COULD STAND HERE',
-  4: 'SOMETHING IS BUILT ON THIS TILE',
+  // ⛔ 3 AND 4 SWAPPED JOBS ON 2026-08-06, AND THE OLD 3 IS THE SENTENCE THE OWNER REPORTED.
+  // `NotWalkable` used to be asked before the two causes that SET it, so every wall in the game
+  // answered "NOBODY COULD STAND HERE" — 552 of them on the wreck, measured, with reason 4 dead.
+  // The order is fixed in `PlaceDeviceCommand.Execute`; these two words follow it. 3 is now the
+  // corrupt-state backstop its sim doc describes, and it is deliberately NOT worded like 5
+  // ("SOMETHING IS ALREADY STANDING HERE") — the two used to be tellable apart only by their code.
+  3: 'THIS TILE CANNOT BE WALKED ON',
+  4: 'THIS IS A WALL',
   5: 'SOMETHING IS ALREADY STANDING HERE',
   // 6 (CannotPay) is composed from the two numbers on the wire — see `placeRefusedText`.
   7: 'A BLUEPRINT IS ALREADY WAITING ON THIS TILE',
   8: 'TOO MANY THINGS QUEUED — FINISH OR CANCEL ONE FIRST',
+  9: 'THERE IS NO FLOOR HERE — THAT IS OPEN SPACE',
 };
 
 /**

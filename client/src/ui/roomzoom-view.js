@@ -61,6 +61,7 @@ import {
   // unit is the TILE'S OWN WIDTH ON SCREEN (`scene.s * 100 * M_PER_TILE`, derived per repaint), and
   // an unused import of the plan view's 32 is the next reader's invitation to draw at the wrong size.
   ROOM_TOOLS, TOOL_LABEL, paletteCommand, isSweepTool, roomDragMode,
+  resolvesByFloor, clampTileToInterior,
   nextRoomTool, roomTileRect,
   // VR-P3 — the cutaway's own derivations: the scene, the placement object every tile-addressed
   // layer is drawn through, the pieces of the drawing, and the two inverses (pointer→tile, and
@@ -99,6 +100,10 @@ import {
   // armed cost row are painted from, so the preview and the palette cannot answer one question two
   // ways (`ghostRefused`).
   isDecorTool, placeIsUnaffordable,
+  // `isPlaceTool` gates the hull-ring clamp in `tileAt` — furniture, and only furniture, refuses to
+  // resolve onto the wall-inclusive rect's perimeter. Same predicate the cost row asks, so "is this
+  // a placement" has one answer in this file.
+  isPlaceTool,
 } from './build-cost-model.js';
 // PARTS ABOARD, read from the SAME derivation the Overview's LEDGER island prints, so the palette
 // and the ledger cannot count one ship two ways. `Hud.getLedger` is already on `SHIP_STATE_REACH`
@@ -1444,15 +1449,47 @@ export function standItem(itemId, tx, ty, place, idPrefix, cond, facing, opts = 
  * surface drew something else.
  */
 export function materialLayerSvg(tiles, place, focus = _focus) {
-  const floors = [], walls = [];
+  const floors = [], walls = [], poche = [];
   const rx = focus.rx | 0, ry = focus.ry | 0;
   const x1 = rx + (focus.rw | 0) - 1, y1 = ry + (focus.rh | 0) - 1;
   for (const t of tiles) {
+    // ⭐⭐ THE HULL RING IS **POCHÉ**, NOT FLOOR AND NOT A SLAB — 2026-08-06.
+    //
+    // ⛔ THE DEFECT, measured live before the fix: the ring carried NO INK AT ALL, so 36 of every
+    // compartment's 96 drawn tiles were solid wall rendered as clean, unmarked, ghost-previewable
+    // floor — 37.5% of the picture, on every ship, aired or airless. The owner pressed the widest
+    // such band (the row in front of the drawn back wall), the ghost previewed, and the sim refused.
+    // 32 of 96 presses on the shipped cryo bay came back "this is a wall".
+    //
+    // ⛔ AND THE OBVIOUS FIX IS THE ONE VR-P3 ALREADY REVERTED, ON THE OWNER'S OWN EYES — see this
+    // function's header, paragraph 1: skinning the ring with the interior partition's 2.4 m
+    // `obliqueBox` put *"THIRTY dark slabs standing in a stepped ring around the compartment"*, and
+    // on the near and right edges it stood a solid slab exactly where the drawing has CUT THE ROOM
+    // OPEN. That paragraph is still true and is NOT being undone here.
+    //
+    // ⭐ SO THE RING GETS THE CUT-WALL CONVENTION INSTEAD: hatched POCHÉ lying FLAT IN THE FLOOR
+    // PLANE, zero height, zero occlusion. It cannot rebuild the stepped ring (nothing stands up), it
+    // cannot re-close the cut edges (nothing rises off the plane), and it says the one thing the
+    // player needed and did not have — THIS IS NOT FLOOR. The far and left ring tiles get it too,
+    // under the cutaway's own wall planes, so the wall's FOOTPRINT reads continuously all the way
+    // round instead of stopping where the drawing happens to have a plane.
+    //
+    // ⛔ A DOOR OPENING STAYS AN OPENING, AND FOR FREE RATHER THAN BY A SECOND RULE. `roomMaterialTiles`
+    // emits `kind:'wall'` only for glyph 35 (`'#'`); a door is 43/88/47 (`+ X /`) and never enters
+    // this list, so the gap in the poché IS the opening. That also keeps VR-P3's boundary-door
+    // dedup exactly as it was — the cutaway is still the only thing that draws a boundary door.
+    //
+    // ⛔ AHEAD OF THE `materialItemId` GUARD, deliberately: the poché is STRUCTURE, not a material
+    // skin, and must not be able to vanish because a material byte failed to resolve to art.
+    if (t.kind === 'wall' && (t.tx === rx || t.tx === x1 || t.ty === ry || t.ty === y1)) {
+      poche.push('<path class="rz-poche" d="' + place.quad(t.tx, t.ty) + '" fill="' + fhRef(RZ_ID)
+        + '" stroke="' + INK + '" stroke-width="1.1" stroke-linejoin="round"/>');
+      continue;
+    }
     const id = materialItemId(t.kind, t.mat);
     if (!id) continue;
     const idp = 'rz-mt-' + t.tx + '-' + t.ty;
     if (t.kind === 'wall') {
-      if (t.tx === rx || t.tx === x1 || t.ty === ry || t.ty === y1) continue;   // the hull — see above
       const [px, py] = place.front(t.tx, t.ty);
       const cm = M_PER_TILE * 100;
       // The slab's FRONT FACE, in the px `obliqueBox` draws it at: one tile of run, one ceiling of
@@ -1470,7 +1507,9 @@ export function materialLayerSvg(tiles, place, focus = _focus) {
       floors.push('<g transform="' + place.cell(t.tx, t.ty) + '">' + g + '</g>');
     }
   }
-  return (floors.length ? '<g class="rz-floor-mat" pointer-events="none">' + floors.join('') + '</g>' : '') +
+  // POCHÉ FIRST — it lies in the floor plane, so anything with height must paint over it.
+  return (poche.length ? '<g class="rz-poche-layer" pointer-events="none">' + poche.join('') + '</g>' : '') +
+    (floors.length ? '<g class="rz-floor-mat" pointer-events="none">' + floors.join('') + '</g>' : '') +
     (walls.length ? '<g class="rz-walls" pointer-events="none">' + walls.join('') + '</g>' : '');
 }
 
@@ -2437,7 +2476,11 @@ function onCanvasContext(e) {
   // The RIGHT-CLICK's target is captured HERE, at open time, through the same `tileAt` the left click
   // and the sweep use — PRIORITISE points at a machine, and a machine is precisely a tall piece whose
   // ink used to resolve to the empty floor behind it.
-  const tile = tileAt(e);
+  // ⭐ AND IT ASKS FOR `'piece'` EXPLICITLY (2026-08-06). `tileAt` now derives its tier order from
+  // whatever tool is ARMED, and this gesture's subject is a machine no matter what that is — a
+  // right-click with BUNK in hand must still find the reactor it is pointing at, not the floor
+  // behind it. This is the one caller whose subject does not follow the armed verb.
+  const tile = tileAt(e, 'piece');
   if (!tile) return; // letterbox margin / outside the room (IX-Z-11), same rule as the left click
   const roster = Hud.getRoster();
   const offer = prioritiseOffer({
@@ -2674,19 +2717,54 @@ function roomBounds() {
  * construction; tier one is a string off an attribute, so it is checked rather than trusted — a stray
  * `data-tile` reaching this handler must never lower an order onto a tile in another compartment.
  */
-function tileAt(e) {
-  const el = e && e.target && typeof e.target.closest === 'function' ? e.target.closest('[data-tile]') : null;
-  const raw = el && el.dataset ? el.dataset.tile : null;
-  if (raw) {
-    const parts = String(raw).split(',');
-    const x = Number(parts[0]), y = Number(parts[1]);
-    if (Number.isFinite(x) && Number.isFinite(y) && _focus
-      && (x | 0) >= (_focus.rx | 0) && (x | 0) < (_focus.rx | 0) + (_focus.rw | 0)
-      && (y | 0) >= (_focus.ry | 0) && (y | 0) < (_focus.ry | 0) + (_focus.rh | 0)) {
-      return { x: x | 0, y: y | 0 };
+function tileAt(e, mode) {
+  // ⭐⭐ WHICH TIER GOES FIRST IS THE ARMED VERB'S QUESTION — 2026-08-06, and it is the second half
+  // of the owner's *"the actual building only works in some areas"*.
+  //
+  // ⛔ MEASURED, live, on the shipped cryo bay: a press at a bare-floor tile's OWN CENTRE — the point
+  // the build ghost is drawn on — resolved to a different tile 40 times in 96, because a 2.4 m
+  // cryopod's ink covers the floor centre of the tile in front of it and tier one takes whatever ink
+  // it finds. Two whole rows of clean floor (`ty=2`, `ty=4`) answered "SOMETHING IS ALREADY STANDING
+  // HERE" about a pod one row away, 9 of 10 and 8 of 10 presses.
+  //
+  // ⛔ TIER ONE IS NOT WEAKENED — it is asked for the verbs it was found for. VR-P3-a measured 16 of
+  // 18 drawn fittings designating the WRONG tile through the floor inverse; that is a fact about
+  // tools whose subject is the PIECE (`PIECE_SUBJECT_TOOLS`: strip, erase, move, demolish) and about
+  // an inspect press with nothing armed, and all of those still take the ink's answer. What changed
+  // is that a verb which acts on THE TILE now resolves in the plane it acts in.
+  //
+  // ⭐ STILL **ONE RESOLUTION PER GESTURE**, which is this function's whole reason for existing: the
+  // ghost, the click, the right-click and both sweep endpoints all come through here, and the mode is
+  // derived from `_armed` — the same variable, read at the same moment — so the square the player
+  // sees previewed and the square the order lands on cannot disagree. `mode` is an explicit override
+  // for the ONE caller whose subject is a piece regardless of what is armed: the right-click menu.
+  const byFloor = mode === 'piece' ? false : (mode === 'floor' ? true : resolvesByFloor(_armed));
+  let hit = null;
+  if (!byFloor) {
+    const el = e && e.target && typeof e.target.closest === 'function' ? e.target.closest('[data-tile]') : null;
+    const raw = el && el.dataset ? el.dataset.tile : null;
+    if (raw) {
+      const parts = String(raw).split(',');
+      const x = Number(parts[0]), y = Number(parts[1]);
+      if (Number.isFinite(x) && Number.isFinite(y) && _focus
+        && (x | 0) >= (_focus.rx | 0) && (x | 0) < (_focus.rx | 0) + (_focus.rw | 0)
+        && (y | 0) >= (_focus.ry | 0) && (y | 0) < (_focus.ry | 0) + (_focus.rh | 0)) {
+        hit = { x: x | 0, y: y | 0 };
+      }
     }
   }
-  return tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
+  if (!hit) hit = tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
+  // ⭐ THE HULL RING IS NOT A PLACE TO PUT FURNITURE, AND THE GHOST STOPS PROMISING IT IS.
+  // `_focus`'s rect is wall-inclusive, so its perimeter is 36 of the 96 tiles the cutaway draws and
+  // every one of them is solid wall. They now CARRY WALL INK (`materialLayerSvg`'s poché), and this
+  // is the pressability half of the same fact: a place tool resolves to null there, so the ghost
+  // hides and no command is sent — instead of previewing a piece and being refused.
+  // ⛔ PLACE TOOLS ONLY. A wall/floor/door/dig/stockpile press on the ring still resolves and is
+  // still refused by the SIM, which is the one authority on legality (this file must never grow a
+  // second one) — and DIG must keep reaching a ring tile that really is debris. Furniture is the
+  // verb that can never legally land there, and the verb the owner was fighting.
+  if (hit && isPlaceTool(_armed) && !clampTileToInterior(hit.x, hit.y, _focus)) return null;
+  return hit;
 }
 
 /** Begin a sweep. WALL/FLOOR/DOOR + DIG/STOCKPILE/STRIP; a plain click is the degenerate 1-tile drag. */

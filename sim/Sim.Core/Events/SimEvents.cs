@@ -398,9 +398,24 @@ namespace Perilune.Sim
         NotPlaceable = 1,
         /// <summary>Off the map.</summary>
         OutOfBounds = 2,
-        /// <summary>The tile is not walkable — nobody could stand here to use it.</summary>
+        /// <summary>
+        /// The tile has a real floor and no wall and is STILL not walkable.
+        ///
+        /// <para>⛔ <b>A CORRUPT-STATE BACKSTOP, NOT A PATH — AND IT USED TO BE THE OPPOSITE.</b>
+        /// Until 2026-08-06 this arm ran BEFORE <see cref="Blocked"/> and <see cref="NoFloor"/>, and
+        /// because <c>World.RecomputeFlags</c> derives <c>Walkable = floor.Walkable &amp;&amp; wall == 0</c>
+        /// it therefore swallowed BOTH of them: a wall and a hole in the hull both came out as "nobody
+        /// could stand here". MEASURED on the shipped wreck — all <b>552</b> walled tiles reported this
+        /// member and <see cref="Blocked"/> fired <b>0</b> times in 1620 presses. With the order fixed,
+        /// the shipped tile table (<c>TileDefs</c>: only <c>Void</c> is an unwalkable FLOOR, and
+        /// <c>Debris</c> lives in the WALL slot) leaves nothing that can reach this line — exactly the
+        /// shape of the second <c>Occupied</c> arm in <c>PlaceDeviceCommand</c>. It keeps its member and
+        /// its sentence so a future unwalkable floor def cannot ship as a lie, and
+        /// <c>PlaceRefusalTests.NoWallEverSaysNobodyCouldStandHere</c> is what holds the order down.</para>
+        /// </summary>
         NotWalkable = 3,
-        /// <summary>A wall or rubble stands on the tile.</summary>
+        /// <summary>⭐ A WALL (or rubble) STANDS ON THE TILE — the live answer for every walled press
+        /// since 2026-08-06. See <see cref="NotWalkable"/> for the mis-attribution this replaced.</summary>
         Blocked = 4,
         /// <summary>Something is already on the tile (one device per tile).</summary>
         Occupied = 5,
@@ -412,6 +427,18 @@ namespace Perilune.Sim
         /// first. ⚠️ A REASON THE PLAYER CAN ACT ON, which is why it is not folded into
         /// <see cref="AlreadyQueued"/>: the two say "not here" and "not yet, anywhere".</summary>
         TooManyQueued = 8,
+        /// <summary>
+        /// ⭐ THERE IS NO FLOOR — <c>World.GetFloor(pos) == TileDefs.Void</c>: open space, not a room.
+        ///
+        /// <para>APPENDED (9) rather than inserted, because the byte is on the wire. It closes the hole
+        /// the build-feel reviewer FILED and nobody had reached: <c>Execute</c> never asked the
+        /// <c>GetFloor == Void</c> clause at all, so a press on open space was attributed to
+        /// <see cref="NotWalkable"/> by the derived flag — the same swallowing
+        /// <see cref="Blocked"/> suffered. <c>BuildSystem.CanDesignate</c> has always asked it; the
+        /// command now asks it FIRST, in <c>CanDesignate</c>'s own order, so the two agree by
+        /// construction instead of by coincidence.</para>
+        /// </summary>
+        NoFloor = 9,
     }
 
     /// <summary>
