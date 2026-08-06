@@ -90,20 +90,33 @@ import { ITEMS } from './index.js';
  * a real builder, and that no entry here shadows a glyph a real piece already claims.
  */
 export const GLYPH_SUBSTITUTE = Object.freeze({
-  // WaterTank (10). The set has no water tank; OXYGEN TANK is the same upright pressure vessel and
-  // is otherwise unreachable art (`deviceStatus: 'new'` — no `DeviceKind.OxygenTank` exists).
-  O: 'oxygen-tank',
+  // WaterTank (10). The set has no water tank; the OXYGEN BOTTLE RACK is the same upright pressure
+  // vessel and is otherwise unreachable art (`deviceStatus: 'new'` — no `DeviceKind.OxygenTank`).
+  // — lane/paper-machines — REPOINTED from `oxygen-tank` (the warm row) to `bottle-rack` (the paper
+  // one) on 2026-08-05. The SUBSTITUTION is unchanged and so is its reason: what moved is only which
+  // drawing the borrow lands on, and leaving it on the warm row would have made a WaterTank the one
+  // tile on the ship still projecting mock art after the whole plant was redrawn.
+  O: 'bottle-rack',
   // Radiator (16). No radiator piece. SPACE HEATER is the set's only thermal fixture; likewise
   // `deviceStatus: 'new'`, so this substitution is the only way it ever reaches the screen.
   '=': 'space-heater',
-  // SalvageRecycler (15). No recycler piece. WATER RECYCLER is the same hopper-and-drum machine
-  // silhouette; the legacy `recycler` sprite role pointed at it too.
-  Y: 'water-recycler',
+  // SalvageRecycler (15). No recycler piece. THE RECLAIMER STACK is the same hopper-and-drum machine
+  // silhouette; the legacy `recycler` sprite role pointed at its warm predecessor too.
+  // — lane/paper-machines — REPOINTED from `water-recycler` to `reclaimer-stack`, 2026-08-05, for the
+  // reason given on `O` above.
+  Y: 'reclaimer-stack',
   // MedCabinet (21). No cabinet piece. LOCKER is the set's only tall closed store.
   C: 'locker',
-  // Light (8). The set's luminaires are all COSMETIC (`wall-lamp`, `floodlight`, `sun-lamp`); there
-  // is no functional light piece. WALL LAMP is the closest and is what both surfaces already drew.
-  '*': 'wall-lamp',
+  // Light (8). The set's luminaires are all COSMETIC (`lamp-sconce`, `flood-lamp`, `grow-lamp`, and
+  // their retired warm predecessors); there is no functional light piece. A SCONCE is the closest and
+  // is what both surfaces already drew.
+  // — lane/paper-fixtures — ⚠️ THE VALUE MOVED FROM `wall-lamp` TO `lamp-sconce` ON 2026-08-05, and
+  // the SHAPE is deliberately unchanged: this entry still points at a COSMETIC row, which is the trap
+  // this ledger's header spends a paragraph on and which `room-model.test.js` uses as its named case.
+  // Only the drawing changed — `lamp-sconce` is the same wall sconce in the paper/ink dialect. Making
+  // Light functional is a decision about `DeviceKind.Light` and the build palette, not about art, and
+  // it is NOT taken here.
+  '*': 'lamp-sconce',
   // IceMelter (26, E0-7). No melter piece. COOKER is the set's only heat-into-a-box machine — a
   // dark steel cabinet with glowing elements, which is exactly what a melter is — and it is
   // otherwise unreachable art (`deviceStatus: 'new'`; no `DeviceKind.Cooker` exists). Chosen over
@@ -124,7 +137,11 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
   // art is the only channel left that can tell a player a door is locked rather than merely shut.
   // Reachable today through `SetDoorStateCommand(locked:)` — the TUI's lock key and the MOSS/DSL
   // device adapters — so this is live vocabulary, not a hypothetical.
-  X: 'blast-door',
+  // — lane/paper-fixtures — ⚠️ THE VALUE MOVED FROM `blast-door` TO `door-blast` ON 2026-08-05: the
+  // same reinforced slab with the same two hazard bands, drawn in the paper/ink dialect, where the
+  // bands are the set's one accent colour rather than a red stripe. `door-sliding` claims `'+'` for
+  // the same reason `sliding-door` used to, so the closed/locked pair still lands on two pieces.
+  X: 'door-blast',
 });
 
 // `'/'` (`Glyphs.DoorOpen`) is the third state and it is DELIBERATELY UNSKINNED — an open doorway is

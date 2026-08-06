@@ -1,7 +1,8 @@
-// The WRECKED item set — 79 post-raid twins (client/src/items/wrecked.js). SEVENTY of them were
+// The WRECKED item set — 92 post-raid twins (client/src/items/wrecked.js). SEVENTY of them were
 // imported 2026-07-28 from the "Wrecked — post-raid state" section of
-// docs/design/perilune-item-set.dc.html; NINE are repo-authored (VR-P2), for the fittings-catalogue
-// rows that mock never had, and are ledgered as such in `NON_MOCK_TWIN`.
+// docs/design/perilune-item-set.dc.html; TWENTY-TWO are repo-authored — nine at VR-P2 for the
+// fittings-catalogue rows the mock never had, and thirteen at lane/paper-machines for the ship's own
+// plant, which NO document draws — and all twenty-two are ledgered in `NON_MOCK_TWIN`.
 //
 // WHAT THIS FILE IS FOR, in one sentence: to make it impossible for the twin registry to drift from
 // the pristine registry OR from the mock, silently.
@@ -52,6 +53,11 @@ import {
   MOCK_TWIN_IDS,
 } from '../src/items/wrecked.js';
 import { FITTING_IDS } from '../src/items/fittings.js';
+import { PAPER_RESOURCE_IDS } from '../src/items/paper-resources.js';
+// — lane/paper-fixtures —
+import { FIXTURE_IDS } from '../src/items/paper-fixtures.js';
+// — lane/paper-machines —
+import { MACHINE_IDS } from '../src/items/machines.js';
 import { codeOnly } from './code-only.js';
 
 // The registry rows that come FROM THE MOCK, in the mock's own order — `ITEM_IDS` minus the ledger
@@ -154,16 +160,46 @@ test('the spec really carries 70 wrecked pieces and 70 pristine labels', () => {
 // number. This one is a per-class OBJECT so a class that moves names itself, and the four numbers
 // were re-counted off the shipped registry (they are `items.test.js`'s tally, which is the point:
 // every registry row, of every class, has exactly one twin).
-test('the class census of the twin set: 29 functional, 30 cosmetic, 12 material, 8 resource', () => {
+test('the class census of the twin set: 46 functional, 43 cosmetic, 12 material, 16 resource', () => {
+  // ⚠️ RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines) with `node -e` over the real
+  // export: 117 twins — 46 functional, 43 cosmetic, 12 material, 16 resource. ⛔ NO LANE'S CENSUS IS
+  // TRUE HERE: main read 104 / 38-38-12-16 and this lane read 92 / 37-35-12-8, each correct on its
+  // own tree and wrong on this one, and the class numbers do NOT sum (TRAPS 8th shape).
+  // ⛔ FUNCTIONAL IS 46 AND THE REGISTRY'S IS 47 — the gap is `cell-spent`, ledgered in
+  // `NO_WRECKED_TWIN` because it IS the wrecked state. RESOURCE is 16 against the registry's 18:
+  // `swarf` and `turnings` are ledgered as having no twin. COSMETIC matches at 43 because every
+  // cosmetic row has one. `WRECKED_IDS` (117) and `ITEM_IDS` (120) differ by exactly the three
+  // ledger entries, which is what the two ledgers exist to make legible.
+  // ⚠️ THE MACHINES HALF: 104 → 117, functional +8, cosmetic +5 — all thirteen machines have a
+  // twin, so this census moves by the full thirteen where the registry did too.
+  // ⚠️ RE-COUNTED AFTER THE CAPSULES AND CELLS (2026-08-05): 79 → 82, FUNCTIONAL 29 → 32. Four
+  // catalogue rows arrived and only THREE of them are here — `cell-spent` is in `NO_WRECKED_TWIN`,
+  // because it IS the wrecked state. So `WRECKED_IDS` and `ITEM_IDS` move by different amounts in
+  // this package (82 vs 84), which is exactly what the two ledgers exist to make legible.
   // ⚠️ RE-COUNTED AFTER VR-P2: 70 → 79, COSMETIC 21 → 30, because the nine fittings-catalogue rows
   // the mock never had are all decor and all got a repo-authored twin. `resource` stays 8 against
   // `items.test.js`'s 9 for the standing reason — `swarf` is ledgered as having no twin at all.
+  // ⚠️ RE-COUNTED AGAIN AFTER lane/paper-fixtures (2026-08-05): 79 → 93, FUNCTIONAL 29 → 35 and
+  // COSMETIC 30 → 38. Fourteen paper-fixture rows landed, each with a repo-authored twin — six
+  // functional (three door states, the ladder, the conduit, the vent) and eight decor. MATERIAL and
+  // RESOURCE did not move, which is the tell that this was an ADDITION and not a reclassification:
+  // the three warm rows the new pieces displaced (`sliding-door`, `hatch-ladder`, `air-vent`) kept
+  // their `kind` and their twins and gave up only their glyph.
   // ⚠️ MOVED ABOVE THE LOOP DELIBERATELY (CLAUDE.md trap 5). It used to sit AFTER the `deepEqual`
   // below, where it could never fire on its own: the four class counts sum to 70 and every id
   // contributes exactly one, so a 69-row twin set fails the `deepEqual` first and `assert` throws.
   // A leg that cannot report is indistinguishable from one that can. Here it is the file's first
   // absolute-scale statement and it bites alone.
-  assert.equal(WRECKED_IDS.length, 79);
+  // ⚠️ RE-COUNTED AFTER lane/paper-resources: 82 → 90, RESOURCE 8 → 16, and it is the only class
+  // that moved. Nine paper ground stacks joined the registry; EIGHT of them got a twin and
+  // `turnings` is ledgered as having none, for `swarf`'s own reason carried onto the new art. So the
+  // twin set grows by eight while the registry grew by nine, and the one-row gap is the ledger.
+  // ⚠️ 90 AND THE FOUR CLASS NUMBERS ARE RE-DERIVED OFF THE MERGED TREE, never summed from the two
+  // lanes' literals — this lane measured 87 without the capsules and the capsules lane measured 82
+  // without these nine, and NEITHER is true here (TRAPS 8th shape).
+  // ⚠️ 117 IS RE-DERIVED OFF THE MERGED TREE, never summed — see the header above for why the
+  // class numbers in particular cannot be added across lanes.
+  assert.equal(WRECKED_IDS.length, 117);
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of WRECKED_IDS) {
     // ⚠️ NOT `by[ITEMS[id].kind]++`. An orphan twin (a key with no registry row) made that throw a
@@ -177,22 +213,39 @@ test('the class census of the twin set: 29 functional, 30 cosmetic, 12 material,
   // 'K' (occupied) and 'k' (open). Functional 27 → 29, cosmetic 23 → 21; the total is unchanged
   // at 70 because nothing was added or removed, only reclassified — which is exactly the shape a
   // single total would have hidden, and the reason this census is a per-class object.
-  assert.deepEqual(by, { functional: 29, cosmetic: 30, material: 12, resource: 8 });
+  assert.deepEqual(by, { functional: 46, cosmetic: 43, material: 12, resource: 16 });
 });
 
-test('the state census: 71 pieces carry a percentage, 8 carry the em-dash', () => {
+test('the state census: 101 pieces carry a percentage, 16 carry the em-dash', () => {
+  // ⚠️ 101/16 RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines). main read 88/16 and
+  // this lane read 84/8; the percentage side is the one EVERY lane moved, so it is the one a sum
+  // would have got wrong the most quietly (TRAPS 8th shape).
+  // ⚠️ 88 → 101 (lane/paper-machines): thirteen more AUTHORED badges inside the mock's own 2–33%
+  // band. The em-dash side did NOT move, and that is the half worth watching: the dash means
+  // "cannot be repaired, only written off", which is a claim about RESOURCES, and a reactor is not
+  // one — a reactor at 3% is the most repairable thing on this ship, because it has to be.
+  // ⚠️ 71 → 74 (the capsules and cells): three more authored badges. The em-dash side did NOT move
+  // again, for the same reason as last time — a capsule and a cell are not resources.
   // ⚠️ 62 → 71 (VR-P2): the nine repo-authored fittings twins carry AUTHORED badges inside the
   // mock's own 2–31% band. The em-dash side did NOT move, and that is the half worth watching: the
   // dash means "cannot be repaired, only written off", which is a claim about RESOURCES, and nine
   // decor rows are not resources.
+  // ⚠️ 71 → 85 (lane/paper-fixtures): fourteen more authored badges, in the same 0–30% band. The
+  // em-dash side did not move again, and for the same reason — a door is repairable.
   const pct = WRECKED_IDS.filter((id) => /^\d+%$/.test(WRECKED[id].state));
   const dash = WRECKED_IDS.filter((id) => WRECKED[id].state === '—');
-  assert.equal(pct.length, 71);
-  assert.equal(dash.length, 8);
+  // ⚠️ 8 → 16 (lane/paper-resources), and THE PERCENTAGE SIDE DID NOT MOVE with it — which is the
+  // half worth watching, and it says that package added RESOURCES and not devices. The dash means
+  // "cannot be repaired, only written off", a claim about matter; eight paper piles are matter.
+  // Both numbers RE-DERIVED off the merged tree (74 = 71 + the capsules lane's three).
+  assert.equal(pct.length, 101);
+  assert.equal(dash.length, 16);
   assert.equal(pct.length + dash.length, WRECKED_IDS.length, 'no third state exists');
   // the em-dash ones are exactly the loose resources: you cannot repair a spoiled pile
   assert.deepEqual(dash.sort(), [
-    'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals',
+    'body-bag', 'control-card', 'controller-module', 'corpse', 'gear-set', 'ice', 'ice-block',
+    'parts', 'plate-offcut', 'potato', 'regolith', 'scrap', 'seal-set', 'seals', 'spoil-heap',
+    'tuber-crate',
   ]);
   // ⚠️ AUDITED AND KEPT — this leg is NOT implied by the `deepEqual` above, though it looks it. The
   // `deepEqual` pins WHICH eight ids carry the em-dash; this reads `ITEMS`, a different module, and
@@ -224,24 +277,77 @@ test('every registry row has exactly one wrecked twin, and no twin is an orphan'
 // slipped OUT of it the bijection would fail loudly (good); if a row slipped IN, the bijection would
 // still pass on a smaller set and the mock piece that row used to claim would go UNCHECKED — a
 // silent hole in the evidence, which is the failure mode this whole file exists to prevent.
-test('the non-mock ledger is exactly the fittings rows, and each one says so in its twin', () => {
+test('the non-mock ledger is exactly the repo-authored rows, and each one says so in its twin', () => {
+  // ⚠️ 47 KEYS, RE-DERIVED OFF THE MERGED TREE (TRAPS 8th shape). The ledger is now FOUR
+  // populations with four provenances, and NO LANE COULD COMPUTE THIS LIST: the capsules lane
+  // measured twelve keys, paper-resources twenty, paper-fixtures twenty-three, main thirty-four and
+  // paper-machines twenty-two. Nine rows come from `design-import/Perilune Fittings.dc.html` cards
+  // the mock has no piece for, three more from its "Capsules and cells" section, eight from
+  // `client/src/items/paper-resources.js` (ground stacks — no card in either document), fourteen
+  // from `client/src/items/paper-fixtures.js` (the ship's architecture — no card either) and
+  // THIRTEEN from `client/src/items/machines.js` (the ship's own plant — in no document at all).
+  // Growing this means another twin was drawn outside the mock; shrinking it means the mock grew
+  // one, in which case transcribe it.
   assert.deepEqual(Object.keys(NON_MOCK_TWIN).sort(), [
-    'bench', 'compost-bin', 'cot', 'curtain-rail', 'footlocker', 'shrine-shelf', 'sink', 'stool',
-    'vice-post',
-  ], 'the repo-authored twin set changed. Nine rows of `design-import/Perilune Fittings.dc.html`\n'
-    + 'have no piece in `docs/design/perilune-item-set.dc.html`; growing this means another twin was\n'
-    + 'drawn outside the mock, shrinking it means the mock grew one — in which case transcribe it.');
+    'arms-rack', 'bench', 'body-bag', 'book-case', 'bottle-rack', 'bulkhead-screen',
+    'capsule-open', 'capsule-sealed', 'cell-sound', 'compost-bin', 'conduit-run', 'control-card',
+    'cot', 'curtain-rail', 'deck-hatch', 'deck-marker', 'deck-turret', 'dish-mast', 'door-airlock',
+    'door-blast', 'door-sliding', 'extractor-fan', 'fab-cell', 'flood-lamp', 'footlocker',
+    'gear-set', 'grow-lamp', 'hull-port', 'ice-block', 'lamp-sconce', 'med-cot', 'paste-column',
+    'plant-pot', 'plate-offcut', 'reactor-plant', 'reclaimer-stack', 'ring-array', 'seal-set',
+    'shrine-shelf', 'sink', 'sleeper-pod', 'solar-wing', 'spoil-heap', 'stool', 'tuber-crate',
+    'vent-grille', 'vice-post',
+  ], 'the repo-authored twin set changed.');
+  // ⭐ AND THE ONE THAT IS NOT LIKE THE OTHER FORTY-SIX, PINNED BY NAME. Every other CATALOGUE
+  // entry's value is the card its own PRISTINE piece comes from; `cell-sound`'s is card 34, because
+  // its twin is not ink damage over card 33 — it is the owner's own drawing of a spent cell. If that
+  // ever silently becomes '33 CELL, SOUND' the twin has been redrawn as a damage pass and the
+  // design's spent cell has gone unreachable, which no count in this file could see.
+  assert.equal(NON_MOCK_TWIN['cell-sound'], '34 CELL, SPENT');
   // TWO-WAY, against `mockLabel`, so the ledger cannot disagree with the rows it describes.
   for (const id of WRECKED_IDS) {
     assert.equal(WRECKED[id].mockLabel === null, id in NON_MOCK_TWIN,
       `${id}: a twin's mockLabel and its ledger membership disagree about where its drawing came from`);
   }
+  // ⚠️ TWO SOURCES, TWO SHAPES, AND THE ROW IS CHECKED AGAINST THE ONE IT REALLY CAME FROM. Until
+  // lane/paper-resources every non-mock twin was a fittings-catalogue row and the value was a card
+  // reference (`NN NAME`). The eight paper ground stacks have no card in EITHER document — a pile is
+  // not something the owner drew a card for — so writing `NN` for them would be inventing a citation.
+  // ⛔ The exit taken is NOT to relax the pattern to something both satisfy (which would stop the
+  // guard seeing a fittings row with a made-up reference); each id is routed to its own shape, and
+  // an id in NEITHER population fails by name rather than falling through to the looser branch.
+  // ⚠️ THREE POPULATIONS, THREE SHAPES, after lane/paper-fixtures joined the two below: a paper
+  // FIXTURE has no card either, so it cites the SECTION of its own module (`PAPER FIXTURES · …`).
+  // ⚠️ FOUR POPULATIONS, FOUR SHAPES, after lane/paper-machines. A MACHINE cites a SHEET entry in
+  // `client/tools/machines-sheet.mjs` and is written `MNN NAME` — the `M` prefix is NOT cosmetic.
+  // The nine fittings twins name a card in the owner's document, where `'01 BENCH'` IS a page a
+  // reader can turn to; bare `'01'`…`'13'` here would have put two different documents' numbering
+  // into one column with nothing to tell them apart. ⛔ THE MACHINE ARM IS ORDERED BEFORE NOTHING
+  // BY LUCK: the four id sets are measured DISJOINT below, so this chain's order cannot decide
+  // which shape a row is held to.
+  const catShape = (id) => (FITTING_IDS.includes(id) ? /^\d\d [A-Z]/
+    : PAPER_RESOURCE_IDS.includes(id) ? /^PAPER RESOURCE · [A-Z]/
+      : FIXTURE_IDS.includes(id) ? /^PAPER FIXTURES · [A-Z]/
+        : MACHINE_IDS.includes(id) ? /^M\d\d [A-Z]/ : null);
   for (const [id, cat] of Object.entries(NON_MOCK_TWIN)) {
     assert.ok(ITEMS[id], `${id} is ledgered but is not a registry row`);
-    assert.ok(FITTING_IDS.includes(id), `${id} is ledgered non-mock but is not a fittings row`);
-    assert.equal(WRECKED[id].catalogue, cat, `${id}: the twin names a different catalogue entry`);
-    assert.match(cat, /^\d\d [A-Z]/, `${id}: the catalogue reference is not "NN NAME"`);
+    // ⚠️ THE MEMBERSHIP TEST IS THE UNION OF THE FOUR POPULATIONS, AND IT IS AN INCLUSION RATHER
+    // THAN A DISJUNCTION OF CONVENIENCE (CLAUDE.md trap 4): a ledgered row must be drawn by one of
+    // the four redesign modules, so a warm `objects.js`/`fixtures.js` row smuggled in here still
+    // fails BY NAME rather than falling through to a looser branch.
+    const shape = catShape(id);
+    assert.ok(shape,
+      `${id} is ledgered non-mock but is none of a fittings row, a paper ground stack, a paper\n`
+      + 'fixture or a machine. Every repo-authored twin has to name where its drawing came from,\n'
+      + 'and this one names nothing.');
+    assert.equal(WRECKED[id].catalogue, cat, `${id}: the twin names a different source`);
+    assert.match(cat, shape, `${id}: the source reference is not in its population's shape`);
   }
+  // …and the disjointness the XOR above leans on, MEASURED — one line, because a comment claiming a
+  // set relation is exactly the kind of prose that goes stale silently.
+  assert.deepEqual(FITTING_IDS.filter((f) => MACHINE_IDS.includes(f)), [],
+    'a fittings id is also a machines id. The XOR above then reads "is neither" for a row that is\n'
+    + 'BOTH, and two modules are exporting one piece under one name.');
   assert.equal(MOCK_TWIN_IDS.length, 70,
     'THE MOCK POPULATION MOVED OFF SEVENTY. Every label, badge and positional assertion below is\n'
     + 'measured against `docs/design/perilune-item-set.dc.html`, which has exactly seventy wrecked\n'
@@ -268,11 +374,27 @@ test('the ledger is exactly the rows with no twin, and its reasons are real pros
     assert.ok(ITEMS[id], `${id} is ledgered but is not a registry row at all`);
     assert.ok(typeof why === 'string' && why.length > 80, `${id}: the ledger entry has no reason`);
   }
-  assert.equal(Object.keys(NO_WRECKED_TWIN).length, 1,
+  // ⛔ THIS LITERAL AUTO-MERGED CLEAN AND WRONG. Both lanes moved it 1 → 2 for DIFFERENT ids —
+  // `cell-spent` on one side, `turnings` on the other — so git took one "2" and neither conflict
+  // marker nor either lane's own green gate could see that the merged truth is THREE. Re-derived off
+  // the merged ledger, which is CLAUDE.md's 8th trap shape stated as a number.
+  assert.equal(Object.keys(NO_WRECKED_TWIN).length, 3,
     'THE NO-TWIN LEDGER CHANGED SIZE. It went 0 → 1 when `swarf` landed — a piece drawn for a sim\n'
-    + 'fact the mock predates, so the mock has no twin for it. Growing it means another piece was\n'
+    + 'fact the mock predates, so the mock has no twin for it — then +1 with `cell-spent`, a\n'
+    + 'different reason WEARING THE SAME SHAPE (the piece IS the wrecked state, so there is no\n'
+    + 'second condition for it to be in), and +1 again with `turnings`, which redrew `swarf`\n'
+    + 'in the paper dialect and carried the SAME reason onto the new art (both rows stay registered\n'
+    + 'until the warm one is retired, so BOTH need the line). Growing it means another piece was\n'
     + 'drawn outside the mock; SHRINKING it means the mock was re-imported with a twin, in which\n'
     + 'case add the twin rather than deleting the reason.');
+  // ⚠️ AND THE THREE ENTRIES ARE NOT THE SAME KIND OF ROW, WHICH THE COUNT CANNOT SAY. `swarf` and
+  // `turnings` are RESOURCE rows (the warm pile and its paper redraw, one reason following its
+  // material onto new art); `cell-spent` is a FUNCTIONAL row the design DOES ship a card for,
+  // ledgered because the state it draws is terminal. Pinned by name so a substitution — one
+  // ledgered omission traded for another — cannot pass as "still three".
+  assert.deepEqual(Object.keys(NO_WRECKED_TWIN).sort(), ['cell-spent', 'swarf', 'turnings']);
+  assert.equal(ITEMS['cell-spent'].kind, 'functional',
+    'the second ledger entry is no longer the Battery row it was written about');
 });
 
 test('every twin label and condition badge matches the mock, row for row', () => {
@@ -468,14 +590,14 @@ test('no twin is byte-identical to its pristine piece', () => {
 
 // Every twin is DISTINCT from every other twin. Two rows pointing at one painter is the other half
 // of the same slip, and the deep-equal on ids above cannot see it.
-test('the 79 twins are 79 different pictures', () => {
+test('the 117 twins are 117 different pictures', () => {
   const seen = new Map();
   for (const id of WRECKED_IDS) {
     const svg = buildWrecked(id, { idPrefix: 'k' });
     assert.ok(!seen.has(svg), `${id} renders identically to ${seen.get(svg)} — one painter, two rows`);
     seen.set(svg, id);
   }
-  assert.equal(seen.size, 79);
+  assert.equal(seen.size, 117);
 });
 
 // ⚠️ THE JOIN PINS WHICH ROWS EXIST — IT PINS NOTHING ABOUT WHICH PICTURE A ROW DRAWS.

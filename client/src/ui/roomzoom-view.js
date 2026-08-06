@@ -648,8 +648,13 @@ function repaint() {
 
   // The two caption facts, derived here because here is where a frame is: how much is placed or
   // pending in this room, and how many souls are standing in it (VS-Z-12).
+  // ⭐ `_deviceCond` HERE TOO, AND FOR THE SAME DEFECT IN ITS OTHER COSTUME. This is the caption's
+  // "N OF M FITTINGS BUILT" count; left reading the frame alone it would tick DOWN by one every time
+  // a crew member walked over a fitting, because the glyph she overwrites is the only evidence the
+  // count had. The number and the picture must not be able to disagree about how many things are in
+  // the room — so they are derived from the same call, with the same arguments.
   _capPlaced = roomDesigns(designs, _focus).length
-    + roomCells(frame, _focus).filter((c) => c.itemId).length;
+    + roomCells(frame, _focus, _deviceCond).filter((c) => c.itemId).length;
   _capHere = roomCrew(crew, _focus).length;
 
   paintCanvas(frame);
@@ -726,7 +731,12 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   // WITHOUT rebuilding the scene (a full repaint per frame is what this package exists to avoid).
   _place = place;
 
-  const cells = roomCells(frame, _focus);
+  // ⭐ `_deviceCond` IS PASSED HERE SO A PAWN CANNOT UNBUILD A MACHINE (the owner's 2026-08-05
+  // defect). `roomCells` reads the frame's ONE glyph byte per tile, and `GlyphMapper` pass 5
+  // writes `Glyphs.Citizen` over it — so a device with someone standing on it left the drawing.
+  // The channel is the same Map this view already built for `cond`; see `room-model.js`'s
+  // `itemForDeviceRow` for why this is a reading of the wire and not a cache or a re-derived rule.
+  const cells = roomCells(frame, _focus, _deviceCond);
   const here = roomCrew(crew, _focus);
   const roster = Hud.getRoster();
   const aboard = roster && Array.isArray(roster.crew) ? roster.crew.length : here.length;
@@ -1013,11 +1023,29 @@ export function standItem(itemId, tx, ty, place, idPrefix, cond) {
  *   material" survives the change (ruling E4: nothing is dropped, everything is re-housed).
  *
  * A FLOOR material still LIES IN THE FLOOR PLANE, because that is what it is.
+ *
+ * — lane/paper-materials —
+ * 3 ⭐⭐ THE SKIN IS THE FRONT FACE NOW, NOT A BADGE STUCK ON IT, and that is a DIMENSIONAL fix
+ *   rather than a bigger picture. The slab is 1 m of wall run at the compartment's 2.4 m ceiling, so
+ *   its front face is `ROOM_SCALE·100 × ROOM_SCALE·240` px — and the material art used to be handed a
+ *   `ROOM_SCALE · 62` SQUARE, centred on the tile's foot and floated at 0.62 of the wall height. Two
+ *   things were wrong with that and only the second is about taste: the box was square, so a wall
+ *   material could not be drawn at its own 1 : 2.4 proportion at all; and 58.9 px stood for a metre
+ *   where the slab beside it draws a metre as 95, so every pattern on it was at 0.62 of the room's
+ *   own scale — a rivet pitch, a plank width and a hazard band that all disagreed with the drawing
+ *   they sat on. The skin is now placed on the front face exactly (`place.front` is that face's
+ *   bottom-left corner, which is where `obliqueBox` starts it), at the face's own w × h, and
+ *   `paper-materials.js` reads the BOX ASPECT to decide how many centimetres it is drawing.
+ *
+ * ⭐ EXPORTED so `client/tools/paper-materials-sheet.mjs` photographs THIS function rather than a
+ * copy of it — VR-P3's MINOR 6 verbatim: a sheet that re-derives the placement is a second authority
+ * on the exact thing the sheet exists to check, so the page could look right while the shipping
+ * surface drew something else.
  */
-function materialLayerSvg(tiles, place) {
+export function materialLayerSvg(tiles, place, focus = _focus) {
   const floors = [], walls = [];
-  const rx = _focus.rx | 0, ry = _focus.ry | 0;
-  const x1 = rx + (_focus.rw | 0) - 1, y1 = ry + (_focus.rh | 0) - 1;
+  const rx = focus.rx | 0, ry = focus.ry | 0;
+  const x1 = rx + (focus.rw | 0) - 1, y1 = ry + (focus.rh | 0) - 1;
   for (const t of tiles) {
     const id = materialItemId(t.kind, t.mat);
     if (!id) continue;
@@ -1026,14 +1054,16 @@ function materialLayerSvg(tiles, place) {
       if (t.tx === rx || t.tx === x1 || t.ty === ry || t.ty === y1) continue;   // the hull — see above
       const [px, py] = place.front(t.tx, t.ty);
       const cm = M_PER_TILE * 100;
-      const [cx, cy] = place.foot(t.tx, t.ty);
-      const sw = ROOM_SCALE * 62;
+      // The slab's FRONT FACE, in the px `obliqueBox` draws it at: one tile of run, one ceiling of
+      // height. `place.front` IS that face's bottom-left corner, so the skin's own top-left is one
+      // face-height above it. See this function's header for what this replaced and why.
+      const faceW = ROOM_SCALE * cm;
+      const faceH = ROOM_SCALE * ROOM_HEIGHT_M * 100;
       walls.push('<g class="rz-wall">'
         + obliqueBox(px, py, cm, ROOM_HEIGHT_M * 100, cm, ROOM_SCALE,
           { strokeWidth: 1.8, sideFill: 'hatch', hatch: fhRef(RZ_ID) })
-        + '<g transform="translate(' + (cx - sw / 2).toFixed(2) + ' '
-        + (cy - ROOM_SCALE * ROOM_HEIGHT_M * 100 * 0.62).toFixed(2) + ')">'
-        + buildItem(id, { w: sw, h: sw, idPrefix: idp }) + '</g></g>');
+        + '<g transform="translate(' + px.toFixed(2) + ' ' + (py - faceH).toFixed(2) + ')">'
+        + buildItem(id, { w: faceW, h: faceH, idPrefix: idp }) + '</g></g>');
     } else {
       const g = buildItem(id, { w: FLOOR_MAT_PX, h: FLOOR_MAT_PX, idPrefix: idp });
       floors.push('<g transform="' + place.cell(t.tx, t.ty) + '">' + g + '</g>');

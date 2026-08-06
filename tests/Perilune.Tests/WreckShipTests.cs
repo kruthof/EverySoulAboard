@@ -156,26 +156,50 @@ namespace Perilune.Tests
             // 1 ∧ 7 ∧ 12 and by nothing that names LivingSouls at all. Found in review, not by
             // reading it.
             //
-            // Counted INDEPENDENTLY now, and by the only thing on this ship that actually says
-            // somebody died: a corpse on the pod's own tile. That routes through the item store
-            // rather than through Condition, so it bites on changes the three counts above cannot
-            // see — a fifth corpse, a pod authored dead but above `fail`, a corpse deleted from a
-            // wrecked pod — and it is the sentence "eight people are still alive in here" rather
-            // than a restatement of the census.
-            int souls = 0;
-            foreach (var p in pods)
-            {
-                bool hasBody = false;
-                var items = sim.Items.Items;
-                for (int i = 0; i < items.Count; i++)
-                    if (items[i].Kind == ItemKind.Corpse && items[i].Pos == p.Pos) hasBody = true;
-                if (!hasBody) souls++;
-            }
+            // ⛔ AND ITS REPLACEMENT MOVED ON 2026-08-05, BECAUSE THE OWNER DELETED WHAT IT COUNTED.
+            // It read the ITEM STORE — "a capsule with no `ItemKind.Corpse` on its tile is a living
+            // soul" — which was the right instrument while the wreck authored four bodies. The owner
+            // ruled the body bags out ("there are still old body bags — delete them",
+            // `AuthoredShips.PeriluneWreck`), so that count now reads TWELVE and the ship has not
+            // changed at all. The number was not adjusted; the INSTRUMENT was replaced.
+            //
+            // ⇒ THE WITNESS IS NOW THE SHIP'S LOG, which is what the owner kept and what
+            // `ShipPlan.LogLines` calls the death's record. It has the property the corpse count was
+            // chosen for and the three census legs above lack: it routes through neither `Condition`
+            // nor `IsOpen`, so it still bites on a fifth dead sleeper, on a pod authored dead but
+            // above `fail`, and on a log line silently dropped. It is read here off the plan rather
+            // than off `HistorySystem` so this test stays a statement about the SHIP;
+            // `EachDeadSleeper_GetsOneShipsLogLine_AndNoDeathEvent` drives the same lines through the
+            // real history and is the other half of the pair.
+            var plan = AuthoredShips.PeriluneWreck();
+            int mourned = 0;
+            for (int i = 0; i < plan.LogLines.Count; i++)
+                if (plan.LogLines[i].Contains("did not survive the raid")) mourned++;
+
+            // NON-VACUITY, as an INCLUSION test: a substring scan that matched nothing would make
+            // `souls` equal `PodCount` and agree with a ship that had no dead sleepers at all.
+            Assert.That(mourned, Is.EqualTo(PodsWreckedDead),
+                "the boot log no longer mourns one sleeper per wrecked capsule — this counter is " +
+                "reading nothing, and the LivingSouls assertion below would be vacuous");
+
+            int souls = pods.Count - mourned;
             Assert.That(souls, Is.EqualTo(LivingSouls),
                 "⭐ EIGHT LIVING SOULS is the owner's design target: the pawn who is already awake " +
-                "plus the seven W5 will thaw one at a time. Counted here as capsules with NO body " +
-                "on their tile. A wrecked capsule is set dressing with a body in it and must never " +
-                "be counted against this number.");
+                "plus the seven W5 will thaw one at a time. Counted here as capsules MINUS the " +
+                "sleepers the ship's log says did not make it. A wrecked capsule is set dressing " +
+                "with somebody still in it and must never be counted against this number.");
+
+            // ⛔ AND THE OWNER'S RULING ITSELF, PINNED HERE RATHER THAN LEFT AS AN ABSENCE. Nothing
+            // above can tell "the wreck authors no bodies" from "this test stopped looking".
+            int bodies = 0;
+            var store = sim.Items.Items;
+            for (int i = 0; i < store.Count; i++) if (store[i].Kind == ItemKind.Corpse) bodies++;
+            Assert.That(bodies, Is.Zero,
+                "the wreck authors an ItemKind.Corpse again. The owner deleted the body bags on " +
+                "2026-08-05 after seeing the cryo bay: the wrecked capsule's own art is what says " +
+                "somebody is still in there, and the log line is the death's record. " +
+                "(ItemKind.Corpse is NOT retired — NeedsSystem still drops one when a CITIZEN dies " +
+                "in play. This is about what the ship BOOTS with.)");
         }
 
         /// <summary>
@@ -890,17 +914,37 @@ namespace Perilune.Tests
         /// ⚠️ The label used to be checked with <c>!string.IsNullOrEmpty</c>, i.e. the test named
         /// the sleepers in its own title and then verified only that SOMEBODY was in the bag —
         /// swapping every name on the ship left it green. The walk through the bay is meant to be
-        /// "a reading of who did not make it" (this ship's header), so who is the assertion.</summary>
+        /// "a reading of who did not make it" (this ship's header), so who is the assertion.
+        /// ⛔ THE BAG IS GONE SINCE 2026-08-05 (owner ruling) AND THE NAMES ARE NOT. The reading now
+        /// joins each wrecked capsule to the ship's-log line that mourns it; the walk, the four
+        /// literals and the "who is the assertion" rule are unchanged.</summary>
         private static readonly (string Pod, string Sleeper)[] DeadSleepers =
         {
             ("pod_vance", "Vance"), ("pod_sokolov", "Sokolov"),
             ("pod_iqbal", "Iqbal"), ("pod_osei", "Osei"),
         };
 
+        /// <summary>
+        /// ⛔ RENAMED AND RE-SOURCED ON 2026-08-05 BY AN OWNER RULING, and the old name is kept in
+        /// this comment so a grep lands on the reason. It was
+        /// <c>EachWreckedPod_CarriesACorpseOnItsOwnTile_NamedForTheSleeper</c>, and its subject —
+        /// four <c>ItemKind.Corpse</c> stacks, one per dead sleeper, on the pod's own tile — was
+        /// deleted from <see cref="AuthoredShips.PeriluneWreck"/> when the owner saw the cryo bay and
+        /// said "there are still old body bags — delete them".
+        ///
+        /// ⚠️ WHAT THE TEST WAS FOR SURVIVES INTACT, WHICH IS WHY IT IS RE-SOURCED RATHER THAN
+        /// DELETED. Its value was never the item: it was the by-name join — this ship names four
+        /// people and the bay must be a reading of WHICH four, so that swapping a sleeper cannot pass
+        /// silently. The ship's-log line the owner kept carries exactly the same name, so the join
+        /// moves from <c>ItemStack.Label</c> to <see cref="ShipPlan.LogLines"/> and every assertion
+        /// keeps its meaning. The final leg is INVERTED: where it used to require one body per
+        /// wrecked pod, it now requires none anywhere.
+        /// </summary>
         [Test]
-        public void EachWreckedPod_CarriesACorpseOnItsOwnTile_NamedForTheSleeper()
+        public void EachWreckedPod_IsMournedByName_InTheShipsLog_AndCarriesNoBody()
         {
             var sim = Boot();
+            var plan = AuthoredShips.PeriluneWreck();
             var wrong = new List<string>();
             var seen = new List<string>();
             foreach (var p in Pods(sim))
@@ -913,16 +957,21 @@ namespace Perilune.Tests
                     if (DeadSleepers[i].Pod == p.Name) expected = DeadSleepers[i].Sleeper;
                 if (expected == null) { wrong.Add($"{p.Name}: a capsule wrecked that this test does not name"); continue; }
 
-                string label = null;
+                int mentions = 0;
+                for (int i = 0; i < plan.LogLines.Count; i++)
+                    if (plan.LogLines[i].StartsWith(expected + " did not survive", StringComparison.Ordinal)) mentions++;
+                if (mentions == 0) wrong.Add($"{p.Name}: the ship's log does not mourn {expected}");
+                else if (mentions > 1) wrong.Add($"{p.Name}: {expected} is mourned {mentions} times");
+
                 var items = sim.Items.Items;
                 for (int i = 0; i < items.Count; i++)
-                    if (items[i].Kind == ItemKind.Corpse && items[i].Pos == p.Pos) label = items[i].Label;
-                if (label == null) wrong.Add($"{p.Name}: no body on the capsule's own tile");
-                else if (label != expected) wrong.Add($"{p.Name}: the body is labelled '{label}', not '{expected}'");
+                    if (items[i].Kind == ItemKind.Corpse && items[i].Pos == p.Pos)
+                        wrong.Add($"{p.Name}: a body bag is back on this capsule's tile");
             }
             Assert.That(wrong, Is.Empty,
-                "a wrecked occupied pod holds a DEAD sleeper (owner decision) and the corpse item is " +
-                "the only way the sim has to say so — and it must say WHOSE:\n  " +
+                "a wrecked occupied pod holds a DEAD sleeper (owner decision) and the SHIP'S LOG is " +
+                "how the sim says so — and it must say WHOSE. The capsule's own wrecked art is the " +
+                "picture; the body bag was a second telling and the owner cut it:\n  " +
                 string.Join("\n  ", wrong));
 
             var expectedPods = new List<string>();
@@ -931,10 +980,15 @@ namespace Perilune.Tests
                 "the set of WRECKED capsules moved — the four named above are the ship's content, " +
                 "hand-written here on purpose so a content change cannot pass silently");
 
+            // ⛔ THE LEG THAT INVERTED. It read `corpses == PodsWreckedDead`; the owner's ruling makes
+            // the correct number ZERO, on the whole ship and not merely on the pod tiles.
             int corpses = 0;
             var all = sim.Items.Items;
             for (int i = 0; i < all.Count; i++) if (all[i].Kind == ItemKind.Corpse) corpses++;
-            Assert.That(corpses, Is.EqualTo(PodsWreckedDead), "one body per wrecked pod and no others");
+            Assert.That(corpses, Is.Zero,
+                "the wreck boots with a body bag. The owner deleted all four on 2026-08-05. " +
+                "ItemKind.Corpse itself is NOT retired: NeedsSystem drops one when a living CITIZEN " +
+                "dies, and that path is untouched — this is a statement about AUTHORED boot state.");
         }
 
         /// <summary>The death reaches the player as a ship's-log line and NOT as a synthesised

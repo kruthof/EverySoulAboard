@@ -162,7 +162,16 @@ const PALETTE_CMD = Object.freeze({
   medbed:{ cls: 'functional', verb: 'place',  kind: 'medbed', deviceKind: 'MedBed' },
   table: { cls: 'functional', verb: 'place',  kind: 'table',  deviceKind: 'Table' },
   rug:   { cls: 'cosmetic',   verb: 'decor',  itemId: 'rug' },
-  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'bookshelf' },
+  // — lane/paper-machines — `itemId` was `'bookshelf'` (the warm row) until 2026-08-05; it is the
+  // paper `book-case` now. ⛔ THE TOOL PLACES NOTHING, AND THE FIRST DRAFT OF THIS COMMENT SAID IT
+  // DID. `roomzoom-view.js`'s `cls === 'cosmetic'` branch toasts `decorRefusalText(_armed)` and stops
+  // — SHELF and RUG stopped writing decor on 2026-08-04, on purpose, because the piece vanished on
+  // reload and no other surface could see it. `addDecor` survives in this module with no caller in
+  // `client/src`, and the host's `decor` channel is a static empty list (`GameSession.cs:2800-2801`).
+  // So this row is a FORWARD-LOOKING rewire: if the decor path ever returns, the tool draws the paper
+  // piece rather than the warm one. Nothing about the tool, the verb, the class or what a click does
+  // moved. ⚠️ It also does not answer M4-6 ("wire it or remove it"), which is the owner's, and open.
+  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'book-case' },
   // ORDER class (console-retirement WP-4) — a DESIGNATION, not a build. It consumes no material and
   // changes no geometry: it marks a tile as intent and the sim's job board picks it up. `verb` is the
   // wire verb NAME (`dig`/`stockpile`/`strip`), which is what makes it emphatically NOT a build:
@@ -1101,18 +1110,139 @@ export function itemForGlyph(code) {
   return itemIdForGlyphChar(String.fromCharCode(code));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE DEVICE-TILE FALLBACK — a device whose GLYPH a pawn is standing on
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⭐ THE OWNER'S DEFECT, 2026-08-05: *"when the pawn works across a capsule, the capsule disappears
+// until the pawn is out of the cell."* CONFIRMED, and it is not about working:
+//
+//   `GlyphMapper` writes ONE glyph per tile in six passes and later passes overdraw earlier ones
+//   (`sim/Sim.Glyph/GlyphMapper.cs:13-23`). Pass 4 writes the device; PASS 5 WRITES
+//   `Glyphs.Citizen` OVER THE WHOLE CELL UNCONDITIONALLY (`GlyphMapper.cs:185-195`, only `Bg` and
+//   `Attr` survive). So a device with a crew member on it has no device glyph on the frame AT ALL,
+//   `roomCells` saw 64 in `NON_FURNITURE_CODES` and dropped the tile, and the fitting left the
+//   drawing until she moved. `WireFormat.Devices.cs:261-266` describes this loss in its own header
+//   and names the remedy: *"THE FIX IS A CHANNEL, NOT A BETTER READER."*
+//
+// ⚠️ AND IT FIRES ON A PAWN MERELY WALKING PAST, which the owner's wording understates.
+// `CitizenSystem.cs:51-54` snaps `citizen.Pos` to the DESTINATION tile the instant a step begins and
+// holds it for `ticksPerTile` while the presenter interpolates; pass 5 projects `Pos`. The device is
+// therefore blanked for the whole ~1 s traversal, starting before she is visibly on the tile.
+//
+// THE CHANNEL WAS ALREADY HERE. `roomDeviceConditions` / `deckDeviceConditions` (below) already
+// build a per-tile Map off the `devices` wire channel, and both surfaces already hand it to their
+// furniture pass — to read `cond` and NOTHING ELSE. All that was missing was a way to name the
+// PIECE from a channel row, which is what the two functions below are.
+//
+// ⛔ WHY THIS IS NOT `wear.js`'s ROAD NOT TAKEN, AND WHY THE FIRST DRAFT WAS ANYWAY. That module
+// refuses to key art off the wire's `kind` byte because `DeviceKind → itemId` is not a function —
+// TRUE, and the fix threads that needle by going kind → REST GLYPH → piece, so the ONE join every
+// other tile on both surfaces uses (`itemIdForGlyphChar`) is the only thing that ever names a piece.
+// `Glyphs.ForDevice` IS a function; what is not a function is the reverse.
+//
+// ⛔⛔ THE FIRST DRAFT DID NOT DO THAT AND SHIPPED THE SIXTH TRAP IN ITS OWN COSTUME. It derived
+// kind → piece by scanning `ITEMS` for a `functional` row whose `deviceKind` matched AND whose own
+// id was a value of `GLYPH_TO_ITEM` — which silently returned `''` for every device whose art is
+// BORROWED, because a substituted piece is another kind's row and `wall-lamp` is `cosmetic`
+// outright. SIX kinds, found by independent review, driven at the seam and live on the wreck (Rell
+// on the Light at (1,1): `rz-f-1-1` absent, the caption reading "25 PLACED" instead of 26):
+//
+//     Light → wall-lamp · WaterTank → oxygen-tank · SalvageRecycler → water-recycler
+//     Radiator → space-heater · MedCabinet → locker · IceMelter → cooker
+//
+// ⇒ A fix for "a pawn deletes the machine she stands on" that deleted six kinds of machine when a
+// pawn stood on them. `GLYPH_SUBSTITUTE`'s own header names all six, and so does the `wear.js`
+// paragraph this package edited in the same commit: **borrowed art means the registry row is not a
+// fact about the device.** Going through the glyph removes the functional/cosmetic distinction
+// entirely, because `deriveGlyphToItem` has already folded the substitutions in.
+//
+// ⛔ AND IT IS NOT A CACHE, WHICH IS THE OTHER DESIGN THAT WOULD HAVE PASSED THE OWNER'S TEST. A
+// "remember the last glyph on this tile" memo also survives a pawn — and leaves a GHOST of a
+// deconstructed machine on screen forever. Every answer here comes from the CURRENT frame's
+// `devices` payload, so a device that is gone is gone (pinned by its own leg in
+// `devices-model.test.js`).
+
+/** `Glyphs.Citizen` — the ONE overwrite this fallback repairs. Narrow on purpose: `'/'` (an open
+ *  doorway) and `'.'`/`'#'` are not losses, they are the tile's own truth, and restoring a piece
+ *  under them would put a door back in a doorway the sim says is open. */
+export const CITIZEN_GLYPH_CODE = 64;
+
+/**
+ * `Glyphs.ForDevice` MIRRORED BY KIND NAME — the rest glyph of every `DeviceKind`.
+ *
+ * ⚠️ A MIRROR OF THE SIM, WITH A MECHANICAL PIN, NOT A SECOND AUTHORITY. `room-model.test.js`
+ * PARSES `sim/Sim.Glyph/Glyphs.cs`'s own switch and asserts this table matches it arm for arm, and
+ * that the two have the same length — so a 30th kind, or a moved char, fails by name instead of
+ * rotting. Same idiom as `DEVICE_KIND_NAMES` above (pinned against the C# enum by
+ * `prioritise-menu.test.js`) and `STOCK_KINDS`.
+ *
+ * ⚠️ IT LIVES HERE RATHER THAN IN `items/glyph-map.js` BECAUSE IT IS NOT ABOUT ART. Every value is a
+ * glyph; what each glyph DRAWS is `glyph-map.js`'s question, and this table deliberately does not
+ * know the answer — that is the whole point of routing through `itemIdForGlyphChar`. `Conduit` and
+ * `Pipe` share `'~'` (an intentional, documented collision in the C#), and neither has a piece; they
+ * resolve to `''` through the same join as everything else rather than through a special case.
+ */
+export const DEVICE_REST_GLYPH = Object.freeze({
+  Door: '+', AirVent: '^', Scrubber: 'S', Ladder: 'H', Terminal: 'T', SolarWing: 'G', Battery: 'B',
+  Conduit: '~', Light: '*', GrowBed: '"', WaterTank: 'O', Pipe: '~', Reclaimer: 'R', Fabricator: 'F',
+  MachineShop: 'M', SalvageRecycler: 'Y', Radiator: '=', Bed: 'b', Table: 't', Chair: 'h',
+  MedBed: 'd', MedCabinet: 'C', Locker: 'L', Desk: 'D', PlantPot: 'P', Telescope: 'x',
+  IceMelter: 'I', CryoPod: 'K', Heater: 'E',
+});
+
+/**
+ * `GlyphMapper.DeviceGlyph`'s STATE OVERRIDES, for the one state bit the wire actually carries.
+ *
+ * `Device.IsOpen` is tuple element 6 of the `devices` channel and is the SAME field the mapper reads
+ * to choose `'k'` from `'K'` and `'/'` from `'+'` — so this reads a published fact rather than
+ * re-deriving a rule. `'/'` is here as itself, NOT as an empty string: an open doorway is a gap, and
+ * the decision that a gap draws nothing already lives in `items/glyph-map.js` (ledgered by name as
+ * `NO_DEVICE_GLYPH_ART`), where `itemIdForGlyphChar('/')` returns `''`. Writing `''` here would be a
+ * second copy of that decision in a second file, which is the hand-mirror defect this module's own
+ * `ROLE_TO_ITEM` note exists to warn about.
+ *
+ * ⚠️ FILED, NOT FIXED: A LOCKED DOOR UNDER A PAWN DRAWS AS A CLOSED ONE. `DeviceGlyph` has THREE
+ * door states (`'X'` locked, `'/'` open, `'+'` shut) and the channel carries only `open`, so the
+ * third is not on the wire and this fallback cannot see it. A degradation of one occluded tile's
+ * art, not a regression: before this fix the door vanished entirely.
+ */
+export const DEVICE_OPEN_GLYPH = Object.freeze({ CryoPod: 'k', Door: '/' });
+
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+/**
+ * The itemId a `devices`-channel row's tile should wear, or `''` when nothing should be drawn.
+ * PURE and tolerant: an unknown kind byte, a missing row and a glyph nothing skins all answer `''`.
+ * @param {{kind:number, open:number}|undefined} row a `roomDeviceConditions` / `deckDeviceConditions` value
+ * @returns {string} an itemId in `ITEMS`, or ''
+ */
+export function itemForDeviceRow(row) {
+  if (!row) return '';
+  const name = DEVICE_KIND_NAMES[row.kind | 0];
+  if (!name) return '';
+  const glyph = (row.open | 0) && hasOwn(DEVICE_OPEN_GLYPH, name)
+    ? DEVICE_OPEN_GLYPH[name]
+    : DEVICE_REST_GLYPH[name];
+  return typeof glyph === 'string' ? itemIdForGlyphChar(glyph) : '';
+}
+
 /**
  * The in-room furniture cells → item placements (VS-Z-19). Each non-floor/wall cell inside the room
  * rect on the room's deck becomes `{tx, ty, itemId, code}`; an unmapped glyph carries `itemId:''`
  * (the caller draws the unknown chip). Fog/blank cells are dropped. PURE.
  * @param {{deck:number,w:number,h:number,cells:Array}|null} frame
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
- * @returns {{tx:number, ty:number, itemId:string, code:number}[]}
+ * @param {Map<string,object>} [deviceCond] the `devices` channel by "tx,ty" — OPTIONAL, and it is
+ *   what lets a tile a crew member is standing on keep its device (see `itemForDeviceRow`). Rows it
+ *   restores carry `occluded: true`, so a caller can tell "the frame said so" from "the channel did".
+ * @returns {{tx:number, ty:number, itemId:string, code:number, occluded?:boolean}[]}
  */
-export function roomCells(frame, focusRoom) {
+export function roomCells(frame, focusRoom, deviceCond) {
   const out = [];
   if (!frame || !focusRoom || !Array.isArray(frame.cells)) return out;
   if ((frame.deck | 0) !== (focusRoom.deck | 0)) return out;
+  const dev = deviceCond instanceof Map ? deviceCond : new Map();
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
   const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
   for (let ty = Math.max(0, ry); ty < Math.min(frame.h | 0, y1); ty++) {
@@ -1120,7 +1250,16 @@ export function roomCells(frame, focusRoom) {
       const cell = frame.cells[ty * frame.w + tx];
       if (!Array.isArray(cell)) continue;
       const code = cell[0] | 0;
-      if (NON_FURNITURE.has(code)) continue;
+      if (NON_FURNITURE.has(code)) {
+        // A PAWN IS NOT A REASON TO UNBUILD A MACHINE — see the fallback's header above. `deviceCond`
+        // is optional so every other caller and every existing test keeps its two-argument shape;
+        // without it this branch simply cannot fire and the behaviour is exactly what it was.
+        if (code !== CITIZEN_GLYPH_CODE) continue;
+        const itemId = itemForDeviceRow(dev.get(tx + ',' + ty));
+        if (!itemId) continue;
+        out.push({ tx, ty, itemId, code, occluded: true });
+        continue;
+      }
       out.push({ tx, ty, itemId: itemForGlyph(code), code });
     }
   }
@@ -1399,10 +1538,51 @@ export function roomDecor(decor, focusRoom) {
  * when absent from the sparse `materials` channel); a floor glyph ('.') is emitted ONLY when it
  * carries a non-default material. `materials` is the decoded sparse channel [{x,y,deck,kind,mat}].
  * PURE — never mutates its arguments.
+ *
+ * ⭐ THE OWNER'S DEFECT, 2026-08-05: *"when building e.g. a mat or carpet, as soon as the pawn
+ * stands on the corresponding square, the carpet disappears until the pawn is out of the square."*
+ * CONFIRMED, and it is the LITERAL SIBLING of the device-occlusion defect the fallback block above
+ * (`roomCells` / `itemForDeviceRow`) closed the same day — same cause, same passes, same remedy:
+ *
+ *   `GlyphMapper` writes ONE glyph per tile in six passes and later passes overdraw earlier ones.
+ *   Pass 1 writes the terrain ('.'/'#'); PASS 5 WRITES `Glyphs.Citizen` OVER THE WHOLE CELL
+ *   UNCONDITIONALLY (`sim/Sim.Glyph/GlyphMapper.cs:183-195`, only `Bg` and `Attr` survive). So a
+ *   materialed floor with a crew member on it carries code 64, matched NEITHER of the two arms
+ *   below, and the carpet left the drawing until she moved.
+ *
+ * ⚠️ AND IT FIRES ON A PAWN MERELY WALKING PAST, which the owner's wording understates —
+ * `CitizenSystem.cs:51-54` snaps `citizen.Pos` to the DESTINATION tile the instant a step begins and
+ * holds it there for the whole `ticksPerTile` while the presenter interpolates, so the carpet is
+ * blanked for the ~1 s traversal, starting before she is visibly on the tile.
+ *
+ * ⛔ THE `materials` CHANNEL IS THE AUTHORITY; THE GLYPH ONLY EVER GATED VISIBILITY — SO THERE IS
+ * NO STALE GHOST. Every answer below still comes from the CURRENT frame's `materials` payload
+ * (`GameSession.BuildMaterials` re-walks `level.Material` each render and drops every `mat == 0`
+ * tile), so a floor whose material is reset or whose tile is unbuilt vanishes at once, pawn or no
+ * pawn — it is not a "remember the last glyph here" memo, which would leave a ripped-up carpet on
+ * screen forever. Pinned by its own leg in `room-model.test.js`.
+ *
+ * ⛔ AND THE CITIZEN ARM READS THE CHANNEL'S OWN `kind` BYTE, NOT "floor by construction". The
+ * channel carries wall-vs-floor per tile from `level.Wall[idx]` — the SAME world plane pass 1 reads
+ * to choose '#' over '.' — so the occluded tile is classified by the authority the visible tiles are
+ * classified by, one step removed, instead of by an assumption about where pawns can stand. (The
+ * assumption happens to hold — a wall tile is not `TileFlags.Walkable` and `PathService` routes only
+ * over walkable tiles, so a citizen glyph can never mask glyph 35 — but a rule that is true is still
+ * weaker than a fact that is published, and this way the arm cannot rot if that ever changes.)
+ *
+ * ⛔ NARROW ON PURPOSE, exactly as `CITIZEN_GLYPH_CODE`'s own doc-comment says: pass 5 is the ONE
+ * overwrite repaired here. Pass 3 (ground items) and pass 4 (devices) also overdraw a materialed
+ * floor and are NOT repaired by this — a stack or a bed standing on a carpet still shows default
+ * floor around its sprite. Measured, not assumed (`room-model.test.js` drives a 'b' over a
+ * materialed tile and asserts the drop), and FILED rather than chased: those two are a different
+ * package, they are far less visible than a pawn walking through, and widening this arm to "any
+ * non-default channel entry emits" would have to re-answer the wall/floor precedence the two
+ * frame-driven arms below settle.
+ *
  * @param {{deck:number,w:number,h:number,cells:Array}|null} frame
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
  * @param {Array<{x:number,y:number,deck:number,kind:number,mat:number}>|null} materials
- * @returns {{tx:number,ty:number,kind:'wall'|'floor',mat:number}[]}
+ * @returns {{tx:number,ty:number,kind:'wall'|'floor',mat:number,occluded?:boolean}[]}
  */
 export function roomMaterialTiles(frame, focusRoom, materials) {
   const out = [];
@@ -1411,7 +1591,8 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
   const matAt = new Map();
   if (Array.isArray(materials)) {
     for (const m of materials) {
-      if (m && (m.deck | 0) === (focusRoom.deck | 0)) matAt.set((m.x | 0) + ',' + (m.y | 0), m.mat | 0);
+      // The ROW, not just the byte: the citizen arm below needs the channel's own wall/floor `kind`.
+      if (m && (m.deck | 0) === (focusRoom.deck | 0)) matAt.set((m.x | 0) + ',' + (m.y | 0), m);
     }
   }
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
@@ -1421,9 +1602,21 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
       const cell = frame.cells[ty * frame.w + tx];
       if (!Array.isArray(cell)) continue;
       const code = cell[0] | 0;
-      const mat = matAt.get(tx + ',' + ty) || 0;
+      const row = matAt.get(tx + ',' + ty);
+      const mat = row ? (row.mat | 0) : 0;
       if (code === 35) out.push({ tx, ty, kind: 'wall', mat });          // '#' wall → always skinned
       else if (code === 46 && mat) out.push({ tx, ty, kind: 'floor', mat }); // '.' floor → only if non-default
+      // `row &&` is not redundant with `mat` — it is written out because a later edit that widens
+      // this arm must not reach `row.kind` through an absent row. (Measured: dropping only `&& mat`
+      // made the no-row leg die by TypeError instead of by assertion — a FALSE RED, TRAPS 3.)
+      else if (code === CITIZEN_GLYPH_CODE && row && mat) {
+        // A PAWN IS NOT A REASON TO TAKE UP THE CARPET — see this function's header. The channel says
+        // what the tile is made of AND whether it is wall or floor; the frame lost only the terrain
+        // glyph. `mat` is still required, so a pawn on a DEFAULT floor adds nothing (the same
+        // non-default rule the '.' arm above obeys), and `occluded` lets a caller tell "the frame
+        // said so" from "the channel did", exactly as `roomCells` marks its restored devices.
+        out.push({ tx, ty, kind: (row.kind | 0) === 0 ? 'wall' : 'floor', mat, occluded: true });
+      }
     }
   }
   return out;
@@ -2226,6 +2419,24 @@ export function demolishTarget(tx, ty, designs, decor, frame) {
   // BORROWED piece's registry `kind` says nothing about the tile. The only kind that means "no
   // device stands here" is `resource`, so that is the one this asks about. Pinned both ways, over
   // the whole ledger rather than the one glyph, in `room-model.test.js`.
+  //
+  // ⛔⛔ FILED 2026-08-05, AND ITS SEVERITY WENT **UP** WHEN THE PAWN-OCCLUSION FALLBACK LANDED —
+  // WHICH IS THE WHOLE REASON THIS PARAGRAPH IS HERE RATHER THAN IN A BACKLOG. This branch still
+  // reads `itemForGlyph(code)` off the frame, so a device with a crew member standing on it
+  // classifies as `empty` and DEMOLISH is silently dropped (`roomzoom-view.js`'s `default: break`).
+  //   BEFORE the fallback that was SELF-CONSISTENT: the device was invisible, so refusing to
+  //   demolish something the player could not see was not a lie.
+  //   AFTER it, the surface DRAWS the capsule under her and the verb refuses it. Picture and verb
+  //   disagree, and the refusal is silent — the binding "invisible feedback is FUNCTIONAL" shape,
+  //   pointing the other way: the feedback is now visible and the VERB is the thing that is missing.
+  // ⇒ THE CLOSE: give this function the same `deviceCond` Map (`roomzoom-view.js` already holds it
+  // and already hands it to `roomCells` twice) and fall through to `itemForDeviceRow(dev.get(...))`
+  // when `code` is `CITIZEN_GLYPH_CODE`, exactly as `roomCells` does.
+  // ⛔ NOT DONE HERE, DELIBERATELY, AND THE REASON IS THAT IT IS NOT ONE LINE: it changes this
+  // function's signature, its caller, and the `WEAR_SEAM_CENSUS` reference count in
+  // `devices-model.test.js` (a fourth re-measure in one lane), and it needs its own driven
+  // press-through-to-`Cmd.remove` test — the seam `demolishTarget`'s Light tests already cover for
+  // borrowed art. A verb change belongs to a package that can drive the verb.
   const _id = itemForGlyph(code);
   if (code >= 0 && !NON_FURNITURE.has(code) && !STRUCTURE_CODES.has(code)
       && _id && !isResourceItem(_id)) {

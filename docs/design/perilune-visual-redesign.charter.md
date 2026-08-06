@@ -95,7 +95,8 @@ Files: NEW `client/src/items/fittings.js` (30 builders on the oblique kit + help
 retired rows in `objects.js`/`fixtures.js` per the mapping table (§4).
 Registry math moves IN ONE COMMIT: `items.test.js` `ITEM_IDS.length` equality + class
 census + `wrecked.test.js` 70-twin ledger + `device-sprite-coverage` (every projectable
-glyph stays skinned — the ~23 uncovered device rows KEEP their old art; uncovered materials
+glyph stays skinned — the ~23 uncovered device rows KEEP their old art (21 since 2026-08-05,
+see FILED/P2b below); uncovered materials
 (12)/resources (9) untouched). `items-model.test.js:286` badge ink literal moves to paper
 values. Fix the 14 unfinished fittings per §4 defect classes.
 
@@ -142,9 +143,20 @@ only where the skin demands it. ALL SIX VIEWS SURVIVE (E5). Width pins (`.c-bar`
 `moss-program-editor.test.js`.
 
 ### FILED (not this wave)
-- **P2b**: restyle the 70 wrecked twins + the 23 uncovered device rows + 12 materials +
+- **P2b**: restyle the 70 wrecked twins + the **21** uncovered device rows + 12 materials +
   9 resources into the paper idiom (no design exists — needs owner art direction or a
   follow-up design doc).
+  ⚠️ **23 → 21 ON 2026-08-05, RE-MEASURED, NOT ARITHMETIC.** The owner extended
+  `design-import/Perilune Fittings.dc.html` to thirty-four with a "Capsules and cells"
+  section, and cards 31/32 took `DeviceKind.CryoPod`'s two state glyphs off
+  `cryo-capsule-occupied` / `cryo-capsule-open`. Those two rows leave this list; nothing
+  else moved (`battery-bank` was already on the paper set, so cards 33/34 changed WHICH
+  paper piece a Battery draws and its wrecked twin's idiom, not this count). Counted by
+  intersecting `Object.values(GLYPH_TO_ITEM)` with `FITTING_IDS` — 35 glyph-reachable ids,
+  14 on the paper set, 21 still warm. ⇒ **The three displaced warm rows are still
+  REGISTERED and still carry their twins** (the 70-twin bijection), so P2b's first term is
+  unchanged at 70 and its second term shrank; a restyle sweep must read the ledger, not
+  this sentence.
 - **P7**: the story panels' DATA (per-room sentence + day-stamped emotional chronicle with
   oxblood beats) — sim+wire package, gated on M4 mood/Persona; the owner's core goal lands
   fully only with this.

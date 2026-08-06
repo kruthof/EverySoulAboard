@@ -167,6 +167,11 @@ the game does not have.
 
 Added by the **2026-07-28 mock re-import**. Both are `client/src/items/cryo.js`.
 
+⛔ **BOTH ROWS' GLYPH COLUMNS BELOW ARE HISTORY SINCE 2026-08-05 — READ THE NOTE UNDER THE TABLE.**
+`K` and `k` now belong to catalogue 31/32 (`capsule-sealed` / `capsule-open`,
+`client/src/items/fittings.js`). These two keep their class, their `deviceKind` and their wrecked
+twins, and draw nothing the player can reach.
+
 | # | Piece | Class | Placement | Sim glyph | Notes |
 |---|-------|-------|-----------|-----------|-------|
 | 69 | CRYO CAPSULE · OCCUPIED | FUNCTIONAL [exists] | CryoPod (27) | `K` → occupied capsule | A crew member frozen behind frost glass; cyan `-196°` plate, live LED. The kind's REST glyph (`Glyphs.ForDevice`). |
@@ -223,13 +228,13 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 26 |
-| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
-| **FUNCTIONAL total** | **29** |
-| COSMETIC (view-only `decor`, non-hashed) | 30 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 42 |
+| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 5 |
+| **FUNCTIONAL total** | **47** |
+| COSMETIC (view-only `decor`, non-hashed) | 43 |
 | MATERIAL (wall/floor tint) | 12 |
-| RESOURCE (ground stack, a sim `ItemKind`) | 9 |
-| **Total** | **80** |
+| RESOURCE (ground stack, a sim `ItemKind`) | 18 |
+| **Total** | **120** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -237,6 +242,91 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **107 → 120 ON THE MERGED TREE (main × lane/paper-machines, 2026-08-05), and TWO classes moved:
+FUNCTIONAL 39 → 47 and COSMETIC 38 → 43.** Every number in the Tally above is **RE-DERIVED off the
+merged `ITEMS` with `node -e`, never summed** (TRAPS 8th shape): this lane measured 80 → 93 against a
+tree without the capsules-and-cells rows, without the nine paper ground stacks and without the
+fourteen paper fixtures, and main measured 107 without these thirteen. The merged truth is
+**42 [exists] + 5 [NEW] = 47 FUNCTIONAL · 43 COSMETIC · 12 MATERIAL · 18 RESOURCE = 120**.
+
+`client/src/items/machines.js` draws the ship's own plant — the thirteen pieces neither design
+document covers — and every one is a NEW row rather than a re-skin: `reactor-plant`, `solar-wing`,
+`bottle-rack`, `reclaimer-stack`, `paste-column`, `med-cot`, `fab-cell`, `ring-array`, `dish-mast`,
+`plant-pot`, `book-case`, `deck-turret`, `sleeper-pod`. The thirteen WARM rows they replace
+(`reactor`, `solar-panel`, `oxygen-tank`, `water-recycler`, `paste-dispenser`, `med-bed`,
+`fabricator`, `sensor-array`, `comms-dish`, `potted-plant`, `bookshelf`, `turret`, `cryopod`) are
+kept, at `glyph: null`, so this Tally counts both halves and neither number shrank. **[NEW] went
+3 → 5** for a reason that is about ART and not about the sim: `reactor-plant` and `bottle-rack` are
+paper drawings of the same two kinds `reactor` and `oxygen-tank` were already waiting on, and
+`DeviceKind.Reactor` / `DeviceKind.OxygenTank` still do not exist. Six glyphs moved to the new rows
+— `'G'` SolarWing, `'R'` Reclaimer, `'d'` MedBed, `'F'` Fabricator, `'x'` Telescope, `'P'` PlantPot —
+and `GLYPH_SUBSTITUTE`'s `'O'` and `'Y'` were repointed to `bottle-rack` and `reclaimer-stack`.
+
+⚠️ **93 → 107 ON THE MERGED TREE (main × lane/paper-fixtures, 2026-08-05).** Every number in the
+Tally above is **RE-DERIVED off the merged `ITEMS` with `node -e`, never summed** (TRAPS 8th shape):
+this lane measured 80 → 94 against a tree without the capsules-and-cells rows and without the nine
+paper ground stacks, and main measured 93 without these fourteen. The merged truth is
+**36 [exists] + 3 [NEW] = 39 FUNCTIONAL · 38 COSMETIC · 12 MATERIAL · 18 RESOURCE = 107**, and note
+that FUNCTIONAL is the one class BOTH sides moved — a sum would have been a guess.
+
+⚠️ **80 → 94 on 2026-08-05 (lane/paper-fixtures, the ship's architecture).** Fourteen NEW rows —
+`door-sliding`, `door-airlock`, `door-blast`, `deck-hatch`, `conduit-run`, `vent-grille`,
+`extractor-fan`, `hull-port`, `bulkhead-screen`, `arms-rack`, `deck-marker`, `lamp-sconce`,
+`grow-lamp`, `flood-lamp` — drawn in `client/src/items/paper-fixtures.js`. Six are FUNCTIONAL
+(`Door` ×3 states, `Ladder`, `Conduit`, `AirVent`; all `[exists]`, so the `[NEW]` split does not
+move) and eight COSMETIC. ⛔ **Unlike VR-P2's twenty-one, none of these replaces a row in place**:
+the warm pieces they displace stay registered as unreached art so that the wrecked-twin bijection
+against `perilune-item-set.dc.html` keeps measuring seventy. `'+'`, `'H'` and `'^'` moved off
+`sliding-door` / `hatch-ladder` / `air-vent`; `GLYPH_SUBSTITUTE`'s `'*'` and `'X'` were repointed to
+`lamp-sconce` and `door-blast`.
+
+⚠️ **9 → 18 RESOURCE and 84 → 93 on 2026-08-05 (lane/paper-resources, the visual redesign's ground
+stacks).** The nine loose piles the `items` wire channel carries were redrawn in the owner's
+paper/ink dialect (`client/src/items/paper-resources.js`) under new ids that name the OBJECT rather
+than the material — `spoil-heap`, `tuber-crate`, `plate-offcut`, `gear-set`, `control-card`,
+`seal-set`, `ice-block`, `body-bag`, `turnings`. ⚠️ **It is an ADDITION and not a re-skin, and the
+total moving with the class is the tell.** A registry key is unique, so the redraw could not reuse
+`regolith`/`potato`/… while those rows stayed registered; the nine warm rows are therefore KEPT as
+unreached art with BOTH joins handed over (`itemKind: null`, `glyph: null`, `supersededBy: '<the new
+row>'`) — the `ItemKind` name join `room-model.js` reads and the `Glyphs.ForItem` join
+`items/glyph-map.js` reads, which are two different derivations and both had to move. Retiring them
+outright was refused with the cost measured: eight of their wrecked twins are eight of the mock's
+SEVENTY, and that bijection is the evidence the other sixty-two are transcribed correctly.
+`GLYPH_TO_ITEM` did not change size — the same nine chars, nine different rows.
+⚠️ **THE TOTAL ABOVE IS RE-DERIVED OFF THE MERGED TREE, NOT SUMMED** (TRAPS 8th shape): this lane
+measured 80 → 89 against a tree without the four capsules-and-cells rows, and the capsules lane
+measured 80 → 84 against a tree without these nine. Neither literal is true here; 93 and the four
+class numbers were re-counted off `ITEMS` after the merge.
+
+⚠️ **29 → 33 FUNCTIONAL and 80 → 84 on 2026-08-05, LATER THE SAME DAY** — the owner's revision of
+`design-import/Perilune Fittings.dc.html` from thirty pieces to **thirty-four**, adding a "Capsules
+and cells" section (31 CAPSULE SEALED · 32 CAPSULE OPEN · 33 CELL SOUND · 34 CELL SPENT). **FUNCTIONAL
+is the only class that moved, and that is the mirror image of the nine below it**: those were decor
+because every `DeviceKind` they could claim was taken; these four ARE the art for two kinds that were
+still drawing pre-redesign warm pieces — `CryoPod` (twelve on `--ship wreck`) and `Battery` (three).
+All four are `[exists]`, so the `[NEW]` split does not move.
+
+⇒ **THREE WARM ROWS LOST THEIR GLYPH CLAIMS TO THEM AND WERE KEPT, NOT DELETED**:
+`cryo-capsule-occupied` and `cryo-capsule-open` (69/70 above) surrendered `K`/`k` to 31/32, and
+`battery-bank` (the cell RACK, catalogue 27) surrendered `B` to 33. All three now read
+`glyph: null` — the shape `airlock` and `blast-door` already have — and are **unreached art**, said
+out loud here rather than left to be found. Deleting them was refused with the cost measured:
+their twins are three of the SEVENTY the wrecked bijection walks positionally against
+`docs/design/perilune-item-set.dc.html`, and shrinking that population would have required inventing
+a "mock pieces deliberately unclaimed" ledger to relax the one test that proves the other twins are
+transcribed correctly. **The Tally cannot see any of this** — three rows changed a field that is not
+`kind` — which is the same blind spot the VR-P2 note below records, in its second instance.
+
+⇒ **`cell-spent` (34) is the only one of the four with no glyph, and that is not an omission.**
+`DeviceKind.Battery` has exactly one `Glyphs.ForDevice` arm (`B`), so "spent" is a CONDITION, not a
+state the glyph channel can spell. It reaches the screen as `WRECKED['cell-sound']` in
+`client/src/items/wrecked.js`, chosen by `client/src/items/wear.js` off the `devices` channel's
+`cond` byte at `wear.wreck_threshold` — the same predicate every other device uses. It is also an
+entry in `NO_WRECKED_TWIN` (a spent cell is already the wrecked state — `swarf`'s argument; ⚠️ that
+ledger holds **THREE** on the merged tree, because the paper ground stacks brought `turnings` the
+same day and neither lane could see the other's entry), and the FIRST twin in this repo that is a
+design drawing rather than a damage pass over its pristine piece.
 
 ⚠️ **21 → 30 COSMETIC and 71 → 80 on 2026-08-05 (VR-P2, the visual redesign's fittings package).**
 The owner's second design document, `design-import/Perilune Fittings.dc.html`, is a THIRTY-piece

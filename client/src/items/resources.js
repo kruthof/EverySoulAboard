@@ -1,7 +1,7 @@
 // The 8 RESOURCE builders — the GROUND STACKS of the warm item set (docs/design/perilune-item-set
 // .dc.html, section "Resources & loose items", re-imported 2026-07-27 as the 8 NEW pieces). Each is a
 // pure `(opts) -> string` SVG-`<g>`-fragment builder in the same centred mock-px space as
-// objects.js / structures.js / fixtures.js; see helpers.js for the coordinate model.
+// objects.js / fixtures.js; see helpers.js for the coordinate model.
 //
 // WHY THESE ARE A FILE OF THEIR OWN and not eight more rows in objects.js: an OBJECT is a thing a
 // player PLACES and a device the sim OWNS. A resource is loose matter LYING on a floor tile, keyed by

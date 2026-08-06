@@ -130,11 +130,19 @@ test('an absent or unknown kind byte answers MACHINE, never a confident guess', 
 // MUTATION: name from the picture (`ITEMS[itemForGlyph(code)].deviceKind`) ⇒ every row below fails.
 const SUBSTITUTED = Object.freeze([
   // [glyph, DeviceKind byte the sim projects it from, the piece it BORROWS]
-  ['O', 10, 'oxygen-tank'],      // WaterTank
+  // — lane/paper-machines — `O` and `Y` were `'oxygen-tank'` / `'water-recycler'` until 2026-08-05,
+  // when the paper machines replaced the warm art those two borrows landed on. THE BORROW ITSELF IS
+  // UNCHANGED and so is what this fixture is for: a WaterTank still wears an oxygen bottle's picture
+  // and a SalvageRecycler still wears a reclaimer's, so naming a machine from its ART is still wrong
+  // for both. Only the drawing moved.
+  ['O', 10, 'bottle-rack'],      // WaterTank
   ['=', 16, 'space-heater'],     // Radiator
-  ['Y', 15, 'water-recycler'],   // SalvageRecycler
+  ['Y', 15, 'reclaimer-stack'],  // SalvageRecycler
   ['C', 21, 'locker'],           // MedCabinet
-  ['*', 8, 'wall-lamp'],         // Light
+  // — lane/paper-fixtures — the Light borrow moved from `wall-lamp` to `lamp-sconce` on 2026-08-05.
+  // The SHAPE is unchanged and that is what this row is here for: it is still the one COSMETIC
+  // borrow, so the `fnFn.length >= 5` floor below still means what it says.
+  ['*', 8, 'lamp-sconce'],       // Light
   ['I', 26, 'cooker'],           // IceMelter
 ]);
 
@@ -160,7 +168,7 @@ test('the substitution fixture is REAL — every row is a live borrow in the shi
   assert.ok(fnFn.length >= 5,
     `only ${fnFn.length} of the borrows are FUNCTIONAL→FUNCTIONAL. That is the population the first `
     + 'draft\'s resource/cosmetic fixture structurally excluded, and the one this guard exists for.');
-  assert.equal(ITEMS['wall-lamp'].kind, 'cosmetic',
+  assert.equal(ITEMS['lamp-sconce'].kind, 'cosmetic',
     'the one COSMETIC borrow moved. It is named here because it is the exception that makes the '
     + 'count above meaningful, not because anything depends on it.');
 });
@@ -437,7 +445,7 @@ const FOG = [RECT.rx + 7, RECT.ry + 1];
 // ⭐ THE SUBSTITUTION TILE (send-back). A `WaterTank` (DeviceKind 10) standing on a tile whose glyph
 // the projection draws as `oxygen-tank` — a LIVE `GLYPH_SUBSTITUTE` borrow, and FUNCTIONAL→FUNCTIONAL,
 // which is the population the first draft's resource/cosmetic fixture structurally excluded. Named
-// from the picture it reads "OXYGEN TANK"; named from the channel it reads "WATER TANK".
+// from the picture it reads "BOTTLE RACK"; named from the channel it reads "WATER TANK".
 const TANK = [RECT.rx + 9, RECT.ry + 5];
 // ⭐⭐ M3-13 — THE NEVER-SERVICEABLE TILE. A `CryoPod` (DeviceKind 27) on the `devices` channel with
 // `serv = 0`, which is what the host emits for every kind whose `maint` is 0.00 in the defs. It is
@@ -459,7 +467,7 @@ function frameMsg(crew, selCid) {
   put(WING, 'G'.charCodeAt(0));   // → 'solar-panel'
   put(CELL, 'B'.charCodeAt(0));   // → 'battery-bank'
   put(FOG, 'S'.charCodeAt(0));    // → 'o2-scrubber', drawn but NOT on the devices channel
-  put(TANK, 'O'.charCodeAt(0));   // → 'oxygen-tank' ART over a WaterTank ROW (the borrow)
+  put(TANK, 'O'.charCodeAt(0));   // → 'bottle-rack' ART over a WaterTank ROW (the borrow)
   put(POD, 'K'.charCodeAt(0));    // → 'cryo-capsule-occupied' (M3-13)
   const who = crew.find((c) => c.cid === selCid) || null;
   return {
@@ -788,7 +796,7 @@ test('and the row NAMES the machine it is about — the two fixtures read differ
 // `ITEMS[itemForGlyph(cell[0])].deviceKind` ⇒ the row reads "OXYGEN TANK" and this reddens.
 test('a WaterTank wearing OXYGEN TANK art is offered as WATER TANK', () => {
   prime([ADA], null);
-  assert.equal(itemForGlyph('O'.charCodeAt(0)), 'oxygen-tank',
+  assert.equal(itemForGlyph('O'.charCodeAt(0)), 'bottle-rack',
     'fixture check: the tile\'s glyph must really resolve to the BORROWED piece, or this leg is '
     + 'asserting nothing about substitution at all');
   rightClick(TANK);
@@ -796,7 +804,7 @@ test('a WaterTank wearing OXYGEN TANK art is offered as WATER TANK', () => {
   assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR WATER TANK',
     'the row is named from the ART on the tile instead of from the `devices` channel\'s `kind` byte. '
     + '`GLYPH_SUBSTITUTE` makes six kinds wear another piece\'s picture, so the picture is not '
-    + 'evidence about what is installed — this one would offer to repair an "OXYGEN TANK", a device '
+    + 'evidence about what is installed — this one would offer to repair a "BOTTLE RACK", a device '
     + 'kind that does not exist in the sim at all.');
 });
 
