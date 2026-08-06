@@ -263,6 +263,16 @@ namespace Perilune.Tests
 
             // Fill the queue with WALL designations — cheaper to author than 64 placements, and the
             // cap is a property of the LIST, not of what is on it.
+            //
+            // ⛔ `spot` IS SKIPPED, AND IT IS A REAL DEFECT THIS FIXTURE CARRIED RATHER THAN A
+            // TIDY-UP. `ClearTileFor` takes the FIRST placeable tile in (z, y, x) scan order and this
+            // loop designates in the SAME order, so the two collide the moment `spot` lands inside
+            // the first 64 designable tiles — and then the press below is refused `AlreadyQueued`
+            // (7), not `TooManyQueued` (8), and the cap arm is never reached at all. It did not
+            // collide only because the cryo bay's floor happened to be full of machinery; the
+            // 2026-08-06 declutter ruling emptied that floor, `spot` became (1,1,0), and the test
+            // went red for a reason that had nothing to do with the queue cap. A fixture whose
+            // subject depends on another compartment's furniture is not measuring what it says.
             int cap = sim.Defs.Build.MaxStaged;
             int laid = 0;
             var w = sim.World;
@@ -271,6 +281,7 @@ namespace Perilune.Tests
                     for (int x = 0; x < w.Width && laid < cap; x++)
                     {
                         var p = new Int3(x, y, z);
+                        if (p == spot) continue;
                         if (build.Designate(sim, p, BuildKind.Wall)) laid++;
                     }
             Assert.AreEqual(cap, laid,

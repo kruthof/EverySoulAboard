@@ -31,20 +31,27 @@ namespace Perilune.Tests
     /// instant she stands on it <c>DriveWorker</c>'s pickup branch re-asks
     /// <c>FindPath(worker → staging)</c>, gets false, and calls <c>Abandon</c> — which clears
     /// <c>JobKind</c>, which clears <c>HeldByOrder</c>, which IS the order. Measured on the shipped
-    /// wreck, unmodified: taken at tick 1, dropped at <b>tick 51</b>, at <c>(3,6,0)</c>.</para>
+    /// wreck, unmodified: taken at tick 1, dropped when she reaches that stack.
+    /// ⛔ <b>THE TICK AND THE TILE ARE NOT QUOTED HERE ANY MORE — see the note below; they have moved
+    /// twice and nothing in this file asserts them.</b></para>
     ///
-    /// <para>⚠️ <b>D7 (2026-08-03) MOVED THOSE TWO NUMBERS AND THEY ARE RE-MEASURED, NOT ADJUSTED.</b>
-    /// This paragraph read <i>"walks 17 sim-seconds to the ship's ONE Parts stack at (7,14,0) …
-    /// dropped at tick 171"</i>, which was true while the reactor bay held the only Parts aboard.
-    /// The <c>cabin stores</c> cache (<c>AuthoredShips.PeriluneWreck</c>) puts seven one-unit Parts
-    /// crates in the cryo bay at <c>(2..8, 6, 0)</c> — she wakes at <c>(3,1,0)</c>, so the nearest
-    /// Parts is now FIVE tiles away instead of seventeen, and <c>FindNearestConsumable</c> is tier
-    /// before distance with distance breaking the tie. DRIVEN AS A 2×2 on this tree, the cache the
-    /// only difference: <b>with it, dropped tick 51 at (3,6,0); with the crates removed, dropped
-    /// tick 171 at (7,14,0) — the old trace reproduced to the digit.</b> The DIAGNOSIS is untouched
-    /// (it is reachability, and the pickup branch is still the arm that kills the order); only the
-    /// route shortened. ⛔ No assertion in this file pinned either number — they lived in prose, so
-    /// a green gate could not see them move. Found by re-measuring, not by a red test.</para>
+    /// <para>⚠️ <b>THE ROUTE HAS MOVED TWICE, AND THE SECOND TIME IS WHY THE NUMBERS ARE NOW GONE
+    /// FROM THIS HEADER RATHER THAN UPDATED.</b>
+    /// It first read <i>"walks 17 sim-seconds to the ship's ONE Parts stack at (7,14,0) … dropped at
+    /// tick 171"</i>, true while the reactor bay held the only Parts aboard. D7 (2026-08-03) put the
+    /// <c>cabin stores</c> in the CRYO BAY at <c>(2..8, 6, 0)</c>, five tiles from where she wakes,
+    /// and it became <b>tick 51 at (3,6,0)</b> — driven as a 2×2, the cache the only difference,
+    /// with the old trace reproduced to the digit.
+    /// ⛔ The owner's declutter ruling (2026-08-06) then moved the cache OUT of the pod bay
+    /// altogether: the crates are at <c>(2..8, 15, 0)</c> in the reactor bay. RE-DERIVED on the
+    /// shipped ship — she wakes at <c>(3,1,0)</c> and the nearest Parts is the crate at
+    /// <c>(3,15,0)</c>, Manhattan <b>14</b> (the <c>spares</c> at <c>(7,14,0)</c> is 17). <b>The drop
+    /// TICK was NOT re-driven and is deliberately not written down</b>: it is longer than 51 and of
+    /// the same order as the pre-D7 171, and a figure nobody measured has no place in a header that
+    /// two lanes have already had to correct.
+    /// The DIAGNOSIS is untouched — it is reachability, and the pickup branch is still the arm that
+    /// kills the order. ⛔ NO ASSERTION IN THIS FILE EVER PINNED EITHER NUMBER; they lived in prose,
+    /// so a green gate could not see them move, and the same line has now gone stale twice.</para>
     ///
     /// <para>⛔ <b>IT IS NOT "GEOMETRY-SPECIFIC" AND IT IS NOT FLAKY — IT IS REACHABILITY, AND IT IS
     /// DETERMINISTIC.</b> D5 fires exactly when the ordered machine's staging tile is in a different
@@ -260,7 +267,9 @@ namespace Perilune.Tests
         /// <para>⛔ THIS IS THE LEG THE OBVIOUS IMPLEMENTATION FAILS. <c>_prioritised</c> retires an
         /// entry the moment the sim turns it into a held job ("the held job IS the order from then
         /// on") — so a badge that rode only on the pending record would have vanished at tick 1 and
-        /// been gone long before the drop (tick 51 on the shipped ship since D7, 171 before it —
+        /// been gone long before the drop (a walk of at least a dozen tiles on any version of this
+        /// ship — 171 pre-D7, 51 while the cache sat in the pod bay, longer again since the
+        /// 2026-08-06 declutter ruling moved it to the reactor bay; see the class header —
         /// the leg waits for the drop rather than pinning the tick).</para>
         /// </summary>
         [Test]

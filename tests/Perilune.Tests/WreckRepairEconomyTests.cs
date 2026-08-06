@@ -131,16 +131,22 @@ namespace Perilune.Tests
         /// cannot silently become a test of the current stock.</summary>
         private const int PreFixConsumableUnits = 3;
 
-        /// <summary>The locker's tile, written out. Cryo-bay bottom-right, diagonally opposite the
-        /// capsule the crew member wakes in.</summary>
-        private static readonly Int3 LockerTile = new Int3(9, 6, 0);
+        /// <summary>The locker's tile, written out. ⚠️ IT MOVED ON 2026-08-06 (the owner's declutter
+        /// ruling: the pod bay keeps only capsules and a terminal). It is now the reactor bay's stock
+        /// row, one tile outboard of the `gaskets` — not the cryo bay's bottom-right. RE-DERIVED by
+        /// driving the built ship, not edited by arithmetic.</summary>
+        private static readonly Int3 LockerTile = new Int3(9, 14, 0);
 
         /// <summary>D7's seven <c>cabin stores</c> tiles, written out by hand for the same reason
-        /// <see cref="LockerTile"/> is — the same row, inboard of the locker.</summary>
+        /// <see cref="LockerTile"/> is. ⚠️ THEY MOVED WITH IT ON 2026-08-06 — the reactor bay's y = 15
+        /// row, one row inboard of the ship's own stock row. Three files hold this list by hand
+        /// (<c>CabinStoresTests</c>, <c>ChronicleSignalTests</c> and this one) and all three had to
+        /// move together; a lane that moves the cache again must grep for the OTHER TWO, which is
+        /// why each of them says so.</summary>
         private static readonly Int3[] CabinStoresTiles =
         {
-            new Int3(2, 6, 0), new Int3(3, 6, 0), new Int3(4, 6, 0), new Int3(5, 6, 0),
-            new Int3(6, 6, 0), new Int3(7, 6, 0), new Int3(8, 6, 0),
+            new Int3(2, 15, 0), new Int3(3, 15, 0), new Int3(4, 15, 0), new Int3(5, 15, 0),
+            new Int3(6, 15, 0), new Int3(7, 15, 0), new Int3(8, 15, 0),
         };
 
         /// <summary>The door on <c>hall_d0_s1</c>'s spine-side apron — the compartment this ship's

@@ -159,9 +159,16 @@ namespace Perilune.Tests
         /// <summary>The vent's tile: the hall's <c>(X1, Y0)</c> corner, DIRECTLY ABOVE
         /// <c>vent_cryo</c> at (10,1,0). Written out, not derived.</summary>
         private static readonly Int3 VentTile = new Int3(10, 1, 1);
-        /// <summary>The deck-0 tile under it — the one riser tap <c>WreckCutDeck1Risers</c> exempts,
-        /// and the tile <c>vent_cryo</c> itself stands on.</summary>
+        /// <summary>The deck-0 tile under it — the one riser tap <c>WreckCutDeck1Risers</c> exempts.
+        /// ⚠️ IT WAS ALSO <c>vent_cryo</c>'s tile until 2026-08-06; since the owner's declutter
+        /// ruling it is bare cryo-bay floor carrying only the trunk. The exemption never depended on
+        /// the vent — see <see cref="TheFixtureIsTheShipTheseLiteralsDescribe"/>.</summary>
         private static readonly Int3 TapTile = new Int3(10, 1, 0);
+
+        /// <summary>A floor tile plainly inside the CRYO BAY, used to name the tap's room without
+        /// re-deriving the slot rect here. (5,3,0) is the bay's own centre — <c>SlotGridPlanner</c>
+        /// probes slot 0 at exactly this tile.</summary>
+        private static readonly Int3 CryoBayFloor = new Int3(5, 3, 0);
         /// <summary>A floor tile inside the hall, clear of <c>AddWreckedHall</c>'s device row
         /// (y = Y0+1 = 2) — where a worker would stand.</summary>
         private static readonly Int3 HallFloor = new Int3(5, 3, 1);
@@ -267,25 +274,44 @@ namespace Perilune.Tests
                               "compartment no leg below looks at");
 
             // The tap. The riser is the mechanism, so its existence is a premise and not a detail.
-            // ⚠️ SCANNED, NOT `TryGetDeviceAt` — TWO devices stand on that tile and the tray is not
-            // the one it returns. That is the geometry: the exempted tap is the tile `vent_cryo`
-            // itself stands on, which is why the exemption costs the deck-0 tray nothing.
-            bool tray = false, cryoVent = false;
+            //
+            // ⭐⭐ THE GEOMETRY WAS RE-ARGUED ON 2026-08-06, WHICH IS WHAT THE OLD LEG ASKED FOR IN SO
+            // MANY WORDS. It required `vent_cryo` to stand on this tile and closed with *"if the cryo
+            // bay moves, re-argue this geometry rather than re-typing the literals."* The owner's
+            // declutter ruling moved it: the pod bay now holds only capsules and a terminal, and
+            // `vent_cryo` stands in the spine outside its door.
+            //
+            // ⛔ THE MECHANISM IS UNTOUCHED, AND THAT IS THE POINT OF THE RE-ARGUMENT.
+            // `WreckCutDeck1Risers` exempts this tap BY THE DECK-1 VENT'S NAME, never by what stands
+            // on deck 0 — so the tray at (10,1,0) survives because `vent_d1` is above it, not because
+            // `vent_cryo` was under it. The old coincidence (the deck-1 vent's hall and the cryo bay
+            // are slot 0 on their decks, so `(X1, Y0)` is the same corner on both) was FICTION, and
+            // the fiction still reads: the one riser the raiders left is the one over the compartment
+            // whose life support they never finished.
+            //
+            // ⇒ SO THE LEG IS REPLACED, NOT DELETED — deleting it would leave the exemption's
+            // geometry unpinned, which is CLAUDE.md's 9th shape (a narrowed instrument goes blind).
+            // What is asserted now is the two facts the mechanism actually rests on: the tap is
+            // TRAYED, and the tap is INSIDE THE CRYO BAY'S OWN ROOM (so "the riser over the pod bay"
+            // is a statement about this ship and not a leftover sentence).
+            bool tray = false;
             var devices = sim.Devices.Items;
             for (int i = 0; i < devices.Count; i++)
             {
                 if (devices[i].Pos != TapTile) continue;
                 if (devices[i].Kind == DeviceKind.Conduit) tray = true;
-                if (devices[i].Name == "vent_cryo") cryoVent = true;
             }
             if (!tray)
                 offenders.Add($"there is no Conduit at {TapTile.X},{TapTile.Y},{TapTile.Z} — the exempted riser " +
                               "tap is gone, and with it the only way the upper deck can be powered");
-            if (!cryoVent)
-                offenders.Add($"vent_cryo no longer stands at {TapTile.X},{TapTile.Y},{TapTile.Z}. The deck-1 " +
-                              "vent is authored DIRECTLY ABOVE it on purpose — the one riser the raiders left " +
-                              "is the one inside the one compartment whose life support they never finished. If " +
-                              "the cryo bay moves, re-argue this geometry rather than re-typing the literals.");
+            ushort tapRoom = sim.Rooms.RoomIdAt(sim.World, TapTile);
+            ushort cryoRoom = sim.Rooms.RoomIdAt(sim.World, CryoBayFloor);
+            if (tapRoom == 0 || tapRoom != cryoRoom)
+                offenders.Add($"the exempted tap at {TapTile.X},{TapTile.Y},{TapTile.Z} is no longer inside the " +
+                              "CRYO BAY (room " + tapRoom + " vs " + cryoRoom + "). The deck-1 vent is authored " +
+                              "directly above the pod bay on purpose — the one riser the raiders left is the one " +
+                              "over the one compartment whose life support they never finished. If the SLOT " +
+                              "layout moves, re-argue this geometry rather than re-typing the literals.");
 
             Assert.That(offenders, Is.Empty,
                 "this file's literals no longer describe --ship wreck:\n  " + string.Join("\n  ", offenders));

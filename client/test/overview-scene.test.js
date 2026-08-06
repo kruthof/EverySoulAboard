@@ -29,6 +29,8 @@ import { markCellSvg, markVariant } from '../src/ui/mark-overlay.js';
 // a string nothing emits any more.
 import { GROUND_CLASS, DOUBLE_CLASS } from '../src/render/sketch.js';
 import { buildTileItem } from '../src/items/wear.js';
+// The hull-skin projection the outboard layer mounts on (owner ruling, 2026-08-06).
+import { hullSkinY, HULL_SKIN } from '../src/ui/ship-elevation.js';
 
 const FIX = JSON.parse(
   readFileSync(fileURLToPath(new URL('./fixtures/overview-grid.json', import.meta.url)), 'utf8'),
@@ -1713,4 +1715,157 @@ test('the ground-rule knob is UNREACHABLE at plate scale — the materials excep
     'non-vacuity: the TREATED locker carries no ground rule either, so the leg above proves nothing '
     + 'about the flag — it would pass against a catalogue that never grounds anything');
   assert.notEqual(raw, treated, 'the flag changed no bytes at all');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE OUTBOARD PLANT — owner ruling, 2026-08-06: *"Solars inside a ship make not a lot of sense."*
+//
+// A `SolarWing` is bolted to the hull. The sim's tile is its ADDRESS — the feed its cable comes in
+// through — so the plate draws TWO things for one device: the FEED on the tile, and the PANEL on the
+// plating outside the ship. These pin the second one, and the first one is already pinned by
+// `device-sprite-coverage.test.js`'s "every glyph the registry skins is drawn by BOTH surfaces".
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** A two-deck plate with `n` SolarWings on the given deck, and one non-outboard device as a control.
+ *  Built from hand slots rather than the grid fixture because the fixture's ship has no wings. */
+function outboardScene({ wings, deck = 0, extra = [] }) {
+  const slots = (bank) => [0, 1, 2, 3].map((i) => ({ anchorName: `${bank}${i}`, rect: { x: 1 + i * 11, y: 1, w: 11, h: 8 } }))
+    .concat([0, 1, 2, 3].map((i) => ({ anchorName: `${bank}${i + 4}`, rect: { x: 1 + i * 11, y: 10, w: 11, h: 8 } })));
+  const dv = [{ deck: 1, slots: slots('u') }, { deck: 0, slots: slots('l') }];
+  const devices = wings.map(([x, y, cond]) => ({ x, y, deck, kind: 5, cond })).concat(extra);
+  return { svg: overviewScene({ deck: 0, decksView: dv, devices, items: [] }), decksView: dv };
+}
+
+/** Every `<g class="pl-fit pl-outboard">` on the plate, with its tile, anchor, pylon and piece box. */
+function outboardPieces(svg) {
+  return [...svg.matchAll(
+    /<g class="pl-fit pl-outboard" data-tile="(\d+),(\d+)" data-deck="(\d+)"([^>]*)>\s*<path d="M([-\d.]+) ([-\d.]+) L([-\d.]+) ([-\d.]+)"[^>]*\/>\s*<g transform="translate\(([-\d.]+) ([-\d.]+)\)"/g,
+  )].map((m) => ({
+    tx: +m[1], ty: +m[2], deck: +m[3], attrs: m[4],
+    pylon: { x: +m[5], y0: +m[6], y1: +m[8] },
+    box: { x: +m[9], y: +m[10] },
+  }));
+}
+
+test('THE WING IS OUTBOARD: it is drawn OUTSIDE the interior bay, on the hull skin', () => {
+  // ⛔ THE ONE MUTATION THIS FILE EXISTS FOR: draw the wing through `project` (the in-room floor
+  // point) instead of `outboardPoint`, and every piece lands inside `BAY` — which is what the owner
+  // asked us to stop doing. This assertion is that difference, expressed as a rectangle.
+  const { svg } = outboardScene({ wings: [[2, 12, 79], [4, 12, 46], [6, 12, 15]] });
+  const pieces = outboardPieces(svg);
+  assert.equal(pieces.length, 3, 'three authored SolarWings did not produce three outboard pieces');
+
+  const inside = pieces.filter((p) => p.pylon.y > BAY.y && p.pylon.y < BAY.y + BAY.h);
+  assert.deepEqual(inside, [],
+    'a wing is mounted INSIDE the interior bay (BAY.y '
+    + `${BAY.y.toFixed(1)}..${(BAY.y + BAY.h).toFixed(1)}), i.e. inside the ship. That is the exact `
+    + 'thing the 2026-08-06 ruling removed: "solars inside a ship make not a lot of sense".');
+
+  // Deck 0 is the LOWER band on a two-deck ship, so its wings hang BELOW the hull and the pylon runs
+  // downward. Direction, not just position — a piece mounted on the wrong skin would still be
+  // outside the bay.
+  for (const p of pieces) {
+    assert.ok(p.pylon.y0 > BAY.y + BAY.h,
+      `a deck-0 wing's mount (${p.pylon.y0.toFixed(1)}) is not below the bay's lower edge`);
+    assert.ok(p.pylon.y1 > p.pylon.y0,
+      'a deck-0 wing\'s pylon does not run DOWNWARD off the plating — it is mounted on the wrong side');
+  }
+});
+
+test('THE SKIN IS CHOSEN BY THE BAND: an upper-deck wing mounts ABOVE the hull', () => {
+  // The complement, so "outboard" cannot be satisfied by always drawing below. Without it a
+  // hard-coded lower skin passes every assertion in the test above.
+  const { svg } = outboardScene({ wings: [[5, 3, 230]], deck: 1 });
+  const [p] = outboardPieces(svg);
+  assert.ok(p, 'a deck-1 SolarWing produced no outboard piece at all');
+  assert.ok(p.pylon.y0 < BAY.y,
+    `a deck-1 wing mounts at ${p.pylon.y0.toFixed(1)}, not above the bay's top edge ${BAY.y.toFixed(1)}`);
+  assert.ok(p.pylon.y1 < p.pylon.y0, 'a deck-1 wing\'s pylon does not run UPWARD off the plating');
+  // …and its BOX sits above its mount, so the panel hangs up rather than down through the hull.
+  assert.ok(p.box.y < p.pylon.y0, 'the deck-1 panel is drawn below its own mounting point');
+});
+
+test('AN OUTBOARD WING IS STILL ITS TILE: it carries data-tile, data-anchor and its own ink', () => {
+  // ⛔ WHY THIS MATTERS MORE THAN IT LOOKS. The plate's live press census
+  // (`client/tools/overview-plate-shot.mjs`) is exhaustive over every `.pl-fit`, and
+  // `overview-view.js`'s `pointToTile` reads `data-tile` first / `roomAnchorOf` reads `data-anchor`.
+  // A wing that carried neither would be a piece of the ship a player can see and cannot press.
+  const { svg } = outboardScene({ wings: [[2, 12, 79]] });
+  const [p] = outboardPieces(svg);
+  assert.equal(p.tx, 2); assert.equal(p.ty, 12); assert.equal(p.deck, 0);
+  assert.match(p.attrs, /data-anchor="l4"/,
+    'the outboard wing does not name the compartment it is wired to, so a press on it cannot enter '
+    + 'the room — the defect `fittingLayer` closed for in-room pieces');
+  assert.match(p.attrs, /pointer-events="visiblePainted"/,
+    'the wing is not pressable on its own ink');
+});
+
+test('THE U POSITION IS THE TILE\'S OWN: three wings two tiles apart draw in tile order, apart', () => {
+  // ⭐ The honesty claim: the wing hangs over the compartment it belongs to, at that compartment's
+  // own position along the ship. Asserted as ORDER + a positive minimum SEPARATION rather than as
+  // three literals, because a literal cannot tell "the projection is right" from "the numbers were
+  // copied off a run".
+  const { svg } = outboardScene({ wings: [[2, 12, 79], [4, 12, 46], [6, 12, 15]] });
+  const xs = outboardPieces(svg).sort((a, b) => a.tx - b.tx).map((p) => p.pylon.x);
+  assert.ok(xs[0] < xs[1] && xs[1] < xs[2],
+    `wings at tiles x 2 < 4 < 6 draw at ${xs.map((v) => v.toFixed(1)).join(' / ')} — out of order`);
+  const gaps = [xs[1] - xs[0], xs[2] - xs[1]];
+  assert.ok(Math.min(...gaps) > 8,
+    `two wings two tiles apart are only ${Math.min(...gaps).toFixed(2)} px apart on the plate — at a `
+    + `${Math.max(10, makeShipTransform(outboardScene({ wings: [] }).decksView, null).tileSize * 2.2).toFixed(1)} px `
+    + 'piece box they would overlap into one silhouette and three panels would read as one.');
+});
+
+test('AN UNSURVEYED COMPARTMENT HANGS NO WING: the hatch is not contradicted from outside', () => {
+  // ⚠️ THE HALF THE FIRST DRAFT MISSED. `overviewScene` sweeps unsurveyed slots out of the fitting
+  // map; sweeping only `fittings` and not `outboard` would have left the plate announcing the ship's
+  // generators on the hull outside a compartment whose interior is drawn as unknown.
+  const slots = [0, 1, 2, 3].map((i) => ({ anchorName: `l${i}`, rect: { x: 1 + i * 11, y: 1, w: 11, h: 8 } }))
+    .concat([0, 1, 2, 3].map((i) => ({ anchorName: `l${i + 4}`, rect: { x: 1 + i * 11, y: 10, w: 11, h: 8 } })));
+  const dv = [{ deck: 0, slots }];
+  const devices = [{ x: 2, y: 12, deck: 0, kind: 5, cond: 79 }];
+  // A frame whose cells are all FOG — every slot unsurveyed.
+  const blindFrame = { deck: 0, w: 45, h: 18, cells: [] };
+  const svg = overviewScene({ deck: 0, decksView: dv, devices, items: [], frame: blindFrame });
+  assert.equal(outboardPieces(svg).length, 0,
+    'a wing was hung on the hull outside a compartment nobody has entered. The plate would be '
+    + 'telling the player what the ship generates through a hatch that says the room is unknown.');
+  // NON-VACUITY: the same scene WITHOUT the blind frame draws the wing, so the leg above is
+  // measuring the fog sweep and not a broken fixture.
+  assert.equal(outboardPieces(overviewScene({ deck: 0, decksView: dv, devices, items: [] })).length, 1,
+    'the control scene draws no wing either — this test proves nothing about fog');
+});
+
+test('THE HULL SKIN IS INTERPOLATED, not a constant — a wing sits ON the plating', () => {
+  // The hull tapers 4 design px over its 816 px length. A constant edge leaves a visible gap between
+  // the pylon and the plating at one end of the ship; this is that claim, in arithmetic.
+  const bow = hullSkinY(HULL_SKIN.bottom.x1, false);
+  const stern = hullSkinY(HULL_SKIN.bottom.x0, false);
+  assert.notEqual(bow, stern, 'the lower skin is level — `hullSkinY` has stopped interpolating');
+  const mid = hullSkinY((HULL_SKIN.bottom.x0 + HULL_SKIN.bottom.x1) / 2, false);
+  assert.ok(Math.abs(mid - (bow + stern) / 2) < 1e-9, 'the interpolation is not linear');
+  // CLAMPED at both ends, so a bay wider than the parallel-sided run still lands on plating.
+  assert.equal(hullSkinY(HULL_SKIN.bottom.x0 - 500, false), stern, 'the skin extrapolates off the stern');
+  assert.equal(hullSkinY(HULL_SKIN.bottom.x1 + 500, false), bow, 'the skin extrapolates off the bow');
+  // The two skins are on opposite sides of the bay — the guard that "above" really means above.
+  assert.ok(hullSkinY(HULL_SKIN.top.x0, true) < BAY.y, 'the upper skin is not above the interior bay');
+  assert.ok(stern > BAY.y + BAY.h, 'the lower skin is not below the interior bay');
+});
+
+test('THE WING WEARS ITS WEAR: a wrecked wing draws its post-raid twin, outboard', () => {
+  // The join that must NOT have been broken by moving the drawing: `items/wear.js` picks the twin
+  // from the CONDITION byte, and the outboard layer goes through the same `buildTileItem` as every
+  // in-room piece. `--ship wreck` authors 0.31 / 0.18 / 0.06 against a 0.25 threshold, so the plate
+  // really does draw one sound wing and two wrecked ones.
+  // ⚠️ `cond` IS THE WIRE'S BYTE, 0..255 — NOT a 0..1 Condition, and the first draft of this test
+  // passed 0.9 and 0.06 and compared two IDENTICAL wrecked wings. `wear.js` compares against
+  // `WRECK_COND_BYTE` = round(0.25 × 255) = 64, so both floats were far below it and the test was
+  // green-by-accident against a join it never exercised. The wreck's own three wings are 0.31 / 0.18
+  // / 0.06 ⇒ bytes 79 / 46 / 15: one sound, two wrecked.
+  const sound = outboardScene({ wings: [[2, 12, 79]] }).svg;
+  const wrecked = outboardScene({ wings: [[2, 12, 15]] }).svg;
+  const cut = (s) => s.slice(s.indexOf('pl-outboard'));
+  assert.notEqual(cut(sound), cut(wrecked),
+    'a sound wing and a wrecked one draw byte-identical outboard art — the wear join does not reach '
+    + 'this layer, and every wing on the plate lies about its condition');
 });

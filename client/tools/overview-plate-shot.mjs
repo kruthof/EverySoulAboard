@@ -782,9 +782,25 @@ await png('4-work-tab.png');
 // purpose and must read 0 while a furnished one reads its true count.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-/** How many fittings the PLATE drew into one compartment. The plate's half of the join. */
+/**
+ * How many fittings the PLATE drew into one compartment. The plate's half of the join.
+ *
+ * ⛔⛔ IT COUNTS DISTINCT `data-tile` VALUES, NOT `.pl-fit` ELEMENTS, AND THAT CHANGED ON 2026-08-06.
+ * The Room Zoom's masthead counts TILES — one machine, one entry — while the plate is free to draw a
+ * machine more than once. The owner's outboard ruling made it do exactly that: a `SolarWing` wears
+ * TWO drawings on this surface, the FEED standing on its own tile and the PANEL bolted to the hull
+ * outside, and both are `.pl-fit` (deliberately — the press census is exhaustive over that class and
+ * a piece a player can see must answer for its tile). Counting elements read **28 against the room's
+ * 25** on `--ship wreck`'s reactor bay and this leg failed, naming the deck as the classic cause.
+ *
+ * ⇒ THE JOIN'S REAL CLAIM IS ABOUT TILES: *does the plate show what the room contains?* Two pictures
+ * of one machine is not a discrepancy; a picture of a machine the room does not hold is. Counting
+ * tiles asks that question and is unmoved by how many marks a surface spends on one of them.
+ * ⚠️ It does NOT weaken the press census, which still walks every `.pl-fit` element individually.
+ */
 const plateCensus = (anchor, deck) => evaluate(
-  `document.querySelectorAll('.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]').length`);
+  `new Set([...document.querySelectorAll('.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]')]`
+  + `.map((e) => e.dataset.tile)).size`);
 
 /**
  * What the opened Room Zoom says it holds. The room's half of the join.
@@ -865,6 +881,8 @@ async function enterRoomLegs() {
   const cells = await json(`JSON.stringify([...document.querySelectorAll('.pl-room[data-anchor]')].map((g)=>{
     const a=g.dataset.anchor, band=g.closest('.pl-deck'), d=band?band.dataset.deck:null;
     const fits=[...document.querySelectorAll('.pl-fit[data-anchor="'+a+'"][data-deck="'+d+'"]')];
+    // TILES, not elements — see plateCensus above. A SolarWing wears two drawings on this surface.
+    const tiles=new Set(fits.map((f)=>f.dataset.tile)).size;
     let at=null;
     for (const f of fits){ const r=f.getBoundingClientRect();
       for(let j=1;j<=15&&!at;j++) for(let i=1;i<=15&&!at;i++){
@@ -874,7 +892,7 @@ async function enterRoomLegs() {
       }
       if(at) break; }
     if(!at){ const r=g.getBoundingClientRect(); at={x:r.left+r.width*0.5,y:r.top+r.height*0.88,onInk:false}; }
-    return {anchor:a, deck:d, n:fits.length, x:at.x, y:at.y, onInk:at.onInk};
+    return {anchor:a, deck:d, n:tiles, pieces:fits.length, x:at.x, y:at.y, onInk:at.onInk};
   }))`);
   if (!cells || !cells.length) { problems.push('no compartments on the plate — the room-entry legs cannot run'); return; }
   log(`  ${cells.length} compartments; census by band: `

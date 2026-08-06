@@ -911,7 +911,13 @@ test('GLYPH_SUBSTITUTE is real, non-shadowing, and pinned to its size', () => {
   // ledger's own header — a device glyph with no dedicated piece and a named stand-in with a reason
   // — with the twist that the glyph is a STATE of a kind whose rest glyph already has a piece, so
   // one `ITEMS` row could not express it. The reason is in glyph-map.js beside the entry.
-  assert.equal(Object.keys(GLYPH_SUBSTITUTE).length, 7,
+  // 7 → 8 (2026-08-06, the owner's outboard ruling): `'G'` (SolarWing) wears the CONDUIT RUN.
+  // ⚠️ IT IS THE FIRST ENTRY WHOSE REASON IS NOT "THE SET HAS NO PIECE" — the set HAS a solar wing,
+  // and the point is that a solar wing is not a thing that stands in a room. `ITEMS['solar-wing']`
+  // gave `'G'` up in the SAME COMMIT (so the non-shadowing leg above still holds), and the plate
+  // hangs it on the hull through `OUTBOARD_ITEM_FOR_KIND` instead. The full reason is in
+  // glyph-map.js beside the entry; what belongs here is that the size moved DELIBERATELY.
+  assert.equal(Object.keys(GLYPH_SUBSTITUTE).length, 8,
     'GLYPH_SUBSTITUTE CHANGED SIZE. It only shrinks — an entry goes away when the warm set grows a\n' +
     'real piece for that kind. Adding one means a device now wears art that is not its own, on the\n' +
     'one standard surface; that is a decision for a commit message, not a default.');

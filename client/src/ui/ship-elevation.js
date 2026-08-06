@@ -195,6 +195,47 @@ export const V_SPINE = 0.3;
 export const MIN_BAND_H = 26 * K;
 
 /**
+ * ⭐⭐ THE HULL'S OUTER SKIN — the two long, nearly-horizontal runs of `overview-scene.js`'s
+ * `HULL_D`, in PLATE px. This is the ONE thing on the plate that is outside the ship, and the
+ * outboard layer mounts on it.
+ *
+ * MEASURED off the same path the hull is drawn from (`data-dc-tpl="463"`), in DESIGN px:
+ * `… L932 90 L116 86 …` is the upper skin and `… L116 268.7 L932 264.7 …` the lower one. Neither is
+ * level — the hull tapers 4 px across its 816 px length — so an outboard piece must sit on the
+ * INTERPOLATED skin at its own x, not on a constant. A constant is off by up to 4 design px, which
+ * at `K` is 5 plate px and is a visible gap between a wing's pylon and the hull it is bolted to.
+ *
+ * ⛔ IT IS **NOT** `BAY`. The bay is the INTERIOR volume the decks stack in (design y 110..244.7);
+ * the skin is the plating (design y ~88 and ~266.7), and the 24 design px between them is hull
+ * structure that the cutaway draws through. Mounting on the bay's edge would put a wing inside the
+ * ship, which is the entire thing this ruling exists to stop.
+ */
+export const HULL_SKIN = Object.freeze({
+  top: Object.freeze({
+    x0: (116 - SRC.x) * K, y0: (86 - SRC.y) * K,
+    x1: (932 - SRC.x) * K, y1: (90 - SRC.y) * K,
+  }),
+  bottom: Object.freeze({
+    x0: (116 - SRC.x) * K, y0: (268.7 - SRC.y) * K,
+    x1: (932 - SRC.x) * K, y1: (264.7 - SRC.y) * K,
+  }),
+});
+
+/**
+ * The plate y at which the hull's skin sits under/over a given plate x. PURE.
+ * Clamped to the run's own ends so a ship whose bay is wider than its parallel-sided section still
+ * gets a point ON the plating rather than an extrapolation off the bow.
+ *
+ * @param {number} px plate-space x
+ * @param {boolean} above true for the upper skin, false for the lower
+ */
+export function hullSkinY(px, above) {
+  const r = above ? HULL_SKIN.top : HULL_SKIN.bottom;
+  const t = Math.min(1, Math.max(0, (px - r.x0) / (r.x1 - r.x0 || 1)));
+  return r.y0 + t * (r.y1 - r.y0);
+}
+
+/**
  * THE DECK STACK. Which deck gets which horizontal band, in design px.
  *
  * ⭐ THE ORDER IS `deckPips`' ORDER — HIGHEST DECK INDEX ON TOP — and it is deliberately the same
@@ -519,11 +560,44 @@ export function makeShipTransform(decksView, frame) {
   if (!isFinite(tileSize) || tileSize <= 0) tileSize = 4;
   tileSize = Math.max(2.5, tileSize);
 
+  /**
+   * ⭐⭐ WHERE A TILE'S OUTBOARD PIECE MOUNTS ON THE HULL — the owner's 2026-08-06 ruling, in
+   * arithmetic. A solar wing is bolted to the plating, not standing in a room, so the plate hangs it
+   * on the skin at its compartment's own position along the ship.
+   *
+   * ⭐ `u` IS THE SAME `u` THE FLOOR USES, taken from `tileUV` — the identical function the click map
+   * inverts. So a wing on the reactor bay's third column hangs over the reactor bay's third column,
+   * and the press census can require the drawn piece to designate its own tile exactly as it does for
+   * an in-room fitting. Nothing here is a second derivation of position.
+   * ⚠️ `v` IS DROPPED, AND THAT IS THE HONEST READING RATHER THAN A SIMPLIFICATION. `v` is depth into
+   * the ship's BEAM; a side elevation has no way to show it on an outboard piece, because the piece
+   * is on the near skin or the far one and the drawing shows one silhouette either way. The tile's
+   * `u` (its position along the hull) is the whole of what a side view can say, and the layer says
+   * only that.
+   *
+   * WHICH SKIN: the band nearer the top of the bay mounts UP, everything else mounts DOWN. On the
+   * two-deck wreck that is deck 1 → upper skin, deck 0 → lower skin. ⛔ The tie (a one-deck ship,
+   * whose single band's centre IS the bay's centre) resolves DOWN, deterministically, because the
+   * comparison is strict — a ship must not draw its wings on a different side on two machines.
+   *
+   * @param {number} tx @param {number} ty @param {number} deck
+   * @returns {{x:number, y:number, above:boolean}|null} plate px + which skin, or null off-deck
+   */
+  function outboardPoint(tx, ty, deck) {
+    const d = decks.get(deck | 0);
+    if (!d) return null;
+    const uv = tileUV(tx, ty, deck);
+    if (!uv) return null;
+    const x = d.plane.O[0] + uv[0] * d.plane.BU[0];
+    const above = (d.band.y + d.band.h / 2) < (BAY.y + BAY.h / 2);
+    return { x, y: hullSkinY(x, above), above };
+  }
+
   return {
     lay, decks, tileSize,
     /** The deck indices this transform draws, top band first. */
     deckOrder: lay.bands.map((b) => b.deck),
-    project, invert, deckAt, tileUV, hits,
+    project, invert, deckAt, tileUV, hits, outboardPoint,
     /** One deck's record (band + plane + spans), or null. */
     deckInfo: (deck) => decks.get(deck | 0) || null,
     /**

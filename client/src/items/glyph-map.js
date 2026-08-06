@@ -142,6 +142,55 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
   // bands are the set's one accent colour rather than a red stripe. `door-sliding` claims `'+'` for
   // the same reason `sliding-door` used to, so the closed/locked pair still lands on two pieces.
   X: 'door-blast',
+  // ⭐⭐ SolarWing (5) — owner ruling, 2026-08-06: *"Solars inside a ship make not a lot of sense."*
+  // ⚠️ THIS ENTRY IS THE SECOND SHAPE THIS LEDGER HAS EVER CARRIED, AND THE DIFFERENCE IS WORTH THE
+  // PARAGRAPH. Every other line here exists because THE SET HAS NO PIECE for that kind. This one
+  // exists because the set's piece is not a thing that stands in a room: `ITEMS['solar-wing']` is a
+  // ruled photovoltaic panel in a heavy frame, and a panel is bolted to the OUTSIDE of the hull. The
+  // sim's tile is the wing's ADDRESS — where its feed comes into the ship — so what a player should
+  // see standing on that tile is the FEED, and the panel belongs on the hull.
+  //   ⇒ the Level-1 plate hangs `solar-wing` outboard (`overview-scene.js` `outboardLayer`, reached
+  //     through `OUTBOARD_ITEM_FOR_KIND` below), and BOTH surfaces draw `conduit-run` on the tile.
+  // ⭐ WHY `conduit-run` AND NOT NEW ART: it is the catalogue's own SERVICES piece — a wall-hung
+  // cable tray with three nodes and a drop that leaves the picture on a dashed cut — and its three
+  // nodes are ink-filled when POWERED and empty when not, so the feed of a generator says whether the
+  // generator is delivering. No new colours, no new row, and its wrecked twin already exists
+  // (`wrecked.js`, state '7%'), so the wear join is unbroken: the wreck's `wing_b` 0.18 and `wing_c`
+  // 0.06 draw a wrecked feed on the tile AND a wrecked panel on the hull.
+  // ⛔ IT DOES *NOT* SHADOW A GLYPH A REAL PIECE CLAIMS, which is the invariant this ledger's guard
+  // asserts: `solar-wing`'s registry row gave `'G'` up in the SAME COMMIT. Two rows are involved and
+  // both had to move, which is why neither change is legible alone.
+  // ⚠️ AND IT IS A HOMOGENEITY EXCEPTION IN ONE DIRECTION ONLY: `conduit-run` is `functional`, like
+  // five of the seven entries above, so the header's "never read the borrowed piece's `kind`" trap is
+  // not made worse here. Its `deviceKind` is `Conduit`, not `SolarWing` — which is exactly why a
+  // NAME must never be taken from the art (`room-model.js` `DEVICE_KIND_NAMES` is the authority, and
+  // it still answers "SolarWing" for this tile).
+  G: 'conduit-run',
+});
+
+/**
+ * ⭐⭐ <b>THE OUTBOARD LEDGER — a kind whose art does not stand INSIDE the ship.</b> Owner ruling,
+ * 2026-08-06. Keyed by the sim `DeviceKind` MEMBER NAME (`room-model.js`'s `DEVICE_KIND_NAMES`,
+ * which is pinned member-for-member against `sim/Sim.Core/Entities/Device.cs`), because that is the
+ * one identity of a tile's machine that does not depend on what is drawn on it.
+ *
+ * <p>THE ONE READER is `overview-scene.js`'s `outboardLayer`: a device whose kind is in this table
+ * is pulled OUT of the plate's in-room fitting layer and hung on the hull's outer edge instead, at
+ * the `u` its own tile projects to. The Room Zoom has no hull to hang anything on and is untouched —
+ * there the tile wears its `GLYPH_SUBSTITUTE` art like any other.</p>
+ *
+ * ⛔ IT IS A HAND LEDGER AND IT MUST STAY ONE. `DeviceKind → itemId` is NOT a function of `ITEMS`
+ * (`items/wear.js`'s header measures this: `SolarWing` alone is claimed by `solar-panel` AND
+ * `solar-wing`, and `Battery` by three rows), so a derivation would have to pick arbitrarily and
+ * would pick the retired warm piece as readily as the shipped one. Every entry is a decision with a
+ * reason, exactly like `GLYPH_SUBSTITUTE`, and `device-sprite-coverage.test.js` pins the size of
+ * this table so a second kind cannot be added by habit.
+ */
+export const OUTBOARD_ITEM_FOR_KIND = Object.freeze({
+  // The only outboard machine in the game. `--ship wreck` authors three of them in the reactor bay
+  // and the power budget depends on all three (6 kW each, condition-scaled) — nothing about the SIM
+  // moved with this ruling, only where the plate draws the panel.
+  SolarWing: 'solar-wing',
 });
 
 // `'/'` (`Glyphs.DoorOpen`) is the third state and it is DELIBERATELY UNSKINNED — an open doorway is

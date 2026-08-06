@@ -41,14 +41,22 @@ namespace Perilune.Tests
         private static Simulation Boot() =>
             ShipPlanBuilder.Build(AuthoredShips.PeriluneWreck(), Stack());
 
-        /// <summary>The seven <c>cabin stores</c> tiles, written out by hand — the cryo bay's bottom
-        /// row between <c>battery_cryo</c> (1,6) and M1-I's damage-control locker (9,6). Hand-written
-        /// rather than searched for by LABEL, on <c>WreckRepairEconomyTests.RestoreThePreFixStock</c>'s
-        /// precedent: a label is prose and a control keyed on one tracks a rename instead of a ship.</summary>
+        /// <summary>The seven <c>cabin stores</c> tiles, written out by hand. Hand-written rather
+        /// than searched for by LABEL, on <c>WreckRepairEconomyTests.RestoreThePreFixStock</c>'s
+        /// precedent: a label is prose and a control keyed on one tracks a rename instead of a ship.
+        ///
+        /// <para>⚠️ <b>THEY MOVED ON 2026-08-06</b> — the owner's declutter ruling ("the cryo room
+        /// looks extremely crowded — there should only be the capsules and a terminal") took the
+        /// whole cache out of the pod bay's bottom row and put it in the REACTOR BAY, on y = 15, one
+        /// row inboard of the ship's own stock row. Nothing about the cache's SIZE, SHAPE or purpose
+        /// moved: still seven one-unit crates, for the reason below. RE-DERIVED off the built ship.
+        /// Two sibling files hold the same list by hand (<c>WreckRepairEconomyTests</c> and
+        /// <c>ChronicleSignalTests</c>, which strips it to get a browning-out ship); a lane that
+        /// moves the cache again must move all three.</para></summary>
         private static readonly Int3[] CabinStoresTiles =
         {
-            new Int3(2, 6, 0), new Int3(3, 6, 0), new Int3(4, 6, 0), new Int3(5, 6, 0),
-            new Int3(6, 6, 0), new Int3(7, 6, 0), new Int3(8, 6, 0),
+            new Int3(2, 15, 0), new Int3(3, 15, 0), new Int3(4, 15, 0), new Int3(5, 15, 0),
+            new Int3(6, 15, 0), new Int3(7, 15, 0), new Int3(8, 15, 0),
         };
 
         /// <summary>Units in the cache. The pin on the SIZE; see the derivation beside the authoring

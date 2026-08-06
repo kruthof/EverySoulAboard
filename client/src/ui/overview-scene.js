@@ -50,6 +50,13 @@ import { taskTag } from './console-model.js';
 import { markVariant, markCellSvg } from './mark-overlay.js';
 // ⭐ THE ALL-DECK FITTING SOURCE. See its header for the measurement that replaced the frame.
 import { deckFittings, fogTiles, slotUnsurveyed, surveyedDecks } from './ship-fittings.js';
+// ⭐ THE OUTBOARD LEDGER — which `DeviceKind`s are drawn on the HULL rather than in a room, and
+// which piece each hangs. One table, with its reason, in the module that already owns "what art
+// does this device wear". See `outboardLayer`.
+import { OUTBOARD_ITEM_FOR_KIND } from '../items/glyph-map.js';
+// The client's ONE mirror of `DeviceKind`, pinned member-for-member against `Device.cs` by
+// `prioritise-menu.test.js`. The outboard ledger is keyed by member NAME, so this is the join.
+import { DEVICE_KIND_NAMES } from './room-model.js';
 // ⭐⭐ THE PROJECTION. One file, one contract, one inverse.
 import {
   VIEW_W, VIEW_H, K, SHIP_XF, BAY, V_SPINE,
@@ -463,6 +470,98 @@ function fittingLayer(info, deck, fittings, attention, size, idPrefix) {
   if (!pieces.length) return '';
   pieces.sort((a, b) => b.v - a.v);
   return `<g class="pl-furniture" pointer-events="none">${pieces.map((p) => p.svg).join('')}</g>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Layer 3b — WHAT IS BOLTED TO THE OUTSIDE: the hull-mounted plant. Owner ruling, 2026-08-06.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The `DeviceKind` byte of every kind in the outboard ledger, DERIVED from the pinned enum mirror
+ *  rather than typed. A ledger key that names no `DeviceKind` yields nothing and is caught by
+ *  `device-sprite-coverage.test.js`, which asserts every key is a real member. */
+const OUTBOARD_KIND_BYTES = new Map(
+  Object.keys(OUTBOARD_ITEM_FOR_KIND)
+    .map((name) => [DEVICE_KIND_NAMES.indexOf(name), OUTBOARD_ITEM_FOR_KIND[name]])
+    .filter(([k]) => k >= 0),
+);
+
+/** How far an outboard piece's pylon stands the panel off the plating, as a fraction of the piece's
+ *  own box. Small on purpose: at the plate's ~21 px piece this is ~3 px of stem, which is enough for
+ *  the eye to read "bolted on" and not enough to float the panel in space. */
+const OUTBOARD_STEM = 0.16;
+
+/**
+ * ⭐⭐ THE HULL-MOUNTED PLANT. *"Solars inside a ship make not a lot of sense"* (owner, 2026-08-06).
+ *
+ * ⛔ NOTHING IN THE SIM MOVED, AND THAT IS THE WHOLE DISCIPLINE OF THIS LAYER. `--ship wreck` still
+ * authors three `SolarWing`s on three reactor-bay tiles, each still generating 6 kW × EffectiveRate
+ * that the ship's power budget depends on. A device's TILE is its address — where its feed enters
+ * the ship — and a solar panel's address is inboard while the panel itself is not. So this layer
+ * ADDS a picture on the hull; it takes nothing away. The kind → art join is still a function of the
+ * honest wire bits (`devices` row `kind` → `OUTBOARD_ITEM_FOR_KIND`), the wear join is still the one
+ * in `items/wear.js`, and the tile keeps its own drawing on both surfaces (`conduit-run`, the feed).
+ *
+ * ⚠️ SO THE PLATE DRAWS TWO PIECES FOR ONE DEVICE, DELIBERATELY, and they are not the same picture
+ * twice: the tray on the floor is the FEED and the panel on the plating is the WING. They share a
+ * `data-tile`, so a press on either enters the same compartment and designates the same tile — which
+ * is what makes "two drawings" a description of one machine rather than a duplicate of it.
+ *
+ * ⭐ THE PIECE CARRIES `data-tile` AND `data-anchor` LIKE ANY OTHER FITTING, so a press on a wing
+ * designates the wing's own tile and enters the compartment it is wired to. That is not decoration:
+ * the plate's live press census (`client/tools/overview-plate-shot.mjs`) is exhaustive over every
+ * drawn `.pl-fit`, and an outboard piece that did not answer for its tile would be a hole in it.
+ * The class is `pl-fit` for exactly that reason — one census, one contract, two mounting points.
+ *
+ * ⚠️ IT DRAWS OUTSIDE `BAY`, WHICH IS OUTSIDE EVERY BAND'S BOX, so `makeShipTransform`'s `hits`
+ * refuses these pixels and a press on the paper beside a wing still designates nothing. The wing's
+ * own INK is pressable (`visiblePainted`, same as an in-room fitting); the gap around it is not.
+ * ⇒ a wing is reachable by clicking the WING, never by clicking near it.
+ *
+ * @param {object} t the ship transform (needs `outboardPoint`)
+ * @param {number} deck
+ * @param {Map} fittings the deck's fitting map — outboard rows are REMOVED from it by the caller
+ * @param {Map} outboard the rows pulled out, same shape as `fittings`
+ * @param {Set} attention condemned tiles ("x,y")
+ * @param {Array} spans the deck's slot spans, for `data-anchor`
+ */
+function outboardLayer(t, deck, outboard, attention, spans, size, idPrefix) {
+  if (!(outboard instanceof Map) || !outboard.size) return '';
+  const pieces = [];
+  for (const [key, f] of outboard) {
+    const c = key.indexOf(',');
+    const tx = +key.slice(0, c), ty = +key.slice(c + 1);
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) continue;
+    const mount = t.outboardPoint(tx + 0.5, ty + 0.5, deck);
+    if (!mount) continue;
+    const span = spans.find((sp) => covers(sp.rect, tx, ty));
+    const stem = size * OUTBOARD_STEM;
+    // ABOVE the skin the piece hangs upward, so its own base point is the top of the stem; BELOW it
+    // hangs down, so its base point is the plating and the drawing runs off it. `buildTileItem`
+    // emits a piece standing ON its origin's baseline (translate y = base − size), which is why the
+    // two arms differ by a whole `size` and not by a sign.
+    const y = mount.above ? mount.y - stem : mount.y + stem + size;
+    const g = nonScaling(
+      buildTileItem(f.itemId, { w: size, h: size, idPrefix: `${idPrefix}-o${tx}-${ty}`,
+        facing: f.face || 0, sketch: false }, f.cond),
+    );
+    const attend = attention.has(key);
+    // The pylon: one short stroke from the plating to the piece's own edge, so the panel is bolted
+    // to the ship rather than floating beside it. Authored here rather than in the catalogue because
+    // it is a fact about MOUNTING, not about the machine — the same piece drawn on a catalogue sheet
+    // has no hull to stand off.
+    const py0 = mount.y;
+    const py1 = mount.above ? mount.y - stem : mount.y + stem;
+    pieces.push(`<g class="pl-fit pl-outboard" data-tile="${tx},${ty}" data-deck="${deck}"`
+      + (span ? ` data-anchor="${esc(span.slot.anchorName)}"` : '')
+      + ` pointer-events="visiblePainted"`
+      + (attend ? ` stroke="${ATTEND}"` : '') + '>'
+      + `<path d="M${n(mount.x)} ${n(py0)} L${n(mount.x)} ${n(py1)}" fill="none"`
+      + ` stroke="${attend ? ATTEND : INK}" stroke-width="1.1" vector-effect="non-scaling-stroke"/>`
+      + `<g transform="translate(${n(mount.x - size / 2)} ${n(y - size)})">${g}</g>`
+      + `</g>`);
+  }
+  if (!pieces.length) return '';
+  return `<g class="pl-outboard-layer" pointer-events="none">${pieces.join('')}</g>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -937,6 +1036,34 @@ export function overviewScene(state) {
     const fog = fogTiles(st.frame, deck);
     const faults = attentionTiles(st.marks, deck);
     const fittings = deckFittings(st.devices, st.items, deck);
+    // ⭐⭐ THE OUTBOARD SPLIT, AND IT HAPPENS HERE SO IT HAPPENS ONCE.
+    //
+    // ⛔⛔ IT IS A **COPY, NOT A MOVE**, AND THE FIRST CUT OF THIS PACKAGE GOT THAT WRONG. Deleting
+    // the row from `fittings` looked right — one machine, one drawing — and it made the plate the
+    // ONE surface on which a SolarWing tile drew nothing at all. Two guards caught it and both were
+    // right to: `device-sprite-coverage.test.js`'s *"a piece with real art is filtered out before it
+    // can be drawn"* named `conduit-run`, and *"the Overview COMPOSER draws furniture for every
+    // covered kind"* named `SolarWing (kind 5)`.
+    //
+    // ⇒ THE TWO DRAWINGS ARE TWO DIFFERENT THINGS AND BOTH ARE TRUE. The TILE carries the wing's
+    // FEED — the conduit run its cable comes into the ship through, which is what the sim's position
+    // actually addresses — and the HULL carries the panel. The owner's sentence is *"solars inside a
+    // ship make not a lot of sense"*; a cable tray inside a ship makes complete sense, and the tile
+    // must stay occupied, pressable and honest on BOTH surfaces (that is the ruling's own second
+    // clause, and it is the property `wear-join.test.js`'s shape-parity leg protects).
+    //
+    // `f.ground` guards the pull: a ground STACK has no `DeviceKind` — its `kind` byte is an
+    // `ItemKind` — so without it a stack whose `ItemKind` happens to equal `DeviceKind.SolarWing`
+    // (5) would be flung onto the hull.
+    const outboard = new Map();
+    if (OUTBOARD_KIND_BYTES.size) {
+      for (const [key, f] of fittings) {
+        if (f.ground) continue;
+        const itemId = OUTBOARD_KIND_BYTES.get(f.kind | 0);
+        if (!itemId) continue;
+        outboard.set(key, { ...f, itemId });
+      }
+    }
     // A compartment nobody has ever entered draws no contents — see `slotUnsurveyed`. Its tiles are
     // dropped from the fitting map so the hatch is not laid over a drawing.
     const dark = new Set();
@@ -944,10 +1071,16 @@ export function overviewScene(state) {
       if (slotUnsurveyed(fog, sp.rect)) dark.add(sp.index);
     }
     if (dark.size) {
-      for (const key of Array.from(fittings.keys())) {
-        const c = key.indexOf(',');
-        const tx = +key.slice(0, c), ty = +key.slice(c + 1);
-        if (raw.spans.some((sp) => dark.has(sp.index) && covers(sp.rect, tx, ty))) fittings.delete(key);
+      // ⚠️ BOTH MAPS, and it is the same rule for the same reason: a compartment nobody has entered
+      // draws no contents, and a wing bolted to the hull outside an unentered compartment is that
+      // compartment's contents. Sweeping only `fittings` would have left the plate announcing the
+      // ship's generators through a hatch that says nothing is known about the room.
+      for (const map of [fittings, outboard]) {
+        for (const key of Array.from(map.keys())) {
+          const c = key.indexOf(',');
+          const tx = +key.slice(0, c), ty = +key.slice(c + 1);
+          if (raw.spans.some((sp) => dark.has(sp.index) && covers(sp.rect, tx, ty))) map.delete(key);
+        }
       }
     }
     const rooms = raw.spans.map((sp) => compartment(info, sp, deck, {
@@ -968,6 +1101,12 @@ export function overviewScene(state) {
       // header in `ship-elevation.js` for why that number is the ACROSS span and not the min of the
       // two axes — taking the min drew every compartment empty.
       + fittingLayer(info, deck, fittings, faults, Math.max(10, t.tileSize * 2.2), `${id}-d${deck}`)
+      // ⭐ THE HULL-MOUNTED PLANT, at the SAME piece size as everything else on the plate. Sized
+      // larger it would overlap: the wreck's three wings sit two tiles apart on a 12-tile bay, which
+      // is 18.9 plate px between mounts against a 20.8 px box. One size keeps the ship's own scale
+      // honest and keeps three panels legible as three.
+      + outboardLayer(t, deck, outboard, faults, raw.spans,
+        Math.max(10, t.tileSize * 2.2), `${id}-d${deck}`)
       + `</g>`);
   }
 

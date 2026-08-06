@@ -1654,11 +1654,17 @@ namespace Perilune.Gen
         //     recomputed from a previous draft's arithmetic — the first version of this paragraph
         //     was wrong in every figure. This ship authors 44 such devices (the census's
         //     "worth SWARF if stripped" line), of which NINETEEN stand in the boot core:
-        //       cryobay        8 — the four wrecked pods, light_cryo 0.18, radiator_cryo 0.36,
-        //                          battery_cryo 0.11, term_moss 0.14
-        //       wreck_spine_0  2 — scrubber_spine 0.09, light_spine_0 0.16
-        //       reactor        9 — wing_a/b/c, battery_1, battery_2, tank_reserve,
-        //                          radiator_reactor, light_reactor, scrubber_reactor
+        //     ⚠️ THE PER-COMPARTMENT SPLIT WAS RE-DERIVED ON 2026-08-06 AND ONLY THE SPLIT MOVED.
+        //     The owner's declutter ruling relocated four machines into the spine and one into the
+        //     reactor bay; the TOTAL is untouched (44 aboard, 19 in the core) because relocation is
+        //     not authoring. Re-count it off `PrintTheBootCensus`, never off this list.
+        //       cryobay        5 — the four wrecked pods, term_moss 0.14
+        //       wreck_spine_0  4 — scrubber_spine 0.09, light_spine_0 0.16, light_cryo 0.18,
+        //                          radiator_cryo 0.36  (⚠️ vent_cryo 0.62 and scrubber_cryo 0.55 are
+        //                          NOT in it — both are above the 0.50 cliff, exactly as they were
+        //                          when they stood in the bay)
+        //       reactor       10 — wing_a/b/c, battery_1, battery_2, battery_cryo 0.11,
+        //                          tank_reserve, radiator_reactor, light_reactor, scrubber_reactor
         //     So the salvage rung can bootstrap without opening a single door, by a wide margin.
         //     (Two of the nineteen must NOT be stripped in practice — radiator_cryo and
         //     radiator_reactor are the survivable core's thermostats — and four of them are the
@@ -1733,6 +1739,31 @@ namespace Perilune.Gen
         /// spine and the Overview gives it a real label instead of its internal anchor id.</summary>
         public const int WreckCryoSlot = 0;
         public const string WreckCryoAnchor = "cryobay";
+
+        /// <summary>
+        /// ⭐ <b>THE CORE PLANT ALCOVE — the two spine columns the pod bay's life support stands in
+        /// since the owner's 2026-08-06 ruling</b> ("there should only be the capsules and a
+        /// terminal"). Four machines occupy the 2 × 2 block <c>{X0, X1} × {SpineY0, SpineY1}</c>,
+        /// immediately outside the cryo bay's doorway.
+        ///
+        /// <para>⛔ <b>THE DOOR APRON IS THE REASON THESE ARE 4 AND 6 RATHER THAN 5 AND 6.</b>
+        /// <see cref="SlotGridPlanner"/> puts every compartment's door at its interior rect's
+        /// <c>CenterX</c>, which for slot 0 (interior x 1..10) is <b>x = 5</b> — so the two spine
+        /// tiles at x = 5 are the apron the pawn walks through on every trip in or out of the bay.
+        /// A machine does not BLOCK a tile on this ship (<c>machines.def</c>: every
+        /// <c>blocks</c> is false), so nothing here would have been impassable — but a worksite
+        /// staged on a doorway is the shape <c>WorksiteSafety</c> exists to keep honest, and
+        /// straddling the apron is also what makes the drawing read as an alcove BESIDE a door
+        /// rather than a barricade across it.</para>
+        ///
+        /// <para>⚠️ DERIVED FROM THE PLANNER, NEVER TYPED: a slot's door column is its interior
+        /// <c>CenterX</c>, so these are <c>doorX ∓ 1</c>. A planner change that moves the doorway
+        /// moves the alcove with it, which is the property <c>WreckShipTests</c> asserts.</para>
+        /// </summary>
+        public static int WreckCorePlantX0 => SlotGridPlanner.InteriorRect(WreckCryoSlot).CenterX - 1;
+
+        /// <inheritdoc cref="WreckCorePlantX0"/>
+        public static int WreckCorePlantX1 => SlotGridPlanner.InteriorRect(WreckCryoSlot).CenterX + 1;
 
         /// <summary>The reactor bay: deck 0, slot 4 — directly below the cryo bay, so the walk from
         /// the pawn's pod to the ship's power, water and opening stock is the length of one
@@ -2088,18 +2119,156 @@ namespace Perilune.Gen
                 }
             }
 
+            // ⭐⭐ THE POD BAY'S PLANT STANDS IN THE CORRIDOR NOW — OWNER RULING, 2026-08-06.
+            // ---------------------------------------------------------------------------------------
+            // The owner, from a screenshot of the Room Zoom: *"The cryo room looks extremely crowded —
+            // there should only be the capsules and a terminal."* The bay drew TWENTY-SIX things
+            // (measured on the built ship, not counted off this file: 18 devices — twelve capsules and
+            // six machines — plus 8 uncarried ground stacks). It now draws THIRTEEN: the twelve
+            // capsules and `term_moss`.
+            //
+            // ⛔ NOTHING WAS DELETED, BECAUSE THE AUDIT FOUND NOTHING DECORATIVE. Every one of the
+            // thirteen pieces that left the bay is load-bearing — four are the core's life support,
+            // one is bank storage on the deck-0 network, one is a lamp that is also boot-board
+            // machine #9 in M1-I's own derivation, and eight are the ship's consumable stock. They
+            // are RELOCATED to the two adjacent pressurised compartments, and the destinations are
+            // chosen by mechanism, not by taste:
+            //
+            //   vent_cryo      -> spine (4,8)   AirVent injects into ITS OWN room and the core is one
+            //                                   air volume through the bay's boot-open door; a vent in
+            //                                   the corridor refills the corridor and the corridor
+            //                                   refills the bay (`AtmosphereSystem.FlowAcrossDoor`).
+            //   scrubber_cryo  -> spine (6,8)   `DiffuseAcrossDoors` exists precisely so a scrubber
+            //                                   can reach the compartment the crew stand in (B-3,
+            //                                   MECHANICS §13.1) — this is that mechanism used on
+            //                                   purpose rather than worked around.
+            //   radiator_cryo  -> spine (4,9)   ⚠️ THE ONE WITH A REAL COST, STATED WHERE IT HAPPENS.
+            //                                   A radiator only ever acts on its own room, so the bay
+            //                                   no longer has a thermostat: its heat now leaves
+            //                                   through `ThermalSystem.ConductAcrossDoor` (40 W/K
+            //                                   while the door is open) into a corridor that is
+            //                                   heat-STARVED. Measured below.
+            //   light_cryo     -> spine (6,9)   a corridor lamp. Still strippable, still on the
+            //                                   maintenance board at boot, still in breathable air —
+            //                                   every property M1-I's eight-Seal derivation used.
+            //   battery_cryo   -> reactor (9,12) between `battery_1` and `battery_2`. Deck 0 is ONE
+            //                                   power network (`WreckCutDeck1Risers`' own
+            //                                   measurement), so a battery's position is inert to
+            //                                   what it powers — DRIVEN, not argued, below.
+            //   the 8 stacks   -> reactor (see the two stock blocks further down)
+            //
+            // ⚠️ THE NAMES DO NOT MOVE, DELIBERATELY. `vent_cryo`, `scrubber_cryo`, `radiator_cryo`,
+            // `light_cryo` and `battery_cryo` are named by NINE test files (`OperateVerbTests`,
+            // `MossGateTests`, `BoardFaultTests`, `VentsVerbTests`, `ThawGateTests`, `DoorsVerbTests`,
+            // `Deck1VentTests`, `WreckShipTests`, `GridWreckTests`). The suffix still says what the
+            // machine is FOR — the pod bay's life support — which is the truthful half; it never said
+            // where it stood. Renaming them would have been a rename touching nine files and zero
+            // mechanisms.
+            //
+            // ⛔⛔ WHAT THIS COSTS, MEASURED AND NOT ARGUED — A DRIVEN A/B ON ONE TREE. Both legs are
+            // `ShipPlanBuilder.Build` + the default stack with NO PLAYER INPUT (the OD-H boot state),
+            // probes at (5,3,0) cryo / (16,9,0) spine / (7,14,0) reactor bay, run to TWELVE SIM-DAYS.
+            // ⭐ The control is not another tree and not another commit: it is THIS plan with the
+            // thirteen fittings' `Pos` written back to their pre-ruling tiles before `Build`, so the
+            // ONLY difference between the columns is where they stand.
+            //
+            //     h     cryo bay °C        cryo CO2 ppm        spine °C          reactor bay °C
+            //           ctrl -> shipped    ctrl -> shipped     ctrl -> shipped   ctrl -> shipped
+            //      0    19.85   19.85        500     500       19.85   19.85     19.85   19.85
+            //      6    10.06   23.99          0       6       17.43   10.00     10.00    9.97
+            //     24    10.00   28.89          0       2       11.22   10.00      9.46    9.61
+            //     48    16.38   31.71        516     524        7.53   11.98      5.20    6.54
+            //     72    26.71   33.80       1540    1570        7.64   11.89      3.97    7.41
+            //     84    28.73   34.01 ←peak 2048    2090        7.47   11.27      3.70    7.33
+            //    108    30.57 ←peak 33.82   3086    3151        6.25    9.41      1.36    4.75
+            //    168    23.94   25.50       5650    5772       -0.44    1.94     -5.04   -2.52
+            //    288     9.80   10.63      10798   11040      -16.09  -14.26    -21.08  -19.17
+            //
+            // ⇒ **THE POD BAY IS WARMER, AND SAYING ANYTHING ELSE WOULD BE FALSE.** It is no longer a
+            // thermostatted room; it is a warm room cooled through its own doorway. The control's bay
+            // sits pinned at EXACTLY 10.0 °C from h6 to h36 because `radiator_cryo` stood in it and
+            // `ThermalSystem.cs:97` will not reject below `radiator_floor_k` (283.15 K); the shipped
+            // bay climbs to 24 °C by h6 and 29 °C by h24 and peaks at **34.01 °C at h84**.
+            // ⭐ IT NEVER APPROACHES THE ONLY THRESHOLD THAT BITES: `needs.def heat_stroke_c` is 45,
+            // and 34.01 is the maximum over 288 sampled sim-hours — eleven degrees of margin, on the
+            // hottest hour of the unattended ship. `SafetySystem.CanStageWorkerAt` and
+            // `NeedsSystem`'s `thermalDanger` are the two consumers and neither fires in any leg.
+            // ⛔ AND THE PEAK IS A PEAK, NOT AN ASYMPTOTE THE RUN WAS TOO SHORT TO SEE: the curve
+            // turns over at h84 and is back under the control's own peak by h132.
+            //
+            // ⭐ THE ARITHMETIC BEHIND THE +3.4 K, so the next lane does not re-derive it. The bay's
+            // dominant heat source was always the CAPSULES — `CryoPod` heat is 0.15 kW and eight of
+            // the twelve are operational, ≈ 0.94 kW condition-scaled — and the four machines that
+            // left carried only ≈ 0.62 kW between them. So the ROOM LOST LESS HEAT THAN IT LOST
+            // COOLING, and the balance is now `capsules + pawn` against `hull loss + 40 W/K through
+            // an open door` instead of against a 5 kW radiator.
+            //
+            // ⭐ AND THE HEAT THE BAY EXPORTS IS NOT WASTED — IT LANDS IN THE TWO COMPARTMENTS R-4
+            // FREEZES. From h36 onward the spine reads 2–4 K WARMER and the reactor bay 2–3 K warmer
+            // than the control at every sample, and the reactor bay's `hypothermia_c` crossing moves
+            // from ~h216 to ~h228. (Before h36 the spine is COLDER, 10.00 against 17.43 at h6 — the
+            // radiator now clamps the CORRIDOR to its floor. Both directions are the same one
+            // mechanism and both are stated.)
+            //
+            // ⛔ CO2 AND PRESSURE ARE UNCHANGED IN SHAPE AND WITHIN 3 % IN MAGNITUDE at every sample,
+            // which is the leg that says `DiffuseAcrossDoors` really does carry a corridor scrubber
+            // into the room the crew stand in. ⭐ AND THE POD CENSUS IS IDENTICAL AT EVERY SAMPLE OF
+            // BOTH LEGS: **12 powered / 8 operational / 7 intact-and-thawable**, out to 12 sim-days,
+            // with the crew member alive. That is the ruling's hard requirement — the battery moved
+            // and the capsules never noticed, because deck 0 is one network.
+            //
+            // ⛔⛔ AND SAY THE HALF THIS DOES NOT CLOSE, WITH THE NUMBER, BECAUSE IT IS THE ONE PLACE
+            // THE RULING COSTS SOMETHING REAL. **SHUT THE POD BAY'S DOOR AND THE BAY COOKS.**
+            // Conduction drops 5× (`door_conduct_closed_w_per_k` = 8 against 40) while the capsules'
+            // 0.94 kW keeps arriving, so the room's only remaining sink is its own hull. Driven, same
+            // method, same probes, with `door_d0_s0` shut at tick 0 and BOTH legs run:
+            //
+            //     leg                    bay at h24   crosses heat_stroke_c (45)   crew dead by
+            //     CONTROL, door shut       10.0 °C      between h60 and h72          h84
+            //     SHIPPED, door shut       42.3 °C      between h24 and h36          h36
+            //
+            // ⇒ **THE HAZARD IS NOT NEW — IT IS ~48 SIM-HOURS EARLIER.** The pre-ruling bay survives
+            // a shut door only until `radiator_cryo` wears through `fail` at ~h43 and then cooks the
+            // same way; the ruling removes the 43-hour grace, it does not create the failure. Saying
+            // "the door-shut case is a regression" would be false and saying "nothing changed" would
+            // be worse. ⭐ WITH THE DOOR OPEN — the state the ship BOOTS in — neither leg ever crosses:
+            // control peaks at 30.57 °C, shipped at 34.01 °C.
+            //
+            // ⚠️ HOW REACHABLE IT IS, MEASURED RATHER THAN ASSUMED, because the reassuring version of
+            // this paragraph is wrong. Doors are MOSS-only since OD-N and `MossGate.IsServerLive`
+            // wants any Terminal, Powered, at Condition >= 0.20; `term_moss` boots at 0.14, so the
+            // gate is SHUT at tick 0 — but the driven economy leg below shows `MaintenanceSystem`
+            // lifting `term_moss` 0.14 -> 1.000 at **h1.778** once the player grants Repair. ⇒ THE
+            // GATE OPENS IN THE FIRST TWO SIM-HOURS OF ORDINARY PLAY and the shut-door case is
+            // reachable, not hypothetical. FILED FOR THE OWNER, not closed here: closing it means
+            // either a machine back in the bay (which is the ruling) or a heat path that does not
+            // depend on a door, which is `--ship wreck`'s standing R-4 gap. Both legs are DRIVEN in
+            // `WreckShipTests` so the next lane inherits a number rather than a worry.
+            //
+            // ⛔ THE HEADER'S "FLAT AT EXACTLY 10.0 °C FOR TEN SIM-DAYS" IS STALE FOR *BOTH* SHIPS and
+            // this package did not make it so — the control column above reaches 30.57 °C at h108.
+            // `radiator_cryo` wears at 0.006/h from 0.36 and crosses `Radiator`'s `fail` (0.10) at
+            // ~h43, and under OD-H nothing is ever serviced, so the thermostat dies on the unattended
+            // ship either way. Do not quote that sentence for `--ship wreck` as it boots; re-measure.
+            // ---------------------------------------------------------------------------------------
+            //
             // The bay's own life support is the ONE thing on this ship the raid did not finish, and
             // that is the authoring decision the pawn's life rests on. Both are above their `maint`
-            // (0.40), so neither is even on the maintenance board at boot — the bay does not need
+            // (0.40), so neither is even on the maintenance board at boot — the core does not need
             // the player to do anything to stay breathable. The vent boots OPEN (grid's
             // `vent_spine_0` precedent): it is what refills the core after the player opens a hall
             // door, and a closed AirVent draws nothing at all (`PowerSystem.IsWanting`).
+            //
+            // ⚠️ ITS TILE IS THE SPINE ROW DIRECTLY OUTSIDE THE POD BAY'S DOORWAY, one column to
+            // port of the door apron at x = 5 (`SlotGridPlanner`: slot 0's door is at its
+            // `CenterX`). The apron itself is left clear so the pawn's walk in and out of the bay is
+            // never staged on top of a machine.
             plan.Devices.Add(new DeviceSpec
             {
-                Kind = DeviceKind.AirVent, Pos = new Int3(cryo.X1, cryo.Y0, 0), Name = "vent_cryo",
-                IsOpen = true, Condition = 0.62f,
+                Kind = DeviceKind.AirVent, Pos = new Int3(WreckCorePlantX0, SlotGridPlanner.SpineY0, 0),
+                Name = "vent_cryo", IsOpen = true, Condition = 0.62f,
             });
-            Dev(plan, DeviceKind.Scrubber, cryo.X1, cryo.CenterY, 0, "scrubber_cryo", 0.55f);
+            Dev(plan, DeviceKind.Scrubber, WreckCorePlantX1, SlotGridPlanner.SpineY0, 0, "scrubber_cryo", 0.55f);
             // Two more scrubbers inside the survivable core, both wrecked. Eight crew needs three
             // working scrubbers (~3.66 crew each) and these are the other two — reachable in air
             // from tick 0, so the ship's eight-crew ceiling is a SALVAGE problem and not a
@@ -2113,10 +2282,14 @@ namespace Perilune.Gen
             // unambiguous: one working scrubber in the core, four wrecked ones on the ship.
             Dev(plan, DeviceKind.Scrubber, 8, SlotGridPlanner.SpineY1, 0, "scrubber_spine", 0.09f);
 
-            // Everything else in the bay is wrecked, and three of the four are the bootstrap: they
-            // are the strippable devices standing in breathable air, so the salvage rung can start
-            // without opening a single door (the plan's W3 precondition 2).
-            Dev(plan, DeviceKind.Light, cryo.X0, cryo.Y0, 0, "light_cryo", 0.18f);
+            // Everything else that used to stand in the bay is wrecked, and three of the four are the
+            // bootstrap: they are the strippable devices standing in breathable air, so the salvage
+            // rung can start without opening a single door (the plan's W3 precondition 2). ⚠️ SINCE
+            // THE 2026-08-06 RULING THEY STAND IN THE SPINE AND THE REACTOR BAY — both are breathable
+            // at boot and both are inside the pressurised core, so W3 precondition 2 is untouched:
+            // the census that matters is "strippable wrecked devices the pawn can reach in air", and
+            // it is the same set on the same deck.
+            Dev(plan, DeviceKind.Light, WreckCorePlantX1, SlotGridPlanner.SpineY1, 0, "light_cryo", 0.18f);
             // ⚠️ 0.36 IS A MEASURED NUMBER AND IT TOOK TWO DRIVEN RUNS TO FIND. It is the single
             // most load-bearing scalar on this ship, and both wrong values LOOKED fine at boot.
             //
@@ -2153,8 +2326,15 @@ namespace Perilune.Gen
             // ⇒ THE GENERAL RULE FOR THIS SHIP, AND FOR ANY LATER ONE: a device the CORE'S SURVIVAL
             // depends on must be authored at or above wear.wreck_threshold. Below it, wear is a
             // one-way trip to `fail` and the compartment has a fuse on it measured in hours.
-            Dev(plan, DeviceKind.Radiator, cryo.X1, cryo.Y1, 0, "radiator_cryo", 0.36f);
-            Dev(plan, DeviceKind.Battery, cryo.X0, cryo.Y1, 0, "battery_cryo", 0.11f);
+            //
+            // ⚠️ AND SINCE 2026-08-06 THE PARAGRAPH ABOVE DESCRIBES A RADIATOR IN THE SPINE, WHICH
+            // CHANGES WHAT IT THERMOSTATS AND NOT WHETHER IT MATTERS. Every sentence about the
+            // CONDITION stands unaltered — 0.36 is still in the free-jury-rig band, still above
+            // `wreck_threshold`, still below 0.50, and a core-survival device authored under the
+            // floor is still a compartment with a fuse on it. What moved is the ROOM: it now clamps
+            // the corridor, and the pod bay's heat reaches it through the boot-open door. The A/B at
+            // the top of this block is the measurement that the bay is no worse for it.
+            Dev(plan, DeviceKind.Radiator, WreckCorePlantX0, SlotGridPlanner.SpineY1, 0, "radiator_cryo", 0.36f);
             // THE MOSS BOX. Dark twice over: `Scriptable = false` means no adapter is registered and
             // no program can be installed until a CommissionDeviceCommand spends a ControllerModule
             // on it, and Condition 0.14 is below wear.wreck_threshold so it cannot even be bodged
@@ -2178,6 +2358,22 @@ namespace Perilune.Gen
             {
                 Kind = DeviceKind.Battery, Pos = new Int3(reactor.X1, topRow, 0), Name = "battery_2",
                 StoredKWh = 3f, Condition = 0.09f,
+            });
+            // ⭐ THE THIRD CELL OF THE BANK — the 2026-08-06 ruling's one relocation that is not life
+            // support. `battery_cryo` stood in the pod bay because the pods draw 0.2 kW each and the
+            // first draft of this ship believed a battery served the room it was in. It does not:
+            // `PowerSystem` balances a NETWORK, and `WreckCutDeck1Risers`' own measurement is "one
+            // network on deck 0" — so this cell's 0.11 Condition, its 0.1 kW of `heat`, its place in
+            // M1-I's eleven-machine boot board and everything it stores are unchanged, and the pods
+            // it powers are powered from here exactly as they were from (1,6).
+            // ⚠️ IT KEEPS ITS StoredKWh DEFAULT (0) AND ITS NAME. The name is read by no test today,
+            // but it is read by the maintenance census prose in this file and by the boot-board
+            // derivation in the `damage-control locker` block below; changing it would have made
+            // both of those look like new numbers.
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = DeviceKind.Battery, Pos = new Int3(reactor.X1 - 1, topRow, 0), Name = "battery_cryo",
+                Condition = 0.11f,
             });
             plan.Devices.Add(new DeviceSpec
             {
@@ -2484,16 +2680,50 @@ namespace Perilune.Gen
             //   4. Fiction still holds, and it is not the weaker story: a cryo bay is precisely
             //      where a ship keeps the locker that has to survive everything else — beside the
             //      people it exists to keep alive — and gaskets are what a raider leaves behind.
-            // (9, 6, 0) is bare floor in the bay's bottom-right, diagonally opposite the capsule
+            // ⛔ THE PARAGRAPH BELOW DESCRIBES THE PRE-2026-08-06 BAY AND IS KEPT AS THE RECORD OF
+            // WHERE (9,6,0) CAME FROM, NOT AS A DESCRIPTION OF THIS SHIP. Since the declutter ruling
+            // the bay's ONLY devices are the twelve capsules on x∈{2,4,6,8} × y∈{1,3,5} and
+            // `term_moss` at (1,3); its floor is otherwise EMPTY, and the locker stands at (9,14,0)
+            // in the reactor bay. It read:
+            // *(9, 6, 0) is bare floor in the bay's bottom-right, diagonally opposite the capsule
             // the crew member wakes in at (3, 1, 0): the bay's devices are `light_cryo` (1,1),
             // `term_moss` (1,3), `battery_cryo` (1,6), `vent_cryo` (10,1), `scrubber_cryo` (10,3)
             // and `radiator_cryo` (10,6), the twelve capsules sit on x∈{2,4,6,8} × y∈{1,3,5}, and
             // the four corpses sit on their own capsules' tiles. Probed on the built ship:
-            // walkable, no device, stageable, breathable.
+            // walkable, no device, stageable, breathable.*
+            // ⭐⭐ AND THE LOCKER LEFT THE CRYO BAY ON 2026-08-06 — THE OWNER'S RULING OVERRIDES
+            // REASONS 1–4 ABOVE, AND THE PARAGRAPHS ARE KEPT BECAUSE THREE OF THEM STILL BIND.
+            // "There should only be the capsules and a terminal." Eight Seals on the bay's floor are
+            // eight of the twenty-six things the bay drew, so they go — and they go to the REACTOR
+            // BAY, beside the `spares` and `gaskets` this block's reason 3 declined to move.
+            //
+            // ⚠️ REASON 3 IS THE ONE THIS PACKAGE IS ANSWERING, AND IT NAMED THIS LANE IN ADVANCE:
+            // *"A lane that wants the ship's whole spares stock on one thermally- and
+            // pressure-stable tile should move all three together and re-measure the h0.26 -> h2.79
+            // sequence."* That is exactly what happened. All three stacks now sit in one compartment
+            // and the sequence was re-driven; the receipts are in the `cabin stores` block below,
+            // which is where the ship's whole consumable budget is reasoned about.
+            //
+            // ⛔ WHAT IT COSTS IS REASON 1, AND IT IS NOT WAIVED — IT IS ACCEPTED AND PRICED. Opening
+            // BOTH doors of the column takes the reactor bay's stock tiles un-stageable from h0.028,
+            // so from 2026-08-06 that exposure covers the ship's ENTIRE consumable pile rather than
+            // three of its eighteen units. It is bounded (0.038 sim-h, ~2.3 sim-minutes), RECOVERABLE
+            // (the stacks reappear at h0.066) and it closes BEFORE the first service at h0.26, so in
+            // every leg measured it costs nothing; and `LooseMatter.TryPay` has no position term at
+            // all, so the PLAYER can always spend it regardless. Reason 2 (thermal) is unchanged and
+            // still cannot bite: the reactor bay reads 10.0 °C at day 1 and does not cross
+            // `hypothermia_c` inside any window in which this pile still exists.
+            // ⇒ THE HONEST SUMMARY: the ruling traded a measured, bounded, recoverable pressure
+            // exposure for the owner's decluttered pod bay. That is a content decision, taken by the
+            // owner, and it is recorded here rather than smoothed over.
+            //
+            // (9, 14, 0) probed on the built ship: walkable, no wall, no device, no other item,
+            // stageable and breathable. It extends the reactor bay's existing stock row (x 2..8 at
+            // y 14) by exactly one tile, so the ship's loose matter reads as one run of crates.
             plan.Items.Add(new ItemSpec
             {
                 Kind = ItemKind.Seals, Count = 8,
-                Pos = new Int3(cryo.X1 - 1, cryo.Y1, 0), Label = "damage-control locker",
+                Pos = new Int3(reactor.X0 + 8, stockY, 0), Label = "damage-control locker",
             });
             // ⛔ KNOWN LIMITS OF THIS FIX, STATED HERE BECAUSE THE NUMBER ABOVE LOOKS LIKE A
             // GUARANTEE AND IS NOT ONE. All three EXIST by measurement, not by fear — each is
@@ -2704,14 +2934,48 @@ namespace Perilune.Gen
             //     row, inboard of M1-I's damage-control locker at (9,6,0) and diagonally opposite
             //     Rell's open capsule — the cabin fittings the raiders did not think worth taking,
             //     stowed with the people they were for.
-            // (2..8, 6, 0) probed on the built ship: walkable, no wall, no device, no other item,
-            // stageable and breathable. (1,6,0) is `battery_cryo` and (9,6,0) is M1-I's locker, so
-            // the row is bounded on both sides and fills the span exactly.
+            // ⭐⭐ AND THE CRATES LEFT THE CRYO BAY ON 2026-08-06, FOR THE OWNER'S RULING AND FOR
+            // NOTHING ELSE. "There should only be the capsules and a terminal." Seven crates on the
+            // bay's bottom row were seven of the twenty-six things it drew. The three bullets above
+            // are kept because they are still the reasoning for a cache that must SIT UNSPENT — they
+            // are simply no longer the reasoning for THIS one, whose site the owner chose.
+            //
+            // THE NEW SITE: the reactor bay's y = 15 row, x 2..8 — one row inboard of the ship's own
+            // stock row (y = 14) and directly under it, so the whole consumable budget of the ship is
+            // one readable block of crates in the compartment that already holds the power, the water
+            // and the rations. The FICTION survives the move and is arguably better: cabin fittings
+            // the raiders did not think worth taking, stowed in the stores bay with everything else
+            // they did not take.
+            //
+            // ⛔⛔ RE-DRIVEN ON THIS TREE — the h0.26 -> h2.79 sequence M1-I's reason 3 demanded, with
+            // ALL EIGHTEEN units in one compartment. Method identical to the block above: the
+            // shipped ship, `GiveAllCrewAllWork()` at tick 0 (the WORST case, not the boot state),
+            // one sim-hour sampled every tick and then out to h24.
+            //   * the eleven boot-board machines are still served FIRST and the pile is still exactly
+            //     empty afterwards — the queue is `RecruitForNeediest`'s and it ranks DEVICES by
+            //     Condition, which no stack position can reach;
+            //   * `Affordable(Parts)` never falls below 4 at any tick of the first sim-hour, so a
+            //     furniture piece (3 Parts) is buyable at every tick of D7's own window;
+            //   * `tank_reserve` still ends h12 unfixable — M1-I's KNOWN LIMIT 1 stands, which is the
+            //     limit D7 bisected the cache size against and the one thing a move like this could
+            //     silently have deleted.
+            //   ⚠️ THE SERVICE TIMES THEMSELVES MOVED and are NOT re-quoted as the old ones: the
+            //   walk from a worksite to the nearest stack of the right tier is a Manhattan distance
+            //   and every one of those distances changed. The figures above are the properties that
+            //   are load-bearing; the individual h-marks in the blocks above are HISTORY OF THE
+            //   PRE-RULING SHIP. `WreckRepairEconomyTests` re-derives them by driving.
+            //
+            // ⭐ SEVEN ONE-UNIT CRATES AND NOT ONE STACK OF SEVEN is UNCHANGED and still load-bearing
+            // for the reason given above (`MaintenanceSystem`'s carried-stack blackout). Moving a
+            // cache does not merge it.
+            //
+            // (2..8, 15, 0) probed on the built ship: walkable, no wall, no device, no other item,
+            // stageable and breathable.
             for (int i = 0; i < 7; i++)
                 plan.Items.Add(new ItemSpec
                 {
                     Kind = ItemKind.Parts, Count = 1,
-                    Pos = new Int3(cryo.X0 + 1 + i, cryo.Y1, 0), Label = "cabin stores",
+                    Pos = new Int3(reactor.X0 + 1 + i, stockY + 1, 0), Label = "cabin stores",
                 });
 
             // --------------------------------------------------------------- starting air

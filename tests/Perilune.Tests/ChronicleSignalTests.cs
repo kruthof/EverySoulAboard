@@ -62,7 +62,15 @@ namespace Perilune.Tests
             var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneWreck(), Stack()).GiveAllCrewAllWork();
             var doomed = new List<uint>();
             foreach (var it in sim.Items.Items)
-                if (it.Kind == ItemKind.Parts && it.Pos.Z == 0 && it.Pos.Y == 6 && it.Pos.X >= 2 && it.Pos.X <= 8)
+                // ⚠️ THE ROW MOVED ON 2026-08-06 and this predicate had to move with it — the owner's
+                // declutter ruling put the `cabin stores` in the REACTOR BAY (y = 15) instead of the
+                // pod bay (y = 6). ⛔ IT FAILED LOUDLY RATHER THAN SILENTLY, which is the only reason
+                // this is a one-line edit: a strip that matched nothing left a ship with eight Parts
+                // aboard, its wings repaired and NO brownout at all, and both non-vacuity legs below
+                // said so by name ("this ship must actually brown out inside a day"). A test whose
+                // fixture quietly stops biting is the shape this file's own header warns about.
+                // Siblings holding the same tiles by hand: `CabinStoresTests`, `WreckRepairEconomyTests`.
+                if (it.Kind == ItemKind.Parts && it.Pos.Z == 0 && it.Pos.Y == 15 && it.Pos.X >= 2 && it.Pos.X <= 8)
                     doomed.Add(it.Id);
             foreach (uint id in doomed) sim.Items.Remove(id);
             return sim;

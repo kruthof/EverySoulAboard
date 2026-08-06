@@ -1817,6 +1817,379 @@ namespace Perilune.Tests
             Assert.That(leaks, Is.Empty, string.Join("\n  ", leaks));
         }
 
+        // ------------------------------------------- 9b. THE DECLUTTER RULING (owner, 2026-08-06)
+        //
+        // ⭐⭐ *"The cryo room looks extremely crowded — there should only be the capsules and a
+        // terminal."* The bay drew TWENTY-SIX things and now draws THIRTEEN. Nothing was deleted:
+        // the audit found no decorative piece in it, so all thirteen departures are RELOCATIONS —
+        // four machines into the spine outside its door, one battery and eight stacks into the
+        // reactor bay. The legs below are what the ruling is allowed to cost.
+
+        /// <summary>The cryo bay's interior, written out by hand. `SlotGridPlanner` carves slot 0 at
+        /// x 1..10, y 1..6 on deck 0; hand-written rather than read from the planner for this file's
+        /// standing reason (a test that derives its expectation from the thing it checks cannot
+        /// fail).</summary>
+        private static readonly (int X0, int X1, int Y0, int Y1) CryoInterior = (1, 10, 1, 6);
+
+        private static bool InCryoBay(Int3 p) =>
+            p.Z == 0 && p.X >= CryoInterior.X0 && p.X <= CryoInterior.X1
+                     && p.Y >= CryoInterior.Y0 && p.Y <= CryoInterior.Y1;
+
+        /// <summary>
+        /// ⭐⭐ <b>THE OWNER'S SENTENCE, AS A CENSUS.</b> Everything a player can SEE standing on the
+        /// pod bay's floor — every non-overlay device and every uncarried ground stack — is either
+        /// one of the twelve capsules or the one terminal. Nothing else.
+        ///
+        /// <para>⛔ <b>IT COUNTS ITEMS AS WELL AS DEVICES, AND THAT IS HALF THE SUBJECT.</b> Of the
+        /// twenty-six things the bay drew, EIGHT were ground stacks (M1-I's damage-control locker and
+        /// D7's seven <c>cabin stores</c> crates). A census that looked only at
+        /// <see cref="Simulation.Devices"/> would have called the bay decluttered while a third of
+        /// the clutter was still on the floor — the owner was looking at a Room Zoom screenshot, and
+        /// the Room Zoom draws both from one furniture layer.</para>
+        ///
+        /// <para>⚠️ CONDUITS ARE EXCLUDED BY <see cref="Simulation.IsUtilityOverlay"/> and not by a
+        /// hand list: the deck-0 trunk runs under this floor, it is drawn only under the Power lens,
+        /// and it is not furniture. That exclusion is the one thing here that could hide a real
+        /// regression, so it is named rather than silent.</para>
+        ///
+        /// <para>MUTATIONS, applied and observed: putting ANY of the thirteen back — a machine, the
+        /// locker, one crate — names it here and reddens.</para>
+        /// </summary>
+        [Test]
+        public void TheCryoBay_HoldsOnlyTheCapsulesAndOneTerminal()
+        {
+            var sim = Boot();
+            var intruders = new List<string>();
+            int pods = 0, terminals = 0;
+
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (!InCryoBay(d.Pos) || Simulation.IsUtilityOverlay(d.Kind)) continue;
+                if (d.Kind == DeviceKind.CryoPod) { pods++; continue; }
+                if (d.Kind == DeviceKind.Terminal) { terminals++; continue; }
+                intruders.Add($"device {d.Name} ({d.Kind}) at {d.Pos.X},{d.Pos.Y},{d.Pos.Z}");
+            }
+            foreach (var it in sim.Items.Items)
+            {
+                if (!InCryoBay(it.Pos) || it.CarriedBy != 0) continue;
+                intruders.Add($"ground stack {it.Kind} x{it.Count} ('{it.Label}') at {it.Pos.X},{it.Pos.Y},{it.Pos.Z}");
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(intruders, Is.Empty,
+                    "OWNER RULING 2026-08-06: the pod bay holds the capsules and ONE terminal, and " +
+                    "nothing else a player can see. These are standing in it:\n  " +
+                    string.Join("\n  ", intruders));
+                // The complement, so an EMPTY bay cannot pass this test. A guard that only forbids
+                // is satisfied by deleting the subject — the fourth trap shape.
+                Assert.That(pods, Is.EqualTo(PodCount), "the twelve capsules must still be in the bay");
+                Assert.That(terminals, Is.EqualTo(1),
+                    "exactly ONE terminal — the ruling's own words. `term_moss` is the door to the " +
+                    "whole thaw curve and it stays.");
+            });
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>NOTHING WAS DELETED — THE THIRTEEN ARE STILL ABOARD, STILL IN AIR, STILL ON THE
+        /// GRID.</b> The complement of the census above, and the leg that separates "relocated" from
+        /// "removed". Each of the five machines must be somewhere ELSE inside the pressurised core,
+        /// on a tile a worker can stand on and on the deck-0 power network; the fifteen consumable
+        /// units must still be aboard on stageable, breathable tiles.
+        ///
+        /// <para>⛔ THE NETWORK LEG IS THE ONE THAT MATTERS FOR THE BATTERY. <c>PowerSystem</c>
+        /// balances a NETWORK, not a room, and <c>WreckCutDeck1Risers</c>' own measurement is "one
+        /// network on deck 0" — so every relocated device sharing ONE non-zero network id with the
+        /// capsules is the whole of what "the battery still powers the pods" can mean.</para>
+        ///
+        /// <para>⚠️ AND SAY THE HONEST HALF OUT LOUD: <c>battery_cryo</c> boots with
+        /// <c>StoredKWh</c> 0 and <c>Battery.draw</c> is 0, so it contributes NOTHING to the pods'
+        /// supply from either tile. What powers them is the wings, through the trunk. The ruling's
+        /// requirement is that the pods keep their signal, and that is DRIVEN in
+        /// <see cref="ThePodsKeepTheirSignal_ThroughThreeSimDays"/>; this leg pins the topology.</para>
+        /// </summary>
+        [Test]
+        public void TheRelocatedPlant_IsStillAboard_InAirAndOnTheGrid()
+        {
+            var sim = Boot();
+            sim.Tick();   // PowerSystem rebuilds networks on the first pass
+            var offenders = new List<string>();
+
+            ushort podNetwork = 0;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+                if (devices[i].Kind == DeviceKind.CryoPod) { podNetwork = devices[i].NetworkId; break; }
+            Assert.That(podNetwork, Is.Not.Zero, "precondition: the capsules are on a power network");
+
+            foreach (var name in new[] { "vent_cryo", "scrubber_cryo", "radiator_cryo", "light_cryo", "battery_cryo" })
+            {
+                Device d = null;
+                for (int i = 0; i < devices.Count; i++) if (devices[i].Name == name) d = devices[i];
+                if (d == null) { offenders.Add($"{name}: DELETED from the ship — the ruling relocates, it does not remove"); continue; }
+                if (InCryoBay(d.Pos)) offenders.Add($"{name} is still inside the pod bay at {d.Pos.X},{d.Pos.Y}");
+                if (!AtmosphereSafety.IsBreathable(sim, d.Pos))
+                    offenders.Add($"{name} at {d.Pos.X},{d.Pos.Y},{d.Pos.Z} is in unbreathable air — it was in the core before");
+                if (!WorksiteSafety.CanStageWorkerAt(sim, d.Pos))
+                    offenders.Add($"{name} at {d.Pos.X},{d.Pos.Y},{d.Pos.Z} cannot be worked on — it was strippable and serviceable before");
+                if (d.NetworkId != podNetwork)
+                    offenders.Add($"{name} is on power network {d.NetworkId}, the capsules are on {podNetwork} — deck 0 is ONE network and this device left it");
+            }
+
+            int looseUnits = 0;
+            foreach (var it in sim.Items.Items)
+            {
+                if (it.CarriedBy != 0) continue;
+                if (it.Kind != ItemKind.Parts && it.Kind != ItemKind.Seals) continue;
+                looseUnits += it.Count;
+                if (!WorksiteSafety.CanStageWorkerAt(sim, it.Pos))
+                    offenders.Add($"a {it.Kind} stack ('{it.Label}') at {it.Pos.X},{it.Pos.Y},{it.Pos.Z} is on an " +
+                                  "unstageable tile — MaintenanceSystem.FindNearest cannot see it at all");
+            }
+            // 1 `spares` + 2 `gaskets` + 8 locker + 7 `cabin stores`. Written out; re-count it off
+            // PrintTheBootCensus, never off this comment.
+            if (looseUnits != 18)
+                offenders.Add($"the ship carries {looseUnits} loose Parts+Seals, not 18 — the relocation " +
+                              "moved the pile, it did not resize it, and D7's cliff sits ON this number");
+
+            Assert.That(offenders, Is.Empty, string.Join("\n  ", offenders));
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>DRIVEN: THE CAPSULES KEEP THEIR SIGNAL FOR THREE SIM-DAYS.</b> The ruling's one
+        /// hard requirement. Sampled every sim-hour, not at the ends: a pod that lost power for six
+        /// hours in the middle is exactly the failure this exists to catch, and an endpoint reading
+        /// cannot see it.
+        ///
+        /// <para>What is asserted is <c>CryoSystem.IsIntactPod</c>'s own terms, restated: a capsule
+        /// that is not open, is <c>Powered</c> and is <c>IsOperational</c> is one a thaw could still
+        /// start on. Twelve powered, eight operational, seven thawable (Rell's is boot-open) — the
+        /// numbers the boot census prints, held for 72 sim-hours.</para>
+        ///
+        /// <para>⛔ THE NON-VACUITY IS A SIBLING THAT PLANTS THE FAILURE, not a comment:
+        /// <see cref="ThePodSignalProbe_CanActuallySeeAPodGoDark"/> starves the ship of generation
+        /// and requires this same probe to report it. Without that, "the pods stayed powered" and
+        /// "the probe cannot tell" are the same green.</para>
+        /// </summary>
+        [Test]
+        public void ThePodsKeepTheirSignal_ThroughThreeSimDays()
+        {
+            var sim = Boot();
+            var worst = PodSignalOverTime(sim, 72);
+            Assert.Multiple(() =>
+            {
+                Assert.That(worst.Powered, Is.EqualTo(PodCount),
+                    "a capsule lost power during the run. The pod bay's battery moved to the reactor " +
+                    "bay under the 2026-08-06 ruling; deck 0 is ONE network and this says whether " +
+                    "that held, driven.");
+                Assert.That(worst.Operational, Is.EqualTo(PodCount - PodsWreckedDead),
+                    "an intact capsule fell below CryoPod `fail` during the run");
+                Assert.That(worst.Thawable, Is.EqualTo(PodCount - PodsWreckedDead - PodsOpen),
+                    "a capsule stopped being one a thaw could start on");
+                Assert.That(worst.CrewAlive, Is.EqualTo(1), "the ship's one crew member did not survive the run");
+            });
+        }
+
+        /// <summary>THE NON-VACUITY CONTROL for the leg above: strip the ship's generation and the
+        /// SAME probe must report capsules going dark. A probe that cannot see the failure is not
+        /// evidence of its absence.</summary>
+        [Test]
+        public void ThePodSignalProbe_CanActuallySeeAPodGoDark()
+        {
+            var sim = Boot();
+            // ⛔ THE WINGS ARE REMOVED, NOT SET TO CONDITION 0, AND THE FIRST DRAFT OF THIS CONTROL
+            // GOT IT WRONG — it read `d.Condition = 0f` and the leg stayed GREEN, which is a control
+            // that proves nothing. `PowerSystem.cs:235` is `GenerationKW × EffectiveRate` and
+            // `EffectiveRate = Rate × (0.5 + 0.5 × Condition)`, so a wing at Condition 0 still
+            // supplies HALF its rating: 3 × 6 × 0.5 = 9.00 kW against 14.80 kW of demand, and
+            // LifeSupport — the tier CryoPod is on — is served FIRST and never sheds. Deleting the
+            // devices is the only way to reach zero supply, and reaching it is the whole point.
+            var doomed = new List<uint>();
+            foreach (var d in sim.Devices.Items)
+            {
+                if (d.Kind == DeviceKind.SolarWing) doomed.Add(d.Id);
+                if (d.Kind == DeviceKind.Battery) d.StoredKWh = 0f;
+            }
+            foreach (uint id in doomed) sim.RemoveDevice(id);
+            var worst = PodSignalOverTime(sim, 6);
+            Assert.That(worst.Powered, Is.LessThan(PodCount),
+                "with every wing dead and every bank empty the capsules must lose their signal. If " +
+                "they do not, the probe in ThePodsKeepTheirSignal_ThroughThreeSimDays is blind and " +
+                "its green means nothing.");
+        }
+
+        /// <summary>Drive <paramref name="hours"/> sim-hours and return the WORST hourly reading of
+        /// each pod count — a minimum over samples, never an endpoint.</summary>
+        private static (int Powered, int Operational, int Thawable, int CrewAlive) PodSignalOverTime(
+            Simulation sim, int hours)
+        {
+            const int TicksPerHour = 3600 * Simulation.TicksPerSecond;
+            int wPow = int.MaxValue, wOper = int.MaxValue, wThaw = int.MaxValue, wAlive = int.MaxValue;
+            for (int h = 0; h <= hours; h++)
+            {
+                if (h > 0) for (int t = 0; t < TicksPerHour; t++) sim.Tick();
+                int pow = 0, oper = 0, thaw = 0, alive = 0;
+                var devices = sim.Devices.Items;
+                for (int i = 0; i < devices.Count; i++)
+                {
+                    var d = devices[i];
+                    if (d.Kind != DeviceKind.CryoPod) continue;
+                    if (d.Powered) pow++;
+                    if (d.IsOperational(sim.Defs)) oper++;
+                    if (!d.IsOpen && d.Powered && d.IsOperational(sim.Defs)) thaw++;
+                }
+                for (int i = 0; i < sim.Citizens.Items.Count; i++) if (!sim.Citizens.Items[i].Dead) alive++;
+                if (pow < wPow) wPow = pow;
+                if (oper < wOper) wOper = oper;
+                if (thaw < wThaw) wThaw = thaw;
+                if (alive < wAlive) wAlive = alive;
+            }
+            return (wPow, wOper, wThaw, wAlive);
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>DRIVEN: A SCRUBBER IN THE CORRIDOR REACHES THE ROOM THE CREW STAND IN.</b> The one
+        /// new mechanism the ruling leans on. <c>scrubber_cryo</c> stands in the spine now, so the
+        /// pod bay's CO2 has to travel through an open door to be scrubbed — which is exactly what
+        /// <c>AtmosphereSystem.DiffuseAcrossDoors</c> was built for (B-3, MECHANICS §13.1). If that
+        /// path did not carry, the bay would be the one compartment the crew live in and nothing
+        /// cleans.
+        ///
+        /// <para>MEASURED, driven, no player input: the bay boots at its ~500 ppm baseline and is
+        /// under 50 ppm by h6. The assertion is an ABSOLUTE ppm floor, not a ratio — the seventh trap
+        /// shape — and the control below deletes the scrubber and requires the same probe to see the
+        /// difference.</para>
+        /// </summary>
+        [Test]
+        public void TheCorridorScrubber_CleansThePodBayThroughItsOpenDoor()
+        {
+            var sim = Boot();
+            double at0 = CryoBayCo2(sim);
+            for (int i = 0; i < 6 * 3600 * Simulation.TicksPerSecond; i++) sim.Tick();
+            double at6 = CryoBayCo2(sim);
+            Assert.Multiple(() =>
+            {
+                Assert.That(at0, Is.GreaterThan(100.0),
+                    "precondition: the bay boots with CO2 in it, or 'it was cleaned' is vacuous");
+                Assert.That(at6, Is.LessThan(50.0),
+                    "the pod bay's CO2 is not being scrubbed. `scrubber_cryo` stands in the SPINE " +
+                    "since the 2026-08-06 ruling and reaches the bay only through DiffuseAcrossDoors; " +
+                    $"the bay read {at6.ToString("F1", CultureInfo.InvariantCulture)} ppm at h6.");
+            });
+        }
+
+        /// <summary>THE CONTROL: with the corridor scrubber gone the bay does NOT clean itself, so
+        /// the leg above is measuring the scrubber and not the passage of time.</summary>
+        [Test]
+        public void WithoutTheCorridorScrubber_ThePodBayDoesNotClean()
+        {
+            var sim = Boot();
+            var doomed = new List<uint>();
+            foreach (var d in sim.Devices.Items)
+                if (d.Kind == DeviceKind.Scrubber) doomed.Add(d.Id);
+            foreach (uint id in doomed) sim.RemoveDevice(id);
+            double at0 = CryoBayCo2(sim);
+            for (int i = 0; i < 6 * 3600 * Simulation.TicksPerSecond; i++) sim.Tick();
+            double at6 = CryoBayCo2(sim);
+            Assert.That(at6, Is.GreaterThan(at0 * 0.5),
+                "with EVERY scrubber removed the pod bay still cleaned itself, so " +
+                "TheCorridorScrubber_CleansThePodBayThroughItsOpenDoor is green for a reason that " +
+                "has nothing to do with the scrubber.");
+        }
+
+        private static double CryoBayCo2(Simulation sim) =>
+            sim.Rooms.RoomAt(sim.World, new Int3(5, 3, 0)).CO2Ppm;
+
+        /// <summary>
+        /// ⛔⛔ <b>KNOWN LIMIT OF THE DECLUTTER RULING, DRIVEN RATHER THAN FEARED: SHUT THE POD BAY'S
+        /// DOOR AND THE BAY COOKS.</b> <c>radiator_cryo</c> stands in the corridor now, so the bay's
+        /// only heat path is <c>ThermalSystem.ConductAcrossDoor</c> — 40 W/K open, 8 W/K shut — while
+        /// twelve capsules keep pushing ~0.94 kW into 60 tiles.
+        ///
+        /// <para>MEASURED ON THIS TREE, both legs, `door_d0_s0` shut at tick 0, sampled every 12
+        /// sim-hours to day 12:</para>
+        /// <code>
+        ///   leg                   bay at h24   crosses heat_stroke_c (45)   crew dead by
+        ///   pre-ruling positions    10.0 °C      between h60 and h72          h84
+        ///   SHIPPED                 42.3 °C      between h24 and h36          h36
+        /// </code>
+        ///
+        /// <para>⇒ <b>THE HAZARD IS NOT NEW — IT IS ~48 SIM-HOURS EARLIER.</b> The pre-ruling bay
+        /// cooks the same way once <c>radiator_cryo</c> wears through `fail` at ~h43. What the
+        /// ruling removes is the 43-hour grace. With the door OPEN — the state the ship BOOTS in —
+        /// neither peaks above 35 °C in twelve sim-days, which is the leg
+        /// <see cref="TheOpenDoorKeepsThePodBayHabitable_ForThreeSimDays"/> pins.</para>
+        ///
+        /// <para>⚠️ REACHABILITY IS NOT THE COMFORT IT LOOKS LIKE. Doors are MOSS-only (OD-N) and
+        /// <c>MossGate.IsServerLive</c> wants a Terminal at Condition >= 0.20 while `term_moss`
+        /// boots at 0.14 — but `MaintenanceSystem` lifts it to 1.000 at h1.778 once the player grants
+        /// Repair. The gate opens inside the first two sim-hours of ordinary play.</para>
+        ///
+        /// <para>THIS TEST EXISTS TO FORCE THE DELIBERATION, on
+        /// <c>WreckRepairEconomyTests.KnownLimit_TankReserve_IsStillStrandedAndThatIsDeliberate</c>'s
+        /// precedent: <b>if it ever goes green, either a machine went back into the bay or a heat
+        /// path that does not depend on a door arrived — both are decisions someone must take
+        /// deliberately.</b></para>
+        /// </summary>
+        [Test]
+        public void KnownLimit_WithTheDoorShut_ThePodBayCrossesHeatStroke()
+        {
+            var sim = Boot();
+            foreach (var d in sim.Devices.Items) if (d.Name == "door_d0_s0") d.IsOpen = false;
+            const int TicksPerHour = 3600 * Simulation.TicksPerSecond;
+            double peak = double.MinValue;
+            for (int h = 0; h <= 48; h++)
+            {
+                if (h > 0) for (int t = 0; t < TicksPerHour; t++) sim.Tick();
+                double c = sim.Rooms.RoomAt(sim.World, new Int3(5, 3, 0)).TemperatureK - 273.15;
+                if (c > peak) peak = c;
+            }
+            Assert.That(peak, Is.GreaterThan(sim.Defs.Needs.HeatStrokeC),
+                "the pod bay NO LONGER cooks behind a shut door — peak " +
+                peak.ToString("F1", CultureInfo.InvariantCulture) + " °C against heat_stroke_c " +
+                sim.Defs.Needs.HeatStrokeC.ToString(CultureInfo.InvariantCulture) + ". That is good " +
+                "news and it is a DECISION: either a machine went back into the bay (which reverses " +
+                "the owner's 2026-08-06 ruling) or the ship grew a heat path that does not depend on " +
+                "a door. Say which in the commit message and retire this limit.");
+        }
+
+        /// <summary>
+        /// ⭐ THE OTHER HALF, AND THE ONE THE PLAYER ACTUALLY MEETS: with the door in the state the
+        /// ship BOOTS in, the pod bay never becomes thermally dangerous. Driven to three sim-days,
+        /// sampled hourly, against <c>needs.def</c>'s own two bounds rather than a literal.
+        ///
+        /// <para>MEASURED: the bay climbs from 19.9 °C to a peak of 34.01 °C at h84 and turns over.
+        /// Eleven degrees of margin on the hottest hour of an unattended ship.</para>
+        /// </summary>
+        [Test]
+        public void TheOpenDoorKeepsThePodBayHabitable_ForThreeSimDays()
+        {
+            var sim = Boot();
+            const int TicksPerHour = 3600 * Simulation.TicksPerSecond;
+            double peak = double.MinValue, trough = double.MaxValue;
+            for (int h = 0; h <= 72; h++)
+            {
+                if (h > 0) for (int t = 0; t < TicksPerHour; t++) sim.Tick();
+                double c = sim.Rooms.RoomAt(sim.World, new Int3(5, 3, 0)).TemperatureK - 273.15;
+                if (c > peak) peak = c;
+                if (c < trough) trough = c;
+            }
+            var needs = sim.Defs.Needs;
+            Assert.Multiple(() =>
+            {
+                Assert.That(peak, Is.LessThan(needs.HeatStrokeC),
+                    "the pod bay reached " + peak.ToString("F2", CultureInfo.InvariantCulture) +
+                    " °C, at or past heat_stroke_c. The bay's heat now leaves through its OPEN DOOR " +
+                    "(40 W/K) and nothing else — if that path narrowed, the room the crew wake in " +
+                    "stops being one they can stand in.");
+                Assert.That(trough, Is.GreaterThan(needs.HypothermiaC),
+                    "the pod bay fell to " + trough.ToString("F2", CultureInfo.InvariantCulture) +
+                    " °C, at or below hypothermia_c — the corridor's radiator is now the bay's sink " +
+                    "and it must not become the bay's freezer");
+            });
+        }
+
         // --------------------------------------------------------------------- 10. the census
 
         /// <summary>

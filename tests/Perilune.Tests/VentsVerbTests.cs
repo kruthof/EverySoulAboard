@@ -190,10 +190,26 @@ namespace Perilune.Tests
             Assert.That(got, Is.EqualTo(new List<string>
             {
                 "VENTS — 3 ABOARD · 2 OPEN · 1 SHUT",
-                // ⭐ VENT_D1 stands directly ABOVE VENT_CRYO — same x,y, deck 1 — which is not a
-                // coincidence in the fixture: AuthoredShips puts the deck-1 vent on the one
-                // surviving riser tap. If these two ever stop sharing a column, read that comment.
-                "VENT_CRYO · DECK 0 AT 10,1 · OPEN",
+                // ⛔⛔ THE TWO VENTS NO LONGER SHARE A COLUMN, AND THIS COMMENT IS THE ONE THAT SAID
+                // TO READ IT WHEN THEY STOPPED. It used to read: *"VENT_D1 stands directly ABOVE
+                // VENT_CRYO — same x,y, deck 1 — which is not a coincidence in the fixture:
+                // AuthoredShips puts the deck-1 vent on the one surviving riser tap. If these two
+                // ever stop sharing a column, read that comment."*
+                //
+                // They stopped on 2026-08-06: the owner's declutter ruling ("the cryo room looks
+                // extremely crowded — there should only be the capsules and a terminal") moved
+                // `vent_cryo` out of the pod bay and into the SPINE, at (4,8), immediately outside
+                // the bay's doorway. ⭐ THE MECHANISM IS UNTOUCHED, WHICH IS THE POINT OF RE-READING
+                // RATHER THAN RE-TYPING: `WreckCutDeck1Risers` exempts the deck-0 tap under `vent_d1`
+                // BY THE DECK-1 VENT'S NAME, never by what stands on deck 0. The shared column was
+                // always fiction on top of that mechanism — the two slots are slot 0 on their
+                // respective decks, so `(X1, Y0)` was the same corner — and `Deck1VentTests` now
+                // asserts the mechanism directly (the tap is trayed, and it is inside the pod bay's
+                // own room) instead of asserting the coincidence.
+                //
+                // ⚠️ THIS LINE IS A VERBATIM PIN AND WAS RE-READ OFF THE WIRE, not edited by
+                // arithmetic: the failure printed the replacement and it is what is written here.
+                "VENT_CRYO · DECK 0 AT 4,8 · OPEN",
                 "VENT_LS · DECK 0 AT 35,6 · SHUT",
                 "VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT",
             }), "the shipping wreck's vent listing changed:\n" + string.Join("\n", got));

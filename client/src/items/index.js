@@ -604,7 +604,20 @@ export const ITEMS = Object.freeze({
   // ⚠️ AND THIS NOTE DECIDES NOTHING. "Wire it or remove it" is OPEN OWNER RULING M4-6; recording that
   // the five are unreached is a measurement, not an answer to it.
   'reactor-plant':    { build: MC.reactorPlant,   size: MC.SIZES['reactor-plant'],   ...dev('Reactor', null, 'new') },
-  'solar-wing':       { build: MC.solarWing,      size: MC.SIZES['solar-wing'],      ...dev('SolarWing', 'G') },
+  // ⭐⭐ `glyph: null` SINCE THE OWNER'S 2026-08-06 RULING — *"solars inside a ship make not a lot of
+  // sense"*. A solar wing is OUTBOARD: it is bolted to the hull, in vacuum, and the tile the sim
+  // gives it is its ADDRESS (the feed it is wired to), not the place the panel hangs. So this row
+  // stopped being the art a SolarWing TILE wears and became the art the Level-1 plate hangs on the
+  // hull — exactly the shape `power-conduit` and `pipe-run` already have here ("drawn by another
+  // layer on the surface that has one"), and the reason those two are the precedent rather than an
+  // excuse. The tile itself now wears `conduit-run` through `GLYPH_SUBSTITUTE['G']`; the panel is
+  // drawn by `overview-scene.js`'s `outboardLayer`, which reaches this row through
+  // `OUTBOARD_ITEM_FOR_KIND` (`items/glyph-map.js`) rather than through a glyph.
+  // ⛔ IT IS NOT UNREACHED ART and must not be filed with the thirteen rows that are: the plate
+  // draws it on `--ship wreck` at every repaint, with its wrecked twin selected by the same
+  // `items/wear.js` join every other piece uses. `device-sprite-coverage.test.js` pins that `'G'`
+  // still resolves to a real builder, and `overview-scene.test.js` pins that the wing is drawn.
+  'solar-wing':       { build: MC.solarWing,      size: MC.SIZES['solar-wing'],      ...dev('SolarWing', null) },
   'bottle-rack':      { build: MC.bottleRack,     size: MC.SIZES['bottle-rack'],     ...dev('OxygenTank', null, 'new') },
   'reclaimer-stack':  { build: MC.reclaimerStack, size: MC.SIZES['reclaimer-stack'], ...dev('Reclaimer', 'R') },
   'paste-column':     { build: MC.pasteColumn,    size: MC.SIZES['paste-column'],    ...cos('paste_column') },

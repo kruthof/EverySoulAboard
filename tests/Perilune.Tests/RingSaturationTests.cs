@@ -97,10 +97,26 @@ namespace Perilune.Tests
         [Test]
         public void TheShipsLog_SurvivesAStandingKlaxon_AndStillHoldsTheFaultsThatCameFirst()
         {
-            // 1 300 000 ticks = day 1.50. The klaxon's first firing is at 1 085 400 (measured) and
-            // pre-fix the ring was 200/200 by roughly 1 205 400 — so this window is past saturation
-            // with margin, and short enough to keep the gate honest about its cost.
-            const int Ticks = 1300000;
+            // ⚠️⚠️ THE WINDOW GREW 1 300 000 → 3 800 000 ON 2026-08-06, AND THE CAUSE IS CONTENT, NOT
+            // THIS MECHANIC. The owner's declutter ruling moved `radiator_cryo` out of the pod bay
+            // and into the SPINE, where it thermostats the corridor to `thermal.radiator_floor_k`
+            // (283.15 K = 10.0 °C) — and `overheat_guard` fires on `ship.heat`, the fraction of
+            // pressurised rooms inside the 10..35 °C COMFORT BAND. So the corridor now sits exactly
+            // ON the band's floor for ~70 extra sim-hours and the ship stops reading "hot".
+            //
+            // MEASURED on the shipped wreck through `SimHost`, unattended, sampled every 60 000
+            // ticks: the first alarm ENTRY is at tick 14 181 (a one-shot machine failure, unchanged),
+            // and the first COALESCED run — `AlarmFirings > 1`, which is what "a standing klaxon"
+            // means — appears in (3 660 000, 3 720 000]. Before the ruling it was ~1 085 400.
+            //
+            // ⛔ THE OLD WINDOW DID NOT FAIL SAFE, IT FAILED LOUD, and that is why this is a window
+            // change and not an assertion change: at 1 300 000 the run produced `maxFold == 1` and
+            // the NON-VACUITY leg below said so by name ("some alarm must genuinely have REPEATED").
+            // A quieter ship is a real outcome of the ruling; a test that measured it as a pass would
+            // have been the defect.
+            //
+            // ⚠️ IT COSTS THE GATE ~60 s ON THIS FILE. Stated rather than hidden: 2.9× the ticks.
+            const int Ticks = 3800000;
 
             // NO GiveAllCrewAllWork: OD-H boots every work type OFF, and the defect is measured on
             // exactly that ship (see the class header — work ON, the ship stays warm and the rule
@@ -126,10 +142,19 @@ namespace Perilune.Tests
                 .DefaultIfEmpty(0u).Max();
 
             // THE ABSOLUTE BOUND, written as a number rather than re-derived with the code's own
-            // expression. A run closes no sooner than AlarmQuietTicks after it opened, so ONE
-            // repeating alarm can own at most ceil(1 300 000 / 36 000) + 1 = 38 entries; the wreck
-            // also raises one one-shot MACHINE FAILURE per device it owns (13 in three sim-days).
-            // Measured on this fixture: 12. Pre-fix: 197, which is the ring.
+            // expression.
+            //
+            // ⚠️ THE LITERAL IS TIGHTER THAN THE ARITHMETIC, AND SINCE THE WINDOW GREW IT IS
+            // MEASURED-JUSTIFIED RATHER THAN ARITHMETIC-JUSTIFIED — say so, because the old comment
+            // read as if the number fell out of the algebra. A run closes no sooner than
+            // AlarmQuietTicks after it opened, so at 3 800 000 ticks ONE repeating alarm could own up
+            // to ceil(3 800 000 / 36 000) + 1 = 107 entries, plus the wreck's one-shot MACHINE
+            // FAILURE per device (13 in three sim-days) ⇒ an arithmetic worst case of 120.
+            // OBSERVED on this fixture, driven: 16 at tick 3 720 000 (it was 12 in the old 1.3M
+            // window). Pre-fix: 197, which IS the ring.
+            // ⇒ 60 keeps a bound that is well under the ring AND well over the measurement, which is
+            // the property the test needs. ⛔ If the observed count ever approaches it, RE-DERIVE by
+            // driving — do not raise the literal to make a run fit.
             const int MaxAlarmEntriesInThisWindow = 60;
 
             Assert.Multiple(() =>
@@ -400,7 +425,16 @@ namespace Perilune.Tests
             // tick does NOT replay — filed residual, MECHANICS §13.44.5, and the header says so out
             // loud because a reader who does not know that will over-read this test's green.
             // 100 000 precedes any alarm at all and is the control.
-            const int MidRun = 1100000;
+            // ⚠️ MidRun MOVED 1 100 000 → 3 800 000 ON 2026-08-06, for the reason spelled out at
+            // `Ticks` in the test above: the declutter ruling put `radiator_cryo` in the SPINE, the
+            // corridor now sits on the comfort band's floor, and the klaxon's first COALESCED run
+            // moved from ~1 085 400 to (3 660 000, 3 720 000] — measured, driven, on this tree. This
+            // leg's whole subject is a save taken WHILE a run is folded, so the tick has to be inside
+            // one; at 1 100 000 the NON-VACUITY leg below caught it ("the subject's save must be
+            // taken while an alarm run is genuinely COALESCED"). `BeforeAnyAlarm` is unchanged and
+            // still a control: the first alarm ENTRY is at tick 14 181 but it is a one-shot, so
+            // `Folded <= 1` there, which is exactly what the control asserts.
+            const int MidRun = 3800000;
             const int BeforeAnyAlarm = 100000;
             const int RunOn = 6000;   // ten more firings — a divergence shows on the first fold
 

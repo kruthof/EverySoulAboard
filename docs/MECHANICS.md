@@ -3711,22 +3711,28 @@ and a system downstream then ate.** Reproduced headlessly on the shipped wreck, 
   `door_d0_s2` (27,7,0) boots SHUT and since OD-N doors are actuated through MOSS only.
 - ⛔ **`TryFindStagingTile` asks walkable + survivable and NEVER asks reachable** (`:1148-1160`), so
   the order is accepted, `JobKind = Maintain`, `HeldByOrder = true`.
-- She then walks **5 sim-seconds** to the NEAREST Parts stack — a `cabin stores` crate at (3,6,0);
-  tier before distance, so Parts is chosen over the 8-Seals locker beside it — and the instant she
-  stands on it `DriveWorker`'s
+- She then walks to the NEAREST Parts stack — tier before distance, so Parts is chosen over the
+  8-Seals locker beside it — and the instant she stands on it `DriveWorker`'s
   **pickup branch** re-asks `FindPath(worker → staging)`, gets false, and calls `Abandon`
   (`MachineWearSystem.cs:464`, whose comment *"unreachable from here — retried from ground truth next
   second"* is true of the AUTONOMOUS path and false of an order). `Abandon` → `JobKind = None` → the
   setter clears `HeldByOrder` → **the order is gone**. Measured: taken tick 1, dropped **tick 51**,
   machine untouched, nothing on any surface.
-  ⚠️ **D7 (2026-08-03) SHORTENED THIS ROUTE AND THE NUMBERS ARE RE-MEASURED, NOT ADJUSTED.** This
-  line read *"walks 17 sim-seconds to the ship's one Parts stack at (7,14,0) … dropped tick 171"*,
-  true while the reactor bay held the only Parts aboard. The `cabin stores` cache puts seven
-  one-unit Parts crates at (2..8, 6, 0) and she wakes at (3,1,0). Driven as a 2×2, the cache the only
-  difference: **with it, tick 51 at (3,6,0); with the crates removed, tick 171 at (7,14,0)** — the
-  old trace reproduced to the digit. The diagnosis is unchanged; only the walk is. ⛔ Neither number
-  was ever asserted — both lived in prose here and in `DroppedOrderTests`' header, so the gate stayed
-  green while they went stale.
+  ⚠️ **THE ROUTE HAS NOW MOVED TWICE, AND THE TICK IS DELIBERATELY NOT RE-QUOTED.**
+  D7 (2026-08-03) shortened it: this line read *"walks 17 sim-seconds to the ship's one Parts stack
+  at (7,14,0) … dropped tick 171"* while the reactor bay held the only Parts aboard, and the
+  `cabin stores` cache at (2..8, **6**, 0) took it to **tick 51 at (3,6,0)** (driven as a 2×2, the
+  cache the only difference; the old trace reproduced to the digit).
+  ⛔ **The owner's declutter ruling (2026-08-06) moved the cache out of the pod bay entirely** — the
+  crates are at (2..8, **15**, 0) in the reactor bay now — so the 5-sim-second walk is gone. RE-DERIVED
+  on the shipped ship: she wakes at (3,1,0) and the nearest Parts is the crate at **(3,15,0)**,
+  Manhattan **14** (the `spares` at (7,14,0) is 17, the far crate at (8,15,0) is 19). **The DROP TICK
+  WAS NOT RE-DRIVEN and is therefore not written down here** — it is longer than 51 and of the same
+  order as the pre-D7 171, and a number nobody measured does not belong in this file. The DIAGNOSIS
+  is untouched: the order is accepted, the pickup re-asks `FindPath` from the stack's tile, and the
+  order evaporates. ⛔ None of these numbers was ever asserted — they live in prose here and in
+  `DroppedOrderTests`' header, so the gate stays green while they go stale. That is the standing
+  defect this note records, and it has now caught the same line twice.
 - **CONTROLS, DRIVEN.** Strip every consumable ⇒ the drop moves to **tick 1** at her boot tile (the
   below-wreck-floor arm, `:479`) — a different site, so the baseline is not that one. Open
   `door_d0_s2` alone ⇒ the identical order is taken and driven to the worksite (she reaches (25,2,0)).
@@ -7908,10 +7914,17 @@ neither is the other's source):
 
 ```
 VENTS — 3 ABOARD · 2 OPEN · 1 SHUT
-VENT_CRYO · DECK 0 AT 10,1 · OPEN
+VENT_CRYO · DECK 0 AT 4,8 · OPEN             ← the SPINE, outside the pod bay's door (2026-08-06)
 VENT_LS · DECK 0 AT 35,6 · SHUT              ← the life-support compartment's authored first gesture
-VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT   ← OD-O's dead board; directly above VENT_CRYO
+VENT_D1 · DECK 1 AT 10,1 · OPEN · BOARD FAULT   ← OD-O's dead board, over the pod bay
 ```
+
+⚠️ **`VENT_CRYO` MOVED 10,1 → 4,8 ON 2026-08-06 AND `VENT_D1` DID NOT** — the owner's declutter
+ruling ("there should only be the capsules and a terminal") put the pod bay's life support in the
+corridor. The two used to share a column and the annotation here said *"directly above VENT_CRYO"*,
+which was **fiction on top of the mechanism, not the mechanism**: `WreckCutDeck1Risers` exempts the
+deck-0 riser tap by the DECK-1 VENT'S NAME, never by what stands on deck 0, so the upper deck's one
+powered machine is unaffected. Re-read off the wire, not edited by arithmetic.
 
 - **`DeviceKind.AirVent` only.** A `Scrubber` shares the vent's DSL adapter *and* shares
   `ShipSystems.LifeSupportKinds` with it, so "everything that moves air" was the plausible wrong
@@ -8257,3 +8270,83 @@ present or absent. It prints the charter's four required outputs (day-means, the
 sawtooth's amplitude, the sawtooth's period) plus a **dwell sweep** — for each candidate threshold,
 the share of the run below it, the number of crossings, and the **longest contiguous run below**,
 which is the ceiling on any `dwell_ticks` that can ever complete.
+
+---
+
+### 13.52 ⭐⭐ The pod bay holds the capsules and one terminal — and the solars are on the OUTSIDE (owner ruling, 2026-08-06)
+
+Two sentences from the owner, one package. Both are about where a thing IS, and neither changes what
+it DOES: no def moved, no system changed, no verb gained or lost, and **all five determinism pins
+read unchanged**.
+
+**A. THE SOLARS ARE OUTBOARD — a presentation change with an authoring fact behind it.**
+*"Solars inside a ship make not a lot of sense."* `--ship wreck` still authors three `SolarWing`s on
+three reactor-bay tiles, each generating 6 kW × `EffectiveRate`; the tile is the device's ADDRESS,
+which for a hull-mounted panel is the FEED its cable comes in through. So the Level-1 plate now draws
+**two pieces for one device**: `conduit-run` standing on the tile (via `GLYPH_SUBSTITUTE['G']`, which
+the Room Zoom draws too) and `solar-wing` bolted to the hull's outer skin
+(`overview-scene.js` `outboardLayer`, reached through `OUTBOARD_ITEM_FOR_KIND`).
+
+- **The mount is `u`, and it is the SAME `u` the click map inverts** (`ship-elevation.js`
+  `outboardPoint` → `tileUV`). `v` — depth into the beam — is dropped, because a side elevation has
+  no way to show it. The skin is chosen by the BAND: the band nearer the bay's top mounts up,
+  everything else mounts down (deck 1 → upper skin, deck 0 → lower, on the two-deck wreck).
+- **`HULL_SKIN` is INTERPOLATED, not a constant.** The hull tapers 4 design px over its 816 px
+  length; a constant edge leaves a visible gap between pylon and plating at one end of the ship.
+- **An outboard piece is still its tile**: class `pl-fit`, with `data-tile`, `data-anchor` and
+  `pointer-events="visiblePainted"`. The live press census
+  (`client/tools/overview-plate-shot.mjs`) is exhaustive over that class and reads **60 pressed / 0
+  wrong tile** on deck 0.
+- ⛔ **THE JOIN'S CENSUS NOW COUNTS TILES, NOT ELEMENTS.** Counting `.pl-fit` elements read **28
+  against the Room Zoom's 25** in the reactor bay and the rig failed, naming the deck as the classic
+  cause. Two pictures of one machine is not a discrepancy; a picture of a machine the room does not
+  hold is. Fixed at `plateCensus`, and the press census still walks every element individually.
+- ⚠️ **`solar-wing` GAVE UP GLYPH `'G'` IN THE SAME COMMIT** that `GLYPH_SUBSTITUTE` claimed it, or
+  the ledger's non-shadowing guard would have refused. That ledger went **7 → 8**, and this is its
+  first entry whose reason is *not* "the set has no piece for that kind".
+
+**B. THE POD BAY DREW 26 THINGS AND NOW DRAWS 13.** *"The cryo room looks extremely crowded — there
+should only be the capsules and a terminal."* The census is `18 devices + 8 uncarried ground stacks`;
+it is now `12 capsules + term_moss`. **Nothing was deleted — the audit found nothing decorative.**
+All thirteen departures are relocations: `vent_cryo`/`scrubber_cryo`/`radiator_cryo`/`light_cryo` to
+the SPINE alcove outside the bay's door (`WreckCorePlantX0/X1`, derived from the planner's own door
+column so the apron stays clear), `battery_cryo` to the reactor bay between `battery_1` and
+`battery_2`, and M1-I's 8-Seal locker + D7's seven `cabin stores` crates to the reactor bay's stock
+rows at y 14/15.
+
+- **THE AIR HOLDS THROUGH A DOOR.** `AtmosphereSystem.DiffuseAcrossDoors` — built for B-3 (§13.1) —
+  is what carries the corridor scrubber into the room the crew stand in. Driven: the bay boots at
+  ~500 ppm CO2 and reads **< 50 ppm by h6**; with every scrubber removed it does not clean.
+- **THE POWER HOLDS BECAUSE DECK 0 IS ONE NETWORK.** Driven, sampled hourly to three sim-days:
+  **12 capsules powered / 8 operational / 7 intact-and-thawable**, crew alive, identical to the
+  pre-ruling control. ⚠️ AND SAY THE HONEST HALF: `battery_cryo` boots with `StoredKWh` 0 and
+  `Battery.draw` is 0, so it never contributed to the pods' supply from either tile — what powers
+  them is the wings, through the trunk.
+- **THE REPAIR ECONOMY DID NOT MOVE.** Driven A/B with all work granted at tick 0, the whole 18-unit
+  pile in one compartment: the same fourteen services in the same order, `min Affordable(Parts)` = 4
+  over the first sim-hour, `tank_reserve` still 0.195 and unfixable at h12. Timings differ by
+  ≤ 0.006 sim-h.
+- ⚠️ **THE BAY IS WARMER, AND THAT IS THE COST.** A radiator acts on its own room, so the bay's heat
+  now leaves through its open door (40 W/K). Driven to twelve sim-days against a same-tree control:
+  the control sits pinned at 10.0 °C to h36 and peaks 30.57 °C at h108; the shipped bay climbs to
+  24 °C by h6 and peaks **34.01 °C at h84**, eleven degrees under `heat_stroke_c`. The exported heat
+  lands in the two compartments R-4 freezes — spine and reactor bay read 2–4 K warmer from h36, and
+  the reactor bay's `hypothermia_c` crossing moves ~h216 → ~h228.
+- ⛔ **KNOWN LIMIT, DRIVEN: SHUT THE POD BAY'S DOOR AND IT COOKS.** Conduction drops 5× and the
+  capsules' ~0.94 kW has nowhere to go. Control (pre-ruling positions): 10.0 °C at h24, crosses
+  `heat_stroke_c` between h60 and h72, crew dead by h84. Shipped: **42.3 °C at h24, crosses between
+  h24 and h36, crew dead by h36.** ⇒ **the hazard is not new — it is ~48 sim-hours earlier**; the
+  pre-ruling bay cooks the same way once `radiator_cryo` wears through `fail` at ~h43. Reachable:
+  doors are MOSS-only (OD-N) and the gate wants a Terminal at Condition ≥ 0.20, but
+  `MaintenanceSystem` lifts `term_moss` 0.14 → 1.000 at h1.778 once Repair is granted. Pinned by
+  `WreckShipTests.KnownLimit_WithTheDoorShut_ThePodBayCrossesHeatStroke`, on
+  `KnownLimit_TankReserve`'s precedent: **if it goes green, someone made a decision.** FILED for the
+  owner.
+- ⚠️ **A SIDE EFFECT ON AN UNRELATED GATE, RECORDED SO IT IS NOT REDISCOVERED.** `overheat_guard`
+  fires on `ship.heat`, the fraction of pressurised rooms in the 10..35 °C comfort band, and
+  `radiator_cryo` now clamps the SPINE to exactly the band's floor. The ship therefore stops reading
+  "hot" for ~70 extra sim-hours: the thermal klaxon's first COALESCED run moved **~1 085 400 →
+  (3 660 000, 3 720 000]**. `RingSaturationTests`' two windows grew to 3 800 000 to keep a standing
+  klaxon in frame (~60 s more gate). The old windows **failed loudly** — the non-vacuity legs said
+  "some alarm must genuinely have REPEATED" — which is why this is a window change and not an
+  assertion change.
