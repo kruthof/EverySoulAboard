@@ -5,9 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PERILUNE</title>
 <!-- THE STYLESHEET CASCADE, IN ORDER. `client/styles.css` was one 1917-line file until the VR-A
-     split (2026-08-04); these six are that file, moved VERBATIM by surface, and THIS LINK ORDER IS
-     THE CASCADE — it reproduces the old source order exactly (the console `breakpoints` block is
+     split (2026-08-04); SIX of these seven are that file, moved VERBATIM by surface, and THIS LINK
+     ORDER IS THE CASCADE — it reproduces the old source order exactly (the console `breakpoints` block is
      the one chunk that moved, and it is inert where it landed; console.css's header says why).
+     `persona.css` is the SEVENTH and the only one that was not in the old file: M4-2's Persona
+     window is a new surface, and the split's own rule is one surface, one stylesheet — folding it
+     into any of the six would be a lie about which surface owns it (`relations.css`'s header makes
+     the identical argument for the sixth).
      `paper.css` comes last and pulls the retired `warm.css` in behind it. Adding a file here means
      adding it to `client/tools/moss-preview.html` too — `stylesheet-split.test.js` pins the set,
      the order and the agreement between the two pages. -->
@@ -17,6 +21,7 @@
 <link rel="stylesheet" href="styles/overview.css">
 <link rel="stylesheet" href="styles/roomzoom.css">
 <link rel="stylesheet" href="styles/relations.css">
+<link rel="stylesheet" href="styles/persona.css">
 <link rel="stylesheet" href="src/theme/paper.css">
 </head>
 <body>
@@ -75,6 +80,12 @@
         <div id="metrics"></div>
       </div>
       <div class="ro-actions">
+        <!-- ⚠️ M4-2 (2026-08-05): this label still says [T] and the `T` KEY IS DELETED (the talk verb
+             went with the third door). The BUTTON still works — `hud.js` gives it its own onclick —
+             so the label is stale rather than false, and it is inside `.app`, which is display:none
+             on every one of the six tabs in normal play (measured) and which M4-8 deletes outright.
+             Left alone deliberately: editing it would move `CONSOLE_SHELL_IDS`' frozen census for a
+             string no player can reach. FILED, not fixed. -->
         <button id="b-talk" class="btn-primary" disabled>[T] OPEN CHANNEL — TALK</button>
         <button id="b-move" class="btn-secondary" disabled>[M] MOVE ORDER</button>
         <button id="b-bio" class="btn-secondary" disabled>BIOGRAPHY</button>
@@ -146,6 +157,16 @@
      #overview-view directly; MOSS and the Room Zoom hide THIS root. Built by
      src/ui/relations-view.js. -->
 <div id="relations-view" class="rl" hidden></div>
+
+<!-- ⭐⭐ THE PERSONA WINDOW (M4-2) — the ONE door from the map to a person. A BODY-LEVEL SIBLING of
+     .app, like #moss-view / #overview-view / #roomzoom-view / #relations-view, and for a reason that
+     was MEASURED rather than preferred: #panels (where the old [B] BIO card opened) is display:none
+     under `body.roomzoom-open`, and the Room Zoom's crew dock is precisely the surface with no
+     readout at all (docs/ROADMAP.md:55). A window that cannot open where the readout is missing does
+     not close that filing, so this root inherits NEITHER hide rule — it is visible over BOTH standard
+     surfaces. It is also OUTSIDE .app by construction, so M4-8's console deletion cannot take it with
+     the shell. Shown when `body.persona-open`; built by src/ui/persona-view.js. -->
+<div id="persona" class="pv" hidden></div>
 
 <div class="disconnected" id="disc">
   <span class="disc-chip"><span class="disc-dot"></span>LINK LOST — RECONNECTING…</span>

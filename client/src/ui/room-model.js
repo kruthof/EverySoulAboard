@@ -2505,18 +2505,35 @@ export function removeDecor(list, deck, x, y) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// ESC rung (IX-Z-40). The Room Zoom's own two-rung stack: a keypress either disarms the armed tool
-// OR pops the room to the Overview, never both (IX-Z-41). A dialogue rung sits between so a panel
-// closes first when one is open. PURE.
+// ESC rung (IX-Z-40). The Room Zoom's own stack: a keypress either disarms the armed tool OR pops
+// the room to the Overview, never both (IX-Z-41). A dialogue rung sits between so a panel closes
+// first when one is open. PURE.
+//
+// ⭐⭐ M4-2 — THE `persona` RUNG, AND WHY IT MUST LIVE IN THIS PURE REDUCER RATHER THAN IN A SECOND
+// KEY LISTENER. The Persona window opens over the Room Zoom (that is the whole point of DESIGN
+// QUESTION (c): `#panels` is `display:none` under `body.roomzoom-open`, so the surface with no
+// readout could never have shown it). `roomzoom-view.js` installs its keydown on `window` in the
+// CAPTURE phase at mount; a listener the Persona window registered later would run SECOND, so Escape
+// would exit the room out from under an open window. Threading the rung here keeps ONE ordered stack
+// per surface, pure and node-tested, instead of two handlers racing on registration order.
+//
+// ⚠️ IT SITS WHERE THE CONSOLE STACK PUTS IT — BELOW `armed`, and that is consistency rather than
+// preference. `console-model.escapeTarget` is armed → dialogue → persona → dossier → moss →
+// relations, and this surface's stack is the same order minus the rungs it has no panels for. The
+// cost, stated: with a tool armed AND the window up, the first Escape disarms something the window
+// is covering and the second closes the window. That is exactly what the console does today with an
+// armed tool and an open BIO card, so it is a shipped precedent rather than a new wart — and
+// inverting it here would make one keystroke mean two different things on two standard surfaces.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * @param {{armed:boolean, dialogueOpen?:boolean, roomOpen:boolean}} s
- * @returns {'disarm'|'dialogue'|'exit'|'pass'}
+ * @param {{armed:boolean, dialogueOpen?:boolean, personaOpen?:boolean, roomOpen:boolean}} s
+ * @returns {'disarm'|'dialogue'|'persona'|'exit'|'pass'}
  */
 export function escStackRung(s) {
   if (s && s.armed) return 'disarm';
   if (s && s.dialogueOpen) return 'dialogue';
+  if (s && s.personaOpen) return 'persona';
   if (s && s.roomOpen) return 'exit';
   return 'pass';
 }

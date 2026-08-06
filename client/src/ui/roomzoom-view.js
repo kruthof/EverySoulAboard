@@ -2153,20 +2153,30 @@ function onAcceptChip(el) {
 }
 
 /**
- * A CREW DOCK ROW CLICK (M1-K) — select that crew member, and go to where they are.
+ * A CREW DOCK ROW CLICK (M1-K) — select that crew member, open her Persona window, and go to where
+ * she is.
  *
  * ⭐ THE RIMWORLD RULE BEING MIRRORED is the colonist bar: clicking a colonist selects them AND
- * moves the camera to them, wherever on the map they are. Both halves, in that order:
+ * moves the camera to them, wherever on the map they are. Three halves now, in this order:
  *
  *   1. SELECT — `Hud.selectCrewByCid`, the one shared selection flow both modern surfaces already
- *      use (it is on `SHIP_STATE_REACH`; this adds no symbol to that pinned list, and it is NOT a
- *      crew-interaction seam — selecting a pawn is not reaching a person, so §1.5.4's Persona census
- *      is untouched). It already handles the cross-deck case by sending `Cmd.deck` and deferring the
- *      click until that deck's frame arrives, which is why this function never sends a deck command
- *      of its own: two `Cmd.deck` for one click would move the player two decks.
- *   2. GO THERE — if they are standing in a bound room that is not the one on screen, re-focus the
+ *      use. It already handles the cross-deck case by sending `Cmd.deck` and deferring the click
+ *      until that deck's frame arrives, which is why this function never sends a deck command of its
+ *      own: two `Cmd.deck` for one click would move the player two decks.
+ *   2. ⭐⭐ M4-2 — OPEN THE PERSONA WINDOW, `Hud.openPersonaForSelected(cid)`, THE ONE DOOR FROM THE
+ *      MAP TO A PERSON. This inverts `zoom-pawn.test.js`'s standing pin, and the pin's PRINCIPLE is
+ *      re-stated rather than deleted: *"SELECTING is not interacting"* still holds — selection is
+ *      step 1 and it is still a different act — but this surface may now reach EXACTLY ONE
+ *      crew-interaction seam, and this is it. Before M4-2 the Room Zoom could reach a person not at
+ *      all: the crew dock is the only crew affordance in a room, this surface has no readout
+ *      (`ROADMAP.md:55`), and `#panels` — where the old BIO card lived — is `display:none` under
+ *      `body.roomzoom-open`. ⛔ THE CID IS PASSED EXPLICITLY, and it has to be: selection is
+ *      WIRE-AUTHORITATIVE, so at this instant `Hud`'s frame still carries the PREVIOUS selection and
+ *      an argument-less call would open the wrong person's window (or nobody's).
+ *   3. GO THERE — if she is standing in a bound room that is not the one on screen, re-focus the
  *      Room Zoom on it, exactly as a minimap slot click does (`onMinimapSlot`), and disarm, because
- *      a tool armed for one room should not stay armed over another.
+ *      a tool armed for one room should not stay armed over another. The window covers the room while
+ *      it is up; Escape closes it and leaves the player where she is, which is the point.
  *
  * A crew member in a HALL has no room to enter. That is not a dead row: the selection still lands
  * (which is the thing the player wants — they can now give the order), and the toast says where they
@@ -2180,6 +2190,7 @@ function onCrewRow(rawCid) {
   const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
   const row = shipCrewRows(crew, currentDeckView(), _focus, null).find((r) => Number(r.cid) === cid);
   Hud.selectCrewByCid(cid);
+  Hud.openPersonaForSelected(cid);
   if (!row) return; // selected anyway — an unknown cid is the roster's problem, not a reason to stop
   const who = surnameOf(row.entry.name) || String(cid);
   if (row.here) return;                       // already on screen: the glow is the whole feedback
@@ -2955,8 +2966,16 @@ function onKey(e) {
     return;
   }
   if (k === 'Escape') {
-    const rung = escStackRung({ armed: _armed != null, dialogueOpen: false, roomOpen: true });
+    // ⭐⭐ M4-2 — `personaOpen` IS ASKED OF THE SHARED STATE LAYER, not of a local flag. The Persona
+    // window is a body-level sibling that opens OVER this surface (it is the only reason a player in
+    // a room can reach a person at all — this surface has no readout), and without this rung the
+    // room would exit out from under an open window: this handler is registered on `window` in the
+    // CAPTURE phase at mount, so it runs before anything the window could register later.
+    const rung = escStackRung({
+      armed: _armed != null, dialogueOpen: false, personaOpen: Hud.isPersonaOpen(), roomOpen: true,
+    });
     if (rung === 'disarm') arm(_armed);       // toggle the armed tool off
+    else if (rung === 'persona') Hud.closePersona();
     else if (rung === 'exit') exitRoom();
     e.stopPropagation(); e.preventDefault();
   } else if (k === 'b' || k === 'B') {         // IX-Z-17: B toggles WALL

@@ -19,6 +19,7 @@ import { initOverview } from './ui/overview-view.js';
 import { initRoomZoom } from './ui/roomzoom-view.js';
 import { initRelations } from './ui/relations-view.js';
 import { initOnboarding } from './ui/onboarding.js';
+import { initPersona } from './ui/persona-view.js';
 
 const PROC_TILE = 26;
 const params = new URLSearchParams(location.search);
@@ -80,6 +81,10 @@ function fallbackToCanvas2D() {
     // -cursor `M`/`T`/`Enter` leak back after a context loss, silently. See `isSuspended` in
     // controls.js for what the leak did.
     isSuspended: () => roomZoom.isOpen(),
+    // ⭐ M4-2 — the Persona window is a MODAL over the Overview: while it is up the keymap answers
+    // Escape and the clock and nothing else. BOTH installInput blocks pass it, for the reason the
+    // `isSuspended` note above gives — wiring only one brings the leak back after a context loss.
+    isModalOpen: () => Hud.isPersonaOpen(),
     onBuildKey: (kind) => Hud.armFromKey(kind),
     onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
     onCanvasClick: () => Hud.canvasClicked(),
@@ -351,6 +356,14 @@ initOverview({
 // visibility from the shared tab state, so leaving it is the ordinary tab flow (the same rung
 // Escape already uses).
 initRelations({ onExit: () => Hud.selectTab('build') });
+// ⭐⭐ M4-2 — THE PERSONA WINDOW: the ONE door from the map to a person, a body-level sibling that
+// opens over BOTH standard surfaces (that is the whole point — `#panels`, where the old BIO card
+// lived, is `display:none` under `body.roomzoom-open`, so the surface with no readout could never
+// have shown it). It is REGISTERED with the HUD rather than imported by it: `hud.js`'s import list is
+// pinned by EQUALITY at 10 on a file closed to new work (`surface-boundary.test.js`), so an eleventh
+// import there is red by construction. `Hud.openPersonaForSelected` — the one entry on the
+// CREW_INTERACTION census — lowers to the controller registered here.
+Hud.setPersonaWindow(initPersona());
 // First-run onboarding: the one-time intro (premise + the two verbs) and the persistent `?` help.
 initOnboarding();
 Hud.buildLensButtons((name) => session.send(Cmd.lens(name)));
@@ -379,6 +392,9 @@ inputDispose = installInput({
   // M1-K — see the twin in `fallbackToCanvas2D` above. `roomZoom` is the module-level const created
   // by `initRoomZoom` further up this file, so the closure is resolved by the time any key arrives.
   isSuspended: () => roomZoom.isOpen(),
+  // ⭐ M4-2 — the modal stand-down; see the twin in `fallbackToCanvas2D` above. Wiring only one
+  // block leaves the leak live after a WebGL2 context loss, silently.
+  isModalOpen: () => Hud.isPersonaOpen(),
   onBuildKey: (kind) => Hud.armFromKey(kind),
   onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
   // Plain canvas clicks supersede any pending cross-deck row click (IX-42).

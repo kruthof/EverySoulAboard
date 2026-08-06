@@ -373,7 +373,10 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
 .ov-act{border:1px solid var(--paper-border);text-align:center;padding:6px;font:inherit;
   font-size:9px;letter-spacing:.12em;background:transparent;color:var(--ink-prose);cursor:pointer;flex:1}
 .ov-act:hover{border-color:var(--ink);color:var(--ink)}
-.ov-talk{border-color:var(--ink);color:var(--ink)}
+/* M4-2: `.ov-talk` became `.ov-persona` when `[T] OPEN CHANNEL — TALK` was deleted. The
+   PRIMARY-action ink border moves with the button, not with the verb: this is now the one
+   door from the map to a person, so it is the one that reads as the action. */
+.ov-persona{border-color:var(--ink);color:var(--ink)}
 .ov-act:disabled{opacity:.4;cursor:default;pointer-events:none}
 
 /* ==== the LENS row (ruling E4: kept, DEMOTED to a quiet row of mono toggles) ==== */

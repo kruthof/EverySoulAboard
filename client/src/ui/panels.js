@@ -420,7 +420,15 @@ class CitizenCard extends Panel {
     log.appendChild(el('div', 'dsr-sec-hd')).appendChild(el('span', 'dsr-sec-title', 'CONVERSATION LOG'));
     const entries = citizenLog(cit);
     if (!entries.length) {
-      log.appendChild(el('div', 'cit-log-empty', 'No conversations yet — press [T] to open a channel.'));
+      // ⭐ M4-2 (2026-08-05) — "press [T] to open a channel" WAS TRUE AND IS NOT. `T` was the
+      // Overview keymap's talk key; it is deleted with the verb (one door from the map to a person,
+      // `CLAUDE.md:84-85`), so this card would have been teaching a keystroke that is bound to
+      // nothing. The sentence now names the only control that still opens a channel — the DEPRECATED
+      // console's own `#b-talk` button, which is the only way this card can be reached at all now
+      // that `openBioForSelected` is gone. ⚠️ M4-3 decides whether this card lives; this is the
+      // minimum edit that stops it lying in the meantime.
+      log.appendChild(el('div', 'cit-log-empty',
+        'No conversations yet — use OPEN CHANNEL above to start one.'));
     } else {
       const scroll = el('div', 'cit-log-scroll');
       for (const e of entries) {

@@ -796,6 +796,43 @@ test('clicking a dock row SELECTS them, and goes to where they are (the colonist
   assert.ok(layers().includes('VALE'), 'the HERE row navigated away from its own room');
 });
 
+// ⭐⭐ M4-2 — THE ACCEPTANCE STEP THAT CLOSES `docs/ROADMAP.md:55`, DRIVEN IN NODE.
+//
+// The charter's step 4: *"Enter Room Zoom, click a crew member in the dock → the same window opens.
+// ⭐ This is the step that closes ROADMAP.md:55, and a reviewer who skips it cannot tell the package
+// shipped."* Before M4-2 this surface could not reach a person at all — no readout, and `#panels`
+// (the old BIO card's mount) is `display:none` under `body.roomzoom-open`.
+//
+// MUTATION: drop `Hud.openPersonaForSelected(cid)` from `onCrewRow` ⇒ RED on the first leg.
+// MUTATION: call it with no argument ⇒ RED on the SECOND leg, which is the whole reason that leg
+// exists: selection is wire-authoritative, so with no argument the seam resolves against a frame
+// that still carries the PREVIOUS selection and the window opens for the wrong person. The rig's
+// `hudSent` shows a correct-looking `{cmd:'click'}` in both cases — the DEFECT IS INVISIBLE except
+// at the cid.
+test('M4-2: a dock row click OPENS THE PERSONA WINDOW, for the person that was clicked', () => {
+  prime(null);
+  const opens = [];
+  Hud.setPersonaWindow({ open: (cid) => opens.push(cid), close: () => {}, isOpen: () => false });
+  try {
+    fire(crewRow(BO.cid), 'click');
+    assert.deepEqual(opens, [BO.cid],
+      'clicking a crew member in the Room Zoom dock did not open her Persona window. This surface '
+      + 'has NO readout (docs/ROADMAP.md:55) and `#panels` is display:none under `body.roomzoom-open`, '
+      + 'so without this the player inside a room cannot reach a person at all.');
+
+    // ⭐ THE DISCRIMINATING LEG. A second row, a different person: an argument-less
+    // `openPersonaForSelected()` would resolve the SELECTION, which the wire has not echoed yet, so
+    // the second open would carry the first click's cid (or none).
+    opens.length = 0;
+    prime(null);
+    fire(crewRow(CY.cid), 'click');
+    assert.deepEqual(opens, [CY.cid],
+      'the window opened for the wrong crew member. Selection is WIRE-AUTHORITATIVE — the frame the '
+      + 'client holds at click time still carries the previous selection — so the dock must pass the '
+      + 'cid it just read off the row, not ask who is selected.');
+  } finally { Hud.setPersonaWindow(null); }
+});
+
 // MUTATION: `toast(...)` → nothing in the hall branch of `onCrewRow` ⇒ RED. The row still selects,
 // so a test that only checked the selection would pass with the click looking swallowed.
 test('a crew member in a HALL still selects, and the surface SAYS why it did not move', () => {
@@ -894,10 +931,22 @@ function fakeCanvas(w, h) {
 }
 function evt(type, props) { return Object.assign(new Event(type), props); }
 
-/** Drive the CONSOLE keymap with a given suspension state and return everything it sent. */
-function consoleKeys(keys, suspended) {
+/**
+ * Drive the CONSOLE keymap with a given suspension state and return everything it sent.
+ *
+ * ⭐⭐ M4-2 — `opens` IS A SECOND OUTPUT CHANNEL AND IT HAD TO BE ADDED, WHICH IS THE 9th TRAP SHAPE
+ * CAUGHT IN ADVANCE. This rig's whole instrument was "what did the console put ON THE WIRE", and it
+ * could see `T` because `T` sent `Cmd.talk`. `T` is deleted; its heir `[U]` opens the Persona window
+ * and sends NOTHING. Left alone, the stand-down assertion below would keep passing for that key
+ * VACUOUSLY — a key that can no longer send anything cannot be caught sending something while
+ * suspended. So the rig records window OPENS as well, at the seam (`Hud.setPersonaWindow`, the same
+ * registration `main.js` uses), and the leak test asserts on both.
+ */
+function consoleKeys(keys, suspended, modalOpen = false) {
   const savedWindow = globalThis.window;
   const out = [];
+  const opens = [];
+  Hud.setPersonaWindow({ open: (cid) => opens.push(cid), close: () => {}, isOpen: () => modalOpen });
   globalThis.window = new EventTarget();
   const dispose = installInput({
     canvas: fakeCanvas(520, 520),
@@ -906,23 +955,33 @@ function consoleKeys(keys, suspended) {
     getFrame: () => ({ w: 64, h: 32, deck: 0, crew: [[32, 10, 0, 7]], sel: [32, 10] }),
     draw() {}, toggleSprites() {},
     isSuspended: () => suspended,
+    isModalOpen: () => Hud.isPersonaOpen(),
   });
   try {
     for (const k of keys) globalThis.window.dispatchEvent(evt('keydown', { key: k }));
-  } finally { dispose(); globalThis.window = savedWindow; }
+  } finally { dispose(); globalThis.window = savedWindow; Hud.setPersonaWindow(null); }
+  out.opens = opens;
   return out;
 }
 
 // MUTATION: delete the `if (isSuspended() && !TIME_KEYS.has(k)) return;` line ⇒ RED on the first
 // leg. MUTATION: make the stand-down unconditional (drop the TIME_KEYS half) ⇒ RED on the second,
 // which is the leg that keeps the Room Zoom's own nudge chip honest.
-test('the console keymap STANDS DOWN under a Level-2 takeover — M, T and Enter send nothing', () => {
+test('the console keymap STANDS DOWN under a Level-2 takeover — M, U and Enter do nothing', () => {
   // The three keys that did real damage. `M` moved the SELECTED crew member to the console's
   // invisible inspection cursor at a hardcoded {x:32,y:10}; `T` opened a dialogue inside the hidden
   // `#panels`; `Enter` did one or the other. The fixture deliberately puts a selected crew member on
-  // that exact hardcoded tile, so `M` and `T` and `Enter` are ALL live in the control below — a
+  // that exact hardcoded tile, so `M` and `U` and `Enter` are ALL live in the control below — a
   // fixture with no selection would make three of these vacuous.
-  assert.deepEqual(consoleKeys(['m', 'T', 'Enter', 'ArrowLeft', 'w', 'r', '1'], true), [],
+  // ⭐ M4-2 — `T` IS NOW `U`, and the second half of the assertion is new: the Persona window must
+  // not OPEN from behind a Level-2 takeover either. It is a body-level sibling that is visible over
+  // the Room Zoom, so a leaked `[U]` there would put a window on screen that the player did not ask
+  // for — a WORSE outcome than the dialogue-into-a-hidden-box the original leak produced.
+  const suspended = consoleKeys(['m', 'U', 'Enter', 'ArrowLeft', 'w', 'r', '1'], true);
+  assert.deepEqual(suspended.opens, [],
+    'the Persona window opened from the SUSPENDED console keymap while a Level-2 surface owned the '
+    + 'screen — `[U]`/Enter leaked through the stand-down.');
+  assert.deepEqual([...suspended], [],
     'the deprecated console keymap is still acting while a Level-2 surface owns the screen. `M` '
     + 'sends a real Cmd.move() to a cursor that is drawn NOWHERE on that surface — a keystroke that '
     + 'silently walks a pawn to a hardcoded coordinate is worse than a keystroke that does nothing.');
@@ -942,11 +1001,74 @@ test('the console keymap STANDS DOWN under a Level-2 takeover — M, T and Enter
   // `Cmd.move` is `{cmd:'move'}` (`wire/session.js:116` vs the game-ui block above it). A
   // non-vacuity control that silently cannot see one of the three keys it names is the shape this
   // whole section exists to avoid.
-  const live = consoleKeys(['m', 'T', 'Enter', 'ArrowLeft'], false).map((o) => o.cmd || o.type);
+  const liveRaw = consoleKeys(['m', 'U', 'Enter', 'ArrowLeft'], false);
+  const live = [...liveRaw].map((o) => o.cmd || o.type);
   assert.ok(live.includes('move'), 'the console no longer sends a move order even when it is LIVE — '
     + 'the stand-down has broken the deprecated surface instead of standing it down');
-  assert.ok(live.includes('talk'), 'the console no longer talks when live');
   assert.ok(live.includes('cursor'), 'the console no longer moves its cursor when live');
+  // ⭐ M4-2 — the replacement for the old `talk` leg, and it is the leg that keeps the FIRST
+  // assertion honest: `[U]` and Enter-on-a-selected-crew really do open the window when the keymap
+  // is live, so "nothing opened while suspended" is a suppression rather than a dead key. TWO opens
+  // for two keys, both for the crew member the fixture selected.
+  assert.deepEqual(liveRaw.opens, [7, 7],
+    'the Overview keymap no longer opens the Persona window when it is LIVE — with nothing to '
+    + 'suppress, the stand-down assertion above proves nothing');
+});
+
+// ⭐⭐ M4-2 (SEND-BACK FIX) — THE MODAL STAND-DOWN, and it is the SAME defect as the leak above with
+// a different lid on it. The Persona window is a body-level takeover at `z-index:40` that covers the
+// Overview; the console keymap is NOT suspended there (no Level-2 surface is open), so before this
+// every game key kept firing behind the scrim. MEASURED BY REVIEW: `G` armed DIG and `3` moved the
+// lens while the window was up — and the next `Escape` then spent itself DISARMING the invisible tool
+// instead of closing the window, so the player's dismissal did nothing visible. That is
+// `HANDOVER.md:314-319`'s shape (a verb wired to state the player cannot see) and the reason the
+// suspension seam exists at all.
+//
+// ⛔ ESCAPE AND THE CLOCK MUST STILL ANSWER — and that is why this is a SEPARATE predicate rather
+// than `isSuspended || personaOpen`. `isSuspended` returns before the Escape branch (correct: the
+// Room Zoom binds Escape itself in capture). The Persona window binds NO key; its Escape runs
+// through `onEscape` → `handleEscape` → `escapeTarget`'s `persona` rung. Folding the two together
+// would swallow the only keystroke that closes it.
+//
+// MUTATION: delete the `isModalOpen() && k !== 'Escape' && …` line in controls.js ⇒ RED on leg 1.
+// MUTATION: drop the `k !== 'Escape'` clause ⇒ RED on leg 2 (the window becomes undismissable).
+test('M4-2: the keymap STANDS DOWN behind the Persona window — but Escape and the clock still answer', () => {
+  // ── leg 1: the game keys are swallowed ──
+  const behind = consoleKeys(['g', '3', 'm', 'b', 'v', 'ArrowLeft', 'P'], false, true);
+  assert.deepEqual([...behind], [],
+    'a game key fired while the Persona window covered the screen. `G`/`V`/`B` arm tools the player '
+    + 'cannot see behind an opaque sheet, `3` moves the lens under it, and `M` sends a real move '
+    + 'order — and the next Escape is then spent on the invisible tool instead of the window.');
+  assert.deepEqual(behind.opens, [],
+    'the Persona key re-fired behind an already-open window');
+
+  // ── leg 2: Escape and the clock are NOT swallowed ──
+  // ⚠️ Escape is observed through `onEscape`, not through the wire: it sends no command. Without
+  // this leg the assertion above is satisfied by a stand-down that swallows EVERYTHING, which would
+  // make the window impossible to dismiss with the key its own header button advertises.
+  let escapes = 0;
+  const savedWindow = globalThis.window;
+  globalThis.window = new EventTarget();
+  const sent = [];
+  Hud.setPersonaWindow({ open: () => {}, close: () => {}, isOpen: () => true });
+  const dispose = installInput({
+    canvas: fakeCanvas(520, 520),
+    camera: { x: 0, y: 0, z: 1, viewW: 520, viewH: 520, tile: 26 },
+    session: { send: (o) => sent.push(o) },
+    getFrame: () => ({ w: 64, h: 32, deck: 0, crew: [[32, 10, 0, 7]], sel: [32, 10] }),
+    draw() {}, toggleSprites() {},
+    onEscape: () => { escapes += 1; },
+    isSuspended: () => false,
+    isModalOpen: () => Hud.isPersonaOpen(),
+  });
+  try {
+    for (const k of ['Escape', ' ', '+', 'g']) globalThis.window.dispatchEvent(evt('keydown', { key: k }));
+  } finally { dispose(); globalThis.window = savedWindow; Hud.setPersonaWindow(null); }
+  assert.equal(escapes, 1,
+    'Escape was swallowed by the modal stand-down, so the Persona window cannot be closed by the '
+    + 'key its own [ESC] CLOSE button advertises');
+  assert.deepEqual(sent.map((o) => o.cmd), ['pause', 'speed'],
+    'the ship\'s clock stopped answering behind the window (or `G` leaked through)');
 });
 
 // MUTATION: pass `isSuspended` to only the FIRST installInput block in main.js — the WebGL2→Canvas2D
@@ -961,6 +1083,11 @@ test('BOTH main.js installInput blocks pass the suspension seam', () => {
       `installInput block #${i + 1} does not pass isSuspended. Wiring only one leaves the `
       + 'invisible-cursor M/T/Enter leak live after a WebGL2 context loss, with nothing on screen '
       + 'to say the keymap came back.');
+    // ⭐ M4-2 — the SAME argument for the modal seam, one floor down: a fallback block without it
+    // brings the behind-the-window key leak back after a context loss, equally silently.
+    assert.ok(codeOnly(block).includes('isModalOpen:'),
+      `installInput block #${i + 1} does not pass isModalOpen — game keys will fire behind the `
+      + 'Persona window on this path.');
   });
   // NEGATIVE CONTROL for the comment stripper: a COMMENTED-OUT wiring must NOT satisfy the scan.
   // The fixture carries a LATER REAL COMMENT, because a naive `/\*[\s\S]*?\*\//` stripper finds no
@@ -978,24 +1105,49 @@ test('BOTH main.js installInput blocks pass the suspension seam', () => {
 // 7. THE BOUNDARY — this package must not open a second door from the map to a person.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-// MUTATION: add `Hud.talkSelectedCrew()` to the crew-row handler ⇒ RED. This is `plan §1.5.4`, an
-// OWNER DECISION: all crew interaction consolidates into ONE deferred-design Persona window, so a
-// dock that grew a TALK or BIO button would be exactly the scattering the census forbids.
-// SELECTING is not interacting — `selectCrewByCid` is on SHIP_STATE_REACH and is deliberately NOT
-// in CREW_INTERACTION — which is why this dock is legal at all.
-test('the crew dock reaches the SELECTION flow and no crew-interaction seam', () => {
+// ⭐⭐ M4-2 (2026-08-05) — THIS PIN IS INVERTED, AND ITS PRINCIPLE IS RE-STATED RATHER THAN DELETED.
+//
+// It used to read *"the crew dock reaches the SELECTION flow and no crew-interaction seam"*, and its
+// justification was correct for as long as the Persona window's design was DEFERRED: a dock that
+// grew a TALK or BIO button would have been the scattering §1.5.4 forbids. The window now EXISTS
+// (M4-1 designed it, M4-2 built it), and the dock is the only crew affordance inside a room — this
+// surface has no readout at all (`docs/ROADMAP.md:55`) and `#panels`, where the old BIO card opened,
+// is `display:none` under `body.roomzoom-open`. So the boundary moves from "none" to "EXACTLY ONE",
+// which is a stronger statement and not a weaker one.
+//
+// ⛔ THE PRINCIPLE SURVIVES VERBATIM: **SELECTING IS NOT INTERACTING.** `selectCrewByCid` is on
+// SHIP_STATE_REACH and is deliberately NOT in CREW_INTERACTION; step 1 of the dock's click is still a
+// selection and still goes through the one shared flow. What changed is that step 2 exists.
+//
+// MUTATION: add a SECOND crew-interaction seam (`Hud.talkSelectedCrew()`, or a private `Cmd.talk`)
+// to the crew-row handler ⇒ RED on the exact-set assertion below. MUTATION 2: drop
+// `Hud.openPersonaForSelected(` and the Room Zoom is back to having no door to a person at all ⇒ RED.
+test('the crew dock reaches the SELECTION flow and EXACTLY ONE crew-interaction seam', () => {
   const code = codeOnly(src('src/ui/roomzoom-view.js'));
   assert.ok(code.includes('Hud.selectCrewByCid('),
     'the Room Zoom no longer routes selection through the shared flow — a private selection path '
     + 'would drift from the Overview\'s and from the cross-deck pending-click handling it carries');
-  for (const seam of ['talkSelectedCrew', 'openBioForSelected', 'openPersona']) {
-    assert.ok(!code.includes(seam),
-      `roomzoom-view.js reaches hud.js's '${seam}'. THE BOUNDARY (docs/design/`
-      + 'perilune-console-retirement.plan.md §1.5.4, an owner decision): there is exactly ONE door '
-      + 'from the map to a person and its design is deferred. A crew dock may SELECT; it may not '
-      + 'talk, open a dossier, or grow a third name.');
-  }
-  // NON-VACUITY: the scan must be able to SEE such a call if one were there.
+
+  // The census, by EQUALITY over the same regex `surface-boundary.test.js` uses for CREW_INTERACTION.
+  const SEAMS = ['talkSelectedCrew', 'openBioForSelected', 'openPersonaForSelected'];
+  assert.deepEqual(SEAMS.filter((seam) => code.includes(seam)), ['openPersonaForSelected'],
+    'the Room Zoom\'s crew-interaction seams are not exactly [openPersonaForSelected]. THE BOUNDARY '
+    + '(docs/design/perilune-console-retirement.plan.md §1.5.4 + CLAUDE.md:84-85, an owner decision): '
+    + 'there is exactly ONE door from the map to a person, and after M4-2 it is the Persona window. '
+    + 'A dock may SELECT and may open THAT window; it may not talk, open a dossier, or grow a third '
+    + 'name.');
+
+  // ⭐ AND THE CID IS PASSED EXPLICITLY. Selection is WIRE-AUTHORITATIVE — `selectCrewByCid` sends a
+  // click and the frame's `sel` only moves when the host answers — so an argument-less call here
+  // would open the PREVIOUS selection's window. That is a defect no DOM test could see (the window
+  // opens, it just has the wrong person in it), so it is pinned at the call site.
+  assert.match(code, /Hud\.openPersonaForSelected\(\s*cid\s*\)/,
+    'the crew dock opens the Persona window without naming the cid it just clicked. Selection is '
+    + 'wire-authoritative: at that instant the cached frame still carries the PREVIOUS selection, so '
+    + 'the window would open for the wrong person (or for nobody on the first click of a session).');
+
+  // NON-VACUITY: the scan must be able to SEE a forbidden call if one were there, and must NOT see
+  // one that is only prose (CLAUDE.md trap 1, both halves).
   assert.ok(codeOnly('x(); Hud.talkSelectedCrew(); /* a later real comment */ y();')
     .includes('talkSelectedCrew'), 'the boundary scan cannot see the thing it forbids');
   assert.equal(codeOnly('x(); // Hud.talkSelectedCrew();\n/* a later real comment */ y();')

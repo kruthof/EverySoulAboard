@@ -3252,3 +3252,93 @@ test('M3-12: the carried owner items are UNCHANGED — the BUILD label and the a
   assert.deepEqual(ovSent, [{ cmd: 'workPriority', cid: RELL, work: 0, priority: 1 }],
     'a second gesture on a WORK cell now sends something');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ M4-2 (SEND-BACK FIX) — ONE CLICK ON THE OVERVIEW OPENS THE PERSONA WINDOW
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `…m4.packages.md:1095`, the package's own player sentence: *"one click on anyone, FROM EITHER
+// SURFACE, opens ONE WINDOW"*, and acceptance step 1: *"Click a crew member in the Overview → the
+// window opens; the name matches."* The charter draws NO line between a pawn on the plate and a
+// CREW WATCH row, so neither does the surface: both gestures select AND open.
+//
+// ⛔ THE FIRST DRAFT OF M4-2 SHIPPED SELECT-ONLY HERE and scored the deviation as a passing control
+// ("SELECTING is not interacting"). That principle is the ROOM ZOOM's, from `zoom-pawn.test.js`, and
+// M4-2 is the package that inverts it — so quoting it on the Overview turned a missed acceptance step
+// into a green assertion. The census that would have caught it did not exist; it does now.
+//
+// MUTATION: drop either `Hud.openPersonaForSelected(...)` call in `overview-view.js` ⇒ RED here.
+// MUTATION: call either one with NO ARGUMENT ⇒ RED on the cid legs — selection is wire-authoritative,
+// so the cached frame still holds the PREVIOUS selection and the window opens for the wrong person.
+
+/** Record every window open; returns the recorder. Always restored, even on a failing assertion. */
+function ovPersonaOpens() {
+  const opens = [];
+  Hud.setPersonaWindow({ open: (cid) => opens.push(cid), close: () => {}, isOpen: () => false });
+  return opens;
+}
+
+test('M4-2: clicking a PAWN on the plate opens her Persona window — one click, not two', () => {
+  const opens = ovPersonaOpens();
+  try {
+    const cidA = FIX.roster.crew[0].cid;
+    const cidB = FIX.roster.crew[1].cid;
+    const pawn = ovTarget('pl-pawn', { cid: String(cidA) });
+    clickTile(pawn, 4, 4);
+    assert.deepEqual(opens, [cidA],
+      'a click on a crew member on the Overview plate did not open her Persona window. The charter '
+      + 'is "ONE click on anyone, from either surface" (…m4.packages.md:1095) and acceptance step 1 '
+      + 'says so again; select-only here means the Overview needs two gestures where the Room Zoom '
+      + 'dock needs one, in the same package.');
+
+    // ⭐ THE DISCRIMINATING LEG — a SECOND, different pawn. An argument-less
+    // `openPersonaForSelected()` resolves the SELECTION, which the wire has not echoed back yet, so
+    // it would re-open the FIRST crew member's window and this is the only leg that can see it.
+    opens.length = 0;
+    const pawnB = ovTarget('pl-pawn', { cid: String(cidB) });
+    clickTile(pawnB, 5, 4);
+    assert.deepEqual(opens, [cidB],
+      'the window opened for the wrong crew member — the cid must be passed explicitly, because '
+      + 'selection is WIRE-AUTHORITATIVE and has not round-tripped at this instant');
+  } finally { Hud.setPersonaWindow(null); }
+});
+
+test('M4-2: clicking a CREW WATCH row opens her Persona window too, and still selects', () => {
+  const opens = ovPersonaOpens();
+  try {
+    const cidA = FIX.roster.crew[0].cid;
+    // ⚠️ THE ROSTER MUST BE LIVE FOR THE SELECTION HALF. This file's file-wide `afterEach` clears it
+    // to `[]` (see its own note), and `selectCrewByCid` resolves the crew member's TILE off the
+    // roster before it can send `Cmd.click` — so without this the selection leg below fails against
+    // a surface that is selecting perfectly well. Measured, not guessed.
+    Hud.renderRoster(FIX.roster);
+    const row = new OvEl(ovDoc, 'button');
+    row.dataset.ovCrew = String(cidA);
+    ovRoot.appendChild(row);
+    // ⚠️ `ovHudSent`, NOT `ovSent`: the selection goes out through hud.js's OWN `_send` (the shared
+    // flow), while `ovSent` captures only what the Overview's injected `send` emits. Reading the
+    // wrong one made this leg fail against a surface that was selecting correctly — measured.
+    ovHudSent.length = 0;
+    fire(row, 'click', { detail: 1 });
+    assert.deepEqual(opens, [cidA], 'the CREW WATCH row did not open the Persona window');
+    // …and SELECTION still happens: every order verb on this surface reads the selection, so a row
+    // that opened a window INSTEAD of selecting would break MOVE and PRIORITISE.
+    assert.ok(ovHudSent.some((o) => o && o.cmd === 'click'),
+      'the row stopped selecting. Opening the window REPLACES no part of the selection flow — '
+      + '`selectCrewByCid` is on SHIP_STATE_REACH and is deliberately not a crew-interaction seam.');
+  } finally { Hud.setPersonaWindow(null); }
+});
+
+test('M4-2: nothing else on the Overview opens the window (the door is the crew click, not the map)', () => {
+  const opens = ovPersonaOpens();
+  try {
+    // A room, a terminal and bare scene space are the other three hit tiers (`hitTest`). None of
+    // them is a person, so none of them may open a person's window — without this leg the two tests
+    // above are satisfied by a surface that opens the window on EVERY click.
+    clickTile(ovTarget('pl-room', { anchor: 'quarters' }), 6, 4);
+    clickTile(ovTarget('pl-terminal', { tid: 'term_hydro' }), 7, 4);
+    clickTile(ovStage, 8, 4);
+    assert.deepEqual(opens, [],
+      'a room / terminal / empty-space click opened a Persona window');
+  } finally { Hud.setPersonaWindow(null); }
+});

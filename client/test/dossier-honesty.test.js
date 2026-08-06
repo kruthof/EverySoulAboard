@@ -285,3 +285,78 @@ test('M1-F: the drawing reader is not tripped by PROSE about morale (negative co
     'the stripper swallowed real code after the quoted comment opener — that is the blinding this ' +
     'control exists to detect, and it would make the assertion above pass for the wrong reason');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ M4-2 — THE SAME PIN, RE-POINTED AT THE WINDOW THAT REPLACED THE CARD.
+//
+// The M4 charter's coupling 12: *"If M4-2/M4-3 delete `panels.js`, the meter census and the
+// ledger-agreement pins have nothing to scan and PASS VACUOUSLY — a search that finds nothing and a
+// search that cannot find anything look identical. ⇒ Re-point them at the Persona window in the same
+// commit, with a planted-violation control proving they still bite."*
+//
+// ⚠️ M4-2 DOES **NOT** DELETE `panels.js` — the charter leaves that to M4-3 ("`panels.js` dies or is
+// gutted by 2; 3 decides which"), and M4-2 only removes the STANDARD SURFACE's route to the card
+// (`openBioForSelected`, deleted). So everything above is still scanning a live file and is still
+// non-vacuous. What M4-2 owes is the OTHER half: the window is now where a morale meter would come
+// back, and nothing above can see it.
+//
+// ⛔ WHAT THIS GUARD CAN AND CANNOT SEE, said out loud rather than implied. It reads the SOURCE for
+// the two things a morale gauge cannot be built without — a read of the field, and an inline
+// proportional style — so a bar drawn as an SVG `width` attribute would slip past it. That gap is
+// closed by the SEMANTIC leg, which is in `persona-view.test.js`: two renders differing ONLY in
+// `morale` must be byte-identical, with a paired positive control on a REAL field. Neither test is
+// sufficient alone; the pair is the M1-F argument, moved.
+const PERSONA_SRC = readFileSync(
+  fileURLToPath(new URL('../src/ui/persona-view.js', import.meta.url)), 'utf8');
+
+/** Does the Persona window's CODE read a roster/citizen `morale` field? */
+const personaReadsMorale = (src) => /\b\w+\.morale\b/.test(codeOnly(src));
+/** Does it write an INLINE style — the only way to draw a proportional fill in this codebase? */
+const personaWritesInlineStyle = (src) => /\.style\s*(\.|\[)/.test(codeOnly(src));
+
+test('M4-2: the Persona window reads no `morale` and writes no inline style (no meter can live there)', () => {
+  assert.equal(personaReadsMorale(PERSONA_SRC), false,
+    'the Persona window reads `morale`. `Citizen.Morale` is a measured CONSTANT — no system in ' +
+    '`sim/` writes it (M1-F, the census at the top of this file) — and `TARGET.md:66-69` forbids ' +
+    'the meter shape outright: "No misery meters … never a bar the player feeds". If morale is ' +
+    'being made REAL, that is M4-4 and it moves three determinism pins; do it there first.');
+  assert.equal(personaWritesInlineStyle(PERSONA_SRC), false,
+    'the Persona window writes an inline style. Every meter in this codebase is an inline ' +
+    '`fill.style.width = pct`; the window\'s dialect is classes and text, so an inline style is ' +
+    'either a gauge or a layout decision that belongs in `client/styles/persona.css`.');
+});
+
+test('M4-2: both Persona readers would CATCH the meter coming back (planted violations)', () => {
+  // A count of what a scan matched proves a matcher matched something; only planting the violation
+  // proves it would match THE thing (CLAUDE.md, the fourth trap shape). One assertion per reader,
+  // blinded — `assert` throws, so a shared test would hide the second reader dying.
+  const plantedRead = PERSONA_SRC.replace('setText(_el.task,',
+    'setText(_el.role, String(sel.morale));\n  setText(_el.task,');
+  assert.notEqual(plantedRead, PERSONA_SRC, 'the plant did not apply — this reader is unproven');
+  assert.equal(personaReadsMorale(plantedRead), true, 'the reader cannot see a re-added morale read');
+
+  const plantedStyle = PERSONA_SRC.replace('setText(_el.task,',
+    'bar.style.width = Math.round(x * 100) + \'%\';\n  setText(_el.task,');
+  assert.notEqual(plantedStyle, PERSONA_SRC, 'the plant did not apply — this reader is unproven');
+  assert.equal(personaWritesInlineStyle(plantedStyle), true, 'the reader cannot see a re-added bar');
+});
+
+test('M4-2: neither Persona reader is tripped by PROSE about morale (negative control)', () => {
+  // Trap 1's second half, and it is LIVE here rather than hypothetical: `persona-view.js`'s header
+  // explains at length why there is no meter, and `hud.js`'s ledger names the field. A guard that
+  // fired on those paragraphs would teach the next author to delete the explanation.
+  const fixture = [
+    'const s = "a string holding /* an unclosed comment opener and a // slash";',
+    '// the window never reads sel.morale — see M1-F and TARGET.md:66',
+    '/* and it draws no bar: nothing here sets fill.style.width */',
+    'setText(_el.task, sel.task);',
+    '/* a LATER REAL COMMENT, without which this control proves nothing */',
+    'setText(_el.role, sel.role);',
+  ].join('\n');
+  assert.equal(personaReadsMorale(fixture), false, 'prose naming morale was read as code (trap 1)');
+  assert.equal(personaWritesInlineStyle(fixture), false, 'prose naming a bar was read as code (trap 1)');
+  const stripped = codeOnly(fixture);
+  assert.ok(stripped.includes('sel.task') && stripped.includes('sel.role'),
+    'the stripper swallowed real code after the quoted comment opener — that is the blinding this ' +
+    'control exists to detect, and it would make both assertions above pass for the wrong reason');
+});

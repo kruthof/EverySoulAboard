@@ -923,11 +923,23 @@ test('addDecor / removeDecor are pure and one-per-tile', () => {
 
 // ---- ESC rung ----
 
-test('escStackRung: armed disarms; else an open room exits; else pass', () => {
-  assert.equal(escStackRung({ armed: true, roomOpen: true }), 'disarm');
-  assert.equal(escStackRung({ armed: false, dialogueOpen: true, roomOpen: true }), 'dialogue');
+// ⭐⭐ M4-2 — the `persona` rung. The Persona window opens OVER this surface (it is the only way to
+// reach a person from inside a room: the dock is the only crew affordance here, this surface has no
+// readout, and `#panels` is display:none under `body.roomzoom-open`). Without the rung, Escape would
+// exit the room out from under an open window — roomzoom-view.js registers its keydown on `window`
+// in the CAPTURE phase at mount, so anything the window registered later would run second.
+test('escStackRung: armed disarms; then persona closes; else an open room exits; else pass', () => {
+  assert.equal(escStackRung({ armed: true, personaOpen: true, roomOpen: true }), 'disarm');
+  assert.equal(escStackRung({ armed: false, dialogueOpen: true, personaOpen: true, roomOpen: true }), 'dialogue');
+  assert.equal(escStackRung({ armed: false, personaOpen: true, roomOpen: true }), 'persona');
   assert.equal(escStackRung({ armed: false, roomOpen: true }), 'exit');
   assert.equal(escStackRung({ armed: false, roomOpen: false }), 'pass');
+  // ⭐ THE ONE THAT MATTERS AND THE ONLY ONE NOTHING ELSE WOULD NOTICE: with the window up, Escape
+  // must NOT reach `exit`. A rung dropped from the reducer reads as "the room closed instead", which
+  // in Chrome is indistinguishable from a window that was never open.
+  assert.notEqual(escStackRung({ armed: false, personaOpen: true, roomOpen: true }), 'exit');
+  // …and it is ADDITIVE: a caller that never mentions it keeps the pre-existing behaviour exactly.
+  assert.equal(escStackRung({ armed: false, roomOpen: true }), 'exit');
 });
 
 // ---- shared deck minimap ----
