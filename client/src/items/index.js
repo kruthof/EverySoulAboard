@@ -1,29 +1,32 @@
-// The warm ITEM LIBRARY registry — the 70 STATIC pieces of docs/design/perilune-item-set.dc.html
-// PLUS one repo-authored piece (`swarf`, last row), keyed by a stable kebab-case itemId. Each entry
-// pairs the pure SVG builder with its sim classification from docs/design/perilune-item-mapping.md:
+// The ITEM LIBRARY registry — 82 pieces, every one of them drawn in the visual redesign's paper/ink
+// dialect, keyed by a stable kebab-case itemId. Each entry pairs the pure SVG builder with its sim
+// classification from docs/design/perilune-item-mapping.md.
 //
-// ⚠️ "ALL 70 PIECES OF THE MOCK" WAS THIS FILE'S OPENING CLAUSE AND IS NO LONGER TRUE. The registry
-// is 120: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
-// sim fact the mock predates (`ItemKind.Swarf`, from the wreck start's salvage rule) and it is
-// deliberately LAST of the mock-order block — see its own comment for why the position is NOT
-// load-bearing. After it come the redesign's own rows: nine from the owner's fittings catalogue
-// (VR-P2, 2026-08-05), four more the same day when the catalogue grew its "Capsules and cells"
-// section, then the NINE PAPER GROUND STACKS, then the FOURTEEN PAPER FIXTURES — the ship's
-// architecture, redrawn — and then the THIRTEEN PAPER MACHINES, the ship's own plant
-// (lane/paper-machines, the same day): 71 → 80 → 84 → 93 → 107 → 120.
-// ⚠️ RE-COUNT THAT NUMBER OFF THE TABLE, NEVER OFF THIS PARAGRAPH — `client/test/items.test.js` does.
+// ⛔ THE WARM SET IS GONE — lane/warm-purge, 2026-08-06, on the owner's ruling. This header's own
+// history is the shortest statement of what happened, and it is QUOTED rather than deleted because
+// two of its claims were load-bearing and are now false:
 //
-// ⚠️ AND `resource` IS NOW TWO POPULATIONS, which is the one thing a reader of this table has to
-// know before trusting a row. A resource row is either LIVE — it claims a sim `ItemKind` name and a
-// `Glyphs.ForItem` char, and both joins land on it — or SUPERSEDED, meaning its art is still here and
-// still builds but another row took both joins (`itemKind: null, glyph: null, supersededBy: '…'`).
-// The nine warm ground stacks are all superseded; see `resSuperseded` below for why they are kept.
+//   *"The warm ITEM LIBRARY registry — the 70 STATIC pieces of docs/design/perilune-item-set.dc.html
+//   PLUS one repo-authored piece (`swarf`, last row) … The registry is 120: the mock is a SOURCE for
+//   it, not a definition of it … 71 → 80 → 84 → 93 → 107 → 120."*
 //
-// ⚠️ THE MOCK ALSO CARRIES 70 *WRECKED* TWINS AND THEY ARE NOT IN THIS TABLE. They live in
-// `client/src/items/wrecked.js`, keyed by the PRISTINE itemId, because a wrecked piece is not a
-// separate thing a player places — it is the same registry row in a state. Nothing in this file
-// needs to know they exist; `wrecked.js` imports FROM here, never the other way round, so the
-// wrecked set reverts by deleting one file. See its header for the join and why it is derived.
+//   *"AND `resource` IS NOW TWO POPULATIONS … A resource row is either LIVE … or SUPERSEDED, meaning
+//   its art is still here and still builds but another row took both joins (`itemKind: null,
+//   glyph: null, supersededBy: '…'`). The nine warm ground stacks are all superseded."*
+//
+// Thirty-eight rows were retired in one commit: fourteen from `objects.js`, thirteen from
+// `fixtures.js`, nine from `resources.js` and two from `cryo.js`, all four modules deleted with them.
+// Every one was UNREACHED ART — none claimed a `glyph` or an `itemKind`, and no value of
+// `GLYPH_TO_ITEM` or `GLYPH_SUBSTITUTE` was one of them (re-measured in the retiring commit, not
+// quoted from here). ⇒ SO THERE IS NO SUPERSEDED POPULATION LEFT: every `resource` row is LIVE, which
+// `client/test/items.test.js` pins as a rule rather than as an exclusive-or.
+// ⚠️ RE-COUNT 82 OFF THE TABLE, NEVER OFF THIS PARAGRAPH — `client/test/items.test.js` does.
+//
+// ⚠️ THE 80 *WRECKED* TWINS ARE NOT IN THIS TABLE. They live in `client/src/items/wrecked.js`, keyed
+// by the PRISTINE itemId, because a wrecked piece is not a separate thing a player places — it is the
+// same registry row in a state. Nothing in this file needs to know they exist; `wrecked.js` imports
+// FROM here, never the other way round, so the wrecked set reverts by deleting one file. See its
+// header for the join and why it is derived.
 //
 //
 //   kind       'functional' | 'cosmetic' | 'material' | 'resource'  (mapping.md class column)
@@ -90,18 +93,13 @@
 // is the tolerant entry point (unknown id → a neutral placeholder group, never a throw).
 
 import { scene } from './helpers.js';
-import * as O from './objects.js';
-// — lane/paper-materials —
-// `./structures.js` IS GONE. It held the twelve warm wall/floor swatches and nothing else, and all
-// twelve are replaced below by `./paper-materials.js` — same ids, same class, same `material` tag,
-// new drawing. That is the shape VR-P2 used for the twenty-one furniture rows it replaced (it left
-// `objects.js` holding only the fourteen rows still drawn from it), and it is used here for the same
-// reason: a module nothing imports is the next reader's invitation to draw the old art back.
+// — lane/warm-purge, 2026-08-06 —
+// ⛔ `./objects.js`, `./fixtures.js`, `./resources.js` and `./cryo.js` ARE GONE, with `./structures.js`
+// (which went the same way at lane/paper-materials). They held the pre-redesign warm drawings and
+// nothing else, and every row that pointed at them has been retired on the owner's ruling. The habit
+// is the one this line has recorded since the materials package: a module nothing imports is the next
+// reader's invitation to draw the old art back, so it is deleted rather than left orphaned.
 import * as PM from './paper-materials.js';
-// — end lane/paper-materials —
-import * as F from './fixtures.js';
-import * as R from './resources.js';
-import * as C from './cryo.js';
 import * as FT from './fittings.js';
 // — lane/paper-resources —
 import * as PR from './paper-resources.js';
@@ -123,40 +121,41 @@ const floor = () => ({ kind: 'material', material: 'floor', glyph: '.' });
 /** A GROUND STACK: `itemKind` is the sim `ItemKind` member name, `glyph` its `Glyphs.ForItem` char. */
 const res = (itemKind, glyph) => ({ kind: 'resource', itemKind, glyph });
 /**
- * — lane/paper-resources — A SUPERSEDED GROUND STACK: still a `resource` row, still a real builder,
- * but claiming NEITHER the sim kind NOR the glyph any more, because another row draws that pile now.
+ * ⛔ `resSuperseded` STOOD HERE UNTIL 2026-08-06 AND IS QUOTED RATHER THAN DELETED, because its
+ * argument is the one the owner overruled and the next reader has to be able to read what was given
+ * up. It built A SUPERSEDED GROUND STACK: *"still a `resource` row, still a real builder, but
+ * claiming NEITHER the sim kind NOR the glyph any more, because another row draws that pile now …
+ * `supersededBy` names the row that took it, so the demotion is greppable"*. Nine rows carried it —
+ * the eight warm mock resources and `swarf` — and its own header ended:
  *
- * ⚠️ THE TWO JOINS BOTH HAVE TO MOVE AND THEY ARE NOT THE SAME JOIN — confusing them is trap 6.
- * A resource row is reached TWICE: `glyph-map.js`'s `deriveGlyphToItem` resolves a projected
- * `Glyphs.ForItem` char to a piece, and `room-model.js` joins the `items` channel's kind BYTE through
- * `STOCK_KINDS` → `RESOURCE_ITEM_BY_KIND_NAME` → a piece. The first keys on `glyph`, the second on
- * `itemKind`, and BOTH derivations take the FIRST row that claims the key — so a demoted row that
- * kept either field would silently keep winning it, from above the new row, forever. Setting both to
- * `null` is what actually hands the join over; `supersededBy` names the row that took it, so the
- * demotion is greppable and the guard can check the pair rather than trusting a comment.
+ *   *"⛔ RETIRING THE ROWS OUTRIGHT WAS CONSIDERED AND REFUSED, with the cost measured rather than
+ *   guessed … Eight of these nine have twins that are eight of the SEVENTY the mock ships, and
+ *   `client/test/wrecked.test.js` walks `docs/design/perilune-item-set.dc.html`'s `brokenD` array
+ *   POSITIONALLY against `MOCK_TWIN_IDS` as a bijection … Deleting them would take `MOCK_TWIN_IDS`
+ *   to 62 and force a third ledger to be invented so the bijection could be relaxed. Nine dead rows
+ *   cost a reader one paragraph."*
  *
- * ⛔ RETIRING THE ROWS OUTRIGHT WAS CONSIDERED AND REFUSED, with the cost measured rather than
- * guessed — the same call the capsules lane made for `cryo-capsule-occupied`. Eight of these nine
- * have twins that are eight of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
- * `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as a
- * bijection — that walk is the whole of the evidence that the other sixty-two are transcribed
- * correctly. Deleting them would take `MOCK_TWIN_IDS` to 62 and force a third ledger to be invented
- * so the bijection could be relaxed. Nine dead rows cost a reader one paragraph.
+ * ⇒ THE OWNER RULED THE OTHER WAY ON 2026-08-06 and all nine rows are gone, along with every other
+ * warm one. The bijection is gone with them (see `client/src/items/wrecked.js`'s header for what
+ * replaced it), so the reason to keep a demoted row alive has no referent — and the "two joins both
+ * have to move" trap it guarded is closed the only way that cannot be half-made: THE ROW IS NOT
+ * THERE. `client/test/items.test.js` pins that the superseded population is now empty and that every
+ * `resource` row is LIVE, which is a strictly stronger contract than the exclusive-or it replaces.
  */
-const resSuperseded = (supersededBy) => ({
-  kind: 'resource', itemKind: null, glyph: null, supersededBy,
-});
 
 /**
- * ITEMS[itemId] = { build, size, kind, ... }. Order follows the mock (objects → walls → floors →
- * fixtures → resources, #1–#68). Every `build` is a pure `(opts) -> string` SVG-`<g>`-fragment
- * builder.
+ * ITEMS[itemId] = { build, size, kind, ... }. Every `build` is a pure `(opts) -> string`
+ * SVG-`<g>`-fragment builder, and since 2026-08-06 every one of them draws in the paper/ink dialect.
+ *
+ * ⚠️ THE ORDER USED TO BE THE MOCK'S (*"objects → walls → floors → fixtures → resources, #1–#68"*)
+ * and it no longer is: the mock-ordered prefix was the thing a reader could diff against
+ * `docs/design/perilune-item-set.dc.html` by eye, and with the warm rows retired there is nothing
+ * left to diff. What survives of that order is the position of the twenty-one rows that were IN the
+ * mock and were re-drawn in place; nothing anywhere depends on it (`wrecked.test.js`'s positional
+ * walk was deleted in the same commit).
  */
 export const ITEMS = Object.freeze({
-  // ── OBJECTS (30) ──
-  'reactor':          { build: O.reactor,         size: { w: 64, h: 64 }, ...dev('Reactor', null, 'new') },
-  // — lane/paper-machines — glyph 'G' moved to `solar-wing`; see the MACHINES section below.
-  'solar-panel':      { build: O.solarPanel,      size: { w: 92, h: 56 }, ...dev('SolarWing', null) },
+  // ── THE TWENTY-ONE CATALOGUE ROWS THE MOCK ALSO HAD (VR-P2) — re-drawn in place ──
   // ⚠️ `glyph: null` SINCE 2026-08-05, AND IT IS A DEMOTION RATHER THAN AN OVERSIGHT. This row is
   // catalogue 27, the CELL RACK, and it held `'B'` (`Glyphs.ForDevice(DeviceKind.Battery)`) from the
   // mock until the owner's "Capsules and cells" revision. `'B'` now belongs to `cell-sound` (34 rows
@@ -170,13 +169,10 @@ export const ITEMS = Object.freeze({
   // is the design's own statement that these two pieces belong together.
   'battery-bank':     { build: FT.batteryBank,     size: FT.SIZES['battery-bank'], ...dev('Battery', null) },
   'o2-scrubber':      { build: FT.o2Scrubber,      size: FT.SIZES['o2-scrubber'], ...dev('Scrubber', 'S') },
-  'oxygen-tank':      { build: O.oxygenTank,      size: { w: 38, h: 70 }, ...dev('OxygenTank', null, 'new') },
   // — lane/paper-machines — glyph 'R' moved to `reclaimer-stack`.
-  'water-recycler':   { build: O.waterRecycler,   size: { w: 60, h: 66 }, ...dev('Reclaimer', null) },
   'hydroponics':      { build: FT.hydroponics,     size: FT.SIZES['hydroponics'], ...dev('GrowBed', '"') },
   'cooker':           { build: FT.cooker,          size: FT.SIZES['cooker'], ...dev('Cooker', null, 'new') },
   'cooler':           { build: FT.cooler,          size: FT.SIZES['cooler'], ...cos('cooler') },
-  'paste-dispenser':  { build: O.pasteDispenser,  size: { w: 58, h: 64 }, ...cos('paste_dispenser') },
   'dining-table':     { build: FT.diningTable,     size: FT.SIZES['dining-table'], ...dev('Table', 't') },
   'bunk-bed':         { build: FT.bunkBed,         size: FT.SIZES['bunk-bed'], ...dev('Bed', 'b') },
   'desk':             { build: FT.desk,            size: FT.SIZES['desk'], ...dev('Desk', 'D') },
@@ -185,46 +181,36 @@ export const ITEMS = Object.freeze({
   'rug':              { build: FT.rug,             size: FT.SIZES['rug'], ...cos('rug') },
   'standing-lamp':    { build: FT.standingLamp,    size: FT.SIZES['standing-lamp'], ...cos('standing_lamp') },
   // — lane/paper-machines — glyph 'P' moved to `plant-pot`.
-  'potted-plant':     { build: O.pottedPlant,     size: { w: 58, h: 68 }, ...dev('PlantPot', null) },
-  'bookshelf':        { build: O.bookshelf,       size: { w: 80, h: 66 }, ...cos('bookshelf') },
   // — lane/paper-machines — glyph 'd' moved to `med-cot`.
-  'med-bed':          { build: O.medBed,          size: { w: 52, h: 78 }, ...dev('MedBed', null) },
   'research-console': { build: FT.researchConsole, size: FT.SIZES['research-console'], ...dev('Terminal', 'T') },
-  'comms-dish':       { build: O.commsDish,       size: { w: 90, h: 90 }, ...cos('comms_dish') },
   // — lane/paper-machines — glyph 'x' moved to `ring-array`.
-  'sensor-array':     { build: O.sensorArray,     size: { w: 88, h: 88 }, ...dev('Telescope', null) },
   'workbench':        { build: FT.workbench,       size: FT.SIZES['workbench'], ...dev('MachineShop', 'M') },
   // — lane/paper-machines — glyph 'F' moved to `fab-cell`.
-  'fabricator':       { build: O.fabricator,      size: { w: 70, h: 64 }, ...dev('Fabricator', null) },
   'storage-crate':    { build: FT.storageCrate,    size: FT.SIZES['storage-crate'], ...cos('storage_crate') },
-  'blast-door':       { build: O.blastDoor,       size: { w: 78, h: 70 }, ...dev('Door', null) },
-  'turret':           { build: O.turret,          size: { w: 48, h: 74 }, ...cos('turret') },
-  'cryopod':          { build: O.cryopod,         size: { w: 48, h: 82 }, ...cos('cryopod') },
   'fuel-drum':        { build: FT.fuelDrum,        size: FT.SIZES['fuel-drum'], ...cos('fuel_drum') },
 
   // — lane/paper-materials — THE TWELVE MATERIALS, REDRAWN (see `./paper-materials.js`) ─────────
   //
   // ⚠️ REPLACED IN PLACE — same ids, same `kind: 'material'`, same `'#'`/`'.'` glyphs, new builders.
-  // The alternative (twelve NEW rows beside the old twelve) was measured and refused, and the
-  // evidence is `client/src/items/wrecked.js`: every one of these ids carries a WRECKED TWIN, and
-  // the twin set is joined POSITIONALLY to `docs/design/perilune-item-set.dc.html`'s own `brokenD`
-  // array as a BIJECTION over exactly seventy mock pieces (`client/test/wrecked.test.js`). Twelve
-  // new registry rows would each need a twin plus a `NON_MOCK_TWIN` ledger entry to stay out of that
-  // join, and twelve old rows would keep drawing warm art nothing reaches — 24 material rows, two
-  // ledgers touched, and a palette that has to choose. Replacing the `build` reference moves NO
-  // count anywhere: class tally material 12 and the twin bijection's 70 are unchanged by it.
-  // (The registry TOTAL is other lanes' business and goes stale here — 80 when this was written,
-  // 84 after the capsules merge; re-derive it from ITEMS, never quote this line. TRAPS 8th.)
+  // The alternative (twelve NEW rows beside the old twelve) was measured and refused, and the reason
+  // it gave is HISTORY since 2026-08-06 and is quoted rather than deleted, because it names what the
+  // warm-purge commit had to close before it could delete anything: *"the twin set is joined
+  // POSITIONALLY to `docs/design/perilune-item-set.dc.html`'s own `brokenD` array as a BIJECTION over
+  // exactly seventy mock pieces … Twelve new registry rows would each need a twin plus a
+  // `NON_MOCK_TWIN` ledger entry to stay out of that join."* Both the bijection and that ledger are
+  // gone; `wrecked.js`'s `TWIN_SOURCE` is a TOTAL provenance map, and a row joins it by existing.
   //
-  // ⚠️ THE WRECKED TWINS STAY WARM, and that is the wave's own FILED inconsistency rather than an
-  // oversight — charter §3's P2b, the same state the twenty-one furniture rows VR-P2 replaced are
-  // in. It is invisible on the shipping surface here: `roomzoom-view.js materialLayerSvg` and
-  // the build tray's material CARDS both call `buildItem`, never `buildTileItem` (it was
-  // `paintMatStrip` until the tray replaced it), so no material twin has ever been
-  // drawn by the Room Zoom (a material is a tile's SKIN — there is no `Device.Condition` for it to
-  // read). The twins reach a screen only through `client/tools/wrecked-gallery.mjs`.
+  // ⛔ AND THE FILED INCONSISTENCY IS CLOSED. This block used to end *"THE WRECKED TWINS STAY WARM,
+  // and that is the wave's own FILED inconsistency rather than an oversight — charter §3's P2b"*.
+  // All twelve twins were re-authored on paper on 2026-08-06 (`wrecked.js`, the material-twin block),
+  // each one re-running `paintMaterial` and adding ink damage on the same frame. ⚠️ THE OTHER HALF OF
+  // that note is still TRUE and still worth reading: no material twin has ever been drawn by the Room
+  // Zoom — `materialLayerSvg` and the build tray's material CARDS both call `buildItem`, never
+  // `buildTileItem`, because a material is a tile's SKIN and there is no `Device.Condition` for it to
+  // read. The twins reach a screen only through `client/tools/wrecked-gallery.mjs` and the
+  // warm-purge sheet.
   //
-  // `size` is now DERIVED from each piece's centimetres (`paper-materials.SIZES`) instead of the
+  // `size` is DERIVED from each piece's centimetres (`paper-materials.SIZES`) rather than from the
   // mock's identical `106 × 94` card measurement — see that constant's own header.
   //
   // ── WALLS (6) — MATERIAL ──
@@ -244,33 +230,19 @@ export const ITEMS = Object.freeze({
   'carpet-floor':     { build: PM.carpetFloor,     size: PM.SIZES['carpet-floor'], ...floor() },
   // — end lane/paper-materials —
 
-  // ── FIXTURES (18) ──
-  // `'+'` is `Glyphs.DoorClosed`, i.e. `Glyphs.ForDevice(DeviceKind.Door)` — the rest glyph of the
-  // kind, so this row is an ordinary `ForDevice` claim and needs no exception anywhere. The piece is
-  // a steel leaf with a lit centre strip: a shut door, which is what the tile means.
+  // ── THE FIVE FITTINGS THAT SIT IN THE MOCK'S OLD "FIXTURES" RUN ──
   //
-  // ⚠️ THAT PARAGRAPH IS HISTORY SINCE 2026-08-05 (lane/paper-fixtures) AND IS QUOTED, NOT DELETED,
-  // BECAUSE THE JOIN IT DESCRIBES IS UNCHANGED — only the row it lands on moved. `'+'`, `'H'` and
-  // `'^'` now belong to `door-sliding`, `deck-hatch` and `vent-grille` in the PAPER FIXTURES section
-  // at the bottom of this table, which are the same three objects drawn in the owner's paper/ink
-  // dialect. These three keep their `deviceKind`, their class, their `size` and their wrecked twins
-  // and are UNREACHED WARM ART, in exactly the position `battery-bank` and the two cryo capsules are
-  // in and for exactly their reason.
-  // ⛔ RETIRING THEM WAS CONSIDERED AND REFUSED, and the cost is measured rather than guessed: their
-  // twins are three of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
-  // `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as
-  // a bijection — that walk is the whole of the evidence that the other sixty-seven are transcribed
-  // correctly. Three dead rows cost a reader one paragraph; a relaxed bijection costs the next lane
-  // its instrument.
-  'sliding-door':     { build: F.slidingDoor,     size: { w: 96, h: 70 }, ...dev('Door', null) },
-  'airlock':          { build: F.airlock,         size: { w: 80, h: 80 }, ...dev('Door', null) },
-  'hatch-ladder':     { build: F.hatchLadder,     size: { w: 64, h: 74 }, ...dev('Ladder', null) },
-  'power-conduit':    { build: F.powerConduit,    size: { w: 96, h: 14 }, ...dev('Conduit', null) },
-  'air-vent':         { build: F.airVent,         size: { w: 72, h: 56 }, ...dev('AirVent', null) },
+  // ⛔ THIRTEEN WARM ROWS STOOD HERE UNTIL 2026-08-06 (`sliding-door`, `airlock`, `hatch-ladder`,
+  // `power-conduit`, `air-vent`, `wall-lamp`, `viewport`, `wall-screen`, `vent-fan`, `weapons-rack`,
+  // `sun-lamp`, `deck-sign`, `floodlight`) and the argument for keeping them is quoted, not deleted:
+  // *"⛔ RETIRING THEM WAS CONSIDERED AND REFUSED … their twins are three of the SEVENTY the mock
+  // ships, and `client/test/wrecked.test.js` walks … a bijection — that walk is the whole of the
+  // evidence that the other sixty-seven are transcribed correctly. Three dead rows cost a reader one
+  // paragraph; a relaxed bijection costs the next lane its instrument."* The owner ruled the other
+  // way; the bijection was not RELAXED but retired, and what replaced it does not need the rows.
+  // Their glyphs had already moved to `door-sliding`, `deck-hatch` and `vent-grille` at
+  // lane/paper-fixtures, so nothing on either surface resolved to any of the thirteen.
   'pipe-run':         { build: FT.pipeRun,         size: FT.SIZES['pipe-run'], ...dev('Pipe', null) },
-  'wall-lamp':        { build: F.wallLamp,        size: { w: 52, h: 44 }, ...cos('wall_lamp') },
-  'viewport':         { build: F.viewport,        size: { w: 90, h: 64 }, ...cos('viewport') },
-  'wall-screen':      { build: F.wallScreen,      size: { w: 92, h: 60 }, ...cos('wall_screen') },
   // ⭐ M3-10 — THIS PIECE STOPS BEING UNREACHED ART. It has read `deviceKind: 'Heater'` since the
   // warm set was drawn, with `glyph: null` and `deviceStatus: 'new'` because no `DeviceKind.Heater`
   // existed to project it; the only way it ever reached a screen was `GLYPH_SUBSTITUTE['=']`, where
@@ -282,112 +254,42 @@ export const ITEMS = Object.freeze({
   // records the live bug that came from a functional device wearing a cosmetic piece. Picking the
   // radiator's art is an OWNER call on art, not a seam call; it is FILED, not decided.
   'space-heater':     { build: FT.spaceHeater,     size: FT.SIZES['space-heater'], ...dev('Heater', 'E') },
-  'vent-fan':         { build: F.ventFan,         size: { w: 76, h: 76 }, ...cos('vent_fan') },
   'shelf-rack':       { build: FT.shelfRack,       size: FT.SIZES['shelf-rack'], ...cos('shelf_rack') },
   'supply-barrel':    { build: FT.supplyBarrel,    size: FT.SIZES['supply-barrel'], ...cos('supply_barrel') },
-  'weapons-rack':     { build: F.weaponsRack,     size: { w: 88, h: 60 }, ...cos('weapons_rack') },
-  'sun-lamp':         { build: F.sunLamp,         size: { w: 70, h: 60 }, ...cos('sun_lamp') },
   'herb-planter':     { build: FT.herbPlanter,     size: FT.SIZES['herb-planter'], ...cos('herb_planter') },
-  'deck-sign':        { build: F.deckSign,        size: { w: 80, h: 74 }, ...cos('deck_sign') },
-  'floodlight':       { build: F.floodlight,      size: { w: 40, h: 60 }, ...cos('floodlight') },
 
-  // ── RESOURCES (8, from the mock; `swarf` is a ninth at the end of the file) — GROUND STACKS,
-  //    keyed by `Glyphs.ForItem` ──
-  // ⚠️ THERE IS DELIBERATELY NO `MetalOre` PIECE. The mock's own header says so, and it was verified
-  // against the tree: `ItemKind.MetalOre` has ZERO references anywhere in `sim/` outside the glyph
+  // ⛔ THE EIGHT WARM GROUND STACKS AND THE TWO CRYO CAPSULES STOOD HERE, AND `swarf` AFTER THEM.
+  // All eleven were retired on 2026-08-06. Their glyph and `ItemKind` claims had already been handed
+  // to `client/src/items/paper-resources.js` and to catalogue 31/32 (`capsule-sealed`,
+  // `capsule-open`) on 2026-08-05, so all eleven were unreached art; what kept them registered was
+  // the mock bijection, quoted at `resSuperseded` above and now gone.
+  //
+  // ⚠️ ONE THING FROM THAT BLOCK IS STILL LIVE AND MOVES NOWHERE: *"THERE IS DELIBERATELY NO
+  // `MetalOre` PIECE … `ItemKind.MetalOre` has ZERO references anywhere in `sim/` outside the glyph
   // table and the enum itself — nothing produces it, nothing consumes it, no recipe names it. It is
-  // dead E3 mining vocabulary and must not be given art until it is real, so it STAYS in
+  // dead E3 mining vocabulary and must not be given art until it is real."* It stays in
   // `NO_GROUND_ITEM_SPRITE` (client/test/device-sprite-coverage.test.js) with that as its reason.
   //
-  // ⚠️ ALL EIGHT WENT `itemKind: null, glyph: null` ON 2026-08-05 (lane/paper-resources) AND THE
-  // PARAGRAPH ABOVE IS NOW HISTORY, NOT WIRING. The nine ground stacks were redrawn in the owner's
-  // paper/ink dialect — `client/src/items/paper-resources.js`, the nine rows at the bottom of this
-  // table — and both joins moved with them: the `Glyphs.ForItem` char AND the `ItemKind` name. These
-  // eight keep their class, their builder, their `size` and their mock twins, and are now UNREACHED
-  // WARM ART, in exactly the position `battery-bank` and the two cryo capsules are in.
-  //   Everything the note above says about `MetalOre` is still true and still lives in
-  // `NO_GROUND_ITEM_SPRITE`; only the rows the eight kinds land on changed.
-  'regolith':         { build: R.regolith,        size: { w: 70, h: 46 }, ...resSuperseded('spoil-heap') },
-  'potato':           { build: R.potato,          size: { w: 68, h: 48 }, ...resSuperseded('tuber-crate') },
-  'scrap':            { build: R.scrap,           size: { w: 72, h: 48 }, ...resSuperseded('plate-offcut') },
-  'parts':            { build: R.parts,           size: { w: 68, h: 54 }, ...resSuperseded('gear-set') },
-  'controller-module':{ build: R.controllerModule, size: { w: 84, h: 50 }, ...resSuperseded('control-card') },
-  'seals':            { build: R.seals,           size: { w: 72, h: 62 }, ...resSuperseded('seal-set') },
-  'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...resSuperseded('ice-block') },
-  'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...resSuperseded('body-bag') },
+  // ⚠️ AND ONE SENTENCE ABOUT THE CAPSULES IS STILL THE LIVE DESCRIPTION OF THE JOIN, only the rows
+  // it lands on changed: *"A pod's glyph comes from its STATE: `GlyphMapper.DeviceGlyph` returns
+  // `Glyphs.CryoPodOpen 'k'` for an open capsule and `Glyphs.CryoPodClosed 'K'` for an occupied
+  // one, and `'K'` is additionally the `Glyphs.ForDevice` arm."* Both chars are claimed by the two
+  // catalogue rows further down this table, derived by `glyph-map.js` with nothing hand-mirrored.
 
-  // ── CRYO (2) — FUNCTIONAL since the wreck start (W3) ──
-  // ⚠️ THE NOTE THAT STOOD HERE IS QUOTED RATHER THAN DELETED, BECAUSE IT WAS TRUE WHEN WRITTEN AND
-  // IS THE REASON THESE TWO ARRIVED UNSKINNED: *"NEITHER CLAIMS A GLYPH. There is no cryo-capsule
-  // `DeviceKind` in the sim, so there is no `Glyphs.ForDevice` char to claim and no tile the sim
-  // would project one onto."* `DeviceKind.CryoPod` now exists (`--ship wreck` authors twelve of
-  // them), so both halves are false and both pieces are `functional`.
+  // ⛔ THE `swarf` ROW STOOD HERE, AND SO DID THE LONGEST FALSE CLAIM IN THIS FILE — quoted, because
+  // the correction is the more useful half and it outlived the row. The comment read *"THIS ROW IS
+  // LAST FOR A REASON THAT IS NOT TIDINESS … `wrecked.test.js` walks that order POSITIONALLY …
+  // inserting a non-mock row anywhere but the end shifts every row after it onto the wrong label."*
+  // **FALSE, and proven false by mutation: moving the row into the middle of `ITEMS` left the node
+  // suite unchanged (85 pass / 0 fail across the four files that could see it)** — the positional
+  // join filtered ledgered rows out wherever they sat. ⇒ The rule that DID protect the join is the
+  // one that survives the purge intact: *"a registry row either has a twin or is in the ledger"*, and
+  // the position is free. `client/test/wrecked.test.js` still pins exactly that, both ways.
   //
-  // TWO ROWS, TWO GLYPHS, ONE DEVICE KIND — the shape doors already use (`sliding-door` claims
-  // `'+'`, `blast-door` claims `'X'` through GLYPH_SUBSTITUTE, `airlock` claims nothing). A pod's
-  // glyph comes from its STATE: `GlyphMapper.DeviceGlyph` returns `Glyphs.CryoPodOpen 'k'` for an
-  // open capsule and `Glyphs.CryoPodClosed 'K'` for an occupied one, and `'K'` is additionally the
-  // `Glyphs.ForDevice` arm (the kind's rest glyph). So the join is derived from THIS table by
-  // `glyph-map.js`, with nothing hand-mirrored anywhere.
-  //
-  // `cryopod` above stays COSMETIC and is NOT retired: it is a different, smaller piece the mock
-  // ships alongside these two, it claims no glyph, and giving it one would put two pieces on one
-  // char. The registry's first-wins rule would then pick by declaration order rather than by
-  // decision, which is exactly the kind of silent choice `deriveGlyphToItem`'s guard exists to stop.
-  //
-  // ⚠️ BOTH GLYPHS WENT `null` ON 2026-08-05 AND THE PARAGRAPH ABOVE IS NOW HISTORY, NOT WIRING. The
-  // owner's "Capsules and cells" revision draws this exact state pair in the paper idiom — catalogue
-  // 31 CAPSULE, SEALED and 32 CAPSULE, OPEN — and `'K'`/`'k'` moved to those two rows at the bottom of
-  // this table. Everything the paragraph says about the JOIN is still true; only the two rows it
-  // lands on changed. These two keep their `deviceKind`, their class and their wrecked twins and are
-  // now UNREACHED WARM ART, in the same position `battery-bank` is in and for the same reason.
-  // ⛔ RETIRING THEM WAS CONSIDERED AND REFUSED, with the cost measured rather than guessed: their
-  // twins are two of the SEVENTY the mock ships, and `client/test/wrecked.test.js` walks
-  // `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as
-  // a bijection — that walk is the whole of the evidence that the other sixty-eight are transcribed
-  // correctly. Deleting two rows would take `MOCK_TWIN_IDS` to 68 and force a third ledger ("mock
-  // pieces deliberately unclaimed") to be invented so the bijection could be relaxed. Two dead rows
-  // cost a reader one paragraph; a relaxed bijection costs the next lane its instrument.
-  'cryo-capsule-occupied': { build: C.cryoCapsuleOccupied, size: { w: 60, h: 104 }, ...dev('CryoPod', null) },
-  'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...dev('CryoPod', null) },
-
-  // ── SALVAGE (1) — REPO-AUTHORED, NOT FROM THE MOCK ──
-  // ⛔ THIS ROW IS LAST BY CONVENTION, NOT BY CONSTRAINT — and the sentence that used to stand here
-  // claimed the opposite, so it is quoted rather than deleted. It read: *"THIS ROW IS LAST FOR A
-  // REASON THAT IS NOT TIDINESS … `wrecked.test.js` walks that order POSITIONALLY … inserting a
-  // non-mock row anywhere but the end shifts every row after it onto the wrong label."* **FALSE, and
-  // proven false by mutation: moving this row into the middle of `ITEMS` leaves the node suite
-  // unchanged (85 pass / 0 fail across the four files that could see it).** The positional join runs
-  // over `MOCK_IDS = ITEM_IDS.filter(id => !(id in NO_WRECKED_TWIN))`, which strips a LEDGERED row
-  // wherever it sits, so it is position-independent for exactly the class of row this comment is
-  // about. A load-bearing-sounding constraint on a file other lanes edit is worse than none.
-  //
-  // ⇒ WHAT ACTUALLY PROTECTS THE JOIN is the ledger test in `client/test/wrecked.test.js`
-  // (`itemsWithoutWreckedTwin()` deep-equals `Object.keys(NO_WRECKED_TWIN)`). So the rule to follow
-  // is *"a registry row either has a twin or is in the ledger"*, and the position is free.
-  //
-  // ⚠️ AND THE NUMBER THAT USED TO BE HERE OVERSTATED IT. It read *"an UNLEDGERED row inserted
-  // mid-list reddens **12** tests"*, which is true and misleading: **only three or four of those
-  // twelve are about the LEDGER** (`the ledger is exactly the rows with no twin`, `every registry row
-  // has exactly one wrecked twin`, `hasWreckedTwin follows the registry`, and the positional label
-  // walk). The other eight fire on ANY registry growth — the size census, the class tally, the
-  // mapping doc's Tally, the painter-name floor — and the probe row also duplicated glyph `'w'`, so
-  // the glyph-collision guard fired for a third reason again. Re-counted by attribution rather than
-  // by total, which is this repo's *re-count, never compute* applied to a number I published myself.
-  //
-  // Last is still the right place for it, for the ordinary reason: every row above comes from
-  // `docs/design/perilune-item-set.dc.html` in the mock's own order, and keeping that prefix
-  // uninterrupted is what lets a reader diff this table against the spec by eye.
-  //
-  // `ItemKind.Swarf` came from the wreck start's salvage rule (`deconstruct.device_swarf = 1`), after
-  // the mock was drawn, so there is no mock piece and no mock WRECKED twin for it. The missing twin is
-  // ledgered by name in `client/src/items/wrecked.js` (`NO_WRECKED_TWIN`) with its reason; it is not an
-  // omission to be filled in later.
-  // ⚠️ AND THIS ONE WENT `null`/`null` WITH THE EIGHT ABOVE — see their block. `turnings` draws
-  // `ItemKind.Swarf` now; this row is unreached warm art and keeps its `NO_WRECKED_TWIN` line,
-  // because the reason for that line is a fact about the MATERIAL and follows it onto the new art.
-  'swarf':            { build: R.swarf,          size: { w: 74, h: 50 }, ...resSuperseded('turnings') },
-
+  // `swarf` itself was `ItemKind.Swarf`'s art until lane/paper-resources gave the kind to `turnings`
+  // on 2026-08-05; it was unreached from that day and retired on 2026-08-06 with the rest of the warm
+  // set. Its `NO_WRECKED_TWIN` line went with it — see `turnings`' entry there, which said in advance
+  // that it would.
   // ── FITTINGS (9) — THE CATALOGUE ROWS THE MOCK NEVER HAD (VR-P2) ──────────────────────────────
   //
   // `design-import/Perilune Fittings.dc.html` was the owner's buildable set and it was THIRTY pieces
@@ -414,9 +316,12 @@ export const ITEMS = Object.freeze({
   // `device-sprite-coverage.test.js`'s pins do not move: `deriveGlyphToItem` reads `functional` and
   // `resource` rows only, and a cosmetic row is placed by itemId and never resolved from a glyph.
   //
-  // Their wrecked twins are REPO-AUTHORED (the mock has none) and are ledgered as such in
-  // `client/src/items/wrecked.js` (`NON_MOCK_TWIN`), which is what keeps the twin↔mock bijection —
-  // the thing that proves the other seventy are right — measuring exactly seventy.
+  // Their wrecked twins re-run their own pristine painter and add ink damage, and every one names
+  // its source card in `client/src/items/wrecked.js`'s `TWIN_SOURCE`. ⚠️ THAT SENTENCE USED TO READ
+  // *"ledgered as such in `NON_MOCK_TWIN`, which is what keeps the twin↔mock bijection … measuring
+  // exactly seventy"* — the ledger was an EXCEPTION list and the bijection it protected is gone
+  // (2026-08-06); the replacement is TOTAL, so these nine are in it for the same reason every other
+  // row is: they exist.
   'bench':            { build: FT.bench,         size: FT.SIZES.bench,          ...cos('bench') },
   'stool':            { build: FT.stool,         size: FT.SIZES.stool,          ...cos('stool') },
   'cot':              { build: FT.cot,           size: FT.SIZES.cot,            ...cos('cot') },
@@ -528,9 +433,9 @@ export const ITEMS = Object.freeze({
   // utility-LENS overlay lines drawn by other layers, never furniture on a tile. `glyph-map.js` and
   // `device-sprite-coverage.test.js` record that decision by name and this package does not touch it.
   //
-  // Their wrecked twins are REPO-AUTHORED (no catalogue card, so nothing to transcribe) and are
-  // ledgered in `client/src/items/wrecked.js`'s `NON_MOCK_TWIN`, which is what keeps the twin↔mock
-  // bijection measuring exactly seventy.
+  // Their wrecked twins have no catalogue card, so `TWIN_SOURCE` names the SECTION of
+  // `client/src/items/paper-fixtures.js` each drawing comes from. (It was `NON_MOCK_TWIN` until
+  // 2026-08-06, an exception list guarding a mock bijection that no longer exists.)
   'door-sliding':     { build: PF.doorSliding,    size: PF.SIZES['door-sliding'],    ...dev('Door', '+') },
   'door-airlock':     { build: PF.doorAirlock,    size: PF.SIZES['door-airlock'],    ...dev('Door', null) },
   'door-blast':       { build: PF.doorBlast,      size: PF.SIZES['door-blast'],      ...dev('Door', null) },
@@ -562,17 +467,19 @@ export const ITEMS = Object.freeze({
   //     'G' SolarWing  solar-panel    → solar-wing        'd' MedBed     med-bed      → med-cot
   //     'R' Reclaimer  water-recycler → reclaimer-stack   'F' Fabricator fabricator   → fab-cell
   //     'P' PlantPot   potted-plant   → plant-pot         'x' Telescope  sensor-array → ring-array
-  // ⛔ DELETING THE OLD ROWS WAS CONSIDERED AND REFUSED, with the cost measured rather than guessed.
-  // All thirteen are among the SEVENTY the mock draws, and `client/test/wrecked.test.js` walks
-  // `docs/design/perilune-item-set.dc.html`'s `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as
-  // a bijection — that walk is the whole of the evidence that the other fifty-seven are transcribed
-  // correctly. Removing thirteen rows would take the mock population to 57 and force a third ledger
-  // ("mock pieces deliberately unclaimed") to be invented so the bijection could be relaxed. Thirteen
-  // dead rows cost a reader one paragraph; a relaxed bijection costs the next lane its instrument.
-  // ⇒ SO SAY IT OUT LOUD: `reactor`, `solar-panel`, `oxygen-tank`, `water-recycler`,
-  // `paste-dispenser`, `med-bed`, `fabricator`, `sensor-array`, `comms-dish`, `potted-plant`,
-  // `bookshelf`, `turret` and `cryopod` ARE NOW UNREACHED ART. They keep their class, their
-  // `deviceKind` and their wrecked twins, and nothing on either surface resolves to them.
+  // ⛔ THE THIRTEEN OLD ROWS ARE GONE (2026-08-06), AND THE REFUSAL THAT KEPT THEM IS QUOTED HERE
+  // BECAUSE IT IS THE CLEAREST STATEMENT OF WHAT WAS TRADED: *"DELETING THE OLD ROWS WAS CONSIDERED
+  // AND REFUSED, with the cost measured rather than guessed. All thirteen are among the SEVENTY the
+  // mock draws, and `client/test/wrecked.test.js` walks `docs/design/perilune-item-set.dc.html`'s
+  // `brokenD` array POSITIONALLY against `MOCK_TWIN_IDS` as a bijection — that walk is the whole of
+  // the evidence that the other fifty-seven are transcribed correctly … Thirteen dead rows cost a
+  // reader one paragraph; a relaxed bijection costs the next lane its instrument."* The bijection was
+  // not relaxed — it was RETIRED, because after the redraw no twin transcribes anything and a walk
+  // over an empty population is a guard kept green forever. This lane's own note below (*"SO SAY IT
+  // OUT LOUD: `reactor`, `solar-panel`, `oxygen-tank`, `water-recycler`, `paste-dispenser`,
+  // `med-bed`, `fabricator`, `sensor-array`, `comms-dish`, `potted-plant`, `bookshelf`, `turret` and
+  // `cryopod` ARE NOW UNREACHED ART"*) is what made the deletion measurable: it was re-measured, not
+  // quoted, before the rows were removed.
   //
   // ⚠️ TWO OF THE THIRTEEN ARE `deviceStatus: 'new'`, LIKE THE ROWS THEY REPLACE. `DeviceKind.Reactor`
   // and `DeviceKind.OxygenTank` do not exist in `sim/Sim.Core/Entities/Device.cs` — checked, not

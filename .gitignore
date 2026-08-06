@@ -42,6 +42,7 @@ client/tools/shots-paper-resources/
 client/tools/shots-paper-fixtures/
 # — lane/paper-machines —
 client/tools/shots-machines/
+client/tools/shots-warm-purge/
 # — lane/sketch-experiment —
 client/tools/shots-sketch/
 # — lane/sketch-adoption —

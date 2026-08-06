@@ -4,8 +4,8 @@
 stated together. The modules it cites are the territory and they stay authoritative — every
 derivation lives in a module header, and this file points at it rather than repeating it.
 
-⚠️ **Every count and every value below was re-derived from the tree on 2026-08-05 and will go
-stale** (TRAPS 8th shape — a number in a doc is not evidence). The deriving TESTS are named beside
+⚠️ **Every count and every value below was re-derived from the tree on 2026-08-05, and §4's twin
+counts again on 2026-08-06 (`lane/warm-purge`). They will go stale** (TRAPS 8th shape — a number in a doc is not evidence). The deriving TESTS are named beside
 each claim; re-measure there, never quote this file.
 
 ⛔ **AND THE PROMISE COVERS §1–§3, NOT JUST §4** — said out loud because it was broken there first.
@@ -48,7 +48,7 @@ because the treatment sits between the two:
 |---|---|
 | `fittings.test.js`, `machines.test.js`, `paper-fixtures.test.js` | the **RAW** fragment (`sketch: false`) |
 | `paper-resources.test.js` | **BOTH** — raw and treated, on/off |
-| `sketch-adoption.test.js` | the **TREATED** fragment, all four standing catalogues + the 47 twins |
+| `sketch-adoption.test.js` | the **TREATED** fragment, all four standing catalogues + the 80 twins |
 | `paper-materials.test.js` | the twelve skins, raw and treated |
 
 Between them every catalogue is scanned on the side that ships and fails on a fifth hex. The reason
@@ -104,8 +104,19 @@ of with weight and a paper knockout would be invisible to a raw-only scan.
 `client/src/render/sketch.js` is a pure **post-processor over an emitted SVG fragment**, applied at
 `helpers.item()` — the one door every builder already goes through (`helpers.js`, the `item()`
 seam). It runs on the **five paper catalogues**: 34 fittings, 13 machines, 14 paper-fixtures, 9
-paper-resources, 12 materials, plus the **47 twins** whose own painting is paper. The pre-redesign
-WARM set is not treated; nor are the 21 fittings still wearing a warm mock twin (filed).
+paper-resources, 12 materials — **that is the whole registry, 82 rows** — plus **all 80 twins**.
+
+⛔ **THERE IS NO UNTREATED POPULATION LEFT, AND THE EXCLUSION THIS SECTION USED TO CARRY IS CLOSED.**
+It read *"The pre-redesign WARM set is not treated"* and, beside it, the filed defect: *"the 21
+fittings still wearing a warm mock twin"* — a twin is treated only if its own painting is paper, so a
+`#33281b` mock transcription could not be. **47 → 68 → 80**, in two steps on 2026-08-06:
+`lane/warm-purge` re-authored those twenty-one twins on paper (P2b, **CLOSED**) and then the twelve
+material twins, and in the same commit RETIRED all thirty-eight warm registry rows on the owner's
+ruling, deleting `objects.js` / `fixtures.js` / `resources.js` / `cryo.js`. Re-measure at
+`sketch-adoption.test.js`, which pins 80 = 33 fittings + 13 machines + 14 paper-fixtures +
+8 paper-resources + 12 materials, and which now asserts that **no registry row ships raw** — the
+statement that replaced the old "the warm set is not treated" control when that control's population
+went empty (an unsatisfiable floor is a guard kept green forever).
 
 ⚠️ **"Five catalogues" is the treated POPULATION; the guarantees below are measured over FOUR of
 them.** `sketch-adoption.test.js`'s `CATALOGUES` array is the four **standing** catalogues (+ twins),
@@ -164,7 +175,7 @@ output is a string: the projection, the `SPECS` centimetres, the frames and ever
 transform have already run and it cannot reach them. What it CAN move is an emitted point, bounded
 by `amplitudeBound(level)` = **6.78 local units at `strong`** (6.1% of the 112 drawing box), derived
 term by term from the knobs. Pinned in `client/test/sketch-adoption.test.js`, both directions, per
-element, every piece of the four standing catalogues and all 47 twins.
+element, every piece of the four standing catalogues and all 80 twins.
 
 ⭐ **And TWO EXACT legs, because a bound cannot see an error smaller than itself** (7th trap shape) —
 two, because the module draws two kinds of thing and one sentence does not cover both:
@@ -178,7 +189,9 @@ two, because the module draws two kinds of thing and one sentence does not cover
 
 ⛔ **The second leg exists because its absence was measured, not anticipated** (review, 2026-08-05).
 The collinearity leg excluded ellipses and circles — **234 of 1548** geometry rows pristine, **464
-of 2719** counting the twins (re-measured 2026-08-05 on the merged tree) — and with only
+of 2719** counting the twins (measured 2026-08-05; ⚠️ **the twin half is stale twice over since
+08-06** — P2b re-authored 21 twins and the materials added 12 more — while the pristine 234/1548 is
+not, and the finding it supports does not turn on either figure) — and with only
 the bound under them, scaling every ellipse by ×1.02 … ×1.06 ran the whole sketch + catalogue suite
 **148/148 green**, and so did an **ry-only ×1.05**: a heading given to a thing this catalogue draws
 level. The round-things ratio guards cannot help — a `ry/rx` ratio is scale-invariant, and under the

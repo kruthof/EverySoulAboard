@@ -101,28 +101,19 @@ writeFileSync(join(OUT, 'machines-twins.html'),
 </style></head><body><main>${pairs}</main></body></html>`);
 console.log('wrote', join(OUT, 'machines-twins.html'));
 
-// A fourth sheet — EACH NEW PIECE BESIDE THE WARM ROW IT REPLACES, which is the comparison the owner
-// asked for ("replace the old ones") and the one no other sheet in this repo makes.
-const { buildItem } = await import('../src/items/index.js');
-const REPLACES = {
-  'reactor-plant': 'reactor', 'solar-wing': 'solar-panel', 'bottle-rack': 'oxygen-tank',
-  'reclaimer-stack': 'water-recycler', 'paste-column': 'paste-dispenser', 'med-cot': 'med-bed',
-  'fab-cell': 'fabricator', 'ring-array': 'sensor-array', 'dish-mast': 'comms-dish',
-  'plant-pot': 'potted-plant', 'book-case': 'bookshelf', 'deck-turret': 'turret',
-  'sleeper-pod': 'cryopod',
-};
-const before = MACHINE_IDS.map((id) => `<figure class="card wide">
-  <header><span class="n">${NUM.get(id)}</span><span class="name">${REPLACES[id]} → ${id}</span></header>
-  <div class="pair">
-    <svg width="${CELL}" height="${CELL}" viewBox="0 0 ${CELL} ${CELL}">${
-  buildItem(REPLACES[id], { w: CELL, h: CELL, idPrefix: `old-${id}` })}</svg>
-    <svg width="${CELL}" height="${CELL}" viewBox="0 0 ${CELL} ${CELL}">${
-  MC[camel(id)]({ w: CELL, h: CELL, idPrefix: `new-${id}` })}</svg>
-  </div>
-</figure>`).join('\n');
-writeFileSync(join(OUT, 'machines-before-after.html'),
-  `<!DOCTYPE html><html><head><meta charset="utf-8"><title>warm → paper</title><style>${CSS}
-  .card.wide { width: ${CELL * 2 + 44}px; }
-  .pair { display:flex; gap:8px; }
-</style></head><body><main><h1>The warm row and the paper row that replaces it</h1>${before}</main></body></html>`);
-console.log('wrote', join(OUT, 'machines-before-after.html'));
+// ⛔ THE FOURTH SHEET IS RETIRED — lane/warm-purge, 2026-08-06. It was
+// `machines-before-after.html`: *"EACH NEW PIECE BESIDE THE WARM ROW IT REPLACES, which is the
+// comparison the owner asked for ('replace the old ones') and the one no other sheet in this repo
+// makes."* It drove a `REPLACES` map — `'reactor-plant': 'reactor'`, `'solar-wing': 'solar-panel'`,
+// … `'sleeper-pod': 'cryopod'` — through `buildItem` for the warm half.
+//
+// ⚠️ ITS WARM COLUMN CEASED TO EXIST, AND IT WOULD NOT HAVE FAILED LOUDLY. All thirteen warm rows
+// were retired with `client/src/items/objects.js`, and `buildItem` is TOLERANT — an unknown id
+// returns the neutral `?` placeholder rather than throwing. So this sheet would have gone on
+// rendering, with a column of thirteen question marks, and read as a rendering bug rather than as a
+// missing input. A tool that draws a comparison it cannot make is worse than one that refuses.
+//
+// ⇒ THE COMPARISON IS NOT LOST. `client/tools/warm-purge-sheet.mjs` makes it, for the whole set
+// rather than for thirteen rows, and it REFUSES to draw the before/after column without a capture
+// taken from a checkout of the pre-purge tree (`--capture` there, then `--before <file>`). That is
+// the same picture with the missing input made explicit.

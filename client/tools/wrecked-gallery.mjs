@@ -53,7 +53,7 @@ const log = (...a) => console.log(...a);
 mkdirSync(OUT, { recursive: true });
 
 const { ITEMS, ITEM_IDS, buildItem } = await import('../src/items/index.js');
-const { WRECKED, WRECKED_IDS, NO_WRECKED_TWIN, buildWrecked, wreckedItemId } = await import('../src/items/wrecked.js');
+const { WRECKED, WRECKED_IDS, NO_WRECKED_TWIN, buildWrecked, wreckedItemId, TWIN_SOURCE } = await import('../src/items/wrecked.js');
 
 // ───────────────────────────────────────────────────────────── 0. the MOCK's own layers
 // ⚠️ THE MIDDLE COLUMN IS THE POINT OF THIS TOOL. Reading a builder against the mock by eye proves
@@ -113,16 +113,25 @@ if (WRECKED_IDS.length !== ITEM_IDS.length - twinExempt) {
 // undefined (reading 'mockLabel')`. Two defects in a row that only the second could expose: the guard
 // had been shielding a crash for as long as it had been failing.
 //
-// ⚠️ AND `mockLabel` IS NULLABLE BY DESIGN. Rows drawn from the owner's own catalogue (`capsule-*`,
-// `cell-*`, `battery-bank`) have no MOCK to compare against — the mock is the old HTML spec sheet —
-// so they carry `catalogue` instead, and a missing mock is only a failure for a row that claims one.
+// ⛔ THE MOCK COLUMN IS EMPTY FOR EVERY ROW SINCE 2026-08-06, AND IT IS LEFT WIRED ON PURPOSE. This
+// tool's third column draws the 2026-07-28 spec sheet's own CSS layers beside the SVG, and it was the
+// instrument that proved the transcription right. lane/warm-purge re-authored every twin on paper, so
+// there is nothing left to transcribe and `mockLabel` no longer exists on a `WRECKED` row — `want` is
+// `undefined` for all eighty and the column renders blank. ⚠️ THE JOIN IS KEPT RATHER THAN RIPPED OUT
+// because `docs/design/perilune-item-set.dc.html` stays in the repo as HISTORY and this is the only
+// tool that can still show it: point it at a checkout of a pre-purge tree and the comparison works
+// again. On THIS tree the sheet to look at is `client/tools/warm-purge-sheet.mjs`.
+// ⚠️ THE ORIGINAL NOTE, WHICH IS WHY THE `want &&` GUARD IS THERE AT ALL: *"`mockLabel` IS NULLABLE
+// BY DESIGN. Rows drawn from the owner's own catalogue (`capsule-*`, `cell-*`, `battery-bank`) have
+// no MOCK to compare against … a missing mock is only a failure for a row that claims one."* That is
+// what keeps this loop from failing eighty times over instead of drawing eighty blank columns.
 const pieces = WRECKED_IDS.map((id) => {
   const want = WRECKED[id].mockLabel;
   const mock = want ? mockByLabel.get(want) : null;
   if (want && !mock) { console.error(`FAIL: no mock piece labelled ${JSON.stringify(want)} (for ${id})`); process.exit(2); }
   return {
     id,
-    label: want || WRECKED[id].catalogue || id,
+    label: want || TWIN_SOURCE[id] || id,
     state: WRECKED[id].state,
     kind: ITEMS[id].kind,
     pristine: buildItem(id, { w: CELL, h: CELL, idPrefix: `p-${id}` }),
@@ -184,9 +193,11 @@ const sectionHtml = ([key, title, pick]) => `
 // ⚠️ RE-POINTED 2026-08-05, AND THE OLD IDS ARE NAMED SO THE CHANGE IS NOT MISTAKEN FOR A RENAME.
 // This panel read `['cryo-capsule-occupied', 'cryo-capsule-open']` — the warm `items/cryo.js` pieces
 // — which held `'K'` / `'k'` until the owner's "Capsules and cells" catalogue section took those
-// glyphs over. Those two rows are still REGISTERED (see `items/index.js` for why they were not
-// deleted) but nothing on either surface resolves to them any more, so a gallery that judged them
-// big was photographing art no player can reach. It now shows the pieces the wreck actually draws,
+// glyphs over. Those two rows were still REGISTERED when this note was written — nothing on either
+// surface resolved to them, so a gallery that judged them big was photographing art no player can
+// reach — and they were RETIRED outright on 2026-08-06 with the rest of the warm set, which is why
+// the reason `items/index.js` used to carry for keeping them is now quoted history there. It shows
+// the pieces the wreck actually draws,
 // plus the Battery's two, which are the other pair this section is about.
 const bigCryo = ['capsule-sealed', 'capsule-open', 'cell-sound'].map((id) => `
   <div class="pair big">
@@ -195,7 +206,7 @@ const bigCryo = ['capsule-sealed', 'capsule-open', 'cell-sound'].map((id) => `
       <div class="stage big wr">${svgBox(buildWrecked(id, { w: 300, h: 300, idPrefix: `bigw-${id}` }), 'sv', 300)}
         <div class="badge">${WRECKED[id].state}</div></div>
     </div>
-    <div class="lbl">${WRECKED[id].mockLabel || WRECKED[id].catalogue}</div>
+    <div class="lbl">${WRECKED[id].mockLabel || TWIN_SOURCE[id]}</div>
   </div>`).join('');
 
 const html = `<!doctype html><meta charset="utf-8"><title>PERILUNE — wrecked item set</title>

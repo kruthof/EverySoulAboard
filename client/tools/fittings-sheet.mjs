@@ -88,13 +88,14 @@ console.log('wrote', join(OUT, 'fittings-tiles.html'));
 // A third sheet — the NINE repo-authored post-raid twins, beside their pristine pieces. A twin that
 // no longer reads as the same object is the one failure `client/test/wrecked.test.js` cannot see: its
 // join is by itemId, and a wrong drawing keyed correctly is still a wrong drawing.
-const { buildWrecked, NON_MOCK_TWIN, wreckedState } = await import('../src/items/wrecked.js');
-// ⚠️ FILTERED TO THIS CATALOGUE — `NON_MOCK_TWIN` is the repo-authored ledger for ALL FOUR paper
-// catalogues now (paper-resources, paper-fixtures and machines each added their rows to it), and
-// this sheet draws its pristine column with `FT[camel(id)]`. Unfiltered it threw
-// `FT[camel(...)] is not a function` on the first non-fitting row — a tool broken by a clean
-// auto-merge, found by running it (TRAPS 8th shape, in a tool).
-const pairs = Object.keys(NON_MOCK_TWIN).filter((id) => typeof FT[camel(id)] === 'function')
+const { buildWrecked, TWIN_SOURCE, wreckedState } = await import('../src/items/wrecked.js');
+// ⚠️ FILTERED TO THIS CATALOGUE — `TWIN_SOURCE` is the provenance ledger for ALL FIVE paper
+// catalogues (it replaced `NON_MOCK_TWIN` on 2026-08-06 and is TOTAL, so it now names every twin
+// rather than the repo-authored ones), and this sheet draws its pristine column with `FT[camel(id)]`.
+// Unfiltered it threw `FT[camel(...)] is not a function` on the first non-fitting row — a tool broken
+// by a clean auto-merge, found by running it (TRAPS 8th shape, in a tool). The filter is what makes
+// the ledger's widening a non-event here.
+const pairs = Object.keys(TWIN_SOURCE).filter((id) => typeof FT[camel(id)] === 'function')
   .map((id) => `<figure class="card">
   <header><span class="n">${NUM.get(id)}</span><span class="name">${id}</span>
     <span class="hint">${wreckedState(id)}</span></header>

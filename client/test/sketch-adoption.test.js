@@ -25,7 +25,8 @@
 //   §2  THE ROUND MEMBERS — exact, per axis: the radius nudge recovered from x and from y separately
 //       must each be within `lump` and must AGREE. ⛔ Added 2026-08-05 after review measured the
 //       hole: the collinearity leg cannot speak about a closed curve, so it excluded ellipses and
-//       circles — 234 of 1548 geometry rows pristine, 464 of 2719 with the twins, RE-MEASURED on
+//       circles — 234 of 1548 geometry rows pristine, 464 of 2719 with the twins (⚠️ the TWIN half
+//       is stale since P2b added 21 twins on 2026-08-06; the finding turns on neither figure), RE-MEASURED on
 //       this tree — and with only the bound under them, scaling every
 //       ellipse ×1.02…×1.06 ran the whole suite 148/148 GREEN, as did an ry-only ×1.05.
 //
@@ -100,15 +101,23 @@ const CATALOGUES = [
 const ALL_TREATED_IDS = CATALOGUES.flatMap((c) => c.ids);
 
 /**
- * ⚠️ A TWIN IS TREATED ONLY IF ITS OWN PAINTING IS PAPER, AND THAT IS A FINDING RATHER THAN A
- * SUBTLETY. Twenty-one of the thirty-four fittings still carry their WARM MOCK twin — `dining-table`
- * ships the paper fitting pristine and the 2026-07-28 mock transcription damaged, in `#33281b`. The
+ * ⚠️ A TWIN IS TREATED ONLY IF ITS OWN PAINTING IS PAPER — and since 2026-08-06 that is ONE fact
+ * (*has a twin*) rather than two, because there is no longer any twin a paper catalogue draws and the
+ * warm mock painted. The second clause is QUOTED rather than deleted, because it was a real finding:
+ * *"Twenty-one of the thirty-four fittings still carry their WARM MOCK twin — `dining-table` ships
+ * the paper fitting pristine and the 2026-07-28 mock transcription damaged, in `#33281b`. The
  * treatment does not touch those: putting a freehand hand on warm art buys nothing and breaks the
- * palette closure (measured — `#3a2c1e` on the chair's twin is how this was found). FILED for the
- * owner; it is a pre-existing mismatch that the adoption makes MORE conspicuous, because the
- * pristine piece is now plainly hand-drawn beside a twin that is not.
+ * palette closure (measured — `#3a2c1e` on the chair's twin is how this was found)."* lane/warm-purge
+ * re-authored all twenty-one on paper, so `WRECKED[id].mockLabel == null` became true of every row
+ * and then the field itself was retired. A clause that can no longer be false is the fifth trap
+ * shape; what keeps the rule honest instead is the membership assertion below, which walks the WHOLE
+ * of `WRECKED` and requires the treated set to be exactly this one.
+ *
+ * ⚠️ AND IT NOW INCLUDES THE TWELVE MATERIALS, which is why it is `ITEMS`-wide rather than
+ * `ALL_TREATED_IDS`-wide: `ALL_TREATED_IDS` is the four STANDING catalogues (a material is a tiling
+ * field and is measured by pitch, not by displacement — see this file's `CATALOGUES` header).
  */
-const PAPER_TWIN_IDS = ALL_TREATED_IDS.filter((id) => WRECKED[id] && WRECKED[id].mockLabel == null);
+const PAPER_TWIN_IDS = [...ALL_TREATED_IDS, ...MATERIAL_IDS].filter((id) => WRECKED[id] !== undefined);
 const AMP = amplitudeBound(SKETCH_LEVEL);
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -173,8 +182,17 @@ test('every piece of all four catalogues really is treated — and the treatment
 // recorded in `paper-materials.test.js` and in `sketch.js`'s private `isKitHatch`: the hatch knob was
 // rewriting EVERY `<pattern>`, which would have deleted four skins' identifying fields.
 //
-// The WARM set stays untreated and that is still a decision: it is the idiom the redesign replaces.
-test('all five paper catalogues are treated and the WARM set is not — the population, both sides', () => {
+// ⛔ THE WARM HALF OF THIS TEST IS GONE, AND IT WAS REPLACED RATHER THAN DELETED (2026-08-06). It
+// read *"The WARM set stays untreated and that is still a decision: it is the idiom the redesign
+// replaces"* and it swept every registry row outside the five catalogues, requiring each to ship RAW,
+// with a `warm.length >= 38` floor beneath it. lane/warm-purge retired all thirty-eight of those
+// rows, so the sweep's population is EMPTY and its floor is UNSATISFIABLE — a control that can never
+// run again, which is the fifth trap shape if it is left in place saying nothing.
+// ⇒ WHAT REPLACES IT IS THE SAME SENTENCE MADE TOTAL: there is no untreated registry row, and there
+// CAN be none, because the registry is exactly the five catalogues. That is a stronger statement than
+// "the 38 we know about ship raw" — it fails on a thirty-ninth arriving, which the old floor could
+// not have seen (a new warm row would simply have made `warm.length` 39 and passed).
+test('all five paper catalogues are treated, and NO registry row ships untreated', () => {
   let skins = 0;
   for (const id of MATERIAL_IDS) {
     assert.notEqual(MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt' }),
@@ -183,52 +201,73 @@ test('all five paper catalogues are treated and the WARM set is not — the popu
     skins += 1;
   }
   assert.equal(skins, 12, 'the material set changed size — six walls and six floors');
-  // …and the warm rows, named as the control rather than swept.
-  const warm = ITEM_IDS.filter((id) => !ALL_TREATED_IDS.includes(id) && !MATERIAL_IDS.includes(id));
-  assert.ok(warm.length >= 38, `only ${warm.length} untreated registry rows — the control is vacuous`);
+
+  // ⭐ THE CLOSURE, BOTH WAYS. (a) no registry row sits outside the five catalogues…
+  const outside = ITEM_IDS.filter((id) => !ALL_TREATED_IDS.includes(id) && !MATERIAL_IDS.includes(id));
+  assert.deepEqual(outside, [],
+    'a registry row is drawn by none of the five paper catalogues: ' + outside.join(', ') + '\n'
+    + 'Since the warm purge every piece in the game is paper and every piece is treated. A row here\n'
+    + 'is either warm art returning or a sixth catalogue nobody declared — and either way the sweep\n'
+    + 'below cannot tell you whether it ships treated, because it is not in any catalogue list.');
+
+  // …and (b) every registry row really is treated, DRIVEN through `buildItem` — the door the
+  // surfaces use — rather than through each catalogue's own build map. ⛔ THIS IS THE HALF THAT
+  // REPLACES THE OLD WARM CONTROL, and it is an INCLUSION test: it fails if a row ships raw, which
+  // is exactly what the retired rows did and what a re-added one would do.
   let checked = 0;
-  for (const id of warm) {
-    assert.equal(buildItem(id, { w: 120, h: 120, idPrefix: 'wm' }),
+  for (const id of ITEM_IDS) {
+    assert.notEqual(buildItem(id, { w: 120, h: 120, idPrefix: 'wm' }),
       buildItem(id, { w: 120, h: 120, idPrefix: 'wm', sketch: false }),
-      `${id} is a pre-redesign WARM row and it ships treated`);
+      `${id} ships RAW through buildItem. Every registry row wears the treatment since 2026-08-06.`);
     checked += 1;
   }
-  assert.equal(checked, warm.length);
-  assert.ok(checked >= 38, 'no warm row was actually built — the loop is vacuous');
+  assert.equal(checked, ITEM_IDS.length);
+  assert.ok(checked >= 80, `only ${checked} registry rows built — the loop is vacuous`);
 });
 
 // ⭐ A TWIN IS TREATED IF AND ONLY IF ITS PRISTINE PIECE IS, and it shares its hand. Both halves
 // matter: a treated piece beside an untreated twin is two drawings of one object, and a twin drawn
 // by a DIFFERENT hand makes every stroke differ, which would drown the damage the player must read.
-test('every twin of a treated piece is treated, shares its seed, and no warm twin is', () => {
+test('EVERY twin is treated and shares its pristine piece\'s seed — and the set is closed', () => {
   let treatedTwins = 0;
-  let warmTwins = 0;
+  const untreated = [];
   for (const id of Object.keys(WRECKED)) {
     const a = buildWrecked(id, { w: 240, h: 240, idPrefix: `t-${id}` });
     const b = buildWrecked(id, { w: 240, h: 240, idPrefix: `t-${id}`, sketch: false });
-    if (PAPER_TWIN_IDS.includes(id)) {
-      assert.notEqual(a, b, `${id}'s twin ships RAW while its pristine piece ships treated`);
-      assert.equal(a, sketch(b, { level: SKETCH_LEVEL, seed: id }),
-        `${id}'s twin is not seeded with its PRISTINE id. Seeded any other way the shared prefix is\n`
-        + 'drawn by a different hand and the difference between the pair stops being the damage.');
-      treatedTwins += 1;
-    } else {
-      assert.equal(a, b,
-        `${id}'s twin ships treated but its own painting is not paper — either it is a warm registry\n`
-        + 'row, or it is a paper piece still wearing the 2026-07-28 mock twin (21 fittings are).');
-      warmTwins += 1;
-    }
+    if (a === b) { untreated.push(id); continue; }
+    // ⭐ THE SEED IS THE PRISTINE ID, and the material twins are the reason this is asserted through
+    // `sketch()` rather than by "it differs from raw": a twin re-runs its own pristine painter, so
+    // seeded identically the shared prefix is drawn by the identical hand and the whole difference
+    // between the pair is the DAMAGE. Seeded any other way every stroke of both would differ and the
+    // distinguishability guard further down would be measuring the seed instead.
+    // ⚠️ THE MATERIALS ALSO PASS `ground: false` AT THIS SEAM, so their expected fragment is not the
+    // default `sketch(raw, {level, seed})` — that argument is threaded by `buildWrecked` per row and
+    // is what the ground-rule leg at the bottom of this file drives.
+    const ground = MATERIAL_IDS.includes(id) ? false : undefined;
+    assert.equal(a, sketch(b, { level: SKETCH_LEVEL, seed: id, ground }),
+      `${id}'s twin is not seeded with its PRISTINE id (or its ground knob is threaded wrong).`);
+    treatedTwins += 1;
   }
-  assert.equal(treatedTwins, 47,
-    'the treated-twin population changed — 12 fittings + 13 machines + 14 paper-fixtures + 8 paper-resources');
-  assert.ok(warmTwins > 60, `only ${warmTwins} untreated twins — the control is vacuous`);
-  // …and the 21 fittings still wearing a mock twin are named as a COUNT, so the day someone fixes
-  // them this line reports it rather than a distant palette test failing.
-  const mockedPaper = ALL_TREATED_IDS.filter((id) => WRECKED[id] && WRECKED[id].mockLabel != null);
-  assert.equal(mockedPaper.length, 21,
-    `${mockedPaper.length} paper pieces still carry a WARM mock twin (was 21 at adoption): `
-    + `${mockedPaper.slice(0, 4).join(', ')}…  If this went DOWN, someone redrew them and the treated`
-    + '-twin count above should have gone up by the same number.');
+  // ⛔ THE `warmTwins > 40` CONTROL THAT STOOD HERE IS GONE, AND IT WAS REPLACED RATHER THAN DELETED.
+  // It counted twins that ship RAW and required more than forty of them, as the non-vacuity floor
+  // under the treated half. After the purge that population is EMPTY and the floor is unsatisfiable —
+  // a control that can never run again is the fifth trap shape. What replaces it is the exact
+  // statement the old pair was approximating from two sides: the untreated set is EMPTY, by name.
+  assert.deepEqual(untreated, [],
+    'these twins ship RAW while their pristine pieces ship treated: ' + untreated.join(', ') + '\n'
+    + 'Every twin in the set is drawn by a paper catalogue since 2026-08-06, so every twin is\n'
+    + 'treated. A raw one is either warm art returning or a `SKETCHED_TWINS` membership that no\n'
+    + 'longer covers its population.');
+  assert.equal(treatedTwins, 80,
+    'the treated-twin population changed — 33 fittings + 13 machines + 14 paper-fixtures\n'
+    + '+ 8 paper-resources + 12 materials = 80. It was 47 before lane/warm-purge (2026-08-06):\n'
+    + '+21 restyled fittings and +12 materials, both re-authored on paper in that commit.');
+  // ⭐ AND THE MEMBERSHIP IS PINNED BOTH WAYS, which is what keeps "everything is treated" from being
+  // satisfied by a set that quietly grew. `SKETCHED_TWINS` is module-private in `wrecked.js`, so it
+  // is read here through its only observable effect.
+  assert.deepEqual([...PAPER_TWIN_IDS].sort(), [...Object.keys(WRECKED)].sort(),
+    'the twin set and the five paper catalogues have come apart: a twin exists for a row no\n'
+    + 'catalogue draws, or a catalogue row lost its twin without a NO_WRECKED_TWIN line.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -766,18 +805,20 @@ test('⭐⭐⭐ the treated fragment at EVERY facing is the raw one, bridged —
 // rotation package, not this treatment: the twin is untreated-by-facing, not untreated-by-sketch.
 // Recorded here because this is the file that noticed, and as a COUNT so the day someone threads it
 // this line reports the fix rather than a distant guard failing.
-test('FILED: a wrecked twin ignores the facing — all 47, named as a count rather than left silent', () => {
+test('FILED: a wrecked twin ignores the facing — all 80, named as a count rather than left silent', () => {
   let deaf = 0;
   for (const id of PAPER_TWIN_IDS) {
     const a = buildWrecked(id, { w: 240, h: 240, idPrefix: `f-${id}` });
     const b = buildWrecked(id, { w: 240, h: 240, idPrefix: `f-${id}`, facing: 1 });
     if (a === b) deaf += 1;
   }
-  assert.equal(deaf, 47,
-    `${deaf} of 47 treated twins ignore the facing (was 47 at this merge). If this went DOWN someone\n`
-    + 'threaded `facing` through `wrecked.js` — good — and the facing bridge above should grow a twin\n'
+  assert.equal(deaf, 80,
+    `${deaf} of 80 treated twins ignore the facing (47 at adoption, 68 after P2b's twenty-one, 80\n`
+    + 'since the twelve materials joined on 2026-08-06). If this went\n'
+    + 'DOWN someone threaded `facing` through `wrecked.js` — good — and the facing bridge above\n'
+    + 'should grow a twin\n'
     + 'leg to match. If it went UP, a twin that used to turn has stopped.');
-  // …and the structural half, so "47" cannot become true for a new reason.
+  // …and the structural half, so "68" cannot become true for a new reason.
   const src = codeOnly(readFileSync(join(HERE, '..', 'src', 'items', 'wrecked.js'), 'utf8'));
   assert.ok(!/facing/.test(src),
     '`wrecked.js` now mentions `facing`, so the count above is no longer measuring what it says');
@@ -893,7 +934,7 @@ const normBody = (svg) => {
 };
 
 test('⭐⭐ every twin is tellable from its treated pristine piece by MORE than treatment noise', () => {
-  assert.equal(PAPER_TWIN_IDS.length, 47, 'the treated-twin population changed');
+  assert.equal(PAPER_TWIN_IDS.length, 80, 'the treated-twin population changed');
   const weak = [];
   let addedTwins = 0;
   let redrawTwins = 0;
@@ -948,7 +989,7 @@ test('⭐⭐ every twin is tellable from its treated pristine piece by MORE than
       weak.push({ id, share: +share.toFixed(4), damage: +damage.toFixed(0), drift: +drift.toFixed(0) });
     }
   }
-  assert.equal(addedTwins, 46, 'the damage-added twin population changed');
+  assert.equal(addedTwins, 67, 'the damage-added twin population changed (46 at adoption, +21 at P2b)');
   assert.equal(redrawTwins, 1, 'the redraw-twin population changed — `cell-sound` was the only one');
   const weakest = weak.sort((a, b) => a.share - b.share)[0];
   assert.ok(weakest.share >= 0.012, `${weakest.id} is the weakest pair at ${weakest.share}`);
@@ -1252,16 +1293,30 @@ test('every treated piece stands on a ground rule, inside its own scaling group'
 // CASE INSIDE `sketch()`. A treatment that asked "is this a material?" would be a second authority on
 // the catalogue split, in the module furthest from it; a knob is a sentence the catalogue says about
 // itself, and the day the owner overrules this it is one word.
-test('⭐⭐ NO material skin stands on a ground rule, and every standing piece still does', () => {
+// ⛔⭐ THIS PIN WALKED THE PRISTINE SKINS ONLY UNTIL 2026-08-06, AND THAT WAS A HOLE, NOT A CHOICE.
+// `paper-materials.js` passes `ground: false` at ITS OWN `item()` seam; `buildWrecked` calls `item()`
+// itself, so a material TWIN inherits nothing from the skin's harness and the knob has to be threaded
+// a second time, by hand, in `wrecked.js`. Un-threaded, a room floor of DAMAGED deck would draw the
+// ninety-six rules this ruling exists to remove — the same picture, on the same surface — and every
+// assertion in the version of this test that shipped before today would have stayed green, because
+// none of them ever built a twin. The twins were warm and untreated when the pin was written, so the
+// gap was invisible; the moment they became paper it became reachable. ⇒ BOTH POPULATIONS NOW, in one
+// test, with the inclusion control run over both.
+test('⭐⭐ NO material skin OR TWIN stands on a ground rule, and every standing piece still does', () => {
   let skins = 0;
   for (const id of MATERIAL_IDS) {
-    const svg = MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt' });
-    assert.equal((svg.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 0,
-      `${id}: a MATERIAL skin draws a ground rule. A tiling field has no floor under it to meet, and\n`
-      + 'one room floor draws ninety-six of these — a grid of ink ticks at the tiling pitch.');
-    // …and it is ONLY the ground knob that is off: the skin is still treated in every other respect.
-    assert.notEqual(svg, MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt', sketch: false }),
-      `${id}: turning the ground rule off turned the whole treatment off`);
+    for (const [what, svg, raw] of [
+      ['skin', MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt' }),
+        MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt', sketch: false })],
+      ['TWIN', buildWrecked(id, { w: 200, h: 200, idPrefix: 'mw' }),
+        buildWrecked(id, { w: 200, h: 200, idPrefix: 'mw', sketch: false })],
+    ]) {
+      assert.equal((svg.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 0,
+        `${id}: a MATERIAL ${what} draws a ground rule. A tiling field has no floor under it to meet,\n`
+        + 'and one room floor draws ninety-six of these — a grid of ink ticks at the tiling pitch.');
+      // …and it is ONLY the ground knob that is off: it is still treated in every other respect.
+      assert.notEqual(svg, raw, `${id}: turning the ground rule off turned the whole ${what}'s treatment off`);
+    }
     skins += 1;
   }
   assert.equal(skins, 12, 'the material set changed size — six walls and six floors');
@@ -1273,14 +1328,18 @@ test('⭐⭐ NO material skin stands on a ground rule, and every standing piece 
   // Both go through the shipped `sketch()` rather than a re-derivation, so the knob is what is pinned.
   let forcedOn = 0;
   for (const id of MATERIAL_IDS) {
-    const raw = MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt', sketch: false });
-    const on = sketch(raw, { level: SKETCH_LEVEL, seed: id, ground: true });
-    assert.equal((on.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 1,
-      `${id}: with the ground knob forced ON the skin still draws no rule — the guard above passes\n`
-      + 'because nothing could ever be found, not because the knob is doing anything.');
-    forcedOn += 1;
+    for (const [what, raw] of [
+      ['skin', MAT_BUILD[id]({ w: 200, h: 200, idPrefix: 'mt', sketch: false })],
+      ['TWIN', buildWrecked(id, { w: 200, h: 200, idPrefix: 'mw', sketch: false })],
+    ]) {
+      const on = sketch(raw, { level: SKETCH_LEVEL, seed: id, ground: true });
+      assert.equal((on.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 1,
+        `${id}: with the ground knob forced ON the ${what} still draws no rule — the guard above\n`
+        + 'passes because nothing could ever be found, not because the knob is doing anything.');
+      forcedOn += 1;
+    }
   }
-  assert.equal(forcedOn, 12);
+  assert.equal(forcedOn, 24, 'twelve skins and twelve twins must each be driven with the knob ON');
   const off = sketch(FT.diningTable({ w: 240, h: 240, idPrefix: 'g', sketch: false }),
     { level: SKETCH_LEVEL, seed: 'dining-table', ground: false });
   assert.equal((off.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length, 0,

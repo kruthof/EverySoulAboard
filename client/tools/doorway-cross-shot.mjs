@@ -48,7 +48,7 @@
 //
 // USAGE
 //   1. ./play.sh --host-port 8676 --client-port 8677 --no-open
-//   2. node client/tools/doorway-cross-shot.mjs --host-port 8676 --client-port 8677
+//   2. node client/tools/doorway-cross-shot.mjs --host-port 8676 --client-port 8677 [--anchor cryobay]
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -92,19 +92,38 @@ const slots = deckSlots(dView, DECK).filter((s) => s.anchorName);
 const roster = latest.get('roster');
 const crew = (roster && roster.crew) || [];
 if (!crew.length) { console.error('no crew aboard — nothing to walk'); process.exit(9); }
+// ⛔ THE FAR SIDE OF THE DOOR MUST BE SOMEWHERE SHE CAN GO, OR NO CROSSING HAPPENS — and a run that
+// walks her round the room instead measures nothing. The first version of this chooser took the
+// first door it found; on a later ship state that door's far tile was not floor, the sim pathed her
+// nowhere near it, and the run came back with `ON THE DOOR RING 0` and two green verdicts. The
+// vacuity guard at the bottom caught it (that is what it is for), but the honest fix is to choose a
+// crossing that can be driven. The frame's own glyph is the test: `.` floor, or an open doorway.
+const WANT = arg('anchor', '');
+const walkableAt = (tx, ty) => {
+  if (tx < 0 || ty < 0 || tx >= (frame.w | 0) || ty >= (frame.h | 0)) return false;
+  const c = frame.cells[ty * (frame.w | 0) + tx];
+  if (!Array.isArray(c)) return false;
+  const g = c[0] | 0;
+  return g === 46 || g === 47 || g === 64 || g === 44;   // '.' floor · '/' open door · '@' pawn · ',' spoil
+};
+const farSide = (d) => (d.side === 'back' ? { x: d.tx, y: d.ty + 1 }
+  : d.side === 'front' ? { x: d.tx, y: d.ty - 1 }
+    : d.side === 'left' ? { x: d.tx - 1, y: d.ty } : { x: d.tx + 1, y: d.ty });
 let pick = null;
-for (const s of slots) {
+for (const s of (WANT ? slots.filter((x) => x.anchorName === WANT) : slots)) {
   const f = { deck: DECK, rx: s.rect.x, ry: s.rect.y, rw: s.rect.w, rh: s.rect.h };
-  const doors = roomDoorTiles(frame, f, dView);
-  if (!doors.length) continue;
   const iv = roomInterior(f);
   const who = crew.find((c) => (c.deck | 0) === DECK
     && c.x >= iv.rx && c.x < iv.rx + iv.rw && c.y >= iv.ry && c.y < iv.ry + iv.rh);
-  if (who) { pick = { s, f, iv, door: doors[0], who }; break; }
+  if (!who) continue;
+  const door = roomDoorTiles(frame, f, dView).find((d) => walkableAt(d.tx, d.ty)
+    && walkableAt(farSide(d).x, farSide(d).y));
+  if (door) { pick = { s, f, iv, door, who }; break; }
 }
 if (!pick) {
-  console.error('no compartment on this deck has BOTH a boundary door and a crew member in it — the '
-    + 'crossing cannot be driven, so nothing would be measured');
+  console.error('no compartment on this deck has a crew member in it AND a boundary door whose far '
+    + 'side she can walk to — the crossing cannot be driven, so nothing would be measured'
+    + (WANT ? ` (--anchor ${WANT})` : ''));
   process.exit(9);
 }
 const { s: ROOM, f: focus, iv, door, who } = pick;
@@ -113,10 +132,7 @@ log(`ROOM ${ROOM.anchorName} window=${focus.rx},${focus.ry} ${focus.rw}x${focus.
 log(`DOOR ${door.tx},${door.ty} (${door.side})   CREW cid=${who.cid} at ${who.x},${who.y}`);
 
 // The tile on the FAR side of the door — one step beyond it, out of this compartment.
-const beyond = door.side === 'back' ? { x: door.tx, y: door.ty + 1 }
-  : door.side === 'front' ? { x: door.tx, y: door.ty - 1 }
-    : door.side === 'left' ? { x: door.tx - 1, y: door.ty }
-      : { x: door.tx + 1, y: door.ty };
+const beyond = farSide(door);
 const home = { x: who.x, y: who.y };
 log(`WALK  ${home.x},${home.y}  →  ${beyond.x},${beyond.y}  (through the ${door.side} door)  and back`);
 
@@ -287,7 +303,21 @@ async function walkTo(t, label) {
   await sleep(300);
   cmd({ cmd: 'cursor', x: t.x, y: t.y });
   cmd({ cmd: 'move' });
-  await sleep(SAMPLE_MS);
+  // ⭐ ONE PICTURE **IN** THE DOORWAY, for the owner. The measurement is the 60 Hz sample set below;
+  // this is the frame that shows what it means — she is standing in the opening, on the wall line,
+  // on a tile the drawing has no floor for. Polled off the rig's own socket so the capture is timed
+  // by the SIM's position rather than by a guessed delay; it simply does not fire if she crosses
+  // between two roster messages, and the run is unaffected either way.
+  let shot = false;
+  const t0 = Date.now();
+  while (Date.now() - t0 < SAMPLE_MS) {
+    const p = whereIsShe();
+    if (!shot && p.x === door.tx && p.y === door.ty) {
+      shot = true;
+      await png(`doorway-IN-THE-OPENING-${label.split(' ')[0].toLowerCase()}.png`);
+    }
+    await sleep(60);
+  }
   await evaluate('window.__stop = true;');
   const frames = await evalJson('window.__frames');
   return frames || [];

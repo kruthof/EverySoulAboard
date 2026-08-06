@@ -82,6 +82,19 @@
 // darkest ink area in the set is the grating's open slots, which are 32 % of the tile at opacity
 // 0.30 — a mean darkening of under a tenth — because a skin that fills a tile with tone fights the
 // room's own paper and every fitting standing on it.
+//
+// ── THE PAINTER DOOR (2026-08-06, lane/warm-purge) ───────────────────────────────────────────
+// There are TWO ways in. `BUILD[id](opts)` is the registry's: it builds a whole fragment. `DRAW[id]`
+// + `paintMaterial(s, id, env, extra)` is the TWINS': it paints a skin INTO a scene someone else
+// owns and then hands that scene and the SAME FRAME to a caller's `extra`, so a damaged wall is the
+// same wall with damage on it rather than a second drawing of one. It is `fittings.paintFitting` and
+// `paper-resources.paintResource` verbatim, with one difference stated at the function: those two
+// derive a frame from the piece's `SPECS` row, and A SKIN HAS NO INTRINSIC EXTENT — the caller's box
+// aspect IS the extent — so this door has to be handed the `env` the harness was handed.
+// `frameForSkin` is the ONE derivation both entrances come through, and a second copy of that
+// arithmetic is the defect the pair exists to prevent: it would let a twin draw a 2.4 m wall's damage
+// on a 1 m field with every assertion in `paper-materials.test.js` — which only ever reads the
+// PRISTINE builder — still green.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 import { item, r3, TILE, INK, PAPER } from './helpers.js';
@@ -141,17 +154,34 @@ function frameOf(wCm, hCm) {
 }
 
 /**
- * The builder harness. Resolves the caller's box, derives the drawn extent in centimetres from its
- * ASPECT (see the header), and runs the painter against that frame.
+ * ⭐ THE ONE DERIVATION OF A SKIN'S FRAME, taken a caller's BOX rather than an id.
+ *
+ * `skin()` below and `paintMaterial()` at the foot of this file both come through here, and that is
+ * the whole reason it is a named function instead of four lines inlined in the harness. A second copy
+ * of `min(w,h)` + `TILE·(w/k)/CM` is the defect this module exists to prevent: the aspect derivation
+ * IS the package's dimensional claim (a wall is 100 × 240 cm because its box says so), so two copies
+ * of it are two answers to "how many metres did the caller ask for" — and the one on the twin side
+ * would drift silently, because a damaged wall drawn at the wrong extent is still a wall.
+ * It is `fittings.frameFor`'s rule in this module's shape, and `oblique.js`'s header records the scar.
  *
  * ⚠️ IT MIRRORS `helpers.item()`'s OWN DEFAULTS (`w = h = 100`) rather than inventing its own, so a
- * bare `buildItem('wood-plank-floor')` draws the same square metre `item()` would normalise.
+ * bare `buildItem('wood-plank-floor')` draws the same square metre `item()` would normalise. That
+ * matters twice over now: `item()` hands its painter an `env` carrying exactly those resolved `w`/`h`,
+ * so a twin painting through `paintMaterial(s, id, env, …)` lands on the identical frame.
+ */
+export function frameForSkin(env = {}) {
+  const w = env.w == null ? 100 : env.w;
+  const h = env.h == null ? 100 : env.h;
+  const k = Math.min(w, h) || 1;
+  return frameOf((TILE * (w / k)) / CM, (TILE * (h / k)) / CM);
+}
+
+/**
+ * The builder harness. Resolves the caller's box, derives the drawn extent in centimetres from its
+ * ASPECT (see the header), and runs the painter against that frame.
  */
 function skin(itemId, opts, paint) {
-  const w = opts.w == null ? 100 : opts.w;
-  const h = opts.h == null ? 100 : opts.h;
-  const k = Math.min(w, h) || 1;
-  const g = frameOf((TILE * (w / k)) / CM, (TILE * (h / k)) / CM);
+  const g = frameForSkin(opts);
   // ⛔ `ground: false` — AN ORCHESTRATOR RULING, 2026-08-05, AND IT IS OVERRIDABLE BY THE OWNER FROM
   // THE SHEET. The sketch treatment's ground rule is the pawns' sixth tell: the faint line a thing
   // STANDING on a deck is drawn resting on. A material is not a standing thing — it is the deck —
@@ -254,30 +284,31 @@ const pr = (x, y, w, h, fill, stroke, sw) =>
  * promoted to the tell; the amber trim becomes the doubled INK HEAD RAIL — oxblood is the only
  * accent the dialect has and a wall is never an alert.
  */
-export const steelBulkhead = (opts = {}) =>
-  skin('steel-bulkhead', opts, (s, g) => {
-    ground(s, g);
-    const rivetRows = [6];
-    for (let z = 60; z <= g.hCm - 12; z += 60) rivetRows.push(z);
-    for (let z = 60; z <= g.hCm - 12; z += 60) {
-      rail(s, g, z, { sw: W.mid });
-      rail(s, g, z - 3, { sw: W.hair, opacity: 0.32 });
+const drawSteelBulkhead = (s, g) => {
+  ground(s, g);
+  const rivetRows = [6];
+  for (let z = 60; z <= g.hCm - 12; z += 60) rivetRows.push(z);
+  for (let z = 60; z <= g.hCm - 12; z += 60) {
+    rail(s, g, z, { sw: W.mid });
+    rail(s, g, z - 3, { sw: W.hair, opacity: 0.32 });
+  }
+  for (const xc of [25, 75]) {
+    seg(s, g.x(xc), g.z(0), g.x(xc), g.z(g.hCm), { sw: W.fine, opacity: 0.75 });
+    seg(s, g.x(xc + 2.5), g.z(0), g.x(xc + 2.5), g.z(g.hCm), { sw: W.hair, opacity: 0.3 });
+  }
+  for (const z of rivetRows) {
+    for (let x = 6.25; x < g.wCm; x += 12.5) {
+      s.circle({ cx: g.x(x), cy: g.z(z), r: g.u(1.6), fill: 'none', stroke: INK, sw: W.hair });
     }
-    for (const xc of [25, 75]) {
-      seg(s, g.x(xc), g.z(0), g.x(xc), g.z(g.hCm), { sw: W.fine, opacity: 0.75 });
-      seg(s, g.x(xc + 2.5), g.z(0), g.x(xc + 2.5), g.z(g.hCm), { sw: W.hair, opacity: 0.3 });
-    }
-    for (const z of rivetRows) {
-      for (let x = 6.25; x < g.wCm; x += 12.5) {
-        s.circle({ cx: g.x(x), cy: g.z(z), r: g.u(1.6), fill: 'none', stroke: INK, sw: W.hair });
-      }
-    }
-    if (g.full) {
-      rail(s, g, g.hCm - 8, { sw: W.mid });
-      rail(s, g, g.hCm - 11.5, { sw: W.hair, opacity: 0.45 });
-    }
-    edge(s, g, W.mid);
-  });
+  }
+  if (g.full) {
+    rail(s, g, g.hCm - 8, { sw: W.mid });
+    rail(s, g, g.hCm - 11.5, { sw: W.hair, opacity: 0.45 });
+  }
+  edge(s, g, W.mid);
+};
+
+export const steelBulkhead = (opts = {}) => skin('steel-bulkhead', opts, drawSteelBulkhead);
 
 /**
  * 32 TIMBER-LINED WALL — IDENTIFYING FEATURE: **HORIZONTAL BOARDS WITH STAGGERED BUTT JOINTS**. It
@@ -295,39 +326,40 @@ export const steelBulkhead = (opts = {}) =>
  * the piece "a storage rack" — the vertical mass out-competed the horizontal board rhythm that is
  * supposed to carry the wood identity.
  */
-export const timberLinedWall = (opts = {}) =>
-  skin('timber-lined-wall', opts, (s, g) => {
-    ground(s, g);
-    const boards = Math.ceil(g.hCm / 20);
-    for (let i = 0; i < boards; i += 1) {
-      const z0 = i * 20;
-      const z1 = Math.min(g.hCm, z0 + 20);
-      if (z1 > z0 + 1 && z1 < g.hCm) {
-        rail(s, g, z1, { sw: W.fine });
-        rail(s, g, z1 - 2.5, { sw: W.hair, opacity: 0.28 });
-      }
-      // The butt joint is a SEAM MARK where one board ends and the next begins along the run —
-      // a short tick centred in the board's height, never a bar spanning the whole 20 cm course.
-      // A full-height vertical there reads, at silhouette weight, as a shelf/rack divider instead
-      // of a plank joint — that was the piece's actual defect (blind read: "a storage rack").
-      const bx = i % 2 === 0 ? 34 : 66;
-      const jz = z0 + 10;
-      seg(s, g.x(bx), g.z(jz + 3.5), g.x(bx), g.z(jz - 3.5), { sw: W.hair, opacity: 0.85 });
-      // Grain on every board (was one in three) so the horizontal-board read carries a wood tell
-      // at silhouette weight too, not just on close inspection. Still quiet: hair weight, low
-      // opacity, one shallow curve, alternating amplitude so twelve of them don't stack into noise.
-      const bow = i % 2 === 0 ? 3 : -2.5;
-      s.path(
-        `M${g.x(4)} ${g.z(jz)} C${g.x(30)} ${g.z(jz + bow)} ${g.x(62)} ${g.z(jz - bow)}` +
-          ` ${g.x(g.wCm - 4)} ${g.z(jz + bow * 0.4)}`,
-        { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.3 },
-      );
+const drawTimberLinedWall = (s, g) => {
+  ground(s, g);
+  const boards = Math.ceil(g.hCm / 20);
+  for (let i = 0; i < boards; i += 1) {
+    const z0 = i * 20;
+    const z1 = Math.min(g.hCm, z0 + 20);
+    if (z1 > z0 + 1 && z1 < g.hCm) {
+      rail(s, g, z1, { sw: W.fine });
+      rail(s, g, z1 - 2.5, { sw: W.hair, opacity: 0.28 });
     }
-    rail(s, g, 9, { sw: W.mid });
-    rail(s, g, 6.5, { sw: W.hair, opacity: 0.4 });
-    if (g.full) rail(s, g, g.hCm - 10, { sw: W.mid });
-    edge(s, g, W.mid);
-  });
+    // The butt joint is a SEAM MARK where one board ends and the next begins along the run —
+    // a short tick centred in the board's height, never a bar spanning the whole 20 cm course.
+    // A full-height vertical there reads, at silhouette weight, as a shelf/rack divider instead
+    // of a plank joint — that was the piece's actual defect (blind read: "a storage rack").
+    const bx = i % 2 === 0 ? 34 : 66;
+    const jz = z0 + 10;
+    seg(s, g.x(bx), g.z(jz + 3.5), g.x(bx), g.z(jz - 3.5), { sw: W.hair, opacity: 0.85 });
+    // Grain on every board (was one in three) so the horizontal-board read carries a wood tell
+    // at silhouette weight too, not just on close inspection. Still quiet: hair weight, low
+    // opacity, one shallow curve, alternating amplitude so twelve of them don't stack into noise.
+    const bow = i % 2 === 0 ? 3 : -2.5;
+    s.path(
+      `M${g.x(4)} ${g.z(jz)} C${g.x(30)} ${g.z(jz + bow)} ${g.x(62)} ${g.z(jz - bow)}` +
+        ` ${g.x(g.wCm - 4)} ${g.z(jz + bow * 0.4)}`,
+      { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.3 },
+    );
+  }
+  rail(s, g, 9, { sw: W.mid });
+  rail(s, g, 6.5, { sw: W.hair, opacity: 0.4 });
+  if (g.full) rail(s, g, g.hCm - 10, { sw: W.mid });
+  edge(s, g, W.mid);
+};
+
+export const timberLinedWall = (opts = {}) => skin('timber-lined-wall', opts, drawTimberLinedWall);
 
 /**
  * 33 BLAST WALL — IDENTIFYING FEATURE: **A DIAGONAL HAZARD BAND AT CHEST HEIGHT, INSIDE A DOUBLE
@@ -350,52 +382,53 @@ export const timberLinedWall = (opts = {}) =>
  * seam in the open body below the band so the panel reads as continuous armour down to the floor
  * instead of a frame around empty paper.
  */
-export const blastWall = (opts = {}) =>
-  skin('blast-wall', opts, (s, g) => {
-    ground(s, g);
-    const bar = s.pat(
-      pr(0, 0, g.u(12), g.u(12), PAPER) +
-        `<rect x="0" y="0" width="${g.u(6)}" height="${g.u(12)}" fill="${INK}" opacity="0.45"/>`,
-      { w: g.u(12), h: g.u(12), transform: 'rotate(-45)' },
-    );
-    boxCm(s, g, 6, 6, g.wCm - 12, g.hCm - 12, { fill: 'none', stroke: INK, sw: W.fine, opacity: 0.5 });
-    // A plate seam in the open body below the band — the slab is reinforced its whole height, not
-    // just where the hazard band sits, so the field carries weight instead of reading as an empty
-    // frame (the 'floor vent' misread's likely source). Guarded for degenerate tiny call sizes.
-    if (g.hCm > 50) rail(s, g, 35, { sw: W.mid, opacity: 0.5 });
-    // The hazard band: a flat tone first, so the band survives as a MASS at every tile size even
-    // where the fine chevron pattern aliases away; the chevron field (the identifying pattern) is
-    // then drawn over it, unchanged.
-    boxCm(s, g, 0, g.hCm - 95, g.wCm, 25, { fill: INK, opacity: 0.28 });
-    boxCm(s, g, 0, g.hCm - 95, g.wCm, 25, { fill: bar });
-    rail(s, g, 95, { sw: W.heavy });
-    rail(s, g, 70, { sw: W.heavy });
-    // The gussets are TRIANGLES, not chamfers: the diagonal plus the two legs it braces. The first
-    // draft drew the diagonal alone and every corner read as a cut-off corner of the slab itself.
-    for (const [xc, dir] of [[0, 1], [g.wCm, -1]]) {
-      for (const z of [0, g.hCm]) {
-        const up = z === 0 ? 1 : -1;
-        s.path(
-          `M${g.x(xc + dir * 18)} ${g.z(z)} L${g.x(xc)} ${g.z(z + up * 18)}` +
-            ` L${g.x(xc + dir * 18)} ${g.z(z)} L${g.x(xc + dir * 18)} ${g.z(z + up * 5)}` +
-            ` M${g.x(xc)} ${g.z(z + up * 18)} L${g.x(xc + dir * 5)} ${g.z(z + up * 18)}`,
-          { fill: 'none', stroke: INK, sw: W.fine },
-        );
-        s.path(
-          `M${g.x(xc + dir * 12)} ${g.z(z)} L${g.x(xc)} ${g.z(z + up * 12)}`,
-          { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.45 },
-        );
-      }
+const drawBlastWall = (s, g) => {
+  ground(s, g);
+  const bar = s.pat(
+    pr(0, 0, g.u(12), g.u(12), PAPER) +
+      `<rect x="0" y="0" width="${g.u(6)}" height="${g.u(12)}" fill="${INK}" opacity="0.45"/>`,
+    { w: g.u(12), h: g.u(12), transform: 'rotate(-45)' },
+  );
+  boxCm(s, g, 6, 6, g.wCm - 12, g.hCm - 12, { fill: 'none', stroke: INK, sw: W.fine, opacity: 0.5 });
+  // A plate seam in the open body below the band — the slab is reinforced its whole height, not
+  // just where the hazard band sits, so the field carries weight instead of reading as an empty
+  // frame (the 'floor vent' misread's likely source). Guarded for degenerate tiny call sizes.
+  if (g.hCm > 50) rail(s, g, 35, { sw: W.mid, opacity: 0.5 });
+  // The hazard band: a flat tone first, so the band survives as a MASS at every tile size even
+  // where the fine chevron pattern aliases away; the chevron field (the identifying pattern) is
+  // then drawn over it, unchanged.
+  boxCm(s, g, 0, g.hCm - 95, g.wCm, 25, { fill: INK, opacity: 0.28 });
+  boxCm(s, g, 0, g.hCm - 95, g.wCm, 25, { fill: bar });
+  rail(s, g, 95, { sw: W.heavy });
+  rail(s, g, 70, { sw: W.heavy });
+  // The gussets are TRIANGLES, not chamfers: the diagonal plus the two legs it braces. The first
+  // draft drew the diagonal alone and every corner read as a cut-off corner of the slab itself.
+  for (const [xc, dir] of [[0, 1], [g.wCm, -1]]) {
+    for (const z of [0, g.hCm]) {
+      const up = z === 0 ? 1 : -1;
+      s.path(
+        `M${g.x(xc + dir * 18)} ${g.z(z)} L${g.x(xc)} ${g.z(z + up * 18)}` +
+          ` L${g.x(xc + dir * 18)} ${g.z(z)} L${g.x(xc + dir * 18)} ${g.z(z + up * 5)}` +
+          ` M${g.x(xc)} ${g.z(z + up * 18)} L${g.x(xc + dir * 5)} ${g.z(z + up * 18)}`,
+        { fill: 'none', stroke: INK, sw: W.fine },
+      );
+      s.path(
+        `M${g.x(xc + dir * 12)} ${g.z(z)} L${g.x(xc)} ${g.z(z + up * 12)}`,
+        { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.45 },
+      );
     }
-    // BOLTS, and they are SQUARE — `steel-bulkhead`'s fasteners are round, so the two walls never
-    // share a mark. 20 cm pitch up both stiles, which is what makes this one read as heavy.
-    for (let z = 20; z < g.hCm - 10; z += 20) {
-      for (const xc of [6, g.wCm - 6]) {
-        boxCm(s, g, xc - 1.8, g.hCm - z - 1.8, 3.6, 3.6, { fill: INK, opacity: 0.72 });
-      }
+  }
+  // BOLTS, and they are SQUARE — `steel-bulkhead`'s fasteners are round, so the two walls never
+  // share a mark. 20 cm pitch up both stiles, which is what makes this one read as heavy.
+  for (let z = 20; z < g.hCm - 10; z += 20) {
+    for (const xc of [6, g.wCm - 6]) {
+      boxCm(s, g, xc - 1.8, g.hCm - z - 1.8, 3.6, 3.6, { fill: INK, opacity: 0.72 });
     }
-    edge(s, g, W.mass);
-  });
+  }
+  edge(s, g, W.mass);
+};
+
+export const blastWall = (opts = {}) => skin('blast-wall', opts, drawBlastWall);
 
 /**
  * 34 GLASS PARTITION — IDENTIFYING FEATURE: **EMPTY PANES**. It is the only piece in the set whose
@@ -408,57 +441,58 @@ export const blastWall = (opts = {}) =>
  * transoms at 80 and 160 cm so the 2.4 m wall is a 3 × 3 grid and the bottom-metre crop still shows
  * a complete light. An 8 cm sill.
  */
-export const glassPartition = (opts = {}) =>
-  skin('glass-partition', opts, (s, g) => {
-    ground(s, g);
-    const mull = [g.wCm / 3, (2 * g.wCm) / 3];
-    const trans = [80, 160].filter((z) => z < g.hCm - 4);
-    const xs = [0, ...mull, g.wCm];
-    const zs = [8, ...trans, g.hCm];
-    // ⚠️ THE SASH IS NO LONGER THE HEAVIEST INK ON ANY WALL, and that was the actual defect: the
-    // perimeter ran at `W.heavy`, heavier than the DEFAULT solid `steel-bulkhead`'s `W.mid` edge and
-    // equal to `hull-plating`/`blast-wall`, the two walls whose headers claim the heaviest ink in the
-    // set. A glazed opening out-weighing a steel bulkhead is what gave the piece its closed,
-    // appliance-like silhouette (a cold read called it "a refrigerator"). The frame comes down to
-    // `W.mid` — the same edge the default wall wears, no heavier — and the weight that is no longer
-    // spent on the border is spent on the panes' own tell instead.
-    // ⛔ THE MULLIONS AND TRANSOMS STAY AT `W.mid` AND THAT IS LOAD-BEARING, not taste:
-    // `paper-materials.test.js`'s PITCH row for this piece names the glazing module as the full-span
-    // vertical family AT OR ABOVE `W.mid`. Drawing the sash a rung lighter does not move the 33.3 cm
-    // module — it deletes the family that states it, and the probe then measures 0 cm. Measured, by
-    // writing it.
-    for (const xc of mull) {
-      seg(s, g.x(xc), g.z(8), g.x(xc), g.z(g.hCm), { sw: W.mid });
-      seg(s, g.x(xc - 2), g.z(8), g.x(xc - 2), g.z(g.hCm), { sw: W.hair, opacity: 0.35 });
-    }
-    for (const z of trans) {
-      rail(s, g, z, { sw: W.mid });
-      rail(s, g, z - 2, { sw: W.hair, opacity: 0.35 });
-    }
-    for (let i = 0; i < xs.length - 1; i += 1) {
-      for (let j = 0; j < zs.length - 1; j += 1) {
-        const x0 = xs[i] + 6;
-        const x1 = xs[i + 1] - 6;
-        const z0 = zs[j] + 6;
-        const z1 = zs[j + 1] - 6;
-        if (x1 - x0 < 6 || z1 - z0 < 6) continue;
-        // The pane's tell: a corner-to-corner glint, the length a real sheet of glazing actually
-        // shows a reflection along. The earlier mark stopped at 70% of the pane's shorter side and
-        // read, at tile size, as a stray scratch rather than a sheet of glass — a blind read of the
-        // whole skin called the piece a refrigerator. Two near-parallel streaks running the FULL
-        // pane, corner to corner, is the glazier's mark; still hairline weight so it never competes
-        // with the frame, just now long enough to survive the shrink.
-        for (const off of [0, 6]) {
-          s.path(
-            `M${g.x(x0 + off)} ${g.z(z0)} L${g.x(x1)} ${g.z(z1 - off)}`,
-            { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.4 },
-          );
-        }
+const drawGlassPartition = (s, g) => {
+  ground(s, g);
+  const mull = [g.wCm / 3, (2 * g.wCm) / 3];
+  const trans = [80, 160].filter((z) => z < g.hCm - 4);
+  const xs = [0, ...mull, g.wCm];
+  const zs = [8, ...trans, g.hCm];
+  // ⚠️ THE SASH IS NO LONGER THE HEAVIEST INK ON ANY WALL, and that was the actual defect: the
+  // perimeter ran at `W.heavy`, heavier than the DEFAULT solid `steel-bulkhead`'s `W.mid` edge and
+  // equal to `hull-plating`/`blast-wall`, the two walls whose headers claim the heaviest ink in the
+  // set. A glazed opening out-weighing a steel bulkhead is what gave the piece its closed,
+  // appliance-like silhouette (a cold read called it "a refrigerator"). The frame comes down to
+  // `W.mid` — the same edge the default wall wears, no heavier — and the weight that is no longer
+  // spent on the border is spent on the panes' own tell instead.
+  // ⛔ THE MULLIONS AND TRANSOMS STAY AT `W.mid` AND THAT IS LOAD-BEARING, not taste:
+  // `paper-materials.test.js`'s PITCH row for this piece names the glazing module as the full-span
+  // vertical family AT OR ABOVE `W.mid`. Drawing the sash a rung lighter does not move the 33.3 cm
+  // module — it deletes the family that states it, and the probe then measures 0 cm. Measured, by
+  // writing it.
+  for (const xc of mull) {
+    seg(s, g.x(xc), g.z(8), g.x(xc), g.z(g.hCm), { sw: W.mid });
+    seg(s, g.x(xc - 2), g.z(8), g.x(xc - 2), g.z(g.hCm), { sw: W.hair, opacity: 0.35 });
+  }
+  for (const z of trans) {
+    rail(s, g, z, { sw: W.mid });
+    rail(s, g, z - 2, { sw: W.hair, opacity: 0.35 });
+  }
+  for (let i = 0; i < xs.length - 1; i += 1) {
+    for (let j = 0; j < zs.length - 1; j += 1) {
+      const x0 = xs[i] + 6;
+      const x1 = xs[i + 1] - 6;
+      const z0 = zs[j] + 6;
+      const z1 = zs[j + 1] - 6;
+      if (x1 - x0 < 6 || z1 - z0 < 6) continue;
+      // The pane's tell: a corner-to-corner glint, the length a real sheet of glazing actually
+      // shows a reflection along. The earlier mark stopped at 70% of the pane's shorter side and
+      // read, at tile size, as a stray scratch rather than a sheet of glass — a blind read of the
+      // whole skin called the piece a refrigerator. Two near-parallel streaks running the FULL
+      // pane, corner to corner, is the glazier's mark; still hairline weight so it never competes
+      // with the frame, just now long enough to survive the shrink.
+      for (const off of [0, 6]) {
+        s.path(
+          `M${g.x(x0 + off)} ${g.z(z0)} L${g.x(x1)} ${g.z(z1 - off)}`,
+          { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.4 },
+        );
       }
     }
-    rail(s, g, 8, { sw: W.mid });
-    edge(s, g, W.mid);
-  });
+  }
+  rail(s, g, 8, { sw: W.mid });
+  edge(s, g, W.mid);
+};
+
+export const glassPartition = (opts = {}) => skin('glass-partition', opts, drawGlassPartition);
 
 /**
  * 35 INSULATED WALL — IDENTIFYING FEATURE: **HATCHED BATTS, DASH-STITCHED, WITH TUFT STITCHES**. This
@@ -472,52 +506,53 @@ export const glassPartition = (opts = {}) =>
  * framing, tufts at every batt corner and centre. The stud line at mid-span is what the batts are
  * fixed to.
  */
-export const insulatedWall = (opts = {}) =>
-  skin('insulated-wall', opts, (s, g) => {
-    ground(s, g);
-    const hatch = hatchPaint(s, 0.24);
-    const cols = Math.max(1, Math.round(g.wCm / 50));
-    const bw = g.wCm / cols;
-    const rows = Math.ceil(g.hCm / 60);
-    for (let c = 0; c < cols; c += 1) {
-      for (let r = 0; r < rows; r += 1) {
-        const z0 = r * 60;
-        const z1 = Math.min(g.hCm, z0 + 60);
-        if (z1 - z0 < 8) continue;
-        const x = c * bw + 3;
-        const w = bw - 6;
-        const h = z1 - z0 - 6;
-        boxCm(s, g, x, g.hCm - z1 + 3, w, h, { fill: hatch });
-        s.path(
-          `M${g.x(x)} ${g.z(z1 - 3)} L${g.x(x + w)} ${g.z(z1 - 3)} L${g.x(x + w)} ${g.z(z0 + 3)}` +
-            ` L${g.x(x)} ${g.z(z0 + 3)} Z`,
-          { fill: 'none', stroke: INK, sw: W.fine, dash: '5 4' },
-        );
-        // TUFT STITCH — an X-cross at each batt corner and its centre, not a dot. A filled circle
-        // there is the same glyph family as `steel-bulkhead`'s rivets (open circle) and
-        // `blast-wall`'s bolts (filled square): a grid of dark panels with corner dots reads as
-        // riveted PLATE, which is what let a cold reader mistake this piece for a cargo container
-        // or a storage locker. A crossed stitch is the technical-illustration mark for "sewn here"
-        // and no fastener anywhere else in the set draws one — it keeps the same five positions and
-        // the same footprint the dot had, but it says PADDING, not PLATE.
-        for (const [tx, tz] of [
-          [x + w / 2, z0 + (z1 - z0) / 2],
-          [x + 6, z0 + 8],
-          [x + w - 6, z0 + 8],
-          [x + 6, z1 - 8],
-          [x + w - 6, z1 - 8],
-        ]) {
-          const tr = 1.4;
-          seg(s, g.x(tx - tr), g.z(tz - tr), g.x(tx + tr), g.z(tz + tr), { sw: W.fine, opacity: 0.78 });
-          seg(s, g.x(tx + tr), g.z(tz - tr), g.x(tx - tr), g.z(tz + tr), { sw: W.fine, opacity: 0.78 });
-        }
+const drawInsulatedWall = (s, g) => {
+  ground(s, g);
+  const hatch = hatchPaint(s, 0.24);
+  const cols = Math.max(1, Math.round(g.wCm / 50));
+  const bw = g.wCm / cols;
+  const rows = Math.ceil(g.hCm / 60);
+  for (let c = 0; c < cols; c += 1) {
+    for (let r = 0; r < rows; r += 1) {
+      const z0 = r * 60;
+      const z1 = Math.min(g.hCm, z0 + 60);
+      if (z1 - z0 < 8) continue;
+      const x = c * bw + 3;
+      const w = bw - 6;
+      const h = z1 - z0 - 6;
+      boxCm(s, g, x, g.hCm - z1 + 3, w, h, { fill: hatch });
+      s.path(
+        `M${g.x(x)} ${g.z(z1 - 3)} L${g.x(x + w)} ${g.z(z1 - 3)} L${g.x(x + w)} ${g.z(z0 + 3)}` +
+          ` L${g.x(x)} ${g.z(z0 + 3)} Z`,
+        { fill: 'none', stroke: INK, sw: W.fine, dash: '5 4' },
+      );
+      // TUFT STITCH — an X-cross at each batt corner and its centre, not a dot. A filled circle
+      // there is the same glyph family as `steel-bulkhead`'s rivets (open circle) and
+      // `blast-wall`'s bolts (filled square): a grid of dark panels with corner dots reads as
+      // riveted PLATE, which is what let a cold reader mistake this piece for a cargo container
+      // or a storage locker. A crossed stitch is the technical-illustration mark for "sewn here"
+      // and no fastener anywhere else in the set draws one — it keeps the same five positions and
+      // the same footprint the dot had, but it says PADDING, not PLATE.
+      for (const [tx, tz] of [
+        [x + w / 2, z0 + (z1 - z0) / 2],
+        [x + 6, z0 + 8],
+        [x + w - 6, z0 + 8],
+        [x + 6, z1 - 8],
+        [x + w - 6, z1 - 8],
+      ]) {
+        const tr = 1.4;
+        seg(s, g.x(tx - tr), g.z(tz - tr), g.x(tx + tr), g.z(tz + tr), { sw: W.fine, opacity: 0.78 });
+        seg(s, g.x(tx + tr), g.z(tz - tr), g.x(tx - tr), g.z(tz + tr), { sw: W.fine, opacity: 0.78 });
       }
     }
-    for (let c = 1; c < cols; c += 1) {
-      seg(s, g.x(c * bw), g.z(0), g.x(c * bw), g.z(g.hCm), { sw: W.mid, opacity: 0.65 });
-    }
-    edge(s, g, W.mid);
-  });
+  }
+  for (let c = 1; c < cols; c += 1) {
+    seg(s, g.x(c * bw), g.z(0), g.x(c * bw), g.z(g.hCm), { sw: W.mid, opacity: 0.65 });
+  }
+  edge(s, g, W.mid);
+};
+
+export const insulatedWall = (opts = {}) => skin('insulated-wall', opts, drawInsulatedWall);
 
 /**
  * 36 HULL PLATING — IDENTIFYING FEATURE: **VERTICAL LAPPED STRAKES WITH WELD BEADS**, in the
@@ -539,60 +574,61 @@ export const insulatedWall = (opts = {}) =>
  * with no gaps, so it cannot read as discrete hardware, and a chevron stitch is the more honest mark
  * for a WELD in any case.
  */
-export const hullPlating = (opts = {}) =>
-  skin('hull-plating', opts, (s, g) => {
-    ground(s, g);
-    // The bead, as one continuous run. ⛔ IT IS DRAWN AT `g.u(1.3)`, NOT `g.u(2.2)`: a zigzag lays
-    // down roughly twice the ink length of a 2.5-on-4.5 dash over the same span, so keeping the old
-    // weight would have made the bead the heaviest thing on a wall whose STRAKE is supposed to be
-    // (`paper-materials.test.js`'s PITCH row pins this piece's vertical family at `W.mass` and caps
-    // it there).
-    const zig = (pts, o) =>
-      s.path(
-        pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' '),
-        { fill: 'none', stroke: INK, sw: o.sw, opacity: o.opacity },
-      );
-    const vBead = (xc, z0, z1) => {
-      const pts = [];
-      let side = 1;
-      for (let z = z0; z <= z1; z += 6) { pts.push([g.x(xc + side * 2.2), g.z(z)]); side = -side; }
-      zig(pts, { sw: g.u(1.3), opacity: 0.62 });
-    };
-    const hBead = (zc, x0, x1) => {
-      const pts = [];
-      let side = 1;
-      for (let x = x0; x <= x1; x += 6) { pts.push([g.x(x), g.z(zc + side * 2.2)]); side = -side; }
-      zig(pts, { sw: g.u(1.3), opacity: 0.62 });
-    };
-    // Each strake seam is a LAP: the plate edge, a 3 cm shadow band where the next plate lies over
-    // it, and a weld stitch beside it.
-    for (let x = 0; x <= g.wCm; x += 50) {
-      const lap = Math.min(3, g.wCm - x);
-      if (lap > 0) boxCm(s, g, x, 0, lap, g.hCm, { fill: INK, opacity: 0.1 });
-      seg(s, g.x(x), g.z(0), g.x(x), g.z(g.hCm), { sw: W.mass });
-      if (x + 3 <= g.wCm) {
-        seg(s, g.x(x + 3), g.z(0), g.x(x + 3), g.z(g.hCm), { sw: W.hair, opacity: 0.55 });
-        vBead(x + 5.5, 1, g.hCm - 1);
-      }
+const drawHullPlating = (s, g) => {
+  ground(s, g);
+  // The bead, as one continuous run. ⛔ IT IS DRAWN AT `g.u(1.3)`, NOT `g.u(2.2)`: a zigzag lays
+  // down roughly twice the ink length of a 2.5-on-4.5 dash over the same span, so keeping the old
+  // weight would have made the bead the heaviest thing on a wall whose STRAKE is supposed to be
+  // (`paper-materials.test.js`'s PITCH row pins this piece's vertical family at `W.mass` and caps
+  // it there).
+  const zig = (pts, o) =>
+    s.path(
+      pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' '),
+      { fill: 'none', stroke: INK, sw: o.sw, opacity: o.opacity },
+    );
+  const vBead = (xc, z0, z1) => {
+    const pts = [];
+    let side = 1;
+    for (let z = z0; z <= z1; z += 6) { pts.push([g.x(xc + side * 2.2), g.z(z)]); side = -side; }
+    zig(pts, { sw: g.u(1.3), opacity: 0.62 });
+  };
+  const hBead = (zc, x0, x1) => {
+    const pts = [];
+    let side = 1;
+    for (let x = x0; x <= x1; x += 6) { pts.push([g.x(x), g.z(zc + side * 2.2)]); side = -side; }
+    zig(pts, { sw: g.u(1.3), opacity: 0.62 });
+  };
+  // Each strake seam is a LAP: the plate edge, a 3 cm shadow band where the next plate lies over
+  // it, and a weld stitch beside it.
+  for (let x = 0; x <= g.wCm; x += 50) {
+    const lap = Math.min(3, g.wCm - x);
+    if (lap > 0) boxCm(s, g, x, 0, lap, g.hCm, { fill: INK, opacity: 0.1 });
+    seg(s, g.x(x), g.z(0), g.x(x), g.z(g.hCm), { sw: W.mass });
+    if (x + 3 <= g.wCm) {
+      seg(s, g.x(x + 3), g.z(0), g.x(x + 3), g.z(g.hCm), { sw: W.hair, opacity: 0.55 });
+      vBead(x + 5.5, 1, g.hCm - 1);
     }
-    for (const z of [80, 160]) {
-      if (z + 10 > g.hCm) continue;
-      boxCm(s, g, 0, g.hCm - z - 10, g.wCm, 10, { fill: INK, opacity: 0.07 });
-      rail(s, g, z, { sw: W.fine });
-      rail(s, g, z + 10, { sw: W.fine });
-      hBead(z + 5, 1, g.wCm - 1);
+  }
+  for (const z of [80, 160]) {
+    if (z + 10 > g.hCm) continue;
+    boxCm(s, g, 0, g.hCm - z - 10, g.wCm, 10, { fill: INK, opacity: 0.07 });
+    rail(s, g, z, { sw: W.fine });
+    rail(s, g, z + 10, { sw: W.fine });
+    hBead(z + 5, 1, g.wCm - 1);
+  }
+  // TACK SQUARES at every plate corner — the mark that says a plate was set and held before it was
+  // run. Square, like `blast-wall`'s bolts and unlike `steel-bulkhead`'s round rivets, but at a
+  // corner rather than in a row.
+  for (let x = 0; x <= g.wCm; x += 50) {
+    for (const z of [6, ...(g.full ? [80, 90, 160, 170, g.hCm - 6] : [])]) {
+      if (x + 4 > g.wCm) continue;
+      boxCm(s, g, x + 5, g.hCm - z - 2, 4, 4, { fill: INK, opacity: 0.6 });
     }
-    // TACK SQUARES at every plate corner — the mark that says a plate was set and held before it was
-    // run. Square, like `blast-wall`'s bolts and unlike `steel-bulkhead`'s round rivets, but at a
-    // corner rather than in a row.
-    for (let x = 0; x <= g.wCm; x += 50) {
-      for (const z of [6, ...(g.full ? [80, 90, 160, 170, g.hCm - 6] : [])]) {
-        if (x + 4 > g.wCm) continue;
-        boxCm(s, g, x + 5, g.hCm - z - 2, 4, 4, { fill: INK, opacity: 0.6 });
-      }
-    }
-    edge(s, g, W.mass);
-  });
+  }
+  edge(s, g, W.mass);
+};
+
+export const hullPlating = (opts = {}) => skin('hull-plating', opts, drawHullPlating);
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FLOORS — 100 × 100 cm, laid SHEARED into the tile's floor parallelogram
@@ -612,25 +648,26 @@ export const hullPlating = (opts = {}) =>
  * centre marks. ⚠️ IT IS A TICK, NOT A CROSS: drawn edge to edge it quartered the tile into four
  * bare equal cells and a cold reader called the piece "a crew bunk bed (2×2 sleeping compartments)".
  */
-export const steelTanFloor = (opts = {}) =>
-  skin('steel-tan-floor', opts, (s, g) => {
-    ground(s, g);
-    boxCm(s, g, 4, 4, g.wCm - 8, g.hCm - 8, { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.4 });
-    // Centre marks as a SHORT crosshair rather than a full edge-to-edge cross: a plate's own
-    // alignment tick, not a seam. A full-length cross split the tile into four bare equal
-    // quadrants — the one shape on this piece a reader without context read as a partitioned
-    // object (a bunk frame) rather than as a single deck plate. A short tick at the centroid keeps
-    // the same documented mark ("the plate's own centre marks") without manufacturing a false seam.
-    const cx = g.wCm / 2;
-    const cy = g.hCm / 2;
-    seg(s, g.x(cx - 9), g.y(cy), g.x(cx + 9), g.y(cy), { sw: W.hair, opacity: 0.24 });
-    seg(s, g.x(cx), g.y(cy - 9), g.x(cx), g.y(cy + 9), { sw: W.hair, opacity: 0.24 });
-    for (const [sx, sy] of [[12, 12], [g.wCm - 12, 12], [12, g.hCm - 12], [g.wCm - 12, g.hCm - 12]]) {
-      s.circle({ cx: g.x(sx), cy: g.y(sy), r: g.u(2.2), fill: 'none', stroke: INK, sw: W.hair });
-      seg(s, g.x(sx - 1.5), g.y(sy - 1.5), g.x(sx + 1.5), g.y(sy + 1.5), { sw: W.hair, opacity: 0.8 });
-    }
-    edge(s, g, W.fine);
-  });
+const drawSteelTanFloor = (s, g) => {
+  ground(s, g);
+  boxCm(s, g, 4, 4, g.wCm - 8, g.hCm - 8, { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.4 });
+  // Centre marks as a SHORT crosshair rather than a full edge-to-edge cross: a plate's own
+  // alignment tick, not a seam. A full-length cross split the tile into four bare equal
+  // quadrants — the one shape on this piece a reader without context read as a partitioned
+  // object (a bunk frame) rather than as a single deck plate. A short tick at the centroid keeps
+  // the same documented mark ("the plate's own centre marks") without manufacturing a false seam.
+  const cx = g.wCm / 2;
+  const cy = g.hCm / 2;
+  seg(s, g.x(cx - 9), g.y(cy), g.x(cx + 9), g.y(cy), { sw: W.hair, opacity: 0.24 });
+  seg(s, g.x(cx), g.y(cy - 9), g.x(cx), g.y(cy + 9), { sw: W.hair, opacity: 0.24 });
+  for (const [sx, sy] of [[12, 12], [g.wCm - 12, 12], [12, g.hCm - 12], [g.wCm - 12, g.hCm - 12]]) {
+    s.circle({ cx: g.x(sx), cy: g.y(sy), r: g.u(2.2), fill: 'none', stroke: INK, sw: W.hair });
+    seg(s, g.x(sx - 1.5), g.y(sy - 1.5), g.x(sx + 1.5), g.y(sy + 1.5), { sw: W.hair, opacity: 0.8 });
+  }
+  edge(s, g, W.fine);
+};
+
+export const steelTanFloor = (opts = {}) => skin('steel-tan-floor', opts, drawSteelTanFloor);
 
 /**
  * 38 WOOD PLANK FLOOR — IDENTIFYING FEATURE: **20 cm BOARDS WITH STAGGERED BUTTS AND GRAIN**. The
@@ -641,45 +678,46 @@ export const steelTanFloor = (opts = {}) =>
  * alternate at 38 % and 62 % and carry two nail ticks each, which is the mark that says "laid" and
  * not "printed". One grain curve per board, at 0.35 opacity.
  */
-export const woodPlankFloor = (opts = {}) =>
-  skin('wood-plank-floor', opts, (s, g) => {
-    ground(s, g);
-    const planks = Math.round(g.hCm / 20);
-    const bh = g.hCm / planks;
-    for (let i = 0; i < planks; i += 1) {
-      const y0 = i * bh;
-      if (i > 0) {
-        course(s, g, y0, { sw: W.fine });
-        course(s, g, y0 + 2, { sw: W.hair, opacity: 0.28 });
-      }
-      const bx = i % 2 === 0 ? 38 : 62;
-      const ym = y0 + bh / 2;
-      // The staggered butt seam — a SHORT mark centred on the joint, floating clear of both course
-      // lines above and below it, so the family reads as "where two boards meet" rather than as a
-      // full-height shelf divider (a cold read of the tile called it "a storage shelf"). `W.mid` and
-      // the [8,30] cm length window are load-bearing for the shear-direction legs in
-      // `paper-materials.test.js` — only the SPAN (was ~18.8 cm, now 10 cm) and the opacity (new)
-      // changed from the first draft.
-      seg(s, g.x(bx), g.y(ym - 5), g.x(bx), g.y(ym + 5), { sw: W.mid, opacity: 0.6 });
-      // Two nail ticks, offset rather than mirrored, so the mark reads as fastening along a seam and
-      // not as a pair of shelf-pin sockets flanking a post.
-      s.circle({ cx: g.x(bx - 3.5), cy: g.y(ym - 2.2), r: g.u(0.6), fill: INK, opacity: 0.5 });
-      s.circle({ cx: g.x(bx + 3.5), cy: g.y(ym + 2.2), r: g.u(0.6), fill: INK, opacity: 0.5 });
-      // Grain: two unequal sweeps per board — the long shallow one that was already here, plus a
-      // shorter second run — so the field reads as WOOD and outweighs the now-quieter joint mark.
-      s.path(
-        `M${g.x(2)} ${g.y(ym - 1.2)} C${g.x(26)} ${g.y(ym - 3.6)} ${g.x(64)} ${g.y(ym + 3.2)}` +
-          ` ${g.x(g.wCm - 2)} ${g.y(ym - 0.8)}`,
-        { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.4 },
-      );
-      s.path(
-        `M${g.x(10)} ${g.y(ym + 4.4)} C${g.x(30)} ${g.y(ym + 6)} ${g.x(52)} ${g.y(ym + 3.6)}` +
-          ` ${g.x(74)} ${g.y(ym + 5.4)}`,
-        { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.22 },
-      );
+const drawWoodPlankFloor = (s, g) => {
+  ground(s, g);
+  const planks = Math.round(g.hCm / 20);
+  const bh = g.hCm / planks;
+  for (let i = 0; i < planks; i += 1) {
+    const y0 = i * bh;
+    if (i > 0) {
+      course(s, g, y0, { sw: W.fine });
+      course(s, g, y0 + 2, { sw: W.hair, opacity: 0.28 });
     }
-    edge(s, g, W.fine, 0.7);
-  });
+    const bx = i % 2 === 0 ? 38 : 62;
+    const ym = y0 + bh / 2;
+    // The staggered butt seam — a SHORT mark centred on the joint, floating clear of both course
+    // lines above and below it, so the family reads as "where two boards meet" rather than as a
+    // full-height shelf divider (a cold read of the tile called it "a storage shelf"). `W.mid` and
+    // the [8,30] cm length window are load-bearing for the shear-direction legs in
+    // `paper-materials.test.js` — only the SPAN (was ~18.8 cm, now 10 cm) and the opacity (new)
+    // changed from the first draft.
+    seg(s, g.x(bx), g.y(ym - 5), g.x(bx), g.y(ym + 5), { sw: W.mid, opacity: 0.6 });
+    // Two nail ticks, offset rather than mirrored, so the mark reads as fastening along a seam and
+    // not as a pair of shelf-pin sockets flanking a post.
+    s.circle({ cx: g.x(bx - 3.5), cy: g.y(ym - 2.2), r: g.u(0.6), fill: INK, opacity: 0.5 });
+    s.circle({ cx: g.x(bx + 3.5), cy: g.y(ym + 2.2), r: g.u(0.6), fill: INK, opacity: 0.5 });
+    // Grain: two unequal sweeps per board — the long shallow one that was already here, plus a
+    // shorter second run — so the field reads as WOOD and outweighs the now-quieter joint mark.
+    s.path(
+      `M${g.x(2)} ${g.y(ym - 1.2)} C${g.x(26)} ${g.y(ym - 3.6)} ${g.x(64)} ${g.y(ym + 3.2)}` +
+        ` ${g.x(g.wCm - 2)} ${g.y(ym - 0.8)}`,
+      { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.4 },
+    );
+    s.path(
+      `M${g.x(10)} ${g.y(ym + 4.4)} C${g.x(30)} ${g.y(ym + 6)} ${g.x(52)} ${g.y(ym + 3.6)}` +
+        ` ${g.x(74)} ${g.y(ym + 5.4)}`,
+      { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.22 },
+    );
+  }
+  edge(s, g, W.fine, 0.7);
+};
+
+export const woodPlankFloor = (opts = {}) => skin('wood-plank-floor', opts, drawWoodPlankFloor);
 
 /**
  * 39 GROW MATTING — IDENTIFYING FEATURE: **AN OPEN OVER-UNDER BASKET WEAVE**. This is the other hard
@@ -693,41 +731,42 @@ export const woodPlankFloor = (opts = {}) =>
  * rather than as ~130 rects per tile: the same drawing, two orders of magnitude less string, and the
  * phase is per-element so every tile in a room agrees.
  */
-export const growMatting = (opts = {}) =>
-  skin('grow-matting', opts, (s, g) => {
-    ground(s, g);
-    const P = g.u(25);
-    const A = g.u(9);
-    const B = g.u(12.5);
-    const GAP = r3(B - A);
-    const FAR = g.u(21.5); // the far gap's near edge (B + A in real cm), kept as its own honest cm call
-    // The four TRUE gaps — the tell the header promises ("real gaps you can see the deck through").
-    // The six strap rects below cover only the crossing bands; they leave these four 3.5 x 3.5 cm
-    // squares per weave cell untouched, so undrawn they show the SAME paper as every strap and the
-    // whole field reads as a flat grid of ruled panels (a shelf, not a lattice) rather than an open
-    // weave. Drawn dark, at low coverage (≈7.8 % of the cell) so the mean darkening stays well under
-    // the dialect's no-large-solid-fills ceiling (metal-grating's 32 %@0.30 ≈ 9.6 % mean; this is
-    // ≈3.5 % mean). Placed LAST in the pattern so they always show through regardless of any strap
-    // edge that lands on their border.
-    const gapMark = (x, y) =>
-      `<rect x="${r3(x)}" y="${r3(y)}" width="${GAP}" height="${GAP}" fill="${INK}" opacity="0.45"/>`;
-    const weave = s.pat(
-      // vertical straps, full height (their end caps fall outside the cell and are clipped away)
-      pr(0, 0, A, P, PAPER, INK, W.hair) +
-        pr(B, 0, A, P, PAPER, INK, W.hair) +
-        // horizontal straps over them
-        pr(0, 0, P, A, PAPER, INK, W.hair) +
-        pr(0, B, P, A, PAPER, INK, W.hair) +
-        // …and the two crossings where the vertical strap is the one on top
-        pr(0, 0, A, A, PAPER, INK, W.hair) +
-        pr(B, B, A, A, PAPER, INK, W.hair) +
-        // the four gaps, drawn over everything
-        gapMark(A, A) + gapMark(A, FAR) + gapMark(FAR, A) + gapMark(FAR, FAR),
-      { w: P, h: P },
-    );
-    boxCm(s, g, 0, 0, g.wCm, g.hCm, { fill: weave });
-    edge(s, g, W.hair, 0.45);
-  });
+const drawGrowMatting = (s, g) => {
+  ground(s, g);
+  const P = g.u(25);
+  const A = g.u(9);
+  const B = g.u(12.5);
+  const GAP = r3(B - A);
+  const FAR = g.u(21.5); // the far gap's near edge (B + A in real cm), kept as its own honest cm call
+  // The four TRUE gaps — the tell the header promises ("real gaps you can see the deck through").
+  // The six strap rects below cover only the crossing bands; they leave these four 3.5 x 3.5 cm
+  // squares per weave cell untouched, so undrawn they show the SAME paper as every strap and the
+  // whole field reads as a flat grid of ruled panels (a shelf, not a lattice) rather than an open
+  // weave. Drawn dark, at low coverage (≈7.8 % of the cell) so the mean darkening stays well under
+  // the dialect's no-large-solid-fills ceiling (metal-grating's 32 %@0.30 ≈ 9.6 % mean; this is
+  // ≈3.5 % mean). Placed LAST in the pattern so they always show through regardless of any strap
+  // edge that lands on their border.
+  const gapMark = (x, y) =>
+    `<rect x="${r3(x)}" y="${r3(y)}" width="${GAP}" height="${GAP}" fill="${INK}" opacity="0.45"/>`;
+  const weave = s.pat(
+    // vertical straps, full height (their end caps fall outside the cell and are clipped away)
+    pr(0, 0, A, P, PAPER, INK, W.hair) +
+      pr(B, 0, A, P, PAPER, INK, W.hair) +
+      // horizontal straps over them
+      pr(0, 0, P, A, PAPER, INK, W.hair) +
+      pr(0, B, P, A, PAPER, INK, W.hair) +
+      // …and the two crossings where the vertical strap is the one on top
+      pr(0, 0, A, A, PAPER, INK, W.hair) +
+      pr(B, B, A, A, PAPER, INK, W.hair) +
+      // the four gaps, drawn over everything
+      gapMark(A, A) + gapMark(A, FAR) + gapMark(FAR, A) + gapMark(FAR, FAR),
+    { w: P, h: P },
+  );
+  boxCm(s, g, 0, 0, g.wCm, g.hCm, { fill: weave });
+  edge(s, g, W.hair, 0.45);
+};
+
+export const growMatting = (opts = {}) => skin('grow-matting', opts, drawGrowMatting);
 
 /**
  * 40 CREAM TILE FLOOR — IDENTIFYING FEATURE: **A 4 × 4 GRID OF 25 cm SQUARE TILES WITH GROUT**. The
@@ -737,27 +776,28 @@ export const growMatting = (opts = {}) =>
  * SCALE: 25 cm tiles, four to the metre — the medbay/galley module. Grout at `W.fine` with a
  * chamfer highlight 1.5 cm off it; a 2 cm bevel inside every tile at 0.18.
  */
-export const creamTileFloor = (opts = {}) =>
-  skin('cream-tile-floor', opts, (s, g) => {
-    ground(s, g);
-    const n = 4;
-    const p = g.wCm / n;
-    const q = g.hCm / n;
-    for (let i = 0; i < n; i += 1) {
-      for (let j = 0; j < n; j += 1) {
-        boxCm(s, g, i * p + 2, j * q + 2, p - 4, q - 4, {
-          fill: 'none', stroke: INK, sw: W.hair, opacity: 0.18,
-        });
-      }
+const drawCreamTileFloor = (s, g) => {
+  ground(s, g);
+  const n = 4;
+  const p = g.wCm / n;
+  const q = g.hCm / n;
+  for (let i = 0; i < n; i += 1) {
+    for (let j = 0; j < n; j += 1) {
+      boxCm(s, g, i * p + 2, j * q + 2, p - 4, q - 4, {
+        fill: 'none', stroke: INK, sw: W.hair, opacity: 0.18,
+      });
     }
-    for (let i = 1; i < n; i += 1) {
-      post(s, g, i * p, { sw: W.fine, opacity: 0.7 });
-      seg(s, g.x(i * p + 1.5), g.y(0), g.x(i * p + 1.5), g.y(g.hCm), { sw: W.hair, opacity: 0.3 });
-      course(s, g, i * q, { sw: W.fine, opacity: 0.7 });
-      course(s, g, i * q + 1.5, { sw: W.hair, opacity: 0.3 });
-    }
-    edge(s, g, W.fine);
-  });
+  }
+  for (let i = 1; i < n; i += 1) {
+    post(s, g, i * p, { sw: W.fine, opacity: 0.7 });
+    seg(s, g.x(i * p + 1.5), g.y(0), g.x(i * p + 1.5), g.y(g.hCm), { sw: W.hair, opacity: 0.3 });
+    course(s, g, i * q, { sw: W.fine, opacity: 0.7 });
+    course(s, g, i * q + 1.5, { sw: W.hair, opacity: 0.3 });
+  }
+  edge(s, g, W.fine);
+};
+
+export const creamTileFloor = (opts = {}) => skin('cream-tile-floor', opts, drawCreamTileFloor);
 
 /**
  * 41 METAL GRATING — IDENTIFYING FEATURE: **OPEN SLOTS**. It is the only skin in the set with any
@@ -777,30 +817,31 @@ export const creamTileFloor = (opts = {}) =>
  * a partial course at the tile edge, and the seam between two tiles then reads as a defect) holds.
  * ⛔ AND THE 6.25 cm BAR PITCH — the one this piece's PITCH row actually pins — IS UNTOUCHED.
  */
-export const metalGrating = (opts = {}) =>
-  skin('metal-grating', opts, (s, g) => {
-    ground(s, g);
-    const P = g.u(6.25);
-    const bars = s.pat(
-      pr(0, 0, P, P, PAPER) +
-        `<rect x="0" y="0" width="${g.u(2)}" height="${P}" fill="${INK}" opacity="0.3"/>` +
-        `<path d="M${g.u(2)} 0 L${g.u(2)} ${P}" stroke="${INK}" stroke-width="${r3(W.hair)}"` +
-        ' opacity="0.4"/>',
-      { w: P, h: P },
-    );
-    boxCm(s, g, 0, 0, g.wCm, g.hCm, { fill: bars });
-    // The cross rods pass OVER the bearing bars, so they are PAPER bands that interrupt the slots —
-    // which is what makes the field read as a grating rather than as stripes. 3 cm at `W.fine`: the
-    // first draft's 2.5 cm hairline was eaten by the floor plane's 0.6 vertical compression.
-    // TEN to the metre, a real crimped cross-rod pitch — see the header for why 25 cm drew a ladder.
-    for (let y = 10; y < g.hCm; y += 10) {
-      boxCm(s, g, 0, y - 1.5, g.wCm, 3, { fill: PAPER, stroke: INK, sw: W.fine, opacity: 0.9 });
-    }
-    // A floor butts its neighbour edge to edge and must not read as a bordered panel. `W.fine`
-    // matches every other floor in the set — this was the one floor still carrying a wall-grade
-    // `W.mid` perimeter, which is the second half of the frame the blind guess caught.
-    edge(s, g, W.fine);
-  });
+const drawMetalGrating = (s, g) => {
+  ground(s, g);
+  const P = g.u(6.25);
+  const bars = s.pat(
+    pr(0, 0, P, P, PAPER) +
+      `<rect x="0" y="0" width="${g.u(2)}" height="${P}" fill="${INK}" opacity="0.3"/>` +
+      `<path d="M${g.u(2)} 0 L${g.u(2)} ${P}" stroke="${INK}" stroke-width="${r3(W.hair)}"` +
+      ' opacity="0.4"/>',
+    { w: P, h: P },
+  );
+  boxCm(s, g, 0, 0, g.wCm, g.hCm, { fill: bars });
+  // The cross rods pass OVER the bearing bars, so they are PAPER bands that interrupt the slots —
+  // which is what makes the field read as a grating rather than as stripes. 3 cm at `W.fine`: the
+  // first draft's 2.5 cm hairline was eaten by the floor plane's 0.6 vertical compression.
+  // TEN to the metre, a real crimped cross-rod pitch — see the header for why 25 cm drew a ladder.
+  for (let y = 10; y < g.hCm; y += 10) {
+    boxCm(s, g, 0, y - 1.5, g.wCm, 3, { fill: PAPER, stroke: INK, sw: W.fine, opacity: 0.9 });
+  }
+  // A floor butts its neighbour edge to edge and must not read as a bordered panel. `W.fine`
+  // matches every other floor in the set — this was the one floor still carrying a wall-grade
+  // `W.mid` perimeter, which is the second half of the frame the blind guess caught.
+  edge(s, g, W.fine);
+};
+
+export const metalGrating = (opts = {}) => skin('metal-grating', opts, drawMetalGrating);
 
 /**
  * 42 CARPET FLOOR — IDENTIFYING FEATURE: **A DENSE EVEN PILE INSIDE A DOUBLE-RULED BORDER**. The
@@ -813,45 +854,46 @@ export const metalGrating = (opts = {}) =>
  * two rules. Each tile carries its own border, which is what a carpet TILE is — and it is the honest
  * drawing for a material the player lays one square metre at a time.
  */
-export const carpetFloor = (opts = {}) =>
-  skin('carpet-floor', opts, (s, g) => {
-    ground(s, g);
-    const P = g.u(12.5);
-    // ⚠️ THE PILE IS DENSER AND DARKER THAN THE FIRST DRAFT, and the reason is the SHEAR rather than
-    // taste: six tufts at 0.38 read as texture on the flat swatch and as an empty tile once the
-    // floor plane compressed the field to 0.6 of its height. Seen on the sheet, not reasoned out.
-    //
-    // ⭐ EVERY TUFT RAN THE SAME DIAGONAL, and a field of uniform, evenly-pitched, parallel dashes
-    // inside a crisp double-ruled frame reads as a slotted grille cover, not a pile fabric — a cold
-    // read confirmed it ("ventilation grate", medium confidence). The fix keeps the exact same
-    // twelve anchor points, the same density, weight and opacity, and only ALTERNATES the tuft's
-    // lean: six keep the original down-right slope, six mirror to down-left about their own
-    // centre (`(x1,y1)-(x2,y2)` becomes `(x2,y1)-(x1,y2)`, so the bounding box and length are
-    // untouched). Crossed strokes read as a nap catching light from two directions; a single lean
-    // reads as a cut.
-    const tuft = (x1, y1, x2, y2) =>
-      `<path d="M${g.u(x1)} ${g.u(y1)} L${g.u(x2)} ${g.u(y2)}" stroke="${INK}"` +
-      ` stroke-width="${r3(W.hair)}" opacity="0.55" fill="none" stroke-linecap="round"/>`;
-    const pile = s.pat(
-      pr(0, 0, P, P, PAPER) +
-        tuft(1.4, 2.2, 2.5, 3.9) + tuft(5.9, 0.8, 4.6, 2.0) +
-        tuft(8.0, 2.4, 8.9, 4.1) + tuft(12.1, 0.9, 11.0, 2.4) +
-        tuft(2.6, 5.4, 4.0, 6.4) + tuft(7.1, 4.9, 6.2, 6.7) +
-        tuft(9.6, 6.0, 11.0, 7.0) + tuft(1.8, 8.1, 0.7, 9.7) +
-        tuft(4.1, 8.8, 5.5, 9.8) + tuft(8.4, 8.2, 7.4, 9.9) +
-        tuft(10.6, 9.4, 12.0, 10.4) + tuft(3.4, 11.2, 2.2, 12.3),
-      { w: P, h: P },
-    );
-    boxCm(s, g, 0, 0, g.wCm, g.hCm, { fill: pile });
-    boxCm(s, g, 8, 8, g.wCm - 16, g.hCm - 16, { fill: 'none', stroke: INK, sw: W.mid });
-    boxCm(s, g, 12, 12, g.wCm - 24, g.hCm - 24, { fill: 'none', stroke: INK, sw: W.fine, opacity: 0.6 });
-    s.path(
-      `M${g.x(10)} ${g.y(10)} L${g.x(g.wCm - 10)} ${g.y(10)} L${g.x(g.wCm - 10)} ${g.y(g.hCm - 10)}` +
-        ` L${g.x(10)} ${g.y(g.hCm - 10)} Z`,
-      { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.5, dash: `${g.u(2)} ${g.u(3)}` },
-    );
-    edge(s, g, W.fine);
-  });
+const drawCarpetFloor = (s, g) => {
+  ground(s, g);
+  const P = g.u(12.5);
+  // ⚠️ THE PILE IS DENSER AND DARKER THAN THE FIRST DRAFT, and the reason is the SHEAR rather than
+  // taste: six tufts at 0.38 read as texture on the flat swatch and as an empty tile once the
+  // floor plane compressed the field to 0.6 of its height. Seen on the sheet, not reasoned out.
+  //
+  // ⭐ EVERY TUFT RAN THE SAME DIAGONAL, and a field of uniform, evenly-pitched, parallel dashes
+  // inside a crisp double-ruled frame reads as a slotted grille cover, not a pile fabric — a cold
+  // read confirmed it ("ventilation grate", medium confidence). The fix keeps the exact same
+  // twelve anchor points, the same density, weight and opacity, and only ALTERNATES the tuft's
+  // lean: six keep the original down-right slope, six mirror to down-left about their own
+  // centre (`(x1,y1)-(x2,y2)` becomes `(x2,y1)-(x1,y2)`, so the bounding box and length are
+  // untouched). Crossed strokes read as a nap catching light from two directions; a single lean
+  // reads as a cut.
+  const tuft = (x1, y1, x2, y2) =>
+    `<path d="M${g.u(x1)} ${g.u(y1)} L${g.u(x2)} ${g.u(y2)}" stroke="${INK}"` +
+    ` stroke-width="${r3(W.hair)}" opacity="0.55" fill="none" stroke-linecap="round"/>`;
+  const pile = s.pat(
+    pr(0, 0, P, P, PAPER) +
+      tuft(1.4, 2.2, 2.5, 3.9) + tuft(5.9, 0.8, 4.6, 2.0) +
+      tuft(8.0, 2.4, 8.9, 4.1) + tuft(12.1, 0.9, 11.0, 2.4) +
+      tuft(2.6, 5.4, 4.0, 6.4) + tuft(7.1, 4.9, 6.2, 6.7) +
+      tuft(9.6, 6.0, 11.0, 7.0) + tuft(1.8, 8.1, 0.7, 9.7) +
+      tuft(4.1, 8.8, 5.5, 9.8) + tuft(8.4, 8.2, 7.4, 9.9) +
+      tuft(10.6, 9.4, 12.0, 10.4) + tuft(3.4, 11.2, 2.2, 12.3),
+    { w: P, h: P },
+  );
+  boxCm(s, g, 0, 0, g.wCm, g.hCm, { fill: pile });
+  boxCm(s, g, 8, 8, g.wCm - 16, g.hCm - 16, { fill: 'none', stroke: INK, sw: W.mid });
+  boxCm(s, g, 12, 12, g.wCm - 24, g.hCm - 24, { fill: 'none', stroke: INK, sw: W.fine, opacity: 0.6 });
+  s.path(
+    `M${g.x(10)} ${g.y(10)} L${g.x(g.wCm - 10)} ${g.y(10)} L${g.x(g.wCm - 10)} ${g.y(g.hCm - 10)}` +
+      ` L${g.x(10)} ${g.y(g.hCm - 10)} Z`,
+    { fill: 'none', stroke: INK, sw: W.hair, opacity: 0.5, dash: `${g.u(2)} ${g.u(3)}` },
+  );
+  edge(s, g, W.fine);
+};
+
+export const carpetFloor = (opts = {}) => skin('carpet-floor', opts, drawCarpetFloor);
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The specs, the sizes and the painter map
@@ -923,3 +965,57 @@ export const BUILD = Object.freeze({
   'metal-grating': metalGrating,
   'carpet-floor': carpetFloor,
 });
+
+/**
+ * Every skin's PAINTER, keyed by itemId — the drawing, without the harness around it.
+ *
+ * NOT DERIVED, for `BUILD`'s reason verbatim: each entry names its own const, so a row cannot point
+ * at another row's drawing. `wrecked.test.js` calls that shape the SWAP and records that it is
+ * invisible to every other guard in this repo — the fragment is well-formed, deterministic and
+ * correctly classified, and the player sees the wrong wall. `fittings.js` and `paper-resources.js`
+ * both keep a hand-written `DRAW` map for exactly this, and a `Object.fromEntries(map over BUILD)`
+ * here would delete the only thing that can catch it.
+ */
+export const DRAW = Object.freeze({
+  'steel-bulkhead': drawSteelBulkhead,
+  'timber-lined-wall': drawTimberLinedWall,
+  'blast-wall': drawBlastWall,
+  'glass-partition': drawGlassPartition,
+  'insulated-wall': drawInsulatedWall,
+  'hull-plating': drawHullPlating,
+  'steel-tan-floor': drawSteelTanFloor,
+  'wood-plank-floor': drawWoodPlankFloor,
+  'grow-matting': drawGrowMatting,
+  'cream-tile-floor': drawCreamTileFloor,
+  'metal-grating': drawMetalGrating,
+  'carpet-floor': drawCarpetFloor,
+});
+
+/**
+ * Paint skin `id` INTO an existing scene, then hand the same scene and the same FRAME to `extra`, so
+ * a caller can add marks in the skin's own centimetres rather than guessing at pixels.
+ *
+ * This is how a damaged twin of a material is drawn — `fittings.paintFitting` and
+ * `paper-resources.paintResource` verbatim, and for their stated reason: a wrecked wall is the SAME
+ * wall with damage on it, and re-running the pristine painter is the only construction under which
+ * that stays true when the pristine drawing changes. Returns nothing; everything lands in `s`.
+ *
+ * ⚠️ THE SIGNATURE TAKES `env`, AND THAT IS THE ONE DIFFERENCE FROM ITS TWO SIBLINGS. A fitting's
+ * frame comes from its `SPECS` row, so `paintFitting` needs only an id. A SKIN HAS NO INTRINSIC
+ * EXTENT: the caller's box aspect IS the statement of how many metres it wants (this file's header),
+ * so the frame cannot be derived without it. `env` is `helpers.item()`'s own painter argument —
+ * `{ w, h, facing, state, powered }` — passed straight through to `frameForSkin`, which is the single
+ * derivation both this door and the `skin()` harness use.
+ *
+ * @param {object} s     the scene (`helpers.scene`), mid-fragment
+ * @param {string} id    one of `MATERIAL_IDS`; anything else is a no-op, like `paintFitting`
+ * @param {object} env   `helpers.item`'s painter env, or any `{ w, h }`; omitted ⇒ a 100 × 100 tile
+ * @param {function} [extra] `(s, g) => void`, run after the skin, on the SAME frame
+ */
+export function paintMaterial(s, id, env, extra) {
+  const draw = DRAW[id];
+  if (!draw) return;
+  const g = frameForSkin(env);
+  draw(s, g);
+  if (typeof extra === 'function') extra(s, g);
+}
