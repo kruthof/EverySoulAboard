@@ -171,6 +171,43 @@ namespace Perilune.Sim
         /// </summary>
         public bool Faulted;
 
+        /// <summary>
+        /// ⭐⭐ WHICH WAY THE THING IS TURNED — 0/1/2/3, one quarter-turn each, clockwise in plan.
+        /// Two bits stored in a byte, the <see cref="LockOwner"/> precedent.
+        ///
+        /// <para>⛔ <b>IT IS DRAWING-ONLY, AND SAYING SO IS HALF THE FIELD'S DEFINITION.</b> NOTHING
+        /// IN <c>sim/</c> READS IT. No adjacency, no work-spot, no reachability, no pathing, no
+        /// footprint: a device still occupies exactly the one tile it stands on at every facing, and
+        /// a crew member still works it from any neighbour. The ONLY consumers are the two SVG
+        /// surfaces, which turn the picture. The owner asked for rotation while building
+        /// (2026-08-05, "I want to be able to rotate it (4× rotation)") and this is exactly that
+        /// much.</para>
+        ///
+        /// <para>⚠️ <b>RIMWORLD'S ANALOGUE DIVERGES HERE, DELIBERATELY.</b> There, rotation moves a
+        /// building's INTERACTION CELL — the square the pawn must stand on to use it — so facing is a
+        /// mechanic and a badly-turned workbench is a real mistake.
+        /// <c>docs/design/rimworld-reference.md</c> does not document that cell (§12 covers the
+        /// blueprint pipeline, not orientation), so the shape is NOT re-derived from memory here;
+        /// what is recorded is that ours does not have it yet. FILED as the future coupling: the day
+        /// a work-spot mechanic lands, THIS is the field it reads, and the day it does, every
+        /// authored ship's facings become gameplay rather than art.</para>
+        ///
+        /// <para><b>DEFAULTS 0, and the default is what makes the change pin-neutral.</b> The state
+        /// word folds <c>((ulong)(d.Facing &amp; 3) &lt;&lt; 13)</c> — bits 13–14, the two free bits
+        /// between <see cref="Faulted"/>'s 12 and <c>NetworkId</c>'s 16 — which is byte-identical to
+        /// the pre-v7 word on every device nobody has turned. That is <see cref="Faulted"/>'s own
+        /// argument, and it carries the same obligation: the claim is MEASURED by a control that
+        /// moves the hash when the field is set and returns it exactly when cleared, never by the
+        /// pins staying still (a term that is never folded also leaves them still).</para>
+        ///
+        /// <para>⛔ <b>MASKED AT EVERY WRITER, NOT TRUSTED.</b> The command masks <c>&amp; 3</c>, the
+        /// fold masks <c>&amp; 3</c>, and the save reader masks <c>&amp; 3</c>. Bits 15+ of the state
+        /// word belong to <c>NetworkId</c>, and a stray facing byte of 4 would land in it — the
+        /// <c>RoomType.Cryo = 16</c> alias post-mortem (<c>Simulation.cs</c>) is this repo's own
+        /// receipt for what packing into a shared word costs when a value escapes its range.</para>
+        /// </summary>
+        public byte Facing;
+
         public const float BatteryCapacityKWh = 40f;
 
         /// <summary>Below the fail threshold a machine is inoperative until maintained.

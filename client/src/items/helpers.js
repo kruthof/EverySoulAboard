@@ -323,13 +323,22 @@ export function item(itemId, opts, paint, cfg = {}) {
   const index = opts.index == null ? 0 : opts.index;
   const idPrefix = opts.idPrefix || `${itemId}-${index}`;
   const s = scene(idPrefix);
-  paint(s, { w, h, state: opts.state, powered: opts.state !== 'off' && opts.state !== 'unpowered' });
+  // ⭐ `facing` (0..3) is FORWARDED, never interpreted here: this harness knows nothing about
+  // centimetres or projections. The thirty fitting builders read it through their own cm frame
+  // (`fittings.frameFor`); every other builder in this directory simply ignores it, which is the
+  // honest fallback for a piece that has no centimetre spec to turn (charter §4, P2b filed).
+  paint(s, { w, h, facing: opts.facing, state: opts.state, powered: opts.state !== 'off' && opts.state !== 'unpowered' });
   const frag = s.render(w, h);
   if (!cfg.sketched || opts.sketch === false) return frag;
   // ⚠️ THE SEED IS THE PIECE, NOT THE PLACEMENT. `idPrefix` carries the index, so seeding off it
   // would make two dining tables in one room two different drawings of the same object — which is
   // exactly the "stamp vs drawing" failure the seed exists to avoid, inverted.
+  //
+  // ⚠️ AND IT IS THE PIECE, NOT THE FACING EITHER — deliberately. A turned bench is a DIFFERENT
+  // drawing (the frame turned before `sketch()` saw a character), so it needs no second hand; and
+  // seeding off the facing would make the four rotations of one piece four different hands, which is
+  // the "stamp vs drawing" failure again in its fourth costume.
   const seed = opts.sketchSeed != null ? opts.sketchSeed
     : (cfg.seed != null ? cfg.seed : itemId);
-  return sketch(frag, { level: SKETCH_LEVEL, seed });
+  return sketch(frag, { level: SKETCH_LEVEL, seed, ground: cfg.ground });
 }

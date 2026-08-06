@@ -65,20 +65,20 @@ const msg = (cells) => ({ type: 'devices', cells });
 
 // MUTATION: swap `.Append(c.Cond…)` and `.Append(c.Oper…)` in WireFormat.Devices.cs ⇒ this fails and
 // names the file. MUTATION 2: reorder the `DeviceCell` constructor parameters ⇒ same.
-test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air, spend] on BOTH sides of the seam', () => {
+test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air, spend, face] on BOTH sides of the seam', () => {
   // (a) the emitter's own append chain, in source order.
   const emitted = [...WIRE_DEVICES_CS.matchAll(/\.Append\(c\.(\w+)\.ToString\(DeviceIc\)\)/g)].map((m) => m[1]);
-  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Kind', 'Cond', 'Oper', 'Open', 'Serv', 'Air', 'Spend'],
+  assert.deepEqual(emitted, ['X', 'Y', 'Deck', 'Kind', 'Cond', 'Oper', 'Open', 'Serv', 'Air', 'Spend', 'Face'],
     'hosts/web/WireFormat.Devices.cs no longer appends the tuple in the order this client reads it. '
     + 'The tuple is POSITIONAL — a swap puts every device on the wrong tile or reports a condition '
     + 'as a kind — and there is no compiler across this seam.');
 
   // (b) the struct constructor, which is what `GameSession.BuildDevices` fills.
-  const ctor = /DeviceCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/
+  const ctor = /DeviceCell\(int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+), int (\w+)\)/
     .exec(WIRE_DEVICES_CS);
   assert.ok(ctor, 'the DeviceCell constructor was not found — this parse has rotted and (a) alone '
     + 'cannot see a caller that fills the fields in the wrong order');
-  assert.deepEqual(ctor.slice(1, 11), ['x', 'y', 'deck', 'kind', 'cond', 'oper', 'open', 'serv', 'air', 'spend']);
+  assert.deepEqual(ctor.slice(1, 12), ['x', 'y', 'deck', 'kind', 'cond', 'oper', 'open', 'serv', 'air', 'spend', 'face']);
 
   // (c) …and the host really does fill it from the device's own position/kind/condition, in that
   // order. The multi-line `new` is matched with whitespace-tolerant spacing, not by exact layout.
@@ -88,7 +88,7 @@ test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air, sp
   // lazy span crosses only whitespace today; it is written lazily so a future note there does not
   // turn a live guard into a rotted parse that `assert.ok` cannot even report).
   assert.match(GAME_SESSION_CS,
-    /new WireFormat\.DeviceCell\(\s*p\.X,\s*p\.Y,\s*p\.Z,\s*\(int\)device\.Kind,\s*WireFormat\.ConditionByte\(device\.Condition\),\s*device\.IsOperational\(defs\) \? 1 : 0,[\s\S]*?device\.IsOpen \? 1 : 0,[\s\S]*?MaintenanceSystem\.IsEverServiceable\(defs, device\.Kind\) \? 1 : 0,[\s\S]*?StagingAirBit\(device\.Pos\),[\s\S]*?MaintenanceSystem\.IsBelowWreckFloor\(_sim, device\) \? spendWreck : spendSound\)/,
+    /new WireFormat\.DeviceCell\(\s*p\.X,\s*p\.Y,\s*p\.Z,\s*\(int\)device\.Kind,\s*WireFormat\.ConditionByte\(device\.Condition\),\s*device\.IsOperational\(defs\) \? 1 : 0,[\s\S]*?device\.IsOpen \? 1 : 0,[\s\S]*?MaintenanceSystem\.IsEverServiceable\(defs, device\.Kind\) \? 1 : 0,[\s\S]*?StagingAirBit\(device\.Pos\),[\s\S]*?MaintenanceSystem\.IsBelowWreckFloor\(_sim, device\) \? spendWreck : spendSound,[\s\S]*?device\.Facing & 3\)/,
     'GameSession.BuildDevices no longer fills DeviceCell from (p.X, p.Y, p.Z, device.Kind, '
     + 'ConditionByte(device.Condition), IsOperational, IsOpen). The two halves above pin the wire '
     + 'SHAPE; this pins what is put into it — in particular that `oper` is the SIM\'s operational '
@@ -103,12 +103,19 @@ test('the wire tuple order is [x, y, deck, kind, cond, oper, open, serv, air, sp
     + 'selected by MaintenanceSystem.IsBelowWreckFloor \u2014 not `device.Condition < '
     + 'defs.Wear.WreckThreshold` spelled out again here (the Swarf rung\'s precondition has ONE '
     + 'declaration, beside the fetch that obeys it) and not a per-row call to the funnel, which '
-    + 'would be three item-store scans per row per frame.');
+    + 'would be three item-store scans per row per frame. '
+    + '\u2b50\u2b50 THE FACING (2026-08-05): and that `face` is `device.Facing` MASKED `& 3` and '
+    + 'nothing else \u2014 not a kind-filtered subset, not a value the host computes. It is '
+    + 'DRAWING-ONLY (nothing in sim/ reads the field), and masking it at the wire as well as at the '
+    + 'command keeps a corrupt in-memory value from reaching a client that will index a four-case '
+    + 'rotation with it.');
 
   // (d) the decoder reads the same positions. DRIVEN, not scanned.
-  const [row] = decodeDevices(msg([[11, 22, 3, 4, 55, 1, 1, 0, 0, 7]]));
+  const [row] = decodeDevices(msg([[11, 22, 3, 4, 55, 1, 1, 0, 0, 7, 2]]));
   assert.deepEqual(row,
-    { x: 11, y: 22, deck: 3, kind: 4, cond: 55, oper: 1, open: 1, serv: 0, air: 0, spend: 7 });
+    { x: 11, y: 22, deck: 3, kind: 4, cond: 55, oper: 1, open: 1, serv: 0, air: 0, spend: 7, face: 2 });
+  // …and the MASK, driven: a facing out of range must not reach a surface that assumes four cases.
+  assert.equal(decodeDevices(msg([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7]]))[0].face, 3);
 });
 
 // ⚠️ THE APPEND-ONLY CONTRACT, DRIVEN. `decodeDevices` gates on `length < 6` and NOT `< 7`, so a
@@ -141,7 +148,11 @@ test('the spend sentinels are pinned EQUAL on both sides, and stay OUT of the It
 test('a SIX-element row from an older host still decodes, with open defaulting to SHUT', () => {
   const [old] = decodeDevices(msg([[1, 2, 0, 0, 255, 1]]));
   assert.deepEqual(old,
-    { x: 1, y: 2, deck: 0, kind: 0, cond: 255, oper: 1, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN });
+    { x: 1, y: 2, deck: 0, kind: 0, cond: 255, oper: 1, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN,
+      // ⭐ AND `face` DEFAULTS TO 0 ON THE SHORT ROW, for the same append-only reason every element
+      // above defaults the way it does: before the element existed every device was drawn facing 0,
+      // so an absent value and an explicit 0 must be indistinguishable.
+      face: 0 });
   // CONTROL, so the leg above is not also satisfied by a decoder that ignores element 7 entirely.
   const [now] = decodeDevices(msg([[1, 2, 0, 0, 255, 1, 1]]));
   assert.equal(now.open, 1, 'the seventh element is being ignored — `open` is hard-wired to 0');
@@ -233,9 +244,9 @@ test('roomDeviceConditions keys by tile and carries kind, cond, oper, open and s
   ])), ROOM);
   assert.equal(map.size, 2);
   assert.deepEqual(map.get('4,2'),
-    { tx: 4, ty: 2, kind: 8, cond: 26, oper: 1, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN });
+    { tx: 4, ty: 2, kind: 8, cond: 26, oper: 1, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN, face: 0 });
   assert.deepEqual(map.get('7,4'),
-    { tx: 7, ty: 4, kind: 13, cond: 255, oper: 1, open: 1, serv: 0, air: 1, spend: SPEND_UNKNOWN });
+    { tx: 7, ty: 4, kind: 13, cond: 255, oper: 1, open: 1, serv: 0, air: 1, spend: SPEND_UNKNOWN, face: 0 });
   assert.equal(map.get('5,5'), undefined, 'a tile with no device must be absent, not a zero row');
 });
 
@@ -623,11 +634,11 @@ test('deviceConditionAt returns the LIVE row for a tile — driven, not scanned'
   // `return _deviceCond.get('0,0')` — the two mutations that survived the old signature scan — each
   // fail on the first of these.
   assert.deepEqual(RoomZoom.deviceConditionAt(worn[0], worn[1]),
-    { tx: worn[0], ty: worn[1], kind: 8, cond: 26, oper: 0, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN },
+    { tx: worn[0], ty: worn[1], kind: 8, cond: 26, oper: 0, open: 0, serv: 1, air: 1, spend: SPEND_UNKNOWN, face: 0 },
     'deviceConditionAt did not return the worn device\'s row. This is THE seam the wrecked-art\n'
     + 'package reads; a signature scan cannot tell an implementation from `return null`.');
   assert.deepEqual(RoomZoom.deviceConditionAt(fresh[0], fresh[1]),
-    { tx: fresh[0], ty: fresh[1], kind: 13, cond: 255, oper: 1, open: 1, serv: 1, air: 1, spend: SPEND_UNKNOWN },
+    { tx: fresh[0], ty: fresh[1], kind: 13, cond: 255, oper: 1, open: 1, serv: 1, air: 1, spend: SPEND_UNKNOWN, face: 0 },
     'the second row disagrees — a constant or a single-tile lookup would pass the first leg alone');
 
   assert.equal(RoomZoom.deviceConditionAt(bare[0], bare[1]), null,

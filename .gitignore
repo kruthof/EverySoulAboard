@@ -43,3 +43,8 @@ client/tools/shots-machines/
 client/tools/shots-sketch/
 # — lane/sketch-adoption —
 client/tools/shots-sketch-adoption/
+# — lane/material-under-pawn —
+client/tools/shots-material-pawn/
+client/tools/shots-pawn-tween/
+# — lane/build-ghost —
+client/tools/shots-build-ghost/

@@ -87,7 +87,7 @@ namespace Perilune.Tests
                 { new WireFormat.BlockedCell(7, 3, 1, 1, 1, WireFormat.DetailNone, WireFormat.CidNone) });
             StringAssert.Contains("[7,3,1,", blocked,
                 "the blocked tuple no longer leads with x,y,deck — the shape six sparse channels share");
-            StringAssert.Contains("[7,3,1,", WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0, 1, 1, WireFormat.SpendUnknown) }),
+            StringAssert.Contains("[7,3,1,", WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0, 1, 1, WireFormat.SpendUnknown, 0) }),
                 "control: the devices channel leads with x,y,deck");
             StringAssert.Contains("[7,3,1,", WireFormat.Items(new[] { new WireFormat.ItemCell(7, 3, 1, 4, 200) }),
                 "control: the items channel leads with x,y,deck");

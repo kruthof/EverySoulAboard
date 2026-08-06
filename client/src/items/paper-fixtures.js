@@ -186,9 +186,17 @@ export const BOX_EXTENT = Object.freeze(FIXTURE_IDS.reduce((out, id) => {
   return out;
 }, {}));
 
-/** Fixture `id`'s own frame — `fittings.geometryFor`'s, so there is one derivation, not two. */
-export function frameFor(id) {
-  const g = geometryFor(SPECS[id]);
+/**
+ * Fixture `id`'s own frame — `fittings.geometryFor`'s, so there is one derivation, not two.
+ *
+ * ⭐ `facing` (0..3) IS FORWARDED, not interpreted here. It is the whole reason the merge resolution
+ * threaded the argument through the SHARED door rather than around it: this catalogue reaches the
+ * drawing scale only through `geometryFor`, so a facing that stopped at `fittings.frameFor` would
+ * leave the fittings turnable and these fourteen fixtures permanently square-on — one rotation verb
+ * that works on one catalogue and silently does nothing on the other. Absent/0 is the identity.
+ */
+export function frameFor(id, facing) {
+  const g = geometryFor(SPECS[id], facing);
   return g === undefined ? undefined : g.frame;
 }
 
@@ -255,10 +263,10 @@ function tube(s, F, x, y0, y1, z, rCm, o = {}) {
  * has no hatched face at all and must not register a `<pattern>` it never references. ⛔ DO NOT
  * SPREAD THIS OBJECT: a spread evaluates getters.
  */
-function envFor(s, id, state) {
+function envFor(s, id, state, facing) {
   let hp = null;
   return {
-    F: frameFor(id),
+    F: frameFor(id, facing),
     spec: SPECS[id],
     state,
     powered: state !== 'off' && state !== 'unpowered',
@@ -269,7 +277,10 @@ function envFor(s, id, state) {
 /** An item fragment whose painter draws in the fixture's own centimetres.
  *  `sketched: true` — the owner's 2026-08-05 ruling; the seam is `helpers.item()`. */
 function fixture(id, opts, paint) {
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); }, { sketched: true });
+  // `env.facing` arrives from `helpers.item`, which forwards `opts.facing` — the same seam
+  // `fittings.fitting` uses, so both catalogues turn through one mechanism.
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); },
+    { sketched: true });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

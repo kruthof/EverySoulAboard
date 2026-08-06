@@ -664,8 +664,16 @@ function miniContents(slot, frame, deck, deviceCond, marks, idPrefix) {
       // centre projects to, so a press on its footprint designates the tile it is drawn on.
       const [px, py] = floorToMini(u, v);
       const row = cond.get(tx + ',' + ty);
-      const g = buildTileItem(itemId, { w: MINI_ITEM, h: MINI_ITEM, idPrefix: `${idPrefix}-f${tx}-${ty}` },
-        row ? row.cond : undefined);
+      // ⭐⭐ THE FACING, JOINED OFF THE **SAME ROW** `cond` COMES FROM (2026-08-05). A miniature is
+      // chosen by the frame's GLYPH BYTE, exactly as the Room Zoom's is, so the `devices` channel's
+      // `face` is joined on `(tx,ty)` here as well — and it MUST be, or the plate would draw every
+      // device unturned while the room drew it turned, which is one machine wearing two pictures on
+      // two surfaces. That divergence is the one `wear-join.test.js`'s shape-parity leg exists for,
+      // and it is why `deckDeviceConditions` carries `face` even though this is its only reader.
+      // A tile with art but no device row faces 0 — what it drew before.
+      const g = buildTileItem(itemId, { w: MINI_ITEM, h: MINI_ITEM, idPrefix: `${idPrefix}-f${tx}-${ty}`,
+        facing: row ? row.face : 0 },
+      row ? row.cond : undefined);
       // ⛔ NEEDS-ATTENTION IS THE `marks` CHANNEL'S OWN WORD, NEVER A CONDITION COMPARED TO A NUMBER.
       // The first draft flipped the stroke when `row.cond` fell under a literal, and that is a SECOND
       // HOME FOR THE WEAR THRESHOLD — the exact defect `client/src/items/wear.js` exists to prevent
@@ -955,7 +963,33 @@ export function layoutPawnLabels(labels) {
   return out;
 }
 
-function pawnLayer(crew, deck, t, selectedCid, id) {
+/**
+ * ⭐⭐ THE PLATE'S PAWNS, AS FOOT-RELATIVE PARTS — one entry per drawn crew member, each carrying
+ * the projected foot point and the markup drawn AROUND (0,0). PURE.
+ *
+ * ⛔ IT NO LONGER RETURNS A STRING, AND `overviewScene` NO LONGER EMITS IT, because a figure inside
+ * the scene string cannot be animated: `paintScene` assigns the whole scene to `innerHTML` ~10×/s,
+ * so no pawn node survives long enough to move between two roster messages. The nodes live in the
+ * surface's persistent overlay instead (`pawn-layer.js` — its header carries the measurement that
+ * chose an overlay over re-adopting the nodes into the rebuilt scene). This function is the ONE
+ * builder of that art; there is no second, scene-embedded copy to drift, and `overview-scene.test.js`
+ * guards that `overviewScene` emits no `pl-pawn` at all.
+ *
+ * ⭐ THE SPLIT IS FOOT POINT vs BODY, and it is what makes a 60 Hz tween cost one attribute write:
+ * everything that must move together — the figure, the selection underline, the leader line and the
+ * label pill — is drawn relative to the feet, so moving the person is `translate(x y)` on their one
+ * group. That is also a stronger guarantee than the old absolute geometry gave: a label CANNOT
+ * detach from its pawn now, because it is inside the pawn.
+ *
+ * ⚠️ THE DE-CLUTTER SWEEP STILL REASONS IN ABSOLUTE SPACE, and it has to. Two pawns a tile apart
+ * vertically are further apart than a row step, so `layoutPawnLabels`' occupancy test is 2-D over
+ * SCREEN rects (its own header carries the measured overlap that proved it). The sweep therefore
+ * runs on absolute `cx`/`baseY` here, at message cadence, and only the EMISSION is relative — the
+ * row a pill lands on re-slots ~5–8×/s while the figures glide continuously.
+ *
+ * @returns {Array<{cid:*, x:number, y:number, html:string}>} in roster order.
+ */
+export function pawnLayerParts(crew, deck, t, selectedCid, id) {
   const list = Array.isArray(crew) ? crew : [];
   // Pass 1 — every on-deck pawn's geometry + label text, so the de-clutter sweep sees them all at once.
   const pawns = [];
@@ -1000,39 +1034,43 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
       { cid: c.cid, role: c.role },
       { idPrefix: `${id}-pw-${esc(c.cid)}`, className: 'pawn' },
     );
-    let g = `<g class="pl-pawn" data-cid="${esc(c.cid)}">`;
+    // FOOT-RELATIVE FROM HERE DOWN: the feet are the origin, and the group's own `translate` (set by
+    // `pawn-layer.js`, 60×/s) carries the pair below into place. The two zeros are the old `fx`/`fy`.
+    const bx = 0, by = 0;
+    let g = '';
     if (selected) {
       // ⚠️ SELECTION IS A RULE, NOT A GLOW. The warm surface put a radial amber gradient under the
       // selected pawn — a `<defs>` + `<radialGradient>` per selection, i.e. an id per repaint. In the
       // paper dialect selection is a solid ink underline through the figure's feet, which needs no
       // def at all, and the plate's OTHER selection cue (the 2.2 px tile border) says which
       // compartment she is in.
-      g += `<path d="M${n(fx - S * 7)} ${n(fy + S * 1.5)} L${n(fx + S * 7)} ${n(fy + S * 1.5)}"`
+      g += `<path d="M${n(bx - S * 7)} ${n(by + S * 1.5)} L${n(bx + S * 7)} ${n(by + S * 1.5)}"`
         + ` stroke="${INK}" stroke-width="${n(Math.max(1, S * 1.2))}" fill="none"/>`;
     }
-    // seat the pawn so its feet (local 8,23 in the 16×24 viewBox) land on (fx,fy)
-    g += `<g transform="translate(${n(fx - 8 * S)} ${n(fy - 23 * S)}) scale(${n(S)})">${body}</g>`;
+    // seat the pawn so its feet (local 8,23 in the 16×24 viewBox) land on the group's origin
+    g += `<g transform="translate(${n(bx - 8 * S)} ${n(by - 23 * S)}) scale(${n(S)})">${body}</g>`;
     // identity + WORK label above the head
     const lay = layout.get(String(c.cid)) || { row: 0, crowded: false };
-    const baseY = p.baseY;
+    // The sweep's `baseY` is ABSOLUTE (it had to be — see the header); the emission is the same
+    // quantity measured from this pawn's own feet, which is exactly `baseY - fy`.
+    const baseY = p.baseY - fy;
     const tagY = baseY - lay.row * LABEL_ROW_STEP;
     const cls = 'pl-tag' + (p.tag ? ' pl-tag-work' : '') + (lay.crowded ? ' pl-tag-crowded' : '');
     g += `<g class="${cls}">`
       // leader line: a lifted pill would otherwise be ambiguous about which pawn it belongs to
       + (lay.row > 0
-        ? `<line x1="${n(fx)}" y1="${n(tagY + 3)}" x2="${n(fx)}" y2="${n(baseY + 3)}" stroke="${INK}" stroke-width="0.7" opacity="0.45"/>`
+        ? `<line x1="${n(bx)}" y1="${n(tagY + 3)}" x2="${n(bx)}" y2="${n(baseY + 3)}" stroke="${INK}" stroke-width="0.7" opacity="0.45"/>`
         : '')
       // The pill box comes from the SAME two constants the sweep reasoned about (LABEL_PILL_*), so a
       // change to either cannot silently make the sweep certify a box that is no longer emitted.
-      + `<rect x="${n(fx - p.w / 2)}" y="${n(tagY - LABEL_PILL_RISE)}" width="${n(p.w)}" height="${LABEL_PILL_H}" fill="${PAPER}" stroke="${INK}" stroke-width="0.7"/>`
-      + `<text x="${n(fx)}" y="${n(tagY - 2)}" font-size="7.5" letter-spacing=".5" fill="${INK}" text-anchor="middle" dominant-baseline="central" font-family="${FONT.mono}">`
+      + `<rect x="${n(bx - p.w / 2)}" y="${n(tagY - LABEL_PILL_RISE)}" width="${n(p.w)}" height="${LABEL_PILL_H}" fill="${PAPER}" stroke="${INK}" stroke-width="0.7"/>`
+      + `<text x="${n(bx)}" y="${n(tagY - 2)}" font-size="7.5" letter-spacing=".5" fill="${INK}" text-anchor="middle" dominant-baseline="central" font-family="${FONT.mono}">`
       + `${esc(p.sur)}`
       + (p.tag ? `<tspan fill="${ATTEND}"> · ${esc(p.tag)}</tspan>` : '')
       + `</text></g>`;
-    g += `</g>`;
-    out.push(g);
+    out.push({ cid: c.cid, x: fx, y: fy, html: g });
   }
-  return out.length ? `<g class="pl-pawns">${out.join('')}</g>` : '';
+  return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1074,7 +1112,9 @@ function attentionTiles(marks, deck) {
  * @param {number} state.deck            the deck to render.
  * @param {Array}  state.decksView       decksView(decks,rooms) output — [{deck, slots:[…]}].
  * @param {object} [state.frame]         the frame message (the miniatures' contents come from its cells).
- * @param {Array}  [state.crew]          roster crew [{cid,name,role,deck,x,y}].
+ * ⚠️ `state.crew` IS GONE FROM THIS BUILDER. The figures moved to `pawnLayerParts` + the surface's
+ * persistent overlay (see the ⛔ note in the body); passing a roster here now does nothing at all,
+ * which is why the field was removed rather than left as a silently-ignored input.
  * @param {Array}  [state.designs]       build-ghost design cells (or a {cells} message).
  * @param {Array}  [state.terminals]     MOSS terminal directory [{tid,deck,x,y}] — clickable chips.
  * @param {Array}  [state.marks]         decoded `marks` cells — the debris / dig / stockpile / strip
@@ -1126,8 +1166,16 @@ export function overviewScene(state) {
     // fitting its ✕ would be invisible.
     + markLayer(st.marks, deck, t)
     + ghostLayer(st.designs, deck, t)
-    + terminalLayer(st.terminals, deck, t)
-    + pawnLayer(st.crew, deck, t, st.selectedCid, id);
+    + terminalLayer(st.terminals, deck, t);
+  // ⛔ NO PAWN LAYER HERE, AND ITS ABSENCE IS THE POINT (2026-08-05, the client-side tween). The
+  // figures are built by `pawnLayerParts` above and mounted into a PERSISTENT overlay `<svg>` that
+  // this string is never assigned into — because `paintScene` does `innerHTML = svg` ~10×/s and a
+  // node that is destroyed ten times a second cannot be interpolated between two roster samples.
+  // The old layer-order guarantee ("a crew member is never hidden by a mark, a ghost or a wash")
+  // did not weaken: the overlay is a LATER SIBLING of the scene mount, so it is above every layer
+  // in this document unconditionally, rather than above the ones that happen to be concatenated
+  // before it. `overview-scene.test.js` asserts this string carries no `pl-pawn`, so a later lane
+  // cannot quietly re-home the figures here and leave two copies of every crew member on the plate.
 
   return `<svg class="pl-overview" viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet"`
     + ` xmlns="http://www.w3.org/2000/svg" data-deck="${deck}" data-lens="${esc(st.lens || 'none')}">`

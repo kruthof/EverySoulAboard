@@ -197,7 +197,7 @@ namespace Perilune.Web
     /// funnel re-runs at the fetch, so stock can move underneath the number the player read. NOTHING
     /// IS RESERVED — <c>MaintenanceSystem</c>'s class header refuses reservations deliberately.
     ///
-    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open,serv,air,spend],..]}
+    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open,serv,air,spend,face],..]}
     /// </summary>
     public static partial class WireFormat
     {
@@ -350,7 +350,7 @@ namespace Perilune.Web
         /// </summary>
         public readonly struct DeviceCell
         {
-            public readonly int X, Y, Deck, Kind, Cond, Oper, Open, Serv, Air, Spend;
+            public readonly int X, Y, Deck, Kind, Cond, Oper, Open, Serv, Air, Spend, Face;
 
             /// <param name="serv">⭐ <b>M3-13 — 1 when this KIND of machine can ever be serviced at
             /// all, 0 when it never can.</b> <c>MaintenanceSystem.IsEverServiceable</c>, i.e. the
@@ -400,10 +400,23 @@ namespace Perilune.Web
             /// same rule <c>open</c> is read for every kind under: <i>the channel carries facts about
             /// devices, not answers to one surface's question.</i> Whether there is an order to give
             /// is <c>serv</c>'s job and the offer asks it FIRST.</para></param>
-            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open, int serv, int air, int spend)
-            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; Serv = serv; Air = air; Spend = spend; }
+/// <param name="face">⭐⭐ <b>WHICH WAY THE THING IS TURNED — 0..3, one quarter-turn each.</b>
+            /// <c>Device.Facing</c> verbatim; the owner asked for it while building (2026-08-05).
+            /// <para>⛔ <b>IT IS DRAWING-ONLY AND THE ROW IS THE ONLY PLACE IT GOES.</b> Nothing in
+            /// <c>sim/</c> reads the field, so this element carries no mechanic — it is how the two
+            /// SVG surfaces learn to turn the picture, and nothing more. Appended LAST, so a client
+            /// that has not learnt it reads a ten-element row exactly as before; the absent value
+            /// must reproduce the pre-element behaviour, which for a facing is 0 (see
+            /// <c>messages.js</c>'s own house rule).</para>
+            /// <para>⚠️ <b>A FITTING IS SKINNED BY GLYPH, NOT BY THIS ROW</b> — <c>roomCells</c> reads
+            /// the frame's ASCII byte and <c>furnitureSvg</c> draws from that, so the client JOINS the
+            /// facing on <c>(x,y)</c> exactly as it already joins <c>cond</c>. That join is why the
+            /// element lives on THIS channel rather than in the frame: the frame's cell is one glyph
+            /// byte plus a mark byte and has no room for a device attribute.</para></param>
+            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open, int serv, int air, int spend, int face)
+            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; Serv = serv; Air = air; Spend = spend; Face = face; }
 
-            /// <summary>ALL TEN FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
+            /// <summary>ALL ELEVEN FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
             /// dirty-version gate, whose sufficiency argument is that the compared value IS the
             /// serializer's whole input — so it must compare everything the serializer reads, and a
             /// field added to this tuple must be added here IN THE SAME COMMIT or the gate silently
@@ -445,7 +458,7 @@ namespace Perilune.Web
             /// package exists to end.</para>
             public bool SameAs(in DeviceCell o) =>
                 X == o.X && Y == o.Y && Deck == o.Deck && Kind == o.Kind && Cond == o.Cond && Oper == o.Oper
-                && Open == o.Open && Serv == o.Serv && Air == o.Air && Spend == o.Spend;
+                && Open == o.Open && Serv == o.Serv && Air == o.Air && Spend == o.Spend && Face == o.Face;
         }
 
         /// <summary>The wire byte for a raw <see cref="Perilune.Sim.Device.Condition"/>:
@@ -505,7 +518,8 @@ namespace Perilune.Web
                       .Append(',').Append(c.Open.ToString(DeviceIc))
                       .Append(',').Append(c.Serv.ToString(DeviceIc))
                       .Append(',').Append(c.Air.ToString(DeviceIc))
-                      .Append(',').Append(c.Spend.ToString(DeviceIc)).Append(']');
+                      .Append(',').Append(c.Spend.ToString(DeviceIc))
+              .Append(',').Append(c.Face.ToString(DeviceIc)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

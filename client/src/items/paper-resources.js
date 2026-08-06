@@ -81,7 +81,7 @@ import { item, TILE, INK, PAPER } from './helpers.js';
 import {
   box as obox, roomFrame, HATCH, PAPER_FLAT, n as nn, DEPTH_RATIO, PX_PER_CM,
 } from '../render/oblique.js';
-import { W, BOX, ink, line, disc, path, curve } from './fittings.js';
+import { W, BOX, ink, line, disc, path, curve, geometryFor } from './fittings.js';
 
 /** The oblique's two ratios as MAGNITUDES — read from the kit, never re-typed. `DEPTH_RATIO.y` is
  *  −0.6 because SVG's "up" is negative; every use here wants the size of the step, not its sign. */
@@ -158,17 +158,24 @@ function scaleOf(spec) {
  * drawn band is CENTRED on (0,0), which is the coordinate model every builder in this directory
  * shares (helpers.js:9-15).
  */
-export function frameForSpec(spec) {
+export function frameForSpec(spec, facing) {
   if (!spec || !(spec.w >= 0) || !(spec.d >= 0) || !(spec.h >= 0)) return undefined;
-  const [ex, ey] = extents(spec);
-  const k = scaleOf(spec);
-  return roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k, { x: -(k * ex) / 2, y: (k * ey) / 2 });
+  // ⛔ THROUGH `fittings.geometryFor`, NOT THE PRIVATE COPY BELOW (the merge lane/build-ghost ×
+  // lane/paper-resources, 2026-08-05). This module declared its own `extents`/`scaleOf` and built a
+  // facing-less `roomFrame` — the FOURTH such copy, and the same asymmetry mutation J11 caught on
+  // the second catalogue: a rotation verb that works on some pieces and silently does nothing on
+  // these. ⭐ THE TWO ORIGINS ARE THE SAME NUMBER HERE, verified rather than assumed: this module's
+  // origin was `y: (k·ey)/2` and `geometryFor`'s is `y: k·(ey/2 + z0)`, and NO spec in this file
+  // carries a `z0` at all ("a pile starts on the floor by definition", the SPECS header), so
+  // `z0 === 0` and the two expressions are identical. Byte-compared across every piece.
+  const g = geometryFor(spec, facing);
+  return g === undefined ? undefined : g.frame;
 }
 
-/** Piece `id`'s own frame. */
-export function frameFor(id) {
+/** Piece `id`'s own frame. `facing` (0..3) is forwarded; absent/0 is the identity. */
+export function frameFor(id, facing) {
   const spec = SPECS[id];
-  return spec ? frameForSpec(spec) : undefined;
+  return spec ? frameForSpec(spec, facing) : undefined;
 }
 
 /**
@@ -317,10 +324,10 @@ function curlPath(F, cx, cy, cz, r0, r1, a0, sweep) {
  * one of their fragments (which the twin suite already treats as a defect). ⛔ DO NOT SPREAD THIS
  * OBJECT — a spread EVALUATES getters and would register the pattern for all nine.
  */
-function envFor(s, id, state) {
+function envFor(s, id, state, facing) {
   let hp = null;
   return {
-    F: frameFor(id),
+    F: frameFor(id, facing),
     spec: SPECS[id],
     state,
     get hatch() { if (hp === null) hp = hatchPaint(s); return hp; },
@@ -330,7 +337,8 @@ function envFor(s, id, state) {
 /** The harness: an item fragment whose painter draws in the piece's own centimetres.
  *  `sketched: true` — the owner's 2026-08-05 ruling; the seam is `helpers.item()`. */
 function resource(id, opts, paint) {
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); }, { sketched: true });
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); },
+    { sketched: true });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

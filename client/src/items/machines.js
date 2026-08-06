@@ -102,7 +102,7 @@ import { item, r3, TILE, INK, PAPER, ATTEND } from './helpers.js';
 import {
   box as obox, roomFrame, HATCH, PAPER_FLAT, n as nn, DEPTH_RATIO, PX_PER_CM,
 } from '../render/oblique.js';
-import { BOX, W, ink, line, disc, path, curve } from './fittings.js';
+import { BOX, W, ink, line, disc, path, curve, geometryFor } from './fittings.js';
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The two ratios, as magnitudes — read from the kit, never re-typed
@@ -178,6 +178,13 @@ export const SPECS = Object.freeze({
 
 /** Every machine id, in sheet order (M01 → M13). */
 export const MACHINE_IDS = Object.freeze(Object.keys(SPECS));
+
+/* ⛔⛔ THESE TWO ARE NO LONGER THE FRAME'S DERIVATION — `frameFor`/`roomBox` go through
+   `fittings.geometryFor(spec, facing)` (the merge lane/build-ghost × lane/paper-machines,
+   2026-08-05). They were a THIRD private copy of `extents`/`scaleOf` building a facing-less
+   `roomFrame`, which is exactly the asymmetry mutation J11 caught on the SECOND catalogue: one
+   rotation verb that works on 48 pieces and silently does nothing on these 13. They survive only for
+   `SIZES`/`BOX_EXTENT` below, which are facing-0 tables by definition. */
 
 /** A machine's extents in centimetres: `[across, up]`, the oblique's own two ratios applied.
  *  `z0` is supported for symmetry with `fittings.extents` — no machine uses it (none is wall-hung),
@@ -359,13 +366,9 @@ function pad(s, F, x, y, w, h, d, hatch) { bx(s, F, x, y, 0, w, h, d, { hatch, s
  * `oblique.roomFrame`'s, unmodified. ONE derivation, used by the builders, by the harness, by
  * `wrecked.js`'s twins and by any caller that wants to draw ON a machine.
  */
-export function frameFor(id) {
-  const spec = SPECS[id];
-  if (!spec) return undefined;
-  const [ex, ey] = extents(spec);
-  const k = scaleOf(spec);
-  return roomFrame(spec.w / 100, spec.d / 100, spec.h / 100, k,
-    { x: -(k * ex) / 2, y: k * (ey / 2 + (spec.z0 == null ? 0 : spec.z0)) });
+export function frameFor(id, facing) {
+  const g = geometryFor(SPECS[id], facing);
+  return g === undefined ? undefined : g.frame;
 }
 
 /**
@@ -376,19 +379,17 @@ export function frameFor(id) {
  * @param {string} id a machine id
  * @param {number} s  px per cm of the destination surface (PX_PER_CM.room for the cutaway)
  */
-export function roomBox(id, s) {
+export function roomBox(id, s, facing) {
   const spec = SPECS[id];
   if (!spec || !(s > 0)) return undefined;
-  const [ex, ey] = extents(spec);
-  const k = scaleOf(spec);
-  if (!(k > 0)) return undefined;
-  const side = (TILE * s) / k;
-  const z0 = spec.z0 == null ? 0 : spec.z0;
+  const g = geometryFor(spec, facing);
+  if (!g || !(g.k > 0)) return undefined;
+  const side = (TILE * s) / g.k;
   return {
     side,
-    dx: -side / 2 + (s * ex) / 2,
-    dy: -side / 2 - s * (ey / 2 + z0),
-    wCm: spec.w, dCm: spec.d, hCm: spec.h,
+    dx: -side / 2 + (s * g.ex) / 2,
+    dy: -side / 2 - s * (g.ey / 2 + g.z0),
+    wCm: g.wCm, dCm: g.dCm, hCm: g.hCm,
   };
 }
 
@@ -399,10 +400,10 @@ export function roomBox(id, s) {
  * fragments — `machines.test.js` treats that as a defect, both ways. ⛔ DO NOT SPREAD THIS OBJECT:
  * a spread EVALUATES getters and would register the pattern for all thirteen.
  */
-function envFor(s, id, state) {
+function envFor(s, id, state, facing) {
   let hp = null;
   return {
-    F: frameFor(id),
+    F: frameFor(id, facing),
     spec: SPECS[id],
     state,
     powered: state !== 'off' && state !== 'unpowered',
@@ -413,7 +414,10 @@ function envFor(s, id, state) {
 /** The harness: an item fragment whose painter draws in the machine's own centimetres.
  *  `sketched: true` — the owner's 2026-08-05 ruling; the seam is `helpers.item()`. */
 function machine(id, opts, paint) {
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state)); }, { sketched: true });
+  // `env.facing` arrives from `helpers.item` — the same seam `fittings.fitting` and
+  // `paper-fixtures.fixture` use, so all four catalogues turn through one mechanism.
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); },
+    { sketched: true });
 }
 
 /** Points along a LEVEL arc, in cm — for a sector or a curved rail on a horizontal plane. */

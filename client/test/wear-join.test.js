@@ -338,15 +338,20 @@ test('deckDeviceConditions keeps this deck only, and keys by tile like its room-
   // omitted it would let the model emit `open: 0` for everything while the test went on passing. The
   // deck-1 row is OPEN and both wrong-deck/other rows are SHUT, so the blinded deck-filter leg below
   // now bites on two fields instead of one.
+  // ⭐ AND `face` IS CARRIED THE SAME WAY AND FOR THE SAME REASON (2026-08-05). The deck-1 row is
+  // TURNED and both the other rows are not, so the blinded deck-filter leg below bites on a third
+  // field — and, more to the point, a `face` that this model silently dropped would let the Overview
+  // draw every device unturned while the Room Zoom turned it, which is precisely the two-contracts
+  // divergence this shape-parity test was written to catch on `open`.
   const rows = [
-    { x: 3, y: 4, deck: 1, kind: 8, cond: 10, oper: 0, open: 1, serv: 1 },
-    { x: 5, y: 4, deck: 1, kind: 13, cond: 250, oper: 1, open: 0, serv: 0 },
-    { x: 3, y: 4, deck: 2, kind: 8, cond: 200, oper: 1, open: 0, serv: 0 },   // same TILE, other deck
+    { x: 3, y: 4, deck: 1, kind: 8, cond: 10, oper: 0, open: 1, serv: 1, face: 2 },
+    { x: 5, y: 4, deck: 1, kind: 13, cond: 250, oper: 1, open: 0, serv: 0, face: 0 },
+    { x: 3, y: 4, deck: 2, kind: 8, cond: 200, oper: 1, open: 0, serv: 0, face: 0 },   // same TILE, other deck
   ];
   const d1 = deckDeviceConditions(rows, 1);
   assert.equal(d1.size, 2, 'two devices on deck 1');
   assert.deepEqual(d1.get('3,4'),
-    { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0, open: 1, serv: 1, air: 1, spend: -1 });
+    { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0, open: 1, serv: 1, air: 1, spend: -1, face: 2 });
   assert.equal(deckDeviceConditions(rows, 2).size, 1, 'the other deck carries its own one row');
   assert.equal(deckDeviceConditions(rows, 9).size, 0, 'an empty deck is empty, not everything');
   // ⚠️ THE DECK FILTER, BLINDED — CLAUDE.md's fifth trap in miniature. The wrong-deck row above sits
@@ -355,6 +360,8 @@ test('deckDeviceConditions keeps this deck only, and keys by tile like its room-
   assert.equal(d1.get('3,4').cond, 10,
     'the deck-2 row overwrote the deck-1 one — the deck filter is gone and every surface would draw\n'
     + 'another deck\'s wear on this one');
+  assert.equal(d1.get('3,4').face, 2,
+    'the deck-2 row overwrote the deck-1 one — third witness, on the facing.');
   assert.equal(d1.get('3,4').open, 1,
     'the deck-2 row overwrote the deck-1 one — same failure as the line above, caught on `open`\n'
     + 'instead of `cond`. Kept as a SECOND witness because the two fields come from different lanes\n'

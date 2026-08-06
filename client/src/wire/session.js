@@ -91,7 +91,15 @@ export const Cmd = {
   // string bunk/desk/chair/locker/plant/lamp/heater/growbed/medbed/table) or remove a placed one at a
   // tile on the given deck. Legality is decided sim-side at the tick boundary — the client never
   // ghosts an outcome; the item appears only when the sim confirms it in the next frame.
-  place: (kind, x, y, deck) => ({ cmd: 'place', kind, x, y, deck }),
+  // ⭐ `facing` (0..3, one quarter-turn each) IS OPTIONAL AND DEFAULTS TO 0 — 2026-08-05, the
+  // owner's *"I want to be able to rotate it (4× rotation)"*. The key is ALWAYS emitted, so the
+  // payload has one shape; the host's `Int(json,"facing")` answers 0 for an absent key anyway, so a
+  // client that predates this and one that sends 0 are indistinguishable at the sim, which is the
+  // wire-compatibility contract (`WebCommand.Facing`'s own doc). Masked here as well as at the host
+  // and again at `PlaceDeviceCommand`'s constructor: three cheap masks on a value that ends up
+  // packed into a shared hash word beside `NetworkId`.
+  // ⛔ DRAWING-ONLY at the far end — nothing in the sim reads the field. See `Device.Facing`.
+  place: (kind, x, y, deck, facing = 0) => ({ cmd: 'place', kind, x, y, deck, facing: (facing | 0) & 3 }),
   remove: (x, y, deck) => ({ cmd: 'remove', x, y, deck }),
   // ⛔ ⭐ `operate` IS DELETED (M3-15, OD-N, 2026-07-31). The owner's ruling is that *"the doors
   // should be open and closed via MOSS and MOSS should only be accessible once a MOSS server has been

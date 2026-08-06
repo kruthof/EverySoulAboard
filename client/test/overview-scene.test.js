@@ -15,8 +15,10 @@ import { decksView } from '../src/ui/decks-model.js';
 import {
   overviewScene, makeTransform, starfield, starLayerSvg, DECK, gridLayout, MIN_TILE,
   miniToScene, sceneToMini, floorToMini, miniToFloor,
-  layoutPawnLabels, LABEL_MAX_ROWS,
+  layoutPawnLabels, LABEL_MAX_ROWS, pawnLayerParts,
 } from '../src/ui/overview-scene.js';
+import { makePawnLayer } from '../src/ui/pawn-layer.js';
+import { stylesSource } from './styles-source.js';
 import { taskTag } from '../src/ui/console-model.js';
 import { markCellSvg, markVariant } from '../src/ui/mark-overlay.js';
 
@@ -39,6 +41,63 @@ const crewDeck1 = FIX.rosterDeck1.crew;
 
 function baseState(over = {}) {
   return { deck: 0, decksView: view, frame, crew, designs: FIX.designs.cells, marks: [], ...over };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE PAWNS LEFT THE SCENE STRING (2026-08-05, the client-side tween), AND THIS IS HOW THEY
+// ARE READ BACK.
+//
+// `overviewScene` no longer emits figures at all: `paintScene` assigns the whole plate to
+// `_stage.innerHTML` ~10×/s, so a `<g>` inside it is destroyed before it could be moved twice, and a
+// tween needs a node that outlives the message that moved it. The art is built by the pure
+// `pawnLayerParts` (FOOT-RELATIVE — every figure drawn around (0,0)) and mounted into a persistent
+// overlay `<svg>` by `pawn-layer.js`, which puts the person's screen position on the group's own
+// `transform`.
+//
+// ⛔ SO THE HELPER DRIVES THE REAL LAYER RATHER THAN RE-IMPLEMENTING IT. A hand-written
+// `'<g class="pl-pawn" …>' + part.html` here would be a SECOND copy of the mount contract — the exact
+// shape that lets a change to `makePawnLayer` (a different attribute, a different wrapper) leave this
+// file green while the surface draws nothing. `mountPawns` runs `sync` + `place` against a minimal
+// recording container and serializes what really landed, so every geometric assertion below is still
+// measured on EMITTED, ON-SCREEN coordinates — which is what made them worth writing.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** The smallest element the layer can mount into: attributes, innerHTML, a parent that keeps order. */
+function recEl() {
+  const e = {
+    attributes: {}, dataset: {}, innerHTML: '', children: [],
+    ownerDocument: null,
+    setAttribute(k, v) { this.attributes[k] = String(v); },
+    getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null; },
+    appendChild(c) { this.children.push(c); return c; },
+    remove() {},
+  };
+  e.ownerDocument = { createElementNS: () => recEl() };
+  return e;
+}
+
+/** What the Overview MOUNTS for `state`'s crew, serialized: `<g class="pl-pawn" data-cid="…"
+ *  transform="translate(x y)">…</g>` per drawn figure, placed at the newest sample (i.e. settled —
+ *  exactly where the plate drew them before the tween existed). */
+function mountPawns(st) {
+  const state = { deck: 0, ...st };
+  const deck = state.deck | 0;
+  const entry = (state.decksView || []).find((d) => d.deck === deck);
+  const t = makeTransform(entry ? entry.slots : [], state.frame);
+  const parts = pawnLayerParts(state.crew, deck, t, state.selectedCid, state.idPrefix || 'ov');
+  const host = recEl();
+  const layer = makePawnLayer(host, { groupClass: 'pl-pawn' });
+  layer.sync(parts);
+  layer.place(new Map(parts.map((p) => [String(p.cid), { x: p.x, y: p.y }])));
+  return host.children.map((g) => '<g class="' + g.attributes.class + '" data-cid="'
+    + g.attributes['data-cid'] + '" transform="' + (g.attributes.transform || '') + '">'
+    + g.innerHTML + '</g>').join('');
+}
+
+/** The `translate(x y)` a mounted group carries, as a pair. */
+function groupXY(chunkOrSvg) {
+  const m = /transform="translate\(([-\d.]+) ([-\d.]+)\)"/.exec(chunkOrSvg);
+  return m ? { x: +m[1], y: +m[2] } : { x: 0, y: 0 };
 }
 
 /**
@@ -87,13 +146,19 @@ function pawnLabels(svg) {
     if (!m) continue;
     const r = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/.exec(m[2]);
     const ln = /<line x1="([-\d.]+)"/.exec(m[2]);
+    // ⭐ THE ON-SCREEN RECT IS THE GROUP'S TRANSLATE PLUS THE LOCAL BOX, and this addition is the
+    // whole reason the helper above mounts through the real layer. The pill is emitted FOOT-RELATIVE
+    // now, so two pawns twenty tiles apart carry byte-identical local rects — an overlap sweep read
+    // off the local numbers would report every pair as overlapping and prove nothing. The sum is the
+    // same screen geometry the old absolute emission produced, arrived at the way the browser does.
+    const at = groupXY(chunk.slice(0, chunk.indexOf('>')));
     out.set(cid, {
       text: m[2].replace(/<[^>]*>/g, ''),
       work: m[1].includes('pl-tag-work'),
       crowded: m[1].includes('pl-tag-crowded'),
       leader: m[2].includes('<line '),
-      rect: r ? { x: +r[1], y: +r[2], w: +r[3], h: +r[4] } : null,
-      leaderX: ln ? +ln[1] : null,
+      rect: r ? { x: +r[1] + at.x, y: +r[2] + at.y, w: +r[3], h: +r[4] } : null,
+      leaderX: ln ? +ln[1] + at.x : null,
     });
   }
   return out;
@@ -254,7 +319,7 @@ test('the purpose mark is `roomType`, never `active` and — since M1-L — neve
 });
 
 test('on-deck crew are placed as pawns; off-deck crew are not', () => {
-  const svg = overviewScene(baseState({ deck: 0 }));
+  const svg = mountPawns(baseState({ deck: 0 }));
   const onDeck = crew.filter((c) => c.deck === 0);
   assert.ok(onDeck.length >= 1);
   assert.equal((svg.match(/class="pl-pawn"/g) || []).length, onDeck.length);
@@ -262,8 +327,79 @@ test('on-deck crew are placed as pawns; off-deck crew are not', () => {
   // surname tags render (uppercased last token)
   assert.match(svg, /HALLORAN|VEGA|SATO/);
   // a deck with no crew on it → no pawns
-  const svg7 = overviewScene(baseState({ deck: 7, frame: null }));
+  const svg7 = mountPawns(baseState({ deck: 7, frame: null }));
   assert.equal((svg7.match(/class="pl-pawn"/g) || []).length, 0);
+});
+
+// ⛔⛔ AND THE SCENE ITSELF DRAWS NOBODY — the guard against re-homing the figures (2026-08-05).
+//
+// A pawn layer concatenated back into `overviewScene` would look harmless and be two separate
+// defects: every crew member drawn TWICE (once animated in the overlay, once frozen in the scene,
+// a tile apart mid-walk), and the scene copy is the one that reads as "the glide is broken again".
+// The old layer-order property this replaces ("pawns above marks, ghosts and terminals") did not
+// weaken — it became STRUCTURAL, and its two halves are pinned right here: the scene has no figures,
+// and the stylesheet stacks the overlay above the stage.
+//
+// MUTATION: re-add `+ pawnLayerParts(...)` joined into `overviewScene`'s body ⇒ RED on leg 1.
+// MUTATION: `.ov-pawnlay{…z-index:1}` ⇒ RED on leg 3.
+test('the SCENE draws no figures — they live in the overlay, stacked above it', () => {
+  const svg = overviewScene(baseState({ deck: 0 }));
+  assert.equal(svg.indexOf('pl-pawn'), -1,
+    'the plate string carries a pawn again. It is assigned to `_stage.innerHTML` ~10x/s, so a figure '
+    + 'there cannot be tweened AND is drawn a second time under the overlay copy.');
+  // NON-VACUITY: the same state really does produce figures — through the overlay.
+  assert.ok(mountPawns(baseState({ deck: 0 })).includes('class="pl-pawn"'),
+    'nobody is drawn at all, so leg 1 is satisfied by an empty ship rather than by the re-home rule');
+  // …and the overlay is stacked ABOVE the scene mount, which is what carries "a mark never hides a
+  // person" now that it is not a concatenation order.
+  const css = stylesSource();
+  const zOf = (sel) => {
+    const m = new RegExp(sel.replace('.', '\\.') + '\\{[^}]*z-index:(\\d+)').exec(css);
+    return m ? Number(m[1]) : null;
+  };
+  assert.ok(zOf('.ov-stage') != null && zOf('.ov-pawnlay') != null,
+    'one of the two mounts has no z-index — the stacking is then document order, which this scan '
+    + 'cannot see, so the assertion below would be vacuous');
+  assert.ok(zOf('.ov-pawnlay') > zOf('.ov-stage'),
+    'the pawn overlay is stacked UNDER the plate: every mark, ghost, wash and terminal chip would '
+    + 'draw over the crew standing on it.');
+});
+
+// ⛔⛔ THE POINTER RULE ON THE OVERLAY IS TWO DECLARATIONS AND BOTH ARE LOAD-BEARING — and until this
+// test neither was measured. Since the figures left `#ov-stage`, a crew click is resolved by
+// `hitTest`'s `target.closest('.pl-pawn')` on a node in a SIBLING element, so:
+//   · the SHEET must be `pointer-events:none`, or the overlay covers the whole plate and every press
+//     on empty paper stops there instead of reaching the scene's room/tile hit test; and
+//   · the FIGURES must take it back with `pointer-events:auto`, or a press on a crew member falls
+//     through to the room behind her and selection silently stops working.
+// ⛔ THE RECEIPT, SPLIT BY WHO MEASURED WHAT (the repo's rule: a count you did not measure yourself
+// is not evidence). INDEPENDENT REVIEW measured the live consequence — with both deleted, clicking a
+// crew member on the plate went 8/8 → 0/8 in a running game while the node suite stayed 1523/1523
+// GREEN. THIS LANE measured the enforcement: with both deleted, exactly TWO legs in the whole
+// 1527-test suite go red — this one and `overview-model.test.js`'s pawn-overlay leg — and nothing
+// else in the suite notices at all.
+// A stylesheet fact needs a stylesheet assertion; the DRIVEN half — that the press reaches the
+// overlay's own listeners at all — is `overview-model.test.js`'s pawn-overlay leg.
+//
+// MUTATION: drop `.ov-pawnlay .pl-pawn{pointer-events:auto}` ⇒ RED on leg 2.
+// MUTATION: `.ov-pawnlay{…pointer-events:auto}` ⇒ RED on leg 1.
+test('the pawn overlay is transparent to the pointer, and the FIGURES are not', () => {
+  const css = stylesSource();
+  const peOf = (sel) => {
+    const m = new RegExp(sel.replace(/\./g, '\\.') + '\\{[^}]*pointer-events:(\\w+)').exec(css);
+    return m ? m[1] : null;
+  };
+  assert.equal(peOf('.ov-pawnlay'), 'none',
+    'the pawn overlay sheet takes the pointer. It is `inset:0` over the whole plate, so every press '
+    + 'on empty paper would stop at it and the compartment/tile hit test would never run — rooms '
+    + 'would stop opening and armed orders would stop landing.');
+  assert.equal(peOf('.ov-pawnlay .pl-pawn'), 'auto',
+    'the FIGURES do not take the pointer back. `hitTest` resolves a crew click through '
+    + '`target.closest(".pl-pawn")`, so with the sheet transparent and the figures transparent too, '
+    + 'a press on a crew member lands on the room behind her: clicking a pawn silently stops '
+    + 'selecting anybody, which is the affordance the owner reported by name on 2026-07-29.');
+  // NON-VACUITY: the reader really can tell the two apart, and really can come back empty.
+  assert.equal(peOf('.ov-nosuchclass'), null, 'the scan matches a selector that is not in the sheet');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -320,7 +456,7 @@ test('WP-8: the fixture can actually DRIVE the work-marker acceptance (the anti-
 });
 
 test('WP-8: a WORKING pawn is tagged with its task; an idle one is NOT', () => {
-  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1, marks: marksDeck1 }));
+  const svg = mountPawns(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1, marks: marksDeck1 }));
   const labels = pawnLabels(svg);
   assert.equal(labels.size, crewDeck1.length, 'every on-deck crew member must carry a label');
 
@@ -357,7 +493,7 @@ test('WP-8: en-route and walking crew get NO tag — only work AT A PLACE counts
     { cid: 91, name: 'Bo Vance', role: 'crew', deck: 1, x: 20, y: 5, task: 'Walking to 7,11 (no task)' },
     { cid: 92, name: 'Cy Idris', role: 'crew', deck: 1, x: 35, y: 5, task: 'Servicing scrubber_ls' },
   ];
-  const labels = pawnLabels(overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: synthetic })));
+  const labels = pawnLabels(mountPawns(baseState({ deck: 1, frame: frameDeck1, crew: synthetic })));
   assert.equal(labels.get('90').text, 'ROSS');
   assert.equal(labels.get('90').work, false);
   assert.equal(labels.get('91').text, 'VANCE');
@@ -396,7 +532,7 @@ test('WP-8: labels DE-CLUTTER — same-row pills never overlap, and a lifted one
 
   // And in the real SVG a lifted label draws a leader line back to its pawn (an unattached pill
   // floating over a crowd is worse than no pill).
-  const labels = pawnLabels(overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: cluster })));
+  const labels = pawnLabels(mountPawns(baseState({ deck: 1, frame: frameDeck1, crew: cluster })));
   const lifted = [...cluster].filter((c) => lay.get(String(c.cid)).row > 0);
   assert.ok(lifted.length >= 1);
   for (const c of lifted) {
@@ -438,7 +574,7 @@ const OVERLAP_CASES = [
 
 test('WP-8: NO two visible pills overlap — measured on the EMITTED rects, in both axes', () => {
   for (const [name, crew] of OVERLAP_CASES) {
-    const labels = pawnLabels(overviewScene(baseState({ deck: 1, frame: frameDeck1, crew })));
+    const labels = pawnLabels(mountPawns(baseState({ deck: 1, frame: frameDeck1, crew })));
     // Non-vacuity: an empty or rect-less parse would make "0 overlaps" true of nothing.
     assert.equal(labels.size, crew.length, `${name}: parsed ${labels.size} labels for ${crew.length} crew`);
     for (const [cid, l] of labels) {
@@ -456,7 +592,7 @@ test('WP-8: NO two visible pills overlap — measured on the EMITTED rects, in b
 test('WP-8: the two properties that must survive de-cluttering — a work tag is never hidden, and a '
   + 'leader line points at its OWN pawn', () => {
   for (const [name, crew] of OVERLAP_CASES) {
-    const labels = pawnLabels(overviewScene(baseState({ deck: 1, frame: frameDeck1, crew })));
+    const labels = pawnLabels(mountPawns(baseState({ deck: 1, frame: frameDeck1, crew })));
     let leaders = 0;
     for (const [cid, l] of labels) {
       assert.ok(!(l.work && l.crowded),
@@ -528,12 +664,15 @@ test('the selected crew is marked, and exactly one of them is', () => {
   // in a document whose collision-freedom is pinned two tests below. The property is unchanged:
   // exactly the selected pawn is marked, and no selection marks nobody.
   const cid = crew[0].cid;
-  const svg = overviewScene(baseState({ deck: 0, selectedCid: cid }));
-  const sel = /<g class="pl-pawn" data-cid="([^"]+)"><path d="M[^"]*" stroke="#14120F"/g;
+  const svg = mountPawns(baseState({ deck: 0, selectedCid: cid }));
+  // ⚠️ THE GROUP CARRIES A `transform` NOW (the mount places the figure), so the underline is no
+  // longer the byte immediately after `data-cid="…">`. Anchoring on the literal would be a FALSE RED
+  // about a package that did not touch the selection rule.
+  const sel = /<g class="pl-pawn" data-cid="([^"]+)"[^>]*><path d="M[^"]*" stroke="#14120F"/g;
   const marked = [...svg.matchAll(sel)].map((m) => m[1]);
   assert.deepEqual(marked, [String(cid)], 'the selection rule is under the wrong pawn, or under none');
   // no selection → nothing marked at all
-  const svgNone = overviewScene(baseState({ deck: 0 }));
+  const svgNone = mountPawns(baseState({ deck: 0 }));
   assert.equal([...svgNone.matchAll(sel)].length, 0);
   // …and the plate's OTHER selection cue: the compartment she is in takes the design's 2.2 px border.
   const anchor = view[0].slots[0].anchorName;
@@ -750,12 +889,17 @@ test('WP-2: marks are placed on their own tiles, OVER the furniture and under th
   const iRooms = svg.indexOf('<g class="pl-rooms">');
   const iMarks = svg.indexOf('<g class="pl-marks"');
   const iFurn = svg.indexOf('<g class="pl-furniture"');
-  const iPawns = svg.indexOf('<g class="pl-pawns">');
   assert.ok(iRooms >= 0 && iMarks > iRooms, 'marks must draw over the room floors');
   assert.ok(iFurn >= 0 && iMarks > iFurn,
     'marks must draw OVER the furniture — a condemned DEVICE now carries fg 26, and beneath its own '
     + 'sprite its ✕ is invisible (the owner-reported symptom, one layer lower)');
-  assert.ok(iPawns > iMarks, 'marks must draw UNDER the pawns');
+  // ⭐ "UNDER THE PAWNS" IS NOT AN OFFSET IN THIS STRING ANY MORE (2026-08-05, the client-side
+  // tween): the figures are in a persistent overlay stacked above the whole plate, so no layer built
+  // here can cover one — which is strictly stronger than being concatenated first. The two halves
+  // that now carry it are pinned by their own test above ('the SCENE draws no figures'); what stays
+  // here is the half THIS fixture can see, namely that the scene really did stop drawing them.
+  assert.equal(svg.indexOf('pl-pawn'), -1,
+    'a figure is back in the plate string, under the mark layer this test is about');
 
   // Geometry: each mark lands inside the projected box of a cell that really carries its byte.
   const t = makeTransform(view.find((d) => d.deck === 1).slots, frameDeck1);
@@ -806,7 +950,11 @@ test('WP-2: the mark layer keeps the scene deterministic and adds no ids', () =>
   // `pl-glow`; the glow layer is deleted with the warm skin, and the mark layer's successor on the
   // plate is whichever of ghosts/terminals/pawns this fixture produces — so the anchor is the NEXT
   // top-level `pl-` layer, and the assertion below proves the slice really is the mark layer.
-  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g><g class="pl-/.exec(svg);
+  // ⚠️ …OR THE END OF THE DOCUMENT. The pawn layer was the last of those successors and it has left
+  // the string entirely (the overlay), so on a fixture whose deck authors no ghost and no terminal
+  // the mark layer is now the final layer — an anchor that REQUIRES a successor would fail for a
+  // reason that has nothing to do with the ids this test is about (TRAPS-3's FALSE RED family).
+  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g>(?:<g class="pl-|<\/svg>)/.exec(svg);
   assert.ok(layer, 'the mark layer was not found where the layer order puts it — this pin has rotted');
   assert.ok(layer[1].includes('class="mk mk-'), 'the extracted slice is not the mark layer');
   assert.equal((layer[1].match(/\bid="/g) || []).length, 0,

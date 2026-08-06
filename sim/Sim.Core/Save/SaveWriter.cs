@@ -50,7 +50,9 @@ namespace Perilune.Sim
         public const ushort TileVersion = 2;    // v2: + per-tile Material array (byte[n]) per level
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
         public const ushort CitizenVersion = 9; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove; v8 +the work-priority grid, WorkIncapable, Skill, HeldByOrder (M2-1); v9 the one Skill byte WIDENS to a per-work-type array (M3-7, OD-M item 8A)
-        public const ushort DeviceVersion = 6;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner; v5: + Scriptable (E0-6); v6: + Faulted (OD-O/M3-16)
+        // v7: + Facing (2 bits in a byte, drawing-only — Device.Facing's own doc carries the
+        // divergence from RimWorld and the pin-neutrality obligation).
+        public const ushort DeviceVersion = 7;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner; v5: + Scriptable (E0-6); v6: + Faulted (OD-O/M3-16)
         public const ushort ItemVersion = 3;    // v2: + Label; v3: bool ReservedForJob → uint ReservedBy (owner id)
         public const ushort ScriptVersion = 1;
         public const ushort DefsVersion = 1;    // v1: ulong checksum of the sim's active SimDefs
@@ -325,6 +327,9 @@ namespace Perilune.Sim
                 w.Write(d.LockOwner);       // v4
                 w.Write(d.Scriptable);      // v5 (E0-6)
                 w.Write(d.Faulted);         // v6 (OD-O / M3-16 — the authored dead board)
+                // v7 — masked at the WRITER too, so a corrupt in-memory value cannot be persisted
+                // and then read back as truth on the next load.
+                w.Write((byte)(d.Facing & 3));
             }
         }
 

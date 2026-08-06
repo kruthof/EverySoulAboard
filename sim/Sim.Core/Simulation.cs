@@ -553,6 +553,12 @@ namespace Perilune.Sim
                               | (d.Powered ? 1UL << 10 : 0)
                               | (d.Scriptable ? 1UL << 11 : 0)   // E0-6 (DEVC v5)
                               | (d.Faulted ? 1UL << 12 : 0)      // OD-O / M3-16 (DEVC v6)
+                              // ⭐ THE FACING, bits 13–14 — the two free bits between `Faulted`'s 12
+                              // and `NetworkId`'s 16 (DEVC v7). MASKED `& 3` HERE AS WELL AS AT THE
+                              // COMMAND: an unmasked 4 would land in bit 15 and then in NetworkId's
+                              // range, which is the `RoomType.Cryo = 16` alias this file already
+                              // carries a post-mortem for. Facing 0 leaves the word byte-identical.
+                              | ((ulong)(d.Facing & 3) << 13)      // 2026-08-05 (DEVC v7)
                               | ((ulong)d.NetworkId << 16)
                               | ((ulong)(uint)BitConverter.SingleToInt32Bits(d.Rate) << 32);
                 h = XxHash64.Combine(h, state);

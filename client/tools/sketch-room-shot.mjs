@@ -39,10 +39,18 @@ import {
   roomScene, scenePlacement, roomCutawaySvg, roomHatchDef, roomTitleSvg, roomDimensionsSvg,
   roomDoorsSvg, roomTileRect, M_PER_TILE,
 } from '../src/ui/room-model.js';
-import { standItem, pawnSvg } from '../src/ui/roomzoom-view.js';
+import { standItem, pawnParts } from '../src/ui/roomzoom-view.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { sketch, LEVELS } from '../src/render/sketch.js';
+
+// ⛔ `pawnSvg` IS GONE (main, 2026-08-05, the client-side tween): the figures moved into a persistent
+// overlay `<svg>` so a repaint cannot destroy an in-flight animation, and `pawnParts` now returns
+// FOOT-RELATIVE parts plus the foot point instead of one placed string. A still image has no overlay
+// and no tween, so it places them itself — the same `translate` the live layer writes.
+const pawnsSvg = (list, focus, sel, place) => pawnParts(list, focus, sel, place)
+  .map((p) => `<g transform="translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})">${p.html}</g>`).join('');
+
 
 const here = dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -96,7 +104,10 @@ function plate(level) {
   // (a fitting does not move), so the piece is the same drawing every tick and a different drawing
   // from its twin. THAT is what the determinism rule is protecting — not sameness, REPEATABILITY.
   const art = FITTINGS.filter(([, dx, dy]) => inRoom(dx, dy)).map(([id, dx, dy]) => {
-    const raw = standItem(id, rx + dx, ry + dy, place, `rm-${level}-${id}-${dx}-${dy}`, undefined,
+    // ⛔ `facing` IS 7th AND THE OPTS BAG IS 8th (the merge with `lane/pawn-tween`). Passing the bag
+    // 7th is SILENT: `{ sketch: false }` is read as a facing, never reaches the builder, and the
+    // "original" column becomes the treated art compared against itself.
+    const raw = standItem(id, rx + dx, ry + dy, place, `rm-${level}-${id}-${dx}-${dy}`, undefined, 0,
       { sketch: false });
     return level === 'original' ? raw : sketch(raw, { level, seed: `${id}@${dx},${dy}` });
   }).join('');
@@ -109,7 +120,7 @@ function plate(level) {
     + roomCutawaySvg(scene, {})
     + roomDoorsSvg(scene, FOCUS, doors)
     + art
-    + pawnSvg(crew, FOCUS, 627, place)
+    + pawnsSvg(crew, FOCUS, 627, place)
     + roomDimensionsSvg(scene);
 
   return { scene, svg: `<svg width="${scene.viewBox.w}" height="${scene.viewBox.h}" `
