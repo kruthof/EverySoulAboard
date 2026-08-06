@@ -208,6 +208,23 @@ so the main tree IS the gated lane tree at `64ba593` (final full gate exit 0, tw
   · MOSS `>` echo vs `›` prompt · PROGRAM gutter marker overlaps 1-digit line numbers ·
   `perilune-moss-terminal.spec.md` §4 carries a SUPERSEDED banner, full rewrite filed.
 
+## ⭐⭐ PIN M4-b (2026-08-06, session M) — THE FIRST MENTAL BREAK MOVED THREE PINS
+
+**M4-9 merged: P1 `7bdd0d6f7756dfdc` → `7c70c1befe848cc7` (twin MATCH) · P2 `cb09b584a5f15e52` →
+`55437c9e5f5d4c95` · P3 `43a1a5c25713faec` → `6f1fcfda3312c87a` · P4/P5 HELD (two paths each).**
+Cause: FOLD WIDENING + THE DWELL COUNTER (CITZ v9→v10, five hashed fields), NOT behaviour — the
+2×2's third cell returns the old pin to the digit with the ladder live (CLAUDE.md carries the full
+narrative; tag `pin/m4-b`). ⚠️ P1's crew end BELOW the minor threshold (−37.06 vs −34.15): the hold
+is a WINDOW. ⛔ No pin sees a tier, a reset rule or any behaviour — `MentalBreakTests` (40 legs,
+one BLINDED leg per claim gate) + `HowSheIsTests` (10) are the ONLY instruments.
+- FILED for M5 (charter's own ruling): the wreck left alone NEVER reaches rung 1 (21 sim-days,
+  peak dwell 111 150/864 000; crew die day 19 of AIR). The PLAYER-reachable path ships today: a
+  crew member held on a standing order starves all three needs → mood −75.00 exactly → EXTREME
+  break at tick 750 899 (~20.9 sim-h); released control −31.07, dwell 0.
+- Residual: no leg-count/nameof guard on MentalBreakTests' 40 legs (two were once spliced out and
+  restored; a recurrence would be silent). Filed rig flake: persona-shot ~1-in-3 on M4-2's [U]
+  step, false-RED only (close = wait on the SELECTION, M4-2's seam).
+
 ## Next
 
 1. **The playtest 2026-08-07.** All three pre-playtest ⭐ rulings are in; the chain test's
