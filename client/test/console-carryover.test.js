@@ -35,7 +35,7 @@ import { NUDGE_MS } from '../src/ui/console-model.js';
 // The Room Zoom's occupant renderer, exported at the rework so its honesty rule can be DRIVEN (C5)
 // rather than read out of the source. Importing the module is DOM-free: it touches `document` only
 // inside its init/paint functions.
-import { pawnSvg } from '../src/ui/roomzoom-view.js';
+import { pawnParts } from '../src/ui/roomzoom-view.js';
 import { stylesSource } from './styles-source.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -445,7 +445,7 @@ test('C5: the Room Zoom work tag is DRIVEN, not scanned — an idle occupant get
     { cid: 3, role: 'crew', x: 7, y: 4, task: 'Heading to dig out 6,6' },
     { cid: 4, role: 'crew', x: 9, y: 4, task: 'Crafting at recycler_1' },
   ];
-  const svg = pawnSvg(crew, { rx: 2, ry: 3 });
+  const svg = pawnParts(crew, { rx: 2, ry: 3 }).map((p) => p.html).join('');
   const tags = [...svg.matchAll(/class="rz-worktag"[\s\S]*?monospace">([^<]*)<\/text>/g)].map((m) => m[1]);
   assert.deepEqual(tags, ['DIG', 'CRAFT'],
     `the Room Zoom tagged ${JSON.stringify(tags)}. Exactly the two crew doing a job at a place may `

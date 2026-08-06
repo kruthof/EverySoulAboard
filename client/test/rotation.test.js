@@ -28,6 +28,8 @@ import { dirname, join } from 'node:path';
 import { roomFrame, PX_PER_CM } from '../src/render/oblique.js';
 import { SPECS, FITTING_IDS, frameFor, roomBox, geometryFor, BOX } from '../src/items/fittings.js';
 import * as PaperFixtures from '../src/items/paper-fixtures.js';
+import * as Machines from '../src/items/machines.js';
+import * as PaperResources from '../src/items/paper-resources.js';
 import { buildItem, ITEMS } from '../src/items/index.js';
 import { decode, decodeDecks, decodeRooms, decodeDevices } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
@@ -38,6 +40,7 @@ import {
 import { Cmd } from '../src/wire/session.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
+import { codeOnly } from './code-only.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -331,31 +334,70 @@ test('⭐⭐ A TURNED PIECE STILL FILLS ITS BOX — the drawn ink matches the FA
   assert.equal(checked, 24, 'non-vacuity: the sweep ran');
 });
 
-test('⭐⭐ THE SECOND CATALOGUE TURNS TOO — paper-fixtures reaches the facing through the shared door', () => {
+/** Every catalogue that draws through `fittings.geometryFor`, as `[name, ids, specs]`. Derived from
+ *  the modules' own exports, so a FIFTH catalogue joins the sweep by existing rather than by being
+ *  remembered — which is the whole failure mode this list exists to close. */
+const CATALOGUES = [
+  ['paper-fixtures', PaperFixtures.FIXTURE_IDS || Object.keys(PaperFixtures.SPECS), PaperFixtures.SPECS],
+  ['machines', Machines.MACHINE_IDS || Object.keys(Machines.SPECS), Machines.SPECS],
+  ['paper-resources', PaperResources.RESOURCE_IDS || Object.keys(PaperResources.SPECS), PaperResources.SPECS],
+];
+
+test('⭐⭐ EVERY OTHER CATALOGUE TURNS TOO — they all reach the facing through the shared door', () => {
   // ⛔⛔ AND THIS ONE EXISTS BECAUSE J11 CAME BACK GREEN. Dropping the facing from
   // `paper-fixtures.frameFor` left every suite passing: main's `paper-fixtures.test.js` predates
   // rotation and this file's own sweeps walked `FITTING_IDS` only. The result would have been ONE
   // rotation verb that works on 34 pieces and silently does nothing on the other 14 — the exact
   // asymmetry the merge resolution threaded `facing` through `geometryFor` to prevent, left unpinned.
-  const ids = PaperFixtures.FIXTURE_IDS || Object.keys(PaperFixtures.SPECS);
-  assert.ok(ids.length >= 10, 'non-vacuity: the second catalogue has pieces (' + ids.length + ')');
-  let turned = 0, square = 0;
-  for (const id of ids) {
-    const sp = PaperFixtures.SPECS[id];
-    const at = (f) => buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: f });
-    assert.equal(at(1), buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: 1 }),
-      id + ' is not deterministic at facing 1');
-    assert.ok(!/NaN|undefined/.test(at(0) + at(1) + at(2) + at(3)), id + ' emitted NaN at some facing');
-    // Facing 0 must remain byte-identical to no facing at all — the compatibility half.
-    assert.equal(at(0), buildItem(id, { w: 240, h: 240, idPrefix: 'pf' }),
-      id + ': passing facing 0 is not the same as passing no facing');
-    if (sp.w !== sp.d) {
-      assert.notEqual(at(1), at(0), id + ': a quarter-turn draws the same picture as facing 0');
-      assert.notEqual(at(3), at(0), id + ': a three-quarter turn draws the same picture as facing 0');
-      turned++;
-    } else square++;
+  // ⛔⛔ THE SWEEP IS OVER **EVERY** CATALOGUE BECAUSE THE HOLE KEEPS COMING BACK. It was written for
+  // `paper-fixtures` after mutation J11 came back GREEN, and at the very next merge `machines.js`
+  // (13 pieces) and `paper-resources.js` (9) arrived carrying the SAME shape — each with a private
+  // copy of `extents`/`scaleOf` and its own facing-less `roomFrame`. Nothing was red; a new
+  // catalogue simply cannot turn, silently, and only a sweep that enumerates them all notices.
+  let turned = 0, square = 0, swept = 0;
+  for (const [name, ids, specs] of CATALOGUES) {
+    assert.ok(ids.length >= 5, `non-vacuity: ${name} has pieces (${ids.length})`);
+    for (const id of ids) {
+      const sp = specs[id];
+      const at = (f) => buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: f });
+      assert.equal(at(1), buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: 1 }),
+        `${name}/${id} is not deterministic at facing 1`);
+      assert.ok(!/NaN|undefined/.test(at(0) + at(1) + at(2) + at(3)),
+        `${name}/${id} emitted NaN at some facing`);
+      // Facing 0 must remain byte-identical to no facing at all — the compatibility half.
+      assert.equal(at(0), buildItem(id, { w: 240, h: 240, idPrefix: 'pf' }),
+        `${name}/${id}: passing facing 0 is not the same as passing no facing`);
+      if (sp.w !== sp.d) {
+        assert.notEqual(at(1), at(0), `${name}/${id}: a quarter-turn draws the same picture as facing 0`);
+        assert.notEqual(at(3), at(0), `${name}/${id}: a three-quarter turn draws the same picture as facing 0`);
+        turned++;
+      } else square++;
+      swept++;
+    }
   }
-  assert.ok(turned >= 10, `non-vacuity: only ${turned} non-square fixtures were swept (${square} square)`);
+  assert.ok(swept >= 30, `non-vacuity: only ${swept} pieces swept across ${CATALOGUES.length} catalogues`);
+  assert.ok(turned >= 25, `non-vacuity: only ${turned} non-square pieces turned (${square} square)`);
+});
+
+test('NO CATALOGUE KEEPS A PRIVATE FRAME DERIVATION — they all go through geometryFor', () => {
+  // ⛔ THE STRUCTURAL HALF of the sweep above: the behaviour test says "these pieces turn today",
+  // this says "and none of them can quietly stop". A module that builds its OWN `roomFrame` inside
+  // its `frameFor` has by construction no way to receive a facing, which is precisely how machines
+  // and paper-resources arrived. Comment-stripped (trap 1) with a negative control.
+  for (const f of ['paper-fixtures', 'machines', 'paper-resources']) {
+    const code = codeOnly(readFileSync(join(HERE, `../src/items/${f}.js`), 'utf8'));
+    const frameFn = /export function frameFor(?:Spec)?\([\s\S]{0,600}?\n\}/.exec(code);
+    assert.ok(frameFn, `${f}: no frameFor to inspect — this guard has rotted`);
+    assert.ok(/geometryFor\s*\(/.test(frameFn[0]),
+      `${f}'s frameFor does not go through fittings.geometryFor — it has a private derivation again, `
+      + 'so its pieces cannot receive a facing and will silently never turn');
+    assert.ok(!/roomFrame\s*\(/.test(frameFn[0]),
+      `${f}'s frameFor builds its own roomFrame — the facing has nowhere to enter`);
+  }
+  // NEGATIVE CONTROL: the detector must fire on the shape it is looking for.
+  const bad = 'export function frameFor(id) {\n  return roomFrame(1, 1, 1, 1, {});\n}';
+  assert.ok(/roomFrame\s*\(/.test(bad) && !/geometryFor\s*\(/.test(bad),
+    'the private-derivation detector cannot detect a private derivation');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -412,7 +454,7 @@ const devicesMsg = (face) => ({
 });
 
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pulse', 'rz-zonekey', 'rz-toast',
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast',
   'rz-nudge', 'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-cost',
   'rz-minimap', 'rz-hint', 'rz-ctx', 'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];

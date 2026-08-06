@@ -592,13 +592,21 @@ test('the Room Zoom draws the item layer, and main.js dispatches the channel', (
 test('the item stacks are drawn ABOVE furniture and BELOW pawns', () => {
   const iFurn = ROOMZOOM.indexOf('body += furnitureSvg(');
   const iItem = ROOMZOOM.indexOf('body += itemStackSvg(');
-  const iPawn = ROOMZOOM.indexOf('body += pawnSvg(');
-  assert.ok(iFurn > 0 && iItem > 0 && iPawn > 0, 'the three layer lines must all be found — '
+  assert.ok(iFurn > 0 && iItem > 0, 'the two layer lines must both be found — '
     + 'this scan has rotted and the ordering below would compare -1s');
   assert.ok(iItem > iFurn,
     'the item layer is concatenated BEFORE the furniture layer, so a device sprite is painted over '
     + 'it — reproducing GlyphMapper pass 4\'s erasure in the client after removing it from the wire');
-  assert.ok(iPawn > iItem, 'a crew member must never be hidden behind a stack');
+  // ⭐ "BELOW PAWNS" LEFT THIS CONCATENATION ENTIRELY (2026-08-05, the client-side tween), and the
+  // guarantee got STRONGER: the figures are in a persistent overlay `<svg>` that is a LATER SIBLING
+  // of `#rz-layers`, so every layer built into `body` — this one included — is under every crew
+  // member unconditionally, with no line order left to get wrong. What has to be guarded is the
+  // regression: a pawn layer concatenated back into `body` would draw everyone twice AND would be
+  // destroyed by `innerHTML =` ten times a second, which is what the overlay exists to prevent.
+  assert.equal(ROOMZOOM.indexOf('body += pawnSvg('), -1,
+    'a pawn layer is being concatenated into the room scene again — a crew member drawn there cannot '
+    + 'be tweened (the mount is rebuilt wholesale every repaint) and would be drawn a second time on '
+    + 'top of the overlay copy');
 });
 
 // ═════════════════════════════════════════════════════════════════ the scans' own controls

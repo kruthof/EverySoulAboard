@@ -58,7 +58,7 @@ function slotFocus(anchor) {
 
 /** ⭐ `rz-ghost` IS IN THIS LIST AND THE FIRST TEST PINS IT — see the vacuity note in the header. */
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pulse', 'rz-zonekey', 'rz-toast',
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-ghost', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast',
   'rz-nudge', 'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-cost',
   'rz-minimap', 'rz-hint', 'rz-ctx',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',

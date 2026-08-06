@@ -15,7 +15,7 @@
 
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 
@@ -326,7 +326,9 @@ test('paletteCommand maps every one of the twenty-one tools to a class + verb', 
     assert.equal(byTool[t].deviceKind, dk);
   }
   assert.deepEqual(byTool.rug, { cls: 'cosmetic', verb: 'decor', itemId: 'rug' });
-  assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'bookshelf' });
+  // — lane/paper-machines — `itemId` was `'bookshelf'` until 2026-08-05. This is the only draw site
+  // in the client that reaches a cosmetic piece, so it is the only one the paper machines rewire.
+  assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'book-case' });
   assert.deepEqual(byTool.demolish, { cls: 'demolish', verb: null });
   // The THREE ORDER verbs. `verb` is the WIRE verb name, not 'build': an order is a designation, and
   // routing it through Cmd.build would hand it to BuildSystem (controls.js:52-58). STOCKPILE joined
@@ -542,7 +544,9 @@ test('roomCells clamps to the room rect + deck and skins glyphs to items / unkno
 
 test('itemForGlyph maps device glyphs, skips floor/wall, and is empty for the unmapped', () => {
   assert.equal(itemForGlyph('D'.charCodeAt(0)), 'desk');
-  assert.equal(itemForGlyph('P'.charCodeAt(0)), 'potted-plant');
+  // — lane/paper-machines — `'P'` (PlantPot) moved from the warm `potted-plant` to the paper
+  // `plant-pot` on 2026-08-05. What this leg asserts is unchanged: a device glyph resolves to a piece.
+  assert.equal(itemForGlyph('P'.charCodeAt(0)), 'plant-pot');
   assert.equal(itemForGlyph('.'.charCodeAt(0)), '');
   assert.equal(itemForGlyph('#'.charCodeAt(0)), '');
   assert.equal(itemForGlyph('z'.charCodeAt(0)), '');
@@ -583,6 +587,101 @@ test('roomMaterialTiles skins every in-room wall + only non-default floors', () 
   assert.deepEqual(walls.find((t) => t.tx === 6 && t.ty === 8), { tx: 6, ty: 8, kind: 'wall', mat: 0 }); // no channel entry → default
   assert.deepEqual(floors, [{ tx: 7, ty: 7, kind: 'floor', mat: 4 }]); // only the materialed floor
   assert.deepEqual(roomMaterialTiles(frame, { ...room, deck: 9 }, materials), []); // wrong deck → empty
+});
+
+// ── THE OWNER'S DEFECT, 2026-08-05: "as soon as the pawn stands on the corresponding square, the
+//    carpet disappears until the pawn is out of the square." `GlyphMapper` pass 5 writes
+//    `Glyphs.Citizen` (64) over the whole cell, so the materialed floor's '.' is gone from the frame.
+//    Each leg is its own `test()` — a bare `assert` throws and a multi-leg test would report only
+//    the first failure (TRAPS 5th shape).
+const CARPET = [{ x: 7, y: 7, deck: 1, kind: 1, mat: 4 }]; // a floor material at (7,7), inside `room`
+const pawnAt77 = () => frameWith([[7, 7, '@']]);           // 64 = Glyphs.Citizen over that same tile
+
+test('roomMaterialTiles keeps a materialed FLOOR under a pawn (the citizen glyph is not a reason to take up the carpet)', () => {
+  const tiles = roomMaterialTiles(pawnAt77(), room, CARPET);
+  assert.deepEqual(tiles.filter((t) => t.kind === 'floor'),
+    [{ tx: 7, ty: 7, kind: 'floor', mat: 4, occluded: true }]);
+});
+
+test('roomMaterialTiles: a pawn on a DEFAULT floor adds nothing (the non-default rule is preserved)', () => {
+  // Same frame, same pawn, but the channel carries mat 0 for that tile — which is how the host
+  // publishes a default floor: `BuildMaterials` skips `mat == 0`, so the row is simply absent.
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, [{ x: 7, y: 7, deck: 1, kind: 1, mat: 0 }]), []);
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, []), []);       // absent row → same answer
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, null), []);     // no channel at all
+});
+
+test('roomMaterialTiles: NO STALE GHOST — the materials channel is the authority, the glyph only gated visibility', () => {
+  // The player rips the carpet up WHILE the pawn is standing on it: the channel row goes away (the
+  // host re-walks `level.Material` every render), the pawn does not. The tile must vanish AT ONCE.
+  // This is the leg that a "remember the last glyph on this tile" memo would fail — the design
+  // `roomCells`' fallback header rejects for the same reason.
+  assert.deepEqual(roomMaterialTiles(pawnAt77(), room, []), []);
+  // …and the same tile with the pawn gone and the carpet gone is likewise empty (control: the
+  // emptiness above is not an artefact of the citizen glyph).
+  assert.deepEqual(roomMaterialTiles(frameWith([]), room, []), []);
+});
+
+test('roomMaterialTiles: the pawn LEAVING changes nothing but the occluded flag', () => {
+  const under = roomMaterialTiles(pawnAt77(), room, CARPET);
+  const after = roomMaterialTiles(frameWith([]), room, CARPET); // glyph back to '.' (46)
+  assert.deepEqual(after, [{ tx: 7, ty: 7, kind: 'floor', mat: 4 }]);
+  assert.deepEqual(under.map(({ occluded, ...t }) => t), after);   // same tiles, same mats, same kinds
+  assert.equal(after.some((t) => t.occluded), false);              // the flag is only for restored tiles
+});
+
+test('roomMaterialTiles: the citizen arm classifies from the CHANNEL kind byte, not "floor by construction"', () => {
+  // `BuildMaterials` derives `kind` from `level.Wall[idx]` — the same world plane pass 1 reads to
+  // choose '#' over '.'. A citizen glyph can never actually mask a wall (a wall tile is not
+  // `TileFlags.Walkable`), but the arm reads the published fact rather than relying on that rule.
+  const walls = roomMaterialTiles(pawnAt77(), room, [{ x: 7, y: 7, deck: 1, kind: 0, mat: 4 }]);
+  assert.deepEqual(walls, [{ tx: 7, ty: 7, kind: 'wall', mat: 4, occluded: true }]);
+});
+
+test('the `materials` channel has exactly ONE consumer, and the Overview plate is not it', () => {
+  // ⭐ THE OTHER HALF OF THE OWNER'S DEFECT, MEASURED RATHER THAN REMEMBERED. The obvious worry when
+  // fixing the citizen overwrite in `roomMaterialTiles` is that the Level-1 plate reads floor
+  // materials off the glyph grid too and carries the same hole. IT DOES NOT — and the reason is
+  // historical: the warm Overview DID paint "tile rects washed with material colours", and VR-P4
+  // replaced that whole layer with the compartment grid (`overview-scene.js`'s own header names the
+  // replacement). So there is no second seam to fix.
+  //
+  // ⛔ AND THAT CLAIM IS A COUNT, WHICH MEANS IT HAS TO BE MEASURED HERE OR IT ROTS. A comment
+  // saying "one consumer" is worth nothing the day someone adds a second one; this scan fails by
+  // name instead. Comment-stripped (`codeOnly`) so a call that is merely commented out cannot keep
+  // it green — CLAUDE.md trap 1 — with an inclusion control below so a scan that can find nothing
+  // cannot pass as a scan that found nothing.
+  const dir = join(HERE, '../src');
+  const files = [];
+  (function walk(d) {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(d, e.name));
+      else if (e.name.endsWith('.js')) files.push(join(d, e.name));
+    }
+  })(dir);
+  assert.ok(files.length > 30, `only ${files.length} client sources walked — the scan would be vacuous`);
+  const CALL = /\b(decodeMaterials|roomMaterialTiles)\s*\(/;
+  // The two DECLARATIONS are not call sites: `function roomMaterialTiles(` matches the same shape,
+  // and counting a definition as a consumer would put every seam's own file in every census.
+  const calls = (src) => CALL.test(codeOnly(src).replace(/function\s+(decodeMaterials|roomMaterialTiles)\s*\(/g, ''));
+  const names = files.filter((f) => calls(readFileSync(f, 'utf8'))).map((f) => f.slice(dir.length + 1)).sort();
+  assert.deepEqual(names, ['ui/roomzoom-view.js'],
+    'the `materials` channel must be CALLED in exactly ONE place — the Room Zoom. '
+    + `Found: ${names.join(', ')}. If the Overview plate is in that list it has grown a floor-material `
+    + 'layer, and it needs the same citizen-glyph arm `roomMaterialTiles` just grew.');
+  // INCLUSION CONTROL: the scan does fire on the shape it is looking for, and is not satisfied by a
+  // commented-out call or by the declaration it deliberately discounts.
+  assert.ok(calls('  x = roomMaterialTiles(a,b,c);\n'), 'the scan cannot see a real call — it is vacuous');
+  assert.ok(!calls('  // x = roomMaterialTiles(a,b,c);\n'), 'a commented-out call kept the scan green');
+  assert.ok(!calls('export function roomMaterialTiles(frame, focusRoom, materials) {\n'),
+    'the declaration counted as a call — every seam would name its own file');
+});
+
+test('roomMaterialTiles: NARROW ON PURPOSE — pass 3/4 overdraws are NOT repaired here (filed, measured)', () => {
+  // Ground items (pass 3) and devices (pass 4) also overdraw a materialed floor's glyph. This is the
+  // measurement behind the FILED note in the seam's header: a bed standing on the carpet still drops
+  // the tile. Asserting it means widening the arm later cannot happen silently.
+  assert.deepEqual(roomMaterialTiles(frameWith([[7, 7, 'b']]), room, CARPET), []);
 });
 
 test('roomDecor clamps decor to the room + deck', () => {
@@ -1240,10 +1339,20 @@ test('WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body
   const iMat = src.indexOf('materialLayerSvg(');
   const iZone = src.indexOf('zoneLayerSvg(');
   const iMark = src.indexOf('markLayerSvg(');
-  const iPawn = src.indexOf('body += pawnSvg(');
   const iFurn = src.indexOf('body += furnitureSvg(');
   assert.ok(iMat > 0 && iZone > 0 && iMark > iMat && iMark > iZone, 'the mark layer must draw last of the floor layers');
-  assert.ok(iPawn > iMark, 'the mark layer must draw UNDER the pawns');
+  // ⭐ "UNDER THE PAWNS" IS NO LONGER A LINE'S POSITION IN THIS CONCATENATION, and the guarantee got
+  // STRONGER rather than weaker (2026-08-05, the client-side tween). The figures left `body` for a
+  // persistent overlay `<svg>` that is a LATER SIBLING of `#rz-layers` — so every layer built here is
+  // below every pawn, unconditionally, and no future reordering of these lines can put a scrim over a
+  // person. What must be guarded instead is that nobody puts them BACK: a second copy of the figures
+  // inside `body` would draw every crew member twice, once animated and once not.
+  assert.equal(src.indexOf('body += pawnSvg('), -1,
+    'the pawn layer is being concatenated into `body` again. It belongs in the persistent `#rz-pawnlay` '
+    + 'overlay — a figure inside `_layers` is destroyed by `innerHTML =` ~10x/s and cannot be tweened, '
+    + 'and a copy in both places draws every crew member twice.');
+  assert.match(src, /_pawnLayer\.sync\(pawnParts\(/,
+    'nothing hands the built pawn parts to the persistent overlay, so the room draws no people at all');
   // …and ABOVE the furniture, since the device-strip fix landed: a condemned DESK now carries fg 26,
   // and beneath its own opaque sprite the amber ✕ is invisible — the owner's exact reported symptom,
   // with the byte present and correct. Inert for debris/dig (glyph 37 is in NON_FURNITURE, so the
@@ -1306,7 +1415,7 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
 // where it is answered.
 
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   // ⭐ THE HINT LINE, registered here because the neutral-first-screen package gave it two texts
   // and therefore a node reference. It is a `<div>`, so the start-tag scanner below (which lifts
@@ -4636,7 +4745,20 @@ function vrMount({ vacuum = false } = {}) {
     ? { type: 'rooms', rooms: FIX.rooms.rooms.concat([['hold', DECK1, 0, 0, 0, 293, 96]]) }
     : FIX.rooms);
   rzEnter('hold');
-  return rzLayers.innerHTML;
+  // ⭐ BOTH DRAWN LAYERS (2026-08-05, the client-side tween). The cutaway and every floor layer are
+  // in `#rz-layers`, which is rebuilt wholesale each repaint; the FIGURES are in `#rz-pawnlay`, a
+  // persistent sibling `<svg>` whose per-cid `<g>` nodes survive that rebuild so a tween can move
+  // them between two roster samples. This census is about what the SCENE CONTAINS, so it reads the
+  // picture rather than one of its two mounts — the guarantee that the figures are ABOVE everything
+  // in `#rz-layers` is now structural (later sibling) and is asserted in its own leg below.
+  return rzLayers.innerHTML + rzPawnHtml();
+}
+
+/** The pawn overlay's markup. It is populated by `appendChild`, not by an `innerHTML` string, so the
+ *  per-cid groups are read off the children. */
+function rzPawnHtml() {
+  const lay = rzDoc.getElementById('rz-pawnlay');
+  return ((lay && lay.childNodes) || []).map((nd) => nd.innerHTML || '').join('');
 }
 
 /** The scene + placement the controller itself derives for the hold — the parity source. */
@@ -4685,7 +4807,11 @@ test('VR-P3 (assembled): every piece of the cutaway is CONCATENATED into the mou
       ['the ground-item layer', (s) => s.includes('class="rz-items"')],
       ['the blocked layer', (s) => s.includes('class="rz-blockeds"')],
       ['the blocked reason SENTENCE', (s) => s.includes('NO WAY TO WALK TO IT')],
-      ['the pawn layer', (s) => s.includes('class="rz-pawns"')],
+      // ⚠️ THE MARKER MOVED WITH THE LAYER, not with the drawing: the `<g class="rz-pawns">` wrapper
+      // died with the concatenated layer, and each figure is its own persistent group in the overlay
+      // now. `class="rz-pawn"` is the sprite group itself — one per crew member drawn — which is the
+      // thing this census was ever about.
+      ['the pawn layer', (s) => s.includes('class="rz-pawn"')],
       ['the queued-order ghost layer', (s) => s.includes('class="rz-ghosts"')],
     ];
     const missing = rows.filter(([, hit]) => !hit(svg)).map(([name]) => name);
@@ -4929,7 +5055,9 @@ test('VR-P3 (assembled): the mark, zone and blocked layers are SHEARED into the 
     pair('the MARK layer', [...marksLayer.matchAll(/<g transform="(matrix\([^)]*\))"><g class="mk /g)].map((m) => mat(m[1])));
     const zoneLayer = svg.slice(svg.indexOf('<g class="rz-zones"'), svg.indexOf('<g class="rz-decor"'));
     pair('the ZONE layer', [...zoneLayer.matchAll(/<g class="rz-zone[^"]*" transform="(matrix\([^)]*\))"/g)].map((m) => mat(m[1])));
-    const blockedLayer = svg.slice(svg.indexOf('<g class="rz-blockeds"'), svg.indexOf('<g class="rz-pawns"'));
+    // …to the END of the document rather than to the (now deleted) pawn wrapper: the pattern below is
+    // specific to `rz-blocked`, and nothing after this layer emits one.
+    const blockedLayer = svg.slice(svg.indexOf('<g class="rz-blockeds"'));
     pair('the BLOCKED layer', [...blockedLayer.matchAll(/<g transform="(matrix\([^)]*\))"><g class="rz-blocked /g)].map((m) => mat(m[1])));
     assert.deepEqual(fails, [], fails.join('\n'));
   } finally { vrRestore(); }
@@ -5093,6 +5221,195 @@ test('VR-P3 (assembled): a ground-item pile STANDS at its own tile through the s
   } finally { vrRestore(); }
 });
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE CLIENT-SIDE TWEEN, DRIVEN ON THE REAL SURFACE (2026-08-05).
+//
+// `pawn-tween.test.js` proves the interpolation maths and the layer's node lifecycle in isolation.
+// What CANNOT be proved there is the thing the whole package rests on: that the figure's DOM node
+// really outlives the repaint that rebuilds the room around it. `client/test/pawn-tween.test.js`
+// mounts into a recording stub; this mounts into the SHIPPING controller, drives real wire messages
+// through `Hud`, and compares node references across a repaint that provably happened.
+//
+// MUTATION, APPLIED AND MEASURED (not asserted): `_pawnSvgEl.innerHTML = ''` immediately before the
+// sync — the exact thing a wholesale-rebuilt mount does to the subtree it holds — makes this test RED
+// at *the layer grew duplicates*, because the layer's bookkeeping and the DOM then disagree about
+// which nodes exist. Reverted from an in-memory copy (TRAPS §2). It is red for the right reason: the
+// figures cannot live anywhere that is assigned wholesale, whatever the assignment is spelled.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('DRIVEN: the pawn node SURVIVES a repaint that rebuilds the whole room', async () => {
+  const f = rzEnter('hold');
+  const walker = { cid: 5150, name: 'Ada Ozawa', role: 'engineer', deck: f.deck,
+    x: f.rx + 4, y: f.ry + 2, task: '' };
+  Hud.renderRoster({ type: 'roster', crew: [walker] });
+  await new Promise((r) => setTimeout(r, 40));
+
+  const lay = rzDoc.getElementById('rz-pawnlay');
+  assert.equal(lay.childNodes.length, 1, 'the room drew no figure at all — every leg below is vacuous');
+  const node = lay.childNodes[0];
+  assert.equal(node.getAttribute('data-cid'), String(walker.cid));
+  const sceneBefore = rzLayers.innerHTML;
+  const artBefore = node.innerHTML;
+  assert.ok(artBefore.includes('class="rz-pawn"'), 'the figure carries no sprite');
+
+  // A REAL REPAINT: three sub-tile steps, exactly the cadence the host sends while she walks.
+  for (const fx of [f.rx + 4.2, f.rx + 4.5, f.rx + 4.8]) {
+    Hud.renderRoster({ type: 'roster', crew: [{ ...walker, fx, fy: walker.y }] });
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  // NON-VACUITY FIRST: the scene really was torn down and rebuilt in that window. Without this the
+  // "node survived" claim is satisfied by a surface that never repainted at all.
+  assert.notEqual(rzLayers.innerHTML, '', 'the scene mount is empty — nothing repainted');
+  assert.equal(rzLayers.innerHTML, sceneBefore,
+    'precondition note: the cutaway is unchanged by a pure roster move, which is exactly why the '
+    + 'figures had to leave it — every one of those repaints assigned this whole string again');
+
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes.length, 1, 'the layer grew duplicates');
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes[0], node,
+    'the pawn node was REPLACED across a repaint. Nothing can be animated between two roster '
+    + 'messages if the node does not survive them — this is the entire reason the figures are not '
+    + 'in `#rz-layers`.');
+  assert.equal(node.innerHTML, artBefore,
+    'her markup was rebuilt although nothing about the ART changed (same task, same selection). '
+    + 'That tears down the sprite the tween is moving, ~10 times a second.');
+  // …and the node was PLACED: it carries a transform, which is the one thing the frame loop writes.
+  assert.match(String(node.getAttribute('transform') || ''), /^translate\(-?[\d.]+ -?[\d.]+\)$/,
+    'the figure carries no transform, so every crew member is drawn at the layer origin');
+});
+
+/** What the SHARED selection flow (`hud.js`) sent. `initConsole`'s FIRST statement assigns `_send`;
+ *  everything after it is console chrome this document cannot host, hence the try/catch — the same
+ *  pattern `zoom-pawn.test.js` uses for the same reason. */
+const rzHudSent = [];
+try { Hud.initConsole({ send: (o) => rzHudSent.push(o) }); } catch { /* chrome, not state */ }
+
+/** A plain click at the centre of a tile of the CURRENTLY focused room, through the real canvas
+ *  handler — the gesture a player makes to select a crew member (no tool armed). */
+function rzClickTile(tx, ty) {
+  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(_rzFocusNow, tx, ty) });
+}
+let _rzFocusNow = null;
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ YOU SELECT WHAT YOU CAN SEE — AND SINCE THE TWEEN, THAT IS NO LONGER `crewHitAtTile` ALONE.
+//
+// `crewHitAtTile` matches the tile of the NEWEST WIRE SAMPLE. The tween deliberately draws the body
+// BETWEEN the last two samples (no extrapolation), so the figure stands one tile short of the sample
+// for most of every render interval — and on a HELD ship it stays there until the player starts the
+// ship again. Independent review measured `round(drawn) != round(sample)` on 11.0% of moving frames
+// and a held-ship click drive at 14/17 against a base client's 11/12: the 2026-07-29 "cannot select a
+// pawn by clicking on him" affordance coming back for a new reason.
+//
+// The view now asks its own interpolator first (`crewDrawnAtTile`) and falls back to
+// `crewHitAtTile`. These legs drive the case that matters — a figure whose DRAWN tile and SAMPLE
+// tile are DIFFERENT TILES — through the real mounted surface and the real click handler.
+//
+// MUTATION (applied, RED, reverted): drop the `crewDrawnAtTile(...) ||` first pass in `onCanvasClick`
+//   ⇒ the click on her feet selects NOBODY ⇒ red on leg 1.
+// ⚠️ MEMBERSHIP IS GUARDED TWICE, AND NEITHER SINGLE REMOVAL IS OBSERVABLE — said out loud rather
+//   than left as a comfortable "either suffices". `_tween` is fed only `roomCrew(here)`, AND
+//   `crewDrawnAtTile` iterates `roomCrew` again; deleting either one alone leaves the suite green
+//   (measured, both ways). The never-widen leg therefore drives the case where BOTH are gone —
+//   `_tween.sample((crew || []).map(…))` plus a raw-list iteration ⇒ RED. Both are kept: the filter
+//   in the lookup is what a future lane will read, and the filter on the feed is what keeps the
+//   tween from tracking pawns this surface never draws.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('DRIVEN: mid-glide, a click on her FEET selects her — not on the tile the wire is aiming at', async () => {
+  const f = rzEnter('hold'); _rzFocusNow = f;
+  const sim = { x: f.rx + 5, y: f.ry + 3 };
+  const walker = { cid: 7007, name: 'Ada Ozawa', role: 'engineer', deck: f.deck, x: sim.x, y: sim.y, task: '' };
+  // ⭐ THE SHAPE THAT MAKES THE TWO ANSWERS DIFFER, built deliberately: sample A sits a whole tile
+  // back, sample B lands just short of the sim tile. `drawnTile(B)` rounds to the SIM tile, which is
+  // what `crewHitAtTile` answers — while the tween, which never extrapolates, is still drawing her
+  // near A. The long gap between the two renders makes the measured interval ~250 ms (the model's
+  // ceiling), so the 40 ms coalesced repaint below leaves her ~16% along and unambiguously in A's
+  // tile. This is the live 11%-of-frames case, made deterministic.
+  const A = { fx: sim.x - 1, fy: sim.y };
+  const B = { fx: sim.x - 0.05, fy: sim.y };
+  const drawnStart = { x: Math.round(A.fx), y: Math.round(A.fy) };
+  const sampleTile = { x: Math.round(B.fx), y: Math.round(B.fy) };
+  assert.notDeepEqual(drawnStart, sampleTile,
+    'the fixture no longer straddles a tile line — this leg would pass on the broken client too');
+  assert.deepEqual(sampleTile, sim, 'fixture check: the newest sample rounds to her sim tile');
+
+  Hud.renderRoster({ type: 'roster', crew: [{ ...walker, ...A }] });
+  await new Promise((r) => setTimeout(r, 400));      // …so the MEASURED interval is the 250 ms ceiling
+  Hud.renderRoster({ type: 'roster', crew: [{ ...walker, ...B }] });
+  await new Promise((r) => setTimeout(r, 40));       // the coalesced repaint that mounts + samples
+
+  rzSent.length = 0; rzHudSent.length = 0;
+  rzClickTile(drawnStart.x, drawnStart.y);
+  assert.deepEqual(rzHudSent, [{ cmd: 'click', x: sim.x, y: sim.y }],
+    'clicking the tile her BODY is standing in selected nobody. The tween draws her behind the '
+    + 'newest sample by design, so a hit test on the sample alone answers for bare floor she has not '
+    + 'reached — which is the affordance the owner reported by name on 2026-07-29, coming back for a '
+    + 'new reason.');
+  // …and the wire command still carries her SIM tile: the host resolves a click through
+  // `Citizen.Pos`, so this is the one consumer that must NOT follow the drawing.
+  assert.equal(rzHudSent[0].x, sim.x, 'the command must address the SIM tile, not the drawn one');
+
+  // ⭐ THE SAMPLE TILE STILL WORKS TOO — the tween pass is an ADDITION, not a replacement. A player
+  // aiming slightly ahead of a walking figure keeps the behaviour that shipped with the glide.
+  rzHudSent.length = 0;
+  rzClickTile(sampleTile.x, sampleTile.y);
+  assert.deepEqual(rzHudSent, [{ cmd: 'click', x: sim.x, y: sim.y }],
+    'the `crewHitAtTile` fallback stopped answering — the tween pass replaced it instead of '
+    + 'preceding it, so a client with the loop off would select nobody at all');
+
+  // NON-VACUITY: a tile with nobody drawn on it and nobody sampled on it still selects nobody.
+  rzHudSent.length = 0;
+  rzClickTile(sim.x + 3, sim.y + 2);
+  assert.deepEqual(rzHudSent, [], 'bare floor selected somebody');
+  Hud.renderRoster({ type: 'roster', crew: [] });
+});
+
+test('DRIVEN: the tween pass NEVER widens who can be selected — only the room\'s own crew', async () => {
+  const f = rzEnter('hold'); _rzFocusNow = f;
+  // ⛔⛔ THE OUTSIDER STANDS ON A TILE **INSIDE** THIS ROOM'S RECT, ON ANOTHER DECK — and the first
+  // draft of this leg did not, which made it VACUOUS. It put her three tiles beyond the room's right
+  // edge, where `onCanvasClick`'s own `tileAt` returns null ("outside the room", IX-Z-11) and the
+  // crew hit test is never reached at all: BOTH membership filters could be deleted and the leg
+  // stayed green (measured, twice). A wrong-DECK crew member on an in-room tile is the only shape
+  // where the click really lands and only membership can refuse her.
+  const tile = { x: f.rx + 4, y: f.ry + 2 };
+  const otherDeck = { cid: 7008, name: 'Bo Ashby', role: 'crew', deck: f.deck + 1,
+    x: tile.x, y: tile.y, fx: tile.x, fy: tile.y, task: '' };
+  Hud.renderRoster({ type: 'roster', crew: [otherDeck] });
+  await new Promise((r) => setTimeout(r, 40));
+  rzHudSent.length = 0;
+  rzClickTile(tile.x, tile.y);
+  assert.deepEqual(rzHudSent, [],
+    'a crew member on ANOTHER DECK was selectable by clicking this room\'s floor. `crewDrawnAtTile` '
+    + 'must narrow `roomCrew`, never replace it — the drawn-tile membership contract is the wire\'s '
+    + '(`WireFormat.RosterEntry.Fx`), not this view\'s to widen.');
+
+  // …and the SAME click on the SAME tile selects a crew member who IS in the room, so the refusal
+  // above is membership and not a dead click path.
+  const insider = { ...otherDeck, cid: 7009, deck: f.deck };
+  Hud.renderRoster({ type: 'roster', crew: [insider] });
+  await new Promise((r) => setTimeout(r, 40));
+  rzHudSent.length = 0;
+  rzClickTile(tile.x, tile.y);
+  assert.deepEqual(rzHudSent, [{ cmd: 'click', x: tile.x, y: tile.y }],
+    'the same tile selects nobody even for this room\'s own crew — the leg above proves nothing');
+  Hud.renderRoster({ type: 'roster', crew: [] });
+});
+
+test('DRIVEN: leaving the room drops the figures — a closed surface holds no pawn state', async () => {
+  const f = rzEnter('hold');
+  Hud.renderRoster({ type: 'roster', crew: [
+    { cid: 5151, name: 'Bo Ashby', role: 'crew', deck: f.deck, x: f.rx + 3, y: f.ry + 2, task: '' },
+  ] });
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes.length, 1, 'precondition: somebody is drawn');
+  rzApi.exit();
+  assert.equal(rzDoc.getElementById('rz-pawnlay').childNodes.length, 0,
+    'the figures are still mounted with the room shut. They would be the FIRST thing painted on the '
+    + 'next room the player opens — in the old room\'s projection.');
+  Hud.renderRoster({ type: 'roster', crew: [] });
+});
+
 /**
  * ⭐ MAJOR 3(b) — A CREW MEMBER IS A PERSON-SIZED FIGURE, and this leg exists because a mutation
  * SURVIVED. `PAWN_M 1.66 → 1.0` drew every soul at 60 % of their height — a room of children,
@@ -5105,8 +5422,12 @@ test('VR-P3 (assembled): a ground-item pile STANDS at its own tile through the s
 test('VR-P3 (assembled): a crew member is drawn between 1.5 m and 1.9 m tall', () => {
   try {
     const svg = vrMount();
-    const pawns = svg.slice(svg.indexOf('<g class="rz-pawns"'));
-    const m = /<g class="rz-pawn" transform="translate\([-\d.]+ [-\d.]+\) scale\(([\d.]+)\)">/.exec(pawns);
+    // ⚠️ THE `<g class="rz-pawns">` WRAPPER IS GONE with the layer that held it — each figure is now
+    // its own persistent `<g class="rz-pawn-root">` in the overlay, and the sprite group inside it is
+    // drawn around the FEET (0,0) with the person's screen position carried on the parent's
+    // `transform`. So the scale is read straight off the sprite group; the translate beside it is the
+    // sprite's own foot offset, not the pawn's place in the room, and this leg was never about that.
+    const m = /<g class="rz-pawn" transform="translate\([-\d.]+ [-\d.]+\) scale\(([\d.]+)\)">/.exec(svg);
     assert.ok(m, 'no pawn was drawn in the mounted scene — this leg is vacuous');
     // The sprite's own viewBox is 24 units tall (`render/pawn-svg.js`'s feet contract), so the drawn
     // height in scene px is `scale × 24`, and the surface's rule is `ROOM_SCALE` px per centimetre.
@@ -5370,7 +5691,13 @@ test('the device-tile fallback resolves EVERY DeviceKind — the 29-kind round-t
     // `GLYPH_SUBSTITUTE['*']` onto the paper luminaire). The BORROW is unchanged in shape — a
     // cosmetic row worn by a live `DeviceKind` — which is why this row survives the repoint
     // instead of leaving the census. Auto-merge could not see this; the suite went red on it.
-    ['Light', 'lamp-sconce'], ['WaterTank', 'oxygen-tank'], ['SalvageRecycler', 'water-recycler'],
+    // ⚠️ `WaterTank` AND `SalvageRecycler` REPOINTED ON THIS MERGE (lane/paper-machines moved
+    // `GLYPH_SUBSTITUTE['O']` onto `bottle-rack` and `['Y']` onto `reclaimer-stack`, so the whole
+    // plant is paper). Same shape as the `Light` repoint below it: the BORROW is unchanged — a row
+    // belonging to another `DeviceKind` worn by a live one — only the drawing moved. ⛔ BOTH OF
+    // THESE AUTO-MERGED CLEAN AND THEN WENT RED, exactly as `Light` and the Door leg did, which is
+    // the third time this control has caught a repoint no textual merge could see.
+    ['Light', 'lamp-sconce'], ['WaterTank', 'bottle-rack'], ['SalvageRecycler', 'reclaimer-stack'],
     ['Radiator', 'space-heater'], ['MedCabinet', 'locker'], ['IceMelter', 'cooker'],
   ];
   for (const [kind, piece] of BORROWERS) {

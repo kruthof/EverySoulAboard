@@ -90,20 +90,37 @@ function idsIn(svg) {
 // ⚠️ 93 + 14 → 107 ON THE MERGED TREE (main × lane/paper-fixtures). RE-DERIVED off the merged
 // registry with `node -e` over the real export, never summed from the two lanes' literals — each
 // lane's number was correct on its own tree and wrong on this one (TRAPS 8th shape).
-test('the registry holds exactly 107 items', () => {
-  assert.equal(ITEM_IDS.length, 107);
-  assert.equal(Object.keys(ITEMS).length, 107);
+// ⚠️ 107 → 120 on 2026-08-05 (lane/paper-machines). `client/src/items/machines.js` draws the ship's
+// own PLANT — reactor, solar wing, gas bottles, reclaimer, paste column, med cot, fab cell, ring
+// array, dish, plant pot, book case, turret, sleeper pod — thirteen pieces the owner's fittings
+// catalogue never covered and which were still wearing `objects.js`'s mock art. Every one is a NEW
+// row: the thirteen warm rows they replace stay registered at `glyph: null`, so this is an addition
+// of thirteen and not a re-skin of thirteen, and both halves are visible in the tally below.
+// ⚠️ 120 IS RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines) with `node -e` over the real
+// export — never summed from either lane's literal. The lane's own tree said 93 and main said 107;
+// both were correct there and wrong here (TRAPS 8th shape).
+test('the registry holds exactly 120 items', () => {
+  assert.equal(ITEM_IDS.length, 120);
+  assert.equal(Object.keys(ITEMS).length, 120);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 39 functional, 38 cosmetic, 12 material, 18 resource', () => {
-  // ⚠️ RE-DERIVED OFF THE MERGED TREE (main × lane/paper-fixtures) with `node -e` over the real
-  // export: FUNCTIONAL 39, COSMETIC 38, MATERIAL 12, RESOURCE 18. Neither lane's tally is right
-  // here — main read 33/30/12/18 and the lane read 35/38/12/9 — because each moved a different
-  // pair of classes. Summing them would have been a guess (TRAPS 8th shape).
+test('the class tally holds: 47 functional, 43 cosmetic, 12 material, 18 resource', () => {
+  // ⚠️ RE-DERIVED OFF THE MERGED TREE (main × lane/paper-machines) with `node -e` over the real
+  // export: FUNCTIONAL 47, COSMETIC 43, MATERIAL 12, RESOURCE 18, total 120. ⛔ NEITHER SIDE'S
+  // TALLY IS RIGHT HERE — main read 39/38/12/18 and the lane read 37/35/12/9 — because each moved a
+  // different pair of classes off a different base. Summing them would have been a guess, and this
+  // is the third merge in a row where that guess would have been wrong (TRAPS 8th shape).
+  // ⚠️ THE MACHINES HALF: functional +8 and cosmetic +5. Eight of the thirteen machines name a
+  // `DeviceKind` (six the sim projects today plus Reactor and OxygenTank, which it does not yet —
+  // see the `deviceStatus:new` test below); five name none and are decor, exactly as their warm
+  // predecessors were. Nothing was RE-CLASSIFIED: the warm rows kept their class and lost only
+  // their glyph, which is why both numbers grew and neither shrank.
+  // ⚠️ RE-DERIVED EARLIER OFF main × lane/paper-fixtures: FUNCTIONAL 39, COSMETIC 38, MATERIAL 12,
+  // RESOURCE 18 — kept as the previous step in the chain, superseded by the four numbers above.
   // ⚠️ RE-COUNTED AGAIN AFTER THE CAPSULES AND CELLS: FUNCTIONAL 29 → 33, and it was the ONLY class
   // that moved — the mirror image of VR-P2's move, and the tell that these four are DEVICE art and
   // the nine before them were decor. All four name a `DeviceKind` the sim really has (`CryoPod`,
@@ -136,7 +153,7 @@ test('the class tally holds: 39 functional, 38 cosmetic, 12 material, 18 resourc
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 39, cosmetic: 38, material: 12, resource: 18 });
+  assert.deepEqual(by, { functional: 47, cosmetic: 43, material: 12, resource: 18 });
 });
 
 // ⚠️ THE PAINTING IS NOT PINNED BY ANY COUNT ABOVE, AND VR-P2 IS THE PROOF: twenty-one rows swapped
@@ -327,9 +344,14 @@ test('every registry entry has a valid kind + a callable builder + a size', () =
 // claims its own glyph and is reachable by projection rather than only by the Radiator's borrow.
 // This assertion is the reason that claim cannot be made in prose: a piece whose `deviceStatus` says
 // `new` while a live DeviceKind projects it is a registry lie.
-test('the three remaining NEW device kinds are flagged deviceStatus:new', () => {
+// ⚠️ THREE BECAME FIVE ON 2026-08-05, AND THE TWO NEW ONES ARE NOT NEW FACTS ABOUT THE SIM. They are
+// `reactor-plant` and `bottle-rack`, the PAPER drawings of the same two kinds `reactor` and
+// `oxygen-tank` have been waiting on: `DeviceKind.Reactor` and `DeviceKind.OxygenTank` still do not
+// exist in `sim/Sim.Core/Entities/Device.cs`. So the list grows because the ART grew, not because the
+// enum did — which is the honest reading and the reason the guard is a NAMED LIST rather than a count.
+test('the five NEW device kinds are flagged deviceStatus:new', () => {
   const news = ITEM_IDS.filter((id) => ITEMS[id].deviceStatus === 'new').sort();
-  assert.deepEqual(news, ['cooker', 'oxygen-tank', 'reactor']);
+  assert.deepEqual(news, ['bottle-rack', 'cooker', 'oxygen-tank', 'reactor', 'reactor-plant']);
   assert.equal(ITEMS['space-heater'].deviceStatus, 'exists',
     'space-heater must read `exists` — DeviceKind.Heater (28) projects it directly since M3-10');
   assert.equal(ITEMS['space-heater'].glyph, 'E', 'and it must carry the glyph the sim projects');

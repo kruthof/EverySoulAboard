@@ -228,13 +228,13 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 36 |
-| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 3 |
-| **FUNCTIONAL total** | **39** |
-| COSMETIC (view-only `decor`, non-hashed) | 38 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 42 |
+| FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 5 |
+| **FUNCTIONAL total** | **47** |
+| COSMETIC (view-only `decor`, non-hashed) | 43 |
 | MATERIAL (wall/floor tint) | 12 |
 | RESOURCE (ground stack, a sim `ItemKind`) | 18 |
-| **Total** | **107** |
+| **Total** | **120** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -242,6 +242,26 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **107 → 120 ON THE MERGED TREE (main × lane/paper-machines, 2026-08-05), and TWO classes moved:
+FUNCTIONAL 39 → 47 and COSMETIC 38 → 43.** Every number in the Tally above is **RE-DERIVED off the
+merged `ITEMS` with `node -e`, never summed** (TRAPS 8th shape): this lane measured 80 → 93 against a
+tree without the capsules-and-cells rows, without the nine paper ground stacks and without the
+fourteen paper fixtures, and main measured 107 without these thirteen. The merged truth is
+**42 [exists] + 5 [NEW] = 47 FUNCTIONAL · 43 COSMETIC · 12 MATERIAL · 18 RESOURCE = 120**.
+
+`client/src/items/machines.js` draws the ship's own plant — the thirteen pieces neither design
+document covers — and every one is a NEW row rather than a re-skin: `reactor-plant`, `solar-wing`,
+`bottle-rack`, `reclaimer-stack`, `paste-column`, `med-cot`, `fab-cell`, `ring-array`, `dish-mast`,
+`plant-pot`, `book-case`, `deck-turret`, `sleeper-pod`. The thirteen WARM rows they replace
+(`reactor`, `solar-panel`, `oxygen-tank`, `water-recycler`, `paste-dispenser`, `med-bed`,
+`fabricator`, `sensor-array`, `comms-dish`, `potted-plant`, `bookshelf`, `turret`, `cryopod`) are
+kept, at `glyph: null`, so this Tally counts both halves and neither number shrank. **[NEW] went
+3 → 5** for a reason that is about ART and not about the sim: `reactor-plant` and `bottle-rack` are
+paper drawings of the same two kinds `reactor` and `oxygen-tank` were already waiting on, and
+`DeviceKind.Reactor` / `DeviceKind.OxygenTank` still do not exist. Six glyphs moved to the new rows
+— `'G'` SolarWing, `'R'` Reclaimer, `'d'` MedBed, `'F'` Fabricator, `'x'` Telescope, `'P'` PlantPot —
+and `GLYPH_SUBSTITUTE`'s `'O'` and `'Y'` were repointed to `bottle-rack` and `reclaimer-stack`.
 
 ⚠️ **93 → 107 ON THE MERGED TREE (main × lane/paper-fixtures, 2026-08-05).** Every number in the
 Tally above is **RE-DERIVED off the merged `ITEMS` with `node -e`, never summed** (TRAPS 8th shape):

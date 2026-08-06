@@ -8013,11 +8013,19 @@ leave the pins still*. `AllFourFacingsFoldDistinctly` is the second half: a one-
 
 **⚠️ THE DRAWING HALF HAS A NAMED HOLE AND IT IS NOT A DEFECT IN THE FIELD.** The turn happens in the
 ENV FRAME (`oblique.roomFrame`'s `plan`: the piece's own centimetres are swapped and mirrored BEFORE
-projection), so **all 48 catalogue pieces across BOTH paper catalogues** — 34 in `fittings.js` and 14
-in `paper-fixtures.js`, counts RE-DERIVED off the merged tree rather than carried forward — rotate
-without one builder knowing rotation exists. (The number read "thirty" when this section was written
-against a pre-merge tree; both catalogues reach the drawing scale through the one shared
-`geometryFor(spec, facing)` door, which is what makes the second one turn at all.) The
+projection), so **all 70 catalogue pieces across ALL FOUR paper catalogues** — 34 `fittings.js` + 14
+`paper-fixtures.js` + 13 `machines.js` + 9 `paper-resources.js`, every count RE-DERIVED off the
+merged tree with `node -e` over the modules' own exports rather than carried forward or added up —
+rotate without one builder knowing rotation exists.
+
+⚠️ **THAT NUMBER HAS BEEN WRONG TWICE AND BOTH TIMES FOR THE SAME REASON**, which is why it is now
+stated with its derivation attached: it read "thirty" against the tree this section was written on,
+then "48" one merge later, and each intervening lane added a catalogue that quietly did NOT turn.
+Every one of them had the same shape — a private copy of `extents`/`scaleOf` and its own facing-less
+`roomFrame` inside its `frameFor` — so the facing had nowhere to enter and nothing was red. All four
+now reach the drawing scale through the ONE shared `geometryFor(spec, facing)` door, and
+`rotation.test.js` carries both a behavioural sweep over every catalogue's exports and a STRUCTURAL
+guard that fails any module whose `frameFor` builds its own `roomFrame` again. The
 ~20 device rows still wearing PRE-REDESIGN WARM ART have no centimetre spec at all (charter §4, P2b
 FILED), so **MEDBED, PLANT and LAMP carry a facing through sim, save and wire and draw the same
 picture at all four.** That is P2b's boundary, not a new gap.

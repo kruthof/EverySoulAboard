@@ -42,6 +42,8 @@ import { decksView, atmosByAnchor } from './decks-model.js';
 // art by matching the palette row's `deviceKind` against the registry's own `deviceKind` column —
 // see `ghostArtId`, and its note on why that is a derivation rather than an eleventh hand table.
 import { buildItem, isResourceItem, ITEMS } from '../items/index.js';
+// The PLACED piece's own resolver — the ghost now shares it rather than paralleling it.
+import { itemIdForGlyphChar } from '../items/glyph-map.js';
 // THE WEAR JOIN, and the ONLY door from a surface to the wrecked twins (client/src/items/wear.js
 // carries the threshold and its justification; `client/test/wrecked.test.js` pins that this file
 // never imports `wrecked.js` itself).
@@ -102,6 +104,11 @@ import {
 // and the ledger cannot count one ship two ways. `Hud.getLedger` is already on `SHIP_STATE_REACH`
 // (client/test/surface-boundary.test.js) — this adds no symbol to that pinned list.
 import { partsUnits } from './ledger-model.js';
+// ⭐ THE CLIENT-SIDE TWEEN (2026-08-05). Pure math in the model, node lifecycle in the layer; this
+// file owns only the clock and the two hand-offs. See `pawn-tween-model.js`' header for the five
+// interpolation rules and `pawn-layer.js`' for the measured overlay-vs-re-adoption decision.
+import { makePawnTween, makePausableClock } from './pawn-tween-model.js';
+import { makePawnLayer, prefersReducedMotion } from './pawn-layer.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -148,9 +155,22 @@ let _send = () => {};
 let _onExit = () => {};
 let _root = null;         // #roomzoom-view
 let _canvas = null;       // .rz-canvas (the framed floor)
-let _layers = null;       // <svg> furniture/pawn/ghost layer
-let _ghost = null;        // <svg> THE BUILD GHOST's own root — see paintGhost (never in the stack)
+let _layers = null;       // <svg> furniture/ghost/mark layer — REBUILT WHOLESALE every repaint
+let _ghost = null;        // #rz-ghost — THE BUILD GHOST's own root (never in the stack; paintGhost)
 let _pulseLayer = null;   // transient input pulses
+// ── the tween's three handles (see the import note) ──────────────────────────────────────────
+let _pawnSvgEl = null;    // #rz-pawnlay — the PERSISTENT overlay the figures live in
+let _pawnLayer = null;    // makePawnLayer(_pawnSvgEl) — keyed <g> per cid, survives every repaint
+let _place = null;        // this room's scenePlacement, cached from the last repaint so the frame
+                          // loop can project a tile coordinate without rebuilding the scene
+const _tween = makePawnTween();
+const _clock = makePausableClock(
+  () => (typeof performance === 'object' && performance && typeof performance.now === 'function'
+    ? performance.now() : Date.now()),
+);
+let _tweenRaf = 0;        // 0 ⇒ NO LOOP IS RUNNING. An idle room must cost zero frames.
+let _inTweenFrame = false; // re-entrancy guard — see `tweenFrame`
+let _reduce = false;      // `prefers-reduced-motion` — read ONCE at mount (see `placePawns`)
 let _zoneKey = null;      // .rz-zonekey (WP-3: what the zone marks MEAN, in words)
 let _zoneKeySig = '';     // last-rendered key HTML — re-set only on change (the minimap pattern)
 let _toast = null;
@@ -284,6 +304,20 @@ function buildSkeleton() {
       // in it: the stack is `innerHTML`-replaced on every coalesced wire repaint and the ghost
       // follows the POINTER, which moves an order of magnitude more often than the ship does.
       '<svg class="rz-ghostlayer" id="rz-ghost" xmlns="http://www.w3.org/2000/svg"></svg>' +
+      // ⭐⭐ THE PAWN OVERLAY — a SIBLING of `#rz-layers`, not a layer inside it, and that is the
+      // whole client-side tween in one line of markup. `#rz-layers` is assigned wholesale
+      // (`innerHTML =`) on every coalesced repaint, ~10×/s; nothing inside it can be animated
+      // because nothing inside it survives. These figures are never torn down, so a rAF loop can
+      // move them at display rate between two roster samples.
+      // ⛔ ITS BOX AND ITS PROJECTION MUST MATCH `#rz-layers` EXACTLY or a figure walks off its own
+      // floor. The CSS box is `.rz-pulse`'s (`inset:6px`), which IS `.rz-layers`' box — the same
+      // inverse `tileClientBox` has relied on since the pulse shipped — and `paintLayers` copies
+      // the scene's own `viewBox`/`preserveAspectRatio` onto it from the same `scene` object,
+      // never from a second derivation.
+      // `pointer-events:none`: this surface hit-tests crew GEOMETRICALLY (`crewHitAtTile` off the
+      // clicked tile), exactly as it did when the figures were inside the scene, so the overlay
+      // must be invisible to the pointer or it would eat every click on the floor.
+      '<svg class="rz-pawnlay" id="rz-pawnlay" xmlns="http://www.w3.org/2000/svg"></svg>' +
       '<div class="rz-caption" id="rz-caption"></div>' +
       // WP-3 — THE ZONE KEY. Hidden until the room actually has a zoned tile, so it costs an empty
       // ship nothing. It exists because the marks alone are unreadable: the wording used to live only
@@ -353,7 +387,18 @@ function buildSkeleton() {
   _canvas = $('rz-canvas');
   _layers = $('rz-layers');
   _ghost = $('rz-ghost');
+  _pawnSvgEl = $('rz-pawnlay');
+  _pawnLayer = _pawnSvgEl ? makePawnLayer(_pawnSvgEl, { groupClass: 'rz-pawn-root' }) : null;
+  // ⛔ AND THE INTERPOLATOR IS RESET WITH THE NODES IT DRIVES. `_pawnLayer` is rebuilt here, so a
+  // second `buildSkeleton` (a re-init, a harness mounting the surface twice) would otherwise leave
+  // `_tween` — a module SINGLETON — holding samples keyed to cids whose nodes no longer exist, and
+  // the first frame after the re-mount would place brand-new figures at the OLD skeleton's positions.
+  // Today this file is initialised once per page, so the line is unreachable in the shipping client;
+  // it is here because "two pieces of state that must be cleared together" is the shape that gets
+  // half-cleared by the next lane, and it costs one call.
+  _tween.clear();
   _pulseLayer = $('rz-pulse');
+  _reduce = prefersReducedMotion();
   _zoneKey = $('rz-zonekey');
   _toast = $('rz-toast');
   _nudge = makeNudge({ el: () => $('rz-nudge') });
@@ -498,6 +543,14 @@ export function enterRoom(anchor) {
   _armed = null;
   _hoverTile = null;   // a room is entered by a click on ANOTHER surface — nothing is hovered here yet
   _open = true;
+  // ⛔ A NEW ROOM IS A COLD START, and forgetting to say so is a walk-through-the-hull bug: the
+  // buffered samples belong to the room we just left, so the first repaint here would tween every
+  // figure from wherever they stood in THAT room's projection to wherever they stand in this one.
+  // (Rule 2's snap would catch most of it — the tile jump is usually large — but not all of it, and
+  // "usually" is not a guarantee.) Same on the way out, so a closed surface holds no state.
+  if (_pawnLayer) _pawnLayer.clear();
+  _tween.clear();
+  _place = null;
   document.body.classList.add('roomzoom-open');
   repaint();
 }
@@ -515,6 +568,9 @@ export function exitRoom() {
   _hoverTile = null;
   clearGhost();
   _focus = null;
+  if (_pawnLayer) _pawnLayer.clear();   // see `enterRoom` — a closed surface holds no pawn state
+  _tween.clear();
+  _place = null;
   document.body.classList.remove('roomzoom-open');
   _onExit();
 }
@@ -723,6 +779,16 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   const vacuum = focusIsVacuum();
   _layers.setAttribute('viewBox', scene.viewBoxAttr);
   _layers.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  // ⛔ THE OVERLAY TAKES THE SAME TWO ATTRIBUTES FROM THE SAME `scene`, and the guarded setters mean
+  // an idle repaint touches neither. One derivation, two consumers: a second call to `roomScene`
+  // here is how the figures and the floor would come to disagree about where tile (3,4) is.
+  if (_pawnSvgEl) {
+    setAttr(_pawnSvgEl, 'viewBox', scene.viewBoxAttr);
+    setAttr(_pawnSvgEl, 'preserveAspectRatio', 'xMidYMid meet');
+  }
+  // …and the placement is cached for the frame loop, which must project a tween's tile coordinate
+  // WITHOUT rebuilding the scene (a full repaint per frame is what this package exists to avoid).
+  _place = place;
 
   // ⭐ `_deviceCond` IS PASSED HERE SO A PAWN CANNOT UNBUILD A MACHINE (the owner's 2026-08-05
   // defect). `roomCells` reads the frame's ONE glyph byte per tile, and `GlyphMapper` pass 5
@@ -775,11 +841,131 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   // above the mark and item layers so the thing being dimmed is under the dimming, and STILL BELOW
   // `pawnSvg` — `blocked-model.test.js` drives a roster into the room and asserts both halves.
   body += blockedLayerSvg(_blockedTiles, _focus, unit, place);
-  body += pawnSvg(here, _focus, selCid, place);
+  // ⛔ NO `body += pawnSvg(...)` HERE ANY MORE — see `pawnParts`' header. The figures go to the
+  // persistent overlay below, which is a later sibling of this `<svg>` and therefore above every
+  // layer in it: the "a layer that explains the floor must never hide a person" guarantee is now
+  // structural rather than a line's position in this concatenation.
   body += ghostSvg(roomDesigns(designs, _focus), scene, place);
   body += previewSvg(scene, place);
   body += roomDimensionsSvg(scene);
   _layers.innerHTML = body;
+
+  // ── THE PAWNS: content at MESSAGE cadence, position at DISPLAY cadence ──
+  // `here` is `roomCrew(...)`, i.e. the crew this room has already ADMITTED on their DRAWN tile
+  // (`WireFormat.RosterEntry.Fx`'s contract). The tween only interpolates INSIDE what membership
+  // approved — it is never asked about somebody this room is not drawing, and a crew member who
+  // walks in cold-starts at the position membership let her in at, rather than sliding in from a
+  // tile this room never drew (rule 4).
+  if (_pawnLayer) {
+    _pawnLayer.sync(pawnParts(here, _focus, selCid, place));
+    _tween.sample(here.map((c) => ({
+      cid: c.cid,
+      x: Number.isFinite(c.fx) ? c.fx : c.x,
+      y: Number.isFinite(c.fy) ? c.fy : c.y,
+      deck: c.deck,
+    })), _clock.tick(isPaused()));
+    // Place once NOW so a figure is never left at a stale transform for a frame, then let the loop
+    // take over — and only if there is something to animate.
+    placePawns();
+    startTween();
+  }
+}
+
+/**
+ * Project the tween's current tile positions and write them onto the persistent nodes. THE ONLY
+ * WORK THAT HAPPENS PER DISPLAY FRAME — no scene rebuild, no decode, no sweep, no allocation beyond
+ * the position map. (Full repaints of this surface cost ~1 ms; that is exactly why nothing here
+ * calls one.)
+ */
+function placePawns() {
+  if (!_pawnLayer || !_place) return 0;
+  // ⭐ REDUCED MOTION IS ONE EXPRESSION, NOT A SECOND CODE PATH: reading the tween at a time past
+  // every segment's end is BY DEFINITION the newest sample, which is exactly where this surface drew
+  // the figure before the tween existed. No branch to rot, and `startTween` simply never arms.
+  const now = _reduce ? Number.MAX_SAFE_INTEGER : _clock.peek();
+  const pos = _tween.positions(now);
+  const screen = new Map();
+  for (const [key, p] of pos) {
+    const [sx, sy] = _place.foot(p.x, p.y);
+    screen.set(key, { x: sx, y: sy });
+  }
+  return _pawnLayer.place(screen);
+}
+
+/**
+ * ⭐ WHO IS DRAWN ON TILE (tx,ty) RIGHT NOW — the view's own answer, taken from the interpolator the
+ * figures are placed by rather than from the wire sample they are travelling towards.
+ *
+ * It reads `_tween.positions` at `_clock.peek()` — the SAME reading `placePawns` last painted with,
+ * deliberately NOT a fresh `tick()`. A click must resolve against the frame the player was looking
+ * at when they pressed, not against a clock advanced by the press itself; and it makes "where the
+ * click thinks she is" and "where her feet are" one number rather than two derivations that agree
+ * most of the time. The candidates are still `roomCrew` — the DRAWN-tile membership list off the wire contract —
+ * so this narrows who can be selected, it never widens it: a crew member this room has not admitted
+ * cannot be clicked in it whatever the tween says.
+ *
+ * Returns `null` when the tween has nothing for a cid (before the first repaint of a room, or with
+ * the loop off), and the caller falls back to `crewHitAtTile`. Under `prefers-reduced-motion` the
+ * tween reads at `u = 1`, i.e. exactly the sample, so both passes agree and the answer is unchanged.
+ */
+function crewDrawnAtTile(crew, tx, ty) {
+  if (!_pawnLayer || !_focus) return null;
+  const now = _reduce ? Number.MAX_SAFE_INTEGER : _clock.peek();
+  const pos = _tween.positions(now);
+  const x = tx | 0, y = ty | 0;
+  for (const c of roomCrew(crew, _focus)) {
+    const p = pos.get(String(c.cid));
+    if (!p) continue;
+    if (Math.round(p.x) === x && Math.round(p.y) === y) return c;
+  }
+  return null;
+}
+
+/**
+ * ⛔⛔ ZERO WORK WHEN NOBODY IS WALKING, AND IT IS A LOOP THAT STOPS RATHER THAN A LOOP THAT IDLES.
+ * `settled()` is true when every tracked figure has finished its segment, which on a ship where
+ * nobody is moving is ALWAYS — an idle ship emits no roster messages at all (measured: 0.00/s), so
+ * "no samples" is the normal state and a renderer that kept a rAF alive would burn a frame every
+ * 16 ms redrawing a stationary drawing. The loop is started by the repaint that delivers a sample
+ * and it stops itself the moment there is nothing left to move.
+ *
+ * ⚠️ THE RE-ENTRANCY GUARD IS NOT DEFENSIVE PROGRAMMING. `overview-model.test.js` and
+ * `room-model.test.js` install a SYNCHRONOUS `requestAnimationFrame` (`(fn) => { fn(); return 0; }`)
+ * so an assertion can read the surface immediately after the state change that repainted it. A
+ * self-rescheduling loop under a synchronous rAF is unbounded recursion; with the guard the nested
+ * call returns at once and the harness sees exactly one extra frame. In a real browser the next
+ * frame is always a separate task, so the guard is never true there.
+ */
+function tweenFrame() {
+  _tweenRaf = 0;
+  if (_inTweenFrame) return;
+  _inTweenFrame = true;
+  try {
+    if (!_open) return;                       // the room closed under us
+    const now = _clock.tick(isPaused());       // …which does not advance while the ship is held
+    placePawns();
+    if (!_tween.settled(now)) startTween();   // …which itself declines while held
+  } finally { _inTweenFrame = false; }
+}
+
+/** Arm one frame, if one is not already armed and there is something to animate. */
+function startTween() {
+  if (_tweenRaf || !_open || _reduce) return;
+  // ⛔ A HELD SHIP ARMS NOTHING, AND THIS LINE WAS MISSING UNTIL THE LIVE RIG FOUND IT.
+  // `_clock` does not advance while paused (that is what stops the figures creeping), so a
+  // segment that was unspent when the hold began STAYS unspent — `settled()` is false forever
+  // and the loop re-armed itself every frame, writing nothing and burning a callback every
+  // 16 ms for as long as the player left the ship stopped. Measured on `--ship wreck` before
+  // the fix. The resume needs no special case: it produces wire messages, and every repaint
+  // ends by calling this.
+  if (isPaused()) return;
+  if (_tween.settled(_clock.peek())) return;
+  // ⛔ NO `|| 1` FALLBACK ON THIS HANDLE. The node harnesses' synchronous rAF returns 0 DELIBERATELY
+  // (`overview-model.test.js` spells out why: the callback clears the latch and the return value is
+  // assigned afterwards, so a truthy handle latches the flag forever and every later frame is
+  // silently dropped). This assignment must be allowed to land on 0 for exactly that reason.
+  const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+  _tweenRaf = raf(tweenFrame);
 }
 
 /** The live drag-build preview: the tiles the current sweep WOULD designate.
@@ -869,12 +1055,32 @@ export function ghostArtId(tool) {
   const pc = paletteCommand(tool);
   if (pc.itemId) return pc.itemId;
   if (pc.cls !== 'functional' || !pc.deviceKind) return '';
+  // ⛔⛔ RESOLVE THROUGH THE **GLYPH**, NOT THROUGH THE FIRST MATCHING ROW — and this is a defect
+  // fix, not a tidy-up (lane/paper-machines merge, 2026-08-05). `DeviceKind → itemId` IS NOT A
+  // FUNCTION and the registry says so out loud (`wear.js deviceKindsWithSeveralPieces`); machines
+  // then made it concrete by adding `plant-pot` (glyph `'P'`) beside the existing `potted-plant`,
+  // whose row it re-pointed to `glyph: null`. BOTH carry `deviceKind: 'PlantPot'`. A first-match
+  // scan answers `potted-plant` — the OLD warm art — while a PLACED plant resolves glyph `'P'` and
+  // draws `plant-pot`. The player would have previewed one piece and got another, silently, and
+  // nothing but the agreement pin could see it.
+  // ⇒ The placed piece's answer is `itemIdForGlyphChar(glyph)`, so the ghost asks the registry which
+  // glyph this DeviceKind projects and then asks the SAME function. Two hops down ONE route, rather
+  // than a second route that happens to agree.
+  let fallback = '';
   for (const id of Object.keys(ITEMS)) {
     const e = ITEMS[id];
-    if (e && e.kind === 'functional' && e.deviceKind === pc.deviceKind) return id;
+    if (!e || e.kind !== 'functional' || e.deviceKind !== pc.deviceKind) continue;
+    if (typeof e.glyph === 'string' && e.glyph.length === 1) {
+      const viaGlyph = itemIdForGlyphChar(e.glyph);
+      if (viaGlyph) return viaGlyph;
+    }
+    // A row with no glyph is the honest last resort: some kinds project no glyph of their own and
+    // are skinned only by a substitution, and answering nothing at all would draw the unbuilt chip.
+    if (!fallback) fallback = id;
   }
-  return '';
+  return fallback;
 }
+
 
 /**
  * Is the armed tool's placement one this surface can already PROVE will be refused? Exactly the
@@ -1255,11 +1461,31 @@ function furnitureSvg(cells, stocked, deviceCond, place, doorTiles) {
  * Everything else about this function's contract (a pill on EVERY pawn, at the feet, the RimWorld
  * rule; a work tag ONLY for real work) is unchanged and its header argument stands.
  *
+ * ⛔⛔ IT RETURNS FOOT-RELATIVE PARTS, NOT ONE STRING, AND IT IS NO LONGER CONCATENATED INTO
+ * `_layers` (2026-08-05, the client-side tween). `paintLayers` assigns the whole cutaway to
+ * `innerHTML` at the wire's render rate, so a figure drawn inside it is destroyed ~10×/s and cannot
+ * be interpolated between two roster samples. The figures now live in a persistent overlay `<svg>`
+ * (`#rz-pawnlay`, a sibling of `#rz-layers` on `.rz-pulse`'s own box) whose nodes survive every
+ * repaint — `pawn-layer.js`'s header carries the measurement that chose an overlay over re-adopting
+ * the nodes into the rebuilt scene, and the short version is that re-parenting does not restart an
+ * in-flight animation, it teleports the element to the end value.
+ *
+ * ⭐ THE LAYER-ORDER GUARANTEE GOT STRONGER, NOT WEAKER. `roomzoom-view.js` and `blocked-overlay.js`
+ * both state "a layer that explains the floor must never hide a person" as load-bearing, and it used
+ * to be enforced by WHERE `body += pawnSvg(...)` sat in a concatenation — one line move from being
+ * false. The overlay is a later sibling of `#rz-layers`, so every mark, wash, badge and ghost in that
+ * document is below every pawn, unconditionally and without an ordering to preserve.
+ *
+ * Everything about the ART is unchanged: same ellipse, same plate, same tag, same rules — the only
+ * edit is that the feet are the origin (0,0) instead of `(fx,fy)`, and the pair travels beside the
+ * markup so the caller can place the group.
+ *
  * @param {Array} list @param {{rx,ry}} [focus] @param {number|null} [selCid]
  * @param {object} [place] the scene placement; absent ⇒ the plan-view fallback (tests of the
  *   selection/label RULES that do not care where the figure stands)
+ * @returns {Array<{cid:*, x:number, y:number, html:string}>}
  */
-export function pawnSvg(list, focus, selCid, place) {
+export function pawnParts(list, focus, selCid, place) {
   const out = [];
   const org = focus || _focus;
   const pl = place || scenePlacement(roomScene(org), org, ROOM_SCALE * 100 * M_PER_TILE);
@@ -1280,6 +1506,11 @@ export function pawnSvg(list, focus, selCid, place) {
       Number.isFinite(c.fx) ? c.fx : c.x,
       Number.isFinite(c.fy) ? c.fy : c.y,
     );
+    // FOOT-RELATIVE FROM HERE DOWN — the two zeros are the old `(fx,fy)`, which now travels out as
+    // the part's own `x`/`y` and lands on the group's `translate`. Nothing else about the geometry
+    // moved: `H`, `S`, the plate and the tag are all measured from the feet exactly as before.
+    const bx = 0, by = 0;
+    const parts = [];
     const selected = sel !== null && String(c.cid) === sel;
     if (selected) {
       // A LEVEL ellipse lying in the floor plane at the feet — the catalogue's round-objects rule,
@@ -1288,25 +1519,25 @@ export function pawnSvg(list, focus, selCid, place) {
       const rx = ROOM_SCALE * 45;
       // The class carries the CID as well as the state: a pool keyed to nobody would draw the same
       // mark under whoever happened to be first, which is the defect `zoom-pawn.test.js` pins.
-      out.push('<ellipse class="rz-sel-pool rz-sel-' + esc(c.cid) + '" cx="' + fx.toFixed(1) + '" cy="' + fy.toFixed(1) +
+      parts.push('<ellipse class="rz-sel-pool rz-sel-' + esc(c.cid) + '" cx="' + bx.toFixed(1) + '" cy="' + by.toFixed(1) +
         '" rx="' + rx.toFixed(1) + '" ry="' + (rx * 0.6).toFixed(1) + '" fill="none" stroke="' + INK +
         '" stroke-width="2.2"/>');
     }
     const bodyArt = pawnSprite({ cid: c.cid, role: c.role }, { idPrefix: 'rz-pw-' + esc(c.cid), className: 'pawn' });
-    out.push('<g class="rz-pawn" transform="translate(' + (fx - 8 * S).toFixed(1) + ' ' +
-      (fy - 23 * S).toFixed(1) + ') scale(' + S.toFixed(3) + ')">' + bodyArt + '</g>');
+    parts.push('<g class="rz-pawn" transform="translate(' + (bx - 8 * S).toFixed(1) + ' ' +
+      (by - 23 * S).toFixed(1) + ') scale(' + S.toFixed(3) + ')">' + bodyArt + '</g>');
     // THE NAME PLATE, at the feet. Paper plate + ink hairline + ink mono; the SELECTED one inverts
     // to solid ink with paper type, which is a channel colour alone never had.
     const sur = surnameOf(c.name);
     if (sur) {
       const fs = 9;
       const nw = Math.max(26, sur.length * fs * 0.62 + 10);
-      const py = fy + 4;
-      out.push('<g class="rz-nametag' + (selected ? ' sel' : '') + '">' +
-        '<rect x="' + (fx - nw / 2).toFixed(1) + '" y="' + py.toFixed(1) + '" width="' + nw.toFixed(1) +
+      const py = by + 4;
+      parts.push('<g class="rz-nametag' + (selected ? ' sel' : '') + '">' +
+        '<rect x="' + (bx - nw / 2).toFixed(1) + '" y="' + py.toFixed(1) + '" width="' + nw.toFixed(1) +
           '" height="13" rx="1.5" fill="' + (selected ? INK : PAPER) + '" stroke="' + INK +
           '" stroke-width="' + (selected ? '1.4' : '0.9') + '"/>' +
-        '<text x="' + fx.toFixed(1) + '" y="' + (py + 6.5).toFixed(1) + '" font-size="' + fs +
+        '<text x="' + bx.toFixed(1) + '" y="' + (py + 6.5).toFixed(1) + '" font-size="' + fs +
           '" letter-spacing="1.1" fill="' + (selected ? PAPER : INK) + '" text-anchor="middle" ' +
           'dominant-baseline="central" font-family="' + MONO_STACK + '">' + esc(sur) + '</text></g>');
     }
@@ -1317,16 +1548,17 @@ export function pawnSvg(list, focus, selCid, place) {
       // and spends no accent; `blockedLayerSvg` owns the oxblood in this room.
       const fs = 8.5;
       const w = Math.max(26, tag.length * fs * 0.62 + 10);
-      const ty = fy - H - 8;
-      out.push('<g class="rz-worktag">' +
-        '<rect x="' + (fx - w / 2).toFixed(1) + '" y="' + (ty - 12).toFixed(1) + '" width="' + w.toFixed(1) +
+      const ty = by - H - 8;
+      parts.push('<g class="rz-worktag">' +
+        '<rect x="' + (bx - w / 2).toFixed(1) + '" y="' + (ty - 12).toFixed(1) + '" width="' + w.toFixed(1) +
           '" height="12.5" rx="1.5" fill="' + PAPER + '" stroke="' + INK + '" stroke-width="0.9"/>' +
-        '<text x="' + fx.toFixed(1) + '" y="' + (ty - 5.5).toFixed(1) + '" font-size="' + fs +
+        '<text x="' + bx.toFixed(1) + '" y="' + (ty - 5.5).toFixed(1) + '" font-size="' + fs +
           '" letter-spacing="1.1" fill="' + INK + '" text-anchor="middle" dominant-baseline="central" ' +
           'font-family="' + MONO_STACK + '">' + esc(tag) + '</text></g>');
     }
+    out.push({ cid: c.cid, x: fx, y: fy, html: parts.join('') });
   }
-  return out.length ? '<g class="rz-pawns" pointer-events="none">' + out.join('') + '</g>' : '';
+  return out;
 }
 
 /**
@@ -1843,12 +2075,35 @@ function onCanvasClick(e) {
     // Pawn click = select, only when no tool is armed (IX-Z-30). Resolve crew from the tile.
     const roster = Hud.getRoster();
     const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
-    // ⭐ THE GLIDE MADE THIS A TILE TEST ABOUT A MOVING TARGET — `crewHitAtTile` matches the tile
-    // the figure is DRAWN in, and ONLY that one: one rule, one pass, no sim-tile fallback (see its
-    // header). The sim tile leads the body by up to a full tile mid-walk, so the old
-    // `c.x === tile.x` missed the pawn being aimed at AND answered for the bare floor she had
-    // already left on screen. You select exactly what you can see.
-    const hit = crewHitAtTile(crew, _focus, tile.x, tile.y);
+    // ⭐⭐ TWO LAYERS, AND THE FIRST ONE IS THE ONE THAT IS ACTUALLY ON SCREEN.
+    //
+    // `crewHitAtTile` matches the tile of the NEWEST WIRE SAMPLE, which was "what you can see" right
+    // up until this client started interpolating — and then stopped being. The tween deliberately
+    // draws the figure BETWEEN the last two samples (no extrapolation, `pawn-tween-model.js` rule 1),
+    // so for most of every interval the body stands one tile short of the sample, and on a HELD ship
+    // it stays there permanently. Independent review measured the disagreement at 11.0% of moving
+    // frames, and a held-ship click drive at 14/17 against a base client's 11/12 — i.e. the affordance
+    // the owner reported by name on 2026-07-29 ("we cannot select a pawn by clicking on him") coming
+    // back for a NEW reason, three days before a playtest.
+    //
+    // So the FIRST pass asks the tween where each figure is being drawn RIGHT NOW — the same numbers
+    // `placePawns` just wrote onto the nodes, at the same clock reading, so the answer cannot differ
+    // from the drawing by construction. `crewHitAtTile` stays as the second pass and is not
+    // redundant: it is what answers before the first repaint of a room, for a client with the tween
+    // switched off, and for any cid the tween has not been told about.
+    // ⭐ RE-DRIVEN BY THIS LANE AFTER THE FIX, on `--ship wreck` held mid-glide, 18 independent
+    // trials clicking the figure's drawn feet through real Chrome and reading the HOST's `frame.sel`
+    // back: 18/18. (`client/tools/pawn-tween-shot.mjs` §6c — the pre-fix 14/17 above is review's
+    // measurement, not this lane's, and is quoted as theirs.)
+    //
+    // ⛔ MEMBERSHIP DOES NOT MOVE, AND THAT IS THE WIRE CONTRACT, NOT AN OVERSIGHT.
+    // `WireFormat.RosterEntry.Fx` gives room membership, the `N HERE` caption and the crew dock to
+    // the DRAWN TILE OF THE SAMPLE, and every one of them is a per-message list this view rebuilds at
+    // message cadence. The CLICK is the one consumer whose entire justification is agreeing with the
+    // pixels, so the click is the only thing promoted to the tween — and the candidate set is still
+    // `roomCrew`, so nobody this room has not admitted can be selected in it.
+    const hit = crewDrawnAtTile(crew, tile.x, tile.y)
+      || crewHitAtTile(crew, _focus, tile.x, tile.y);
     if (hit) Hud.selectCrewByCid(hit.cid);
     return;
   }

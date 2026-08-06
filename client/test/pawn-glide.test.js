@@ -36,8 +36,9 @@ import { fileURLToPath } from 'node:url';
 
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { overviewScene } from '../src/ui/overview-scene.js';
-import { pawnSvg } from '../src/ui/roomzoom-view.js';
+import { overviewScene, makeTransform, pawnLayerParts } from '../src/ui/overview-scene.js';
+import { pawnParts } from '../src/ui/roomzoom-view.js';
+import { makePawnLayer } from '../src/ui/pawn-layer.js';
 import { roomScene, scenePlacement, roomCrew, crewHitAtTile, drawnTile } from '../src/ui/room-model.js';
 import { crewClickTarget } from '../src/ui/console-model.js';
 
@@ -51,23 +52,79 @@ const BASE = FIX.roster.crew[0];             // deck 0, tile (8,8), task "Idle"
 const withPos = (over) => [{ ...BASE, ...over }];
 const state = (crew) => ({ deck: 0, decksView: view, frame: FIX.frame, crew, designs: [], marks: [] });
 
-/** The pawn body's emitted `translate(x y)` for one cid, read out of the rendered SVG. */
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ WHERE THE FIGURE IS DRAWN MOVED FROM THE ART TO THE GROUP (2026-08-05, the client-side tween),
+// AND EVERY CLAIM IN THIS FILE IS UNCHANGED BY THAT.
+//
+// Both surfaces rebuild their scene as one `innerHTML` string ~10×/s, so a figure inside the scene
+// cannot be interpolated between two roster samples — no node lives long enough. The figures now live
+// in a persistent overlay `<svg>` per surface: the ART is built FOOT-RELATIVE (drawn around (0,0)) by
+// the pure `pawnLayerParts` / `pawnParts`, and the person's SCREEN POSITION is a `translate` on their
+// own `<g>`, which `pawn-layer.js` writes.
+//
+// So `bodyAt` reads the GROUP's translate rather than the sprite's. The two questions this file asks
+// — "is the figure drawn at the projected place of `fx`/`fy`?" and "does everything hanging off her
+// move WITH her?" — are answered more directly than before: the second one is now structural, because
+// the plate, the tag and the underline are INSIDE the group that moves.
+//
+// ⛔ THE HELPERS MOUNT THROUGH THE REAL LAYER rather than pasting `'<g …>' + part.html`. A hand-built
+// wrapper here would be a second copy of the mount contract, and a change to `makePawnLayer` (a
+// different attribute, a different transform spelling) would leave this file green while the game
+// drew every crew member at the layer origin.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** The smallest element the layer can mount into: attributes, innerHTML, ordered children. */
+function recEl() {
+  const e = {
+    attributes: {}, dataset: {}, innerHTML: '', children: [], ownerDocument: null,
+    setAttribute(k, v) { this.attributes[k] = String(v); },
+    getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null; },
+    appendChild(c) { this.children.push(c); return c; },
+    remove() {},
+  };
+  e.ownerDocument = { createElementNS: () => recEl() };
+  return e;
+}
+
+/** Mount `parts` through the shipped layer, placed at the newest sample (settled), and serialize. */
+function mountParts(parts, groupClass) {
+  const host = recEl();
+  const layer = makePawnLayer(host, { groupClass });
+  layer.sync(parts);
+  layer.place(new Map(parts.map((p) => [String(p.cid), { x: p.x, y: p.y }])));
+  return host.children.map((g) => '<g class="' + g.attributes.class + '" data-cid="'
+    + g.attributes['data-cid'] + '" transform="' + (g.attributes.transform || '') + '">'
+    + g.innerHTML + '</g>').join('');
+}
+
+/** The OVERVIEW's mounted pawn markup for a scene state. */
+function ovPawns(st) {
+  const deck = st.deck | 0;
+  const entry = (st.decksView || []).find((d) => d.deck === deck);
+  const t = makeTransform(entry ? entry.slots : [], st.frame);
+  return mountParts(pawnLayerParts(st.crew, deck, t, st.selectedCid, 'ov'), 'pl-pawn');
+}
+
+/** The pawn GROUP's emitted `translate(x y)` for one cid — where the person is drawn. */
 function bodyAt(svg, cid, cls) {
-  const chunk = svg.split(`<g class="${cls}" data-cid="${cid}"`)[1]
-    ?? svg.split(`<g class="${cls}"`)[1];   // roomzoom's rz-pawn carries no data-cid
+  const chunk = svg.split(`<g class="${cls}" data-cid="${cid}"`)[1];
   assert.ok(chunk, `no ${cls} for cid ${cid} in the rendered svg`);
-  const m = /transform="translate\(([-\d.]+) ([-\d.]+)\) scale\(/.exec(chunk);
+  const m = /^[^>]*transform="translate\(([-\d.]+) ([-\d.]+)\)"/.exec(chunk);
   assert.ok(m, `no pawn transform in ${cls}`);
   return { x: +m[1], y: +m[2] };
 }
 
 /** The pawn's label-pill rect for one cid (Overview). */
 function pillAt(svg, cid) {
-  const chunk = svg.split(`<g class="pl-pawn" data-cid="${cid}">`)[1];
+  const chunk = svg.split(`<g class="pl-pawn" data-cid="${cid}"`)[1];
   assert.ok(chunk, 'no pawn chunk');
   const m = /<g class="pl-tag[^"]*">[\s\S]*?<rect x="([-\d.]+)" y="([-\d.]+)"/.exec(chunk);
   assert.ok(m, 'no label pill');
-  return { x: +m[1], y: +m[2] };
+  // ⭐ ON-SCREEN, not local. The pill is emitted foot-relative now, so the local rect is IDENTICAL
+  // for every pawn on the plate — a test reading it raw would assert nothing at all. The sum with
+  // the group's translate is the same screen box the old absolute emission produced.
+  const at = bodyAt(svg, cid, 'pl-pawn');
+  return { x: +m[1] + at.x, y: +m[2] + at.y };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -75,12 +132,12 @@ function pillAt(svg, cid) {
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 test('overview: fx/fy draw the pawn BETWEEN two tiles', () => {
-  const at8 = bodyAt(overviewScene(state(withPos({ x: 8, y: 8 }))), BASE.cid, 'pl-pawn');
-  const at9 = bodyAt(overviewScene(state(withPos({ x: 9, y: 8 }))), BASE.cid, 'pl-pawn');
+  const at8 = bodyAt(ovPawns(state(withPos({ x: 8, y: 8 }))), BASE.cid, 'pl-pawn');
+  const at9 = bodyAt(ovPawns(state(withPos({ x: 9, y: 8 }))), BASE.cid, 'pl-pawn');
   assert.notDeepEqual(at8, at9, 'precondition: the two tiles render at different places');
 
   // Mid-glide: the sim tile is still 8, the wire says 8.5.
-  const mid = bodyAt(overviewScene(state(withPos({ x: 8, y: 8, fx: 8.5, fy: 8 }))), BASE.cid, 'pl-pawn');
+  const mid = bodyAt(ovPawns(state(withPos({ x: 8, y: 8, fx: 8.5, fy: 8 }))), BASE.cid, 'pl-pawn');
   assert.notDeepEqual(mid, at8, 'the figure left the tile it is standing on');
   assert.notDeepEqual(mid, at9, 'the figure has not arrived either');
   // The projection is affine in tile space, so half way on the wire is half way on screen.
@@ -91,30 +148,30 @@ test('overview: fx/fy draw the pawn BETWEEN two tiles', () => {
 test('overview: ten sub-tile positions are ten DISTINCT drawn places', () => {
   const seen = new Set();
   for (let k = 0; k < 10; k += 1) {
-    const svg = overviewScene(state(withPos({ x: 8, y: 8, fx: 8 + k / 10, fy: 8 })));
+    const svg = ovPawns(state(withPos({ x: 8, y: 8, fx: 8 + k / 10, fy: 8 })));
     seen.add(JSON.stringify(bodyAt(svg, BASE.cid, 'pl-pawn')));
   }
   assert.equal(seen.size, 10, 'one drawn position per tick of the crossing (was 1: the teleport)');
 });
 
 test('overview: no fx/fy ⇒ byte-identical to the integer tile (old-host compat)', () => {
-  const withoutGlide = overviewScene(state(withPos({ x: 8, y: 8 })));
-  const explicitTile = overviewScene(state(withPos({ x: 8, y: 8, fx: 8, fy: 8 })));
+  const withoutGlide = ovPawns(state(withPos({ x: 8, y: 8 })));
+  const explicitTile = ovPawns(state(withPos({ x: 8, y: 8, fx: 8, fy: 8 })));
   assert.equal(withoutGlide, explicitTile, 'a standing crew member (fx === x) renders as the fallback does');
 
   // …and the fallback survives the shapes a half-built host can actually send.
   for (const junk of [null, undefined, NaN, 'nope']) {
-    const svg = overviewScene(state(withPos({ x: 8, y: 8, fx: junk, fy: junk })));
+    const svg = ovPawns(state(withPos({ x: 8, y: 8, fx: junk, fy: junk })));
     assert.equal(svg, withoutGlide, `fx=${String(junk)} must fall back to the integer tile, not to 0`);
   }
 });
 
 test('overview: the label pill follows the drawn feet, not the sim tile', () => {
-  const standing = pillAt(overviewScene(state(withPos({ x: 8, y: 8 }))), BASE.cid);
-  const gliding = pillAt(overviewScene(state(withPos({ x: 8, y: 8, fx: 8.6, fy: 8 }))), BASE.cid);
+  const standing = pillAt(ovPawns(state(withPos({ x: 8, y: 8 }))), BASE.cid);
+  const gliding = pillAt(ovPawns(state(withPos({ x: 8, y: 8, fx: 8.6, fy: 8 }))), BASE.cid);
   assert.notEqual(standing.x, gliding.x, 'the pill slid with the figure — a pinned pill detaches');
-  const body = bodyAt(overviewScene(state(withPos({ x: 8, y: 8, fx: 8.6, fy: 8 }))), BASE.cid, 'pl-pawn');
-  const bodyStand = bodyAt(overviewScene(state(withPos({ x: 8, y: 8 }))), BASE.cid, 'pl-pawn');
+  const body = bodyAt(ovPawns(state(withPos({ x: 8, y: 8, fx: 8.6, fy: 8 }))), BASE.cid, 'pl-pawn');
+  const bodyStand = bodyAt(ovPawns(state(withPos({ x: 8, y: 8 }))), BASE.cid, 'pl-pawn');
   assert.ok(Math.abs((gliding.x - standing.x) - (body.x - bodyStand.x)) < 0.15,
     'the pill moved by exactly what the body moved by');
 });
@@ -124,7 +181,7 @@ test('overview: the label pill follows the drawn feet, not the sim tile', () => 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 const FOCUS = { rx: 2, ry: 3 };
-const RZ = (crew) => pawnSvg(crew, FOCUS);
+const RZ = (crew) => mountParts(pawnParts(crew, FOCUS), 'rz-pawn-root');
 
 test('roomzoom: scenePlacement.foot is fractional-tolerant and integer-identical', () => {
   const place = scenePlacement(roomScene(FOCUS), FOCUS);
@@ -140,11 +197,11 @@ test('roomzoom: scenePlacement.foot is fractional-tolerant and integer-identical
 });
 
 test('roomzoom: fx/fy stand the figure between two tiles; absent ⇒ the integer tile', () => {
-  const at4 = bodyAt(RZ([{ cid: 1, name: 'Vega', role: 'crew', x: 4, y: 5, task: 'Idle' }]), 1, 'rz-pawn');
-  const at5 = bodyAt(RZ([{ cid: 1, name: 'Vega', role: 'crew', x: 5, y: 5, task: 'Idle' }]), 1, 'rz-pawn');
+  const at4 = bodyAt(RZ([{ cid: 1, name: 'Vega', role: 'crew', x: 4, y: 5, task: 'Idle' }]), 1, 'rz-pawn-root');
+  const at5 = bodyAt(RZ([{ cid: 1, name: 'Vega', role: 'crew', x: 5, y: 5, task: 'Idle' }]), 1, 'rz-pawn-root');
   assert.notDeepEqual(at4, at5);
 
-  const mid = bodyAt(RZ([{ cid: 1, name: 'Vega', role: 'crew', x: 4, y: 5, fx: 4.5, fy: 5, task: 'Idle' }]), 1, 'rz-pawn');
+  const mid = bodyAt(RZ([{ cid: 1, name: 'Vega', role: 'crew', x: 4, y: 5, fx: 4.5, fy: 5, task: 'Idle' }]), 1, 'rz-pawn-root');
   assert.ok(Math.abs(mid.x - (at4.x + at5.x) / 2) < 0.15, `x halfway: ${mid.x}`);
   assert.ok(Math.abs(mid.y - (at4.y + at5.y) / 2) < 0.15, `y halfway: ${mid.y}`);
 
@@ -158,13 +215,18 @@ test('roomzoom: fx/fy stand the figure between two tiles; absent ⇒ the integer
 
 test('roomzoom: the name plate and work tag ride WITH the gliding figure', () => {
   const one = (over) => RZ([{ cid: 1, name: 'Vega', role: 'crew', x: 4, y: 5, task: 'Digging out 4,5', ...over }]);
-  const plateX = (svg) => +/<g class="rz-nametag[^"]*">[\s\S]*?<rect x="([-\d.]+)"/.exec(svg)[1];
-  const tagX = (svg) => +/<g class="rz-worktag">[\s\S]*?<rect x="([-\d.]+)"/.exec(svg)[1];
+  // ON-SCREEN x, i.e. the group's translate plus the local rect — see `pillAt`'s note: the plate and
+  // the tag are drawn foot-relative now, so their LOCAL x is the same for a figure anywhere in the
+  // room and a raw read would make both assertions below unfalsifiable.
+  const plateX = (svg) => +/<g class="rz-nametag[^"]*">[\s\S]*?<rect x="([-\d.]+)"/.exec(svg)[1]
+    + bodyAt(svg, 1, 'rz-pawn-root').x;
+  const tagX = (svg) => +/<g class="rz-worktag">[\s\S]*?<rect x="([-\d.]+)"/.exec(svg)[1]
+    + bodyAt(svg, 1, 'rz-pawn-root').x;
   const still = one();
   const glide = one({ fx: 4.9, fy: 5 });
   assert.notEqual(plateX(still), plateX(glide), 'the name plate followed the feet');
   assert.notEqual(tagX(still), tagX(glide), 'the work tag followed the head');
-  const dBody = bodyAt(glide, 1, 'rz-pawn').x - bodyAt(still, 1, 'rz-pawn').x;
+  const dBody = bodyAt(glide, 1, 'rz-pawn-root').x - bodyAt(still, 1, 'rz-pawn-root').x;
   assert.ok(Math.abs((plateX(glide) - plateX(still)) - dBody) < 1e-6, 'plate moved exactly with the body');
 });
 
@@ -283,8 +345,8 @@ test('what must NOT follow the glide: the host is still addressed by the SIM til
 // question, and because "we checked and it was fine" is not evidence.
 test('overview: a gliding pawn is drawn on exactly ONE deck, never between two', () => {
   const gliding = withPos({ deck: 0, x: 8, y: 8, fx: 8.5, fy: 8 });
-  const onDeck0 = overviewScene({ ...state(gliding), deck: 0 });
-  const onDeck1 = overviewScene({ ...state(gliding), deck: 1 });
+  const onDeck0 = ovPawns({ ...state(gliding), deck: 0 });
+  const onDeck1 = ovPawns({ ...state(gliding), deck: 1 });
   assert.equal((onDeck0.match(/class="pl-pawn"/g) || []).length, 1, 'her own deck must draw her');
   assert.equal((onDeck1.match(/class="pl-pawn"/g) || []).length, 0, 'another deck must not');
   // The wire cannot express "half way between decks": there is no fz, and the deck is an integer.

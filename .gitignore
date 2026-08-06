@@ -37,5 +37,10 @@ client/tools/shots-paper-materials/
 client/tools/shots-paper-resources/
 # — lane/paper-fixtures —
 client/tools/shots-paper-fixtures/
+# — lane/paper-machines —
+client/tools/shots-machines/
+# — lane/material-under-pawn —
+client/tools/shots-material-pawn/
+client/tools/shots-pawn-tween/
 # — lane/build-ghost —
 client/tools/shots-build-ghost/

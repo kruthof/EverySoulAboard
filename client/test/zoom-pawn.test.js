@@ -255,7 +255,7 @@ class RzDoc extends DocumentLite {
 }
 
 const RZ_IDS = [
-  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pawnlay', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   'rz-crewdock',
   // console ids `hud.js`'s frame/roster dispatch writes through — the same set the sibling rigs
@@ -283,7 +283,16 @@ const Hud = await import('../src/ui/hud.js');
 const RoomZoom = await import('../src/ui/roomzoom-view.js');
 
 const el = (id) => doc.getElementById(id);
-const layers = () => el('rz-layers').innerHTML;
+/** ⭐ WHAT IS DRAWN IN THE ROOM — BOTH LAYERS, and the split is the client-side tween (2026-08-05).
+ *  `#rz-layers` is rebuilt wholesale every repaint and holds the cutaway, the floor, the fittings and
+ *  the marks; the FIGURES live in `#rz-pawnlay`, a persistent sibling `<svg>` whose per-cid `<g>`
+ *  nodes survive a repaint so they can be interpolated between two roster samples. Every assertion in
+ *  this file that says "the room draws X" means the picture, not the mount, so the picture is what
+ *  this returns. (`blocked-model.test.js` is the one file that must keep them APART — its subject is
+ *  which layer is above which.) The per-cid content is read off the child `<g>`s because the overlay
+ *  is populated by `appendChild`, not by an `innerHTML` string. */
+const pawnLayerHtml = () => (el('rz-pawnlay').childNodes || []).map((n) => n.innerHTML || '').join('');
+const layers = () => el('rz-layers').innerHTML + pawnLayerHtml();
 const sent = [];       // what the ROOM ZOOM sent
 const hudSent = [];    // what the SHARED SELECTION FLOW (hud.js) sent
 
@@ -452,11 +461,30 @@ test('BASELINE: a click on a pawn with NO tool armed selects THAT crew member, b
 // resolves a click through `Citizen.Pos`. The two halves use different tiles ON PURPOSE, and this
 // test sees both at once: the click LANDS on the drawn tile and the command SAYS the sim tile.
 //
+// ⭐⭐ AND SINCE THE CLIENT-SIDE TWEEN (2026-08-05) "WHERE SHE IS DRAWN" IS A FUNCTION OF TIME, WHICH
+// THIS TEST NOW HAS TO WAIT FOR. The view interpolates between the last two samples and never
+// extrapolates, so at the instant a new sample lands the figure is still at the OLD one and only
+// reaches the new one an interval later. That is not a wrinkle to work around — it is the product:
+// leg 3's subject is the tile she has vacated ON SCREEN, and on screen she vacates it over ~250 ms,
+// not instantly. The test therefore asserts BOTH ends of that interval, which is strictly more than
+// it used to say:
+//   · IMMEDIATELY after the sample — the body is still on the old tile, and the click lands there
+//     through `crewHitAtTile` (the sample's drawn tile), which is why the fallback is not redundant.
+//   · AFTER the tween has arrived — the old tile is bare floor and the new one answers, through the
+//     view's own `crewDrawnAtTile`.
+//
 // MUTATION: drop `crewHitAtTile`'s drawn-tile match (back to the sim tile) ⇒ RED on leg 2.
 // MUTATION: `roomCrew` filters on the SIM tile again                       ⇒ RED on leg 2.
 // MUTATION: `crewHitAtTile` → the old `roomCrew(...).find((c) => c.x === tile.x …)` in the view
 //           (the WIRING, not the model)                                    ⇒ RED on leg 2.
-test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the sim has her', () => {
+// ⚠️ AND ONE MUTATION THIS TEST CANNOT CATCH, SAID OUT LOUD RATHER THAN CLAIMED. Dropping the view's
+// `crewDrawnAtTile(...) ||` first pass leaves ALL FOUR legs here GREEN (applied, measured, reverted):
+// at both ends of the interval this fixture exercises, the tween's position and the sample's drawn
+// tile round to the SAME tile, so the fallback answers identically. The distinguishing case needs a
+// figure mid-segment across a tile line — the tween drawing tile N while the sample rounds to N+1 —
+// and that is `room-model.test.js`'s `mid-glide, a click on her FEET` leg, where the same mutation
+// IS red. Recorded here so a later lane does not read this file as covering it.
+test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the sim has her', async () => {
   prime(null);
   // She has stepped to her tile in the sim; the body is still a tile back and sliding.
   const behind = { x: RYN.x - 1, y: RYN.y };
@@ -478,13 +506,29 @@ test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the 
   assert.deepEqual(hudSent, [{ cmd: 'click', x: RYN.x, y: RYN.y }],
     'clicking the drawn figure did not select her — the hit test is reading the sim tile only');
 
-  // LEG 3 — ⭐ AND HER SIM TILE NO LONGER ANSWERS, which is the correction the send-back forced.
-  // Nothing is DRAWN on that tile (her body is a tile back), so it is bare floor, and the first
-  // draft's "sim tile fallback" selected an invisible pawn from it. You click what you can see.
+  // LEG 3 — ⭐ AND HER SIM TILE NO LONGER ANSWERS, which is the correction an earlier send-back
+  // forced. Nothing is DRAWN on that tile once the body has arrived, so it is bare floor, and the
+  // old "sim tile fallback" selected an invisible pawn from it. You click what you can see.
+  //
+  // ⛔ THE WAIT IS PART OF THE CLAIM, NOT A FLAKE GUARD. Without it this leg asserted that a figure
+  // had vacated a tile IN THE SAME TICK the host said so — which the tween, by design, does not do:
+  // it was still drawing her there, correctly, and the click correctly found her. The bound is the
+  // model's own `MAX_INTERVAL_MS` (250 ms), and the loop runs here through `setTimeout` because this
+  // harness installs no rAF.
+  await new Promise((r) => setTimeout(r, 400));
   hudSent.length = 0;
   clickTile(RYN.x, RYN.y);
   assert.deepEqual(hudSent, [],
     'the tile she has VACATED on screen still selected her — that is bare floor to the player');
+
+  // LEG 4 — …and the tile she has ARRIVED on still answers, now through the view's own tween rather
+  // than through `crewHitAtTile`. Both passes are exercised by this one test, one at each end of the
+  // interval.
+  hudSent.length = 0;
+  clickTile(behind.x, behind.y);
+  assert.deepEqual(hudSent, [{ cmd: 'click', x: RYN.x, y: RYN.y }],
+    'once the body has arrived, the tile it is standing on stopped selecting her — the view\'s '
+    + '`crewDrawnAtTile` pass is not reaching the click');
 
   Hud.renderRoster({ type: 'roster', crew: CREW });   // leave the rig as the other tests expect
 });

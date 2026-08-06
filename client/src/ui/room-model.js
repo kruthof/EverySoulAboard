@@ -174,7 +174,16 @@ const PALETTE_CMD = Object.freeze({
   medbed:{ cls: 'functional', verb: 'place',  kind: 'medbed', deviceKind: 'MedBed' },
   table: { cls: 'functional', verb: 'place',  kind: 'table',  deviceKind: 'Table' },
   rug:   { cls: 'cosmetic',   verb: 'decor',  itemId: 'rug' },
-  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'bookshelf' },
+  // — lane/paper-machines — `itemId` was `'bookshelf'` (the warm row) until 2026-08-05; it is the
+  // paper `book-case` now. ⛔ THE TOOL PLACES NOTHING, AND THE FIRST DRAFT OF THIS COMMENT SAID IT
+  // DID. `roomzoom-view.js`'s `cls === 'cosmetic'` branch toasts `decorRefusalText(_armed)` and stops
+  // — SHELF and RUG stopped writing decor on 2026-08-04, on purpose, because the piece vanished on
+  // reload and no other surface could see it. `addDecor` survives in this module with no caller in
+  // `client/src`, and the host's `decor` channel is a static empty list (`GameSession.cs:2800-2801`).
+  // So this row is a FORWARD-LOOKING rewire: if the decor path ever returns, the tool draws the paper
+  // piece rather than the warm one. Nothing about the tool, the verb, the class or what a click does
+  // moved. ⚠️ It also does not answer M4-6 ("wire it or remove it"), which is the owner's, and open.
+  shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'book-case' },
   // ORDER class (console-retirement WP-4) — a DESIGNATION, not a build. It consumes no material and
   // changes no geometry: it marks a tile as intent and the sim's job board picks it up. `verb` is the
   // wire verb NAME (`dig`/`stockpile`/`strip`), which is what makes it emphatically NOT a build:
@@ -1348,13 +1357,27 @@ export function roomCrew(crew, focusRoom) {
  * the empty tile ahead of her. Measured live on `--ship wreck`: the roster published
  * `tile=(7,2) frac=(8,2)` — a whole tile apart.</p>
  *
- * <p><b>YOU CAN CLICK EXACTLY WHAT YOU CAN SEE — one rule, one pass, no fallback.</b> The candidates
- * are `roomCrew`, which is now the DRAWN list, and the tile matched is `drawnTile`, which is where
- * that list's figures stand. An earlier draft added a second pass on the sim tile "as a fallback";
- * it is deleted, because with `roomCrew` deciding on the drawn tile that pass could only ever fire
- * for a figure that is NOT DRAWN on the clicked tile — selecting an invisible pawn from bare floor.
- * A crew member with no glide at all is unaffected: `drawnTile` falls back to her sim tile, so the
- * pre-package behaviour is reproduced exactly.</p>
+ * <p><b>ONE RULE, ONE PASS, NO SIM-TILE FALLBACK.</b> The candidates are `roomCrew`, which is the
+ * DRAWN list, and the tile matched is `drawnTile`. An earlier draft added a second pass on the sim
+ * tile "as a fallback"; it is deleted, because with `roomCrew` deciding on the drawn tile that pass
+ * could only ever fire for a figure that is NOT DRAWN on the clicked tile — selecting an invisible
+ * pawn from bare floor. A crew member with no glide at all is unaffected: `drawnTile` falls back to
+ * her sim tile, so the pre-glide behaviour is reproduced exactly.</p>
+ *
+ * <p>⚠️⚠️ <b>THIS HEADER USED TO SAY "YOU CAN CLICK EXACTLY WHAT YOU CAN SEE", AND SINCE THE
+ * CLIENT-SIDE TWEEN (2026-08-05) THAT SENTENCE IS FALSE OF THIS FUNCTION.</b> It is true of the
+ * SAMPLE — this matches the tile of the newest thing the host said — and the client now deliberately
+ * draws the figure BETWEEN the last two samples, so for most of every render interval the body is
+ * standing one tile short of what this function answers, and on a HELD ship it stays there for as
+ * long as the player leaves it held. Independent review measured `round(drawn) != round(sample)` on
+ * <b>11.0% of moving frames</b>, and a held-ship click drive at 14/17 against a base client's 11/12.
+ * <b>The fix is not in here.</b> A pure model cannot know where a view's interpolator has drawn
+ * anything, and it must not: this function is also the answer for a client with no tween, for the
+ * first repaint of a room, and for `prefers-reduced-motion` (where the tween reads at `u = 1` and the
+ * two agree exactly). `roomzoom-view.js` asks its OWN tween first — `crewDrawnAtTile`, at the same
+ * clock reading `placePawns` writes with — and falls back to this. The claim that survives here is
+ * the narrower and still load-bearing one: <b>this never selects somebody the room has not
+ * admitted.</b></p>
  *
  * @param {Array|null} crew roster crew list @param {object} focusRoom the room rect
  * @param {number} tx @param {number} ty absolute sim tile under the pointer
@@ -1527,10 +1550,51 @@ export function roomDecor(decor, focusRoom) {
  * when absent from the sparse `materials` channel); a floor glyph ('.') is emitted ONLY when it
  * carries a non-default material. `materials` is the decoded sparse channel [{x,y,deck,kind,mat}].
  * PURE — never mutates its arguments.
+ *
+ * ⭐ THE OWNER'S DEFECT, 2026-08-05: *"when building e.g. a mat or carpet, as soon as the pawn
+ * stands on the corresponding square, the carpet disappears until the pawn is out of the square."*
+ * CONFIRMED, and it is the LITERAL SIBLING of the device-occlusion defect the fallback block above
+ * (`roomCells` / `itemForDeviceRow`) closed the same day — same cause, same passes, same remedy:
+ *
+ *   `GlyphMapper` writes ONE glyph per tile in six passes and later passes overdraw earlier ones.
+ *   Pass 1 writes the terrain ('.'/'#'); PASS 5 WRITES `Glyphs.Citizen` OVER THE WHOLE CELL
+ *   UNCONDITIONALLY (`sim/Sim.Glyph/GlyphMapper.cs:183-195`, only `Bg` and `Attr` survive). So a
+ *   materialed floor with a crew member on it carries code 64, matched NEITHER of the two arms
+ *   below, and the carpet left the drawing until she moved.
+ *
+ * ⚠️ AND IT FIRES ON A PAWN MERELY WALKING PAST, which the owner's wording understates —
+ * `CitizenSystem.cs:51-54` snaps `citizen.Pos` to the DESTINATION tile the instant a step begins and
+ * holds it there for the whole `ticksPerTile` while the presenter interpolates, so the carpet is
+ * blanked for the ~1 s traversal, starting before she is visibly on the tile.
+ *
+ * ⛔ THE `materials` CHANNEL IS THE AUTHORITY; THE GLYPH ONLY EVER GATED VISIBILITY — SO THERE IS
+ * NO STALE GHOST. Every answer below still comes from the CURRENT frame's `materials` payload
+ * (`GameSession.BuildMaterials` re-walks `level.Material` each render and drops every `mat == 0`
+ * tile), so a floor whose material is reset or whose tile is unbuilt vanishes at once, pawn or no
+ * pawn — it is not a "remember the last glyph here" memo, which would leave a ripped-up carpet on
+ * screen forever. Pinned by its own leg in `room-model.test.js`.
+ *
+ * ⛔ AND THE CITIZEN ARM READS THE CHANNEL'S OWN `kind` BYTE, NOT "floor by construction". The
+ * channel carries wall-vs-floor per tile from `level.Wall[idx]` — the SAME world plane pass 1 reads
+ * to choose '#' over '.' — so the occluded tile is classified by the authority the visible tiles are
+ * classified by, one step removed, instead of by an assumption about where pawns can stand. (The
+ * assumption happens to hold — a wall tile is not `TileFlags.Walkable` and `PathService` routes only
+ * over walkable tiles, so a citizen glyph can never mask glyph 35 — but a rule that is true is still
+ * weaker than a fact that is published, and this way the arm cannot rot if that ever changes.)
+ *
+ * ⛔ NARROW ON PURPOSE, exactly as `CITIZEN_GLYPH_CODE`'s own doc-comment says: pass 5 is the ONE
+ * overwrite repaired here. Pass 3 (ground items) and pass 4 (devices) also overdraw a materialed
+ * floor and are NOT repaired by this — a stack or a bed standing on a carpet still shows default
+ * floor around its sprite. Measured, not assumed (`room-model.test.js` drives a 'b' over a
+ * materialed tile and asserts the drop), and FILED rather than chased: those two are a different
+ * package, they are far less visible than a pawn walking through, and widening this arm to "any
+ * non-default channel entry emits" would have to re-answer the wall/floor precedence the two
+ * frame-driven arms below settle.
+ *
  * @param {{deck:number,w:number,h:number,cells:Array}|null} frame
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
  * @param {Array<{x:number,y:number,deck:number,kind:number,mat:number}>|null} materials
- * @returns {{tx:number,ty:number,kind:'wall'|'floor',mat:number}[]}
+ * @returns {{tx:number,ty:number,kind:'wall'|'floor',mat:number,occluded?:boolean}[]}
  */
 export function roomMaterialTiles(frame, focusRoom, materials) {
   const out = [];
@@ -1539,7 +1603,8 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
   const matAt = new Map();
   if (Array.isArray(materials)) {
     for (const m of materials) {
-      if (m && (m.deck | 0) === (focusRoom.deck | 0)) matAt.set((m.x | 0) + ',' + (m.y | 0), m.mat | 0);
+      // The ROW, not just the byte: the citizen arm below needs the channel's own wall/floor `kind`.
+      if (m && (m.deck | 0) === (focusRoom.deck | 0)) matAt.set((m.x | 0) + ',' + (m.y | 0), m);
     }
   }
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
@@ -1549,9 +1614,21 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
       const cell = frame.cells[ty * frame.w + tx];
       if (!Array.isArray(cell)) continue;
       const code = cell[0] | 0;
-      const mat = matAt.get(tx + ',' + ty) || 0;
+      const row = matAt.get(tx + ',' + ty);
+      const mat = row ? (row.mat | 0) : 0;
       if (code === 35) out.push({ tx, ty, kind: 'wall', mat });          // '#' wall → always skinned
       else if (code === 46 && mat) out.push({ tx, ty, kind: 'floor', mat }); // '.' floor → only if non-default
+      // `row &&` is not redundant with `mat` — it is written out because a later edit that widens
+      // this arm must not reach `row.kind` through an absent row. (Measured: dropping only `&& mat`
+      // made the no-row leg die by TypeError instead of by assertion — a FALSE RED, TRAPS 3.)
+      else if (code === CITIZEN_GLYPH_CODE && row && mat) {
+        // A PAWN IS NOT A REASON TO TAKE UP THE CARPET — see this function's header. The channel says
+        // what the tile is made of AND whether it is wall or floor; the frame lost only the terrain
+        // glyph. `mat` is still required, so a pawn on a DEFAULT floor adds nothing (the same
+        // non-default rule the '.' arm above obeys), and `occluded` lets a caller tell "the frame
+        // said so" from "the channel did", exactly as `roomCells` marks its restored devices.
+        out.push({ tx, ty, kind: (row.kind | 0) === 0 ? 'wall' : 'floor', mat, occluded: true });
+      }
     }
   }
   return out;
