@@ -226,6 +226,54 @@ namespace Perilune.Tests
             Assert.IsFalse(sim.TryGetDeviceAt(pos, out _), "cancelling built the thing");
         }
 
+        /// <summary>
+        /// ⛔ <b>A FREE PLACEMENT MUST NOT MINT A ZERO-COUNT STACK ON CANCEL.</b>
+        ///
+        /// <para><c>device_place_cost = 0</c> is an EXPLICITLY SUPPORTED CONFIG — it is the
+        /// "restores pre-E0-5 free placement rather than bricking it" premise
+        /// <c>DeconstructSystemTests.DevicePlaceCost_IsReadFromDefsByTheShippingPlacementPath_AndZeroMeansFree</c>
+        /// drives. At that price an unguarded refund calls <c>sim.AddItem(Parts, 0, pos)</c> and adds
+        /// a SAVED, HASHED entity holding nothing, which no consumer ever collects: every cancel
+        /// leaks one, they fold into <see cref="Simulation.StateHash"/>, and they accumulate for the
+        /// life of the save.</para>
+        ///
+        /// <para>⚠️ NOT REACHABLE AT THE SHIPPED DEF (the price is 3), which is exactly why it needed
+        /// a test rather than a sighting. The Regolith refund three lines above it and both of
+        /// <c>DeconstructSystem</c>'s <c>AddItem</c> calls already carry <c>if (&gt; 0)</c> guards;
+        /// this one did not, and the omission was invisible on every ship we ever run.</para>
+        ///
+        /// <para>MUTATION: drop the <c>&gt; 0</c> guard from <c>BuildSystem.Cancel</c>'s Device arm
+        /// ⇒ RED here, and GREEN on every other test in the repo.</para>
+        /// </summary>
+        [Test]
+        public void AFreePlacementCancelledMintsNoEmptyStack()
+        {
+            var host = SimHost.Build(SimHost.DefaultSeedFor(ShipChoice.Wreck), ship: ShipChoice.Wreck);
+            var sim = host.Sim;
+            // The price is a def scalar; drive the supported zero rather than reaching into defs by
+            // hand, so this leg tracks whatever `device_place_cost = 0` means.
+            sim.Defs.Build.DevicePlaceCost = 0;
+            var pos = ClearTile(sim);
+            sim.Tick();
+            var build = BuildOf(sim);
+
+            int stacksBefore = sim.Items.Items.Count;
+            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Table, pos));
+            sim.Tick();
+            Assert.IsTrue(build.TryGet(pos, out _),
+                "a FREE placement laid no blueprint, so the cancel below has nothing to refund and "
+                + "this leg would pass vacuously");
+
+            Assert.IsTrue(build.Cancel(sim, pos), "Cancel refused a live blueprint");
+
+            var zeros = sim.Items.Items.Where(i => i.Count <= 0).ToArray();
+            Assert.IsEmpty(zeros.Select(z => $"{z.Kind} x{z.Count} at {z.Pos.X},{z.Pos.Y},{z.Pos.Z}"),
+                "cancelling a FREE blueprint minted a zero-count stack. It is saved, it is hashed, and "
+                + "nothing ever collects it — one per cancel, for the life of the save.");
+            Assert.AreEqual(stacksBefore, sim.Items.Items.Count,
+                "the free place/cancel round trip changed the ship's stack count at all");
+        }
+
         // ─────────────────────────────────────────────────────────────────────────────────────
         // 3. THE HASHED FIELDS — the instrument the five pins cannot be.
         // ─────────────────────────────────────────────────────────────────────────────────────

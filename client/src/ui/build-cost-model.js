@@ -175,7 +175,7 @@ export function decorRefusalText(tool) {
  * than an admitted gap.
  *
  * ⚠️ THE KEYS MIRROR `Perilune.Sim.PlaceRefusal` AND NOTHING ACROSS THAT SEAM COMPILES. Pinned equal
- * by `client/test/place-refusal.test.js`, which PARSES `sim/Sim.Core/Events/SimEvents.cs` — the house
+ * by `client/test/build-feel.test.js`, which PARSES `sim/Sim.Core/Events/SimEvents.cs` — the house
  * tripwire idiom (`marks-model.test.js` parses `WireFormat.Marks.cs`, `palette.test.js` parses
  * `GlyphColor.cs`). `None = 0` is deliberately ABSENT: it is never published, and giving it a
  * sentence would make the no-default-reason rule unobservable here.

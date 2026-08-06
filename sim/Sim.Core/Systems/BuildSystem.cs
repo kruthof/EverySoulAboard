@@ -212,8 +212,17 @@ namespace Perilune.Sim
                 // pay-then-refund-the-same-amount (net zero), which is strictly tighter than
                 // place → strip, whose salvage is `floor(parts × Condition)` and therefore lossy.
                 // Pinned by `BlueprintTests.PlaceThenCancelIsMatterNeutral`.
-                if (doomedKind == BuildKind.Device)
-                    sim.AddItem(PlaceDeviceCommand.Currency, sim.Defs.Build.DevicePlaceCost, pos);
+                // ⚠️ GUARDED, LIKE EVERY OTHER REFUND IN THE CODEBASE. `device_place_cost = 0` is an
+                // explicitly supported config (`DeconstructSystemTests`' "restores pre-E0-5 free
+                // placement" premise), and an unguarded `AddItem(Parts, 0, pos)` adds a SAVED,
+                // HASHED entity holding nothing that no consumer ever collects — one leaked per
+                // cancel, folded into `StateHash`, for the life of the save. The Regolith refund
+                // three lines up and both of `DeconstructSystem`'s `AddItem` calls carry the same
+                // `> 0` term; this one did not, and at the shipped price of 3 nothing could ever
+                // reach it. Pinned by `BlueprintTests.AFreePlacementCancelledMintsNoEmptyStack`.
+                int refund = sim.Defs.Build.DevicePlaceCost;
+                if (doomedKind == BuildKind.Device && refund > 0)
+                    sim.AddItem(PlaceDeviceCommand.Currency, refund, pos);
                 sim.JobsDirty |= JobBoardDirty.Sites; // the pending site is gone — build board re-derives
                 return true;
             }
