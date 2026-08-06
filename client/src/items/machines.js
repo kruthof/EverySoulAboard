@@ -562,25 +562,41 @@ const drawReclaimerStack = (s, { F, hatch }) => {
   for (const x of [8, 82]) { pad(s, F, x, 4, 20, 10, 14, hatch); pad(s, F, x, 52, 20, 10, 14, hatch); }
   bx(s, F, 0, 0, 10, 110, 152, 70, { hatch, sw: W.mass });
   bx(s, F, 2, 2, 162, 106, 8, 66, { hatch, sw: W.heavy });
-  // the sight glass, and the water standing in it
-  quad(s, F, [[24, 0, 62], [80, 0, 62], [80, 0, 132], [24, 0, 132]], { fill: PAPER_FLAT, sw: W.mid });
+  // GREY IN — a full-height STANDPIPE up the left flank, forward of the body plane so its own face
+  // clears the body's opaque front. It runs the deck to the collar, so it reads as PLUMBING rather
+  // than as the trim a locker wears, and it breaks the box's flat silhouette on purpose: a blind read
+  // of the old drawing called this piece "a storage locker", and a 10 cm nub sitting on the lid was
+  // not enough plumbing to say otherwise. The collar keeps the accent: "not this one".
+  cyl(s, F, 12, 4, 10, 168, 7, { sw: W.heavy });
+  disc(s, F, 12, 4, 152, 10, { fill: 'none', sw: W.mid, stroke: ATTEND });
+  // the sight glass, and the water standing in it — with a curved MENISCUS at the fill line instead
+  // of a ruled one, so the fill reads as standing liquid rather than as a second shelf. ⚠️ THE GLASS
+  // KEEPS ITS OWN CORNERS (24…80 × 62…132, water at z = 98): `machines.test.js` asks that the water
+  // line be the HEAVIEST stroke running through those two lips, which is the one mark that says the
+  // glass holds water rather than being a window.
+  quad(s, F, [[24, 0, 62], [80, 0, 62], [80, 0, 132], [24, 0, 132]], { fill: PAPER_FLAT, sw: W.heavy });
   quad(s, F, [[24, 0, 62], [80, 0, 62], [80, 0, 98], [24, 0, 98]], { fill: hatch, sw: W.hair });
-  line(s, F, [[24, 0, 98], [80, 0, 98]], { sw: W.heavy });
-  // GREY IN — the riser, high, with a caution collar. The accent says "not this one".
-  cyl(s, F, 16, 35, 170, 180, 7, { sw: W.mid });
-  disc(s, F, 16, 35, 170, 10, { fill: 'none', sw: W.mid, stroke: ATTEND });
-  // CLEAN OUT — the spigot, low, on the other flank
-  disc(s, F, 92, 0, 40, 5, { fill: 'none', sw: W.fine });
-  line(s, F, [[92, 0, 40], [104, 0, 40], [104, 0, 26]], { sw: W.mass });
-  // the mark: two arrows chasing each other
-  curve(s, F, [42, 0, 152], [55, 0, 164], [68, 0, 152], { sw: W.mid });
-  line(s, F, [[63, 0, 156], [68, 0, 152], [64, 0, 147]], { sw: W.fine });
-  curve(s, F, [68, 0, 144], [55, 0, 132], [42, 0, 144], { sw: W.mid });
-  line(s, F, [[47, 0, 140], [42, 0, 144], [46, 0, 149]], { sw: W.fine });
-  // the access door
-  line(s, F, [[14, 0, 20], [96, 0, 20], [96, 0, 54], [14, 0, 54]],
+  curve(s, F, [24, 0, 98], [52, 0, 92], [80, 0, 98], { sw: W.heavy });
+  line(s, F, [[38, 0, 112], [72, 0, 112]], { sw: W.hair, opacity: 0.4 });
+  // the mark: two arrows chasing each other — same construction, thickened, and clear of the
+  // standpipe (x = 12, well left of it) so it stays the strongest single tell on the front face
+  curve(s, F, [42, 0, 152], [55, 0, 164], [68, 0, 152], { sw: W.heavy });
+  line(s, F, [[63, 0, 156], [68, 0, 152], [64, 0, 147]], { sw: W.mid });
+  curve(s, F, [68, 0, 144], [55, 0, 132], [42, 0, 144], { sw: W.heavy });
+  line(s, F, [[47, 0, 140], [42, 0, 144], [46, 0, 149]], { sw: W.mid });
+  // CLEAN OUT — the spigot: a pipe falling from the glass's own bottom-right corner, clear of the
+  // pane, to a valve near the deck, and then the drip. Attached at both ends, so the flow has
+  // somewhere to come from and somewhere to go — and big enough to register, which a ∅5 disc with a
+  // 12 cm stub was not.
+  line(s, F, [[80, 4, 62], [98, 4, 62], [98, 4, 22]], { sw: W.heavy });
+  disc(s, F, 98, 4, 22, 5, { fill: 'none', sw: W.fine });
+  curve(s, F, [98, 4, 16], [101, 4, 8], [98, 4, 0], { sw: W.fine });
+  // the access HATCH — a maintenance panel, not a wardrobe door: the old full-width outline with a
+  // vertical pull bar at mid-height was the strongest "cabinet" cue in the piece, so it is a small
+  // hatch with a recessed latch that no longer competes with the glass for the "front door" read
+  line(s, F, [[18, 0, 16], [58, 0, 16], [58, 0, 40], [18, 0, 40]],
     { sw: W.fine, close: true, cap: false });
-  line(s, F, [[80, 0, 32], [80, 0, 42]], { sw: W.heavy });
+  disc(s, F, 50, 0, 28, 3, { fill: INK, sw: W.hair });
   for (const y of [14, 34, 54]) line(s, F, [[6, y, 170], [104, y, 170]], { sw: W.hair, opacity: 0.5 });
 };
 export const reclaimerStack = (opts = {}) => machine('reclaimer-stack', opts, drawReclaimerStack);
@@ -660,19 +676,32 @@ const drawFabCell = (s, { F, hatch, powered }) => {
   for (const x of [10, 122]) { pad(s, F, x, 4, 18, 10, 14, hatch); pad(s, F, x, 72, 18, 10, 14, hatch); }
   bx(s, F, 0, 0, 10, 150, 150, 90, { hatch, sw: W.mass });
   bx(s, F, 4, 4, 160, 142, 8, 82, { hatch, sw: W.heavy });
-  cyl(s, F, 128, 45, 168, 175, 6, { sw: W.mid });                            // the extract
-  disc(s, F, 20, 30, 168, 6, { fill: powered ? INK : PAPER, sw: W.fine });   // the ready lamp
-  // the chamber
-  quad(s, F, [[16, 0, 60], [134, 0, 60], [134, 0, 140], [16, 0, 140]], { fill: PAPER_FLAT, sw: W.mid });
-  line(s, F, [[21, 0, 65], [129, 0, 65], [129, 0, 135], [21, 0, 135]],
-    { sw: W.hair, close: true, cap: false, opacity: 0.6 });
-  line(s, F, [[22, 0, 128], [128, 0, 128]], { sw: W.mid });                  // the gantry rail
+  cyl(s, F, 128, 45, 168, 175, 6, { sw: W.mid });                            // the extract, alone on
+                                                                             // the lid now the lamp
+                                                                             // has moved to the panel
+  // the chamber is a CUT, not a plaque. A flat PAPER_FLAT rectangle coplanar with the front face read
+  // as a stencilled panel on a crate — which is what a blind read of this piece called it. The mouth
+  // is drawn first and its outline HEAVY, then a HATCHED wall set 16 cm BACK inside it: the same
+  // "fill: hatch for what is behind the glass" the reclaimer's sight glass uses, and the reason the
+  // order matters is the seventh fault in this module's header — a wall drawn behind an opaque quad
+  // contributes zero pixels.
+  quad(s, F, [[16, 0, 60], [134, 0, 60], [134, 0, 140], [16, 0, 140]], { fill: PAPER_FLAT, sw: W.heavy });
+  quad(s, F, [[20, 16, 64], [126, 16, 64], [126, 16, 128], [20, 16, 128]], { fill: hatch, sw: W.hair });
+  // the gantry: two struts off the mouth's own top edge and a rail slung between them, BOLD — at tile
+  // size this crossing bar is the whole silhouette difference between "machine" and "crate", and E8-3
+  // holds literally (each strut ends on the mouth's top edge above and on the rail's own end below).
+  for (const x of [22, 128]) line(s, F, [[x, 0, 140], [x, 0, 128]], { sw: W.mid });
+  line(s, F, [[22, 0, 128], [128, 0, 128]], { sw: W.heavy });                // the gantry rail
   bx(s, F, 58, 8, 62, 34, 26, 24, { sideFill: 'flat', sw: W.mid });          // the billet, forming
-  line(s, F, [[64, 0, 114], [86, 0, 114], [86, 0, 126], [64, 0, 126]], {
+  line(s, F, [[64, 0, 118], [86, 0, 118], [86, 0, 132], [64, 0, 132]], {
     sw: W.mid, close: true, cap: false, fill: powered ? ATTEND : PAPER, stroke: powered ? ATTEND : INK,
-  });                                                                        // the print head
-  line(s, F, [[75, 0, 114], [75, 0, 106]], { sw: W.mid, stroke: powered ? ATTEND : INK });
-  line(s, F, [[75, 0, 106], [75, 8, 88]], { sw: W.hair, dash: '2 2', opacity: 0.7 });
+  });                                                                        // the print head, riding
+                                                                             // the rail it straddles
+  line(s, F, [[75, 0, 118], [75, 8, 88]],
+    { sw: W.hair, dash: '2 2', opacity: 0.7, stroke: powered ? ATTEND : INK }); // the feed, to the billet
+  disc(s, F, 142, 0, 118, 5, { fill: powered ? INK : PAPER, sw: W.fine });   // the ready lamp — on the
+                                                                             // control panel, not the
+                                                                             // lid beside the extract
   // the output tray, and the slot it comes out of
   quad(s, F, [[20, 0, 26], [130, 0, 26], [130, 0, 44], [20, 0, 44]], { fill: PAPER_FLAT, sw: W.mid });
   bx(s, F, 18, 0, 20, 114, 6, 22, { sideFill: 'flat', sw: W.fine });
@@ -744,6 +773,16 @@ export const ringArray = (opts = {}) => machine('ring-array', opts, drawRingArra
 const DISH_A = [10, 34, 194];        // the rim, one lip …
 const DISH_B = [96, 34, 126];        // … and the other (aperture 109.6 cm)
 const DISH_C = [82.8, 34, 122.3];    // the control: mid + 2·24·(0.620, −0.785)
+// ⭐ AND THE BACK OF THE MOUTH, 2026-08-05 — the control on the OTHER side of the same chord,
+// mid − 2·16·(0.620, −0.785). The bowl used to close `Q C B Z`: one curved edge and one dead-straight
+// one, which is a crescent, and a crescent has no roundness to read. A blind read of the catalogue
+// called this piece "a standing work light" — a flat tilted panel on a pole is exactly what a thin
+// blade draws at 22 px, where the style guide says only silhouette survives. Two arcs bulging to
+// OPPOSITE sides of the chord is the edge-on ellipse a real mouth wears, and it costs one control
+// point. ⛔ THE RIM LIPS, THE VERTEX AND THE FOCUS DO NOT MOVE: `machines.test.js` pins each of them
+// (the two feed struts, the horn at the focus, the mast to the vertex), and the sag is what was
+// wrong, not where the dish points.
+const DISH_BACK_C = [33.2, 34, 185.1];
 const DISH_VTX = [67.9, 34, 141.2];  // the bowl's deepest point — where the mast lands
 const DISH_FEED = [48.5, 34, 166];   // the focus, D²/16d = 31 cm out along the mouth's normal
 const drawDishMast = (s, { F, hatch }) => {
@@ -754,8 +793,12 @@ const drawDishMast = (s, { F, hatch }) => {
   const [ax, ay] = F.project(...DISH_A);
   const [cx, cy] = F.project(...DISH_C);
   const [bx2, by2] = F.project(...DISH_B);
-  ink(s, `M${nn(ax)} ${nn(ay)} Q${nn(cx)} ${nn(cy)} ${nn(bx2)} ${nn(by2)} Z`,
-    { fill: PAPER_FLAT, sw: W.mass, cap: false });                           // the bowl
+  const [kx, ky] = F.project(...DISH_BACK_C);
+  ink(s, `M${nn(ax)} ${nn(ay)} Q${nn(cx)} ${nn(cy)} ${nn(bx2)} ${nn(by2)}`
+    + ` Q${nn(kx)} ${nn(ky)} ${nn(ax)} ${nn(ay)} Z`,
+    { fill: PAPER_FLAT, sw: W.mass, cap: false });                           // the bowl — both edges
+                                                                             // curved, so it is an
+                                                                             // oval and not a blade
   curve(s, F, [16, 34, 189], [80, 34, 126], [92, 34, 129], { sw: W.hair, opacity: 0.6 });
   for (const end of [DISH_A, DISH_B, DISH_VTX]) {
     line(s, F, [DISH_FEED, end], { sw: W.fine });                            // the tripod
