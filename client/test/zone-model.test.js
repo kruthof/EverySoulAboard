@@ -208,7 +208,12 @@ test('the back-off wording does not claim unreachability', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════════ roomZoneTiles
 
-const FOCUS = { deck: 0, rx: 10, ry: 5, rw: 4, rh: 3 };   // tiles x10..13, y5..7 on deck 0
+// ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+// wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+// fixture rect written as the tile range under test would have no interior at all and every leg
+// would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+// the tests address are unchanged.
+const FOCUS = { deck: 0, rx: 9, ry: 4, rw: 6, rh: 5 };    // FLOOR = tiles x10..13, y5..7 on deck 0
 const row = (x, y, deck, mask, flags) => ({ x, y, deck, mask, flags });
 
 // MUTATION: drop the `z.deck !== focus.deck` guard in zone-model.js ⇒ this fails. MUTATION 2: make

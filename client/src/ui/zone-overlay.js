@@ -29,7 +29,7 @@
 
 /** Logical units per tile in the Room Zoom's layer space (room-model.js `U`). Imported rather than
  *  re-declared so a change to the grid pitch cannot silently halve this layer. */
-import { U } from './room-model.js';
+import { U, roomInterior } from './room-model.js';
 // The weight the shared order ring is drawn at (`markCellSvg`'s dig/strip mark). Imported rather than
 // restated, because the RELATION below — a zone must never be drawn heavier than an order — is the
 // point, and a second copy of `1.5` is how the two come to disagree. `mark-overlay.js` imports
@@ -161,8 +161,11 @@ export function zoneLayerSvg(tiles, focus, place = null, unit = U) {
     // VR-P3 — A ZONE IS PAINT ON THE FLOOR, so the cell is built at the origin and mapped onto the
     // tile's projected floor parallelogram by `place.cell`. With no `place` it falls back to the
     // plan-view offset, which is what every isolated model test drives.
-    const lx = place ? 0 : (t.tx - focus.rx) * unit;
-    const ly = place ? 0 : (t.ty - focus.ry) * unit;
+    // THE INTERIOR'S ORIGIN for the `place`-less plan fallback — `roomZoneTiles` clamps to the
+    // interior since the scene inset, so the two must address one rect (see `blocked-overlay.js`).
+    const org = roomInterior(focus) || { rx: 0, ry: 0 };
+    const lx = place ? 0 : (t.tx - org.rx) * unit;
+    const ly = place ? 0 : (t.ty - org.ry) * unit;
     // ⚠️ EVERY EXTENT BELOW IS IN `unit`, NOT IN `U`. The Room Zoom's tile is ~95 scene px on the
     // cutaway and 32 logical px in the plan view this replaced; a cell hard-coded to `U` inside a
     // 95-unit box paints the top-left THIRD of its tile — measured on the first render, where the

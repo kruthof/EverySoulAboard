@@ -97,7 +97,7 @@ const floorLayer = (groundOn, matId = MAT_ID) => '<g class="rz-floor-mat" pointe
 
 // ⛔ THE AFTER COLUMN IS THE SHIPPING SURFACE, VERIFIED IN BYTES — not a lookalike. If this throws,
 // this tool has drifted from `materialLayerSvg` and every picture below is about a page nobody sees.
-const shipped = materialLayerSvg(TILES, place, FOCUS);
+const shipped = materialLayerSvg(TILES, place);
 const mine = floorLayer(false);
 const marks = (s) => (s.match(new RegExp('class="' + GROUND_CLASS + '"', 'g')) || []).length;
 if (shipped !== mine) {

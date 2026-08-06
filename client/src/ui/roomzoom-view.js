@@ -61,7 +61,12 @@ import {
   // unit is the TILE'S OWN WIDTH ON SCREEN (`scene.s * 100 * M_PER_TILE`, derived per repaint), and
   // an unused import of the plan view's 32 is the next reader's invitation to draw at the wrong size.
   ROOM_TOOLS, TOOL_LABEL, paletteCommand, isSweepTool, roomDragMode,
-  resolvesByFloor, isHullPocheTile, isRingTile,
+  resolvesByFloor,
+  // ⛔ `isHullPocheTile`/`isRingTile` ARE GONE with the poché stopgap the owner superseded — the
+  // scene is the INTERIOR now, so this surface has no ring to draw and none to refuse a press on.
+  // ⭐ `roomInterior` is the one derivation of "which tiles is this room"; `clampPosToFloor` is the
+  // doorway mechanism's drawing half (a pawn on a ring door tile stands ON the wall line).
+  roomInterior, clampPosToFloor, drawnFloorTile,
   nextRoomTool, roomTileRect,
   // VR-P3 — the cutaway's own derivations: the scene, the placement object every tile-addressed
   // layer is drawn through, the pieces of the drawing, and the two inverses (pointer→tile, and
@@ -114,10 +119,11 @@ import {
   // armed cost row are painted from, so the preview and the palette cannot answer one question two
   // ways (`ghostRefused`).
   isDecorTool, placeIsUnaffordable,
-  // `isPlaceTool` gates the hull-ring clamp in `tileAt` — furniture, and only furniture, refuses to
-  // resolve onto the wall-inclusive rect's perimeter. Same predicate the cost row asks, so "is this
-  // a placement" has one answer in this file.
-  isPlaceTool,
+  // ⛔ `isPlaceTool` IS NO LONGER IMPORTED. It gated the hull-ring clamp in `tileAt` — furniture, and
+  // only furniture, refused to resolve onto the wall-inclusive rect's perimeter. The scene is the
+  // interior now: the ring is not drawn, `tileFromCanvasXY` cannot return one of its tiles, and there
+  // is no tool-shaped exception left to make. An unused import of a placement predicate beside a
+  // deleted placement rule is the next reader's invitation to reinstate the rule.
 } from './build-cost-model.js';
 // PARTS ABOARD, read from the SAME derivation the Overview's LEDGER island prints, so the palette
 // and the ledger cannot count one ship two ways. `Hud.getLedger` is already on `SHIP_STATE_REACH`
@@ -1118,7 +1124,14 @@ function placePawns() {
   const pos = _tween.positions(now);
   const screen = new Map();
   for (const [key, p] of pos) {
-    const [sx, sy] = _place.foot(p.x, p.y);
+    // ⭐⭐ THE DOORWAY CLAMP, APPLIED TO THE **TWEEN'S** POSITION AND NOT ONLY TO THE WIRE SAMPLE.
+    // `roomCrew` admits a crew member on the wall-inclusive window because a door opening IS a ring
+    // tile (`tileInFocusRect`); the scene draws only the interior, so her projected foot point is
+    // clamped onto the drawn floor's boundary and she stands IN the opening, on the wall line.
+    // Clamping the sample alone would let her slide off the floor BETWEEN two samples and snap back
+    // on the next one, which is the same class of defect as clamping nothing.
+    const q = clampPosToFloor(p.x, p.y, _focus);
+    const [sx, sy] = _place.foot(q.x, q.y);
     screen.set(key, { x: sx, y: sy });
   }
   return _pawnLayer.place(screen);
@@ -1148,7 +1161,11 @@ function crewDrawnAtTile(crew, tx, ty) {
   for (const c of roomCrew(crew, _focus)) {
     const p = pos.get(String(c.cid));
     if (!p) continue;
-    if (Math.round(p.x) === x && Math.round(p.y) === y) return c;
+    // THE TILE SHE IS DRAWN ON — `drawnFloorTile` applies the SAME clamp `placePawns` projects her
+    // with, so a figure standing in a doorway (a ring tile the scene cannot address) is hit on the
+    // interior tile her feet are drawn against instead of on a tile no press can ever produce.
+    const d = drawnFloorTile(p.x, p.y, _focus);
+    if (d.x === x && d.y === y) return c;
   }
   return null;
 }
@@ -1589,7 +1606,8 @@ function ghostPieceSvg(tool, tile, scene, place, refused) {
 // drawn where nobody could see it, applied here before it could happen a second time. The scene has
 // a viewBox and anything outside it is CLIPPED, silently, so a leader that always ran right would
 // vanish on every tile in the right half of a wide room. The side is chosen from the tile's own
-// position in the room (`_focus.rw`), and both sides are driven in `build-tray.test.js`.
+// position in the room (the INTERIOR's `rw` — `roomInterior(_focus)`), and both sides are driven in
+// `build-tray.test.js`.
 //
 // ⚠️ AND IT IS NOT A PRESS TARGET, for rule 3's reason: it is emitted into `.rz-ghostlayer`, which is
 // `pointer-events:none`, and the group repeats the attribute — the leader crosses tiles the player
@@ -1607,7 +1625,8 @@ function ghostCalloutSvg(tool, tile, place, refused) {
   const w = Math.max(8, c.nearRight[0] - c.nearLeft[0]);
   // WHICH WAY THE LEADER RUNS. Rooms are wider than they are deep and the plate is letterboxed, so
   // the horizontal edge is the one that clips; the tile's column decides the side.
-  const right = _focus ? ((tile.x | 0) - (_focus.rx | 0)) < ((_focus.rw | 0) / 2) : true;
+  const rct = _focus ? roomInterior(_focus) : null;   // the DRAWN extent decides which way it clips
+  const right = rct ? ((tile.x | 0) - rct.rx) < (rct.rw / 2) : true;
   const dirn = right ? 1 : -1;
   const anchorX = right ? c.nearRight[0] : c.nearLeft[0];
   const anchorY = (c.nearRight[1] + c.nearLeft[1]) / 2 - w * 0.55;   // about the piece's shoulder
@@ -1816,47 +1835,24 @@ export function standItem(itemId, tx, ty, place, idPrefix, cond, facing, opts = 
  * on the exact thing the sheet exists to check, so the page could look right while the shipping
  * surface drew something else.
  */
-export function materialLayerSvg(tiles, place, focus = _focus) {
-  const floors = [], walls = [], poche = [];
-  const rx = focus.rx | 0, ry = focus.ry | 0;
-  const x1 = rx + (focus.rw | 0) - 1, y1 = ry + (focus.rh | 0) - 1;
+export function materialLayerSvg(tiles, place) {
+  const floors = [], walls = [];
   for (const t of tiles) {
-    // ⭐⭐ THE HULL RING IS **POCHÉ**, NOT FLOOR AND NOT A SLAB — 2026-08-06.
+    // ⛔⛔ THE HULL-RING **POCHÉ** THAT STOOD HERE IS DELETED, AND SO IS THE RING IT DREW.
     //
-    // ⛔ THE DEFECT, measured live before the fix: the ring carried NO INK AT ALL, so 36 of every
-    // compartment's 96 drawn tiles were solid wall rendered as clean, unmarked, ghost-previewable
-    // floor — 37.5% of the picture, on every ship, aired or airless. The owner pressed the widest
-    // such band (the row in front of the drawn back wall), the ghost previewed, and the sim refused.
-    // 32 of 96 presses on the shipped cryo bay came back "this is a wall".
+    // The previous package found that the ring carried no ink at all — 36 of every compartment's 96
+    // drawn tiles were solid wall rendered as clean, ghost-previewable floor — and gave it flat
+    // cut-wall hatch in the floor plane, refusing placement on exactly those tiles. THE OWNER
+    // SUPERSEDED THAT BY RULING (2026-08-06, with the screenshot): *"the user should be able to
+    // place something directly at the wall."* Poché made the wall-adjacent row dead space; the scene
+    // is inset to the true interior instead, so the cutaway's wall planes land WHERE THE RING TILES
+    // WERE and the outermost floor row is drawn flush against them.
     //
-    // ⛔ AND THE OBVIOUS FIX IS THE ONE VR-P3 ALREADY REVERTED, ON THE OWNER'S OWN EYES — see this
-    // function's header, paragraph 1: skinning the ring with the interior partition's 2.4 m
-    // `obliqueBox` put *"THIRTY dark slabs standing in a stepped ring around the compartment"*, and
-    // on the near and right edges it stood a solid slab exactly where the drawing has CUT THE ROOM
-    // OPEN. That paragraph is still true and is NOT being undone here.
-    //
-    // ⭐ SO THE RING GETS THE CUT-WALL CONVENTION INSTEAD: hatched POCHÉ lying FLAT IN THE FLOOR
-    // PLANE, zero height, zero occlusion. It cannot rebuild the stepped ring (nothing stands up), it
-    // cannot re-close the cut edges (nothing rises off the plane), and it says the one thing the
-    // player needed and did not have — THIS IS NOT FLOOR. The far and left ring tiles get it too,
-    // under the cutaway's own wall planes, so the wall's FOOTPRINT reads continuously all the way
-    // round instead of stopping where the drawing happens to have a plane.
-    //
-    // ⛔ A DOOR OPENING STAYS AN OPENING, AND FOR FREE RATHER THAN BY A SECOND RULE. `roomMaterialTiles`
-    // emits `kind:'wall'` only for glyph 35 (`'#'`); a door is 43/88/47 (`+ X /`) and never enters
-    // this list, so the gap in the poché IS the opening. That also keeps VR-P3's boundary-door
-    // dedup exactly as it was — the cutaway is still the only thing that draws a boundary door.
-    //
-    // ⛔ AHEAD OF THE `materialItemId` GUARD, deliberately: the poché is STRUCTURE, not a material
-    // skin, and must not be able to vanish because a material byte failed to resolve to art.
-    // ⭐ ASKED THROUGH `isHullPocheTile`, WHICH IS ALSO WHAT `tileAt` ASKS. One derivation decides
-    // what is drawn as hull and what may be pressed; see that function for the stale-clamp defect
-    // that came of having two. (`tiles` here IS the `roomMaterialTiles` list it reads.)
-    if (isHullPocheTile(t.tx, t.ty, tiles, focus)) {
-      poche.push('<path class="rz-poche" d="' + place.quad(t.tx, t.ty) + '" fill="' + fhRef(RZ_ID)
-        + '" stroke="' + INK + '" stroke-width="1.1" stroke-linejoin="round"/>');
-      continue;
-    }
+    // ⭐ WHAT THAT DOES TO THIS LOOP: `roomMaterialTiles` is clamped to the interior, so a ring tile
+    // never arrives here and the only `kind:'wall'` rows left are the room's own INTERIOR PARTITIONS
+    // — which is what this layer was built for and what its header (paragraph 1) says it draws. The
+    // ring predicate, the hatch branch and the `poche` bucket all go with it; VR-P3's revert of
+    // slab-skinning the ring is untouched and now unreachable rather than merely obeyed.
     const id = materialItemId(t.kind, t.mat);
     if (!id) continue;
     const idp = 'rz-mt-' + t.tx + '-' + t.ty;
@@ -1878,9 +1874,8 @@ export function materialLayerSvg(tiles, place, focus = _focus) {
       floors.push('<g transform="' + place.cell(t.tx, t.ty) + '">' + g + '</g>');
     }
   }
-  // POCHÉ FIRST — it lies in the floor plane, so anything with height must paint over it.
-  return (poche.length ? '<g class="rz-poche-layer" pointer-events="none">' + poche.join('') + '</g>' : '') +
-    (floors.length ? '<g class="rz-floor-mat" pointer-events="none">' + floors.join('') + '</g>' : '') +
+  // FLOOR MATERIALS FIRST — they lie in the floor plane, so a partition slab paints over them.
+  return (floors.length ? '<g class="rz-floor-mat" pointer-events="none">' + floors.join('') + '</g>' : '') +
     (walls.length ? '<g class="rz-walls" pointer-events="none">' + walls.join('') + '</g>' : '');
 }
 
@@ -2042,10 +2037,22 @@ export function pawnParts(list, focus, selCid, place) {
     // the one whose quad contains this exact foot point (`drawnTile`'s header carries the algebra).
     // The first draft filtered on the SIM tile, which leads the body by up to a full tile, and review
     // photographed the result — a figure standing on the cryo bay's back wall.
-    const [fx, fy] = pl.foot(
+    // ⭐ CLAMPED ONTO THE DRAWN FLOOR before it is projected — the doorway mechanism's other half,
+    // and the SAME function `placePawns` uses so the cold-start position and every tweened frame
+    // after it agree. See `clampPosToFloor`.
+    // ⚠️ AND ON **THIS SURFACE** IT IS MEASURED INERT, WHICH IS SAID RATHER THAN LEFT TO BE FOUND:
+    // `pawn-layer.js`'s `sync` consumes only `html`, never a part's `x`/`y` — the transform is
+    // written by `place()`, i.e. by `placePawns`, which clamps for itself. Removing the clamp HERE
+    // reddens nothing (driven, 2026-08-06). It stays because `pawnParts` is EXPORTED and three
+    // `client/tools` sheets place their figures from these coordinates, and because a pure builder
+    // that returns a foot point off its own floor is a trap for the next reader; the shipping seam
+    // is `placePawns` and that is where the test and the 60 Hz rig both point.
+    const fp = clampPosToFloor(
       Number.isFinite(c.fx) ? c.fx : c.x,
       Number.isFinite(c.fy) ? c.fy : c.y,
+      org,
     );
+    const [fx, fy] = pl.foot(fp.x, fp.y);
     // FOOT-RELATIVE FROM HERE DOWN — the two zeros are the old `(fx,fy)`, which now travels out as
     // the part's own `x`/`y` and lands on the group's `translate`. Nothing else about the geometry
     // moved: `H`, `S`, the plate and the tag are all measured from the feet exactly as before.
@@ -3146,7 +3153,12 @@ function doDemolish(tile, deck) {
 
 /** The room-tile rect for clipping a drag (never designate outside the focused room). */
 function roomBounds() {
-  return { x: _focus.rx | 0, y: _focus.ry | 0, w: _focus.rw | 0, h: _focus.rh | 0 };
+  // THE INTERIOR: a sweep is clipped to the floor the scene draws, so a drag flung past the wall
+  // stops at the wall instead of designating hull the player cannot see. (`buildDragTiles` clips to
+  // this rect; before the inset it clipped to the wall-inclusive window and a wide sweep queued a
+  // row of orders on tiles the sim then refused one by one.)
+  const iv = roomInterior(_focus);
+  return { x: iv.rx, y: iv.ry, w: iv.rw, h: iv.rh };
 }
 
 /**
@@ -3197,34 +3209,27 @@ function tileAt(e, mode) {
     if (raw) {
       const parts = String(raw).split(',');
       const x = Number(parts[0]), y = Number(parts[1]);
-      if (Number.isFinite(x) && Number.isFinite(y) && _focus
-        && (x | 0) >= (_focus.rx | 0) && (x | 0) < (_focus.rx | 0) + (_focus.rw | 0)
-        && (y | 0) >= (_focus.ry | 0) && (y | 0) < (_focus.ry | 0) + (_focus.rh | 0)) {
+      // ⭐ BOUNDS-CHECKED AGAINST THE **DRAWN FLOOR**, which since the scene inset is the interior —
+      // the same rect tier two returns null outside. Checking the wall-inclusive window here would
+      // let a stray `data-tile` on the ring through one tier and not the other, i.e. two answers to
+      // "is this tile in the room" inside one function.
+      const iv = _focus ? roomInterior(_focus) : null;
+      if (Number.isFinite(x) && Number.isFinite(y) && iv
+        && (x | 0) >= iv.rx && (x | 0) < iv.rx + iv.rw
+        && (y | 0) >= iv.ry && (y | 0) < iv.ry + iv.rh) {
         hit = { x: x | 0, y: y | 0 };
       }
     }
   }
   if (!hit) hit = tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
-  // ⭐⭐ THE SURFACE DOES NOT OFFER FURNITURE ON A TILE IT HAS DRAWN AS WALL — and it asks the
-  // DRAWING, not the rect. `_focus`'s rect is wall-inclusive, so its perimeter is 36 of the 96 tiles
-  // the cutaway draws; the ones that are really wall carry poché (`materialLayerSvg`), and a place
-  // tool resolves to null on exactly those, so the ghost hides and no command is sent.
-  //
-  // ⛔ THIS USED TO BE `!clampTileToInterior(...)` — PURE RECT GEOMETRY — AND THAT WAS A SECOND
-  // LEGALITY AUTHORITY THAT WENT STALE SILENTLY. A ring wall can be STRIPPED (the sim accepts it on
-  // a carved ship), after which the tile is floor, is DRAWN as floor, and the geometric clamp went on
-  // swallowing every press on it with no ghost, no command and no sentence — worse than the defect it
-  // was added for. The same hole was already live on the ring's DOOR tile, which never carries poché.
-  // `isHullPocheTile` reads the SAME `roomMaterialTiles` list the poché is built from, so the picture
-  // and the press change together in one frame. Full argument at that function.
-  //
-  // ⛔ PLACE TOOLS ONLY, unchanged: a wall/floor/door/dig/stockpile press anywhere still reaches the
-  // SIM, which is the one authority on legality, and DIG must keep reaching a ring tile that really
-  // is debris.
-  if (hit && isPlaceTool(_armed)
-    && isHullPocheTile(hit.x, hit.y, roomMaterialTiles(Hud.getFrame(), _focus, decodeMaterials(Hud.getMaterials())), _focus)) {
-    return null;
-  }
+  // ⛔⛔ THE HULL-RING CLAMP THAT STOOD HERE IS **DELETED**, BY THE OWNER'S RULING (2026-08-06):
+  // *"that solution is not acceptable — the user should be able to place something directly at the
+  // wall."* It refused a PLACE press on any tile the cutaway had drawn as poché, which was the
+  // honest answer while the scene spanned the wall-inclusive window — and which turned the visible
+  // wall-adjacent row into dead space. The scene is the INTERIOR now: `tileFromCanvasXY` cannot
+  // return a ring tile at all, tier one is bounds-checked against the same rect, and EVERY tile this
+  // function can answer with is real floor the player can build on. There is nothing left to refuse,
+  // so nothing refuses — and the sim stays the one authority on legality, as it always was.
   return hit;
 }
 

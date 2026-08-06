@@ -39,6 +39,8 @@ import { dirname, join } from 'node:path';
 import { decode, decodeDecks, decodeRooms, selectedCrewCid } from '../src/wire/messages.js';
 import {
   roomTileRect, ROOM_TOOLS, TOOL_LABEL, paletteCommand, isSweepTool,
+  // ⭐ the scene inset's two seams: the one interior derivation, and the doorway draw clamp.
+  roomInterior, clampPosToFloor,
   crewRoomSlot, shipCrewRows, roomScene, scenePlacement,
 } from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
@@ -550,8 +552,18 @@ test('a click on a MID-GLIDE pawn selects her where she is DRAWN, not where the 
 // standing ON THE CRYO BAY'S BACK WALL. Both directions are asserted here against the LIVE `#rz-layers`
 // markup — the emitted `rz-pawn` transform — rather than against the model that produced it.
 //
+// ⭐⭐ AND SINCE THE SCENE INSET (2026-08-06) THE INTERVAL THIS SWEEP PINS IS THE **WINDOW'S**, NOT
+// THE FLOOR'S — the numbers below did not move, and the SENTENCE they mean did. `roomCrew` still
+// admits on the wall-inclusive rect (`tileInFocusRect`), deliberately: a DOOR OPENING IS A RING TILE
+// and a crew member crossing one has to stay drawn. What changed is that the drawing spans only the
+// interior, so "admitted" no longer implies "standing on drawn floor" — that is now made by
+// `clampPosToFloor` at the moment of projection, and it is asserted in its own leg below rather than
+// inherited from this one. A test whose prose still said "her body is on its floor" would be green,
+// stale, and describing a guarantee nothing here checks.
+//
 // MUTATION: `roomCrew` filters on the sim tile again ⇒ RED on BOTH legs (drawn outside / vanished).
-test('a pawn is drawn in the room only while her BODY is on its floor — both boundaries', () => {
+// MUTATION: `roomCrew` narrows to `clampTileToRoom` ⇒ RED (she vanishes a tile early, in the door).
+test('a pawn is drawn in the room only while her BODY is in its WINDOW — both boundaries', () => {
   prime(null);
   // A LOCAL walker — the shared CREW fixture is never mutated, so nothing here can reach a sibling
   // test through ordering. Row/column are inside `quarters`; only x and fx move.
@@ -592,15 +604,30 @@ test('a pawn is drawn in the room only while her BODY is on its floor — both b
   let drawn = 0, absent = 0;
   for (let k = -15; k <= (QUARTERS.rw - 1) * 10 + 15; k += 1) {
     const fx = Math.round((first + k / 10) * 10) / 10;
-    const onFloor = fx >= first - 0.5 - 1e-9 && fx < last + 0.5 - 1e-9;
+    const inWindow = fx >= first - 0.5 - 1e-9 && fx < last + 0.5 - 1e-9;
     // The sim tile is deliberately held at a fixed INSIDE tile for the whole sweep, so the only
     // thing that can decide "drawn" is the glide — which is exactly the property under test.
     const px = drawnX(first + 1, fx);
     if (px === null) { absent += 1; } else { drawn += 1; }
-    assert.equal(px !== null, onFloor,
-      `fx=${fx}: drawn=${px !== null} but the room floor spans ${first - 0.5}..${last + 0.5}`);
+    assert.equal(px !== null, inWindow,
+      `fx=${fx}: drawn=${px !== null} but the room WINDOW spans ${first - 0.5}..${last + 0.5}`);
   }
   assert.ok(drawn > 20 && absent > 20, `sweep saw too few of each (drawn ${drawn}, absent ${absent})`);
+
+  // ⭐⭐ AND THE OTHER HALF OF THE GUARANTEE, WHICH THE SWEEP ABOVE NO LONGER CARRIES: every position
+  // this room ADMITS is DRAWN ON ITS FLOOR. The membership rect is the window; the drawing is the
+  // interior; `clampPosToFloor` is what closes the gap, and without a leg here the sweep would be
+  // green while a figure stood a metre outside the room's own wall.
+  // MUTATION: `clampPosToFloor` returns its argument ⇒ RED (the ring positions project outboard).
+  const iv = roomInterior(QUARTERS);
+  for (let k = -15; k <= (QUARTERS.rw - 1) * 10 + 15; k += 1) {
+    const fx = Math.round((first + k / 10) * 10) / 10;
+    if (!(fx >= first - 0.5 - 1e-9 && fx < last + 0.5 - 1e-9)) continue;   // not admitted at all
+    const q = clampPosToFloor(fx, QUARTERS.ry + 1, QUARTERS);
+    assert.ok(q.x >= iv.rx - 0.5 - 1e-9 && q.x <= iv.rx + iv.rw - 0.5 + 1e-9,
+      `an ADMITTED position fx=${fx} is drawn at ${q.x}, outside the floor's `
+      + `${iv.rx - 0.5}..${iv.rx + iv.rw - 0.5} — there is nothing to stand on there but the wall`);
+  }
 
   Hud.renderRoster({ type: 'roster', crew: CREW });   // leave the rig as the other tests expect
 });

@@ -33,6 +33,7 @@
 // even where the name would not be.
 
 import { ZONE_FLAG_BACKED_OFF } from '../wire/messages.js';
+import { clampTileToRoom } from './room-model.js';
 import { ACCEPT_ALL, stockFilterLabel } from './stock-filter-model.js';
 
 /** The wording for a backed-off tile. Weak on purpose — see the header. */
@@ -123,8 +124,12 @@ export function roomZoneTiles(zones, focus) {
   const out = [];
   for (const z of zones) {
     if (!z || z.deck !== focus.deck) continue;
-    if (z.x < focus.rx || z.x >= focus.rx + focus.rw) continue;
-    if (z.y < focus.ry || z.y >= focus.ry + focus.rh) continue;
+    // ⭐ THE **DRAWN FLOOR**, ASKED THROUGH `clampTileToRoom` RATHER THAN RE-STATED AS TWO INEQUALITIES
+    // (2026-08-06, the scene inset). `focus` is the wire's WALL-INCLUSIVE window and the cutaway now
+    // draws only its interior; a zone painted on the hull ring would be tinted onto a tile the scene
+    // has no floor for. The hand-written rect test WAS that stale second authority — it agreed with
+    // the clamp for a year and would have gone on agreeing with the OLD one after the inset moved it.
+    if (!clampTileToRoom(z.x, z.y, focus)) continue;
     out.push({
       tx: z.x,
       ty: z.y,

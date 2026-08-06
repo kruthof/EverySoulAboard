@@ -1306,7 +1306,7 @@ test('⭐⭐ a room floor draws NO ground rules — the ninety-six, at the surfa
   const tiles = [];
   for (let y = 0; y < 8; y += 1) for (let x = 0; x < 12; x += 1) tiles.push({ kind: 'floor', mat: 1, tx: x, ty: y });
   const place = { cell: (x, y) => `translate(${x * 95} ${y * 95})`, front: (x, y) => [x * 95, y * 95] };
-  const svg = materialLayerSvg(tiles, place, { rx: 0, ry: 0, rw: 12, rh: 8 });
+  const svg = materialLayerSvg(tiles, place);
   const marks = (svg.match(new RegExp(`class="${GROUND_CLASS}"`, 'g')) || []).length;
   assert.equal(marks, 0,
     `a 12 × 8 room floor draws ${marks} ground rules (it drew 96 before the ruling) — a grid of ink\n`

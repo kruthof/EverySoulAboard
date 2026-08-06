@@ -799,7 +799,7 @@ function layer(tiles) {
   const scene = roomScene(FOCUS);
   const unit = scene.s * 100 * M_PER_TILE;
   const place = scenePlacement(scene, FOCUS, unit);
-  return { svg: materialLayerSvg(tiles, place, FOCUS), place, scene, unit };
+  return { svg: materialLayerSvg(tiles, place), place, scene, unit };
 }
 
 /**

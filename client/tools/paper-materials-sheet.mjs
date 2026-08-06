@@ -85,7 +85,7 @@ function patch(id, kind) {
   }
   // `materialLayerSvg` reads `_focus` from module state, so mount it the way the surface does.
   const body = roomHatchDef() + roomCutawaySvg(scene, { vacuum: false })
-    + materialLayerSvg(tiles, place, focus);
+    + materialLayerSvg(tiles, place);
   return (
     `<figure class="patch"><svg viewBox="${scene.viewBoxAttr}" width="440"` +
     ' xmlns="http://www.w3.org/2000/svg">' + body +

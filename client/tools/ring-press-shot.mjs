@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// ring-press-shot.mjs — THE WHOLE-RECT PRESS MAP. Press EVERY tile the Room Zoom DRAWS — ring
-// included — and record, per tile, what the surface sent and what the sim said back.
+// ring-press-shot.mjs — THE WHOLE-WINDOW PRESS MAP. Press every tile of the wire's WALL-INCLUSIVE
+// slot rect — the ring included — and record, per tile, what the surface sent and what the sim said.
 //
 // ⛔⛔ WHY IT EXISTS, AND IT IS CLAUDE.md's 9th TRAP SHAPE WITH A RECEIPT. `place-census-shot.mjs`
 // insets its tile list by one on every side, so it presses only INTERIOR floor. That inset is
@@ -10,24 +10,37 @@
 // `clampTileToRoom` accepted every tile — so 36 of a 12×8 compartment's 96 drawn tiles were solid
 // wall offered as clean, ghost-previewable floor, and no instrument in the repo pressed one.
 //
-// ⭐ SO THE RULE THIS FILE ENFORCES IS: **a question about what the surface OFFERS must press the
-// drawn rect, not the interior.** It reads the `placerefused` REASON BYTE off the wire rather than
-// classifying a toast sentence with a regex — an earlier cut of this rig scored "NOBODY COULD STAND
-// HERE" and "SOMETHING IS ALREADY STANDING HERE" as the same letter and reported a map that was
-// wrong in both directions.
+// ⭐⭐ REWRITTEN 2026-08-06 FOR THE SCENE INSET, and the question it asks is now the OWNER'S:
+// *"the user should be able to place something directly at the wall."* The first fix hatched the
+// ring as poché and REFUSED a press on it; the owner ruled that out, because it turned the visible
+// wall-adjacent row into dead space. The scene is inset to the true interior instead. So the rig
+// still presses the whole window — it has to, or it could not tell "the ring is not drawn" from "the
+// ring is not pressed" — but the three things it now VERDICTS on are:
+//
+//   A. THE RING IS NOT ADDRESSABLE. Every tile of the perimeter comes back NOT-SENT, for every
+//      tool, because the scene has no floor there for a pointer to land on. (It is not a client
+//      refusal any more: there is no rule left to refuse with.)
+//   B. THE WALL-ADJACENT ROW PLACES. Every tile of the interior's OUTERMOST ring — the row flush
+//      against the drawn wall — must be SENT and must resolve to itself. This is the owner's own
+//      press and the reason the package exists.
+//   C. THE DOOR TILE. Kept from the previous cut, with its answer inverted and stated: a boundary
+//      door sits on the RING, so it is NOT-SENT like the rest of the perimeter. Under the poché
+//      rule it was sendable (a doorway carries no hatch); it is not now, and the leg records that
+//      rather than leaving it to be discovered.
+//
+// It reads the `placerefused` REASON BYTE off the wire rather than classifying a toast sentence with
+// a regex — an earlier cut of this rig scored "NOBODY COULD STAND HERE" and "SOMETHING IS ALREADY
+// STANDING HERE" as the same letter and reported a map that was wrong in both directions.
 //
 // It also reports `offby`: whether the press at a tile's OWN CENTRE (`scenePlacement.foot`, the
 // point the build ghost is drawn on) came back as that tile. That column is what caught the second
 // half of the same defect — a tall piece's ink covering the floor centre of the tile in front of it.
 //
+// EXIT CODES: 0 all three verdicts pass · 20 A failed · 21 B failed · 22 C failed.
+//
 // USAGE
 //   1. ./play.sh --host-port 8676 --client-port 8677 --no-open
 //   2. node client/tools/ring-press-shot.mjs --host-port 8676 --client-port 8677 [--anchor cryobay]
-//
-// MEASURED, shipped wreck, cryo bay (breathable), 96 drawn tiles:
-//   before 2026-08-06: 32 × NotWalkable on the ring, 59 × Occupied, 40 tiles resolved off-by-one
-//   after:             36 NOT-SENT (ring clamped), 0 × NotWalkable, 18 × Occupied (= the real
-//                      device glyphs, exactly), 0 off-by among all 60 sent presses
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -240,7 +253,7 @@ if (!armedOk) {
 log(`  verified: ${TOOL} armed`);
 await png('00-armed.png');
 
-// ── press EVERY tile of the drawn rect ──
+// ── press EVERY tile of the WINDOW (the ring included — see the header's leg A) ──
 // ⚠️ MIRRORS `Perilune.Sim.PlaceRefusal` AND MUST BE EXTENDED WITH IT. A code this table does not
 // know printed as a bare number and read as noise; `NoFloor = 9` was appended on 2026-08-06 and this
 // rig went out with tables that stopped at 8, so its own map could not name the arm the same package
@@ -269,7 +282,8 @@ for (let ty = focus.ry; ty < focus.ry + focus.rh; ty++) {
     });
   }
 }
-log('\n=== ACCEPTANCE / REFUSAL MAP, per tile of the DRAWN + CLICKABLE rect ===');
+log('\n=== ACCEPTANCE / REFUSAL MAP, per tile of the WALL-INCLUSIVE WINDOW ===');
+log('  the DRAWN scene is the interior — the perimeter row/column below is hull and must read `!`.');
 log('  glyph: # wall, . floor, other = a device/item.');
 log('  said:  . ACCEPTED  # Blocked(wall)  W NotWalkable  D Occupied  $ CannotPay  Q AlreadyQueued'
   + '  M TooManyQueued  V NoFloor  P NotPlaceable  O OutOfBounds  ! not sent  ? code this rig does not know');
@@ -286,13 +300,72 @@ for (let ty = focus.ry; ty < focus.ry + focus.rh; ty++) {
 }
 const tally = {};
 for (const r of rows) tally[r.reasonName] = (tally[r.reasonName] || 0) + 1;
-log('\nTALLY (all ' + rows.length + ' drawn tiles):');
+log('\nTALLY (all ' + rows.length + ' pressed tiles of the WINDOW):');
 for (const [k, v] of Object.entries(tally).sort((a, b) => b[1] - a[1])) log('  ' + String(v).padStart(3) + '  ' + k);
+
+// ── THE THREE VERDICTS ───────────────────────────────────────────────────────────────────────
+const { roomInterior, roomDoorTiles } = await import('../src/ui/room-model.js');
+const iv = roomInterior(focus);
+const inInterior = (tx, ty) => tx >= iv.rx && tx < iv.rx + iv.rw && ty >= iv.ry && ty < iv.ry + iv.rh;
+const at = (tx, ty) => rows[(ty - focus.ry) * focus.rw + (tx - focus.rx)];
+let fail = 0;
+
+// A — the ring is not addressable.
+const ringRows = rows.filter((r) => { const [x, y] = r.want.split(',').map(Number); return !inInterior(x, y); });
+const ringSent = ringRows.filter((r) => r.sent !== '-');
+log(`\nA. THE RING (${ringRows.length} tiles): NOT-SENT ${ringRows.length - ringSent.length}/${ringRows.length}`);
+if (ringSent.length) {
+  log('   ⛔ FAIL — these hull tiles were addressed: ' + ringSent.map((r) => r.want + '→' + r.sent).join(' '));
+  fail = fail || 20;
+} else log('   ✔ the hull ring is outside the drawing and outside the press map');
+
+// B — the wall-adjacent row places. THE OWNER'S PRESS.
+const flush = [];
+for (let ty = iv.ry; ty < iv.ry + iv.rh; ty++) {
+  for (let tx = iv.rx; tx < iv.rx + iv.rw; tx++) {
+    const edge = tx === iv.rx || tx === iv.rx + iv.rw - 1 || ty === iv.ry || ty === iv.ry + iv.rh - 1;
+    if (edge) flush.push(at(tx, ty));
+  }
+}
+// ⚠️ A TILE THAT ALREADY CARRIES A DEVICE IS REFUSED BY THE **SIM** (`Occupied`) AND THAT IS NOT
+// THIS PACKAGE'S SUBJECT. What must hold is that the press was SENT and landed on the tile aimed at:
+// the surface offered the square and the sim answered about that square, which is the whole contract.
+const flushBad = flush.filter((r) => r.sent === '-' || !r.onWanted);
+log(`\nB. THE WALL-ADJACENT ROW (${flush.length} tiles flush against a drawn wall): SENT+ON-TARGET `
+  + `${flush.length - flushBad.length}/${flush.length}`);
+log('   sim answers: ' + Object.entries(flush.reduce((m, r) => { m[r.reasonName] = (m[r.reasonName] || 0) + 1; return m; }, {}))
+  .map(([k, v]) => `${v} ${k}`).join(' · '));
+if (flushBad.length) {
+  log('   ⛔ FAIL — the row a player most wants to furnish is dead at: '
+    + flushBad.map((r) => r.want + '→' + r.sent).join(' '));
+  fail = fail || 21;
+} else log('   ✔ every square touching a wall is offered, and lands on itself');
+
+// C — the door tile, recorded rather than assumed.
+const doors = roomDoorTiles(frame, focus, dView);
+log(`\nC. THE BOUNDARY DOORS (${doors.length} on this room's ring):`);
+if (!doors.length) {
+  log('   ⚠️ this compartment has no boundary door on the frame — leg C is VACUOUS here, pick '
+    + 'another --anchor before quoting it');
+} else {
+  for (const d of doors) {
+    const r = at(d.tx, d.ty);
+    log(`   ${d.tx},${d.ty} (${d.side})  glyph[${r.glyph}]  ${r.sent === '-' ? 'NOT-SENT' : 'SENT→' + r.sent}`);
+    if (r.sent !== '-') {
+      log('   ⛔ FAIL — a door tile is on the RING, so it is outside the scene and must be NOT-SENT');
+      fail = fail || 22;
+    }
+  }
+  if (!fail) log('   ✔ the doorway is on the ring, so it is not a press target — RECORDED COST of the '
+    + 'inset (it WAS sendable under the poché rule; see room-model.js `roomInterior`)');
+}
+
 const wallTiles = rows.filter((r) => r.glyph === '#');
-const wallRefused = wallTiles.filter((r) => r.reason === 3);
-log(`\nWALL TILES INSIDE THE CLICKABLE RECT: ${wallTiles.length}/${rows.length} (${(100 * wallTiles.length / rows.length).toFixed(1)}%)`);
-log(`  of those, refused NotWalkable ("NOBODY COULD STAND HERE"): ${wallRefused.length}`);
+const wallSent = wallTiles.filter((r) => r.sent !== '-');
+log(`\nWALL GLYPHS INSIDE THE WINDOW: ${wallTiles.length}/${rows.length} `
+  + `(${(100 * wallTiles.length / rows.length).toFixed(1)}%) · of those, ADDRESSED: ${wallSent.length}`);
 writeFileSync(join(OUT, 'rows.json'), JSON.stringify(rows, null, 1));
 await png('01-after.png');
 chrome.kill('SIGKILL');
-process.exit(0);
+log(fail ? '\nVERDICT: FAIL (' + fail + ')' : '\nVERDICT: PASS');
+process.exit(fail);

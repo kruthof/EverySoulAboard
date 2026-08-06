@@ -77,6 +77,11 @@ await new Promise((res, rej) => {
 });
 await sleep(2500);
 
+// ⭐ THE ONE INTERIOR DERIVATION, imported rather than restated — `plateCensus` below compares the
+// plate's per-compartment census against the ROOM's, and the room's is clamped to the drawn floor.
+const { roomInterior } = await import('../src/ui/room-model.js');
+const { decodeSlot } = await import('../src/wire/messages.js');
+
 // ── STEP 0: THE INSTRUMENT CHECK, before any conclusion is drawn ──
 const decksMsg = latest.get('decks');
 if (!decksMsg) die(2, 'no `decks` message — the rig is not reading this host at all');
@@ -782,9 +787,55 @@ await png('4-work-tab.png');
 // purpose and must read 0 while a furnished one reads its true count.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-/** How many fittings the PLATE drew into one compartment. The plate's half of the join. */
-const plateCensus = (anchor, deck) => evaluate(
-  `document.querySelectorAll('.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]').length`);
+/**
+ * How many fittings the PLATE drew into one compartment's **FLOOR**. The plate's half of the join.
+ *
+ * ⛔⛔ THE `- ring` TERM IS THE SCENE INSET (2026-08-06) AND IT IS NOT A FUDGE — IT MAKES THE TWO
+ * HALVES ASK THE SAME QUESTION. The plate assigns a fitting to a compartment with
+ * `covers(sp.rect, tx, ty)` against the wire's WALL-INCLUSIVE slot rect, so a piece standing on the
+ * compartment's HULL RING — in practice a CLOSED BOUNDARY DOOR — is counted as that room's. The Room
+ * Zoom's masthead is `roomCells(...)`, which is clamped to the DRAWN FLOOR, so it is not.
+ *
+ * ⚠️ AND THE ROOM ZOOM WAS ALREADY RIGHT ABOUT THE DRAWING BEFORE IT WAS RIGHT ABOUT THE COUNT.
+ * VR-P3's MINOR 4 made `furnitureSvg` refuse to stand a piece on a boundary door's tile — the cutaway
+ * draws that door as a plate in the wall plane, and a second warm door sprite in the same opening was
+ * the smear on `hall_d0_s1`. So the masthead used to COUNT a piece the room deliberately does not
+ * DRAW; the inset ended that, and this join is where the old disagreement surfaced. Measured on the
+ * live wreck before this term existed: `hall_d1_s0` plate 5 / room 4 and `hall_d0_s7` plate 1 / room
+ * 0, both by exactly one closed door; `cryobay` 26 / 26, unchanged.
+ *
+ * ⭐ IT IS DERIVED, PER COMPARTMENT, FROM THE PLATE'S OWN `data-tile` ATTRIBUTES against
+ * `roomInterior` of that slot's rect — never a constant, never a subtraction chosen to make a number
+ * fit. A piece missing for ANY OTHER reason still reddens by one.
+ *
+ * ⛔ FILED, NOT CLOSED: the two surfaces answer "whose fitting is this door" differently, and the
+ * long answer is the plate adopting the interior too. That is a Level-1 change and this package is
+ * Room Zoom; the disagreement is recorded here, in the instrument that can see it.
+ */
+async function plateCensus(anchor, deck) {
+  const slot = (decksMsg.decks || []).find((d) => (d.deck | 0) === (deck | 0))
+    ?.slots?.find((t) => String(t[5] ?? '') === String(anchor));
+  const all = await json(`JSON.stringify(Array.from(document.querySelectorAll(
+    '.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]'))
+    .map((e) => e.getAttribute('data-tile')))`) || [];
+  if (!slot) return all.length;
+  // ⚠️ THE SLOT TUPLE IS `[slotIndex, x, y, w, h, anchorName, …]` — `decodeSlot`'s own layout, and
+  // the first draft of this line read it as `[x, y, w, h, …]`. The rect came out shifted by one
+  // field, EVERY piece landed "on the ring", and every census read 0 — a subtraction that looked
+  // plausible and deleted the whole measurement. Read through the decoder rather than by index.
+  const sd = decodeSlot(slot);
+  const iv = roomInterior({ rx: sd.x, ry: sd.y, rw: sd.w, rh: sd.h });
+  const onFloor = all.filter((t) => {
+    const [tx, ty] = String(t || '').split(',').map(Number);
+    return Number.isFinite(tx) && Number.isFinite(ty)
+      && tx >= iv.rx && tx < iv.rx + iv.rw && ty >= iv.ry && ty < iv.ry + iv.rh;
+  });
+  if (onFloor.length !== all.length) {
+    log(`     (plate: ${all.length - onFloor.length} of ${anchor}'s pieces stand on its HULL RING — `
+      + 'boundary doors, which the Room Zoom draws as wall plates and does not count as fittings)');
+  }
+  return onFloor.length;
+}
 
 /**
  * What the opened Room Zoom says it holds. The room's half of the join.

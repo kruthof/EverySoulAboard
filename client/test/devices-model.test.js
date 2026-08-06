@@ -56,7 +56,12 @@ const HUD = codeOnly(read(join(CLIENT, 'src/ui/hud.js')));
 const ROOMZOOM = codeOnly(read(join(CLIENT, 'src/ui/roomzoom-view.js')));
 
 /** A room rect covering tiles [4..8) × [2..5) on deck 1 — the shape `roomTileRect` produces. */
-const ROOM = { deck: 1, rx: 4, ry: 2, rw: 4, rh: 3 };
+// ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+// wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+// fixture rect written as the tile range under test would have no interior at all and every leg
+// would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+// the tests address are unchanged.
+const ROOM = { deck: 1, rx: 3, ry: 1, rw: 6, rh: 5 };     // FLOOR = tiles x4..7, y2..4
 
 /** Build a host-shaped `devices` message from `[x,y,deck,kind,cond,oper,…]` tuples. */
 const msg = (cells) => ({ type: 'devices', cells });
@@ -688,7 +693,9 @@ test('deviceConditionAt applies the room filter on the driven path too', () => {
   Hud.renderRooms(decode(ROOMS_JSON));
   Hud.renderFrame(floorFrame(RECT.deck));
 
-  const inside = [RECT.rx, RECT.ry];
+  // ⚠️ `RECT.rx, RECT.ry` IS THE WINDOW'S CORNER — hull, and dropped by the clamp since the scene
+  // inset (2026-08-06). The room's own near-left FLOOR tile is one in on both axes.
+  const inside = [RECT.rx + 1, RECT.ry + 1];
   // ⚠️ THE WRONG-DECK ROW SITS ON THE SAME TILE AND CARRIES A DIFFERENT `cond`, AND IT IS LAST.
   // CLAUDE.md's fifth trap shape shipped from exactly this fixture built carelessly: a wrong-deck row
   // on a FREE tile is caught by the tile list, but a wrong-deck row on an OCCUPIED tile folds into the
@@ -696,14 +703,14 @@ test('deviceConditionAt applies the room filter on the driven path too', () => {
   // the deck filter dead, `cond` here reads 7.
   driveDevices([
     [inside[0], inside[1], RECT.deck, 8, 100, 1],
-    [RECT.rx + RECT.rw, RECT.ry, RECT.deck, 8, 100, 1], // one tile past the right edge
+    [RECT.rx + RECT.rw, RECT.ry + 1, RECT.deck, 8, 100, 1], // one tile past the WINDOW's right edge
     [inside[0], inside[1], RECT.deck + 1, 8, 7, 0],     // same tile, WRONG DECK, and LAST
   ]);
 
   assert.equal(RoomZoom.deviceConditionAt(inside[0], inside[1]).cond, 100,
     'CONTROL + the deck filter: the in-rect on-deck row must survive AND must not be overwritten by '
     + 'the wrong-deck row sharing its tile. A 7 here means the deck filter is dead on the driven path.');
-  assert.equal(RoomZoom.deviceConditionAt(RECT.rx + RECT.rw, RECT.ry), null,
+  assert.equal(RoomZoom.deviceConditionAt(RECT.rx + RECT.rw, RECT.ry + 1), null,
     'a row one tile past the focus rect reached the seam — the rect filter is dead on the driven path');
 });
 
