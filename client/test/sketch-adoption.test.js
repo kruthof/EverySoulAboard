@@ -1090,7 +1090,25 @@ test('⭐⭐ no member of any treated piece or twin is erased — by a later fac
   // All nine are in the RAW art and were invisible until this probe was pointed at these two
   // catalogues (`paper-fixtures.test.js` has run its own since its lane; fittings and machines never
   // had one). They are a drawing question for their own package, not this one:
-  //   reactor-plant ×6  — the six control-strip rules lie inside the strip's paper panel
+  //   reactor-plant ×4  — ⚠️ AND THIS LINE USED TO SAY SOMETHING FALSE. It read "×6 — the six
+  //                        control-strip rules lie inside the strip's paper panel", and the members
+  //                        are not the control strip at all: they are the RIGHT-HAND COOLANT
+  //                        STACK'S FINS, painted over by the reactor body's own opaque right SIDE
+  //                        face. Measured, by dumping the buried `d`s and matching them against the
+  //                        emission order — the four survivors are `M17.58 y L26.79 y` at
+  //                        y = 28.93/17.58/6.24/−5.1, and the element that covers them is the body
+  //                        side quad `M13.47 −1.41 L34.74 −33.31 L34.74 20.56 L13.47 52.46 Z`,
+  //                        whose x-span 13.47…34.74 contains theirs. The left stack's fins draw
+  //                        fine (they straddle the front face's edge, so `every`-point containment
+  //                        fails). ⛔ THE COUNT FELL 6 → 4 FOR A REASON THAT IS NOT A FIX: the
+  //                        2026-08-05 recognisability patch redraws the fins as FIVE bolder ones at
+  //                        a 32 cm pitch instead of nine at 18 cm, so there are simply fewer fins to
+  //                        bury. The defect is unchanged and is now the LOUDER half of the piece —
+  //                        the patch's whole stated intent is "five bolder fins read as a heat-sink
+  //                        rather than a ladder's rungs", and on the right stack four of those five
+  //                        draw ZERO pixels, so the piece is asymmetric: five fins left, one right.
+  //                        FILED for the reactor's own package, not fixed here — fixing it means
+  //                        re-composing which face the fins live on, which is new art, not recovery.
   //   deck-turret ×1    — the mount's rear half-arc is under the body it belongs to
   //   solar-wing ×1     — one panel cell line lies inside the panel's own face
   //   capsule-sealed ×2 — TWIN-ONLY: the damage pass adds an opaque mark over a member the pristine
@@ -1105,20 +1123,39 @@ test('⭐⭐ no member of any treated piece or twin is erased — by a later fac
   // package's own new marks were checked against this probe and three that DID bury (the battery
   // bank's lower bus bars, a chair caster under the gas-lift collar, one arm of the cot's leg brace)
   // were re-drawn until they draw.
+  // ⭐ 2026-08-06, THE REPAIR ROUND — `reactor-plant` 6 → 4, pristine and twin. Said out loud per
+  // this rule's own instruction, and it is NOT a fix: see the corrected note above. The other two
+  // pieces this round redrew (`deck-turret`, `solar-wing`) kept their entries at ×1 and the entries
+  // are the SAME MEMBERS, not a swap — the buried `d`s were dumped on both trees and compare
+  // byte-identical (`M-25.34 24.23 A19.15 11.49 0 0 0 12.96 24.23` and `M-29.14 25.81 L-32.07
+  // -24.54`). A held count is exactly where a substitution would hide, so it was measured, not
+  // assumed.
   assert.deepEqual([...new Set(ledger)].sort(), [
     'fittings/twin/capsule-sealed:2',
     'machines/pristine/deck-turret:1',
-    'machines/pristine/reactor-plant:6',
+    'machines/pristine/reactor-plant:4',
     'machines/pristine/solar-wing:1',
     'machines/twin/deck-turret:1',
-    'machines/twin/reactor-plant:6',
+    'machines/twin/reactor-plant:4',
     'machines/twin/solar-wing:1',
   ], 'the buried-member ledger moved. A NEW entry is a member that draws nothing; a MISSING one is\n'
     + 'a fix, and both deserve to be said out loud rather than absorbed.');
-  assert.equal(unburied, 4,
-    'the number of members the OVERSHOOT lifts out from under a face moved. Four is the measured\n'
-    + 'figure at adoption (capsule 31\'s two sill ticks, the sink\'s one, the solar wing\'s one); a\n'
-    + 'jump means runs are reaching much further past their corners than the bound says they can.');
+  // ⭐ 4 → 8 ON 2026-08-06, AND THE CAUSE IS DRIVEN RATHER THAN ARGUED, because this counter's whole
+  // job is to notice runs reaching further than the bound — which is NOT what happened. The four new
+  // ones are `reactor-plant` pristine ×2 and twin ×2: its right-stack fins are redrawn as FIVE bold
+  // ones at a 32 cm pitch instead of nine hairlines at 18 cm, and at the new pitch two of them
+  // straddle the body side face's edge instead of sitting wholly inside it, so the overshoot lifts
+  // them out (raw 4 buried → treated 2).
+  // ⛔ THE CONTROL, PHYSICALLY RUN: revert ONLY the fin block to main's `9 @ 18 cm` and leave every
+  // other line of the reactor patch in place, and this counter returns to 4 and the ledger above
+  // returns to `reactor-plant:6` — measured, then reverted. So the mover is the fin GEOMETRY, not
+  // the treatment's reach, and the two legs that would catch a real overshoot regression (the
+  // amplitude bound and the collinearity leg) are green and untouched.
+  assert.equal(unburied, 8,
+    'the number of members the OVERSHOOT lifts out from under a face moved. Eight is the measured\n'
+    + 'figure (capsule 31\'s two sill ticks, the sink\'s one, the solar wing\'s one, and the four\n'
+    + 'reactor fins named above); a jump means runs are reaching much further past their corners\n'
+    + 'than the bound says they can — check the amplitude leg before editing this number.');
   assert.ok(members > 1200, `only ${members} members inspected — the probe saw nothing`);
   assert.ok(knockouts > 2000, `only ${knockouts} knockout strokes found — at ${SKETCH_LEVEL} the `
     + 'halo runs on every element, so this near zero means the treatment is not applied');

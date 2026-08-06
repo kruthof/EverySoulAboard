@@ -1036,3 +1036,86 @@ test('the thirteen twins are ledgered, badged, and none is its own pristine piec
       `${id}'s twin renders exactly like the pristine piece — it carries no damage at all`);
   }
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE SEVENTH FAULT'S OTHER HALF: A FILLED MEMBER PAINTED OVER BY A LATER OPAQUE ONE
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ⭐⭐ THE INSTRUMENT THAT WOULD NORMALLY CATCH THIS IS STRUCTURALLY BLIND TO IT, and that blindness
+// is CLAUDE.md's 4th shape exactly — a guard whose scope filter excludes the violation.
+// `sketch-geom.js buriedMembers()` classifies every element with an opaque fill as an AREA: areas
+// bury, and are never themselves counted as victims. So a HATCHED WALL painted over by an opaque
+// `PAPER_FLAT` mouth contributes zero pixels and the buried-member ledger reads exactly as green as
+// correct art. Measured, not assumed: reversing the two lines below leaves the whole node suite —
+// all of it, including `sketch-adoption.test.js`'s ledger — green.
+//
+// This is not hypothetical. `fab-cell`'s recess IS that construction: an opaque mouth quad with a
+// hatched wall set 16 cm back INSIDE it, and the designer patch that introduced it drew them in the
+// wrong order on its first pass (the module header's own seventh fault). The order is therefore
+// pinned here, as a PAIR: an inner member entirely contained by an opaque outer one must be emitted
+// AFTER it.
+//
+// ⛔ WHY A NAMED PAIR RATHER THAN A SWEEP OVER THE SET. Swept, this question has a large
+// pre-existing population — every `pad()` standoff in the module is a filled member the body's own
+// face contains — and those are E8-3b's subject, with their own rule and their own reasoning. A
+// sweep would therefore need a ledger of ~20 rows before it asserted anything, which is a package,
+// not a pin. The pair table below states the one relationship this lane created and can defend.
+const NESTED_PAIRS = [
+  // [id, outer opaque member (drawn FIRST), inner member (drawn INSIDE it, SECOND), what]
+  ['fab-cell',
+    [[16, 0, 60], [134, 0, 60], [134, 0, 140], [16, 0, 140]],
+    [[20, 16, 64], [126, 16, 64], [126, 16, 128], [20, 16, 128]],
+    'the chamber: a hatched recess wall inside an opaque mouth'],
+];
+
+test('⭐⭐ a member nested inside an opaque one is drawn AFTER it — the fault no ledger sees', () => {
+  const inPoly = (poly, [x, y]) => {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+      const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  for (const [id, outerPts, innerPts, what] of NESTED_PAIRS) {
+    const svg = build(id);
+    const F = frameFor(id);
+    const key = (pts) => pts.map(([x, y, z]) => {
+      const [px, py] = F.project(x, y, z);
+      return `${nn(px)} ${nn(py)}`;
+    });
+    // Find each member by the projected coordinates the builder actually emitted — the seam, not a
+    // remembered pixel (trap 4), so this moves correctly if the scale ever changes.
+    const els = [...svg.matchAll(/<path[^>]* d="([^"]*)"[^>]*>/g)].map((m, i) => ({ i, d: m[1], tag: m[0] }));
+    const find = (pts, label) => {
+      const want = key(pts);
+      const hit = els.filter((e) => want.every((w) => e.d.includes(w)));
+      assert.equal(hit.length, 1,
+        `${id}: expected exactly ONE member at ${label} (${want.join(' → ')}), found ${hit.length}`);
+      return hit[0];
+    };
+    const outer = find(outerPts, 'the outer opaque member');
+    const inner = find(innerPts, 'the inner member');
+    // (a) THE OUTER REALLY IS OPAQUE — otherwise the order does not matter and this pin is theatre.
+    assert.ok(/fill="(#|url\()/.test(outer.tag) && !/fill="none"/.test(outer.tag)
+      && !/opacity="0?\.\d+"/.test(outer.tag),
+      `${id}: ${what} — the outer member is not opaque, so nothing is at stake in the order.\n`
+      + `  ${outer.tag.slice(0, 120)}`);
+    // (b) THE INNER REALLY IS CONTAINED — the whole reason the order is load-bearing. If a later
+    // redraw moves the wall so it pokes out of the mouth, this assertion says so instead of the
+    // pin silently becoming a statement about two unrelated strokes.
+    const outerPoly = points(outer.d);
+    const innerPoly = points(inner.d);
+    assert.ok(innerPoly.every((p) => inPoly(outerPoly, p)),
+      `${id}: ${what} — the inner member is NOT entirely inside the outer one any more, so the\n`
+      + 'containment this pin is about has changed. Re-derive the pair before editing the order.');
+    // (c) THE ORDER. Painter's algorithm: later wins, so the inner must come second or it draws
+    // ZERO PIXELS — and no other guard in this repo would notice.
+    assert.ok(inner.i > outer.i,
+      `${id}: ${what} — the inner member is emitted at index ${inner.i}, BEFORE the opaque outer one\n`
+      + `at ${outer.i}. It is painted over and contributes zero pixels. This is the module header's\n`
+      + 'seventh fault, and `buriedMembers()` cannot see it: an opaque-filled element is only ever\n'
+      + 'treated as a burier there, never as a victim.');
+  }
+  assert.ok(NESTED_PAIRS.length >= 1, 'the pair table is empty — this test asserts nothing');
+});

@@ -48,3 +48,5 @@ client/tools/shots-material-pawn/
 client/tools/shots-pawn-tween/
 # — lane/build-ghost —
 client/tools/shots-build-ghost/
+# — lane/designer-polish — before/after gallery + the 22 px ink-mass census
+client/tools/shots-polish/

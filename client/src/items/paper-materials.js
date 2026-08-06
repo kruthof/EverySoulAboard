@@ -528,23 +528,50 @@ export const insulatedWall = (opts = {}) =>
  *
  * SCALE: 50 cm strakes (two to a metre) with a 3 cm lap, butt straps at 80 and 160 cm, a 6 cm bead
  * stitch. `W.mass` throughout: this is the one wall that is also the ship.
+ *
+ * ⚠️ THE BEAD IS A CONTINUOUS ZIGZAG STITCH, NOT A HEAVY DASH — and the header above has said
+ * "stitch" since the piece was written while the drawing said something else. A round-capped dash
+ * renders as a chain of SEPARATED PILLS at catalogue and Room-Zoom size, which is indistinguishable
+ * from a fastener row; a fastener row is `steel-bulkhead`'s tell, so the two walls this piece exists
+ * to be distinct from were sharing a mark. A cold reader called the result "a storage locker" (high
+ * confidence) — the top bead band read as a vent grille / hardware strip. A zigzag is ONE ink run
+ * with no gaps, so it cannot read as discrete hardware, and a chevron stitch is the more honest mark
+ * for a WELD in any case.
  */
 export const hullPlating = (opts = {}) =>
   skin('hull-plating', opts, (s, g) => {
     ground(s, g);
+    // The bead, as one continuous run. ⛔ IT IS DRAWN AT `g.u(1.3)`, NOT `g.u(2.2)`: a zigzag lays
+    // down roughly twice the ink length of a 2.5-on-4.5 dash over the same span, so keeping the old
+    // weight would have made the bead the heaviest thing on a wall whose STRAKE is supposed to be
+    // (`paper-materials.test.js`'s PITCH row pins this piece's vertical family at `W.mass` and caps
+    // it there).
+    const zig = (pts, o) =>
+      s.path(
+        pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' '),
+        { fill: 'none', stroke: INK, sw: o.sw, opacity: o.opacity },
+      );
+    const vBead = (xc, z0, z1) => {
+      const pts = [];
+      let side = 1;
+      for (let z = z0; z <= z1; z += 6) { pts.push([g.x(xc + side * 2.2), g.z(z)]); side = -side; }
+      zig(pts, { sw: g.u(1.3), opacity: 0.62 });
+    };
+    const hBead = (zc, x0, x1) => {
+      const pts = [];
+      let side = 1;
+      for (let x = x0; x <= x1; x += 6) { pts.push([g.x(x), g.z(zc + side * 2.2)]); side = -side; }
+      zig(pts, { sw: g.u(1.3), opacity: 0.62 });
+    };
     // Each strake seam is a LAP: the plate edge, a 3 cm shadow band where the next plate lies over
-    // it, and a weld bead run beside it. The bead is a HEAVY DASH rather than a thin one — the first
-    // draft's `W.fine` dash was invisible at Room-Zoom size and the wall read as a bare frame,
-    // which is `glass-partition`'s silhouette.
+    // it, and a weld stitch beside it.
     for (let x = 0; x <= g.wCm; x += 50) {
       const lap = Math.min(3, g.wCm - x);
       if (lap > 0) boxCm(s, g, x, 0, lap, g.hCm, { fill: INK, opacity: 0.1 });
       seg(s, g.x(x), g.z(0), g.x(x), g.z(g.hCm), { sw: W.mass });
       if (x + 3 <= g.wCm) {
         seg(s, g.x(x + 3), g.z(0), g.x(x + 3), g.z(g.hCm), { sw: W.hair, opacity: 0.55 });
-        seg(s, g.x(x + 5.5), g.z(1), g.x(x + 5.5), g.z(g.hCm - 1), {
-          sw: g.u(2.2), opacity: 0.5, dash: `${g.u(2.5)} ${g.u(4.5)}`,
-        });
+        vBead(x + 5.5, 1, g.hCm - 1);
       }
     }
     for (const z of [80, 160]) {
@@ -552,9 +579,7 @@ export const hullPlating = (opts = {}) =>
       boxCm(s, g, 0, g.hCm - z - 10, g.wCm, 10, { fill: INK, opacity: 0.07 });
       rail(s, g, z, { sw: W.fine });
       rail(s, g, z + 10, { sw: W.fine });
-      seg(s, g.x(1), g.z(z + 5), g.x(g.wCm - 1), g.z(z + 5), {
-        sw: g.u(2.2), opacity: 0.5, dash: `${g.u(2.5)} ${g.u(4.5)}`,
-      });
+      hBead(z + 5, 1, g.wCm - 1);
     }
     // TACK SQUARES at every plate corner — the mark that says a plate was set and held before it was
     // run. Square, like `blast-wall`'s bolts and unlike `steel-bulkhead`'s round rivets, but at a
@@ -739,9 +764,17 @@ export const creamTileFloor = (opts = {}) =>
  * the one thing a player must be able to read at a glance (they are also why a dropped part is gone).
  *
  * SCALE: 6.25 cm bearing-bar pitch — sixteen bars to the metre, a heavy-duty walkway sett — with a
- * 2 cm slot, and cross rods every 25 cm drawn OVER the slots so the bars are visibly interrupted
+ * 2 cm slot, and cross rods every 10 cm drawn OVER the slots so the bars are visibly interrupted
  * rather than merely striped. Ink coverage is 32 % of the tile at opacity 0.30, i.e. under a tenth
  * of a tone mean: dark slots, not a dark tile (the dialect's no-large-solid-fills rule).
+ *
+ * ⚠️ THE CROSS-ROD CADENCE WAS 25 cm AND IT DREW A LADDER. Four equal full-width rails over long
+ * vertical slats is the bed-frame/ladder silhouette, and a cold reader called this floor "a bunk
+ * bed" — a furniture read on a piece whose whole job is to read as a SURFACE. At 10 cm each open
+ * bar is a 2 × 10 cm cell rather than a 2 × 25 cm slat and the field reads as dense perforated mesh.
+ * ⛔ 10 STILL DIVIDES THE METRE, so the floor-pitch rule (a pitch that does not divide 100 cm leaves
+ * a partial course at the tile edge, and the seam between two tiles then reads as a defect) holds.
+ * ⛔ AND THE 6.25 cm BAR PITCH — the one this piece's PITCH row actually pins — IS UNTOUCHED.
  */
 export const metalGrating = (opts = {}) =>
   skin('metal-grating', opts, (s, g) => {
@@ -758,10 +791,14 @@ export const metalGrating = (opts = {}) =>
     // The cross rods pass OVER the bearing bars, so they are PAPER bands that interrupt the slots —
     // which is what makes the field read as a grating rather than as stripes. 3 cm at `W.fine`: the
     // first draft's 2.5 cm hairline was eaten by the floor plane's 0.6 vertical compression.
-    for (let y = 25; y < g.hCm; y += 25) {
+    // TEN to the metre, a real crimped cross-rod pitch — see the header for why 25 cm drew a ladder.
+    for (let y = 10; y < g.hCm; y += 10) {
       boxCm(s, g, 0, y - 1.5, g.wCm, 3, { fill: PAPER, stroke: INK, sw: W.fine, opacity: 0.9 });
     }
-    edge(s, g, W.mid);
+    // A floor butts its neighbour edge to edge and must not read as a bordered panel. `W.fine`
+    // matches every other floor in the set — this was the one floor still carrying a wall-grade
+    // `W.mid` perimeter, which is the second half of the frame the blind guess caught.
+    edge(s, g, W.fine);
   });
 
 /**

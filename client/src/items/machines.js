@@ -448,30 +448,54 @@ function arcPts(cx, cy, z, r, a0, a1, steps) {
 // bank instead, which is the same fact told in ink — a running plant has three lamps filled.
 const drawReactorPlant = (s, { F, hatch, powered }) => {
   for (const x of [16, 158]) { pad(s, F, x, 4, 26, 10, 16, hatch); pad(s, F, x, 128, 26, 10, 16, hatch); }
-  // the two coolant stacks, drawn FIRST so the body's own front face closes over their inner edge
+  // ⭐ THE STOVE READ, 2026-08-05 — a cold reader called this piece "a stove", HIGH confidence, and
+  // the cause was an assembly rather than any one mark: a two-panel front door (an oven's doors), a
+  // row of four small squares above it (burner dials) and a domed cap on a wide flanged ring (a pot
+  // lid on a hob). Four changes below break the archetype without touching one thing the identity
+  // list asks for — the fins get bolder and fewer, the shoulder is chamfered instead of flared, the
+  // hazard plate grows ~2.5×, the door loses its centre divider and gains rivets, and two coolant
+  // feed lines connect the stacks to the vessel. A stove has no plumbing between its parts.
+  //
+  // the two coolant stacks, drawn FIRST so the body's own front face closes over their inner edge.
+  // Five bolder fins at a wider pitch read as a heat-sink rather than as a ladder's rungs.
   for (const x of [0, 170]) {
     bx(s, F, x, 24, 10, 30, 180, 110, { hatch, sw: W.heavy });
-    for (let i = 0; i < 9; i += 1) {
-      const z = 26 + i * 18;
-      line(s, F, [[x + 3, 24, z], [x + 27, 24, z]], { sw: W.hair, opacity: 0.7 });
+    for (let i = 0; i < 5; i += 1) {
+      const z = 30 + i * 32;
+      line(s, F, [[x + 2, 24, z], [x + 28, 24, z]], { sw: W.mass, opacity: 0.8 });
     }
   }
   bx(s, F, 30, 0, 10, 140, 152, 150, { hatch, sw: W.mass });
-  // the containment ring, on the body's top face, round the drum's foot — dashed, as it was
+  // coolant feed lines, stack crown to vessel wall — a connection no stove has, and it satisfies
+  // "nothing floats": both ends land on drawn geometry (the stack's top edge; the vessel's radius).
+  line(s, F, [[15, 24, 190], [58, 60, 178]], { sw: W.heavy });
+  line(s, F, [[185, 24, 190], [142, 60, 178]], { sw: W.heavy });
+  // the containment ring, on the body's top face, round the drum's foot — dashed, as it was.
+  // ⛔ IT STAYS A `levelRing`: `machines.test.js`'s E8-2 COMPLEMENT names this piece as the ONLY one
+  // in the set permitted a closed level ring, and that naming is what stops the primitive spreading
+  // back onto a cylinder. Do not "simplify" it to a `disc`.
   levelRing(s, F, 100, 75, 162, 62, { sw: W.mid, dash: '5 4', opacity: 0.9 });
   cyl(s, F, 100, 75, 162, 200, 44, { sw: W.mass, cap: false });
-  taper(s, F, 100, 75, 200, 216, 44, 26, { sw: W.heavy });
+  // the shoulder survives (`taper` is this dialect's own worked example for "a reactor's shoulder"),
+  // but shallower and less flared than before — 44→36 over 10 cm, not 44→26 over 16: a chamfered
+  // vessel head, not a kettle lid sitting on a wide rim, which is what the taller flare read as.
+  taper(s, F, 100, 75, 200, 210, 44, 36, { sw: W.heavy });
   hoop(s, F, 100, 75, 180, 44, { sw: W.hair, opacity: 0.55 });
   // the hazard plate, on the drum's own front — the ONE accent, spent where the accent belongs.
   // Drawn as PATHS (a triangle and a bang), never as a font glyph: charter §1, and `battery-bank`'s
-  // own precedent for exactly this mark.
-  line(s, F, [[92, 32, 170], [108, 32, 170], [100, 32, 186]],
+  // own precedent for exactly this mark. Roughly 2.5× the old area and centred on the vessel's main
+  // cylindrical shaft (not the shoulder), so it is legible at 32/48 px where it used to vanish.
+  line(s, F, [[80, 32, 168], [120, 32, 168], [100, 32, 198]],
     { sw: W.mid, stroke: ATTEND, close: true });
-  line(s, F, [[100, 32, 174], [100, 32, 181]], { sw: W.hair, stroke: ATTEND });
-  // the inspection door and its handle
+  line(s, F, [[100, 32, 176], [100, 32, 192]], { sw: W.hair, stroke: ATTEND });
+  // the inspection hatch — ONE riveted door. The old centre divider drew a two-panel oven front,
+  // which was the single strongest "stove" cue in the piece; four corner rivets read as a pressure
+  // hatch instead and cost nothing the identity list asks for.
   line(s, F, [[44, 0, 76], [156, 0, 76], [156, 0, 146], [44, 0, 146]],
     { sw: W.fine, close: true, cap: false });
-  line(s, F, [[100, 0, 76], [100, 0, 146]], { sw: W.hair, opacity: 0.6, cap: false });
+  for (const [x, z] of [[50, 82], [150, 82], [50, 140], [150, 140]]) {
+    line(s, F, [[x - 2, 0, z - 2], [x + 2, 0, z + 2]], { sw: W.heavy });
+  }
   line(s, F, [[92, 0, 108], [92, 0, 120]], { sw: W.heavy });
   // the control strip: four lamps, three of them lit — the piece's own tell
   line(s, F, [[46, 0, 38], [124, 0, 38], [124, 0, 62], [46, 0, 62]],
@@ -494,10 +518,21 @@ export const reactorPlant = (opts = {}) => machine('reactor-plant', opts, drawRe
 // so the frame, the grid and the two legs all land on the same surface by construction.
 const P_WING = (u, v) => [8 + 224 * u, 12 + 68 * v, 36 + 134 * v];
 const drawSolarWing = (s, { F }) => {
+  // ⭐ THE STAND, NOT THE PANEL, WAS THE DEFECT — a cold reader called this piece "a storage
+  // container / cargo crate". The panel keeps its declared identifying feature (the ruled
+  // photovoltaic grid in a heavy frame) and it was never in doubt; what read as a crate was the
+  // CONTINUOUS GROUND-LEVEL PLANK between each side's front and rear feet — that is a pallet skid
+  // under a slab. In its place a diagonal BRACE ties the front foot to a point on the rear mast's
+  // own run, so the two raked members read as one triangulated ground-mount truss rather than as
+  // two loose sticks under a box. Attached at BOTH ends, the same construction the dish's feed
+  // struts use (E8-1): the brace's far end lies ON the mast's line — at t = 47.075/134.5 = 0.35 of
+  // the run from [x, 80, 0] to [x, 62, 134.5], where y = 80 − 18(0.35) = 73.7 EXACTLY — so it is a
+  // member, not a whisker. (Checked by arithmetic, not by eye: a brace that lands 1 cm off the mast
+  // is E8-1's own defect and no string assertion in this file would see it.)
   for (const x of [34, 206]) {
-    line(s, F, [[x, 4, 0], [x, 80, 0]], { sw: W.heavy });                    // the deck rail
     line(s, F, [[x, 4, 0], [x, 12, 36]], { sw: W.mass });                    // the front strut
     line(s, F, [[x, 80, 0], [x, 62, 134.5]], { sw: W.mass });                // the rear mast
+    line(s, F, [[x, 4, 0], [x, 73.7, 47.075]], { sw: W.mid });               // the brace, foot to mast
   }
   quad(s, F, [P_WING(0, 0), P_WING(1, 0), P_WING(1, 1), P_WING(0, 1)], { fill: PAPER, sw: W.mass });
   line(s, F, [P_WING(0.035, 0.06), P_WING(0.965, 0.06), P_WING(0.965, 0.94), P_WING(0.035, 0.94)],
@@ -609,16 +644,32 @@ export const reclaimerStack = (opts = {}) => machine('reclaimer-stack', opts, dr
 // stub on a wall; a spout inside a recess is a place you put a bowl.
 const drawPasteColumn = (s, { F, hatch }) => {
   for (const x of [8, 48]) { pad(s, F, x, 4, 16, 8, 12, hatch); pad(s, F, x, 40, 16, 8, 12, hatch); }
-  bx(s, F, 0, 0, 8, 70, 150, 55, { hatch, sw: W.mass });
-  bx(s, F, 8, 6, 158, 54, 7, 44, { hatch, sw: W.heavy });                    // the hopper
-  // the alcove: a hatched back, a flat serving floor, and the opening cut in the front face
+  // ⭐ THE LOCKER READ, 2026-08-05 — the cold guess was "a storage locker", and the piece IS the
+  // ship's food dispenser. Two causes, both measured off the drawing rather than argued: the
+  // 7 cm-tall hopper read as a LID on a cabinet instead of a tank, and the alcove was a rectangle
+  // outlined on a flat front face — which is exactly what a locker door looks like. The spout, the
+  // declared identifying feature, hung 40 cm clear of the serving floor and vanished at tile size.
+  bx(s, F, 0, 0, 8, 70, 132, 55, { hatch, sw: W.mass });                     // the column, 8 → 140
+  bx(s, F, 8, 6, 140, 54, 25, 44, { hatch, sw: W.heavy });                   // the reservoir — tall
+                                                                             // enough to read as a
+                                                                             // tank, not a lid
+  line(s, F, [[10, 0, 152], [58, 0, 152]], { sw: W.hair, opacity: 0.5 });    // its fill line
+  disc(s, F, 54, 0, 148, 3, { fill: 'none', sw: W.fine });                   // a gauge on its flank
+  // the alcove: a hatched back, TWO SIDE WALLS so the cavity reads as a cut-in recess rather than a
+  // door outline (the locker misread), a flat serving floor, and the opening cut in the front face
   quad(s, F, [[10, 30, 44], [60, 30, 44], [60, 30, 96], [10, 30, 96]], { fill: hatch, sw: W.fine });
+  quad(s, F, [[10, 0, 44], [10, 30, 44], [10, 30, 96], [10, 0, 96]], { fill: PAPER_FLAT, sw: W.fine });
+  quad(s, F, [[60, 0, 44], [60, 30, 44], [60, 30, 96], [60, 0, 96]], { fill: PAPER_FLAT, sw: W.fine });
   quad(s, F, [[10, 0, 44], [60, 0, 44], [60, 30, 44], [10, 30, 44]], { fill: PAPER_FLAT, sw: W.fine });
   line(s, F, [[10, 0, 44], [60, 0, 44], [60, 0, 96], [10, 0, 96]],
     { sw: W.mid, close: true, cap: false });
-  for (const y of [10, 17, 24]) line(s, F, [[16, y, 44], [54, y, 44]], { sw: W.hair, opacity: 0.6 });
+  // the spout: a collar at the recess ceiling, a thick body hanging LOW over the counter (clearing
+  // the serving floor by 18 cm, not 40), a forward bend toward where a bowl sits, and the drip at
+  // the tip — the identifying feature, kept and made to hold at tile size
   disc(s, F, 35, 18, 96, 6, { sw: W.fine });                                 // the spout's collar …
-  cyl(s, F, 35, 18, 84, 96, 4, { sw: W.mid, cap: false });                   // … and the spout
+  cyl(s, F, 35, 18, 62, 96, 5, { sw: W.heavy, cap: false });                 // … and the spout
+  line(s, F, [[35, 18, 62], [35, 9, 50]], { sw: W.heavy });                  // … its forward bend …
+  disc(s, F, 35, 9, 50, 2.2, { fill: INK, sw: W.hair });                     // … and the drip
   // the screen — a readout, deliberately unreadable at the size a tile draws (the `cryo.js` ruling)
   quad(s, F, [[12, 0, 112], [58, 0, 112], [58, 0, 140], [12, 0, 140]], { fill: PAPER_FLAT, sw: W.mid });
   for (const z of [120, 128]) line(s, F, [[17, 0, z], [45, 0, z]], { sw: W.hair, opacity: 0.55 });
@@ -654,9 +705,17 @@ const drawMedCot = (s, { F, hatch }) => {
   line(s, F, [[124, 45, 64], [160, 45, 64]], { sw: W.mass, stroke: ATTEND });
   for (const x of [70, 128]) line(s, F, [[x, 4, 64], [x, 4, 84]], { sw: W.mid });
   line(s, F, [[70, 4, 84], [128, 4, 84]], { sw: W.heavy });                  // the side rail
-  line(s, F, [[6, 80, 64], [6, 80, 106]], { sw: W.heavy });                  // the monitor mast
-  bx(s, F, 0, 72, 106, 34, 20, 16, { sideFill: 'flat', sw: W.mid });
-  line(s, F, [[4, 72, 114], [10, 72, 114], [13, 72, 122], [16, 72, 108], [19, 72, 116], [30, 72, 116]],
+  // ⭐ THE BUNK-BED READ, 2026-08-05 — and this is the one blind guess in the machines set that was
+  // recorded CORRECT-shaped for the wrong reason: the reader said "a bunk bed, high confidence" off
+  // real geometry, not noise. The monitor ran a bare mast from z = 64 — the bed's OWN baseline, the
+  // one its four legs stand on — up to a wide, flat-topped box floating at z = 106…126 near the top
+  // of the box, at the head end where a bunk's ladder stands. Two horizontal decks of comparable
+  // size, a visible gap, a pole in it: that IS the bunk gestalt, whatever the label says.
+  // The monitor is now SEATED on the head board's own top face (z = 92, exactly where
+  // `bx(…, 0, 6, 52, 8, 40, 78)` stops: 52 + 40 = 92) and drawn PORTRAIT — 24 cm wide × 30 cm tall,
+  // a screen's proportion, not a mattress's. No free mast, no second deck.
+  bx(s, F, 0, 28, 92, 24, 30, 34, { sideFill: 'flat', sw: W.mid });          // the monitor
+  line(s, F, [[3, 28, 100], [8, 28, 100], [10, 28, 110], [13, 28, 94], [16, 28, 104], [22, 28, 104]],
     { sw: W.hair, opacity: 0.85 });                                          // the trace
 };
 export const medCot = (opts = {}) => machine('med-cot', opts, drawMedCot);
@@ -719,11 +778,19 @@ export const fabCell = (opts = {}) => machine('fab-cell', opts, drawFabCell);
 // The contact is the accent. A blip is the single most attention-shaped mark this ship can draw.
 const RING_Z = 110;
 const drawRingArray = (s, { F }) => {
+  // the base — a rotating pedestal
   cyl(s, F, 70, 70, 0, 14, 32, { sw: W.heavy });
   for (const a of [0.6, 2.7, 4.6]) {
     disc(s, F, 70 + 24 * Math.cos(a), 70 + 24 * Math.sin(a), 14, 3, { fill: 'none', sw: W.hair });
   }
+  // the mast. ⚠️ NOTHING RIDES ABOVE THE PLATE ANY MORE, 2026-08-05: a feed spike with a floating
+  // collar ring used to sit above RING_Z here, and on the render it read as a pole with a lens rim
+  // on it — an eyepiece, not an antenna — which is what pulled a cold read to "telescope" instead
+  // of the declared identity (concentric rings + a sweep + a contact). `dish-mast`'s "feed at the
+  // focus" is THAT piece's own part, not this one's: a level, headingless array has no focus to
+  // feed, so the spike was borrowing a neighbour's silhouette and losing its own.
   cyl(s, F, 70, 70, 14, RING_Z, 9, { sw: W.mass, cap: false });
+  // the four struts that carry the array off the mast head — attached at both ends (E8-1)
   for (let i = 0; i < 4; i += 1) {
     const a = Math.PI / 6 + (i * Math.PI) / 2;
     line(s, F, [[70 + 12 * Math.cos(a), 70 + 12 * Math.sin(a), RING_Z],
@@ -741,14 +808,24 @@ const drawRingArray = (s, { F }) => {
   }
   line(s, F, [[70, 70, RING_Z], [70 + 62 * Math.cos(A0), 70 + 62 * Math.sin(A0), RING_Z]],
     { sw: W.heavy });
-  for (const r of [68, 46, 24]) disc(s, F, 70, 70, RING_Z, r, { fill: 'none', sw: W.fine });
+  // the rings — the outer is the array's own RIM, drawn heavier than the two scan bands it encloses,
+  // so the plate reads as ONE bordered disc with concentric detail inside it rather than as three
+  // equal-weight loops competing with the struts and the sweep for the eye.
+  // ⛔ RECONCILED, AND THE GUARD FOUND IT RATHER THAN REVIEW: the patch drew this rim with
+  // `levelRing`, which breaks TWO legs of `machines.test.js` at once. E8-2's COMPLEMENT names
+  // `reactor-plant` as the only piece in the set permitted a closed level ring — `levelRing` here
+  // makes that list two long — and the radii leg reads `<ellipse>` elements, which `levelRing` does
+  // not emit (it emits a two-`A` path), so the array's rings would have measured ∅46/24 and the
+  // "three concentric rings is the piece" assertion would have failed on its own subject. `disc`
+  // with `fill:'none'` at `W.heavy` is the same drawing — a heavier outer rim — through the
+  // primitive both guards already speak. The weight is the patch's intent; the element is the pin's.
+  for (const [r, sw] of [[68, W.heavy], [46, W.fine], [24, W.fine]]) {
+    disc(s, F, 70, 70, RING_Z, r, { fill: 'none', sw });
+  }
   disc(s, F, 70, 70, RING_Z, 12, { sw: W.mid });
-  // the contact
+  // the contact — the single most attention-shaped mark this ship can draw
   disc(s, F, 70 + 52 * Math.cos(-0.75), 70 + 52 * Math.sin(-0.75), RING_Z, 5,
     { fill: ATTEND, stroke: ATTEND, sw: W.hair });
-  cyl(s, F, 70, 70, RING_Z, 132, 4, { sw: W.mid, cap: false });              // the feed spike
-  disc(s, F, 70, 70, 126, 8, { fill: 'none', sw: W.hair });
-  disc(s, F, 70, 70, 132, 4, { sw: W.fine });
 };
 export const ringArray = (opts = {}) => machine('ring-array', opts, drawRingArray);
 
@@ -921,6 +998,17 @@ const drawDeckTurret = (s, { F, hatch }) => {
   bx(s, F, 0, 26, 22, 22, 34, 34, { hatch, sw: W.mid });                     // the feed box
   curve(s, F, [22, 40, 50], [34, 42, 54], [44, 44, 54], { sw: W.mid });      // …and its belt
   bx(s, F, 30, 28, 60, 14, 8, 12, { sideFill: 'flat', sw: W.fine });         // the optic
+  // ⭐ THE TELESCOPE READ, 2026-08-05 — a rounded dome with ONE uniform tapering rod leaving it at
+  // an angle IS the observatory silhouette, and nothing else in the drawing contradicts it at tile
+  // size (the feed box and belt are small and read as generic equipment). The fix is a SECOND
+  // barrel, offset in y (DEPTH) only — same x and z, so it is literally the pinned tube translated
+  // straight back along the one axis this dialect uses for depth, never a second projection. Two
+  // parallel barrels off one mount is the twin-autocannon silhouette, which a telescope never
+  // wears. ⛔ THE PINNED TUBE AT y = 44 IS UNTOUCHED BELOW: `machines.test.js` asks `memberThrough`
+  // for those four corners by coordinate and asserts the member has exactly FOUR of them, so the
+  // new barrel is drawn at y = 14, where it projects clear and cannot answer that probe.
+  line(s, F, [[51.3, 14, 51.8], [107.3, 14, 135.8], [100.7, 14, 140.2], [44.7, 14, 56.2]],
+    { sw: W.mass, close: true, cap: false, fill: PAPER });
   // the barrel: two rails 6.6 cm apart in the x–z plane, closed at the breech and at the muzzle
   line(s, F, [[51.3, 44, 51.8], [107.3, 44, 135.8], [100.7, 44, 140.2], [44.7, 44, 56.2]],
     { sw: W.mass, close: true, cap: false, fill: PAPER });

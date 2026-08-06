@@ -1142,7 +1142,16 @@ const sealSet = (s) => paintResource(s, 'seal-set', (_s, { F }) => {
   inkCrack(s, F, [[6, 20, 0], [16, 14, 0], [24, 6, 0]]);  // PERISHED: the big ring, split across
   inkCrack(s, F, [[25, 30, 0], [31, 25, 0], [38, 22, 0]]); // and the small one
   inkScorch(s, F, 16, 14, 0, 10);
-  inkTear(s, F, [[7, 34, 14], [15, 33, 11], [23, 34, 13]]);  // the card, curled off its edge
+  // ⚠️ RE-ANCHORED 2026-08-06 — THE TEAR RAN TO x = 23 AND THE CARD ENDS AT x = 17. The
+  // designer-polish pass narrowed the gasket card (`paper-resources.js drawSealSet`: it leans on the
+  // NEAR ring only now, quad x-span 3…17), and this twin's damage was authored in ABSOLUTE cm
+  // against the OLD, wider geometry — so the far end of the tear hung in clean paper with nothing
+  // under it. Filed as a residual by the paper-resources commit (98d2b3e) because `wrecked.js` was
+  // another lane's file at the time; closed here.
+  // The three points now lie ON the card, interpolated inside its own quad
+  // A(3,29,0) B(15,30,0) C(17,34,12) D(5,33,13) at v ≈ 0.85 of the way to the top edge — so the tear
+  // runs along the edge it is described as curling off, and moves with the card if the card moves.
+  inkTear(s, F, [[6.5, 32.6, 10.9], [10.7, 32.9, 10.6], [14.9, 33.3, 10.3]]);  // the card, curled off its edge
 });
 
 const iceBlock = (s) => paintResource(s, 'ice-block', (_s, { F }) => {
