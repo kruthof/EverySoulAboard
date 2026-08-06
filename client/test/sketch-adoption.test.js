@@ -1090,18 +1090,23 @@ test('⭐⭐ no member of any treated piece or twin is erased — by a later fac
   // All nine are in the RAW art and were invisible until this probe was pointed at these two
   // catalogues (`paper-fixtures.test.js` has run its own since its lane; fittings and machines never
   // had one). They are a drawing question for their own package, not this one:
-  //   bench ×2          — two of the four knee braces sit under the seat slab's own front face
   //   reactor-plant ×6  — the six control-strip rules lie inside the strip's paper panel
   //   deck-turret ×1    — the mount's rear half-arc is under the body it belongs to
   //   solar-wing ×1     — one panel cell line lies inside the panel's own face
-  //   capsule-sealed ×2 / sink ×1 — TWIN-ONLY: the damage pass adds an opaque mark over a member
-  //                        the pristine drawing leaves visible
+  //   capsule-sealed ×2 — TWIN-ONLY: the damage pass adds an opaque mark over a member the pristine
+  //                        drawing leaves visible
   // The twins repeat their pristine piece's members, so a pristine count reappears on the twin.
+  // ⭐ THREE ENTRIES LEFT ON 2026-08-05 AND THE FIXES ARE NAMED, per this rule's own instruction that
+  // a MISSING one be said out loud: `bench ×2` (pristine + twin) went when the designer-polish pass
+  // deleted the two knee braces that were under the seat slab — the recognisability fix removed the
+  // buried members as a side effect — and `sink ×1` (twin) went when the same pass replaced the
+  // basin's open drain ring with a filled hole and gave the basin its own shadow, so the member the
+  // twin's damage mark used to cover entirely is no longer that member. Nothing was added: this
+  // package's own new marks were checked against this probe and three that DID bury (the battery
+  // bank's lower bus bars, a chair caster under the gas-lift collar, one arm of the cot's leg brace)
+  // were re-drawn until they draw.
   assert.deepEqual([...new Set(ledger)].sort(), [
-    'fittings/pristine/bench:2',
-    'fittings/twin/bench:2',
     'fittings/twin/capsule-sealed:2',
-    'fittings/twin/sink:1',
     'machines/pristine/deck-turret:1',
     'machines/pristine/reactor-plant:6',
     'machines/pristine/solar-wing:1',
