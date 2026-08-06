@@ -155,13 +155,21 @@ export function makePawnTween(cfg) {
   /**
    * Where every tracked pawn is drawn at `now`. `moving` is false once the segment is spent — the
    * caller uses it to skip DOM writes for a figure that has not changed by a millipixel.
-   * @returns {Map<string,{x:number,y:number,u:number,moving:boolean}>}
+   *
+   * ⭐ `deck` IS REPORTED, AND IT IS NOT A CONVENIENCE. The Level-1 plate draws EVERY deck at once
+   * (`ship-elevation.js`), so projecting a tween position needs the band as well as the tile —
+   * `t.project(x, y, deck)`. The record has always held `deck` (rule 2 snaps on it); reporting it
+   * here is what stops the caller keeping a parallel cid→deck table beside this one, which is
+   * exactly how a figure would come to be drawn on the band she just left. It is the SNAPPED value,
+   * i.e. the deck of the newest sample, because a deck change is never interpolated.
+   *
+   * @returns {Map<string,{x:number,y:number,deck:number,u:number,moving:boolean}>}
    */
   function positions(now) {
     const out = new Map();
     for (const [k, r] of recs) {
       const p = at(r, now);
-      out.set(k, { x: p.x, y: p.y, u: p.u, moving: p.u < 1 });
+      out.set(k, { x: p.x, y: p.y, deck: r.deck, u: p.u, moving: p.u < 1 });
     }
     return out;
   }

@@ -207,6 +207,43 @@ machine load by more than the whole raw figure, so a single number here is not e
 statement is the **element ratio** (×3.72, identical on every run) and "comfortably inside the 16 ms
 interactive budget", which holds across every measurement anyone has taken.
 
+### ⛔⛔ The Level-1 plate is the ONE surface that opts OUT — measured, 2026-08-05 (`lane/ship-drawn`)
+
+The table above is the **Room Zoom**: 7 fittings at room scale, ×3.72 elements, +2.9 ms, comfortably
+inside 16 ms. The **Level-1 side elevation** is a different order of magnitude — it draws **86
+fittings across two bands** (`--ship wreck`, off the live wire: 62 on deck 0, 24 on deck 1) and
+rebuilds the whole plate on every wire frame at 10 Hz. The same plate, A/B, with one flag flipped:
+
+| | raw | treated | ratio |
+|---|---|---|---|
+| shape elements | 2 953 | 13 787 | ×4.67 |
+| DOM nodes (live Chrome) | 3 776 | 16 278 | ×4.31 |
+| bytes | 499 KB | 2.91 MB | ×5.83 |
+| build ms (node) | 6.96 | 45.37 | ×6.52 |
+| parse + layout ms (Chrome, median of 12) | 12.1 | 56.7 | ×4.69 |
+| **total per repaint** | **~19 ms** | **~102 ms** | **×5.4** |
+
+**Treated, the plate does not fit inside its own 10 Hz wire frame** (102 ms against 100 ms; 6.4× the
+16 ms interactive line). Raw it lands at ~19 ms with five-fold headroom. And what the ×5.4 buys is
+nothing a player can see: **this section's own rule — *at 22 px only WEIGHT survives* — and the
+plate's box is `max(10, tileSize × 2.2)` = 20.82 px, under the line.** So
+`overview-scene.js`'s `fittingLayer` passes **`sketch: false`** to `buildTileItem`.
+
+⛔ **This does not make the plate un-sketchy, and the distinction is the ruling.** The hull, the deck
+floor planes and the partition walls are sketched by the plate's OWN `sketch()` calls (`strong`,
+seeded per deck — `overview-scene.js:205` and `:962`), not by the catalogue, and they are untouched:
+with the miniatures raw the plate still carries 13 doubled silhouette passes. The treatment is kept
+exactly where it reads and dropped exactly where it is sub-pixel.
+
+⚠️ **The ground-rule question does not arise here, by construction.** `item()` returns before
+`sketch()` is called when `opts.sketch === false`, so `cfg.ground` is never read at plate scale and
+the materials' `ground: false` exception has no bearing either way. A later lane that re-enables the
+treatment on this surface **inherits that decision unmade** — a plate miniature IS a standing thing,
+so the pawns' sixth tell applies in principle, but at 20.82 px a rule 2 % of the box is sub-pixel ink
+laid over the band floor the plate already draws beneath it. Both halves are pinned in
+`overview-scene.test.js` ("plate MINIATURES carry no catalogue treatment — and the ARCHITECTURE still
+does" + the unreachable-knob leg), each mutation-verified.
+
 **The memo is NOT shipped, and that is a decision.** The bench measures it: the 7 fittings alone cost
 2.57 – 2.61 ms treated and 0.057 – 0.061 ms from a cache keyed on `(itemId, side, facing)` — about
 **43× cheaper**. It is not built because 3.2 – 5.4 ms is not a problem against 16 ms, and a cache is

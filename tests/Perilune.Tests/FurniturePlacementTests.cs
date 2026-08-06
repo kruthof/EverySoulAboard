@@ -57,7 +57,11 @@ namespace Perilune.Tests
                 sim.AddCitizen("Twin", new Int3(1, 1, 0));
                 Fund(sim, 1); // placement costs Parts (E0-5 WP-3); an unfunded twin places nothing
                 // Place a bed, run a bit, then remove it — the whole cycle over the command inbox.
-                sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Bed, FloorSite));
+                // ⭐ PLACE **AND BUILD**: since 2026-08-05 a placement lays a blueprint, and the
+                // RemoveDeviceCommand at tick 50 below removes a DEVICE. Left as a bare place this
+                // stayed GREEN — twins agree about a no-op just as readily as about a removal — so
+                // the cycle this test names would have quietly stopped happening.
+                sim.PlaceAndBuild(DeviceKind.Bed, FloorSite);
                 return sim;
             }
 
@@ -83,8 +87,22 @@ namespace Perilune.Tests
             Assert.That(sim.TryGetDeviceAt(FloorSite, out _), Is.False, "tile starts empty");
             Assert.That((sim.World.GetFlags(FloorSite) & TileFlags.Walkable) != 0, Is.True, "tile starts walkable");
 
+            // ⭐⭐ THE PRESS LAYS A BLUEPRINT — asserted here rather than skipped past, because this
+            // is the file that owns the placement verb and the intermediate state is now part of it.
             sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Desk, FloorSite));
             sim.Tick();
+            Assert.That(sim.Build, Is.Not.Null, "this bench has no BuildSystem");
+            Assert.That(sim.Build.TryGet(FloorSite, out var site), Is.True, "the press laid no blueprint");
+            Assert.That(site.Kind, Is.EqualTo(BuildKind.Device));
+            Assert.That((byte)DeviceKind.Desk, Is.EqualTo(site.Device), "the blueprint is for the wrong piece");
+            Assert.That(sim.TryGetDeviceAt(FloorSite, out _), Is.False,
+                "the piece exists before a builder has touched it — placement is supposed to be a "
+                + "blueprint now (the owner's \"it should stay as a ghost until the pawn assembles it\")");
+            Assert.That((sim.World.GetFlags(FloorSite) & TileFlags.HasDevice) == 0, Is.True,
+                "a mere blueprint set HasDevice, which would make the tile refuse everything");
+
+            // …and the builder finishes it.
+            Assert.That(sim.Build.Complete(sim, FloorSite, 0), Is.True, "the ready site would not complete");
             Assert.That(sim.TryGetDeviceAt(FloorSite, out var placed), Is.True, "furniture is placed");
             Assert.That(placed.Kind, Is.EqualTo(DeviceKind.Desk));
             Assert.That((sim.World.GetFlags(FloorSite) & TileFlags.HasDevice) != 0, Is.True, "HasDevice flag set");
@@ -125,15 +143,25 @@ namespace Perilune.Tests
             Assert.That(PlaceDeviceCommand.Affordable(sim), Is.EqualTo(price * 2),
                 "neither illegal request spent a thing — the cost is charged LAST");
 
-            // One-per-tile: placing twice leaves exactly one device, and pays exactly once.
+            // One-per-tile: pressing twice leaves exactly one piece, and pays exactly once.
+            // ⚠️ THE SECOND PRESS IS REFUSED BY A DIFFERENT CLAUSE THAN IT USED TO BE, and the
+            // distinction is real rather than pedantic: it used to hit the OCCUPIED check (a device
+            // was standing there), and now it hits ALREADY-QUEUED (a blueprint is). Both are free,
+            // which is what this leg is actually about, and `PlaceRefusalTests` drives the two
+            // reasons apart by name.
             sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Chair, FloorSite));
             sim.Tick();
             sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Locker, FloorSite));
             sim.Tick();
-            Assert.That(sim.TryGetDeviceAt(FloorSite, out var only), Is.True);
-            Assert.That(only.Kind, Is.EqualTo(DeviceKind.Chair), "second placement on an occupied tile is a no-op");
+            Assert.That(sim.Build.TryGet(FloorSite, out var one), Is.True, "no blueprint on the tile at all");
+            Assert.That((byte)DeviceKind.Chair, Is.EqualTo(one.Device),
+                "the second press overwrote the first — a tile already queued must be a no-op");
             Assert.That(PlaceDeviceCommand.Affordable(sim), Is.EqualTo(price),
-                "…and the occupied-tile refusal was free: exactly ONE placement was ever paid for");
+                "…and the already-queued refusal was free: exactly ONE placement was ever paid for");
+            // Finish it, so the tile ends this test in the state the name promises.
+            Assert.That(sim.Build.Complete(sim, FloorSite, 0), Is.True);
+            Assert.That(sim.TryGetDeviceAt(FloorSite, out var only), Is.True);
+            Assert.That(only.Kind, Is.EqualTo(DeviceKind.Chair));
         }
 
         [Test]

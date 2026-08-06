@@ -563,12 +563,41 @@ test('roomCrew keeps only crew on the room deck inside the rect', () => {
 });
 
 test('roomDesigns clamps design cells to the room + deck and decodes the ledger', () => {
-  // element 6 = material (append-only); the 3rd design carries it, the others omit it → 0.
+  // element 6 = material, 7 = tool, 8 = facing — all APPEND-ONLY; rows that omit them read 0/''/0.
   const designs = { cells: [[5, 7, 1, 0, 0, 3, 2], [6, 8, 1, 1, 2, 2], [1, 1, 1, 0, 0, 1], [5, 7, 2, 0, 0, 1]] };
   const g = roomDesigns(designs, room);
   assert.equal(g.length, 2); // the out-of-rect and wrong-deck cells drop
-  assert.deepEqual(g[0], { x: 5, y: 7, kind: 0, delivered: 0, required: 3, material: 2 });
-  assert.deepEqual(g[1], { x: 6, y: 8, kind: 1, delivered: 2, required: 2, material: 0 });
+  assert.deepEqual(g[0], { x: 5, y: 7, kind: 0, delivered: 0, required: 3, material: 2, tool: '', facing: 0 });
+  assert.deepEqual(g[1], { x: 6, y: 8, kind: 1, delivered: 2, required: 2, material: 0, tool: '', facing: 0 });
+});
+
+/**
+ * ⭐⭐ THE APPEND-ONLY RECEIPT FOR THE BLUEPRINT'S TWO NEW ELEMENTS, in both directions — because
+ * "append-only" is a claim about what an OLD reader and a NEW reader each see, and only one of those
+ * is exercised by the test above.
+ *
+ * MUTATION: read `c[7]` without the `typeof === 'string'` guard ⇒ a legacy 7-element row decodes
+ * `tool: undefined` and the blueprint arm draws for a WALL. MUTATION: drop the `& 3` on facing ⇒ a
+ * corrupt facing reaches `standItem`.
+ */
+test('roomDesigns: the blueprint carries its PIECE and FACING, and an old row still parses', () => {
+  const cells = [
+    [5, 7, 1, 3, 0, 0, 0, 'table', 2],   // a DEVICE blueprint: kind 3, tool + facing
+    [6, 8, 1, 3, 0, 0, 0, 'bunk', 0],
+    [7, 7, 1, 0, 0, 3, 2],               // a SEVEN-element wall row from a host that predates this
+  ];
+  const g = roomDesigns({ cells }, room);
+  assert.equal(g.length, 3);
+  assert.deepEqual(g[0], { x: 5, y: 7, kind: 3, delivered: 0, required: 0, material: 0, tool: 'table', facing: 2 });
+  assert.deepEqual(g[1], { x: 6, y: 8, kind: 3, delivered: 0, required: 0, material: 0, tool: 'bunk', facing: 0 });
+  // THE OLD ROW IS THE POINT: no tool, no facing, and it must not become a blueprint by accident.
+  assert.equal(g[2].kind, 0);
+  assert.equal(g[2].tool, '', 'a legacy row grew a tool out of nowhere');
+  assert.equal(g[2].facing, 0);
+  // A garbage tool element is not a string and must read '' rather than reaching the art route.
+  const junk = roomDesigns({ cells: [[5, 7, 1, 3, 0, 0, 0, 17, 9]] }, room);
+  assert.equal(junk[0].tool, '', 'a non-string tool element reached the decoded row');
+  assert.equal(junk[0].facing, 1, 'facing is masked to 0..3 (9 & 3 === 1)');
 });
 
 test('roomMaterialTiles skins every in-room wall + only non-default floors', () => {
@@ -894,11 +923,23 @@ test('addDecor / removeDecor are pure and one-per-tile', () => {
 
 // ---- ESC rung ----
 
-test('escStackRung: armed disarms; else an open room exits; else pass', () => {
-  assert.equal(escStackRung({ armed: true, roomOpen: true }), 'disarm');
-  assert.equal(escStackRung({ armed: false, dialogueOpen: true, roomOpen: true }), 'dialogue');
+// ⭐⭐ M4-2 — the `persona` rung. The Persona window opens OVER this surface (it is the only way to
+// reach a person from inside a room: the dock is the only crew affordance here, this surface has no
+// readout, and `#panels` is display:none under `body.roomzoom-open`). Without the rung, Escape would
+// exit the room out from under an open window — roomzoom-view.js registers its keydown on `window`
+// in the CAPTURE phase at mount, so anything the window registered later would run second.
+test('escStackRung: armed disarms; then persona closes; else an open room exits; else pass', () => {
+  assert.equal(escStackRung({ armed: true, personaOpen: true, roomOpen: true }), 'disarm');
+  assert.equal(escStackRung({ armed: false, dialogueOpen: true, personaOpen: true, roomOpen: true }), 'dialogue');
+  assert.equal(escStackRung({ armed: false, personaOpen: true, roomOpen: true }), 'persona');
   assert.equal(escStackRung({ armed: false, roomOpen: true }), 'exit');
   assert.equal(escStackRung({ armed: false, roomOpen: false }), 'pass');
+  // ⭐ THE ONE THAT MATTERS AND THE ONLY ONE NOTHING ELSE WOULD NOTICE: with the window up, Escape
+  // must NOT reach `exit`. A rung dropped from the reducer reads as "the room closed instead", which
+  // in Chrome is indistinguishable from a window that was never open.
+  assert.notEqual(escStackRung({ armed: false, personaOpen: true, roomOpen: true }), 'exit');
+  // …and it is ADDITIVE: a caller that never mentions it keeps the pre-existing behaviour exactly.
+  assert.equal(escStackRung({ armed: false, roomOpen: true }), 'exit');
 });
 
 // ---- shared deck minimap ----
@@ -1681,6 +1722,16 @@ function rzFire(el, type, extra) {
     n = n.parentNode;
   }
   return e;
+}
+
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function rzPress(el, extra) {
+  rzFire(el, 'pointerdown', { button: 0, ...extra });
+  return rzFire(el, 'pointerup', { button: 0, ...extra });
 }
 /** `mouseup` is bound on WINDOW (a release that ends off-canvas still commits), so it is dispatched
  *  through the window stub rather than through the element tree. */
@@ -3069,7 +3120,7 @@ test('WP-4: a release commits the swept set exactly once, trailing click include
   rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(28, 14) });
   rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(30, 16) });
   rzMouseUp();
-  rzFire(rzCanvas, 'click', { button: 0, ...atTile(30, 16) });  // the browser's trailing click
+  rzPress(rzCanvas, { button: 0, ...atTile(30, 16) });  // the browser's trailing click
   assert.equal(rzOrders(rzSent).length, 9, 'the release committed 9 tiles; the trailing click added more');
   rzArm('dig');
 });
@@ -3367,7 +3418,7 @@ test('WP-4: the built-wall dead end now points at STRIP', () => {
   assert.equal(demolishTarget(wallTile.x, wallTile.y, null, null, wreck).kind, 'built-wall',
     'the hold\'s top-left tile is no longer a built wall in the fixture — pick another');
   rzArm('demolish');
-  rzFire(rzCanvas, 'click', { button: 0, ...atTile(wallTile.x, wallTile.y) });
+  rzPress(rzCanvas, { button: 0, ...atTile(wallTile.x, wallTile.y) });
   assert.match(rzDoc.getElementById('rz-toast').textContent, /STRIP/,
     'DEMOLISH on a built wall must name the verb that CAN take it apart, now that STRIP exists here');
   rzArm('demolish');
@@ -3528,19 +3579,34 @@ test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, a
   // derivation (`client/src/items/glyph-map.js`), which is the whole of that package. Deriving
   // against both is now belt-and-braces rather than load-bearing, and it is kept precisely because a
   // future surface could stop reading the shared table without this test noticing otherwise.
+  // ⚠️ THE TWO SURFACES NO LONGER TAKE THE SAME INPUT, so the shared probe is a shared PIECE and not
+  // a shared glyph. The Room Zoom skins a FRAME GLYPH; the Level-1 plate skins a `devices` row
+  // (`ship-fittings.js` — the elevation draws every deck and `frame` carries one). The property this
+  // test is for is unchanged and is about DRAW ORDER, so the fixture picks a DeviceKind whose piece
+  // both surfaces really draw, derived against BOTH rather than assumed — the existence assert is
+  // still what stops the test degrading into a vacuous pass if they diverge.
   const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
-  let code = 0;
-  for (let c = 33; c < 127 && !code; c += 1) {
-    if (!itemForGlyph(c)) continue;
-    const probe = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[c, 8, 0, 0]] };
-    if (overviewScene({ deck: 0, decksView: fixView, frame: probe, crew: [], marks: [] }).includes('pl-furniture')) code = c;
+  let code = 0, kind = -1;
+  for (let k = 0; k < DEVICE_KIND_NAMES.length && kind < 0; k += 1) {
+    const id = itemForDeviceRow({ kind: k, open: 0 });
+    if (!id) continue;
+    const ovProbe = overviewScene({
+      deck: 0, decksView: fixView, frame: { deck: 0, w: 1, h: 1, lens: 'none', cells: [[46, 0, 0, 0]] },
+      devices: [{ x: 0, y: 0, deck: 0, kind: k, cond: 255, oper: 1, open: 0 }], marks: [],
+    });
+    if (!ovProbe.includes('pl-furniture')) continue;
+    // …and the SAME piece must reach the Room Zoom through ITS route, which is the glyph.
+    const g = Object.keys(GLYPH_TO_ITEM).find((ch) => GLYPH_TO_ITEM[ch] === id);
+    if (!g || !itemForGlyph(g.charCodeAt(0))) continue;
+    kind = k; code = g.charCodeAt(0);
   }
-  assert.ok(code, 'no glyph code is furniture on BOTH surfaces — the ordering assertion would be vacuous');
+  assert.ok(kind >= 0 && code,
+    'no piece is furniture on BOTH surfaces — the ordering assertion would be vacuous');
 
-  // The frame carries the FURNITURE at an ordinary device colour; the condemnation travels on the
-  // `marks` channel beside it. (It used to be `[[code, 26, 0, 0]]` — one cell carrying both — and
-  // that cell only existed because pass 4 was patched to produce it.)
+  // The frame carries the FURNITURE glyph (for the Room Zoom) and the `devices` row carries the same
+  // piece (for the plate); the condemnation travels on the `marks` channel beside both.
   const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 8, 0, 0]] };
+  const devs = [{ x: 0, y: 0, deck: 0, kind, cond: 255, oper: 1, open: 0 }];
   const chan = decodeMarks({ type: 'marks', cells: [[0, 0, 0, 3]] });
 
   // The Room Zoom's pure model reports it and its pure layer draws it…
@@ -3550,7 +3616,7 @@ test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, a
   // …and the Overview's real composer agrees, byte for byte, on the same tile. The two surfaces
   // share `mark-overlay.js` precisely so a condemned desk cannot read one way in the schematic and
   // another in the room.
-  const ov = overviewScene({ deck: 0, decksView: fixView, frame, crew: [], marks: chan });
+  const ov = overviewScene({ deck: 0, decksView: fixView, frame, devices: devs, marks: chan });
   assert.deepEqual(marks(ov).map((k) => k.kind), ['strip']);
 
   // ORDER on the Overview, driven rather than scanned, and now unconditional.
@@ -4060,11 +4126,11 @@ test('VR-P3-a leg 2: a STRIP sweep pressed on a piece marks the PIECE\'S tile, a
 test('VR-P3-a leg 3: a single-click PLACE on a piece targets the piece\'s tile', () => {
   rzArm('lamp');   // `cls: functional` — exactly one click and exactly one `Cmd.place`
   rzSent.length = 0;
-  rzFire(rzCanvas, 'click', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzPress(rzCanvas, { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
   const floor = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
   assert.deepEqual(floor.map(xy), [[VR_FLOOR.x, VR_FLOOR.y]], 'control: the floor tier answers');
   rzSent.length = 0;
-  rzFire(rzFitNode(VR_FIT.x, VR_FIT.y), 'click', { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
+  rzPress(rzFitNode(VR_FIT.x, VR_FIT.y), { button: 0, ...atTile(VR_FLOOR.x, VR_FLOOR.y) });
   const onPiece = rzOrders(rzSent.slice()).filter((o) => o.cmd === 'place');
   assert.deepEqual(onPiece.map(xy), [[VR_FIT.x, VR_FIT.y]],
     'a PLACE click on a drawn piece landed on the floor tile behind it — `onCanvasClick` is still '
@@ -4243,22 +4309,44 @@ test('a ground stack on a door tile does NOT erase the door (and still erases a 
   }
 });
 
-// THE OTHER SURFACE. The Overview `continue`s on `!itemId`, so an unskinned glyph there is not a
-// chip — it is silently absent, which is worse to find. Same fix, different failure mode.
+// THE OTHER SURFACE. The Overview skips a row whose piece is empty, so an unskinned device there is
+// not a chip — it is silently absent, which is worse to find. Same fix, different failure mode.
+//
+// ⚠️⚠️ THE PROBE IS A `devices` ROW, NOT A FRAME GLYPH, AND THE THIRD LEG CHANGED ITS ANSWER.
+// The side elevation draws every deck, so it cannot read `frame` (which carries one) — it reads the
+// `devices` channel (`ship-fittings.js`). Two consequences, and the second is a real loss:
+//   · CLOSED vs OPEN is still expressed, because `open` IS on the channel: `itemForDeviceRow` picks
+//     the leaf for a shut door and nothing for an open doorway, exactly as the glyphs did.
+//   · **LOCKED IS NOT.** `Device.IsLocked` is on the `WireFormat.Devices.cs` "deliberately left out"
+//     list, so a locked door reaches the plate as an ordinary `Door` row and draws `door-sliding`
+//     instead of `door-blast`. The leg that asserted the blast door is therefore RE-AIMED at what is
+//     now true — a locked door still DRAWS, it just draws as a plain door — and the loss itself is
+//     pinned by name in `device-sprite-coverage.test.js`'s unreachable-art census, so deleting this
+//     comment cannot make it disappear quietly.
 // MUTATION: `dev('Door', '+')` → `dev('Door', null)` in items/index.js ⇒ RED.
 test('the OVERVIEW composer draws a closed door too — it was silently absent, not chipped', () => {
-  const probe = (ch) => overviewScene({
-    deck: DECK1, decksView: fixView, crew: [], marks: [],
-    frame: { deck: DECK1, w: 1, h: 1, lens: 'none', cells: [[ch.charCodeAt(0), 8, 0, 0]] },
+  const probe = (kind, open) => overviewScene({
+    deck: DECK1, decksView: fixView, marks: [],
+    frame: { deck: DECK1, w: 1, h: 1, lens: 'none', cells: [[46, 0, 0, 0]] },
+    devices: [{ x: 0, y: 0, deck: DECK1, kind, cond: 255, oper: 1, open }],
   });
-  assert.ok(!probe('z').includes('class="pl-furniture"'),
-    'control: an unskinned glyph drew a furniture layer on the Overview — the probe proves nothing');
-  assert.ok(probe('+').includes('class="pl-furniture"'),
-    'THE OVERVIEW DREW NOTHING for a closed door. `furnitureLayer` does `if (!itemId) continue`, so '
-    + 'the tile is not a chip here, it is absent from the schematic entirely.');
-  assert.ok(probe('X').includes('class="pl-furniture"'), 'nor for a locked one');
-  assert.ok(!probe('/').includes('class="pl-furniture"'),
+  const DOOR = DEVICE_KIND_NAMES.indexOf('Door');
+  assert.ok(DOOR >= 0, 'the fixture cannot find DeviceKind.Door');
+  assert.ok(!probe(250, 0).includes('class="pl-furniture"'),
+    'control: an unskinned kind drew a furniture layer on the Overview — the probe proves nothing');
+  assert.ok(probe(DOOR, 0).includes('class="pl-furniture"'),
+    'THE OVERVIEW DREW NOTHING for a closed door. `fittingLayer` skips an empty piece, so the tile '
+    + 'is not a chip here, it is absent from the drawing entirely.');
+  assert.ok(!probe(DOOR, 1).includes('class="pl-furniture"'),
     'an OPEN doorway drew a leaf on the Overview — see NO_DEVICE_GLYPH_ART for why it must not');
+  // THE LOCKED DOOR, stated as it now is: the channel cannot say "locked", so the plate draws the
+  // ordinary leaf. It must still draw SOMETHING — a route the player cannot see is worse than a
+  // route drawn with the wrong lock.
+  assert.equal(itemForDeviceRow({ kind: DOOR, open: 0 }), 'door-sliding',
+    'a shut door no longer resolves to the sliding leaf');
+  assert.equal(itemIdForGlyphChar('X'), 'door-blast',
+    'the LOCKED-door glyph no longer skins the blast door — the Room Zoom lost it too, which would '
+    + 'make the plate\'s loss total rather than partial');
 });
 
 // ART MUST NOT MAKE A DOOR REMOVABLE. `demolishTarget`'s device branch excludes `STRUCTURE_CODES`,
@@ -4325,12 +4413,12 @@ test('DEMOLISH on a real LAMP on the captured grid ship SENDS Cmd.remove (the se
   // CONTROL FIRST: the same click with NO tool armed must send nothing. Without it, "a remove was
   // sent" is satisfied by a canvas that emits one on every click.
   rzSent.length = 0;
-  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+  rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
   assert.deepEqual(sentOrders(), [], 'an UNARMED click on the lamp sent a command');
 
   rzArm('demolish');
   rzSent.length = 0;
-  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+  rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
   const orders = sentOrders();
   rzArm('demolish');
 
@@ -4364,7 +4452,7 @@ test('DEMOLISH on a device wearing its OWN art sends Cmd.remove too', () => {
     rzEnter('hold');
     rzArm('demolish');
     rzSent.length = 0;
-    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
     const orders = sentOrders();
     rzArm('demolish');
     assert.deepEqual(orders, [Cmd.remove(tile.x, tile.y, f.deck)],
@@ -4391,7 +4479,7 @@ test('DEMOLISH on a ground PILE sends nothing — the art did not make spoil rem
     rzEnter('hold');
     rzArm('demolish');
     rzSent.length = 0;
-    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
     const orders = sentOrders();
     rzArm('demolish');
     assert.deepEqual(orders, [],
@@ -4441,7 +4529,7 @@ test('DEMOLISH on a CLOSED DOOR sends NOTHING — art did not make it removable'
     rzEnter('hold');
     rzArm('demolish');
     rzSent.length = 0;
-    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    rzPress(rzCanvas, { button: 0, ...atTileIn(f, tile.x, tile.y) });
     const orders = sentOrders();
     rzArm('demolish');
     assert.deepEqual(orders, [],
@@ -5286,7 +5374,7 @@ try { Hud.initConsole({ send: (o) => rzHudSent.push(o) }); } catch { /* chrome, 
 /** A plain click at the centre of a tile of the CURRENTLY focused room, through the real canvas
  *  handler — the gesture a player makes to select a crew member (no tool armed). */
 function rzClickTile(tx, ty) {
-  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(_rzFocusNow, tx, ty) });
+  rzPress(rzCanvas, { button: 0, ...atTileIn(_rzFocusNow, tx, ty) });
 }
 let _rzFocusNow = null;
 

@@ -295,7 +295,14 @@ namespace Perilune.Web
         public const int OrderDig = 0;
         /// <summary>A condemned wall or device: the <see cref="Perilune.Sim.DeconstructSystem"/> registry.</summary>
         public const int OrderStrip = 1;
-        /// <summary>A queued wall/floor/door: the <see cref="Perilune.Sim.BuildSystem"/> registry.</summary>
+        /// <summary>A queued wall/floor/door — or, since 2026-08-05, a FURNITURE BLUEPRINT: the
+        /// <see cref="Perilune.Sim.BuildSystem"/> registry. ⭐ The blueprint needed no new order kind
+        /// and no new reason: making a placement a build SITE is what earns it this row, and
+        /// <c>NobodyAboardTakesTheWorkFor</c> already maps <c>OrderBuild → JobKind.Build →
+        /// WorkType.Construct</c>. Under OD-H that is the sentence a waiting blueprint shows —
+        /// "NOBODY ABOARD IS ASSIGNED THAT WORK" — and it is what makes an indefinite wait HONEST
+        /// rather than silent. Driven by
+        /// <c>BlueprintTests.AWaitingBlueprintSaysWhyOnTheBlockedChannel</c>.</summary>
         public const int OrderBuild = 2;
 
         /// <summary>

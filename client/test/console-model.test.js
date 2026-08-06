@@ -647,17 +647,30 @@ test('terminalList / terminalLabel: parse [tid,deck,x,y], drop garbage, label', 
 
 // ---------------- Escape priority stack (IX-13 + IX-R10 + moss-terminal IX-M2) ----------------
 
-test('escapeTarget: armed → dialogue → dossier → MOSS → relations → none, strict priority', () => {
-  assert.equal(escapeTarget({ armed: true, dialogueOpen: true, dossierOpen: true, mossActive: true, relationsActive: true }), 'disarm');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: true, dossierOpen: true, mossActive: true, relationsActive: true }), 'dialogue');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: true, mossActive: true, relationsActive: true }), 'dossier');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: false, mossActive: true, relationsActive: true }), 'moss');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: false, mossActive: false, relationsActive: true }), 'relations');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: false, mossActive: false, relationsActive: false }), 'none');
+// ⭐⭐ M4-2 — THE `persona` RUNG. It takes the DOSSIER's PLACE (above MOSS and RELATIONS, below the
+// floating-panel closers) and the dossier keeps a rung one step down — the M4-1 charter said
+// "rename", and the deviation is recorded here as well as in the reducer because a rung that
+// changes in one file and is pinned in another is how a rung silently disappears. The card is NOT
+// deleted by M4-2 (M4-3 decides `panels.js`'s fate) and is still openable from the deprecated
+// console's `#b-bio`, so deleting its rung would restore the very regression the reducer's own
+// comment says the rung was added for: Escape falling through to the browser.
+test('escapeTarget: armed → dialogue → persona → dossier → MOSS → relations → none, strict priority', () => {
+  const all = { armed: true, dialogueOpen: true, personaOpen: true, dossierOpen: true, mossActive: true, relationsActive: true };
+  assert.equal(escapeTarget(all), 'disarm');
+  assert.equal(escapeTarget({ ...all, armed: false }), 'dialogue');
+  assert.equal(escapeTarget({ ...all, armed: false, dialogueOpen: false }), 'persona');
+  assert.equal(escapeTarget({ ...all, armed: false, dialogueOpen: false, personaOpen: false }), 'dossier');
+  assert.equal(escapeTarget({ ...all, armed: false, dialogueOpen: false, personaOpen: false, dossierOpen: false }), 'moss');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, personaOpen: false, dossierOpen: false, mossActive: false, relationsActive: true }), 'relations');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, personaOpen: false, dossierOpen: false, mossActive: false, relationsActive: false }), 'none');
   assert.equal(escapeTarget(null), 'none');
-  // the dossier rung sits ABOVE full-screen navigators: an open BIO card closes before MOSS/relations
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: true, mossActive: false, relationsActive: false }), 'dossier');
-  // both new rungs are ADDITIVE: a caller that never mentions them keeps the pre-existing behaviour
+  // the persona rung sits ABOVE full-screen navigators: an open Persona window closes before
+  // MOSS/relations — the precedence it INHERITED from the dossier rung, stated on its own.
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, personaOpen: true, mossActive: true, relationsActive: true }), 'persona');
+  // …and ABOVE the dossier, which is the ordering M4-2 chose and is the only thing about this ladder
+  // a later lane could get backwards without any other assertion noticing.
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, personaOpen: true, dossierOpen: true }), 'persona');
+  // every optional rung is ADDITIVE: a caller that never mentions them keeps the pre-existing behaviour
   assert.equal(escapeTarget({ armed: false, dialogueOpen: false, relationsActive: true }), 'relations');
   assert.equal(escapeTarget({ armed: false, dialogueOpen: false, relationsActive: false }), 'none');
 });

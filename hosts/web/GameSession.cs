@@ -216,7 +216,48 @@ namespace Perilune.Web
                 _sim.Tick();
                 AttachThawedPersonas();
                 NoteDroppedOrders();
+                RelayRefusedPlacements();
             }
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>THE HOST HALF OF A REFUSED PLACEMENT: catch the sim saying WHY it did not put the
+        /// furniture down, and hand the sentence straight back to the tab that asked.</b> Reads
+        /// <see cref="PlaceRefusedEvent"/> and <see cref="Emit"/>s one <c>placerefused</c> message
+        /// per refusal.
+        ///
+        /// <para>⛔ <b>IT LIVES IN <see cref="AdvanceTicks"/> AND NOT IN <see cref="Render"/>, FOR
+        /// <see cref="NoteDroppedOrders"/>'s REASON, VERBATIM.</b> The bus is double-buffered and
+        /// swaps at the END of every tick, so an observation made per RENDER sees only the last
+        /// tick's events and silently loses every one before it — and this loop runs up to
+        /// <c>MaxTicksPerFrame</c> ticks per frame. A refusal is a ONE-TICK event; at 3× speed a
+        /// render-side read would drop it outright, which is the same silence the package exists to
+        /// remove wearing the host's costume.</para>
+        ///
+        /// <para>⛔ <b>IT <see cref="Emit"/>s RATHER THAN FILING, WHICH IS THE ONE PLACE IT DIVERGES
+        /// FROM D5.</b> <see cref="NoteDroppedOrders"/> files into <see cref="_dropped"/> because a
+        /// dropped order leaves a MACHINE standing there that a later render can re-ask about. A
+        /// refused placement leaves nothing behind — no device, no designation, no registry row — so
+        /// there is no live question and nothing that could ever clear a latched row. The event IS
+        /// the whole record, and it is answered once, immediately.
+        /// <br/>⚠️ The consequence, stated rather than discovered: <b>a player who presses thirty
+        /// unaffordable tiles gets thirty messages.</b> That is deliberate — each is the answer to
+        /// one gesture, the client shows one toast at a time, and coalescing here would be a latch
+        /// with a policy in it. It is bounded by the player's hand.</para>
+        ///
+        /// <para>Returns how many refusals were relayed — a test seam, and zero on all but a handful
+        /// of ticks in a session. Zero allocation on the empty path: <c>Events.Read</c> hands back a
+        /// <c>ReadOnlySpan</c>.</para>
+        /// </summary>
+        internal int RelayRefusedPlacements()
+        {
+            var refused = _sim.Events.Read<PlaceRefusedEvent>();
+            for (int i = 0; i < refused.Length; i++)
+            {
+                var r = refused[i];
+                Emit(WireFormat.PlaceRefused(r.Pos.X, r.Pos.Y, r.Pos.Z, r.Kind, r.Reason, r.Price, r.Affordable));
+            }
+            return refused.Length;
         }
 
         /// <summary>
@@ -1860,6 +1901,40 @@ namespace Perilune.Web
 
         /// <summary>Room Zoom palette tool string → furniture <see cref="DeviceKind"/> (IX-Z-21).
         /// Unknown tools return false and are ignored — the whitelist is enforced again sim-side.</summary>
+        /// <summary>
+        /// ⭐⭐ THE INVERSE OF <see cref="TryFurnitureKind"/> — the wire tool-string for a
+        /// <see cref="DeviceKind"/>, or <c>""</c> for a kind no palette tool places.
+        ///
+        /// <para>⛔ IT EXISTS SO THE BLUEPRINT CAN BE DRAWN BY THE **SAME ROUTE** AS THE HOVER GHOST.
+        /// The client's `ghostArtId(tool)` already resolves a tool-string to a registry piece through
+        /// the glyph (`roomzoom-view.js`, and its header spends forty lines on why that route and no
+        /// other). Sending the DeviceKind BYTE instead would force the client to hold a
+        /// byte → enum-name mirror of a sim enum — precisely the hand-maintained join
+        /// `glyph-map.js`'s header retracts, and precisely the table that is invisible when wrong.
+        /// So the wire carries the vocabulary the client already speaks.</para>
+        ///
+        /// <para>⚠️ PINNED AS AN INVERSE, BOTH WAYS, OVER EVERY MEMBER
+        /// (<c>BlueprintTests.TheFurnitureNameTableIsABijection</c>) — two hand-written switches that
+        /// agree today are two switches that disagree after the next kind is added to one of them.</para>
+        /// </summary>
+        internal static string FurnitureToolName(DeviceKind kind)
+        {
+            switch (kind)
+            {
+                case DeviceKind.Bed: return "bunk";
+                case DeviceKind.Desk: return "desk";
+                case DeviceKind.Chair: return "chair";
+                case DeviceKind.Locker: return "locker";
+                case DeviceKind.PlantPot: return "plant";
+                case DeviceKind.Light: return "lamp";
+                case DeviceKind.GrowBed: return "growbed";
+                case DeviceKind.MedBed: return "medbed";
+                case DeviceKind.Table: return "table";
+                case DeviceKind.Heater: return "heater";
+                default: return "";
+            }
+        }
+
         private static bool TryFurnitureKind(string tool, out DeviceKind kind)
         {
             switch (tool)
@@ -1955,6 +2030,13 @@ namespace Perilune.Web
         /// <summary>Test-only hook: run one full Render pass (primes every cached channel and
         /// broadcasts to the test sink) without starting the sim thread.</summary>
         internal void RenderForTest() => Render(0.0, force: true);
+
+        /// <summary>Test seam for <see cref="TryFurnitureKind"/> — the private switch whose EXACT
+        /// INVERSE <see cref="FurnitureToolName"/> claims to be. Pinned by
+        /// <c>BlueprintTests.TheFurnitureNameTableIsABijection</c>; a bijection asserted over only
+        /// one of the two switches is not a bijection.</summary>
+        internal static bool TryFurnitureKindForTest(string tool, out DeviceKind kind)
+            => TryFurnitureKind(tool, out kind);
 
         /// <summary>Test-only hook: run one render WITHOUT the force flag, so <see cref="Send"/>'s
         /// dedupe is live. The forced hook above cannot see a dedupe bug and cannot see a channel that
@@ -2620,7 +2702,13 @@ namespace Perilune.Web
                 var b = pending[i];
                 // delivered/required are the site's material ledger — the client renders a
                 // STARVED ghost (nothing arriving) distinctly from one being actively supplied.
-                rows.Add(new WireFormat.Design(b.Pos.X, b.Pos.Y, b.Pos.Z, (byte)b.Kind, b.Delivered, b.Required, b.Material));
+                // ⭐ THE BLUEPRINT'S PIECE AND FACING ride the same row. `FurnitureToolName` answers
+                // "" for a Wall/Door/Floor site, which is exactly what those rows carried before this
+                // element existed — so an old client reading seven elements is unaffected and a new
+                // one gets `''` where there is no piece.
+                string tool = b.Kind == BuildKind.Device ? FurnitureToolName((DeviceKind)b.Device) : "";
+                rows.Add(new WireFormat.Design(b.Pos.X, b.Pos.Y, b.Pos.Z, (byte)b.Kind, b.Delivered,
+                                               b.Required, b.Material, tool, b.Facing));
             }
             return rows;
         }
@@ -4910,7 +4998,10 @@ namespace Perilune.Web
         private string BuildSiteLabel(Int3 site)
         {
             if (_host.BuildSys != null && _host.BuildSys.TryGet(site, out var b))
-                return b.Kind == BuildKind.Door ? "door" : b.Kind == BuildKind.Floor ? "floor" : "wall";
+                return b.Kind == BuildKind.Door ? "door"
+                     : b.Kind == BuildKind.Floor ? "floor"
+                     : b.Kind == BuildKind.Device ? (FurnitureToolName((DeviceKind)b.Device) is { Length: > 0 } n ? n : "furniture")
+                     : "wall";
             return "the site";
         }
 

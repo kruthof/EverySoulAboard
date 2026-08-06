@@ -73,8 +73,12 @@ namespace Perilune.Tests
         {
             var sim = Bench();
             Stock(sim, 12);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Table, new Int3(2, 2, 0), 2));
-            sim.Tick();
+            // ⭐ PLACE **AND BUILD** — placement is a blueprint since 2026-08-05 (the owner's
+            // "it should stay as a ghost until the pawn assembles it"), so the device this test is
+            // about only exists once a builder finishes the site. `PlaceAndBuild` drives
+            // `BuildSystem.Complete`, the same entry point `BuildJobSource` calls — never `AddDevice`,
+            // which is the AUTHORING door and would leave `Scriptable` true.
+            sim.PlaceAndBuild(DeviceKind.Table, new Int3(2, 2, 0), 2);
 
             var d = sim.Devices.Items.FirstOrDefault(x => x.Kind == DeviceKind.Table);
             Assert.That(d, Is.Not.Null, "premise: the placement was affordable and legal");
@@ -93,8 +97,7 @@ namespace Perilune.Tests
         {
             var sim = Bench();
             Stock(sim, 12);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Chair, new Int3(2, 2, 0)));
-            sim.Tick();
+            sim.PlaceAndBuild(DeviceKind.Chair, new Int3(2, 2, 0));
             Assert.That(sim.Devices.Items.First(x => x.Kind == DeviceKind.Chair).Facing, Is.EqualTo((byte)0));
         }
 
@@ -112,8 +115,7 @@ namespace Perilune.Tests
         {
             var sim = Bench();
             Stock(sim, 12);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Desk, new Int3(2, 2, 0), 6));
-            sim.Tick();
+            sim.PlaceAndBuild(DeviceKind.Desk, new Int3(2, 2, 0), 6);
             Assert.That(sim.Devices.Items.First(x => x.Kind == DeviceKind.Desk).Facing, Is.EqualTo((byte)2),
                 "6 & 3 == 2. An unmasked facing is a value that indexes past a four-case rotation on " +
                 "the client and aliases into NetworkId in the fold.");
@@ -256,7 +258,10 @@ namespace Perilune.Tests
         {
             var sim = Bench();
             Stock(sim, 12);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Table, new Int3(2, 2, 0), 3));
+            // ⭐ PLACE **AND BUILD** — a placement is a blueprint now, so the 50 ticks below no longer
+            // produce a device on their own: nobody in this bench is assigned Construct (OD-H), and
+            // waiting for a pawn would make a SAVE test depend on the job dispatcher.
+            sim.PlaceAndBuild(DeviceKind.Table, new Int3(2, 2, 0), 3);
             for (int t = 0; t < 50; t++) sim.Tick();
             Assert.That(sim.Devices.Items.First(x => x.Kind == DeviceKind.Table).Facing, Is.EqualTo((byte)3),
                 "premise: the placement really did land turned");
@@ -413,6 +418,7 @@ namespace Perilune.Tests
 
             gs.ApplyForTest(new WebCommand(CmdKind.Place, spot.X, spot.Y, i: spot.Z, name: "table", facing: 2));
             sim.Tick();
+            sim.BuildTheBlueprintAt(spot);   // a `place` lays a blueprint; a builder finishes it
             Assert.That(sim.TryGetDeviceAt(spot, out var placed), Is.True,
                 "premise: the placement landed (affordable, legal tile)");
             Assert.That(placed.Facing, Is.EqualTo((byte)2), "premise: it landed turned");
@@ -540,8 +546,8 @@ namespace Perilune.Tests
             var a = Bench();
             var b = Bench();
             Stock(a, 12); Stock(b, 12);
-            a.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Table, new Int3(3, 2, 0), 0));
-            b.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Table, new Int3(3, 2, 0), 1));
+            a.PlaceAndBuild(DeviceKind.Table, new Int3(3, 2, 0), 0);
+            b.PlaceAndBuild(DeviceKind.Table, new Int3(3, 2, 0), 1);
             for (int t = 0; t < 500; t++) { a.Tick(); b.Tick(); }
 
             var da = a.Devices.Items.First(x => x.Kind == DeviceKind.Table);

@@ -650,6 +650,16 @@ function fire(el, type, extra) {
   }
   return e;
 }
+
+/** ⭐ AN ORDINARY PRESS ON THE CANVAS — `pointerdown` then `pointerup`, the PAIR the Room Zoom
+ *  resolves a single-press gesture on since BUG-B was closed at Level 2 (roomzoom-view.js, the ⛔⛔
+ *  block above `_el`). ⛔ `fire(canvas, 'click', …)` no longer reaches ANY handler: the canvas has
+ *  no `click` listener at all, because `click` is the event Chrome does not fire when a repaint
+ *  lands between down and up — which on this surface is nearly every press (measured 2/30). */
+function press(el, extra) {
+  fire(el, 'pointerdown', { button: 0, ...extra });
+  return fire(el, 'pointerup', { button: 0, ...extra });
+}
 function armTool(tool) {
   const btn = new RtEl(doc, 'button');
   btn.dataset.rztool = tool;
@@ -725,7 +735,7 @@ test('⭐⭐ THE PLACED PIECE KEEPS THE FACING THE PLAYER WAS LOOKING AT', () =>
   const shown = ghostFacing();
   assert.equal(shown, 3, 'premise: three presses show facing 3');
   sent.length = 0;
-  fire(canvas, 'click', { button: 0, ...atTile(TABLE_TILE.x, TABLE_TILE.y) });
+  press(canvas, { button: 0, ...atTile(TABLE_TILE.x, TABLE_TILE.y) });
   const place = sent.find((o) => o.cmd === 'place');
   assert.ok(place, 'the click lowered a place command');
   assert.equal(place.facing, shown,
@@ -772,9 +782,19 @@ test('the ROOM ZOOM draws a placed device at the facing the wire reports', () =>
 
 test('the OVERVIEW plate draws it turned too — one machine must not wear two pictures', () => {
   // Driven through the pure scene composer, which is what `overview-view.js` calls.
+  //
+  // ⛔⛔ THE STATE KEY IS `devices:`, NOT `deviceCond:`, AND THE MERGE THAT MADE IT SO AUTO-MERGED
+  // CLEAN (2026-08-05, `lane/ship-drawn` × `lane/build-ghost` — TRAPS 8th shape). The plate is now a
+  // SIDE ELEVATION drawing BOTH decks, so it can no longer source its fittings from `frame` (which
+  // carries one deck); it reads the whole-ship `devices`/`items` channels through
+  // `ship-fittings.js`'s `deckFittings`, and `overviewScene` stopped reading `deviceCond` entirely.
+  // Left as it was written, this leg fed a key nothing consumes: `a` and `b` came back IDENTICAL
+  // because neither carried a device at all — a red for the right reason by luck, and a leg that
+  // would have gone green and VACUOUS the moment the plate drew anything else. Feed the channel the
+  // composer actually reads.
   const draw = (face) => overviewScene({
     decksView: fixView, frame: framed, deck: DECK1, idPrefix: 'ov',
-    deviceCond: deckDeviceConditions(decodeDevices(devicesMsg(face)), DECK1),
+    devices: decodeDevices(devicesMsg(face)),
   });
   const a = draw(0);
   const b = draw(1);

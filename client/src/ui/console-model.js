@@ -737,25 +737,38 @@ export function terminalLabel(entry) {
 
 /**
  * The Escape action, in priority order: an armed tool disarms first, then an open dialogue closes,
- * then an open crew DOSSIER (BIO) card closes, then — if the MOSS terminal has taken the window —
- * Escape belongs to MOSS's OWN inner stack (PROGRAM → DETAIL/FAULTLOG → LEDGER → ship; and a
- * non-empty prompt clears first), then — if the RELATIONS tab is up — Escape returns to the BUILD
- * tab (restoring the ship viewport), else nothing.
+ * then the PERSONA WINDOW closes, then an open crew DOSSIER (BIO) card closes, then — if the MOSS
+ * terminal has taken the window — Escape belongs to MOSS's OWN inner stack (PROGRAM →
+ * DETAIL/FAULTLOG → LEDGER → ship; and a non-empty prompt clears first), then — if the RELATIONS tab
+ * is up — Escape returns to the BUILD tab (restoring the ship viewport), else nothing.
  *
- * The rung order armed → dialogue → dossier → MOSS → relations → none is INVARIANT. The `dossier`
- * rung slots in with the other floating-panel closers (dialogue) ABOVE the full-screen-surface
- * navigators (moss, relations): a focused inspector card is dismissed before Escape descends into
- * screen navigation. Without this rung an open BIO card left Escape falling through to the browser
- * (which, in a fullscreen tab, exits fullscreen instead of closing the card).
+ * The rung order armed → dialogue → persona → dossier → MOSS → relations → none is INVARIANT. The
+ * `persona`/`dossier` rungs slot in with the other floating-panel closers (dialogue) ABOVE the
+ * full-screen-surface navigators (moss, relations): a focused inspector is dismissed before Escape
+ * descends into screen navigation. Without such a rung an open card left Escape falling through to
+ * the browser (which, in a fullscreen tab, exits fullscreen instead of closing the card).
+ *
+ * ⭐⭐ M4-2 — `persona` IS THE DOSSIER RUNG'S HEIR AND IT TOOK THE DOSSIER'S PLACE RATHER THAN ITS
+ * NAME, which is a deliberate deviation from the M4-1 charter's *"M4-2 renames the rung"* and is
+ * recorded here because a silent one would be a rung disappearing. The charter's sentence assumed
+ * the BIO card died in this package; it does not — M4-2 removes the STANDARD SURFACE's route to it
+ * (`openBioForSelected` is deleted) and M4-3 decides `panels.js`'s fate. The card is therefore still
+ * openable from the deprecated console's own `#b-bio` button, and a rung deleted while its panel
+ * lives is exactly the regression the paragraph above says this rung was added for. So the Persona
+ * window INHERITS the dossier's precedence — Escape closes it before MOSS and before RELATIONS — and
+ * the dossier keeps a rung one step below. M4-3/M4-8 retire `dossierOpen` with the card.
+ *
  * MOSS returns a single `'moss'` verdict rather than its inner step: the inner stack is the MOSS
  * model's pure key state machine (`moss-model.keyPress`), and duplicating it here would give the
  * screen two disagreeing sources of truth. PURE; the caller performs the returned action.
- * @param {{armed:boolean, dialogueOpen:boolean, dossierOpen?:boolean, mossActive?:boolean, relationsActive:boolean}} s
- * @returns {'disarm'|'dialogue'|'dossier'|'moss'|'relations'|'none'}
+ * @param {{armed:boolean, dialogueOpen:boolean, personaOpen?:boolean, dossierOpen?:boolean,
+ *          mossActive?:boolean, relationsActive:boolean}} s
+ * @returns {'disarm'|'dialogue'|'persona'|'dossier'|'moss'|'relations'|'none'}
  */
 export function escapeTarget(s) {
   if (s && s.armed) return 'disarm';
   if (s && s.dialogueOpen) return 'dialogue';
+  if (s && s.personaOpen) return 'persona';
   if (s && s.dossierOpen) return 'dossier';
   if (s && s.mossActive) return 'moss';
   if (s && s.relationsActive) return 'relations';

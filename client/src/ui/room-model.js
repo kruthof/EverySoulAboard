@@ -1521,8 +1521,15 @@ export function roomDesigns(designs, focusRoom) {
   for (const c of cells) {
     if (!Array.isArray(c) || (c[2] | 0) !== (focusRoom.deck | 0)) continue;
     if (!clampTileToRoom(c[0] | 0, c[1] | 0, focusRoom)) continue;
-    // element 6 (material) is APPEND-ONLY — absent on old hosts → 0 (default skin).
-    out.push({ x: c[0] | 0, y: c[1] | 0, kind: c[3] | 0, delivered: c[4] | 0, required: c[5] | 0, material: c[6] | 0 });
+    // elements 6 (material), 7 (tool) and 8 (facing) are APPEND-ONLY — absent on old hosts → 0 / '' / 0.
+    // ⭐ `tool` IS THE WIRE TOOL-STRING ('table', 'bunk', …) and is '' for a wall/door/floor. It is a
+    // STRING on purpose: `roomzoom-view.js`'s `ghostArtId(tool)` already resolves exactly these names
+    // to registry art through the glyph, so a BLUEPRINT and the HOVER GHOST are drawn by one route
+    // rather than by two that happen to agree (`glyph-map.js`'s header is forty lines on why).
+    out.push({
+      x: c[0] | 0, y: c[1] | 0, kind: c[3] | 0, delivered: c[4] | 0, required: c[5] | 0,
+      material: c[6] | 0, tool: typeof c[7] === 'string' ? c[7] : '', facing: (c[8] | 0) & 3,
+    });
   }
   return out;
 }
@@ -2498,18 +2505,35 @@ export function removeDecor(list, deck, x, y) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// ESC rung (IX-Z-40). The Room Zoom's own two-rung stack: a keypress either disarms the armed tool
-// OR pops the room to the Overview, never both (IX-Z-41). A dialogue rung sits between so a panel
-// closes first when one is open. PURE.
+// ESC rung (IX-Z-40). The Room Zoom's own stack: a keypress either disarms the armed tool OR pops
+// the room to the Overview, never both (IX-Z-41). A dialogue rung sits between so a panel closes
+// first when one is open. PURE.
+//
+// ⭐⭐ M4-2 — THE `persona` RUNG, AND WHY IT MUST LIVE IN THIS PURE REDUCER RATHER THAN IN A SECOND
+// KEY LISTENER. The Persona window opens over the Room Zoom (that is the whole point of DESIGN
+// QUESTION (c): `#panels` is `display:none` under `body.roomzoom-open`, so the surface with no
+// readout could never have shown it). `roomzoom-view.js` installs its keydown on `window` in the
+// CAPTURE phase at mount; a listener the Persona window registered later would run SECOND, so Escape
+// would exit the room out from under an open window. Threading the rung here keeps ONE ordered stack
+// per surface, pure and node-tested, instead of two handlers racing on registration order.
+//
+// ⚠️ IT SITS WHERE THE CONSOLE STACK PUTS IT — BELOW `armed`, and that is consistency rather than
+// preference. `console-model.escapeTarget` is armed → dialogue → persona → dossier → moss →
+// relations, and this surface's stack is the same order minus the rungs it has no panels for. The
+// cost, stated: with a tool armed AND the window up, the first Escape disarms something the window
+// is covering and the second closes the window. That is exactly what the console does today with an
+// armed tool and an open BIO card, so it is a shipped precedent rather than a new wart — and
+// inverting it here would make one keystroke mean two different things on two standard surfaces.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * @param {{armed:boolean, dialogueOpen?:boolean, roomOpen:boolean}} s
- * @returns {'disarm'|'dialogue'|'exit'|'pass'}
+ * @param {{armed:boolean, dialogueOpen?:boolean, personaOpen?:boolean, roomOpen:boolean}} s
+ * @returns {'disarm'|'dialogue'|'persona'|'exit'|'pass'}
  */
 export function escStackRung(s) {
   if (s && s.armed) return 'disarm';
   if (s && s.dialogueOpen) return 'dialogue';
+  if (s && s.personaOpen) return 'persona';
   if (s && s.roomOpen) return 'exit';
   return 'pass';
 }

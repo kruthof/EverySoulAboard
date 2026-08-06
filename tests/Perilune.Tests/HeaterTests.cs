@@ -675,7 +675,10 @@ namespace Perilune.Tests
                 "CONTROL: the whitelist must still REFUSE authored plant, or the assertion above is "
                 + "satisfied by a predicate that says yes to everything");
 
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Heater, Wired));
+            // ⭐ PLACE **AND BUILD** — a press lays a blueprint since 2026-08-05, and this test's
+            // sentence is place → power → HEAT, which needs the real device. `PlaceAndBuild` drives
+            // `BuildSystem.Complete`, the same entry point a builder reaches.
+            sim.PlaceAndBuild(DeviceKind.Heater, Wired);
             Run(sim, 1);
 
             Assert.That(sim.TryGetDeviceAt(Wired, out var placed), Is.True,
@@ -698,7 +701,7 @@ namespace Perilune.Tests
         {
             var sim = BuildFrozenBay(SimDefs.CreateDefault(), FrozenK);
             sim.AddItem(ItemKind.Parts, 8, new Int3(2, 2, 0));
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Heater, Wired));
+            sim.PlaceAndBuild(DeviceKind.Heater, Wired);   // a press lays a blueprint; a builder finishes it
             Run(sim, 1);
             Assert.That(sim.TryGetDeviceAt(Wired, out _), Is.True, "FIXTURE: it must be there first");
 

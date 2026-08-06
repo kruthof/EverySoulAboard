@@ -30,7 +30,9 @@ namespace Perilune.Web
     ///   roster  {"type":"roster","crew":[{"cid":..,"name":"..","role":"..","mood":"..","morale":0.8,
     ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4,"traits":["..",".."],"fx":3.4,"fy":4},..]}
     ///            (fx/fy = the sub-tile GLIDE position, same coordinate space as x/y — see RosterEntry)
-    ///   designs {"type":"designs","cells":[[x,y,deck,kind],..]}   (pending build ghosts; kind 0 wall / 1 door)
+    ///   designs {"type":"designs","cells":[[x,y,deck,kind,delivered,required,material,tool,facing],..]}
+    ///           (pending build ghosts; kind 0 wall / 1 door / 2 floor / 3 DEVICE — a furniture blueprint,
+    ///            whose `tool` is the wire tool-string and `facing` the quarter-turn it will land at)
     ///   terminals {"type":"terminals","list":[[tid,deck,x,y],..]} (MOSS terminal directory)
     ///   relations {"type":"relations","edges":[[fromCid,toCid,opinion,tier,note,secret],..]}
     ///   systems {"type":"systems","hull":"..","day":..,"uptime":..,"rows":[[id,label,load,state,faultDay,faultText,advisory],..]}
@@ -343,8 +345,8 @@ namespace Perilune.Web
         // ------------------------------------------------------------------- build designations (BUILD ghosts)
 
         /// <summary>
-        /// One pending build designation on the designs wire — a wall/door the sim has NOT yet
-        /// built. The client renders a persistent ghost marker (dashed tile outline) on the
+        /// One pending build designation on the designs wire — a wall, door, floor or FURNITURE
+        /// BLUEPRINT the sim has NOT yet built. The client renders a persistent ghost marker (dashed tile outline) on the
         /// matching deck until the designation resolves (built or cancelled), at which point it
         /// drops off this authoritative channel. <see cref="Kind"/> is the append-only
         /// <see cref="Perilune.Sim.BuildKind"/> byte (0 wall, 1 door). Read-only host mirror of
@@ -359,8 +361,23 @@ namespace Perilune.Web
             public readonly byte Kind;
             public readonly int Delivered, Required;
             public readonly byte Material; // wall/floor material variant (0 = default); APPEND-ONLY element 7
-            public Design(int x, int y, int deck, byte kind, int delivered = 0, int required = 0, byte material = 0)
-            { X = x; Y = y; Deck = deck; Kind = kind; Delivered = delivered; Required = required; Material = material; }
+            /// <summary>⭐⭐ THE BLUEPRINT'S PIECE — the WIRE TOOL-STRING ("table", "bunk", …), or
+            /// <c>""</c> for a wall/door/floor. APPEND-ONLY element 8.
+            /// <para>⛔ A STRING, AND A TOOL-STRING RATHER THAN THE <c>DeviceKind</c> BYTE, because it
+            /// is the vocabulary the CLIENT ALREADY SPEAKS: `roomzoom-view.js`'s `ghostArtId(tool)`
+            /// resolves exactly these names to registry art through the glyph, so the blueprint and
+            /// the hover ghost are drawn by ONE route. A byte would oblige the client to hold a
+            /// byte → enum-name mirror of a sim enum, which is the hand-maintained join that is
+            /// invisible when wrong. Produced by <c>GameSession.FurnitureToolName</c>, pinned as the
+            /// exact inverse of <c>TryFurnitureKind</c>.</para></summary>
+            public readonly string Tool;
+            /// <summary>Which way the finished piece will face, 0..3. APPEND-ONLY element 9.
+            /// DRAWING-ONLY, as <see cref="Perilune.Sim.Device.Facing"/> is.</summary>
+            public readonly byte Facing;
+            public Design(int x, int y, int deck, byte kind, int delivered = 0, int required = 0,
+                          byte material = 0, string tool = "", byte facing = 0)
+            { X = x; Y = y; Deck = deck; Kind = kind; Delivered = delivered; Required = required;
+              Material = material; Tool = tool ?? ""; Facing = facing; }
         }
 
         /// <summary>Serialize the pending-designation graph (see <see cref="Design"/>). A cached
@@ -368,7 +385,7 @@ namespace Perilune.Web
         /// filters to the shown deck. Each entry is a compact tuple
         /// [x, y, deck, kind, delivered, required] — the last two are APPEND-ONLY additions, so a
         /// reader that only knows the first four elements is unaffected.
-        ///   {"type":"designs","cells":[[3,4,0,0,1,2],..]}</summary>
+        ///   {"type":"designs","cells":[[3,4,0,0,1,2,0,"",0],..]}</summary>
         public static string Designs(IReadOnlyList<Design> designs)
         {
             var sb = new StringBuilder(128);
@@ -385,7 +402,17 @@ namespace Perilune.Web
                       // APPEND-ONLY trailing elements: the material ledger, then the material variant.
                       .Append(',').Append(d.Delivered.ToString(Ic))
                       .Append(',').Append(d.Required.ToString(Ic))
-                      .Append(',').Append(((int)d.Material).ToString(Ic)).Append(']');
+                      .Append(',').Append(((int)d.Material).ToString(Ic))
+                      // APPEND-ONLY elements 8 and 9: the blueprint's piece and its facing. A
+                      // reader that knows only the first seven is unaffected.
+                      .Append(',');
+                    // ⚠️ THROUGH `AppendString`, THE HOUSE ESCAPER, not a raw quote-wrap. The value is
+                    // a literal out of `FurnitureToolName`'s switch today, so nothing can need
+                    // escaping — and that is exactly the argument that ages badly the first time a
+                    // content pack names a tool. One STRING on an otherwise numeric tuple is worth
+                    // one shared helper.
+                    AppendString(sb, d.Tool);
+                    sb.Append(',').Append(((int)d.Facing).ToString(Ic)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

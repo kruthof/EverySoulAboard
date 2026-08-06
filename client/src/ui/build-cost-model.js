@@ -163,6 +163,63 @@ export function decorRefusalText(tool) {
 }
 
 /**
+ * ⭐⭐ THE SIM'S OWN REFUSAL, PUT INTO WORDS — `PlaceRefusal` (sim) → the player's sentence.
+ *
+ * ⛔ THE CLIENT OWNS THE WORDS AND THE SIM OWNS THE CODE, which is `BLOCKED_REASON_TEXT`'s split
+ * (`client/src/wire/messages.js`) applied to a second channel rather than a new idea. The sim never
+ * sends prose; this table is the one place the vocabulary lives.
+ *
+ * ⛔ AND THERE IS NO DEFAULT SENTENCE FOR AN UNKNOWN CODE — see `placeRefusedText`. A `reason` this
+ * client has not heard of gets an honest "this client does not know why", never a plausible guess:
+ * the whole defect being closed is a refusal the player cannot act on, and a wrong sentence is worse
+ * than an admitted gap.
+ *
+ * ⚠️ THE KEYS MIRROR `Perilune.Sim.PlaceRefusal` AND NOTHING ACROSS THAT SEAM COMPILES. Pinned equal
+ * by `client/test/build-feel.test.js`, which PARSES `sim/Sim.Core/Events/SimEvents.cs` — the house
+ * tripwire idiom (`marks-model.test.js` parses `WireFormat.Marks.cs`, `palette.test.js` parses
+ * `GlyphColor.cs`). `None = 0` is deliberately ABSENT: it is never published, and giving it a
+ * sentence would make the no-default-reason rule unobservable here.
+ */
+export const PLACE_REFUSAL_TEXT = {
+  1: 'THAT PIECE CANNOT BE PLACED BY HAND',
+  2: 'THAT IS OFF THE SHIP',
+  3: 'NOBODY COULD STAND HERE',
+  4: 'SOMETHING IS BUILT ON THIS TILE',
+  5: 'SOMETHING IS ALREADY STANDING HERE',
+  // 6 (CannotPay) is composed from the two numbers on the wire — see `placeRefusedText`.
+  7: 'A BLUEPRINT IS ALREADY WAITING ON THIS TILE',
+  8: 'TOO MANY THINGS QUEUED — FINISH OR CANCEL ONE FIRST',
+};
+
+/**
+ * THE SENTENCE FOR ONE `placerefused` MESSAGE. `msg` is the decoded wire object
+ * `{kind, reason, price, affordable}`; `toolLabel` is what the player pressed, or '' .
+ *
+ * ⭐ THE `CannotPay` ARM IS COMPOSED FROM THE WIRE'S OWN NUMBERS RATHER THAN FROM THE LEDGER, and
+ * that is the half `placeRefusalText` above cannot do. The ledger totals every Part ABOARD;
+ * `PlaceDeviceCommand.TryPay` spends only LOOSE, UNRESERVED stacks. A ship whose three Parts are in
+ * a hauler's arms reads rich on the ledger and refuses in the sim — "it works on some tiles and not
+ * others" with no tile involved at all — and only the sim knows the smaller number.
+ *
+ * PURE. Returns '' for nothing sayable, and the caller must never `toast('')` (an empty box unhidden
+ * for 2.6 s reads as a glitch — overview-view.js's own rule).
+ */
+export function placeRefusedText(msg, toolLabel) {
+  if (!msg) return '';
+  const lead = toolLabel ? String(toolLabel).toUpperCase() + SEP : '';
+  const reason = Number(msg.reason);
+  if (reason === 6) {
+    return lead + 'NEEDS ' + units(msg.price) + ' ' + PLACE_CURRENCY_WORD +
+      ' WITHIN REACH — ONLY ' + units(msg.affordable) + ' IS LOOSE ABOARD';
+  }
+  const words = PLACE_REFUSAL_TEXT[reason];
+  // ⛔ NO FALLBACK PROSE. An unknown code is a client that is behind the sim, and saying so is the
+  // only honest answer available — the same shape `console-model.js` ships for a blocked row it
+  // cannot name ('STUCK — REASON UNKNOWN TO THIS CLIENT').
+  return lead + (words || 'REFUSED — REASON UNKNOWN TO THIS CLIENT');
+}
+
+/**
  * THE ARMED DETAIL ROW — the price and stock, in words, for the tool the player is holding. Null
  * for every tool that spends nothing and lies about nothing, so the row stays hidden.
  *

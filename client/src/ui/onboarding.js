@@ -7,9 +7,13 @@
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The card shipped from `d5d574b` (2026-07-23) saying `['B', 'open their dossier']`.
 // `B` has never done that: `client/src/input/controls.js:257` arms the BUILD tool, and
-// `Hud.openBioForSelected` has NO keyboard binding anywhere. The Overview's own READOUT button is
-// labelled `[T] OPEN CHANNEL`, `[M] MOVE`, `[B] BIO` — the `[B]` in THAT label is the same lie, and
-// it is where this one was copied from (`ui/overview-view.js:1035`; a click handler, not a key).
+// `Hud.openBioForSelected` had NO keyboard binding anywhere. The Overview's own READOUT button was
+// labelled `[T] OPEN CHANNEL`, `[M] MOVE`, `[B] BIO` — the `[B]` in THAT label was the same lie, and
+// it is where this one was copied from (a click handler, not a key).
+// ⭐⭐ CLOSED AT M4-2 (2026-08-05), and closed at the SOURCE rather than by correcting the copy:
+// `talkSelectedCrew` and `openBioForSelected` are DELETED, the readout carries `[U] PERSONA` beside
+// `[M] MOVE`, and `[U]` is a REAL binding in `controls.js` — so for the first time the label, the
+// card row and the keymap are three statements of one fact instead of three copies of a hope.
 // Nobody had driven it. That is the whole defect, and it is why the rows below carry a `bind`: a
 // machine-checkable join from what the card SAYS to the branch that implements it. See
 // `client/test/onboarding.test.js`.
@@ -325,12 +329,23 @@ export const CONTROL_GROUPS = Object.freeze([
       // documenting something already on screen — and it is the cheapest 26px available.
       // ⚠️ THE KEY STILL WORKS and is still driven by the shot tool; only the ROW is gone.
       // ⚠️ THE TEXT NAMES **CREW WATCH** BECAUSE THIS ROW IS THE ONLY ONE WITH A PREREQUISITE THE
-      // CARD OTHERWISE NEVER TEACHES. `talkSelectedCrew` is a no-op with nobody selected, and the
-      // only way to select on this surface is clicking a CREW WATCH row (driven — the rig's own
-      // `[T]` leg has to click one first or the panel never opens). "the selected crew" quietly
-      // assumed a verb the player had not been given.
-      { key: 'T', text: 'talk to a name in CREW WATCH', bind: [
-        { file: CTL, cond: "k === 't'", call: 'talkSelected' }] },
+      // CARD OTHERWISE NEVER TEACHES. The verb is a no-op with nobody selected, and the only way to
+      // select on this surface is clicking a CREW WATCH row (driven — the rig's own leg has to click
+      // one first or the window never opens). "the selected crew" quietly assumed a verb the player
+      // had not been given.
+      // ⭐⭐ M4-2 — THIS ROW WAS `{ key: 'T', text: 'talk to a name in CREW WATCH' }` AND IT NOW
+      // NAMES THE PERSONA WINDOW. `T` sent `Cmd.talk` into a dialogue inside `#panels`; that door is
+      // deleted (one door from the map to a person, `CLAUDE.md:84-85`), so a card row still printing
+      // `T` would teach a key that is bound to nothing — the exact class of lie this module's header
+      // is about, and the reason every row carries a machine-checked `bind`.
+      // ⚠️ THIS IS THE MINIMUM EDIT THAT KEEPS THE CARD TRUE, NOT THE REWRITE. **M4-5 owns the card's
+      // copy** (M4 charter §3 position 5, and coupling 7: "Order: M4-2 then M4-5"), and it rewrites
+      // this row against the playtest. Retargeting the key and the sentence is this package's
+      // obligation; re-deciding what the first screen teaches is not.
+      // ⚠️ 25 CHARACTERS — the same one-line budget the WORK and MOSS rows carry (a wrapped cell
+      // makes BOTH cells in its grid row taller, and the card's height is a correctness property).
+      { key: 'U', text: 'open a crew member\u2019s file', bind: [
+        { file: CTL, cond: "k === 'u'", call: 'personaForSelected' }] },
       // ⭐ THE MOSS ROW — the door the whole thaw arc is behind, and the card had no word for it
       // (2026-08-04). The tab has existed since the console retirement (`OV_TABS` in
       // `ui/overview-view.js` spells it `MOSS`, and this row uses THAT spelling, not a prettier

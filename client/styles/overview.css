@@ -86,10 +86,25 @@ body.moss-open #overview-view{display:none !important}
 .pl-tag-crowded{opacity:0;transition:opacity .12s ease}
 .pl-pawn:hover .pl-tag-crowded{opacity:1}
 @media (prefers-reduced-motion:reduce){.pl-tag-crowded{transition:none}}
-/* the selected compartment's tile takes the design's 2.2px border in the SVG itself; this is the
-   hover affordance that says the whole grid is clickable */
+/* The selected compartment takes the design's 2.2px outline in the SVG itself; this is the hover
+   affordance that says every compartment is clickable.
+
+   ⛔⛔ IT IS KEYED ON A CLASS, NOT ON `:hover`, AND THAT IS AN OWNER-REPORTED DEFECT CLOSED.
+   The owner: "when I am on the ship level and hover my mouse for 2-3 seconds above one of the
+   rooms, that room starts flickering." `paintScene` assigns the whole plate to
+   `_stage.innerHTML` on every wire repaint and the `frame` channel lands every ~1s even on a
+   QUIET ship (measured 2026-08-05 on `--ship wreck`: 20 messages in 20s, median gap 1000ms,
+   p90 1098ms). So the hovered ELEMENT is destroyed under a stationary cursor, Chrome
+   re-evaluates `:hover` from pointer MOVEMENT, and the highlight oscillates at repaint cadence.
+   `overview-view.js` tracks the hovered anchor and `overview-scene.js` re-emits
+   `pl-room-hover` from that state on every repaint, so the wash cannot blink.
+
+   ⚠️ AND THE OLD SELECTOR HAD ALREADY STOPPED MATCHING: it read `.pl-room:hover rect:first-child`,
+   which was VR-P4's compartment BORDER. The side elevation's compartment opens with
+   `<path class="pl-cfloor">` — there is no `rect` — so the rule matched nothing and the plate had
+   no hover affordance at all. Both halves are fixed here. */
 .pl-room{cursor:pointer}
-.pl-room:hover rect:first-child{fill:var(--paper-inset-3)}
+.pl-room-hover .pl-cfloor{fill:var(--paper-inset-3)}
 
 /* ==== the `.hud` island token — every floating paper card ==== */
 /* Glass is gone: an island is a sheet of paper with a hairline and the plate's own drop shadow. */
@@ -358,7 +373,10 @@ button.ov-chip:hover{color:var(--ink);border-color:var(--ink)}
 .ov-act{border:1px solid var(--paper-border);text-align:center;padding:6px;font:inherit;
   font-size:9px;letter-spacing:.12em;background:transparent;color:var(--ink-prose);cursor:pointer;flex:1}
 .ov-act:hover{border-color:var(--ink);color:var(--ink)}
-.ov-talk{border-color:var(--ink);color:var(--ink)}
+/* M4-2: `.ov-talk` became `.ov-persona` when `[T] OPEN CHANNEL — TALK` was deleted. The
+   PRIMARY-action ink border moves with the button, not with the verb: this is now the one
+   door from the map to a person, so it is the one that reads as the action. */
+.ov-persona{border-color:var(--ink);color:var(--ink)}
 .ov-act:disabled{opacity:.4;cursor:default;pointer-events:none}
 
 /* ==== the LENS row (ruling E4: kept, DEMOTED to a quiet row of mono toggles) ==== */

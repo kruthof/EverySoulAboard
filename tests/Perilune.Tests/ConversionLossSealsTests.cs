@@ -632,6 +632,7 @@ namespace Perilune.Tests
             sim.AddItem(ItemKind.ControllerModule, sim.Defs.Build.CommissionCost, spot);
             gs.ApplyForTest(new WebCommand(CmdKind.Place, spot.X, spot.Y, i: spot.Z, name: "growbed"));
             sim.Tick();
+            sim.BuildTheBlueprintAt(spot);   // a `place` lays a blueprint; a builder finishes it
             Assert.That(sim.TryGetDeviceAt(spot, out var placed), Is.True, "premise: the device was placed");
             Assert.That(placed.Scriptable, Is.False, "premise: it arrives uncommissioned");
 
@@ -690,8 +691,12 @@ namespace Perilune.Tests
             var sim = BuildBench(DeviceKind.Scrubber);
             var spot = new Int3(2, 2, 0);
             sim.AddItem(ItemKind.Parts, sim.Defs.Build.DevicePlaceCost, spot);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.GrowBed, spot));
-            sim.Tick();
+            // ⭐ PLACE **AND BUILD** — placement is a blueprint since 2026-08-05 (the owner's
+            // "it should stay as a ghost until the pawn assembles it"), so the device this test is
+            // about only exists once a builder finishes the site. `PlaceAndBuild` drives
+            // `BuildSystem.Complete`, the same entry point `BuildJobSource` calls — never `AddDevice`,
+            // which is the AUTHORING door and would leave `Scriptable` true.
+            sim.PlaceAndBuild(DeviceKind.GrowBed, spot);
 
             Assert.That(sim.TryGetDeviceAt(spot, out var placed), Is.True, "premise: the device was placed");
             Assert.That(placed.Scriptable, Is.False, "a player-placed device arrives uncommissioned");
@@ -734,8 +739,7 @@ namespace Perilune.Tests
             var sim = BuildBench(DeviceKind.Scrubber);
             var spot = new Int3(2, 2, 0);
             sim.AddItem(ItemKind.Parts, sim.Defs.Build.DevicePlaceCost, spot);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.GrowBed, spot));
-            sim.Tick();
+            sim.PlaceAndBuild(DeviceKind.GrowBed, spot);
             Assert.That(sim.TryGetDeviceAt(spot, out var placed), Is.True);
 
             // Leg 1 — cannot pay.
@@ -1078,8 +1082,7 @@ namespace Perilune.Tests
             var sim = BuildBench(DeviceKind.Scrubber, defs);
             var spot = new Int3(2, 2, 0);
             sim.AddItem(ItemKind.Parts, defs.Build.DevicePlaceCost, spot);
-            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.GrowBed, spot));
-            sim.Tick();
+            sim.PlaceAndBuild(DeviceKind.GrowBed, spot);
             Assert.That(sim.TryGetDeviceAt(spot, out var placed), Is.True, "premise: placed");
             Assert.That(placed.Scriptable, Is.False, "premise: uncommissioned");
 
@@ -1190,7 +1193,7 @@ namespace Perilune.Tests
                 var spot = new Int3(2, 2, 0);
                 sim.AddItem(ItemKind.Parts, sim.Defs.Build.DevicePlaceCost, spot);
                 sim.AddItem(ItemKind.ControllerModule, 1, spot);
-                sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Locker, spot));
+                sim.PlaceAndBuild(DeviceKind.Locker, spot);
                 Run(sim, 10);
                 sim.EnqueueCommand(new CommissionDeviceCommand(spot));
                 Run(sim, 30000);

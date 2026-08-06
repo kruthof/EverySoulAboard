@@ -190,10 +190,34 @@ test('the card does not lead with TALK', () => {
   assert.deepEqual(heads, VERBS.map((v) => v.head));
 });
 
-test('TALK survives as a control row — demoted, not deleted (it works: T opens a channel)', () => {
-  const t = ROWS.find((r) => r.key === 'T');
-  assert.ok(t, 'the T row is gone entirely — the verb still works and should still be findable');
-  assert.match(t.text, /talk/i);
+// ⭐⭐ M4-2 (2026-08-05) — THIS TEST IS INVERTED, AND THE INVERSION IS THE PACKAGE.
+//
+// It used to read *"TALK survives as a control row — demoted, not deleted (it works: T opens a
+// channel)"*, and it was right for as long as the verb worked. It does not: `talkSelectedCrew`,
+// `openBioForSelected` and `controls.js`'s direct `Cmd.talk` send are all DELETED, because
+// `CLAUDE.md:84-85` is an owner decision that there is ONE door from the map to a person and the
+// Persona window is it. A card row for a deleted verb is the exact failure this whole FILE exists
+// for — the module header's first paragraph is about a row that named a key nobody had driven.
+//
+// ⛔ SO THE ASSERTION IS TURNED AROUND RATHER THAN DELETED: no row may teach TALK, and the row that
+// replaced it must teach the window AND be joined to a real branch (the join runs in the test
+// below, over every row's `bind`). A deleted test would have left the card free to grow the verb
+// back with nothing to notice.
+test('M4-2: the card teaches the PERSONA window and TALK is GONE, not demoted', () => {
+  assert.equal(ROWS.find((r) => r.key === 'T'), undefined,
+    'a `T` row is back on the card. `T` sent `Cmd.talk` into a dialogue inside `#panels`; the send, '
+    + 'the seam and the button are all deleted, so the row would teach a key bound to nothing.');
+  for (const r of ROWS) {
+    assert.ok(!/\btalk\b/i.test(r.text),
+      `a control row still says "${r.text}" — TALK is not a verb this game has any more`);
+  }
+  const u = ROWS.find((r) => r.key === 'U');
+  assert.ok(u, 'the card teaches no way to reach a person at all — [U] opens the Persona window');
+  assert.match(u.text, /crew|person|file/i);
+  // Non-vacuity: the row really carries a machine-checkable bind (the join test below is what
+  // proves the bind HOLDS; this proves the row did not opt out of it by carrying `bind: null`).
+  assert.ok(Array.isArray(u.bind) && u.bind.length >= 1,
+    'the [U] row carries no `bind`, so nothing joins the card\'s claim to the keymap');
 });
 
 // ─────────────────────────────────────────── 3. the join: what the card SAYS ↔ what the code DOES
@@ -355,7 +379,10 @@ test('INCLUSION — a key with no branch at all is caught', () => {
   // a leg that lives in a neighbouring test proves nothing about THIS one (`CLAUDE.md`'s fifth trap
   // shape). Without this line the assertion above is satisfied by a `bindHolds` that returns false
   // for everything — including a broken one.
-  assert.equal(bindHolds(raw, { cond: "k === 't'", call: 'talkSelected' }), true,
+  // ⭐ RE-POINTED FROM `T`/`talkSelected` TO `U`/`personaForSelected` BY M4-2, which deleted the TALK
+  // door. Re-pointed and NOT deleted, for the reason the roomzoom leg below states: a correct
+  // deletion that quietly removes an instrument's only positive fixture is the ninth trap shape.
+  assert.equal(bindHolds(raw, { cond: "k === 'u'", call: 'personaForSelected' }), true,
     'bindHolds says no to a TRUE claim — the negative above is vacuous');
 });
 

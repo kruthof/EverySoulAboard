@@ -1,0 +1,106 @@
+/* ⭐⭐ THE PERSONA WINDOW (M4-2) — one click, one window, in paper and ink.
+   The SEVENTH split stylesheet and the first that was never part of the old single `styles.css`:
+   the Persona window is a new surface, and this split's rule is one surface, one stylesheet
+   (`relations.css`'s header makes the same argument for the sixth). Tokens come from
+   `src/theme/paper.css`; this file declares none and overrides none.
+
+   ⛔ THE MOUNT IS THE PACKAGE'S ONE MEASURED DECISION AND IT LIVES IN THE NEXT FOUR LINES.
+   `#panels` — where the deleted [B] BIO card opened — is `display:none` under `body.roomzoom-open`
+   (`roomzoom.css:32`) and `body.moss-open` (`moss.css:465`). The Room Zoom's crew dock is precisely
+   the surface with NO readout (`docs/ROADMAP.md:55`), so a window that inherited that hide rule
+   could not answer where the question is asked. `#persona` therefore hides under MOSS ONLY — MOSS
+   is the full-window takeover that hides `.app`, `#panels` and the disconnect overlay too — and
+   stays visible over the Overview AND the Room Zoom.
+   Precedence: MOSS > PERSONA > Room Zoom > RELATIONS > Overview > console. */
+
+#persona{position:fixed;inset:0;display:none;z-index:40;
+  font-family:var(--font-mono);color:var(--ink);overflow:hidden}
+body.persona-open #persona{display:flex;align-items:center;justify-content:center;padding:4vh 16px}
+body.moss-open #persona{display:none !important}
+
+/* The scrim. Deliberately light: this is paper over paper, not a modal over a void, and the surface
+   underneath must stay legible enough that the window reads as being ABOUT something on it. */
+#persona::before{content:'';position:absolute;inset:0;background:rgba(28,26,23,.28)}
+
+/* ==== the sheet ==== */
+.pv-sheet{position:relative;width:min(560px,94vw);max-height:92vh;display:flex;flex-direction:column;
+  background:var(--paper-plate);border:1px solid var(--paper-border);box-shadow:var(--plate-shadow)}
+
+.pv-head{flex:none;display:flex;align-items:center;gap:12px;padding:12px 16px;
+  border-bottom:1px solid var(--paper-border)}
+.pv-title{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-section);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-spacer{flex:1}
+.pv-close{border:1px solid var(--paper-border);background:transparent;color:var(--ink-prose);
+  font:inherit;font-size:9px;letter-spacing:.12em;padding:5px 10px;cursor:pointer;flex:none}
+.pv-close:hover{border-color:var(--ink);color:var(--ink)}
+
+/* ⭐ ONE SCROLLING COLUMN, FIVE BAND SLOTS, FOUR FILLED (M4-1 DESIGN QUESTION (a) option 1). The
+   band ORDER is the exit-gate sentence's order and is not optional — a reviewer checking the gate
+   reads top to bottom. The fifth band (HOW SHE IS) ships with, or after, the first mental break
+   (M4-9); its slot is between DOING & WHY and CAN & CANNOT. */
+.pv-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding:16px;
+  display:flex;flex-direction:column;gap:18px}
+
+.pv-band{display:flex;flex-direction:column;gap:8px}
+.pv-bandhd{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-section);
+  border-bottom:1px solid var(--paper-hairline);padding-bottom:5px}
+.pv-bandbody{display:flex;flex-direction:column;gap:8px}
+
+/* ==== band 1 — IDENTITY ==== */
+.pv-idrow{display:flex;align-items:center;gap:14px}
+.pv-bust{width:56px;height:70px;flex:none;overflow:hidden;
+  background:var(--paper-inset-3);border:1px solid var(--paper-border)}
+.pv-bust svg{width:100%;height:100%;display:block}
+.pv-idcol{display:flex;flex-direction:column;min-width:0;gap:4px}
+.pv-name{font-family:var(--font-serif);font-size:26px;line-height:1;color:var(--ink)}
+.pv-role{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-section)}
+.pv-where{font-size:9px;letter-spacing:.08em;color:var(--ink-micro)}
+.pv-traits{display:flex;gap:5px;flex-wrap:wrap}
+.pv-trait{border:1px solid var(--paper-border);padding:2px 7px;font-size:8.5px;letter-spacing:.08em;
+  color:var(--ink-prose)}
+.pv-prose{font-family:var(--font-serif);font-size:14px;line-height:1.35;color:var(--ink-prose)}
+
+/* ==== band 2 — DOING & WHY ==== */
+/* ⭐ THE WHOLE SENTENCE. It WRAPS and it never ellipses: this band exists because both crew docks
+   clip the task label (145 px / 118 px, `MECHANICS.md:3151`) and the Overview readout holds it only
+   by wrapping in 264 px. Nothing here may set `white-space:nowrap` or `text-overflow`. */
+.pv-task{font-family:var(--font-serif);font-size:17px;line-height:1.35;color:var(--ink-serif)}
+/* D5 — the stuck order's own sentence, in the ONE accent. Same dialect as `.ov-roblocked`. */
+.pv-stuck{font-family:var(--font-serif);font-style:italic;font-size:14.5px;line-height:1.3;
+  color:var(--attend)}
+
+/* ==== band 3 — CAN & CANNOT ==== */
+.pv-skills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.pv-skill{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  border:1px solid var(--paper-hairline);padding:5px 8px;background:var(--paper-inset-3)}
+.pv-skill-lbl{font-size:8.5px;letter-spacing:.12em;color:var(--ink-prose)}
+.pv-skill-lvl{font-size:12px;color:var(--ink)}
+/* `·` is "we have not been told", not level 0 — it must not read as a number (overview-model.js's
+   `workSkillLabel` contract). `untrained` is a real, measured 0 and stays full ink: the zero is the
+   finding, and hiding it would make the game look like one where skills are simply not shown. */
+.pv-skill-lvl.wait{color:var(--ink-faintest)}
+.pv-subhd{font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-section);
+  margin-top:4px}
+/* ⛔ INCAPABLE IS NOT A GREYED CELL — IT IS ITS OWN LIST (`rimworld-reference.md:335`: a disabled
+   work type renders BLANK, an incapable one renders as NO CELL AT ALL). The oxblood is the accent's
+   own job: a permanent fact about the person, not an alarm about the ship. */
+.pv-cannot{display:flex;gap:6px;flex-wrap:wrap}
+.pv-cannot-row{border:1px solid var(--attend);color:var(--attend);padding:3px 8px;
+  font-size:8.5px;letter-spacing:.12em}
+
+/* ==== band 4 — TIES & HISTORY ==== */
+.pv-ties{display:flex;flex-direction:column;gap:4px}
+.pv-tie{display:flex;align-items:baseline;gap:8px;font-size:10px}
+.pv-tie-dir{color:var(--ink-faintest);flex:none;width:10px}
+.pv-tie-name{color:var(--ink);flex:none}
+.pv-tie-op{color:var(--ink-prose);flex:none}
+.pv-tie-note{color:var(--ink-micro);font-family:var(--font-serif);font-style:italic;font-size:12px;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ==== the honest empties ==== */
+/* ⛔ AN EMPTY BAND SAYS IT IS EMPTY (`invisible feedback is FUNCTIONAL`, binding 2026-07-26). These
+   are written sentences, drawn in the faintest ink so they read as absence rather than as content —
+   they are never `display:none`, and none of them is a stub for data that exists. */
+.pv-note{font-size:9.5px;letter-spacing:.04em;color:var(--ink-faintest)}
+.pv-prose.pv-empty{font-style:italic;color:var(--ink-faintest);font-size:13px}
