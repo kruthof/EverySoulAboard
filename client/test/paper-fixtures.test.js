@@ -35,7 +35,9 @@ import { W, BOX, geometryFor } from '../src/items/fittings.js';
 import {
   HATCH, depth, n as nn, PAPER_FLAT, DEPTH_RATIO, PX_PER_CM,
 } from '../src/render/oblique.js';
-import { INK, PAPER, ATTEND } from '../src/items/helpers.js';
+import { INK, PAPER, ATTEND, SKETCH_LEVEL } from '../src/items/helpers.js';
+import { amplitudeBound, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
+import { measurePiece, bodyExtent, attrsOf, strokedPaths, outsideBox, flatten } from './sketch-geom.js';
 import { ITEMS } from '../src/items/index.js';
 import { WRECKED, buildWrecked } from '../src/items/wrecked.js';
 import { codeOnly } from './code-only.js';
@@ -44,7 +46,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(join(HERE, '..', 'src', 'items', 'paper-fixtures.js'), 'utf8');
 
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
-const build = (id, opts = { idPrefix: 'x' }) => PF[camel(id)](opts);
+
+// ⚠️ `build` IS THE RAW FRAGMENT SINCE 2026-08-05 — the owner's `strong` sketch treatment ships on
+// this catalogue, and every assertion here that looks for a LITERAL projected coordinate (`hasPoint`,
+// `segments`, `ellipses`, `circles`) matches nothing against a freehand stroke and therefore passes
+// vacuously. The geometry keeps being asked of the geometry; the bridge is
+// `sketch-adoption.test.js`'s displacement pin and the treated legs below.
+const build = (id, opts = { idPrefix: 'x' }) => PF[camel(id)]({ ...opts, sketch: false });
+/** What SHIPS. */
+const treated = (id, opts = { idPrefix: 'x' }) => PF[camel(id)](opts);
+/** A twin, raw — for the geometry legs that compare it to its raw pristine piece. */
+const rawWrecked = (id, opts = {}) => buildWrecked(id, { ...opts, sketch: false });
 
 /** The oblique's two ratios, READ from the kit and never typed — `fittings.test.js`'s own rule. */
 const RX = DEPTH_RATIO.x;
@@ -129,7 +141,14 @@ function elementsOf(svg) {
     const opaque = isOpaque(tail);
     if (kind === 'path') {
       const d = (tail.match(/ d="([^"]*)"/) || [, ''])[1];
-      const pts = [...d.matchAll(/[MLQ](-?[\d.]+) (-?[\d.]+)/g)].map((p) => [+p[1], +p[2]]);
+      // ⚠️ FLATTENED, NOT SCANNED FOR `M x y` — and this one is CLAUDE.md's 9th shape live. A
+      // treated member is a cubic, so a coordinate scan yields exactly ONE point per stroke (its
+      // `M`), and `pts.every(inPoly)` over one point reports "completely covered" the moment a
+      // stroke merely STARTS inside a later fill. Measured before the fix: 37 phantom hits on the
+      // sliding door alone, every one of them a member drawn plainly across the leaf. Flattening
+      // leaves the raw behaviour identical (M/L/Q were already exact) and makes the treated answer
+      // mean what the test says it means.
+      const pts = flatten(d).flat();
       if (!pts.length) continue;
       if (opaque && /Z\s*"?$/.test(d.trim()) && pts.length >= 3) out.push({ area: true, pts });
       else if (!opaque) out.push({ stroke: true, pts, d });
@@ -366,6 +385,61 @@ test('nothing is drawn outside the box the piece is centred on, lit or dark', ()
   }
 });
 
+// ⭐ THE SAME RULE ON WHAT SHIPS, with the amplitude added explicitly.
+//   OLD RULE: no emitted coordinate outside the piece's own BOX_EXTENT/2 + 0.6, lit or dark.
+//   NEW RULE: no point of the TREATED drawing — curves FLATTENED, ellipses sampled on their
+//             perimeter, the appended GROUND RULE excluded by its class — outside
+//             BOX_EXTENT/2 + 0.6 + `amplitudeBound(SKETCH_LEVEL)`.
+// ⛔ THE GROUND RULE IS EXCLUDED BY NAME AND PINNED SEPARATELY (below). It is a floor mark under the
+// piece, not part of the object, and it is outside a piece's projected box by construction.
+test('the treated drawing stays inside its own extent too — plus the declared amplitude', () => {
+  const AMP = amplitudeBound(SKETCH_LEVEL);
+  let worstRaw = 0;
+  let worstTreated = 0;
+  for (const id of FIXTURE_IDS) {
+    const ext = { x: BOX_EXTENT[id].w / 2, y: BOX_EXTENT[id].h / 2 };
+    for (const st of ['on', 'off']) {
+      const over = outsideBox(treated(id, { idPrefix: 'ab', state: st }),
+        { x: ext.x + 0.6 + AMP, y: ext.y + 0.6 + AMP });
+      assert.deepEqual(over, [], `${id} (${st}): the TREATED drawing leaves its extent by more than `
+        + `the declared amplitude ${AMP.toFixed(2)}: ${over.slice(0, 3).join(' ')}`);
+      const be = (svg) => { const b = bodyExtent(svg); return Math.max(b.mx - ext.x, b.my - ext.y); };
+      worstRaw = Math.max(worstRaw, be(build(id, { idPrefix: 'ab', state: st })));
+      worstTreated = Math.max(worstTreated, be(treated(id, { idPrefix: 'ab', state: st })));
+    }
+  }
+  assert.ok(worstTreated > worstRaw + 1, 'the treated set spends none of the tolerance — vacuous');
+  assert.ok(worstTreated < AMP, 'the headroom is gone; re-derive the bound rather than widening it');
+});
+
+// ⭐ THE GROUND RULE — the treatment's one piece of NEW ink, pinned as new ink rather than smuggled
+// through the box guard. It is the pawns' own faint floor line (`pawn-svg.js:483`, "a figure on
+// paper does not cast a shadow, it stands on a line") ported to furniture, and until this treatment
+// every pawn had one and no fitting did.
+test('every treated piece carries exactly one ground rule, under its own lowest ink, inside the tile', () => {
+  for (const id of FIXTURE_IDS) {
+    const svg = treated(id, { idPrefix: 'gr' });
+    const be = bodyExtent(svg);
+    assert.equal(be.ground.length, 1, `${id} draws ${be.ground.length} ground rules`);
+    const gd = attrsOf(be.ground[0]).d;
+    const ys = [...gd.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map((m) => +m[2]);
+    assert.equal(new Set(ys).size, 1, `${id}'s ground rule is not level`);
+    // ⚠️ AGAINST THE RAW BODY'S LOWEST INK, WHICH IS WHAT `sketch.js` ITSELF MEASURES. The rule is
+    // placed at `maxY + max(0.6, 1.2% of the drawn height)` off the UNTREATED extent, so a treated
+    // stroke that overshoots downward can dip below it by up to the amplitude — that is the hand
+    // crossing its own floor line, which is what a hand does, and not the rule drawn in the wrong
+    // place. Stated against the raw bottom so the two failures stay tellable apart.
+    const rawBottom = bodyExtent(build(id, { idPrefix: 'gr' })).bb[3];
+    assert.ok(ys[0] >= rawBottom - 0.01,
+      `${id}'s ground rule is at y ${ys[0]} but the piece's own lowest ink is at ${rawBottom} — the `
+      + 'rule is meant to be the line the piece STANDS ON, not a stroke across it');
+    assert.ok(ys[0] >= be.bb[3] - amplitudeBound(SKETCH_LEVEL),
+      `${id}'s ground rule is more than one amplitude above the treated drawing's lowest ink`);
+    assert.ok(Math.abs(ys[0]) <= BOX / 2 + 3,
+      `${id}'s ground rule at y ${ys[0]} is outside the drawing tile and will be clipped`);
+  }
+});
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 3. THE DIALECT — level ellipses, upright circles, the ramp, no heading
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -404,6 +478,40 @@ test('every <ellipse> is LEVEL and every <circle> is an upright face circle', ()
   assert.equal(ellipses(build('door-airlock')).length, 0, 'the airlock drew a level ellipse: its hatch is lying down');
 });
 
+// ⭐⭐ AND THE SAME RULE AS AN INCLUSION TEST ON WHAT SHIPS — because the scan above counts TAGS, and
+// the treatment leaves none: `<ellipse>`/`<circle>` both become freehand paths, so `ell` and `cir`
+// would be 0 and the two non-vacuity floors are the only reason this file would notice.
+//   OLD RULE: |ry − DEPTH_RATIO·rx| ≤ 0.01 for every `<ellipse>`; circles are upright.
+//   NEW RULE: every raw round member is still THERE in the treated drawing, within
+//             `amplitudeBound(level, r)` both ways, and its drawn box still reads at its own
+//             ratio within the lump's factor — so a level ellipse stays level and an upright
+//             circle stays upright, WHICH IS THE DISTINCTION THIS SET EXISTS TO MAKE.
+test('the round vocabulary SURVIVES the treatment — level stays level, upright stays upright', () => {
+  const L = LEVELS[SKETCH_LEVEL];
+  const lo = (1 - L.lump) / ((1 + L.lump) * (1 + CR_BULGE));
+  const hi = ((1 + L.lump) * (1 + CR_BULGE)) / (1 - L.lump);
+  let level = 0;
+  let upright = 0;
+  for (const id of FIXTURE_IDS) {
+    for (const r of measurePiece(build(id, { idPrefix: 'x' }), id).rows) {
+      if ((r.nm !== 'ellipse' && r.nm !== 'circle') || r.kind === 'pass') continue;
+      const a = attrsOf(r.src);
+      const rx = r.nm === 'circle' ? +a.r : +a.rx;
+      const ry = r.nm === 'circle' ? +a.r : (a.ry == null ? +a.rx : +a.ry);
+      if (r.nm === 'circle') upright += 1; else level += 1;
+      assert.ok(Math.max(r.fwd, r.rev) <= r.bound,
+        `${id}: a round member moved ${Math.max(r.fwd, r.rev).toFixed(2)} past its ${r.bound.toFixed(2)} bound`);
+      const bb = bodyExtent(`<g>${r.out}</g>`).bb;
+      const got = (bb[3] - bb[1]) / (bb[2] - bb[0]);
+      assert.ok(got >= (ry / rx) * lo && got <= (ry / rx) * hi,
+        `${id}: a ${r.nm} drew at h/w ${got.toFixed(3)} where it is ${(ry / rx).toFixed(3)} — under `
+        + 'this treatment a round thing is lumpy, not reoriented');
+    }
+  }
+  assert.ok(level >= 4, `only ${level} level ellipses reached the treatment — the rule is vacuous`);
+  assert.ok(upright >= 20, `only ${upright} face circles reached the treatment — the rule is vacuous`);
+});
+
 test('the stroke ramp stays inside the charter\'s 0.9–2.2, and uses only the five named steps', () => {
   const seen = new Set();
   for (const id of FIXTURE_IDS) {
@@ -418,6 +526,27 @@ test('the stroke ramp stays inside the charter\'s 0.9–2.2, and uses only the f
   }
   assert.deepEqual([...seen].sort((a, b) => a - b), Object.values(W).sort((a, b) => a - b),
     'the set uses a weight that is not one of the five named steps');
+});
+
+// ⭐ THE RAMP UNDER THE TREATMENT — a CLOSED set with a floor and a ceiling, derived from the knobs.
+//   OLD RULE: 0.9 ≤ w ≤ 2.2, and w is one of the five named steps.
+//   NEW RULE: w ∈ `penSteps(SKETCH_LEVEL, W)`, floor 0.23, ceiling 6.28. The old 2.2 cap is gone
+//             and the reason is the knockout, which is 1.9 units wider than the ink it carries.
+test('the treated fixture ramp is the five rungs, gained — closed set, floor and ceiling', () => {
+  const allowed = new Set(penSteps(SKETCH_LEVEL, Object.values(W)));
+  const seen = new Set();
+  for (const id of FIXTURE_IDS) {
+    for (const st of ['on', 'off']) {
+      const svg = treated(id, { idPrefix: 'sr', state: st }).replace(/<pattern[\s\S]*?<\/pattern>/g, '');
+      for (const m of svg.matchAll(/stroke-width="([\d.]+)"/g)) {
+        const v = +m[1];
+        assert.ok(allowed.has(v), `${id} (${st}) strokes at ${v} — no rung produces that under ${SKETCH_LEVEL}`);
+        seen.add(v);
+      }
+    }
+  }
+  assert.ok(seen.size >= 12, `only ${seen.size} distinct weights ship — the ramp collapsed`);
+  assert.ok(Math.max(...seen) > 2.2 && Math.min(...seen) < 0.9, 'the gain and the cut both did nothing');
 });
 
 // ── E8-1: no brace, rib or stripe crosses the piece ──────────────────────────────────────────
@@ -544,6 +673,105 @@ test('no member of any piece is completely covered by opaque paint drawn after i
   }
 });
 
+// ⭐⭐ THE INVISIBLE-INK PROBE, RE-RUN OVER WHAT SHIPS — and this is the class of defect the owner's
+// `strong` choice actually risks. At `strong` the knockout runs on EVERY element (`haloScope: 'all'`),
+// so each element lays a paper stroke 1.9 units wider than its own ink over whatever was drawn
+// BEFORE it. Those are the "halo bites" the experiment saw on legs and louvres.
+//
+//   OLD RULE (raw): no member is completely covered by a LATER opaque face.
+//   NEW RULE (treated): the same, AND — the half a paint-order probe cannot state — no member is
+//             erased by a later KNOCKOUT: every stroked `d` drawn in paper is followed by the same
+//             `d` in ink at a narrower weight, so a knockout is always a widening under a line and
+//             never a line's replacement.
+// ⚠️ A BITE IS NOT A DELETION, AND THE RULE SAYS SO DELIBERATELY. A halo crossing a leg takes a
+// chunk out of it; the leg is still drawn and still visible either side. Nothing in a string can
+// decide "how much of this member survived" — that judgement is the owner's, on the sheet, and the
+// pristine/twin pairs sheet is the instrument. What IS decidable is total erasure, and that is what
+// this pins.
+test('no member of any TREATED piece is erased — not by a later face, not by a knockout', () => {
+  let knockouts = 0;
+  let members = 0;
+  for (const id of FIXTURE_IDS) {
+    for (const st of ['on', 'off']) {
+      const raw = build(id, { idPrefix: 'oi', state: st });
+      const { rows } = measurePiece(raw, id);
+
+      // ⭐ THE SUBJECT IS THE SOURCE MEMBER, NOT THE TREATMENT'S PER-EDGE DECOMPOSITION, AND THAT
+      // DISTINCTION IS A FINDING RATHER THAN A CONVENIENCE. `sketch()` turns one closed quad into
+      // four independent freehand runs, so a probe pointed at the emitted elements starts asking
+      // "is this EDGE covered" where it used to ask "is this MEMBER covered" — and the answer
+      // changes. Measured on `door-sliding`: the left jamb's top face has its BACK edge under the
+      // header's own front face, which is correct painter's-algorithm occlusion on a closed quad
+      // and which the raw probe rightly passes. Split into four runs, that one edge reads as a
+      // fully covered member and the guard condemns correct art. So the rows are regrouped to their
+      // source element — the question stays the question it was, asked of the treated ink.
+      const els = [];
+      for (const r of rows) {
+        const tail = r.src.replace(/^<\w+/, '');
+        const pts = r.kind === 'pass'
+          ? flatten((attrsOf(r.src).d) || '').flat()
+          : (r.outDs || []).flatMap((d) => flatten(d).flat());
+        if (isOpaque(tail)) {
+          const d = attrsOf(r.src).d;
+          if (d && /Z\s*$/.test(d.trim())) els.push({ area: true, pts: flatten(d).flat() });
+        } else if (pts.length) {
+          els.push({ stroke: true, pts, d: attrsOf(r.src).d || r.src.slice(0, 60) });
+        }
+      }
+      const hidden = [];
+      for (let a = 0; a < els.length; a += 1) {
+        if (!els[a].stroke) continue;
+        members += 1;
+        for (let b = a + 1; b < els.length; b += 1) {
+          if (!els[b].area) continue;
+          if (els[a].pts.every((p) => inPoly(els[b].pts, p))) { hidden.push(els[a].d); break; }
+        }
+      }
+      assert.deepEqual(hidden, [], `${id} (${st}) TREATED buries ${hidden.length} member(s) under a `
+        + `later opaque face:\n  ${hidden.slice(0, 2).join('\n  ')}\n`
+        + 'The treatment may bite a member with its knockout; it may not delete one.');
+
+      // …AND THE HALF A PAINT-ORDER PROBE CANNOT STATE: no member is erased by a KNOCKOUT. At
+      // `strong` the halo runs on EVERY element, so a paper stroke 1.9 units wider than its own ink
+      // lies under every run. Every one of those must have ink over the SAME `d`, narrower.
+      //
+      // ⚠️ ASKED PER SOURCE MEMBER, AND THE EXCLUSION IS NAMED RATHER THAN GLOBAL: `hull-port`
+      // STROKES IN PAPER ON PURPOSE. Its glass is the one ink-FILLED area in the set and its stars
+      // are knocked out of that night, so a paper line there is the most visible mark on the piece.
+      // A blanket "no paper stroke without ink over it" condemns it. The rule the treatment owes is
+      // narrower and is the one that means something: the treatment may not introduce a paper
+      // stroke where the builder drew ink.
+      for (const r of rows) {
+        if (r.kind === 'pass') continue;
+        const srcStroke = attrsOf(r.src).stroke;
+        if (srcStroke === PAPER) continue;    // the builder's own choice, pinned by the raw legs
+        const widest = new Map();
+        for (const p of strokedPaths(`<g>${r.out}</g>`)) {
+          const k = `${p.stroke}|${p.d}`;
+          widest.set(k, Math.max(widest.get(k) == null ? 0 : widest.get(k), p.width));
+        }
+        for (const [k, w] of widest) {
+          if (!k.startsWith(`${PAPER}|`)) continue;
+          knockouts += 1;
+          const d = k.slice(PAPER.length + 1);
+          const ink = widest.get(`${INK}|${d}`);
+          const acc = widest.get(`${ATTEND}|${d}`);
+          const over = ink == null ? acc : (acc == null ? ink : Math.max(ink, acc));
+          assert.ok(over != null && w > over,
+            `${id} (${st}) draws a paper stroke at ${w} with ${over == null ? 'NOTHING' : over} over `
+            + `it, on a member the builder drew in ${srcStroke}: ${d.slice(0, 46)}…\n`
+            + 'A knockout with no ink on top is paper on paper — a deleted member.');
+        }
+      }
+    }
+  }
+  // ⛔ BOTH NON-VACUITY FLOORS. A probe that inspected no members and a probe that found no
+  // knockouts are the same green as a clean set.
+  assert.ok(members > 250, `only ${members} treated members were inspected — the probe saw nothing`);
+  assert.ok(knockouts > 200, `only ${knockouts} knockout strokes — at ${SKETCH_LEVEL} the halo runs `
+    + 'on every element, so this near zero means the treatment is not applied');
+});
+
 // ⚠️ THE HALF THE PROBE ABOVE CANNOT SEE, SAID OUT LOUD (CLAUDE.md's 9th shape — an instrument
 // narrowed goes blind). It answers "is this member covered by paint drawn AFTER it". The heater's
 // supply pipe was the OPPOSITE defect: a member drawn ON TOP of the body it was supposed to hang
@@ -612,8 +840,16 @@ test('every fixture has a twin, and no twin is another piece\'s picture', () => 
       `${id}'s twin is painted by ${entry.paint.name} — a painter must be named after the ROW it serves`);
     assert.equal(entry.mockLabel, null, `${id} claims a mock label; it is repo-authored`);
     assert.match(entry.catalogue, /^PAPER FIXTURES · /, `${id}'s twin cites the wrong source`);
+    // ⚠️ TREATED ON BOTH SIDES SINCE 2026-08-05, and that is the point rather than a detail: what a
+    // player sees is the treated twin beside the treated pristine piece, and "these two are
+    // different pictures" is a claim about THAT pair. Comparing a treated twin to a RAW pristine
+    // piece is trivially true and would keep passing after the damage stopped drawing.
     const wrecked = buildWrecked(id, { idPrefix: 't' });
-    assert.notEqual(wrecked, build(id, { idPrefix: 't' }), `${id}: the twin renders exactly like the pristine piece`);
+    assert.notEqual(wrecked, treated(id, { idPrefix: 't' }),
+      `${id}: the twin renders exactly like the pristine piece, WITH the treatment on both`);
+    assert.notEqual(rawWrecked(id, { idPrefix: 't' }), build(id, { idPrefix: 't' }),
+      `${id}: the twin renders exactly like the pristine piece with the treatment OFF — the damage is`
+      + ' not in the drawing at all');
     assert.ok(!seen.has(wrecked), `${id} renders identically to ${seen.get(wrecked)} — one painter, two rows`);
     seen.set(wrecked, id);
   }
@@ -625,7 +861,7 @@ test('every fixture has a twin, and no twin is another piece\'s picture', () => 
 // surface insets — the same defect the pristine box rule exists for, one file over.
 test('every twin\'s damage lands inside the piece\'s own box', () => {
   for (const id of FIXTURE_IDS) {
-    const svg = buildWrecked(id, { idPrefix: 'v' });
+    const svg = rawWrecked(id, { idPrefix: 'v' });
     const over = [];
     for (const [x, y] of points(svg)) {
       if (Math.abs(x) > BOX / 2 + 0.05 || Math.abs(y) > BOX / 2 + 0.05) over.push(`(${x}, ${y})`);
@@ -642,7 +878,7 @@ test('every twin\'s damage lands inside the piece\'s own box', () => {
   // guarantees and it is the only reason "the twin is the same object" stays true through a redraw.
   for (const id of FIXTURE_IDS) {
     const pristine = body(build(id, { idPrefix: 'z' }));
-    const twin = body(buildWrecked(id, { idPrefix: 'z' }));
+    const twin = body(rawWrecked(id, { idPrefix: 'z' }));
     assert.ok(twin.length > pristine.length, `${id}: the twin is not the pristine drawing plus damage`);
   }
 });

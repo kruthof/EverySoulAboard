@@ -1279,8 +1279,15 @@ function decorSvg(list, place) {
  * verbatim — a second authority on the exact thing the sheet exists to photograph, so the page could
  * look right while the shipping surface drew something else. It is pure of module state: `place` is
  * an argument and `ROOM_SCALE` is a shared constant.
+ *
+ * ⚠️ THE SEVENTH ARGUMENT IS A MEASUREMENT DOOR AND NOTHING ELSE (2026-08-05, the sketch adoption).
+ * `opts` is spread UNDER the placement fields, so `w`, `h` and `idPrefix` always win and no caller
+ * can move a piece with it. Its one use is `sketch: false`, which asks the builder for the untreated
+ * fragment — `client/tools/sketch-repaint-bench.mjs` times the same plate both ways, and without
+ * this it would have to place the furniture its own way, which is the second-authority failure the
+ * paragraph above exists to prevent.
  */
-export function standItem(itemId, tx, ty, place, idPrefix, cond, facing) {
+export function standItem(itemId, tx, ty, place, idPrefix, cond, facing, opts = {}) {
   // ⭐⭐ THE FACING GOES TO **BOTH** DERIVATIONS OR THE PIECE CHANGES SIZE WHEN IT TURNS. `roomBox`
   // inverts the drawing scale to land the piece at `ROOM_SCALE` px/cm, and the builder draws at that
   // scale — and both compute it from `fittings.facedSpec`. Hand the facing to one and not the other
@@ -1290,16 +1297,20 @@ export function standItem(itemId, tx, ty, place, idPrefix, cond, facing) {
   // have no centimetre spec (`helpers.item` forwards `facing`; only the thirty fittings read it), so
   // MEDBED, PLANT and LAMP carry a facing through sim, save and wire and draw the same picture at all
   // four. That is P2b's boundary, already named in this function's fallback paragraph below. FILED.
+  // ⚠️ `facing` IS 7th AND `opts` IS 8th, which is the merge order two lanes arrived at independently
+  // (`lane/pawn-tween` added the facing, this lane the opts bag). Every caller and both `client/tools`
+  // shot scripts pass them in that order; a tool that still passes its opts 7th silently hands an
+  // object where a 0..3 is read, and the piece stops turning with NO error.
   const rb = roomBox(itemId, ROOM_SCALE, facing);
   const [px, py] = place.front(tx, ty);
   if (rb) {
-    const g = buildTileItem(itemId, { w: rb.side, h: rb.side, idPrefix, facing }, cond);
+    const g = buildTileItem(itemId, { ...opts, w: rb.side, h: rb.side, idPrefix, facing }, cond);
     return '<g transform="translate(' + (px + rb.dx).toFixed(2) + ' ' + (py + rb.dy).toFixed(2)
       + ')">' + g + '</g>';
   }
   const side = ROOM_SCALE * 100 * M_PER_TILE * 1.15;
   const [cx, cy] = place.foot(tx, ty);
-  const g = buildTileItem(itemId, { w: side, h: side, idPrefix, facing }, cond);
+  const g = buildTileItem(itemId, { ...opts, w: side, h: side, idPrefix, facing }, cond);
   return '<g transform="translate(' + (cx - side / 2).toFixed(2) + ' ' + (cy - side).toFixed(2)
     + ')">' + g + '</g>';
 }

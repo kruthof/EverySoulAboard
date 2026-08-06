@@ -151,7 +151,21 @@ function skin(itemId, opts, paint) {
   const h = opts.h == null ? 100 : opts.h;
   const k = Math.min(w, h) || 1;
   const g = frameOf((TILE * (w / k)) / CM, (TILE * (h / k)) / CM);
-  return item(itemId, opts, (s) => paint(s, g));
+  // ⛔ `ground: false` — AN ORCHESTRATOR RULING, 2026-08-05, AND IT IS OVERRIDABLE BY THE OWNER FROM
+  // THE SHEET. The sketch treatment's ground rule is the pawns' sixth tell: the faint line a thing
+  // STANDING on a deck is drawn resting on. A material is not a standing thing — it is the deck —
+  // and the rule's own semantics have nowhere to land on a tiling skin. Measured before this
+  // argument existed: every one of the twelve skins drew its rule 1.5–3.7 units OUTSIDE its own tile
+  // edge, and a 12 × 8 room floor drew NINETY-SIX of them through `materialLayerSvg` — a grid of ink
+  // ticks at the tiling pitch, across the floor. The picture the veto is taken from is a CONTROLLED
+  // A/B — `client/tools/sketch-ground-ruling-shot.mjs`: same scene, same camera, same pawn at the
+  // same tile, unselected in both, with this argument as the only variable, and the AFTER column
+  // asserted byte-identical to `materialLayerSvg`. It photographs all SIX floor skins, because the
+  // ruling does NOT read equally on them: on `metal-grating` the rule lands on the tile edge the
+  // skin already draws and 96-vs-0 photographs the same. That is stated, not hidden.
+  // ⚠️ IT IS THE ONLY KNOB THE MATERIALS TURN OFF. Everything else about the treatment applies —
+  // the pen, the caps, the wobble, the halo, the doubled pass, the `#fh` loosening.
+  return item(itemId, opts, (s) => paint(s, g), { sketched: true, ground: false });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

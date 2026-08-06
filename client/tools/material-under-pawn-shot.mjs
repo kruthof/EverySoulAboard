@@ -269,9 +269,16 @@ const escKey = async () => {
     await call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await sleep(900);
 };
-const roomState = () => json('(()=>{const s=document.querySelector("#roomzoom-view svg");if(!s)return null;'
-  + 'return {pawns:s.querySelectorAll(".rz-pawn").length,'
-  + 'mats:[...s.querySelectorAll(".rz-floor-mat > g")].map(g=>g.getAttribute("transform"))}})()');
+// ⛔ THE PAWNS AND THE FLOOR MATERIALS ARE IN **TWO DIFFERENT `<svg>` DOCUMENTS** SINCE 2026-08-05,
+// and this probe used to look for both in the first one. `lane/pawn-tween` moved the figures into a
+// persistent overlay (`#rz-pawnlay`, a SIBLING of `#rz-layers`) so a repaint cannot destroy an
+// in-flight tween — so `#roomzoom-view svg` picks the LAYERS document, `.rz-pawn` is never in it,
+// and this rig died on "no compartment opened with BOTH" against a tree where both were on screen.
+// It is scoped to `#roomzoom-view` rather than to one `<svg>`, which is right however many
+// documents the surface grows.
+const roomState = () => json('(()=>{const r=document.querySelector("#roomzoom-view");if(!r)return null;'
+  + 'return {pawns:r.querySelectorAll(".rz-pawn").length,'
+  + 'mats:[...r.querySelectorAll(".rz-floor-mat > g")].map(g=>g.getAttribute("transform"))}})()');
 let opened = null, slot = null;
 for (const a of anchors) {
   slot = slots.find((s) => s.anchor === a.a);

@@ -41,6 +41,7 @@ import { Cmd } from '../src/wire/session.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { codeOnly } from './code-only.js';
+import { GROUND_CLASS } from '../src/render/sketch.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -157,6 +158,21 @@ test('every non-square fitting draws four DIFFERENT pictures, and is determinist
     const svg = [0, 1, 2, 3].map(draw);
     assert.equal(draw(1), svg[1], `${id} is not deterministic at facing 1`);
     assert.ok(!/NaN|undefined/.test(svg.join('')), `${id} emitted NaN/undefined at some facing`);
+      // ⛔⛔ AND THE TREATED FRAGMENT IS NOT THE RAW ONE **AT EVERY FACING** — the hole the merge
+      // itself created, and it was invisible to 206 tests (measured, 2026-08-05, review). Every
+      // sketch-adoption leg measures the catalogues at facing 0; every projection guard in this file
+      // now correctly asks `{ sketch: false }`. So NOTHING pointed at treated output on a turned
+      // piece — and `standItem` threads a facing through on the shipping surface. Two mutations came
+      // back 206/206 GREEN: the treatment SKIPPED whenever `opts.facing` is set, and the treatment
+      // APPLIED at facing ≠ 0 with every coordinate scaled ×1.02. This line kills the first; the
+      // second is killed by the bridge legs in `sketch-adoption.test.js`, which re-run the
+      // displacement, collinearity and round-member pins at a facing.
+    for (const f of [1, 2, 3]) {
+      assert.notEqual(svg[f], buildItem(id, { w: 240, h: 240, idPrefix: 'r', facing: f, sketch: false }),
+        `${id} ships its RAW fragment at facing ${f}. The sketch treatment is applied at facing 0 `
+        + 'and skipped when the piece turns, so a turned fitting is drawn by a different pen from the '
+        + 'one beside it — and no other guard in this repo looks here.');
+    }
     // A SQUARE-FOOTPRINT piece may legitimately look identical at 0 and 2 (a symmetric drawing in a
     // symmetric box), so the claim is scoped to pieces whose footprint is not square. The count at
     // the end is the non-vacuity: this must not silently become an empty sweep.
@@ -180,12 +196,29 @@ test('ROUND THINGS STAY LEVEL — a turned barrel has no heading, at any facing'
   // faced footprint differs, and the piece fills the 128-unit tile at a different drawing scale. The
   // radii SHOULD change there; what must not change is that the ellipse is level. The absolute size
   // on screen is the separate claim, and it is pinned as such by the true-centimetre test above.
+  //
+  // ⛔⛔ AND IT ASKS THE **RAW** FRAGMENT, WHICH IS NOT A WEAKENING — IT IS THE ONLY PLACE THE
+  // QUESTION EXISTS (`lane/sketch-adoption`, 2026-08-05). This scan looks for `rx="…" ry="…"` on an
+  // `<ellipse>`, and the sketch treatment redraws every ellipse as a twelve-sample freehand CUBIC:
+  // the shipped fragment carries no `rx` attribute at all, so pointed at treated art the regex
+  // returns ZERO matches and `deepEqual([], [])` agrees — vacuously — with a level barrel and with a
+  // barrel given a heading alike. That is CLAUDE.md's 4th trap shape exactly, and it is why every
+  // projection guard in this repo asks `{ sketch: false }`: the raw fragment IS the geometry, and
+  // the bridge from it to what ships is the displacement pin in `sketch-adoption.test.js`.
+  // ⭐ THE HOLE THE SCAN LEAVES IS CLOSED SOMEWHERE, NOT WAVED AT: that the TREATED round member is
+  // still the raw one, per axis and within `lump`, is the exact round-member leg in
+  // `sketch-adoption.test.js` — the leg written because a bound cannot see an ry-only drift.
+  // ⛔ The `at(0).length > 0` line below is the INCLUSION control that makes all of this fail loud:
+  // it is what went red on the merged tree and it is what must stay.
   const ratios = (svg) => [...svg.matchAll(/rx="([\d.]+)" ry="([\d.]+)"/g)]
     .map((m) => Math.round((Number(m[2]) / Number(m[1])) * 1000) / 1000);
   let swept = 0;
   for (const id of FITTING_IDS.filter((i) => SPECS[i].round)) {
-    const at = (f) => ratios(buildItem(id, { w: 240, h: 240, idPrefix: 'r', facing: f }));
-    assert.ok(at(0).length > 0, `${id} is marked round but emits no ellipse — this sweep is vacuous`);
+    const at = (f) => ratios(buildItem(id, { w: 240, h: 240, idPrefix: 'r', facing: f, sketch: false }));
+    assert.ok(at(0).length > 0, `${id} is marked round but emits no ellipse — this sweep is vacuous.\n`
+      + 'If this is the FIRST line to go red after a merge, look at the sketch treatment before you\n'
+      + 'look at the builder: a treated ellipse is a cubic and carries no `rx` at all, so this scan\n'
+      + 'must be handed the RAW fragment (`sketch: false`) or it measures nothing.');
     for (const f of [1, 2, 3]) {
       assert.deepEqual(at(f), at(0),
         `${id}: a quarter-turn changed a level ellipse's ry/rx — the round-objects rule is broken`);
@@ -233,18 +266,12 @@ test('⭐⭐ THE DRAWN INK REALLY TURNS — a turned bench runs the OTHER WAY, n
   // ⇒ THE CLAIM HERE IS THE SHAPE OF THE INK, measured off the emitted path data: the bounding box
   // of everything the builder drew must match the FACED extents' own aspect ratio. A box whose
   // extents never turned overflows that ratio and cannot be made to fit it.
-  const inkBox = (svg) => {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const m of svg.matchAll(/ d="([^"]+)"/g)) {
-      const nums = m[1].match(/-?\d+(?:\.\d+)?/g) || [];
-      for (let i = 0; i + 1 < nums.length; i += 2) {
-        const x = Number(nums[i]), y = Number(nums[i + 1]);
-        if (x < x0) x0 = x; if (x > x1) x1 = x;
-        if (y < y0) y0 = y; if (y > y1) y1 = y;
-      }
-    }
-    return { w: x1 - x0, h: y1 - y0 };
-  };
+  // (`inkBox` is the module-level helper below — one instrument, hardened once; see its header for
+  //  the three things a bare number-pair scan over `d` gets wrong.)
+  //
+  // ⛔ RAW FRAGMENT, DELIBERATELY (the `lane/sketch-adoption` merge): the treatment's overshoot and
+  // bow inflate the drawn box, so a treated aspect ratio is the builder's plus a hand. Re-driven on
+  // the merged tree — mutation J1 still comes back RED through this door.
   // Four BOX-BUILT pieces whose footprint is emphatically not square, so the faced aspect ratio
   // really moves. (A path-only or round piece would prove nothing about `bx`.)
   let checked = 0;
@@ -256,7 +283,7 @@ test('⭐⭐ THE DRAWN INK REALLY TURNS — a turned bench runs the OTHER WAY, n
       const z0 = spec.z0 == null ? 0 : spec.z0;
       const ex = fw + 0.4 * fd;                     // the oblique's across-extent, in cm
       const ey = (spec.h - z0) + 0.6 * fd;          // …and its up-extent
-      const box = inkBox(buildItem(id, { w: 400, h: 400, idPrefix: 'k', facing: f }));
+      const box = inkBox(buildItem(id, { w: 400, h: 400, idPrefix: 'k', facing: f, sketch: false }));
       const drawn = box.w / box.h;
       const want = ex / ey;
       assert.ok(Math.abs(drawn - want) / want < 0.12,
@@ -267,23 +294,75 @@ test('⭐⭐ THE DRAWN INK REALLY TURNS — a turned bench runs the OTHER WAY, n
     }
     // …and the ratio must actually FLIP between the two facings, or the tolerance above is doing
     // nothing (non-vacuity for the whole loop).
-    const r0 = (() => { const b = inkBox(buildItem(id, { w: 400, h: 400, idPrefix: 'k', facing: 0 })); return b.w / b.h; })();
-    const r1 = (() => { const b = inkBox(buildItem(id, { w: 400, h: 400, idPrefix: 'k', facing: 1 })); return b.w / b.h; })();
+    const ink = (f) => inkBox(buildItem(id, { w: 400, h: 400, idPrefix: 'k', facing: f, sketch: false }));
+    const r0 = (() => { const b = ink(0); return b.w / b.h; })();
+    const r1 = (() => { const b = ink(1); return b.w / b.h; })();
     assert.ok(Math.abs(r1 - r0) / r0 > 0.25, `${id}: the drawn aspect barely moved (${r0} → ${r1})`);
   }
   assert.equal(checked, 8, 'non-vacuity: the sweep ran');
 });
 
-/** The bounding box of everything a builder actually drew, in the builder's OWN units (the path data
- *  is emitted pre-transform, so these are directly comparable to `geometryFor(...).extent`). */
+/** ⛔ THE BOUNDING BOX OF EVERYTHING A BUILDER ACTUALLY DREW, and three things it has to get right
+ *  that a bare number-pair scan over the `d` strings does not (`lane/sketch-adoption`, 2026-08-05):
+ *
+ *  1. IT SKIPS THE SKETCH TREATMENT'S GROUND RULE. `sketch()` appends one `class="pl-sk-ground"`
+ *     path per piece, BELOW the drawing and 3% narrower — new ink by design, and not the builder's.
+ *     Counted, it moves the ink box on every treated piece.
+ *  2. IT FLATTENS CURVES instead of reading their control points as coordinates. A cubic's controls
+ *     lie OUTSIDE the curve they steer, so a scan that treats them as drawn points overstates the
+ *     box by the bow — which is most of what the treatment adds.
+ *  3. IT SKIPS AN `A` COMMAND'S RADII, ROTATION AND FLAGS. `A rx ry rot laf sf x y` is SEVEN
+ *     numbers, so pairing them off the string yields `(rx,ry) (rot,laf) (sf,x)` — three points the
+ *     drawing does not contain, one of them usually `(0,0)`, which silently drags the box to the
+ *     origin. That was live in the original scan and no assertion could see it.
+ *
+ *  The path data is emitted pre-transform, so these are directly comparable to
+ *  `geometryFor(...).extent`. */
 function inkBox(svg) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const m of svg.matchAll(/ d="([^"]+)"/g)) {
-    const nums = m[1].match(/-?\d+(?:\.\d+)?/g) || [];
-    for (let i = 0; i + 1 < nums.length; i += 2) {
-      const x = Number(nums[i]), y = Number(nums[i + 1]);
-      if (x < x0) x0 = x; if (x > x1) x1 = x;
-      if (y < y0) y0 = y; if (y > y1) y1 = y;
+  const put = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
+  };
+  const cubic = (p0, c1, c2, p1) => {
+    for (let i = 1; i <= 12; i += 1) {
+      const t = i / 12, u = 1 - t;
+      put(u * u * u * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * p1[0],
+        u * u * u * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * p1[1]);
+    }
+  };
+  for (const tag of svg.match(/<[^>]*>/g) || []) {
+    if (tag.includes(`class="${GROUND_CLASS}"`)) continue;            // the treatment's own new ink
+    const dm = / d="([^"]+)"/.exec(tag);
+    if (!dm) continue;
+    let x = 0, y = 0, sx = 0, sy = 0;
+    for (const cm of dm[1].matchAll(/([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)/g)) {
+      const c = cm[1];
+      const a = (cm[2].match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || []).map(Number);
+      if (c === 'M' || c === 'L' || c === 'T') {
+        for (let i = 0; i + 1 < a.length; i += 2) {
+          x = a[i]; y = a[i + 1]; put(x, y);
+          if (c === 'M' && i === 0) { sx = x; sy = y; }
+        }
+      } else if (c === 'H') { for (const v of a) { x = v; put(x, y); } } else if (c === 'V') {
+        for (const v of a) { y = v; put(x, y); }
+      } else if (c === 'C') {
+        for (let i = 0; i + 5 < a.length; i += 6) {
+          cubic([x, y], [a[i], a[i + 1]], [a[i + 2], a[i + 3]], [a[i + 4], a[i + 5]]);
+          x = a[i + 4]; y = a[i + 5];
+        }
+      } else if (c === 'Q') {
+        for (let i = 0; i + 3 < a.length; i += 4) {
+          cubic([x, y], [x + (2 / 3) * (a[i] - x), y + (2 / 3) * (a[i + 1] - y)],
+            [a[i + 2] + (2 / 3) * (a[i] - a[i + 2]), a[i + 3] + (2 / 3) * (a[i + 1] - a[i + 3])],
+            [a[i + 2], a[i + 3]]);
+          x = a[i + 2]; y = a[i + 3];
+        }
+      } else if (c === 'A') {
+        // the END POINT only: an arc's chord. Its radii, rotation and flags are NOT coordinates.
+        for (let i = 0; i + 6 < a.length; i += 7) { x = a[i + 5]; y = a[i + 6]; put(x, y); }
+      } else if (c === 'Z' || c === 'z') { x = sx; y = sy; }
     }
   }
   return { w: x1 - x0, h: y1 - y0 };
@@ -313,12 +392,24 @@ test('⭐⭐ A TURNED PIECE STILL FILLS ITS BOX — the drawn ink matches the FA
   // MEASURED, both trees, to pick the band rather than guess it:
   //   shipped : every piece, every facing → 0.904 … 1.000
   //   with J2 : odd facings → 0.680 / 0.706 / 0.815 (under-filled) and 1.092 … 1.273 (CLIPPING)
+  //
+  // ⛔ AND IT MEASURES THE **RAW** FRAGMENT (`sketch: false`), which the merge with
+  // `lane/sketch-adoption` made necessary and which costs this guard NOTHING — measured, not
+  // assumed. The sketch treatment runs a stroke up to 3.6 units past every corner and bows it up to
+  // 5.5, and appends its own ground rule below the piece: pointed at treated art this ratio reads
+  // 1.043–1.068 of the declared box, outside the 0.88–1.02 band main measured, and the ONLY way to
+  // keep it green there would be to widen HI past 1.07 — which is above J2's own 1.092 signature,
+  // i.e. a guard widened until it stops working. On the raw fragment the numbers come back to main's
+  // own measured band to the digit (0.904 … 1.000), and both mutations were re-driven on the merged
+  // tree to prove it: J2 ⇒ RED here, J1 ⇒ RED here and in the aspect leg above. That is the same
+  // split every projection guard in this repo uses — the raw fragment IS the geometry, and the
+  // bridge from it to what ships is the displacement pin in `sketch-adoption.test.js`.
   const LO = 0.88, HI = 1.02;
   let checked = 0;
   for (const id of ['bench', 'dining-table', 'cot', 'locker', 'shelf-rack', 'workbench']) {
     for (const f of [0, 1, 2, 3]) {
       const want = geometryFor(SPECS[id], f).extent;
-      const got = inkBox(buildItem(id, { w: 128, h: 128, idPrefix: 'e', facing: f }));
+      const got = inkBox(buildItem(id, { w: 128, h: 128, idPrefix: 'e', facing: f, sketch: false }));
       const fill = Math.max(got.w, got.h) / Math.max(want.w, want.h);
       assert.ok(fill >= LO && fill <= HI,
         `${id} facing ${f}: fills ${fill.toFixed(3)} of its declared box (band ${LO}..${HI}). The `
@@ -364,6 +455,19 @@ test('⭐⭐ EVERY OTHER CATALOGUE TURNS TOO — they all reach the facing throu
         `${name}/${id} is not deterministic at facing 1`);
       assert.ok(!/NaN|undefined/.test(at(0) + at(1) + at(2) + at(3)),
         `${name}/${id} emitted NaN at some facing`);
+      // ⛔⛔ AND THE TREATED FRAGMENT IS NOT THE RAW ONE **AT EVERY FACING** — the hole the merge
+      // itself created, and it was invisible to 206 tests (measured, 2026-08-05, review). Every
+      // sketch-adoption leg measures the catalogues at facing 0; every projection guard in this file
+      // now correctly asks `{ sketch: false }`. So NOTHING pointed at treated output on a turned
+      // piece — and `standItem` threads a facing through on the shipping surface. Two mutations came
+      // back 206/206 GREEN: the treatment SKIPPED whenever `opts.facing` is set, and the treatment
+      // APPLIED at facing ≠ 0 with every coordinate scaled ×1.02. This line kills the first; the
+      // second is killed by the bridge legs in `sketch-adoption.test.js`, which re-run the
+      // displacement, collinearity and round-member pins at a facing.
+      for (const f of [1, 2, 3]) {
+        assert.notEqual(at(f), buildItem(id, { w: 240, h: 240, idPrefix: 'pf', facing: f, sketch: false }),
+          `${name}/${id} ships its RAW fragment at facing ${f} — treated at rest, untreated turned.`);
+      }
       // Facing 0 must remain byte-identical to no facing at all — the compatibility half.
       assert.equal(at(0), buildItem(id, { w: 240, h: 240, idPrefix: 'pf' }),
         `${name}/${id}: passing facing 0 is not the same as passing no facing`);

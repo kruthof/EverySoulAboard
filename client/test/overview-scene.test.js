@@ -24,6 +24,11 @@ import { makePawnLayer } from '../src/ui/pawn-layer.js';
 import { stylesSource } from './styles-source.js';
 import { taskTag } from '../src/ui/console-model.js';
 import { markCellSvg, markVariant } from '../src/ui/mark-overlay.js';
+// The two marks ONLY `sketch()` writes — the witnesses for the plate-scale RAW ruling at the bottom
+// of this file. Imported from the treatment itself so a rename cannot leave the guards scanning for
+// a string nothing emits any more.
+import { GROUND_CLASS, DOUBLE_CLASS } from '../src/render/sketch.js';
+import { buildTileItem } from '../src/items/wear.js';
 
 const FIX = JSON.parse(
   readFileSync(fileURLToPath(new URL('./fixtures/overview-grid.json', import.meta.url)), 'utf8'),
@@ -1643,4 +1648,62 @@ test('THE WALKWAY IS DRAWN: a tile inside no compartment still reaches the plate
   assert.ok(!svg.includes('pl-corridor'),
     'the plate emits a `pl-corridor` layer again — the walkway and the strip are two maps for the '
     + 'same tiles, which is the two-coordinate-systems defect returning by addition');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE PLATE'S MINIATURES ARE RAW — the sketch-adoption seam, and BOTH halves of the ruling.
+//
+// ⛔⛔ WHY THIS IS PINNED RATHER THAN LEFT TO THE SEAM'S COMMENT. `lane/sketch-adoption` applies the
+// `strong` treatment at `helpers.item()`, which every builder goes through — so this surface got the
+// treatment by INHERITANCE, without anyone choosing it for a 20.82 px box. Measured A/B on the
+// running wreck (86 fittings across two bands; the numbers live at `fittingLayer`'s seam): the
+// treated plate is ×4.67 in elements and ~102 ms per repaint against a 100 ms wire frame, versus
+// ~19 ms raw. The adoption's own §4 says only WEIGHT survives at 22 px, and this box is under it.
+//
+// ⛔ AND A "RAW" CLAIM MUST BE ASKED IN BOTH DIRECTIONS or a scan that finds nothing and a scan that
+// cannot find anything look identical (TRAPS, 4th shape). The witnesses are the two marks ONLY the
+// treatment writes, and the second leg requires them PRESENT on the architecture — because the point
+// of the ruling is that the plate stays sketchy where it reads and stops where it is sub-pixel.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('⭐⭐ plate MINIATURES carry no catalogue treatment — and the ARCHITECTURE still does', () => {
+  const svg = overviewScene(baseState());
+
+  // NON-VACUITY FIRST: this plate really is drawing fittings. Without it, "no ground rules" is
+  // satisfied by a plate with nothing on it.
+  const fits = (svg.match(/class="pl-fit"/g) || []).length;
+  assert.ok(fits >= 8, `the plate drew ${fits} fittings — the legs below would be vacuous`);
+
+  // 1 — THE FITTING LAYER IS RAW. `GROUND_CLASS` is the pawns' sixth tell, appended by `sketch()`
+  //     and by nothing else; a catalogue piece that reached this plate treated would carry it.
+  const furniture = svg.slice(svg.indexOf('class="pl-furniture"'));
+  assert.ok(furniture.length > 0, 'no furniture layer at all');
+  assert.equal((furniture.match(new RegExp(GROUND_CLASS, 'g')) || []).length, 0,
+    'a plate miniature carries the treatment\'s GROUND RULE, so `sketch: false` is not reaching '
+    + '`buildTileItem`. At 20.82 px that costs ×4.67 elements and puts the repaint over its own '
+    + '10 Hz wire frame (~102 ms vs ~19 ms) for wobble nobody can resolve — see `fittingLayer`.');
+
+  // 2 — …AND THE ARCHITECTURE IS NOT. The composer sketches the hull, the floor planes and the
+  //     partition walls itself, with the same `strong` preset. If this leg ever goes green with 0,
+  //     the plate has stopped being a DRAWING and leg 1 above is measuring a dead surface.
+  assert.ok((svg.match(new RegExp(DOUBLE_CLASS, 'g')) || []).length > 0,
+    'the plate carries no doubled silhouette pass anywhere — the composer\'s own `sketch()` call is '
+    + 'gone, so "the miniatures are raw" is no longer a decision about scale, it is the whole plate '
+    + 'going flat. The owner asked for sketchier (`ship-elevation.js` exists for that).');
+});
+
+test('the ground-rule knob is UNREACHABLE at plate scale — the materials exception cannot apply here', () => {
+  // ⭐ THE POINT: `helpers.item()` is `if (!cfg.sketched || opts.sketch === false) return frag;`, so
+  // with `sketch: false` the fragment returns BEFORE `sketch()` is called and `cfg.ground` is never
+  // read. The ground question therefore has no answer to get wrong at 20.82 px — which is WHY the
+  // seam does not carry a `ground:` argument. Asserted through the builder rather than by reading
+  // the source, so a refactor that starts honouring `ground` despite `sketch: false` reddens.
+  const raw = buildTileItem('locker', { w: 21, h: 21, idPrefix: 'p', facing: 0, sketch: false }, undefined);
+  const treated = buildTileItem('locker', { w: 21, h: 21, idPrefix: 'p', facing: 0 }, undefined);
+  assert.equal((raw.match(new RegExp(GROUND_CLASS, 'g')) || []).length, 0,
+    '`sketch: false` still produced a ground rule — the early return is gone');
+  assert.ok((treated.match(new RegExp(GROUND_CLASS, 'g')) || []).length > 0,
+    'non-vacuity: the TREATED locker carries no ground rule either, so the leg above proves nothing '
+    + 'about the flag — it would pass against a catalogue that never grounds anything');
+  assert.notEqual(raw, treated, 'the flag changed no bytes at all');
 });

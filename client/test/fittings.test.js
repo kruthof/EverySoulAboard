@@ -34,14 +34,39 @@ import {
 import {
   HATCH, depth, n as nn, PAPER_FLAT, DEPTH_RATIO, PX_PER_CM,
 } from '../src/render/oblique.js';
-import { INK, PAPER, ATTEND } from '../src/items/helpers.js';
+import { INK, PAPER, ATTEND, SKETCH_LEVEL } from '../src/items/helpers.js';
+import { amplitudeBound, penRange, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
+import { outsideBox, bodyExtent as bodyExtentOf, measurePiece, attrsOf } from './sketch-geom.js';
 import { codeOnly } from './code-only.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(join(HERE, '..', 'src', 'items', 'fittings.js'), 'utf8');
 
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
-const build = (id, opts = { idPrefix: 'f' }) => FT[camel(id)](opts);
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⚠️ `build` IS THE RAW FRAGMENT SINCE 2026-08-05, AND THAT IS A DELIBERATE, MEASURED SPLIT
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// The owner's ruling adopts `render/sketch.js`'s `strong` treatment catalogue-wide, applied at
+// `helpers.item()`. Every projection assertion in this file works by looking for a LITERAL projected
+// coordinate — `hasPoint`, `memberThrough`, `segments`, `ellipses` all do — and a freehand stroke
+// emits none of them. Pointed at treated output those scans return ZERO matches and therefore agree,
+// vacuously, with a correct port and with a piece drawn at the wrong scale alike. That is CLAUDE.md's
+// 4th shape, and it was MEASURED on this very file before the split: with `build` treated, 11 tests
+// failed and — worse — `E8-1`, `every round fitting draws level` and `E8-6` all PASSED, on zero
+// matches each. A guard that finds nothing and a guard that cannot find anything are one green.
+//
+// So the geometry questions keep being asked of the geometry (`{ sketch: false }`), and the bridge
+// to what actually ships is `sketch-adoption.test.js`'s displacement pin: every treated point lies
+// within `amplitudeBound(SKETCH_LEVEL)` of the raw shape it came from, and every raw point within
+// the same distance of the treated curve, per element, for all 34 pieces and their twins. On top of
+// that bridge, four rules in this file carry an explicit TREATED leg — the box rule, the round-things
+// rule, the stroke ramp and the hatch — because those four are about what the player sees rather
+// than about where the projection put it.
+const build = (id, opts = { idPrefix: 'f' }) => FT[camel(id)]({ ...opts, sketch: false });
+/** What SHIPS: the same piece with the owner's `strong` treatment on it. */
+const treated = (id, opts = { idPrefix: 'f' }) => FT[camel(id)](opts);
 
 /** Every `M x y` / `L x y` / `Q x y` coordinate pair in a fragment, as `[x, y]`. */
 function points(svg) {
@@ -310,6 +335,50 @@ test('nothing is drawn outside the box the piece is centred on', () => {
   }
 });
 
+// ⭐ THE SAME RULE, RESTATED ON WHAT ACTUALLY SHIPS — with the amplitude added EXPLICITLY and not
+// one unit more.
+//
+//   OLD RULE: no emitted `M`/`L`/`Q` coordinate outside ±BOX/2 + 0.05.
+//   NEW RULE: no point of the TREATED drawing — curves FLATTENED, because a freehand cubic emits
+//             exactly one `M` and a bow that ran off the tile would be invisible to a coordinate
+//             scan — outside the piece's own BOX_EXTENT/2 + AMP + 0.6, where
+//             AMP = `amplitudeBound(SKETCH_LEVEL)` is derived from the preset's knobs.
+//
+// ⛔ IT IS TIGHTER THAN THE RULE ABOVE, NOT LOOSER, in the axis that matters: BOX_EXTENT is the
+// piece's OWN drawn extent, and a piece scaled on its height has spare tile width in which ±56 sees
+// nothing (the hole `paper-fixtures.test.js` found by planting it). The raw leg is measured in the
+// same breath so a failure is ATTRIBUTABLE: if raw already exceeds its extent the defect is the
+// drawing, and if only treated does, the defect is the treatment's amplitude.
+// MEASURED at adoption: raw worst 0.23 over, treated worst 4.61 over, against an AMP of 6.78.
+test('the treated drawing stays inside the box too — raw + the declared amplitude, and no more', () => {
+  const AMP = amplitudeBound(SKETCH_LEVEL);
+  assert.ok(AMP > 0 && AMP < BOX / 8,
+    `the amplitude bound is ${AMP} — zero would make this test vacuous, and a bound worth an eighth `
+    + 'of the drawing box is not a tolerance, it is a new rule');
+  let worstRaw = 0;
+  let worstTreated = 0;
+  for (const id of FITTING_IDS) {
+    const ext = { x: BOX_EXTENT[id].w / 2, y: BOX_EXTENT[id].h / 2 };
+    const rawOver = outsideBox(build(id, { idPrefix: 'bx' }), { x: ext.x + 0.6, y: ext.y + 0.6 });
+    assert.deepEqual(rawOver, [], `${id}: the RAW drawing already leaves its own extent — that is a `
+      + 'geometry defect and the treatment is not involved');
+    const over = outsideBox(treated(id, { idPrefix: 'bx' }), { x: ext.x + 0.6 + AMP, y: ext.y + 0.6 + AMP });
+    assert.deepEqual(over, [], `${id}: the TREATED drawing leaves its ${BOX_EXTENT[id].w}×`
+      + `${BOX_EXTENT[id].h} extent by more than the declared amplitude ${AMP.toFixed(2)}: `
+      + `${over.slice(0, 3).join(' ')}\nThat is the treatment moving the drawing, which is the one `
+      + 'thing the owner\'s caveat forbids.');
+    const be = (svg) => { const b = bodyExtentOf(svg); return Math.max(b.mx - ext.x, b.my - ext.y); };
+    worstRaw = Math.max(worstRaw, be(build(id, { idPrefix: 'bx' })));
+    worstTreated = Math.max(worstTreated, be(treated(id, { idPrefix: 'bx' })));
+  }
+  // ⛔ NON-VACUITY, AS AN INCLUSION TEST: the treated drawing must actually USE some of the tolerance,
+  // or the whole amplitude apparatus is measuring a treatment that did nothing.
+  assert.ok(worstTreated > worstRaw + 1,
+    `the treated set exceeds its extents by ${worstTreated.toFixed(2)} against the raw set's `
+    + `${worstRaw.toFixed(2)} — the treatment is not moving any point, so this guard is vacuous`);
+  assert.ok(worstTreated < AMP, 'measured headroom is gone; re-derive the bound rather than widening it');
+});
+
 test('the hatch is the kit\'s pattern, not a second one drawn from memory', () => {
   const svg = build('locker');
   assert.match(svg, new RegExp(`<pattern id="[^"]+" width="${HATCH.period}" height="${HATCH.period}"`));
@@ -322,6 +391,37 @@ test('the hatch is the kit\'s pattern, not a second one drawn from memory', () =
   for (const round of ['chair', 'stool', 'supply-barrel', 'fuel-drum', 'standing-lamp']) {
     assert.ok(!build(round).includes('<pattern'),
       `${round} registers a hatch it never references`);
+  }
+});
+
+// ⭐ THE HATCH, RESTATED UNDER THE TREATMENT.
+//   OLD RULE: the emitted `<pattern>` carries the kit's period, angle, weight, opacity and ground.
+//   NEW RULE: the kit's PERIOD and ANGLE survive (the cell is 3× the period wide and one period
+//             high, still at `HATCH.angle`), the ground is still paper, and the mechanical single
+//             line is replaced by exactly THREE jittered strokes — `loosenHatch`'s own numbers,
+//             pinned as literals so a knob that moves them has to say so here.
+// ⛔ AND THE LIMIT IS RESTATED WITH IT, because it is the honest half: a `<pattern>` TILES, so this
+// is a wider metronome and not a hand. `sketch.js`'s own comment says so; this pins the code to it.
+test('the treated hatch is the kit\'s period and angle, loosened — three strokes, not one rule', () => {
+  const svg = treated('locker');
+  const pat = /<pattern id="[^"]+" width="([\d.]+)" height="([\d.]+)" patternUnits="userSpaceOnUse" patternTransform="rotate\((\d+)\)">([\s\S]*?)<\/pattern>/.exec(svg);
+  assert.ok(pat, 'the treated locker registers no hatch pattern at all');
+  assert.equal(+pat[1], HATCH.period * 3, 'the loosened cell is three of the kit\'s periods wide');
+  assert.equal(+pat[2], HATCH.period, 'the loosened cell changed HEIGHT — the hatch spacing moved');
+  assert.equal(+pat[3], HATCH.angle, 'the hatch is no longer at the kit\'s angle');
+  const inner = pat[4];
+  assert.ok(inner.includes(`fill="${PAPER}"`), 'the loosened hatch lost its paper ground');
+  const strokes = [...inner.matchAll(/stroke-width="([\d.]+)" stroke-linecap="round" opacity="([\d.]+)"/g)];
+  assert.equal(strokes.length, 3, 'the loosened cell is not three strokes — one is the metronome again');
+  for (const [, w, op] of strokes) {
+    assert.ok(Math.abs(+w - 0.7) <= 0.7 * 0.28 + 1e-9, `a hatch stroke at ${w} is outside 0.7 ±28%`);
+    assert.ok(Math.abs(+op - 0.28) <= 0.28 * 0.22 + 1e-9, `a hatch stroke at opacity ${op} is outside 0.28 ±22%`);
+  }
+  assert.equal(new Set(strokes.map((m) => m[1])).size, 3,
+    'the three strokes are all the same weight — that is one rule drawn three times');
+  // …and the round pieces still register nothing, treated or raw.
+  for (const round of ['chair', 'stool', 'supply-barrel', 'fuel-drum', 'standing-lamp']) {
+    assert.ok(!treated(round).includes('<pattern'), `${round} registers a hatch it never references`);
   }
 });
 
@@ -636,6 +736,45 @@ test('the stroke ramp stays inside the charter\'s 0.9–2.2, by mass', () => {
     + 'ramp nobody can keep, which is how a "heavier" line ends up lighter than a "fine" one.');
 });
 
+// ⭐ THE RAMP, RESTATED UNDER THE TREATMENT — RANGE WITH GAIN, and it is a CLOSED SET rather than a
+// pair of ends.
+//
+//   OLD RULE: every emitted `stroke-width` is one of the five named steps, and 0.9 ≤ w ≤ 2.2.
+//   NEW RULE: every emitted `stroke-width` outside the hatch def is one of `penSteps(SKETCH_LEVEL,
+//             W)` — the exact set the five rungs can produce once the ramp is gained about its
+//             midpoint, split silhouette/interior, widened into a paper knockout and halved for the
+//             doubled pass. Thirty values, floor 0.23, ceiling 6.28. Both ends still ban an
+//             arbitrary weight, and "one of these" bans one invented INSIDE the range, which a
+//             floor-and-ceiling rule cannot.
+//
+// ⚠️ THE CEILING REALLY DID MOVE, 2.2 → 6.28, AND IT IS THE KNOCKOUT: `strong` puts a paper halo
+// 1.9 units wider than the ink under every run. Nothing here is a licence for a heavier LINE — the
+// heaviest INK the set can draw is 4.38, and the two are different numbers on purpose.
+test('the ramp under the treatment is the SAME five rungs, gained — a closed set of thirty', () => {
+  const allowed = new Set(penSteps(SKETCH_LEVEL, Object.values(W)));
+  assert.equal(allowed.size, 30, 'the derived ramp changed size — re-derive it, do not widen it');
+  assert.ok(Math.min(...allowed) >= 0.2 && Math.max(...allowed) <= 6.3,
+    'the derived ramp left its own declared range');
+  const seen = new Set();
+  for (const id of FITTING_IDS) {
+    const svg = treated(id).replace(/<pattern[\s\S]*?<\/pattern>/g, '');
+    for (const m of svg.matchAll(/stroke-width="([\d.]+)"/g)) {
+      const v = +m[1];
+      assert.ok(allowed.has(v), `${id} strokes at ${v}, which no rung of the ramp can produce under `
+        + `${SKETCH_LEVEL}. Either a builder invented a weight or the treatment did.`);
+      seen.add(v);
+    }
+  }
+  // NON-VACUITY, THREE WAYS. The set must be USED, it must reach the gained ceiling, and it must
+  // still have a floor — a treatment that drew every line at one weight satisfies "closed set".
+  assert.ok(seen.size >= 12, `only ${seen.size} distinct weights ship — the ramp collapsed`);
+  assert.ok(Math.max(...seen) > 2.2, 'nothing ships above the OLD 2.2 cap, so the gain did nothing');
+  assert.ok(Math.min(...seen) < 0.9, 'nothing ships below the OLD 0.9 floor, so the interior cut did nothing');
+  const rng = penRange(SKETCH_LEVEL, 0.9, 2.2);
+  assert.deepEqual([rng.min, rng.max], [0.23, 6.28],
+    'the declared range moved. If a knob changed, say so — and update the memo that quotes 6.28.');
+});
+
 // ⚠️ THE ROUND-OBJECTS RULE, WHICH IS THE CATALOGUE'S OWN AND IS LOAD-BEARING FOR PLACEMENT: "anything
 // round drawn level, so a round fitting has no heading and can be set down any way about". A round
 // piece drawn with a heading would need a facing on the wire, and nothing carries one.
@@ -656,6 +795,57 @@ test('every round fitting draws level: ry is exactly DEPTH_RATIO·rx, no heading
         + `A level circle in this oblique is exactly ${RY} — anything else is a circle drawn by hand.`);
     }
   }
+});
+
+// ⭐⭐ THE ROUND-THINGS RULE UNDER THE TREATMENT — AND IT IS WRITTEN AS AN INCLUSION TEST FIRST,
+// BECAUSE THE EXPERIMENT MEASURED IT GOING VACUOUS.
+//
+// `ellipses()` matches `<ellipse cx=… rx=… ry=…>`. The treatment redraws every one of them as a
+// twelve-sample freehand curve, so the tag is GONE from treated output: the scan above returns 0
+// matches and its `for` body never runs. Pointed at what ships it would agree with a level ellipse,
+// with an upright one, and with no ellipse at all — CLAUDE.md's 4th shape, live (72 → 0).
+//
+//   OLD RULE: for every `<ellipse>`, ry = DEPTH_RATIO·rx exactly.
+//   NEW RULE (inclusion, on treated output): the level-ellipse GEOMETRY is still there and there is
+//             MORE THAN NONE of it — every raw ellipse is matched by a treated curve that lies
+//             within `amplitudeBound(level, r)` of it in BOTH directions, and whose own drawn
+//             bounding box still reads level: height/width within the lump's own factor of
+//             DEPTH_RATIO. That factor is derived, not chosen — a sample sits at r·(1 ± lump) and
+//             its Catmull-Rom control a further (1 + CR_BULGE) out — and it is still far tighter
+//             than the difference between a level ellipse (0.6) and an upright circle (1.0).
+test('the level ellipses SURVIVE the treatment — the rule is an inclusion test, not a tag scan', () => {
+  const L = LEVELS[SKETCH_LEVEL];
+  const lo = (1 - L.lump) / ((1 + L.lump) * (1 + CR_BULGE));
+  const hi = ((1 + L.lump) * (1 + CR_BULGE)) / (1 - L.lump);
+  let round = 0;
+  for (const id of FITTING_IDS) {
+    const { rows } = measurePiece(build(id, { idPrefix: 'f' }), id);
+    for (const r of rows) {
+      // ⚠️ `pass` rows are fill-only glow ellipses — no pen, so no freehand replacement and nothing
+      // for this rule to be about. Skipping them is what keeps the count below honest.
+      if ((r.nm !== 'ellipse' && r.nm !== 'circle') || r.kind === 'pass') continue;
+      round += 1;
+      assert.ok(r.fwd <= r.bound && r.rev <= r.bound,
+        `${id}: a round member's treated curve is ${Math.max(r.fwd, r.rev).toFixed(2)} from the `
+        + `ellipse it replaced, against a bound of ${r.bound.toFixed(2)} — the treatment moved a `
+        + 'round thing rather than drawing it by hand');
+      const src = attrsOf(r.src);
+      const rx = r.nm === 'circle' ? +src.r : +src.rx;
+      const ry = r.nm === 'circle' ? +src.r : (src.ry == null ? +src.rx : +src.ry);
+      const drawn = bodyExtentOf(`<g>${r.out}</g>`).bb;
+      const gotRatio = (drawn[3] - drawn[1]) / (drawn[2] - drawn[0]);
+      const want = ry / rx;
+      assert.ok(gotRatio >= want * lo && gotRatio <= want * hi,
+        `${id}: a round member drew at h/w ${gotRatio.toFixed(3)} where its ellipse is `
+        + `${want.toFixed(3)} — outside the lump's own ±${((hi - 1) * 100).toFixed(0)}%. Under this `
+        + 'treatment a level circle is lumpy; it is not a different shape.');
+    }
+  }
+  // ⛔ THE COUNT IS THE INCLUSION CONTROL AND IT IS THE WHOLE POINT OF THIS TEST. The experiment
+  // measured 72 level ellipses in the raw set and ZERO in the treated one, and the rule above went
+  // green on both. If this number reaches 0 the guard is measuring nothing again.
+  assert.ok(round >= 60, `only ${round} round members reached the treatment — the round-things rule `
+    + 'is testing nothing. This is the exact failure the inclusion test exists to report.');
 });
 
 test('the SPECS are the catalogue\'s dimensions, and every drawn box says where it grew', () => {

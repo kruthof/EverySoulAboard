@@ -394,9 +394,53 @@ function fittingLayer(info, deck, fittings, attention, size, idPrefix) {
     // which reads the `devices` channel's `face` byte), NOT off a second join here: this layer is
     // sourced from `devices`+`items` rather than from the frame, so there is no `deckDeviceConditions`
     // map left to look a row up in. A ground stack has no facing and carries 0 — what it drew before.
+    //
+    // ⛔⛔ AND `sketch: false` — THE PLATE'S MINIATURES ARE RAW, AND IT IS A MEASURED DECISION, NOT A
+    // TASTE ONE (merge with `lane/sketch-adoption`, 2026-08-05).
+    //
+    // The adoption applies the `strong` treatment at the `helpers.item()` seam, catalogue-wide, and
+    // priced it on the ROOM ZOOM: 7 fittings, 296 → 1102 elements (×3.72), +2.9 ms — "comfortably
+    // inside the 16 ms interactive budget", which it is. THIS SURFACE IS A DIFFERENT ORDER OF
+    // MAGNITUDE: the elevation draws **86 fittings across two bands** (`--ship wreck`, measured off
+    // the live wire: 62 on deck 0, 24 on deck 1) and rebuilds the whole plate on every wire frame at
+    // 10 Hz. Measured here, A/B, on the running game — the same plate with this one flag flipped:
+    //
+    //                           raw          treated       ratio
+    //     shape elements        2 953        13 787        ×4.67
+    //     DOM nodes (live)      3 776        16 278        ×4.31
+    //     bytes                 499 KB       2.91 MB       ×5.83
+    //     build ms (node)       6.96         45.37         ×6.52
+    //     parse+layout ms       12.1         56.7          ×4.69   (Chrome, median of 12)
+    //     ── total per repaint  ~19 ms       ~102 ms       ×5.4
+    //
+    // ⇒ TREATED, THE PLATE DOES NOT FIT IN ITS OWN WIRE FRAME. 102 ms against a 100 ms 10 Hz budget
+    // and a 16 ms interactive one; raw it lands at ~19 ms with five-fold headroom. That is the whole
+    // argument.
+    //
+    // ⭐ AND WHAT IS SPENT BUYS NOTHING HERE, BY THE ADOPTION'S OWN FINDING: `perilune-art-style.md`
+    // §4 — *"at 22 px only WEIGHT survives, so a piece must read by silhouette and mass, never by
+    // detail"*. This layer's box is `Math.max(10, tileSize * 2.2)` = **20.82 px** on the wreck,
+    // BELOW that line. We were paying ×5.4 for wobble nobody can resolve.
+    //
+    // ⛔⛔ THIS DOES **NOT** MAKE THE PLATE UN-SKETCHY, and the distinction is the reason the flag is
+    // narrow. The ARCHITECTURE — hull, deck floor planes, partition walls — is sketched by the
+    // COMPOSER's own `sketch()` call further down (the `strong` preset, seeded per deck), not by the
+    // catalogue, and it is untouched. Measured: with fittings raw the plate still carries 13 doubled
+    // silhouette passes and 0 catalogue ground rules, so the owner's *"it should look sketchier"*
+    // (the reason `ship-elevation.js` exists) is kept exactly where it reads and dropped exactly
+    // where it is sub-pixel.
+    //
+    // ⚠️ THE GROUND-RULE QUESTION RIDES FREE, AND IT RIDES FREE BY CONSTRUCTION rather than by
+    // agreement. `helpers.item()` is `if (!cfg.sketched || opts.sketch === false) return frag;` — it
+    // returns BEFORE `sketch()` is called, so `cfg.ground` is never read at plate scale and the
+    // materials' `ground: false` exception has no bearing here either way. (Had the treatment stayed,
+    // the knob would have wanted deciding: a plate miniature IS a standing thing, so the pawns' sixth
+    // tell applies in principle — but at 20.82 px a rule 2 % of the box is sub-pixel ink laid on top
+    // of the band floor the plate already draws under it.) ⛔ A LATER LANE THAT RE-ENABLES THE
+    // TREATMENT HERE INHERITS THAT DECISION UNMADE — `overview-scene.test.js` pins both halves.
     const g = nonScaling(
       buildTileItem(f.itemId, { w: size, h: size, idPrefix: `${idPrefix}-f${tx}-${ty}`,
-        facing: f.face || 0 }, f.cond),
+        facing: f.face || 0, sketch: false }, f.cond),
     );
     const attend = attention.has(key);
     pieces.push({
