@@ -503,26 +503,6 @@ namespace Perilune.Tests
                 + "point in 3 000 ticks");
         }
 
-        /// <summary>
-        /// ⭐ THE SIX CLAIM GATES, ONE LEG, ONE ASSERT EACH — the enrolment ledger for a break.
-        /// M2-2's veto is asked at five gates and the pre-emption path is the sixth; a break must be
-        /// refused at every one of them, and this leg is what a later lane's new claim path has to
-        /// be added to. ⚠️ The gates are asked through the PREDICATE rather than by scanning text
-        /// (4th trap: pin how an API was called, never a text scan) — the behavioural legs above and
-        /// below are what pin the call sites themselves.
-        /// </summary>
-        [Test]
-        public void EveryClaimGateRefusesABrokenCrewMember()
-        {
-            var sim = WithWork();
-            var c = Pawn(sim);
-            c.BreakTier = BreakTier.Major;
-            Assert.That(c.BreakRefusesWork, Is.True,
-                "the ONE predicate all six gates ask. The six: JobSystem's dispatcher gate, "
-                + "JobSystem.TryPreempt, CraftingSystem.FindNearestReachableIdle, "
-                + "MachineWearSystem.FindNearestReachableIdle, EffectValidator (the LLM grant) and "
-                + "CapabilityComputer (the LLM offer).");
-        }
 
         /// <summary>
         /// ⛔⛔ <b>A BREAK STOPS WORK. IT IS NOT A WAY TO STARVE SOMEONE.</b>
@@ -534,12 +514,27 @@ namespace Perilune.Tests
         /// suppresses WORK, never SURVIVAL … an order the player gave must not be a way to starve
         /// someone"</i> — applied unchanged to a break.
         ///
-        /// <para>⭐ <b>THIS LEG EXISTS BECAUSE THE FIRST DRAFT BROKE IT AND NOTHING ELSE NOTICED.</b>
-        /// The pre-emption gate was written as a bare <c>if (BreakRefusesWork) continue;</c> in
-        /// <c>JobSystem</c>'s citizen loop, which skips not only <c>TryPreempt</c> but the whole rest
-        /// of the body — the owner lookup and the job driving under it. A broken crew member's Eat,
-        /// Drink and Sleep jobs would have frozen where they stood. The gate now guards the CALL
-        /// (<c>!BreakRefusesWork &amp;&amp; TryPreempt(...)</c>), and this is the leg that says so.</para>
+        /// <para>⛔⛔ <b>AND A CLAIM THAT STOOD HERE IS WITHDRAWN, BECAUSE THE MUTATION THAT WOULD
+        /// HAVE PROVED IT DOES NOT GO RED.</b> It read: <i>"the pre-emption gate was written as a
+        /// bare <c>if (BreakRefusesWork) continue;</c> … a broken crew member's Eat, Drink and Sleep
+        /// jobs would have frozen where they stood … and this is the leg that says so."</i>
+        /// Independent review reinstated that exact form and this leg stayed <b>GREEN</b>. The reason
+        /// is structural: the dispatcher's citizen loop resolves an OWNER for the job kind BELOW the
+        /// pre-emption call, and Eat / Drink / Sleep have <b>no <c>IJobSource</c> at all</b> — they
+        /// fall out at <c>owner == null</c> — so the bare <c>continue</c> skips nothing, on this
+        /// fixture or on any state the sim can author. <b>The defect is not reachable and this leg
+        /// never pinned it.</b>
+        /// <br/>⭐ <b>WHAT SURVIVES IS A CORRECTNESS ARGUMENT, LABELLED AS ONE.</b> The guarded form
+        /// (<c>!BreakRefusesWork &amp;&amp; TryPreempt(...)</c>) says the thing that is actually true
+        /// — <i>refuse the pre-emption, run the rest</i> — and stays correct the day a needs kind
+        /// gains a source or a broken pawn can hold a dispatcher-driven job. The bare form is
+        /// measured INERT today; it is not measured SAFE. The house rule is absolute: a named
+        /// mutation goes red or the claim goes, and this claim went.
+        /// <br/><b>WHAT THIS LEG DOES PIN — real, and the point all along:</b> needs are not gated on
+        /// the break. Deleting a break check from the two need systems is not what it watches for;
+        /// <b>ADDING</b> one is. A break that stopped her eating is the failure it stands against,
+        /// and `Citizen.BreakRefusesWork`'s own header calls that out as
+        /// <see cref="Citizen.IsRecruitableForWork"/>'s standing ruling applied unchanged.</para>
         /// </summary>
         [Test]
         public void ABrokenCrewMemberStillEatsDrinksAndSleeps()
@@ -664,6 +659,376 @@ namespace Perilune.Tests
         }
 
         // ═══════════════════════════════════════════════════════════════════════════════════════
+        // ⭐⭐ 5c. THE SIX CLAIM GATES — ONE BLINDED LEG EACH, ON `WorkTypeVetoTests`' OWN PATTERN
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        //
+        // ⛔⛔ WHAT STOOD HERE WAS A SINGLE ASSERT ON THE PREDICATE — `Assert.That(c.BreakRefusesWork,
+        // Is.True)` — WITH A HEADER CLAIMING "one leg each" AND A CITATION IN `JobSystem.cs` SAYING
+        // IT "drives each ALONE". IT EXERCISED NO GATE AT ALL. Independent review ran the battery
+        // (each gate reverted to its pre-M4-9 form) and found FOUR of the six GREEN: pre-emption,
+        // the crafting recruiter, the LLM grant and the LLM offer. That is the 4th trap exactly — a
+        // guard whose scope excludes the violation — wearing a doc comment that says otherwise.
+        //
+        // ⭐ THE FIX IS THE REPO'S OWN PRECEDENT ONE FILE AWAY. `WorkTypeVetoTests` pins M2-2's veto
+        // — the gate a break sits BESIDE at every one of these sites — with one BLINDED leg per gate
+        // and a recorded mutation table. These legs are written against that pattern deliberately:
+        // same fixtures, same non-vacuity discipline (every refusal half is paired with a control
+        // that PROVES the world had work to give), same blinding (no leg can be reddened by another
+        // gate's deletion, and no leg's deletion can be masked by another gate's presence).
+        //
+        // ⚠️ AND THE BREAK IS SET DIRECTLY (`BreakTier = Major`) RATHER THAN GROWN THROUGH THE
+        // LADDER, ON PURPOSE. These legs are about the GATES, not about the trigger; driving 6
+        // sim-hours of dwell into each of them would make every one of them a test of
+        // `MentalBreakSystem` as well, so a ladder regression would redden nine legs and tell you
+        // nothing about which. The trigger's own legs are section 2 and section 5b.
+
+        /// <summary>⭐ <b>BREAK GATE 1 — THE DISPATCHER.</b> See
+        /// <see cref="Major_TheDispatcherStopsGivingHerWork_WithAWorkingControl"/>, which is this
+        /// gate's blinded leg: a live haul board, one arm broken and one not, and the observable is
+        /// whether she ever took a job at all. Named here so the six-gate census reads as six.</summary>
+        [Test]
+        public void BreakGate1_IsCoveredByTheDispatcherLeg()
+        {
+            // A pointer, not a second assertion — but it is a REAL one: if the dispatcher leg is
+            // ever renamed or deleted, this fails to compile and the census stops lying.
+            var m = typeof(MentalBreakTests).GetMethod(
+                nameof(Major_TheDispatcherStopsGivingHerWork_WithAWorkingControl));
+            Assert.That(m, Is.Not.Null, "gate 1's leg must exist under that name");
+        }
+
+        /// <summary>
+        /// ⭐ <b>BREAK GATE 2 — <c>JobSystem.TryPreempt</c>.</b> Pre-emption is a claim in the OTHER
+        /// direction: it TAKES a pawn off one job and puts her on a better-banded one. A broken crew
+        /// member must not be moved that way either.
+        ///
+        /// <para>⚠️ <b>BLINDED OF GATE 1.</b> She starts the window ALREADY HOLDING a job, so the
+        /// dispatcher's claim gate is never entered for her (<c>JobKind != None</c> takes the other
+        /// branch), and deleting gate 1 cannot redden this leg. The observable is whether the job
+        /// she holds is SWAPPED — pre-emption's own signature — not whether she has one.</para>
+        ///
+        /// <para><b>THE CONTROL IS THE LOAD-BEARING HALF.</b> The identical fixture with the break
+        /// removed IS pre-empted, so a "she kept her job" assertion cannot pass on a fixture where
+        /// pre-emption was never going to fire.</para>
+        /// </summary>
+        [Test]
+        public void BreakGate2_Preemption_ABrokenCrewMemberIsNotTakenOffTheJobSheHolds()
+        {
+            // ⚠️ THE OBSERVABLE IS THE JOB BEING **TAKEN AWAY**, NOT A NEW ONE ARRIVING, and the
+            // difference is what the first draft of this leg got wrong. `TryPreempt` ends at
+            // `sim.CancelJob(citizen)` — it FREES her and nothing more; the repair she is freed FOR
+            // is then claimed by a recruiter on a later tick, through GATE 4. So a leg that watched
+            // for `JobKind.Maintain` was measuring gate 4, and review's battery proved it: reverting
+            // gate 4 reddened it and reverting gate 2 did not.
+            bool StillHauling(bool broken)
+            {
+                var sim = PreemptBench(out var pawn, out var machine);
+                // 60 ticks: she claims the haul at tick 0 and is carrying it by tick 10; the
+                // delivery lands at tick 160 (traced). The window has to sit INSIDE that — a
+                // precondition read after the haul finished is a false red, and a 200-tick first
+                // draft of this leg produced exactly one.
+                for (int t = 0; t < 60; t++) sim.Tick();           // she takes the low-banded haul
+                Assert.That(IsHaul(pawn.JobKind), Is.True,
+                    "precondition: she is ON the bottom-banded haul before the better work appears");
+
+                if (broken) { pawn.BreakTier = BreakTier.Major; pawn.BreakEndsAtTick = long.MaxValue; }
+                machine.Condition = 0.30f;                          // …and NOW the repair appears
+                sim.JobsDirty = JobBoardDirty.All;
+                // 40 more: pre-emption is evaluated every tick, so a fired swap shows immediately,
+                // and the haul still has ~100 ticks of delivery left — so "not hauling" at the end
+                // can only be the pre-emption and never the job completing under the measurement.
+                for (int t = 0; t < 40; t++)
+                {
+                    sim.Tick();
+                    if (broken) pawn.BreakTier = BreakTier.Major;
+                }
+                return IsHaul(pawn.JobKind);
+            }
+
+            Assert.That(StillHauling(broken: false), Is.False,
+                "CONTROL: an unbroken hauler IS pre-empted when band-1 repair work appears — she is "
+                + "taken OFF the haul. Without this arm the assertion below passes on a fixture "
+                + "where pre-emption was never going to fire.");
+            Assert.That(StillHauling(broken: true), Is.True,
+                "a crew member who has stopped working is not pre-empted either: leaving TryPreempt "
+                + "open takes her off the job she holds the moment a repair out-ranks it, and drops "
+                + "her cargo on the floor for a swap that can never complete");
+        }
+
+        private static bool IsHaul(JobKind k) => k == JobKind.HaulPickup || k == JobKind.HaulDeliver;
+
+        /// <summary>
+        /// ⭐ <b>BREAK GATE 3 — <c>CraftingSystem.FindNearestReachableIdle</c>, a PUSH recruiter that
+        /// bypasses the dispatcher entirely.</b> A gate in the dispatcher alone leaves this wide
+        /// open — M2-2's own finding about the same two recruiters.
+        ///
+        /// <para>⚠️ <b>BLINDED OF GATES 1 AND 2.</b> The stack is `CitizenSystem + CraftingSystem`
+        /// and carries NO <c>JobSystem</c> at all, so neither the dispatcher's claim gate nor
+        /// pre-emption exists in this sim; the only thing that can put her on a bench is the
+        /// recruiter under test. ⭐ That is what makes the leg attributable, and it is
+        /// `WorkTypeVetoTests`' G2 fixture with the grid swapped for a break.</para>
+        ///
+        /// <para>The observable is the BATCH, not a claim count — `WorkTypeVetoTests` re-specified
+        /// its own version of this leg for exactly that reason, after the first draft keyed on a
+        /// tick-0 claim that M1-H's reachability probe had already removed.</para>
+        /// </summary>
+        [Test]
+        public void BreakGate3_CraftingRecruiter_ABrokenCrewMemberIsNeverPushedToABench()
+        {
+            var sim = CraftBench(out var pawn);
+            pawn.BreakTier = BreakTier.Major;
+            pawn.BreakEndsAtTick = long.MaxValue;
+            var seen = KindsSeen(sim, pawn, 30000);
+            Assert.That(seen, Does.Not.Contain(JobKind.Craft),
+                "a broken crew member must never be PUSH-recruited to a bench — this recruiter never "
+                + "passes through the dispatcher, so gate 1 cannot cover it");
+            Assert.That(ScrapUnits(sim), Is.Zero,
+                "and no batch may complete: output without a worker would mean the bench is running "
+                + "itself and the assertion above is about nothing");
+
+            var sim2 = CraftBench(out _);
+            Assert.That(KindsSeen(sim2, sim2.Citizens.Items[0], 30000), Does.Contain(JobKind.Craft),
+                "CONTROL: the same bench with the same bill DOES recruit an unbroken crew member");
+            Assert.That(ScrapUnits(sim2), Is.GreaterThan(0),
+                "and the batch completes, so this is a working bench and not a dead one");
+        }
+
+        /// <summary>
+        /// ⭐ <b>BREAK GATE 4 — <c>MachineWearSystem.FindNearestReachableIdle</c>, the second PUSH
+        /// recruiter.</b> ⚠️ Review found the pre-M4-9 revert of this one red only INCIDENTALLY —
+        /// through another leg, for another reason — which is a hole with a green light on it. This
+        /// is its own leg.
+        ///
+        /// <para>⚠️ <b>BLINDED OF GATES 1, 2 AND 3.</b> `CitizenSystem + MaintenanceSystem` only: no
+        /// dispatcher, no pre-emption, no bench.</para>
+        /// </summary>
+        [Test]
+        public void BreakGate4_WearRecruiter_ABrokenCrewMemberIsNeverPushedToAMachine()
+        {
+            var sim = MaintenanceBench(out _, out var pawn);
+            pawn.BreakTier = BreakTier.Major;
+            pawn.BreakEndsAtTick = long.MaxValue;
+            Assert.That(KindsSeen(sim, pawn, 600), Does.Not.Contain(JobKind.Maintain),
+                "a broken crew member must never be push-recruited for a Maintain service");
+
+            var sim2 = MaintenanceBench(out _, out var pawn2);
+            Assert.That(KindsSeen(sim2, pawn2, 600), Does.Contain(JobKind.Maintain),
+                "CONTROL: this machine really did want service — with the break removed the same "
+                + "pawn is recruited, so the refusal above is the gate and not a quiet machine");
+        }
+
+        /// <summary>
+        /// ⭐ <b>BREAK GATE 5 — <c>EffectValidator</c>, THE LLM GRANT.</b> The effect pipeline is
+        /// BOUNDED BY the sim's own refusals and never overrides them: a crew member who has stopped
+        /// working does not start again because a model asked nicely.
+        ///
+        /// <para>⚠️ <b>BLINDED OF GATE 6.</b> This drives <see cref="EffectValidator.TryApply"/>
+        /// directly and never computes a capability manifest — `WorkTypeVetoTests`' G4/G5 pair makes
+        /// the same split, and for the same reason: a test that passed with either half present
+        /// could not see a half-gated pair.</para>
+        /// </summary>
+        [Test]
+        public void BreakGate5_LlmGrant_ABrokenCrewMemberIsNotGrantedWork()
+        {
+            var sim = DigTargetSim(out var pawn, out var target);
+            var minds = new MindState();
+            minds.Minds.GetOrCreate(pawn.Id);
+            var facts = new FactRegistry();
+            var validator = new EffectValidator();
+
+            pawn.BreakTier = BreakTier.Major;
+            pawn.BreakEndsAtTick = long.MaxValue;
+            Assert.That(validator.TryApply(sim, minds, facts, new AgreeTask(pawn.Id, JobKind.Dig, target)),
+                Is.False, "a broken crew member may not be granted work by an LLM effect");
+            Assert.That(pawn.JobKind, Is.EqualTo(JobKind.None), "and no job may have been written");
+
+            // CONTROL — the SAME effect on the SAME tile with the break cleared IS accepted, so the
+            // target really was legal and the break is what refused it.
+            pawn.BreakTier = BreakTier.None;
+            Assert.That(validator.TryApply(sim, minds, facts, new AgreeTask(pawn.Id, JobKind.Dig, target)),
+                Is.True, "CONTROL: this exact target IS an acceptable dig agreement");
+            Assert.That(pawn.JobKind, Is.EqualTo(JobKind.Dig), "and the grant really lands");
+        }
+
+        /// <summary>
+        /// ⭐ <b>BREAK GATE 6 — <c>CapabilityComputer</c>, THE LLM OFFER, and it is the half that
+        /// matters.</b> Gating the GRANT alone leaves the dig in the model's tool schema: the crew
+        /// member is still OFFERED it, still AGREES IN DIALOGUE, and the sim then silently refuses.
+        /// That is the 2026-07-21 defect ("crew no longer promise physical work they cannot do")
+        /// re-introduced by whichever package gates only one side.
+        ///
+        /// <para>⚠️ <b>BLINDED OF GATE 5.</b> Nothing here touches <see cref="EffectValidator"/>.</para>
+        /// </summary>
+        [Test]
+        public void BreakGate6_LlmOffer_ABrokenCrewMemberIsNotEvenOfferedWork()
+        {
+            var sim = DigTargetSim(out var pawn, out var target);
+            var minds = new MindState();
+            minds.Minds.GetOrCreate(pawn.Id);
+            var facts = new FactRegistry();
+            var computer = new CapabilityComputer();
+            var manifest = new CapabilityManifest();
+
+            pawn.BreakTier = BreakTier.Major;
+            pawn.BreakEndsAtTick = long.MaxValue;
+            computer.Compute(sim, minds, facts, pawn.Id, manifest);
+            Assert.That(manifest.LegalEffects.HasFlag(EffectKind.AgreeTask), Is.False,
+                "AgreeTask must not be OFFERED to a crew member who has stopped working");
+            Assert.That(manifest.AssignableDigTargets, Is.Empty,
+                "and the target list handed to the model must be EMPTY, not merely unflagged — a "
+                + "populated list is a menu the model can still read");
+
+            // CONTROL — the same world, one field different.
+            pawn.BreakTier = BreakTier.None;
+            computer.Compute(sim, minds, facts, pawn.Id, manifest);
+            Assert.That(manifest.LegalEffects.HasFlag(EffectKind.AgreeTask), Is.True,
+                "CONTROL: this dig IS offerable, so the absence above is the break and not an empty world");
+            Assert.That(manifest.AssignableDigTargets, Does.Contain(target));
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // ⭐⭐ 5d. THE MINOR TIER, DRIVEN THROUGH THE REAL WORKSITE-SAFETY RULE
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// ⭐⭐ <b>THE MINOR BREAK'S WHOLE POINT, DRIVEN: SHE STILL WORKS, AND SHE WILL NOT CROSS THE
+        /// PRESSURE FRONTIER FOR YOUR ORDER.</b> All three MINOR-tier sites were pinned by NOTHING
+        /// before this leg — reverting `JobContext`'s `forced`, `MachineWearSystem`'s `forced` and
+        /// `PrioritiseJobCommand`'s `waivesAir` all left the suite GREEN (review's battery).
+        ///
+        /// <para><b>THE FIXTURE IS M3-14's, RUN BACKWARDS.</b> A machine that wants service sits in
+        /// UNBREATHABLE air. A <see cref="Citizen.HeldByOrder"/> worker waives the air question
+        /// (rung 2) and is staged there; a MINOR-broken worker is not, and the job dies through
+        /// `MaintenanceSystem`'s ordinary abandon path — which also releases the hold, because
+        /// `JobKind.None` is the one mechanism every job-ending site shares.</para>
+        ///
+        /// <para>⚠️ <b>THE CONTROL IS THE ARM THAT MAKES IT MEAN ANYTHING.</b> The identical fixture
+        /// with the break removed KEEPS the job: so "the job ended" is the waiver being withdrawn
+        /// and not a walled-in machine, an empty larder or a missing consumable — an order overrides
+        /// the AIR, never the GEOMETRY, and this fixture would refuse both arms if the geometry were
+        /// what was wrong.</para>
+        /// </summary>
+        [Test]
+        public void Minor_TheOrderNoLongerCrossesTheFrontier_Driven()
+        {
+            (bool kept, bool held) Run(bool minorBroken)
+            {
+                var sim = VacuumMaintenanceBench(out var machine, out var pawn);
+                // The order: she is ON the job and HELD, exactly as PrioritiseJobCommand leaves her.
+                pawn.JobKind = JobKind.Maintain;
+                pawn.JobTarget = machine.Pos;
+                pawn.HeldByOrder = true;
+                if (minorBroken) { pawn.BreakTier = BreakTier.Minor; pawn.BreakEndsAtTick = long.MaxValue; }
+
+                for (int t = 0; t < 400; t++)
+                {
+                    sim.Tick();
+                    if (minorBroken) pawn.BreakTier = BreakTier.Minor;
+                }
+                return (pawn.JobKind == JobKind.Maintain, pawn.HeldByOrder);
+            }
+
+            var control = Run(minorBroken: false);
+            Assert.That(control.kept, Is.True,
+                "CONTROL: an unbroken HELD worker keeps the ordered job in unbreathable air — M3-14 "
+                + "rung 2, the waiver this leg is about. If this arm fails the fixture is refusing "
+                + "for the GEOMETRY and the arm below proves nothing.");
+            Assert.That(control.held, Is.True, "…and the order is still on her");
+
+            var subject = Run(minorBroken: true);
+            Assert.That(subject.kept, Is.False,
+                "a MINOR-broken worker does not cross the pressure frontier for an order: the waiver "
+                + "is withdrawn, the ordinary air rule applies, and the job dies");
+            Assert.That(subject.held, Is.False,
+                "and the hold falls with the job — JobKind.None is the one release mechanism all "
+                + "twenty job-ending sites share");
+        }
+
+        /// <summary>
+        /// ⭐ <b>THE MINOR TIER'S SECOND SITE — <c>JobWork.TryPathToAdjacent</c>, THE JOB BOARD'S
+        /// STAGING SEAM</b> (dig / build / deconstruct all choose their worker's tile through it).
+        ///
+        /// <para>⛔ <b>IT IS DRIVEN DIRECTLY, AND THE REASON IS A PRE-EXISTING FACT ABOUT THE TREE
+        /// RATHER THAN A SHORTCUT.</b> `JobContext`'s own header says this seam is
+        /// <i>"UNREACHABLE FROM THIS SEAM TODAY, DELIBERATELY WIRED ANYWAY, AND SAID OUT LOUD SO
+        /// NOBODY TESTS IT INTO EXISTENCE"</i>: the only writer of <see cref="Citizen.HeldByOrder"/>
+        /// is `PrioritiseJobCommand`, which issues <see cref="JobKind.Maintain"/>, and
+        /// <see cref="Citizen.IsRecruitableForWork"/> excludes a held pawn — so no dig, build or
+        /// deconstruct source can ever claim one. ⇒ <b>there is no end-to-end fixture to build, and
+        /// building a scenario that reached it would be testing a state the sim cannot author.</b>
+        /// The seam is public and static, so it is pinned where it lives.</para>
+        ///
+        /// <para>⚠️ <b>BLINDED OF THE OTHER TWO MINOR SITES.</b> Nothing here touches
+        /// `MachineWearSystem` or `PrioritiseJobCommand`.</para>
+        /// </summary>
+        [Test]
+        public void Minor_TheJobBoardStagingSeam_StopsWaivingTheAirToo()
+        {
+            var sim = VacuumMaintenanceBench(out var machine, out var pawn);
+            pawn.JobKind = JobKind.Dig;          // any non-None kind: the hold cannot exist without one
+            pawn.HeldByOrder = true;
+
+            Assert.That(JobWork.TryPathToAdjacent(sim, pawn, machine.Pos), Is.True,
+                "CONTROL: a HELD worker is staged beside a worksite in unbreathable air — M3-14 rung "
+                + "2, read off this very seam. If this fails the fixture is refusing for the "
+                + "GEOMETRY and the assertion below is about nothing.");
+
+            pawn.ClearPath();
+            pawn.BreakTier = BreakTier.Minor;
+            Assert.That(JobWork.TryPathToAdjacent(sim, pawn, machine.Pos), Is.False,
+                "and a MINOR-broken worker is not: the ORDER survives, the waiver does not");
+        }
+
+        /// <summary>
+        /// ⭐ <b>THE MINOR TIER'S THIRD SITE — <c>PrioritiseJobCommand</c>'s ACCEPTANCE gate.</b> The
+        /// order is refused AT THE CLICK when the machine it names stands in air she will no longer
+        /// cross into — RimWorld's own answer to an impossible order (§2.2: a refusal at the point of
+        /// the click), and the reason the player is not left watching a pawn who took the job and
+        /// then did nothing.
+        ///
+        /// <para>⚠️ <b>THE CONTROL IS A DIFFERENT SHIP-STATE, NOT A DIFFERENT MACHINE</b> — same
+        /// command, same device, same tile, one field on the citizen changed.</para>
+        /// </summary>
+        [Test]
+        public void Minor_AnOrderIntoVacuumIsRefusedAtTheClick()
+        {
+            // ⚠️ ⛔ THE STACK CARRIES **NO** `MaintenanceSystem`, AND THAT IS THE BLINDING — the first
+            // draft of this leg used the full bench and was GREEN with the waiver forced open,
+            // because `DriveWorkers` (MINOR-b's site) abandoned the job inside the SAME tick the
+            // command granted it. The leg was measuring the other site. With nothing able to take
+            // the job away afterwards, the only thing that can refuse it is the command's own
+            // acceptance gate — which is what this leg is about.
+            JobKind Order(bool minorBroken)
+            {
+                var sim = VacuumBenchNoDrivers(out var machine, out var pawn);
+                if (minorBroken) { pawn.BreakTier = BreakTier.Minor; pawn.BreakEndsAtTick = long.MaxValue; }
+                sim.EnqueueCommand(new PrioritiseJobCommand((int)pawn.Id, (int)machine.Id));
+                sim.Tick();
+                return pawn.JobKind;
+            }
+
+            Assert.That(Order(minorBroken: false), Is.EqualTo(JobKind.Maintain),
+                "CONTROL: the order across the frontier LANDS on an unbroken crew member — that is "
+                + "M3-14 rung 2 and the whole phase-1 loop");
+            Assert.That(Order(minorBroken: true), Is.EqualTo(JobKind.None),
+                "and it is REFUSED on a minor-broken one, at the click rather than silently later");
+        }
+
+        /// <summary>⭐ THE OTHER HALF OF MINOR, AND IT IS WHAT KEEPS THE TIER DISTINGUISHABLE FROM
+        /// MAJOR: a minor-broken crew member is still recruited for ORDINARY, BREATHABLE work. A
+        /// minor break that stopped her working would collapse the ladder's first two rungs into
+        /// one — which is exactly the shape §10 item 3's option B was priced as.</summary>
+        [Test]
+        public void Minor_SheIsStillRecruitedForOrdinaryWork()
+        {
+            var sim = MaintenanceBench(out _, out var pawn);
+            pawn.BreakTier = BreakTier.Minor;
+            pawn.BreakEndsAtTick = long.MaxValue;
+            Assert.That(KindsSeen(sim, pawn, 600), Does.Contain(JobKind.Maintain),
+                "MINOR takes the dangerous class away and nothing else — she still services a "
+                + "machine standing in air she can breathe");
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════════════
         // 6. THE GRADUATED OVERRIDE (OD-S item 3 = A)
         // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -782,6 +1147,43 @@ namespace Perilune.Tests
                 "and a death still outranks it — every pairing above tier 6 is owner-ruled");
         }
 
+        /// <summary>
+        /// ⛔⛔ <b>THE SCALE, PINNED AS LITERALS — AND THIS IS THE 7th SHAPE IN THE FILE THAT CITES
+        /// IT.</b> The header above says "ABSOLUTE, NOT RATIO", and that was true of the THRESHOLDS
+        /// and false of the DWELLS: every dwell leg reads <see cref="MentalBreak.DwellTicksMinor"/>
+        /// back out of the constant it is testing, so <b>halving it left all 29 legs green</b>
+        /// (review's battery). A suite that cannot see a 2× scale error is exactly the trap
+        /// `scale-invariant tests cannot see a 2×` names, and only an absolute floor pins scale.
+        ///
+        /// <para>⚠️ These numbers are a RULE, not a dial (M2-1's rule-not-tunable precedent), so
+        /// moving one is a deliberate act and this test is where it is declared. The RATIOS are
+        /// RimWorld's 10 : 3 : 0.7 and are asserted beside the absolutes, because a lane retuning
+        /// the scale must keep the ordering the analogue supplies.</para>
+        /// </summary>
+        [Test]
+        public void TheDwellAndBreakDurations_ArePinnedAsAbsoluteLiterals()
+        {
+            Assert.That(MentalBreak.DwellTicksMinor, Is.EqualTo(216_000L), "6 sim-hours");
+            Assert.That(MentalBreak.DwellTicksMajor, Is.EqualTo(64_800L), "1.8 sim-hours = 3/10 of minor");
+            Assert.That(MentalBreak.DwellTicksExtreme, Is.EqualTo(15_120L), "0.42 sim-hours = 7/100 of minor");
+
+            Assert.That(MentalBreak.BreakTicksMinor, Is.EqualTo(72_000L), "2 sim-hours");
+            Assert.That(MentalBreak.BreakTicksMajor, Is.EqualTo(144_000L), "4 sim-hours");
+            Assert.That(MentalBreak.BreakTicksExtreme, Is.EqualTo(288_000L), "8 sim-hours");
+
+            Assert.That(MentalBreak.DwellRisePerTick, Is.EqualTo(4u));
+            Assert.That(MentalBreak.DwellLeakPerTick, Is.EqualTo(1u));
+            Assert.That(MentalBreak.ReprievePctDrop, Is.EqualTo((byte)18), "Iron-willed's own offset");
+            Assert.That(MentalBreak.ReprieveTicks, Is.EqualTo(2_160_000L), "2.5 sim-days");
+            Assert.That(MentalBreak.DefaultThresholdPct, Is.EqualTo((byte)43), "the MEASURED default");
+
+            // RimWorld's ordering survives the re-scale — the half the absolutes cannot state.
+            Assert.That(MentalBreak.DwellTicksExtreme, Is.LessThan(MentalBreak.DwellTicksMajor));
+            Assert.That(MentalBreak.DwellTicksMajor, Is.LessThan(MentalBreak.DwellTicksMinor));
+            Assert.That(MentalBreak.BreakTicksMinor, Is.LessThan(MentalBreak.BreakTicksMajor));
+            Assert.That(MentalBreak.BreakTicksMajor, Is.LessThan(MentalBreak.BreakTicksExtreme));
+        }
+
         // ═══════════════════════════════════════════════════════════════════════════════════════
         // 8. THE STATE SURVIVES A SAVE
         // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -816,6 +1218,108 @@ namespace Perilune.Tests
             Assert.That(back.BreakReprieveUntilTick, Is.EqualTo(9_876_543L));
             Assert.That(loaded.StateHash(), Is.EqualTo(sim.StateHash()),
                 "and the fold agrees, which is the other half of the same-commit rule");
+        }
+
+        /// <summary>
+        /// ⛔⛔ <b>A PRE-v10 SAVE LOADS WITH THE THRESHOLD AT ITS DEFAULT (43), NOT AT ZERO — AND
+        /// THIS IS A DECISION, NOT AN OMISSION.</b> Zero is not a legal threshold at all: the clamp's
+        /// floor is 1, so a reader that wrote one would hand a citizen a ladder her own class can
+        /// never produce. The other four fields DO read as zero, and that is equally deliberate —
+        /// nothing could BE broken before this chapter existed, so "not broken, nothing accumulated,
+        /// no reprieve owed" is both the constructor default and the historically accurate read.
+        /// (`DEVC` v6's case, not `DEVC` v5's, which had to read TRUE.)
+        ///
+        /// <para>⚠️ <b>BOTH REVIEWER MUTATIONS WERE GREEN BEFORE THIS LEG</b> — neither the default
+        /// nor the version boundary was pinned by anything.</para>
+        ///
+        /// <para><b>ALIGNMENT CONTROLS FIRST</b>, on `WorkPriorityStateTests`' own discipline: a
+        /// hand-built legacy stream that is subtly mis-laid would leave every default in place and
+        /// pass this test for exactly the wrong reason. The v5/v6/v7 tail fields are seeded
+        /// NON-default and must come back exactly, and the reader must consume the whole payload and
+        /// nothing more.</para>
+        /// </summary>
+        [Test]
+        public void APreV10Save_LeavesTheThresholdAtItsDefault_AndTheRestNotBroken()
+        {
+            var payload = new System.IO.MemoryStream();
+            using (var w = new System.IO.BinaryWriter(payload, SaveFormat.Utf8, leaveOpen: true))
+                WriteOneCitizenV9(w);
+
+            payload.Position = 0;
+            var sim = LadderOnly();
+            using (var r = new System.IO.BinaryReader(payload, SaveFormat.Utf8, leaveOpen: true))
+                SaveReader.ReadCitizens(sim, r, 9);
+
+            var c = sim.Citizens.Items[0];
+            Assert.That(c.HoldPosition, Is.True, "CONTROL: the v6 field is misaligned — this fixture "
+                + "is not a valid v9 citizen and every default below proves nothing");
+            Assert.That(c.OrderedMove, Is.True, "CONTROL: the v7 field is misaligned");
+            Assert.That(c.Morale, Is.EqualTo(0.25f), "CONTROL: the v5 field is misaligned");
+            Assert.That(c.HeldByOrder, Is.True, "CONTROL: the v9 tail is misaligned");
+            Assert.That(payload.Position, Is.EqualTo(payload.Length),
+                "CONTROL: the reader did not consume exactly the v9 payload — the layouts disagree");
+
+            // THE CLAIM.
+            Assert.That(c.BreakThresholdPct, Is.EqualTo(MentalBreak.DefaultThresholdPct),
+                "a pre-v10 citizen keeps the CONSTRUCTOR default (43). Zero is below the clamp floor "
+                + "and is not a threshold at all — a reader that wrote one would ship a person whose "
+                + "ladder no code path could have produced.");
+            Assert.That(c.BreakDwell, Is.EqualTo(0u));
+            Assert.That(c.BreakTier, Is.EqualTo(BreakTier.None));
+            Assert.That(c.BreakEndsAtTick, Is.EqualTo(0L));
+            Assert.That(c.BreakReprieveUntilTick, Is.EqualTo(0L));
+
+            // …and the same citizen written by THIS build round-trips the same byte, so the default
+            // is not a value only the legacy path can produce.
+            Assert.That(LadderOnly().AddCitizen("fresh", new Int3(2, 2, 0)).BreakThresholdPct,
+                Is.EqualTo(MentalBreak.DefaultThresholdPct));
+        }
+
+        /// <summary>One CITZ record in the v9 layout, field-for-field against
+        /// <c>SaveWriter.WriteCitizens</c>. ⚠️ Non-default values in the v5/v6/v7/v9 tail on purpose —
+        /// they are the alignment controls the leg above reads back.</summary>
+        private static void WriteOneCitizenV9(System.IO.BinaryWriter w)
+        {
+            w.Write(1);                    // count
+            w.Write(77u);                  // Id
+            w.Write("Legacy");             // Name
+            WriteInt3(w, new Int3(2, 2, 0));   // Pos
+            WriteInt3(w, new Int3(2, 2, 0));   // PrevPos
+            w.Write(false);                // AutoWander
+            w.Write(0);                    // Path.Count
+            w.Write(0);                    // PathIndex
+            w.Write(0);                    // MoveCooldown
+            w.Write(0);                    // IdleCooldown
+            w.Write(0f);                   // Suffocation
+            w.Write(0f);                   // Hunger
+            w.Write(0f);                   // Fatigue
+            w.Write(0f);                   // Mood
+            w.Write(false);                // Dead
+            w.Write((byte)JobKind.Dig);    // JobKind (non-None: the v9 hold below needs one)
+            WriteInt3(w, default(Int3));   // JobTarget
+            w.Write(0u);                   // CarryingItemId
+            w.Write(0);                    // JobWorkTicks
+            w.Write(0f);                   // v2 Thirst
+            w.Write(0u);                   // v3 ReservedItemId
+            w.Write(true);                 // v4 RevealsFog
+            w.Write((byte)0);              // v5 Faction
+            w.Write(1f);                   // v5 Health
+            w.Write(0.25f);                // v5 Morale        <- ALIGNMENT CONTROL
+            w.Write((byte)0);              // v5 Archetype
+            w.Write(true);                 // v6 HoldPosition  <- ALIGNMENT CONTROL
+            w.Write(true);                 // v7 OrderedMove   <- ALIGNMENT CONTROL
+            w.Write((byte)WorkPriority.WorkTypeCount);          // v8 grid width
+            for (int t = 0; t < WorkPriority.WorkTypeCount; t++) w.Write(WorkPriority.Off);
+            w.Write((byte)0);              // v8 WorkIncapable
+            w.Write((byte)WorkPriority.WorkTypeCount);          // v9 skill width
+            for (int t = 0; t < WorkPriority.WorkTypeCount; t++) w.Write((byte)0);
+            w.Write(true);                 // v9 HeldByOrder   <- ALIGNMENT CONTROL
+            // ⛔ and NOTHING after it — that absence IS the v9 payload, and the whole test.
+        }
+
+        private static void WriteInt3(System.IO.BinaryWriter w, Int3 p)
+        {
+            w.Write(p.X); w.Write(p.Y); w.Write(p.Z);
         }
 
         /// <summary>
@@ -897,6 +1401,166 @@ namespace Perilune.Tests
             tank.StoredLiters = 500f;
             tank.Powered = true;
             sim.JobsDirty = JobBoardDirty.All;
+        }
+
+        // ---- the gate fixtures. Deliberately MIRRORS `WorkTypeVetoTests`' shapes rather than
+        // inventing new ones: the break sits BESIDE M2-2's veto at every one of these sites, so a
+        // reviewer can diff the two files and see that the same world produces the same refusal for
+        // a different reason. Each stack carries the ONE system whose gate is under test.
+
+        private static readonly Int3 StationPos = new Int3(14, 2, 0);
+        private static readonly Int3 StagingPos = new Int3(15, 2, 0);   // Neighbor4(+x) of the station
+
+        /// <summary>Run <paramref name="ticks"/> ticks; report every distinct <see cref="JobKind"/>
+        /// <paramref name="c"/> was seen holding at a tick boundary. `WorkTypeVetoTests`' helper,
+        /// verbatim — an END-STATE read cannot see a job that started and finished inside the
+        /// window, which is a false red this package has already paid for once.</summary>
+        private static HashSet<JobKind> KindsSeen(Simulation sim, Citizen c, int ticks)
+        {
+            var seen = new HashSet<JobKind> { c.JobKind };
+            for (int t = 0; t < ticks; t++) { sim.Tick(); seen.Add(c.JobKind); }
+            return seen;
+        }
+
+        private static int ScrapUnits(Simulation sim)
+        {
+            int scrap = 0;
+            foreach (var it in sim.Items.Items) if (it.Kind == ItemKind.Scrap) scrap += it.Count;
+            return scrap;
+        }
+
+        /// <summary>GATE 3's stack: a live, reachable SalvageRecycler with its whole batch on the
+        /// floor. ⛔ NO `JobSystem` — the recruiter under test is the only thing that can put her on
+        /// the bench, which is what makes a refusal attributable to it.</summary>
+        private static Simulation CraftBench(out Citizen pawn)
+        {
+            var sim = new Simulation(AsciiWorld.Build(HallMap), 21,
+                new ISimSystem[] { new CitizenSystem(), new CraftingSystem() });
+            var station = sim.AddDevice(DeviceKind.SalvageRecycler, StationPos, "recycler");
+            Assert.That(station.Powered && station.IsOperational(sim.Defs), Is.True,
+                "precondition: the bench must be live, or TickStation returns before anything under test");
+            pawn = Pawn(sim);
+            Assert.That(ProductionDefs.TryGetBill(sim.Defs, DeviceKind.SalvageRecycler, out var bill),
+                Is.True, "precondition: the SalvageRecycler must still have a bill");
+            sim.AddItem(ItemKind.Regolith, bill.Input(0).Count, new Int3(3, 2, 0));
+            sim.JobsDirty = JobBoardDirty.All;
+            return sim;
+        }
+
+        /// <summary>GATE 4's stack: a machine below its maintain threshold with a consumable aboard.
+        /// ⛔ NO `JobSystem`, for GATE 3's reason.</summary>
+        private static Simulation MaintenanceBench(out Device machine, out Citizen pawn)
+        {
+            var sim = new Simulation(AsciiWorld.Build(HallMap), 21,
+                new ISimSystem[] { new CitizenSystem(), new MaintenanceSystem() });
+            machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
+            machine.Condition = 0.30f;   // below Scrubber maint (0.40), above wreck_threshold (0.25)
+            pawn = Pawn(sim);
+            sim.AddItem(ItemKind.Parts, 4, new Int3(3, 2, 0));
+            Assert.That(machine.Condition,
+                Is.LessThan(sim.Defs.Machines[(int)DeviceKind.Scrubber].MaintainBelow),
+                "control: the machine really wants service");
+            Assert.That(machine.Condition, Is.GreaterThanOrEqualTo(sim.Defs.Wear.WreckThreshold),
+                "control: and the WRECK rule is not what would refuse it");
+            sim.JobsDirty = JobBoardDirty.All;
+            return sim;
+        }
+
+        /// <summary>GATE 2's stack: a hauler already carrying a LOW-banded job with better-banded
+        /// repair work standing beside her — the state pre-emption exists for. ⛔ She starts the
+        /// window ON a job, so the dispatcher's CLAIM gate is never entered for her and this fixture
+        /// cannot be reddened by gate 1.</summary>
+        private static Simulation PreemptBench(out Citizen pawn, out Device machine)
+        {
+            var sim = new Simulation(AsciiWorld.Build(HallMap), 21, new ISimSystem[]
+            {
+                new CitizenSystem(), new JobSystem(), new MachineWearSystem(new DirectorSystem()),
+                new MaintenanceSystem(),
+            });
+            // ⚠️ THE MACHINE BOOTS HEALTHY, AND THAT IS THE WHOLE FIXTURE. The first draft authored
+            // it worn, and the pawn went straight to `Maintain` at TICK 0 without ever touching the
+            // haul — so there was no job to pre-empt and the leg was green with the gate reverted.
+            // Pre-emption is a question about a pawn who is ALREADY BUSY when better work appears,
+            // so the better work has to appear SECOND. The leg wears the machine down mid-run.
+            machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
+            machine.Condition = 1.0f;
+            sim.AddItem(ItemKind.Parts, 4, new Int3(3, 2, 0));
+            Haulable(sim);
+            pawn = sim.AddCitizen("Rell", PawnStart);
+            // REPAIR at the top band, HAUL at the bottom: the strict partition M2-5 arbitrates on.
+            pawn.SetWorkPriority(WorkType.Repair, WorkPriority.Highest);
+            pawn.SetWorkPriority(WorkType.Haul, WorkPriority.Lowest);
+            sim.JobsDirty = JobBoardDirty.All;
+            return sim;
+        }
+
+        /// <summary>GATES 5 and 6's stack: a designated debris tile and one pawn. No dispatcher —
+        /// these two are about the effect pipeline, and a dispatcher racing them to the same tile
+        /// would make the observable ambiguous (`WorkTypeVetoTests`' own note).</summary>
+        private static Simulation DigTargetSim(out Citizen pawn, out Int3 target)
+        {
+            var sim = new Simulation(AsciiWorld.Build(HallMap), 21,
+                new ISimSystem[] { new CitizenSystem() });
+            target = new Int3(8, 2, 0);
+            sim.World.SetWall(target, TileDefs.Debris);
+            sim.World.SetFlag(target, TileFlags.Designated, true);
+            sim.JobsDirty = JobBoardDirty.All;
+            pawn = Pawn(sim);
+            Assert.That(pawn.JobKind, Is.EqualTo(JobKind.None), "precondition: off-job");
+            return sim;
+        }
+
+        /// <summary>THE MINOR TIER'S FIXTURE: `MaintenanceBench` with the AIR TAKEN OUT. The room is
+        /// left unpressurised, so `WorksiteSafety.CanStageWorkerAt` refuses the staging tile to
+        /// anyone who is not waiving the air question. ⚠️ `SafetySystem` is present because the
+        /// abandon-then-rescue chain is what actually ends the job on the shipped stack, and a
+        /// fixture without it would be measuring a different mechanism.</summary>
+        private static Simulation VacuumMaintenanceBench(out Device machine, out Citizen pawn)
+        {
+            var sim = new Simulation(AsciiWorld.Build(HallMap), 21, new ISimSystem[]
+            {
+                new CitizenSystem(), new MaintenanceSystem(), new NeedsSystem(), new SafetySystem(),
+            });
+            machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
+            machine.Condition = 0.30f;
+            pawn = Pawn(sim);
+            sim.AddItem(ItemKind.Parts, 4, new Int3(3, 2, 0));
+            sim.Rooms.RecomputeIfDirty(sim);
+            // ⛔ NO Pressurize call — that is the whole fixture. Asserted rather than assumed, because
+            // a fixture that silently pressurised itself would make both arms of the minor leg pass.
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, StagingPos, forced: false), Is.False,
+                "precondition: the worksite is UNBREATHABLE to an unforced stager");
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, StagingPos, forced: true), Is.True,
+                "precondition: …and an ORDER waives exactly that — otherwise the control arm is "
+                + "refused for the geometry and the leg measures nothing");
+            sim.JobsDirty = JobBoardDirty.All;
+            return sim;
+        }
+
+        /// <summary>`VacuumMaintenanceBench` with `MaintenanceSystem` REMOVED — the fixture for the
+        /// acceptance gate alone. ⛔ Nothing in this stack drives or abandons a Maintain job, so a
+        /// job that exists after the command ran was ACCEPTED by the command, full stop.</summary>
+        private static Simulation VacuumBenchNoDrivers(out Device machine, out Citizen pawn)
+        {
+            // ⚠️ `SafetySystem` IS PRESENT AND `MaintenanceSystem` IS NOT, and both halves matter.
+            // `WorksiteSafety.CanStageWorkerAt` is INERT on a stack without `SafetySystem` (the rule
+            // says so itself — it is what keeps every atmosphere-free fixture byte-identical), so
+            // dropping it would make the worksite breathable and the leg would measure nothing.
+            // Dropping `MaintenanceSystem` is what stops MINOR-b's site abandoning the job in the
+            // same tick and stealing this leg's observable.
+            var sim = new Simulation(AsciiWorld.Build(HallMap), 21,
+                new ISimSystem[] { new CitizenSystem(), new NeedsSystem(), new SafetySystem() });
+            machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
+            machine.Condition = 0.30f;
+            pawn = Pawn(sim);
+            sim.AddItem(ItemKind.Parts, 4, new Int3(3, 2, 0));
+            sim.Rooms.RecomputeIfDirty(sim);
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, StagingPos, forced: false), Is.False,
+                "precondition: the worksite is UNBREATHABLE to an unforced stager");
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, StagingPos, forced: true), Is.True,
+                "precondition: …and an ORDER waives exactly that");
+            sim.JobsDirty = JobBoardDirty.All;
+            return sim;
         }
 
         /// <summary>A machine worn far enough below its maintain threshold that

@@ -33,6 +33,19 @@
 //
 // Exits non-zero on any failed check. NOT wired into ./ci.sh: it needs a browser and a running host,
 // and the gate stays browser-free.
+//
+// ⚠️ FILED, MEASURED, AND NOT CAUSED BY M4-9: THIS TOOL FLAKES ~1 RUN IN 3 ON STEP 2's BUTTON CLICK.
+// Five consecutive runs on the M4-9 tree: 44/44, 41/44, 44/44, 44/44, 41/44. When it fails, the
+// three failures are always the same cascade — `the [U] PERSONA button opened the window`, then the
+// two checks that read the window that did not open (one of which is M4-9's HOW SHE IS band, which
+// merely sits downstream). The cause is the arming race `untilPersonaArmed`'s own header already
+// describes: the button reads ENABLED, a frame lands between the arm and the click, `frame.sel`
+// moves off the current deck, and `openPersonaForSelected()` resolves no cid. ⛔ It is a FALSE-RED
+// generator, never a false green — every failure is "the window did not open", never "it opened and
+// was wrong" — so it cannot manufacture a passing claim. Re-run before believing a red. Filed with
+// the repo's standing rig-flake ledger (onboarding-shot, work-tab-shot); closing it means waiting on
+// the SELECTION rather than on the button's disabled attribute, which is a change to M4-2's step and
+// not M4-9's to make.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -360,7 +373,8 @@ check(st && st.name === SUBJECT.name,
   `the name matches the roster's — window "${st?.name}" vs wire "${SUBJECT.name}"`);
 check(st && st.title === 'PERSONA · ' + SUBJECT.name, 'the window titles itself with her name');
 check(JSON.stringify(st?.bands) === JSON.stringify(['IDENTITY', 'DOING & WHY', 'HOW SHE IS', 'CAN & CANNOT', 'TIES & HISTORY']),
-  'FOUR bands, in the exit gate\'s order — HOW SHE IS ships with the first mental break (M4-9)');
+  'FIVE bands, in the exit gate\'s order — HOW SHE IS arrived WITH the first mental break (M4-9), '
+  + 'which is DESIGN QUESTION (e)\'s sequencing rule and not an afterthought');
 await png('02-persona-open-overview.png');
 
 // ⭐ THE TASK SENTENCE, WHOLE — the browser-only half of the charter's mutation 7.

@@ -2584,7 +2584,7 @@ namespace Perilune.Web
         /// <see cref="BuildRoster"/> on the sim thread inside Render (≤ 10 Hz), never on a tick
         /// path.</para>
         /// </summary>
-        private string HowSheIs(Citizen c)
+        internal string HowSheIs(Citizen c)
         {
             var needs = _sim.Defs.Needs;
             float serve = _sim.Defs.Sustenance.NeedThreshold;   // 0.5 — where SustenanceSystem acts

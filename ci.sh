@@ -179,8 +179,14 @@ printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes 
 # table): NO PIN SEES THE TIER DERIVATION, THE RESET RULE, OR ANY OF THE THREE BEHAVIOURS. Under
 # OD-H every work type boots off and no pinned run enqueues a command, so no pinned fixture ever
 # reaches a break. This is M2-12's "no pin sees the generation term" and M3-7's "no pin sees the rate
-# term" in a fourth costume. The ONLY instrument is MentalBreakTests (28 legs, driven, absolute
-# thresholds, one blinded leg per behaviour), and nothing else.
+# term" in a fourth costume. The ONLY instruments are MentalBreakTests (40 legs, driven, absolute
+# thresholds and absolute SCALE, one BLINDED leg per claim gate on WorkTypeVetoTests' pattern) and
+# HowSheIsTests (10, the host-side state line), and nothing else.
+# ⚠️ AND P1's CREW END THE RUN *BELOW* THE MINOR THRESHOLD (mood -37.06 against -34.15), so the hold
+# above is a WINDOW rather than a property of the fixture: three sim-days is simply not six sim-hours
+# of continuous sub-threshold mood plus the descent. A longer P1 would eventually fire a break and
+# move this pin for a second, behavioural reason. Do not read "no break in the window" as "this
+# fixture cannot break".
 # ⚠️ THE DAY-3 SUMMARY LINE DOES NOT MOVE — `pop 2 / hydro 98.1 kPa / water 0.0 L / potatoes 371`,
 # byte-identical to main. As at M3-9, the ONLY evidence is the hash.
 printf '%s\n' "$OUT" | grep -q "7c70c1befe848cc7" || { echo "FAIL: reference hash changed (expected 7c70c1befe848cc7) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }

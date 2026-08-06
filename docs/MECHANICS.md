@@ -8074,11 +8074,14 @@ so itself). Two consequences, and the second is the finding:
 
 1. **The derivation must be applied to the HEADROOM above a floor, never to the mood value.** 4/7 of
    −34.15 is −19.5, which is *above* minor — the ladder would invert.
-2. ⛔ **THE FULL MOOD FLOOR (−135, suffocation included) MAKES THE LADDER VACUOUS, MEASURED.** At
-   every rung of the RimWorld-shaped ladder over that span — 1 %, 2 %, 5 % … 50 % — the crew spend
-   **0.00 %** of a 21-sim-day `--ship wreck` run below the threshold, and the deepest rung
-   (50 % = −57.50) is reached only in excursions whose **longest contiguous run is 1 330 ticks
-   (2.2 sim-minutes)**. The cause is structural: `Citizen.Suffocation` is a **90–240-second death
+2. ⛔ **THE FULL MOOD FLOOR (−135, suffocation included) MAKES THE LADDER VACUOUS, MEASURED.**
+   Across every rung of the RimWorld-shaped ladder over that span — 1 %, 2 %, 5 % … 50 % — a
+   21-sim-day `--ship wreck` run spends **at most 0.04 %** of its time below the threshold
+   (0.00 % at 1–25 %, 0.00 % at 30–40 %, **0.01 % at 45 %**, **0.04 % at 50 %**), and **no
+   contiguous run below ANY of them exceeds 1 330 ticks — 2.2 sim-minutes**.
+   ⚠️ **The first draft of this row read "0.00 % at every rung" and that was wrong at two of the
+   twelve** — the correction matters because it is the difference between *never reached* and
+   *reached only while dying*, and the second is the claim the design actually rests on. The cause is structural: `Citizen.Suffocation` is a **90–240-second death
    timer**, so its contribution to mood cannot be *dwelt in*. ⇒ **a ladder anchored to −135 fires only
    on people who are already dying** — the D-3 shape (`rimworld-reference.md:1830-1835`) approached
    from the never-true side.
@@ -8159,9 +8162,52 @@ every crew member on every ship boots at 43, so the ladder is uniform today.
 
 | tier | predicate | asked at |
 |---|---|---|
-| MINOR | `Citizen.OrderOverridesSafety` (`HeldByOrder && not broken`) | the **two** places the `forced` flag is computed: `JobContext.TryPathToAdjacent` and `MachineWearSystem.DriveWorkers`, plus `PrioritiseJobCommand`'s acceptance gate |
+| MINOR | `Citizen.OrderOverridesSafety` (`HeldByOrder && not broken`) | **three** sites: `JobWork.TryPathToAdjacent` (the job board's staging seam), `MachineWearSystem.DriveWorkers`, and `PrioritiseJobCommand`'s acceptance gate. ⛔ A **fourth** site reads the hold directly and is deliberately NOT converted — `SafetySystem.cs:284`, M3-14's rung 4 (a held crew member does not flee lethal air): that is a fact about the ORDER, not about whether an order waives a STAGING rule |
 | MAJOR | `Citizen.BreakRefusesWork` | **six** claim gates: `JobSystem`'s dispatcher gate, `JobSystem.TryPreempt`, `CraftingSystem.FindNearestReachableIdle`, `MachineWearSystem.FindNearestReachableIdle`, `EffectValidator` (LLM grant), `CapabilityComputer` (LLM offer) — the five M2-2 enumerates plus pre-emption |
 | EXTREME | `Citizen.BreakRefusesOrders` | `MoveCitizenCommand` |
+
+> ### ⛔⛔ AND EVERY ONE OF THOSE GATES IS PINNED BY ITS OWN BLINDED LEG — BECAUSE FOUR OF THEM WERE NOT
+>
+> The first commit of this package covered the six with a **single assert on the predicate**
+> (`Assert.That(c.BreakRefusesWork, Is.True)`) under a header claiming one leg each, and a citation
+> in `JobSystem.cs` saying it *"drives each ALONE"*. It exercised no gate at all. Independent review
+> ran the battery — each gate reverted to its pre-M4-9 form — and found **four of the six GREEN**
+> (pre-emption, the crafting recruiter, the LLM grant, the LLM offer) plus **all three MINOR-tier
+> sites GREEN**. That is the 4th trap (a guard whose scope excludes the violation) wearing a doc
+> comment that says otherwise. The fix is `WorkTypeVetoTests`' own pattern — the veto a break sits
+> BESIDE at the same sites — one blinded leg per gate with a working control.
+>
+> **THE BATTERY, RE-RUN ON THIS TREE. Every row was physically applied, the suite run, the tree
+> restored from an in-memory copy (never `git checkout`, TRAPS-2):**
+>
+> | mutation (gate reverted to pre-M4-9) | verdict | the leg that reddens |
+> |---|---|---|
+> | G1 dispatcher claim gate | **RED** | `Major_TheDispatcherStopsGivingHerWork_WithAWorkingControl` |
+> | G2 `JobSystem.TryPreempt` | **RED** | `BreakGate2_Preemption_ABrokenCrewMemberIsNotTakenOffTheJobSheHolds` |
+> | G3 `CraftingSystem` recruiter | **RED** | `BreakGate3_CraftingRecruiter_*` |
+> | G4 `MachineWearSystem` recruiter | **RED** | `BreakGate4_WearRecruiter_*` (+2 others) |
+> | G5 `EffectValidator` (LLM grant) | **RED** | `BreakGate5_LlmGrant_*` |
+> | G6 `CapabilityComputer` (LLM offer) | **RED** | `BreakGate6_LlmOffer_*` |
+> | MINOR-a `JobWork.TryPathToAdjacent` | **RED** | `Minor_TheJobBoardStagingSeam_StopsWaivingTheAirToo` |
+> | MINOR-b `MachineWearSystem.DriveWorkers` | **RED** | `Minor_TheOrderNoLongerCrossesTheFrontier_Driven` |
+> | MINOR-c `PrioritiseJobCommand` waiver | **RED** | `Minor_AnOrderIntoVacuumIsRefusedAtTheClick` |
+> | dwell scale halved | **RED** | `TheDwellAndBreakDurations_ArePinnedAsAbsoluteLiterals` |
+> | pre-v10 read default zeroed | **RED** | `APreV10Save_LeavesTheThresholdAtItsDefault_*` |
+>
+> ⚠️ **TWO LEGS HAD TO BE REBUILT ON A DIFFERENT OBSERVABLE, and both failures are worth carrying.**
+> (1) The pre-emption leg first watched for the pawn ARRIVING on repair — but `TryPreempt` ends at
+> `sim.CancelJob` and nothing more; the repair is claimed later, **through gate 4**. So it was
+> measuring gate 4, and reverting gate 2 left it green. The observable is the job being **taken
+> away**. (2) Its fixture authored the machine already worn, and the pawn went straight to `Maintain`
+> at tick 0 without ever touching the haul — there was no job to pre-empt. The better work has to
+> appear **second**.
+>
+> ⛔ **AND ONE MINOR-TIER SITE IS PINNED AT THE SEAM RATHER THAN END-TO-END, DELIBERATELY.**
+> `JobWork.TryPathToAdjacent`'s own header records that it is *"UNREACHABLE FROM THIS SEAM TODAY"*:
+> the only writer of `HeldByOrder` is `PrioritiseJobCommand`, which issues `Maintain`, and
+> `IsRecruitableForWork` excludes a held pawn, so no dig/build/deconstruct source can claim one.
+> There is no end-to-end fixture to build, and building a scenario that reached it would be testing
+> a state the sim cannot author. The seam is public and static and is pinned where it lives.
 
 ⛔ **NEEDS AND FLEE ARE UNTOUCHED.** `SustenanceSystem` and `RestSystem` gate on `IsIdleForWork` and
 `SafetySystem` on neither, so a broken crew member still eats, drinks, sleeps and runs from lethal
@@ -8192,7 +8238,8 @@ to withdraw *along*. She lets go of the job and stands.
 
 #### ⛔ THE INSTRUMENT, AND THE VACUITY SAID OUT LOUD
 
-`MentalBreakTests` is the mechanism's **only** cover, and the charter said so in advance: under OD-H
+`MentalBreakTests` (40 legs) and `HowSheIsTests` (10) are the mechanism's **only** cover, and the
+charter said so in advance: under OD-H
 every work type boots OFF, no pinned fixture enqueues a command, and on `--ship slice` and P1's
 hand-built `BuildScenario` the crew do essentially nothing. **No determinism pin can see the tier
 derivation, the reset rule, or any of the three behaviours.** A held pin here is a *vacuously* held

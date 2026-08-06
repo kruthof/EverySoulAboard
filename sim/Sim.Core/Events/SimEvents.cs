@@ -473,6 +473,14 @@ namespace Perilune.Sim
     /// into a hashed, never-evicted field. A re-published event on reload must be able to change
     /// nothing — and here it cannot, because the BREAK itself lives on the citizen (CITZ v10) and a
     /// reload restores it directly rather than replaying the edge.</para>
+    ///
+    /// <para>⚠️ <b>AND SAY THE LOSS HALF, BECAUSE THE SHAPE IS PRE-EXISTING AND SHARED.</b> The bus
+    /// double-buffers per tick, so an edge published on the last tick before a save is never read by
+    /// <c>HistorySystem</c> and the Chronicle line is lost — the break STATE survives the reload
+    /// intact, only its log entry does not. That is the <c>'HIST'</c> save-tick event-loss family
+    /// already filed for alarms, brownouts and dropped orders (<c>MECHANICS.md</c> §13.44.5 /
+    /// §13.45.5); this event joins the class and does not widen it. Closing it is the same
+    /// stateful-publisher package those residuals wait on.</para>
     /// </summary>
     public struct MentalBreakEvent : ISimEvent
     {

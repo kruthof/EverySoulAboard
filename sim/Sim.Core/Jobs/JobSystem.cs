@@ -221,8 +221,16 @@ namespace Perilune.Sim
                     // veto, never folded into `IsRecruitableForWork`: the M4-1 charter rules that a
                     // break is its own NAMED gate, on M2-2's lesson (a second meaning stuffed into
                     // one predicate is how the M2-0 spike repeated). The six sites are the five
-                    // `CanTakeWorkType` gates M2-2 enumerates plus the pre-emption path, and
-                    // `MentalBreakTests.EveryClaimGateRefusesABrokenCrewMember` drives each ALONE.
+                    // `CanTakeWorkType` gates M2-2 enumerates plus the pre-emption path.
+                    // ⚠️ THE CITATION THAT STOOD HERE WAS FALSE AND IS CORRECTED. It named
+                    // `MentalBreakTests.EveryClaimGateRefusesABrokenCrewMember` and said it "drives
+                    // each ALONE"; that test was a SINGLE ASSERT ON THE PREDICATE, exercised no gate
+                    // at all, and review's battery found FOUR of the six green with their gates
+                    // reverted. The real cover is one BLINDED leg per gate —
+                    // `MentalBreakTests.BreakGate1..6_*`, on `WorkTypeVetoTests`' pattern, each with
+                    // a control proving the world had work to give, each verified RED by reverting
+                    // its own gate. This site is GATE 1 and its leg is
+                    // `Major_TheDispatcherStopsGivingHerWork_WithAWorkingControl`.
                     if (citizen.IsRecruitableForWork && !citizen.BreakRefusesWork)
                         TryAssign(sim, citizen); // held + player-ordered crew never self-assign
                     continue;

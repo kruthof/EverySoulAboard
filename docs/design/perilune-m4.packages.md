@@ -215,8 +215,11 @@ P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. Last mover **M3-9** (`pin/m3-c`,
 >    five fields out of the fold, ladder-live and ladder-stubbed are **bit-identical** — the ladder
 >    changes NO behaviour on P1's fixture. What moved the pin is the widened fold **plus the dwell
 >    counter's own accumulation** (P1's crew end the run at `dwell=174880 / 864000`, 20.2 % of a
->    break, `tier=None`). ⇒ **no pin sees a tier, a reset rule or a behaviour**, exactly as §2's
->    instrument table said. `MentalBreakTests` (28 legs) is the only cover.
+>     break, `tier=None`). ⇒ **no pin sees a tier, a reset rule or a behaviour**, exactly as §2's
+>    instrument table said. `MentalBreakTests` (40 legs) + `HowSheIsTests` (10) are the only cover.
+>    ⚠️ **AND THE FIRST COMMIT'S COVER WAS FOUR GATES SHORT** — a single predicate assert wearing a
+>    header that claimed one leg each. Rebuilt on `WorkTypeVetoTests`' blinded-leg pattern after
+>    review's battery; the full table with the RED names is in `MECHANICS.md` §13.51.
 > 6. ⚠️ ⭐ **AND THE FINDING THE OWNER SHOULD SEE: THE SHIPPING WRECK, LEFT ALONE, NEVER REACHES THE
 >    FIRST RUNG.** Driven 21 sim-days: peak dwell **111 150 of 864 000** and the whole crew dead on
 >    day 19 — of AIR, not of hunger. The ship's own service thresholds hold everybody at a serviced
