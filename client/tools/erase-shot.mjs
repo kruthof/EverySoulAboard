@@ -76,7 +76,7 @@ if ((latest.get('frame')?.deck | 0) !== DECK) { console.error('FAIL: could not r
 const { decodeDecks, decodeRooms, decodeMarks, decodeDevices } = await import('../src/wire/messages.js');
 const { decksView } = await import('../src/ui/decks-model.js');
 const { deckSlots } = await import('../src/ui/room-model.js');
-const { makeTransform } = await import('../src/ui/overview-scene.js');
+const { makeShipTransform } = await import('../src/ui/overview-scene.js');
 
 const dView = decksView(decodeDecks(latest.get('decks')), decodeRooms(latest.get('rooms')));
 const slots = deckSlots(dView, DECK);
@@ -176,11 +176,14 @@ if (await evaluate(`!!document.querySelector('[data-onb-begin]')`)) {
 log('\n=== OVERVIEW: paint a DIG on a debris tile, then ERASE it ===');
 const ovSvg = await evalJson(`(()=>{const e=document.querySelector('svg.pl-overview');if(!e)return null;const r=e.getBoundingClientRect();const vb=e.getAttribute('viewBox').split(' ').map(Number);return {x:r.x,y:r.y,w:r.width,h:r.height,vw:vb[2],vh:vb[3]};})()`);
 if (!ovSvg) { console.error('FAIL: no svg.pl-overview in the DOM'); process.exit(7); }
-const T = makeTransform(slots, latest.get('frame'));
+// ⚠️ THE WHOLE-SHIP TRANSFORM, and the deck is now an ARGUMENT rather than a thing baked into it:
+// the side-elevation plate draws every deck at once, so a projection has to be told which band it
+// means. Passing the deck this rig is driving keeps every screen point below exactly what it was.
+const T = makeShipTransform(dView, latest.get('frame'));
 const ovScale = Math.min(ovSvg.w / ovSvg.vw, ovSvg.h / ovSvg.vh);
 const ovOffX = ovSvg.x + (ovSvg.w - ovSvg.vw * ovScale) / 2;
 const ovOffY = ovSvg.y + (ovSvg.h - ovSvg.vh * ovScale) / 2;
-const ovScreenOf = (tx, ty) => { const [vx, vy] = T.project(tx + 0.5, ty + 0.5); return { x: ovOffX + vx * ovScale, y: ovOffY + vy * ovScale }; };
+const ovScreenOf = (tx, ty) => { const [vx, vy] = T.project(tx + 0.5, ty + 0.5, DECK); return { x: ovOffX + vx * ovScale, y: ovOffY + vy * ovScale }; };
 
 const buildTab = await centre('[data-ov-tab="build"]');
 if (buildTab) { await clickAt(buildTab.x, buildTab.y); await sleep(900); }

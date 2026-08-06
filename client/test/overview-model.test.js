@@ -12,10 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { decode, decodeDecks, decodeRooms,
   BLOCKED_ORDER_REPAIR, BLOCKED_REASON_NO_ROUTE, BLOCKED_DETAIL_NONE } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
-import { makeTransform, DECK } from '../src/ui/overview-scene.js';
+import { makeShipTransform, BAY } from '../src/ui/overview-scene.js';
 import {
   tileAt, overviewClickAction, lensGrade, lensSlotTint, GRADE_TINT, currentRoom,
-  deckPips, deckDelta, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
+  deckPips, deckDelta, crossDeckPress, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, isOrderTool, orderHintLine, orderPlacedLine,
   ERASE_TOOL, ERASE_LABEL, isEraseTool, markNameAt, erasePlacedLine,
   // ⭐ VR-P4 — the ship plate's own pure derivations.
@@ -33,6 +33,9 @@ import { clockHHMM } from '../src/ui/console-model.js';
 // `defaultStockFilter` went with the seam (see `room-model.test.js`, which now imports it).
 import { ACCEPT_ALL, stockFilterLabel } from '../src/ui/stock-filter-model.js';
 import { MARK_KIND_NAMES } from '../src/wire/messages.js';
+// The wire builder itself, so the expected deck hop is the shape the controller actually emits
+// rather than a second literal that could agree with a broken one (TRAPS-4: pin the ARGUMENT).
+import { Cmd } from '../src/wire/session.js';
 import { LEDGER_ROW_IDS } from '../src/ui/ledger-model.js';
 import { codeOnly, callBlocks } from './code-only.js';
 import { stylesSource } from './styles-source.js';
@@ -336,14 +339,48 @@ test('overviewEscape follows the rung order incl. the Level-2 ascent', () => {
   assert.equal(overviewEscape({ relationsActive: true, roomZoomOpen: true }), 'relations');
 });
 
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE CROSS-DECK PRESS — the silent defect the side elevation created, and the rule that closes
+// it. Pure, so the decision can be driven directly; the two side effects (send `Cmd.deck`, toast)
+// are driven through the real controller further down and through the live rig.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('crossDeckPress: a press on ANOTHER band moves the ORDER DECK and orders nothing', () => {
+  // ⛔ WHY IT EXISTS. Every designation command on the wire carries only `x`/`y`; the host supplies Z
+  // from its OWN shown deck (`GameSession.cs:1128`). While the plate drew ONE deck that was safe by
+  // construction — the only band you could press WAS the shown deck. The elevation draws every deck,
+  // so a press on the lower band would have sent `dig 22,15` and the host would have applied it to
+  // the UPPER one: an order placed in a compartment the player did not point at, with a toast naming
+  // the tile they DID point at. That is the "shows one thing, orders another" defect the projection
+  // work exists to remove, arriving one layer up.
+  assert.deepEqual(crossDeckPress(0, 0), { ok: true });
+  assert.deepEqual(crossDeckPress(3, 3), { ok: true });
+  const down = crossDeckPress(1, 0);
+  assert.equal(down.ok, false, 'a press on another band was allowed to order');
+  assert.equal(down.delta, 1, 'the delta does not reach the pressed deck from the active one');
+  assert.match(down.line, /DECK 1/, 'the line does not name the deck the order moved to');
+  assert.match(down.line, /PRESS AGAIN/i, 'the line does not say what to do next — the deck moved '
+    + 'under the player silently, which is worse than the defect it replaces');
+  // …and in the other direction, with a negative delta.
+  assert.deepEqual(crossDeckPress(0, 2), { ok: false, delta: -2, line: crossDeckPress(0, 2).line });
+  assert.match(crossDeckPress(0, 2).line, /DECK 0/);
+  // COERCION: the rule is total over junk, and junk must not silently read as "same deck" (which
+  // would restore the defect for any surface that hands it an undefined).
+  assert.deepEqual(crossDeckPress(0, 0), crossDeckPress(null, undefined));
+  assert.equal(crossDeckPress(2, NaN).ok, false);
+});
+
 // ---- tile projection round-trip (IX-O-19) ----
 
-test('tileAt inverts the scene transform back to a sim tile', () => {
-  const t = makeTransform(view[0].slots, frame);
-  const [sx, sy] = t.project(8 + 0.5, 8 + 0.5); // centre of tile (8,8)
-  assert.deepEqual(tileAt(t, sx, sy, frame), { x: 8, y: 8 });
+test('tileAt inverts the scene transform back to a sim tile — AND names the deck', () => {
+  const deck = view[0].deck | 0;
+  const t = makeShipTransform(view, frame);
+  const [sx, sy] = t.project(8 + 0.5, 8 + 0.5, deck); // centre of tile (8,8)
+  // ⭐ `deck` IS PART OF THE ANSWER NOW. The plate draws every band, so a press has to say WHICH
+  // deck it addressed — see `tileAt`'s header for the silent cross-deck order that closes.
+  assert.deepEqual(tileAt(t, sx, sy, frame), { x: 8, y: 8, deck });
   // out of bounds → null
-  const [ox, oy] = t.project(frame.w + 4, frame.h + 4);
+  const [ox, oy] = t.project(frame.w + 4, frame.h + 4, deck);
   assert.equal(tileAt(t, ox, oy, frame), null);
   assert.equal(tileAt(null, 0, 0, frame), null);
 });
@@ -427,9 +464,17 @@ test('⭐⭐ D5 RE-HOUSED: the stuck-order sentence lands on the ROOM the person
 test('the caption and the masthead phrase the deck ONCE, and say nothing this sim cannot measure', () => {
   // ⛔ THE COUNT IS THE COUNT. Both printed `totalDecks − 1` and the WRECK — which has two decks —
   // read "deck 0 of 1" in the running game. `decksView.length` is how many decks there are.
-  assert.equal(deckCaptionLine(0, 2, 8), 'Deck 0 of 2 — 8 compartments, one to a cell.');
-  assert.equal(deckCaptionLine(1, 2, 8), 'Deck 1 of 2 — 8 compartments, one to a cell.');
-  assert.equal(deckCaptionLine(2, 3, 1), 'Deck 2 of 3 — 1 compartment, one to a cell.');
+  // ⚠️ "one to a cell" WAS VR-P4's AND WENT WITH ITS GRID. The elevation has no cells; what the
+  // caption now carries instead is the drawing's ONE honesty limit — the band is the deck UNROLLED
+  // ALONG ITS WALK, so left-to-right is walking order and not hull position. See
+  // `deckCaptionLine`'s header, and `ship-elevation.js`'s for the measurement that rejected the
+  // literally-true cutaway (it hides the far bank entirely).
+  assert.equal(deckCaptionLine(0, 2, 8), 'Deck 0 of 2 — 8 compartments, in walking order.');
+  assert.equal(deckCaptionLine(1, 2, 8), 'Deck 1 of 2 — 8 compartments, in walking order.');
+  assert.equal(deckCaptionLine(2, 3, 1), 'Deck 2 of 3 — 1 compartment, in walking order.');
+  // …and the sentence does not claim a geometry the drawing does not have.
+  assert.ok(!/cell|above|below|looking down|fore|aft/i.test(deckCaptionLine(0, 2, 8)),
+    'the caption claims a grid, a viewpoint or a hull position the side elevation does not express');
   // ⛔ AND IT NO LONGER SAYS "looking down", WHICH WAS A FALSE CLAIM ABOUT THE DRAWING: the plate is
   // not a plan seen from above, it is a grid of oblique cutaways whose cell ORDER is slot order.
   assert.ok(!/looking down/i.test(deckCaptionLine(0, 2, 8)));
@@ -728,8 +773,7 @@ const Overview = await import('../src/ui/overview-view.js');
 const { paletteOrders } = await import('../src/input/controls.js');
 
 /** The live deck transform for the deck currently on screen — the same one the controller caches. */
-const ovTransform = (deck = FIX.frame.deck) =>
-  makeTransform(view.find((d) => d.deck === deck).slots, FIX.frame);
+const ovTransform = () => makeShipTransform(view, FIX.frame);
 
 /**
  * Mount the real controller onto `doc` and give the scene the two SVG APIs `pointToTile` needs.
@@ -939,12 +983,21 @@ test('an armed STOCKPILE designates NOTHING from the Overview — and still ente
   assert.equal(Hud.getArmedTool(), 'stockpile', 'the shared slot did not take stockpile at all — ' +
     'the assertions below would then be about a click with nothing armed');
   const sent = ovClick(room, 12, 5);
-  assert.deepEqual(sent, [],
+  // ⚠️ THE ASSERTION IS "NO ORDER", NOT "NOTHING AT ALL", AND IT CHANGED FOR A REASON THAT IS THE
+  // POINT OF `enterCompartment`. `hold` is on DECK 1 of this fixture and the frame shows DECK 0, so
+  // entering it now carries the deck with it — that hop is the fix for the room that opened EMPTY.
+  // What this test is about is unchanged and is asserted more precisely than before: the schematic
+  // lowers no ORDER under STOCKPILE. Written as a filter rather than as `[]` so a future verb the
+  // Overview legitimately sends cannot be mistaken for a zone.
+  assert.deepEqual(sent.filter((o) => o.cmd !== 'deck'), [],
     'the Overview zoned a tile. STOCKPILE moved to the Room Zoom because a zone\'s EXTENT is its ' +
     'capacity (one stack per tile) and this surface has no drag gesture — a single-tile zone from ' +
     'the schematic is the affordance that decision removed.');
   assert.deepEqual(ovEntered, ['hold'],
     'the click did not reach the hit rule either — so "sent nothing" here proves nothing');
+  assert.deepEqual(sent, [Cmd.deck(1)],
+    'the cross-band room entry did not take the deck with it — the Room Zoom will focus deck 1 '
+    + 'while the host still projects deck 0, which is the EMPTY-ROOM press (`enterCompartment`)');
   // …and no `filter` leaked out on its own, which is the shape a half-reverted lowering would make.
   assert.deepEqual(sent.filter((o) => o.cmd === 'filter'), []);
   ovArm('stockpile');
@@ -1344,9 +1397,15 @@ test('WP-5 driven: the bar follows the deck on screen — header and readback bo
   // geometry, so identical tile extent), so a click cannot be shown to resolve differently per deck
   // — the surface's own words are the only OBSERVABLE deck scoping here, which is exactly why the
   // deck is written into both of them.
-  const a = ovTransform(0), b = ovTransform(3);
-  assert.deepEqual([a.KX, a.KY, a.ext], [b.KX, b.KY, b.ext],
-    'the decks no longer share a transform — this test can now assert the stronger geometric form');
+  // ⚠️ THE LIMIT'S SHAPE CHANGED AND SO DID THE ASSERTION. There is ONE transform for the whole ship
+  // now, not one per deck, so "the decks share a transform" is true by construction and asserting it
+  // would be asserting the type. What is still worth pinning is that this fixture's eight decks have
+  // IDENTICAL tile geometry — which is why a click cannot be shown to resolve differently per deck
+  // here, and therefore why the surface's WORDS are the only observable deck scoping in this test.
+  const t = ovTransform();
+  const geom = (d) => JSON.stringify(t.deckInfo(d).spans.map((sp) => [sp.u0, sp.u1, sp.rect]));
+  assert.equal(geom(0), geom(3),
+    'the decks no longer share a tile geometry — this test can now assert the stronger form');
 });
 
 test('WP-5 driven: a click outside the drawn plate designates NOTHING', () => {
@@ -1366,7 +1425,7 @@ test('WP-5 driven: a click outside the drawn plate designates NOTHING', () => {
   // outside the drawn plate designates nothing**, and the bound itself is asserted directly on
   // `tileAt`, which is where it lives.
   ovArm('strip');
-  for (const [px, py] of [[DECK.x - 220, DECK.y - 90], [DECK.x + DECK.w + 260, DECK.y + 40]]) {
+  for (const [px, py] of [[BAY.x - 120, BAY.y - 90], [BAY.x + BAY.w + 120, BAY.y + 40]]) {
     ovSent.length = 0;
     const at = { clientX: px, clientY: py, detail: 1, button: 0 };
     firePointer(ovStage, 'pointerdown', at);
@@ -1376,14 +1435,171 @@ test('WP-5 driven: a click outside the drawn plate designates NOTHING', () => {
       + 'bounds-checking against the frame, so the ORDERS bar can address tiles that are not there');
   }
   // THE BOUND ITSELF, asserted where it is implemented rather than through a projection.
+  // ⭐⭐ THE BOUND IS NOW TWO BOUNDS AND BOTH ARE ASSERTED, because the projection changed shape.
+  //  (a) THE FRAME BOUND — an off-deck TILE. It survives, and it is asked through the projection
+  //      exactly as before.
+  //  (b) THE BAND BOUND — an off-plate POINT. It is NEW and it is the one this package had to add:
+  //      `invert` clamps `(u,v)` to the floor so a press in a back wall still addresses a tile, and
+  //      `deckAt` takes the NEAREST band, so without a container every pixel of empty paper resolved
+  //      to a real tile. See `ship-elevation.js`'s `hits`.
   const t = ovTransform();
-  assert.equal(tileAt(t, ...t.project(FIX.frame.w + 4.5, 3.5), FIX.frame), null);
-  assert.equal(tileAt(t, ...t.project(-2.5, 3.5), FIX.frame), null);
-  assert.deepEqual(tileAt(t, ...t.project(FIX.frame.w - 0.5, FIX.frame.h - 0.5), FIX.frame),
-    { x: FIX.frame.w - 1, y: FIX.frame.h - 1 }, 'the last in-bounds tile stopped resolving');
+  const deck = FIX.frame.deck | 0;
+  assert.equal(tileAt(t, ...t.project(FIX.frame.w + 4.5, 3.5, deck), FIX.frame), null);
+  assert.equal(tileAt(t, ...t.project(-2.5, 3.5, deck), FIX.frame), null);
+  assert.equal(tileAt(t, BAY.x - 120, BAY.y - 90, FIX.frame), null,
+    'a point off the plate entirely resolved to a tile — the band bound is gone and an armed order '
+    + 'can be placed by pressing the paper margin');
+  assert.deepEqual(tileAt(t, ...t.project(FIX.frame.w - 0.5, FIX.frame.h - 0.5, deck), FIX.frame),
+    { x: FIX.frame.w - 1, y: FIX.frame.h - 1, deck }, 'the last in-bounds tile stopped resolving');
   // …and the live gesture on that last in-bounds tile still designates it.
   assert.equal(ovClick(ovStage, FIX.frame.w - 1, FIX.frame.h - 1).length, 1,
     'the last in-bounds tile stopped working — the bound is off by one, not absent');
+});
+
+test('⭐⭐ A PRESS OR HOVER ON A FITTING RESOLVES TO ITS COMPARTMENT — one resolution, two callers', () => {
+  // See `roomAnchorOf`'s header for the measured defect: the elevation moved the fitting layer out
+  // of the compartment group, so `closest('.pl-room')` stopped finding the room from a piece's ink —
+  // over most of a compartment's area, because that is where its contents stand.
+  const a = view[0].slots[0].anchorName;
+  const fit = ovTarget('pl-fit', { tile: '3,3', deck: '0', anchor: a });
+
+  // 1 — THE CLICK. Un-armed, a press on a fitting ENTERS its compartment.
+  ovSent.length = 0; ovEntered = [];
+  firePointer(fit, 'pointerdown', { clientX: 10, clientY: 10, detail: 1, button: 0 });
+  firePointer(fit, 'pointerup', { clientX: 10, clientY: 10, detail: 1, button: 0 });
+  assert.deepEqual(ovEntered, [a],
+    'a press on a compartment\'s CONTENTS did not open it. "Click a compartment to open it" is the '
+    + 'surface\'s own instruction, and a fitting is most of what a compartment shows.');
+
+  // 2 — THE HOVER, through the SAME resolution.
+  firePointer(fit, 'pointerover', {});
+  assert.equal(Overview.hoveredAnchor(), a, 'hovering a fitting did not wash its compartment');
+  firePointer(fit, 'pointerout', { relatedTarget: ovOffScene });
+  assert.equal(Overview.hoveredAnchor(), null);
+
+  // 3 — A WALKWAY PIECE (no anchor) enters nothing and washes nothing. There is no room on the
+  //     spine, and inventing one would open a compartment the player did not point at.
+  const spine = ovTarget('pl-fit', { tile: '22,8', deck: '0' });
+  ovSent.length = 0; ovEntered = [];
+  firePointer(spine, 'pointerdown', { clientX: 10, clientY: 10, detail: 1, button: 0 });
+  firePointer(spine, 'pointerup', { clientX: 10, clientY: 10, detail: 1, button: 0 });
+  assert.deepEqual(ovEntered, [], 'a fitting on the walkway opened a room');
+  firePointer(spine, 'pointerover', {});
+  assert.equal(Overview.hoveredAnchor(), null, 'a fitting on the walkway washed a room');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE OWNER'S HOVER FLICKER — DRIVEN, AND THE ASSERTION IS SAMPLED AFTER EVERY REPAINT.
+//
+// THE REPORT: *"when I am on the ship level and hover my mouse for 2-3 seconds above one of the
+// rooms, that room starts flickering."*
+//
+// THE MECHANISM, measured on the live host (2026-08-05, `--ship wreck`): `paintScene` assigns the
+// whole plate to `_stage.innerHTML` on every wire repaint, and the `frame` channel lands every ~1 s
+// even on a QUIET ship — 20 messages in 20 s, median gap 1000 ms, p90 1098 ms, max 1144 ms. So the
+// hovered ELEMENT is destroyed under a stationary cursor about a second after the hover begins.
+// Chrome re-evaluates `:hover` from pointer MOVEMENT, so across the rebuild the state drops and the
+// wash oscillates at repaint cadence. The 2–3 s onset is the first repaint plus the second one being
+// the first the eye reads as a blink.
+//
+// ⛔ THE TEST MUST BE ABLE TO CATCH A ONE-REPAINT BLINK, which is why it samples after EVERY repaint
+// rather than at the end. A check that only looked at the final state would pass against a surface
+// that dropped the wash on every repaint and re-established it on the next — i.e. against the exact
+// defect. It also asserts the emitted markup is BYTE-IDENTICAL across repaints for one hover, so
+// "present" cannot be satisfied by an oscillating variant of the highlight.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('⛔ A STATIONARY HOVER SURVIVES ARBITRARILY MANY REPAINTS — the owner\'s flicker, driven', () => {
+  const anchor = view[0].slots[0].anchorName;
+  assert.ok(anchor, 'the fixture has no compartment to hover');
+  const room = ovTarget('pl-room', { anchor });
+
+  // 1 — HOVER. `pointerover` bubbles from the compartment to the persistent stage.
+  firePointer(room, 'pointerover', {});
+  assert.equal(Overview.hoveredAnchor(), anchor, 'the hover was not tracked at all');
+  const first = ovStage.innerHTML;
+  assert.ok(first.includes('pl-room-hover'),
+    'the hovered compartment carries no highlight class — the wash is invisible from the first frame');
+  assert.match(first, new RegExp(`pl-room-hover"[^>]*data-anchor="${anchor}"`),
+    'the highlight landed on a compartment that is not the hovered one');
+
+  // 2 — SIX REPAINTS THROUGH THE REAL PATH, SAMPLED AFTER EACH ONE.
+  const samples = [];
+  for (let i = 0; i < 6; i += 1) {
+    Hud.renderFrame({ ...FIX.frame });          // a fresh message ⇒ a real repaint
+    samples.push({
+      i,
+      html: ovStage.innerHTML,
+      on: ovStage.innerHTML.includes('pl-room-hover'),
+      state: Overview.hoveredAnchor(),
+    });
+  }
+  const blinks = samples.filter((x) => !x.on).map((x) => x.i);
+  assert.deepEqual(blinks, [],
+    `the highlight was ABSENT after repaint(s) ${blinks.join(',')} of 6 while the pointer never `
+    + 'moved. That is the owner\'s flicker: the hovered element is destroyed by `innerHTML` and the '
+    + 'state did not survive it.');
+  assert.deepEqual(samples.map((x) => x.state), new Array(6).fill(anchor),
+    'the tracked anchor changed without a pointer event');
+  // …and the DRAWING is identical every time, so "present" is not an oscillating variant.
+  assert.equal(new Set(samples.map((x) => x.html)).size, 1,
+    'the plate is not byte-identical across repaints for one unchanged hover — something in the '
+    + 'highlight is animating at repaint cadence, which is the flicker in a different costume');
+
+  // 3 — NON-VACUITY, AND IT IS THE LEG THAT MAKES THE REST MEAN ANYTHING: the repaints really did
+  //     destroy and rebuild the plate. Without it, six samples of a DOM nobody touched would pass.
+  assert.notEqual(ovStage.innerHTML, '', 'the stage is empty — nothing was rebuilt or drawn');
+  assert.ok(samples.length === 6);
+  assert.equal(ovStage.querySelector('.pl-room-hover') === null, false,
+    'dom-lite cannot see the highlight class — this test is reading a string it cannot parse');
+
+  // 4 — NEGATIVE CONTROL: leaving the plate clears it, so leg 2 is not "the class is always on".
+  firePointer(room, 'pointerout', { relatedTarget: ovOffScene });
+  assert.equal(Overview.hoveredAnchor(), null, 'leaving the plate did not clear the hover');
+  assert.ok(!ovStage.innerHTML.includes('pl-room-hover'),
+    'the highlight survived the pointer leaving — every compartment would end up washed');
+});
+
+test('the hover repaints ONCE PER CHANGE, never once per pointer event', () => {
+  // ⚠️ NOT AN OPTIMISATION. `pointerover` fires for every element the pointer enters — every fitting,
+  // every partition path — so a repaint per event would rebuild the plate dozens of times a second
+  // of mouse travel, which is the flicker arriving from the other direction.
+  const a = view[0].slots[0].anchorName;
+  const roomA = ovTarget('pl-room', { anchor: a });
+  const fit = new OvEl(ovDoc, 'div');
+  fit.className = 'pl-fit';
+  roomA.appendChild(fit);
+
+  // ⛔⛔ THE REPAINTS ARE **COUNTED**, NOT COMPARED. The first version of this leg asserted that the
+  // emitted string was unchanged — and a mutation that DELETES the change gate SURVIVED it, because
+  // a redundant repaint of unchanged state is byte-identical by construction. The whole cost this
+  // gate exists to avoid is invisible in the output; it is only visible in how often the output is
+  // produced. So the harness's synchronous rAF is spied instead.
+  const raf = globalThis.requestAnimationFrame;
+  let frames = 0;
+  globalThis.requestAnimationFrame = (fn) => { frames += 1; return raf(fn); };
+  try {
+    firePointer(roomA, 'pointerover', {});
+    assert.equal(frames, 1, 'entering a NEW compartment did not arm exactly one repaint');
+    const settled = ovStage.innerHTML;
+    // moving onto a child of the SAME compartment must not repaint at all
+    firePointer(fit, 'pointerover', {});
+    assert.equal(frames, 1,
+      'entering a fitting inside the hovered compartment armed another repaint. `pointerover` fires '
+      + 'for every element the pointer enters — every fitting, every partition stroke — so this is a '
+      + 'rebuild of the whole plate per pixel of mouse travel.');
+    assert.equal(ovStage.innerHTML, settled);
+  } finally {
+    globalThis.requestAnimationFrame = raf;
+  }
+  assert.equal(Overview.hoveredAnchor(), a);
+  // …and `pointerout` towards a sibling INSIDE the same compartment keeps it, because the handler
+  // reads where the pointer is GOING rather than where it was.
+  firePointer(fit, 'pointerout', { relatedTarget: roomA });
+  assert.equal(Overview.hoveredAnchor(), a,
+    'crossing a stroke inside the hovered room cleared the hover — it would strobe on any movement');
+  firePointer(roomA, 'pointerout', { relatedTarget: ovOffScene });
+  assert.equal(Overview.hoveredAnchor(), null);
 });
 
 // ── the suppression: an armed order owns the click ──
@@ -1392,7 +1608,13 @@ test('WP-5 driven: an armed order suppresses ROOM ENTRY (and un-armed still ente
   const room = ovTarget('pl-room', { anchor: 'hold' });
   // POSITIVE CONTROL FIRST — without it, "did not enter" proves only that the hit-test never saw
   // this node, which is exactly how a suppression test passes while suppressing nothing.
-  assert.deepEqual(ovClick(room, 12, 5), [], 'an un-armed room click must send no order');
+  // ⚠️ `hold` IS ON DECK 1 and the frame shows DECK 0, so the un-armed entry now also carries the
+  // deck (`enterCompartment` — without it the Room Zoom opens onto an empty room). The claim under
+  // test is about ORDERS, so it is filtered rather than loosened, and the hop is asserted separately
+  // below so this line cannot quietly absorb a real order that starts riding along.
+  const unarmed = ovClick(room, 12, 5);
+  assert.deepEqual(unarmed.filter((o) => o.cmd !== 'deck'), [], 'an un-armed room click must send no order');
+  assert.deepEqual(unarmed, [Cmd.deck(1)], 'the cross-band room entry lost its deck hop');
   assert.deepEqual(ovEntered, ['hold'], 'the un-armed room click did not enter the room at all — ' +
     'the hit-test is not seeing this node, so the suppression assertion below would be vacuous');
   for (const tool of ORDER_TOOLS) {
@@ -1449,6 +1671,77 @@ test('WP-5 driven: with NOTHING armed the schematic still behaves exactly as bef
   assert.deepEqual(ovEntered, ['reactor']);
   assert.deepEqual(ovClick(ovStage, 12, 5), [], 'bare space must stay a no-op');
   assert.deepEqual(ovEntered, []);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE CROSS-BAND ROOM ENTRY — the half `crossDeckPress` never covered.
+//
+// ⛔⛔ THE DEFECT, MEASURED IN THE RUNNING GAME BEFORE THIS TEST EXISTED (2026-08-05, `--ship
+// wreck`, independent review): the side-elevation plate draws BOTH decks and hover-washes a
+// compartment on either band, and the nav hint says "click a compartment to open it" — but only the
+// DESIGNATION path asked which band the press landed on. Room entry went straight through, the Room
+// Zoom focused a room on deck 1 while the host still projected deck 0, and `roomCells` returns
+// NOTHING when `frame.deck !== focusRoom.deck`. `hall_d1_s3` opened at "96.0 M² · 0 OF 0 FITTINGS
+// BUILT" / 23 svg paths from the inactive band and "4 OF 4" / 56 paths from the active one, with an
+// IDENTICAL breadcrumb. A room that says it is empty when it is not, with nothing on screen naming
+// the reason.
+//
+// ⭐ THE THREE LEGS ARE THE THREE THINGS THAT CAN BREAK INDEPENDENTLY, and each has its own control,
+// because a single-leg version passes while doing one of them and not the other two.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('⭐⭐ a press on the INACTIVE band ENTERS the room AND takes the deck with it', () => {
+  assert.equal(FIX.frame.deck | 0, 0, 'this fixture no longer shows deck 0 — the legs below are '
+    + 'about a press on a band the host is NOT projecting, and would be measuring nothing');
+  // The fixture's own answer for which deck each anchor is on — read off `decksView`, the same
+  // structure both `enterCompartment` and `enterRoom` resolve through, never a hand-typed number.
+  const deckOf = (a) => view.find((d) => d.slots.some((s) => s && s.anchorName === a)).deck | 0;
+  assert.equal(deckOf('hold'), 1);
+  assert.equal(deckOf('reactor'), 0);
+
+  // 1 — THE FIX. A compartment on the OTHER band opens, and the order deck moves to it first.
+  const far = ovTarget('pl-room', { anchor: 'hold', deck: '1' });
+  const sent = ovClick(far, 12, 5);
+  assert.deepEqual(ovEntered, ['hold'],
+    'the press on the inactive band did not enter the room at all — every assertion below is then '
+    + 'about a click nothing resolved');
+  assert.deepEqual(sent, [Cmd.deck(1)],
+    'the room was entered on the deck the host is NOT projecting, so `roomCells` will return nothing '
+    + 'and the Room Zoom opens EMPTY and silent. See `enterCompartment`.');
+
+  // 2 — NON-VACUITY / THE NEGATIVE CONTROL. A compartment on the ACTIVE band must NOT hop, or the
+  //     "fix" is a deck command on every press and the player's rail walks away under them.
+  const near = ovTarget('pl-room', { anchor: 'reactor', deck: '0' });
+  assert.deepEqual(ovClick(near, 12, 5), [],
+    'entering a room on the deck already being shown sent a deck command — the guard is firing on '
+    + 'every press, not on the cross-band one');
+  assert.deepEqual(ovEntered, ['reactor']);
+
+  // 3 — THE HOP IS THE ROOM'S OWN DECK, not a fixed step. Ride the rail to deck 1 and the SAME two
+  //     compartments swap roles — the sign flips and the near one becomes the far one. A guard that
+  //     hard-coded `+1`, or that read the drawing's band instead of the ship's, survives leg 1 and
+  //     dies here.
+  Hud.renderFrame({ ...FIX.frame, deck: 1 });
+  assert.deepEqual(ovClick(far, 12, 5), [], 'deck 1 is shown and entering a deck-1 room still hopped');
+  assert.deepEqual(ovEntered, ['hold']);
+  assert.deepEqual(ovClick(near, 12, 5), [Cmd.deck(-1)],
+    'the hop is not relative to the shown deck — it must be `target.deck - shown`, the same step '
+    + '`onMinimapSlot` sends');
+  assert.deepEqual(ovEntered, ['reactor']);
+  Hud.renderFrame(FIX.frame);
+});
+
+test('an anchor the ship does not have hops NOTHING — a missing room must not move the deck', () => {
+  // `roomTileRect` answers null, and the Room Zoom's own `enterRoom` runs the identical lookup and
+  // answers with "ROOM ZOOM UNAVAILABLE". Moving the player's deck on the way to that toast would be
+  // a side effect with no room at the end of it.
+  assert.equal(view.some((d) => d.slots.some((s) => s && s.anchorName === 'no_such_room')), false,
+    'non-vacuity: the fixture grew a room called `no_such_room` and this leg now proves nothing');
+  const ghost = ovTarget('pl-room', { anchor: 'no_such_room' });
+  assert.deepEqual(ovClick(ghost, 12, 5), []);
+  assert.deepEqual(ovEntered, ['no_such_room'],
+    'the unresolvable anchor was swallowed here instead of being handed on — the Room Zoom owns '
+    + 'that refusal and its toast is the only thing that names it');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

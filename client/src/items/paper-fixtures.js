@@ -274,11 +274,13 @@ function envFor(s, id, state, facing) {
   };
 }
 
-/** An item fragment whose painter draws in the fixture's own centimetres. */
+/** An item fragment whose painter draws in the fixture's own centimetres.
+ *  `sketched: true` — the owner's 2026-08-05 ruling; the seam is `helpers.item()`. */
 function fixture(id, opts, paint) {
   // `env.facing` arrives from `helpers.item`, which forwards `opts.facing` — the same seam
   // `fittings.fitting` uses, so both catalogues turn through one mechanism.
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); });
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); },
+    { sketched: true });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

@@ -12,6 +12,11 @@ This charter was produced from (a) a full client-visual-layer audit and (b) a co
 read + headless-Chrome render of both design docs. Where it states a measured value, it was
 measured on this tree at `8186cad`.
 
+> ⭐ **THE STYLE REFERENCE, ADDED 2026-08-05: `docs/design/perilune-art-style.md`.** This charter is
+> the *decision record* — what was ruled, in which package, and why. That file is the *map*: the
+> palette, the projection, the pawns' hand and the adopted `strong` sketch treatment stated together
+> with `file:line` for every claim, plus the checklist for adding a piece. Read it before drawing.
+
 ## 1. The design language (the new dialect, binding for all packages)
 
 - **Paper & ink**: page ground `#E7E0D2`; plate/paper `#EBE4D1`; plate border `#C6BBA2`;

@@ -25,16 +25,24 @@
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import {
-  selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices, decodeWork,
+  selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices, decodeItems, decodeWork,
   decodeWorkCaps, decodeBlocked,
 } from '../wire/messages.js';
-// `deckDeviceConditions` is the wear join; `eraseTarget`/`tileOrders` are the un-designate precedence
-// + the tile-facts derivation it runs on, SHARED VERBATIM with the Room Zoom (M1-C) rather than
-// re-stated, so the two surfaces cannot come to disagree about which of two orders on one tile an
-// erase click takes off.
-import { deckDeviceConditions, eraseTarget, tileOrders } from './room-model.js';
+// `eraseTarget`/`tileOrders` are the un-designate precedence + the tile-facts derivation it runs on,
+// SHARED VERBATIM with the Room Zoom (M1-C) rather than re-stated, so the two surfaces cannot come to
+// disagree about which of two orders on one tile an erase click takes off.
+// ⚠️ `deckDeviceConditions` IS NO LONGER IMPORTED HERE, and that is a deletion with a reason rather
+// than a tidy-up: it was the WEAR JOIN's per-deck adapter, feeding `overviewScene`'s `deviceCond`.
+// The plate now takes the raw `devices` rows straight to `ship-fittings.js`, which carries each
+// row's own `cond` into `buildTileItem` — so the wear join is UNCHANGED and still has exactly one
+// home (`items/wear.js`); what went away is a second per-deck reshaping of the same channel, which
+// could only ever have described one deck. The Room Zoom still imports it and still needs it.
+// `roomTileRect` is the Room Zoom's OWN anchor resolution — imported rather than re-derived so the
+// deck this surface switches the host to and the deck `enterRoom` focuses on cannot come apart. See
+// `enterCompartment` below; that identity IS the fix for the empty-room press.
+import { eraseTarget, tileOrders, roomTileRect } from './room-model.js';
 import { decksView } from './decks-model.js';
-import { overviewScene, makeTransform, starLayerSvg, pawnLayerParts, VIEW_W, VIEW_H } from './overview-scene.js';
+import { overviewScene, makeShipTransform, starLayerSvg, pawnLayerParts, VIEW_W, VIEW_H } from './overview-scene.js';
 // ⭐ THE CLIENT-SIDE TWEEN (2026-08-05). Pure math in the model, node lifecycle in the layer; this
 // file owns only the clock and the two hand-offs. `pawn-tween-model.js`' header carries the five
 // interpolation rules; `pawn-layer.js`' carries the measurement that chose a persistent OVERLAY
@@ -66,7 +74,7 @@ import {
 import { makeNudge } from './paused-nudge.js';
 import { ledgerRows, matterLine, caveatLine, LEDGER_ROW_IDS } from './ledger-model.js';
 import {
-  tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
+  tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta, crossDeckPress,
   fmtO2, fmtCo2, fmtTemp, fmtPressure, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, orderHintLine, orderPlacedLine,
   ERASE_TOOL, ERASE_LABEL, markNameAt, erasePlacedLine,
@@ -122,6 +130,27 @@ const _clock = makePausableClock(
   () => (typeof performance === 'object' && performance && typeof performance.now === 'function'
     ? performance.now() : Date.now()),
 );
+/**
+ * ⭐⭐ THE HOVERED COMPARTMENT'S ANCHOR — POINTER STATE THAT LIVES OUTSIDE THE REBUILT DOM.
+ *
+ * ⛔ THE OWNER-REPORTED DEFECT: *"when I am on the ship level and hover my mouse for 2-3 seconds
+ * above one of the rooms, that room starts flickering."* `paintScene` assigns the whole plate to
+ * `_stage.innerHTML` on every wire repaint, and the `frame` channel lands every ~1 s even on a QUIET
+ * ship — measured on the live host 2026-08-05 (`--ship wreck`, 20 frame messages in 20 s, median gap
+ * 1000 ms, p90 1098 ms, max 1144 ms). So the hovered ELEMENT is destroyed under a stationary cursor
+ * roughly a second after the hover begins. Chrome re-evaluates `:hover` from pointer MOVEMENT, so
+ * across the rebuild the state drops and the wash oscillates at repaint cadence. The 2–3 s onset is
+ * the first repaint after the hover, plus the second one being the first the eye reads as a blink.
+ *
+ * ⭐ THE RULE THIS ESTABLISHES, AND IT IS GENERAL: **ANY POINTER-TRACKED STATE ON THIS SURFACE MUST
+ * LIVE HERE, NOT IN THE DOM.** Hover today; a pressed-compartment tint, a tooltip anchor or a
+ * drag origin tomorrow. The plate is a pure string rebuilt ~1×/s at rest and ~10×/s while anyone
+ * walks; nothing latched onto one of its nodes survives. The state is handed to `overviewScene` as
+ * an INPUT (beside `selectedAnchor`), so every repaint re-emits it and the result is bit-identical
+ * across arbitrarily many repaints — which is a stronger guarantee than re-applying a class after
+ * `innerHTML`, because there is no second writer and no ordering to get wrong.
+ */
+let _hoverAnchor = null;
 let _place = null;           // the last projection, so the frame loop can place a figure without
                              // rebuilding the scene (it is `_ctx.transform`, kept under its own name
                              // so a lane editing the click path cannot silently retire the tween's)
@@ -404,6 +433,11 @@ function buildSkeleton() {
   // it is here because "two pieces of state that must be cleared together" is the shape that gets
   // half-cleared by the next lane, and it costs one call.
   _tween.clear();
+  // ⭐ AND THE HOVER GOES WITH IT, for exactly the reason the line above exists: these are two
+  // pieces of pointer/animation state that outlive the DOM on purpose, and "two things that must be
+  // cleared together" is the shape the next lane half-clears. A re-mount holding a stale anchor
+  // would wash a compartment nobody is pointing at, on a plate whose pointer never entered it.
+  _hoverAnchor = null;
   _toast = document.getElementById('ov-toast');
   _nudge = makeNudge({ el: () => $('ov-nudge') });
 
@@ -416,6 +450,13 @@ function buildSkeleton() {
   // surface never receives when a repaint lands mid-press, and at 10 Hz that is most presses.
   _stage.addEventListener('pointerdown', onScenePointerDown);
   _stage.addEventListener('pointerup', onScenePointerUp);
+  // ⭐ HOVER. `pointerover`/`pointerout` BUBBLE (unlike `mouseenter`/`mouseleave`), which is what
+  // lets one pair of listeners on the persistent stage track compartments that are replaced under
+  // them. `pointerover` also fires on the FIRST pointer event after a rebuild, so a cursor that
+  // never moves re-establishes the state as soon as it moves at all — and until then the state we
+  // already hold keeps the wash on, which is the whole point.
+  _stage.addEventListener('pointerover', onSceneHover);
+  _stage.addEventListener('pointerout', onSceneHover);
   // ⛔ AND THE SAME TWO ON THE PAWN OVERLAY, because it is a SIBLING of `#ov-stage` rather than a
   // child: a press that lands on a figure never reaches `_stage`'s handlers at all, and without
   // these two lines clicking a crew member on the plate would do NOTHING — the exact silent
@@ -1231,11 +1272,16 @@ function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid, attentio
   const state = {
     // ⚠️ NO `crew` — the plate's builder no longer draws figures (see `overviewScene`'s ⛔ note and
     // `pawnLayerParts`). The roster goes to the pawn overlay at the bottom of this function instead.
+    // ⭐⭐ `deck` IS NOW THE *ACTIVE* DECK, NOT THE DRAWN ONE. The plate draws every deck in
+    // `decksView`; this field only says which band is marked active and which deck an order lands on.
     deck, decksView: dView, frame,
     // ⭐ VR-P4 — the two plate-level states the scene cannot derive for itself: which compartments
     // need attention (D5's stuck orders, re-housed per ruling E4) and which one holds the selected
     // crew member (the 2.2 px border).
     attentionAnchors: attention || [], selectedAnchor: selAnchor || null,
+    // ⭐ THE HOVER RIDES IN AS STATE, so a stationary cursor's wash survives every rebuild. See
+    // `_hoverAnchor`'s header for the owner-reported flicker and the measured repaint cadence.
+    hoverAnchor: _hoverAnchor,
     designs: designsMsg && Array.isArray(designsMsg.cells) ? designsMsg.cells : [],
     terminals: terminalList(Hud.getTerminals()),
     // The mark layer comes off the `marks` channel, NOT off `frame`. The sentence this replaces was
@@ -1248,7 +1294,12 @@ function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid, attentio
     // this client. Derived here beside `marks` and for the same reason: the projection's `cell[1]`
     // carries one bit of it at most (`GlyphColor.Broken`) and GlyphMapper passes 3/4/5 overwrite
     // that byte, so a machine with a crew member standing on it would flicker back to intact.
-    deviceCond: deckDeviceConditions(decodeDevices(Hud.getDevices()), deck),
+    // ⭐⭐ THE FITTING SOURCE, AND IT IS WHY BOTH DECKS CAN BE DRAWN. `devices` and `items` carry
+    // EVERY deck (the `frame` channel carries exactly one — `GameSession.RenderFrame` projects
+    // `_deck` alone), and they reproduce the frame's fitting map tile-for-tile. The measurement, the
+    // fog argument and the one thing the frame still owns are in `ship-fittings.js`'s header.
+    devices: decodeDevices(Hud.getDevices()),
+    items: decodeItems(Hud.getItems()),
     selectedCid: selCid, lens,
   };
   let svg = overviewScene(state);
@@ -1256,22 +1307,28 @@ function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid, attentio
   if (overlay) svg = svg.replace(/<\/svg>\s*$/, overlay + '</svg>');
   _stage.innerHTML = svg;
 
-  // Cache the projection for click→tile (IX-O-19).
-  const entry = (dView || []).find((d) => d.deck === deck);
-  const t = makeTransform(entry ? entry.slots : [], frame);
+  // Cache the projection for click→tile (IX-O-19). ⭐ ONE TRANSFORM FOR THE WHOLE SHIP — the scene
+  // built its own from the same two inputs, and `makeShipTransform` is a pure function of them, so
+  // the two are equal by construction rather than by care.
+  const t = makeShipTransform(dView || [], frame);
   _ctx = { transform: t, frame };
 
   // ── THE PAWNS: content at MESSAGE cadence, position at DISPLAY cadence ──
   // ⭐ ONE TRANSFORM, TWO CONSUMERS. The click→tile projection just cached IS the projection the
-  // figures are placed with — a second `makeTransform` here is how a pawn and the tile a click
+  // figures are placed with — a second `makeShipTransform` here is how a pawn and the tile a click
   // resolves to would come to disagree about the same compartment.
-  // The tween is fed only crew ON THIS DECK, and it is `pawnLayerParts` that decides that (its
-  // `c.deck !== deck` filter is this plate's only membership test, and a deck cannot go fractional
-  // — `WireFormat.RosterEntry.Fx` states that rule). So a crew member who climbs a ladder LEAVES
-  // the set, is forgotten, and re-enters cold on the other deck: no figure ever glides between
-  // decks, which on a plate that draws one deck at a time would be a slide across the whole ship.
+  // ⭐⭐ THE TWEEN IS FED EVERY CREW MEMBER THE PLATE DRAWS, WHICH IS NOW EVERY DECK. The paragraph
+  // that stood here said the set was filtered to the shown deck and that *"no figure ever glides
+  // between decks, which on a plate that draws one deck at a time would be a slide across the whole
+  // ship"* — the premise (one deck at a time) is gone, so the sentence is REPLACED rather than
+  // edited. The conclusion survives for a different and stronger reason: `pawn-tween-model.js`'s
+  // RULE 2 snaps on a change of deck by name, and it predates this package, so a ladder step still
+  // never interpolates across the hull. `pawn-tween.test.js` owns that pin.
+  // ⚠️ AND THE SAMPLE MUST CARRY `deck` FOR THE *PLACEMENT*, NOT ONLY FOR THE SNAP: `placePawns`
+  // projects through `t.project(x, y, deck)`, so a sample whose deck were dropped would put every
+  // figure on the top band.
   if (_pawnLayer) {
-    const parts = pawnLayerParts(crew, deck, t, selCid, 'ov');
+    const parts = pawnLayerParts(crew, t, selCid, 'ov');
     _pawnLayer.sync(parts);
     const drawn = new Set(parts.map((p) => String(p.cid)));
     _tween.sample((crew || []).filter((c) => c && drawn.has(String(c.cid))).map((c) => ({
@@ -1305,7 +1362,11 @@ function placePawns() {
   const pos = _tween.positions(now);
   const screen = new Map();
   for (const [key, p] of pos) {
-    const [sx, sy] = _place.project(p.x + 0.5, p.y + 0.5); // feet on the tile centre, as ever
+    // ⭐ THE DECK COMES OUT OF THE TWEEN, not out of a second map kept beside it. `positions()`
+    // carries it because the record already held it (rule 2 snaps on it), and a parallel cid→deck
+    // table maintained here is exactly how a figure would come to be drawn on the band she left.
+    const [sx, sy] = _place.project(p.x + 0.5, p.y + 0.5, p.deck); // feet on the tile centre
+    if (!Number.isFinite(sx) || !Number.isFinite(sy)) continue;
     screen.set(key, { x: sx, y: sy });
   }
   return _pawnLayer.place(screen);
@@ -1371,17 +1432,22 @@ function startTween() {
  */
 function lensOverlaySvg(dView, deck, frame, lens) {
   if (!lens || lens === 'none') return '';
-  const entry = (dView || []).find((d) => d.deck === deck);
-  if (!entry) return '';
-  const t = makeTransform(entry.slots, frame);
+  const t = makeShipTransform(dView || [], frame);
   let out = '';
-  for (const s of entry.slots) {
-    if (!s.occupied) continue;
-    const tint = lensSlotTint(lens, s);
-    if (!tint) continue;
-    const r = t.cellOf(s);
-    if (!r) continue;
-    out += `<rect x="${r.x.toFixed(2)}" y="${r.y.toFixed(2)}" width="${r.w.toFixed(2)}" height="${r.h.toFixed(2)}" fill="${tint}"/>`;
+  // ⭐ EVERY DRAWN DECK IS WASHED, not only the active one. A lens that graded one band of a two-band
+  // drawing would answer "where is the air?" for half the ship and leave the other half looking
+  // like a null reading — which is the D4 defect (`hosts/web/GameSession.cs`'s own note: the
+  // PRESSURE lens painted nothing over a vacuum) arriving from the client side instead.
+  for (const entry of (dView || [])) {
+    if (!t.deckInfo(entry.deck)) continue;
+    for (const s of (entry.slots || [])) {
+      if (!s.occupied) continue;
+      const tint = lensSlotTint(lens, s);
+      if (!tint) continue;
+      const r = t.cellOf(s, entry.deck);
+      if (!r) continue;
+      out += `<rect x="${r.x.toFixed(2)}" y="${r.y.toFixed(2)}" width="${r.w.toFixed(2)}" height="${r.h.toFixed(2)}" fill="${tint}"/>`;
+    }
   }
   return out ? `<g class="pl-lens" pointer-events="none">${out}</g>` : '';
 }
@@ -1824,6 +1890,45 @@ function onScenePointerUp(e) {
 function clearScenePress() { _downOnScene = false; }
 
 /**
+ * Track the hovered compartment. ONE repaint per CHANGE, never one per event.
+ *
+ * ⚠️ THE CHANGE GATE IS NOT AN OPTIMISATION. `pointerover` fires for every element the pointer
+ * enters — every fitting, every partition path — so repainting on each would rebuild the plate
+ * dozens of times per second of mouse travel, which is the flicker it is meant to remove, arriving
+ * from the other direction. `closest('.pl-room')` collapses all of those to the compartment, and the
+ * repaint is armed only when the ANSWER moves.
+ *
+ * `pointerout` is handled by the same function on purpose: `e.relatedTarget` is where the pointer is
+ * GOING, so leaving a fitting for its own compartment's floor keeps the same anchor and does
+ * nothing, while leaving the plate entirely resolves to null and clears it. Reading the target on
+ * the way out would clear the hover every time the cursor crossed a stroke inside the room it is in.
+ */
+function onSceneHover(e) {
+  const to = e.type === 'pointerout' ? e.relatedTarget : e.target;
+  const anchor = roomAnchorOf(to);
+  if (anchor === _hoverAnchor) return;
+  _hoverAnchor = anchor;
+  scheduleRepaint();
+}
+
+/**
+ * The hovered compartment's anchor, or null.
+ *
+ * ⚠️ **TEST-ONLY, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT.** Nothing in `client/src` calls
+ * this — the drawing reads `_hoverAnchor` directly through `overviewScene`'s `hovered` argument — and
+ * it is kept exported because the hover-stability test has to assert the STATE and not only the
+ * emitted `pl-room-hover` class. Those are two different claims: a repaint that rebuilds the
+ * compartment element loses the CLASS while the state survives, which is exactly the owner's flicker,
+ * and a test that could see only the markup would read the survival as the defect.
+ *
+ * ⛔ IT IS NOT AN INJECTION POINT AND MUST NOT GROW A SETTER. `overview-view.js` has been burned by
+ * exactly that shape once (`_getStockFilter`, deleted with the stockpile seam — see the note above
+ * `_onEnterRoom`): a live hook nothing reads is the thing a later package mistakes for a wiring bug
+ * and "fixes" by wiring it up.
+ */
+export function hoveredAnchor() { return _hoverAnchor; }
+
+/**
  * Resolve one scene gesture. Called from `onScenePointerUp` and NOT from a `click` listener — the
  * whole point of BUG-B. Two consequences worth knowing, both deliberate:
  *
@@ -1835,6 +1940,78 @@ function clearScenePress() { _downOnScene = false; }
  *    to the common ancestor and done nothing. That is strictly more forgiving on a surface whose
  *    complaint was "it takes several clicks", and this surface has no drag gesture to confuse it.
  */
+/**
+ * ⭐⭐ THE CROSS-DECK PRESS. Returns true when the press was on a band the host is NOT projecting, in
+ * which case it has ALREADY moved the order deck and toasted — the caller must send no order.
+ *
+ * The decision itself is `crossDeckPress` in `overview-model.js` (pure, driven by its own test); this
+ * function is the two side effects. See that rule's header for the silent defect it closes: every
+ * designation command carries only `x`/`y` and the host supplies Z from its own shown deck, so a
+ * press on the other band would have ordered somewhere the player did not point.
+ */
+function crossDeck(t) {
+  const r = crossDeckPress(t.deck, _ctx.frame ? _ctx.frame.deck : 0);
+  if (r.ok) return false;
+  _send(Cmd.deck(r.delta));
+  toast(r.line);
+  return true;
+}
+
+/**
+ * ⭐⭐ ENTERING A COMPARTMENT — AND THE HALF `crossDeck` DELIBERATELY DOES NOT COVER.
+ *
+ * ⛔⛔ THE DEFECT THIS CLOSES, MEASURED IN THE RUNNING GAME (2026-08-05, `--ship wreck`): the plate
+ * draws BOTH decks, and an ORDER on the band the host is not projecting is refused by `crossDeck`
+ * above — but ROOM ENTRY had no such guard. `_onEnterRoom(anchor)` went straight through, the Room
+ * Zoom's `enterRoom` resolved the anchor on ANY deck (`roomTileRect` scans the whole `decksView`),
+ * and then `roomCells` returned NOTHING because `frame.deck !== focusRoom.deck` — the frame carries
+ * ONE deck and it was still the other one.
+ *
+ * RE-MEASURED HERE, on this tree, by driving the shipped surface with this function stubbed back out
+ * (`overview-plate-shot.mjs`, `--ship wreck`): `hall_d1_s0` — a compartment the plate draws FIVE
+ * fittings into — pressed from the inactive band opened at masthead **"96.0 M² · 0 OF 0 FITTINGS
+ * BUILT", 23 svg paths**, and with this function in place the same press reads **"5 OF 5", 66
+ * paths**. Independent review found it first on `hall_d1_s3` (0 OF 0 / 23 paths against 4 OF 4 / 56)
+ * and both numbers reproduce. ⛔ THE BREADCRUMB AND `body.roomzoom-open` ARE IDENTICAL EITHER WAY,
+ * so nothing on screen — and nothing the rig used to look at — said the room was empty because of
+ * the deck rather than because it is empty. Silently wrong.
+ *
+ * ⭐ THE FIX IS THE TREE'S OWN PATTERN, not a new one: `roomzoom-view.js`'s `onMinimapSlot` already
+ * swaps rooms ACROSS decks by sending `Cmd.deck(target.deck - _focus.deck)` and then focusing. Room
+ * entry is NAVIGATION, not an order — which is why it performs the hop instead of refusing it the
+ * way `crossDeck` refuses a designation. A designation carries only x/y and the host supplies Z from
+ * its own shown deck, so obeying it would order somewhere the player did not point; entering a room
+ * names the room, so there is nothing to mis-address.
+ *
+ * ⭐⭐ THE DECK IS RESOLVED THROUGH `roomTileRect`, THE SAME FUNCTION `enterRoom` USES, and that is
+ * the whole reason this is not a DOM read. Taking the band off the pressed node's `data-deck` would
+ * be the drawing's answer; taking it here is `_focus`'s answer, and the property the defect is about
+ * is precisely **the host's projected deck equals the Room Zoom's focus deck**. Deriving both from
+ * one function makes them equal by construction rather than by two derivations agreeing today.
+ *
+ * ⚠️ THE ROOM IS ENTERED IMMEDIATELY, ONE FRAME BEFORE ITS CONTENTS ARRIVE — stated because it is
+ * observable. The deck change is a wire round trip, so the first repaint still runs against the old
+ * frame and the room fills when the new one lands (`roomzoom-view.js:250`,
+ * `Hud.onShipUpdate(() => { if (_open) scheduleRepaint(); })`). A PAUSED ship is covered: the host's
+ * `Apply` returns true for `CmdKind.Deck`, which marks the view dirty and re-renders without a tick
+ * (`hosts/web/GameSession.cs:477`). Exactly the behaviour `onMinimapSlot` has always had.
+ *
+ * ⚠️ AND THE HOVER AND THE NAV HINT ARE NOW COHERENT WITH IT, which they were not before. The plate
+ * washes a hovered compartment on EITHER band and the hint says "click a compartment to open it" —
+ * true of both bands only once this function exists. Nothing there needed changing; it needed the
+ * press to keep the promise the drawing was already making.
+ *
+ * ⚠️ An anchor `roomTileRect` cannot resolve hops nothing and is handed on unchanged: the Room Zoom
+ * runs the identical lookup and answers with its own "ROOM ZOOM UNAVAILABLE" toast. Inventing a deck
+ * hop for a room the ship does not have would move the player's deck for nothing.
+ */
+function enterCompartment(anchor) {
+  const target = roomTileRect(decksView(decodeDecks(Hud.getDecks()), decodeRooms(Hud.getRooms())), anchor);
+  const shown = _ctx.frame ? _ctx.frame.deck | 0 : 0;
+  if (target && (target.deck | 0) !== shown) _send(Cmd.deck((target.deck | 0) - shown));
+  _onEnterRoom(anchor);
+}
+
 function onSceneGesture(e) {
   const svg = _stage.querySelector('svg.pl-overview');
   if (!svg) return;
@@ -1846,7 +2023,7 @@ function onSceneGesture(e) {
     // Overview never sends Cmd.build; overviewClickAction never returns 'build'.
     case 'move': {
       const t = pointToTile(svg, e);
-      if (t) {
+      if (t && !crossDeck(t)) {
         _send(Cmd.cursor(t.x, t.y)); _send(Cmd.move()); Hud.toolUsed('move', t.x, t.y);
         nudgeOnIntent(); // an order placed on a stopped ship is the classic "nothing happened"
       }
@@ -1856,6 +2033,7 @@ function onSceneGesture(e) {
     // `overviewClickAction`'s doc for the three measured holes that decided that.
     case 'order': {
       const t = pointToTile(svg, e);
+      if (t && crossDeck(t)) break;
       if (t) {
         for (const o of orderPayloads(action.tool, t.x, t.y)) _send(o);
         Hud.toolUsed(action.tool, t.x, t.y); // keeps the tool armed (only 'move' is one-shot)
@@ -1882,6 +2060,7 @@ function onSceneGesture(e) {
     // one repaint, not one wire message, and the cache is identical either way.
     case 'erase': {
       const t = pointToTile(svg, e);
+      if (t && crossDeck(t)) break;
       if (t) {
         const deck = _ctx.frame ? _ctx.frame.deck : 0;
         const mark = markNameAt(decodeMarks(Hud.getMarks()), t.x, t.y, deck);
@@ -1914,7 +2093,9 @@ function onSceneGesture(e) {
     case 'terminal': Hud.selectTab('moss'); break; // clicking a console on the map opens MOSS (IX-M1)
     // M1-L: the `addroom` case is DELETED with the chip that produced it (`overviewClickAction` can
     // no longer return that type). Every compartment now falls to `enterRoom`.
-    case 'enterRoom': _onEnterRoom(action.anchor); break;
+    // ⛔ NOT `_onEnterRoom` DIRECTLY — see `enterCompartment`. A press on the band the host is not
+    // projecting must take the deck with it, or the room opens EMPTY and says nothing about why.
+    case 'enterRoom': enterCompartment(action.anchor); break;
     default: break; // space outside every compartment → no-op (IX-O-18)
   }
 }
@@ -2086,9 +2267,40 @@ function hitTest(target) {
   if (term && term.dataset.tid != null) return { terminalId: term.dataset.tid };
   // M1-L: the `.pl-addroom` chip tier and the `.pl-hall` miss tier are DELETED — `overview-scene.js`
   // emits neither class any more, so both `closest` calls could only ever return null.
-  const room = target.closest('.pl-room');
-  if (room && room.dataset.anchor) return { roomAnchor: room.dataset.anchor };
+  const roomAnchor = roomAnchorOf(target);
+  if (roomAnchor) return { roomAnchor };
   return {};
+}
+
+/**
+ * ⭐⭐ THE COMPARTMENT A POINTER IS OVER — the ONE resolution, shared by the hover wash and the
+ * click that enters the room.
+ *
+ * ⛔ IT IS TWO TIERS BECAUSE THE DRAWING HAS TWO LAYERS, AND THE SECOND TIER CLOSES A DEFECT THIS
+ * PACKAGE CREATED. VR-P4 drew a compartment's fittings INSIDE its own `<g class="pl-room">`, so
+ * `closest('.pl-room')` found the room from any pixel of any piece. The side elevation draws ONE
+ * fitting layer per BAND, above the compartments, because the pieces have to sort back-to-front
+ * across the whole deck floor for the oblique to read — so every fitting became a SIBLING of the
+ * rooms and `closest` returned null.
+ *
+ * MEASURED IN THE RUNNING GAME (2026-08-05, `--ship wreck`): `elementFromPoint` at 50 % and 75 % of
+ * a compartment's height — the band where its contents stand — returned a fitting path resolving to
+ * NO room; only at 90 %, on bare floor, did it find one. So a press on a compartment's contents did
+ * not open it and a hover over them did not wash it, across most of the compartment's area. That is
+ * the "click a compartment to open it" affordance broken for exactly the pixels a player aims at.
+ *
+ * ⚠️ ONE FUNCTION, TWO CALLERS, DELIBERATELY: the hover and the click must never disagree about
+ * which compartment the pointer is in, or the plate would wash one room and open another.
+ */
+function roomAnchorOf(target) {
+  if (!target || !target.closest) return null;
+  const room = target.closest('.pl-room');
+  if (room && room.dataset && room.dataset.anchor) return room.dataset.anchor;
+  // The FITTING tier: a piece says which compartment it stands in. A walkway piece carries no
+  // anchor at all, which correctly resolves to "no room to enter".
+  const fit = target.closest('.pl-fit');
+  if (fit && fit.dataset && fit.dataset.anchor) return fit.dataset.anchor;
+  return null;
 }
 
 /**
@@ -2113,7 +2325,14 @@ function pointToTile(svg, e) {
   if (fit && fit.dataset && fit.dataset.tile) {
     const [fx, fy] = String(fit.dataset.tile).split(',');
     const x = Number(fx), y = Number(fy);
-    if (Number.isFinite(x) && Number.isFinite(y)) return { x: x | 0, y: y | 0 };
+    // ⭐ THE DECK RIDES THE SAME TIER. A fitting says which tile AND which deck it was drawn for
+    // (`data-deck`, emitted beside `data-tile` by `fittingLayer`), so this fast path cannot resolve a
+    // tile on one band and hand back the active deck — which would be the cross-deck defect
+    // surviving inside the tier that exists to make the drawing and the click agree.
+    const dk = Number(fit.dataset.deck);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x: x | 0, y: y | 0, deck: Number.isFinite(dk) ? dk | 0 : (_ctx.frame ? _ctx.frame.deck | 0 : 0) };
+    }
   }
   if (!svg.createSVGPoint || !svg.getScreenCTM) return null;
   const ctm = svg.getScreenCTM();

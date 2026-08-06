@@ -3567,19 +3567,34 @@ test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, a
   // derivation (`client/src/items/glyph-map.js`), which is the whole of that package. Deriving
   // against both is now belt-and-braces rather than load-bearing, and it is kept precisely because a
   // future surface could stop reading the shared table without this test noticing otherwise.
+  // ⚠️ THE TWO SURFACES NO LONGER TAKE THE SAME INPUT, so the shared probe is a shared PIECE and not
+  // a shared glyph. The Room Zoom skins a FRAME GLYPH; the Level-1 plate skins a `devices` row
+  // (`ship-fittings.js` — the elevation draws every deck and `frame` carries one). The property this
+  // test is for is unchanged and is about DRAW ORDER, so the fixture picks a DeviceKind whose piece
+  // both surfaces really draw, derived against BOTH rather than assumed — the existence assert is
+  // still what stops the test degrading into a vacuous pass if they diverge.
   const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
-  let code = 0;
-  for (let c = 33; c < 127 && !code; c += 1) {
-    if (!itemForGlyph(c)) continue;
-    const probe = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[c, 8, 0, 0]] };
-    if (overviewScene({ deck: 0, decksView: fixView, frame: probe, crew: [], marks: [] }).includes('pl-furniture')) code = c;
+  let code = 0, kind = -1;
+  for (let k = 0; k < DEVICE_KIND_NAMES.length && kind < 0; k += 1) {
+    const id = itemForDeviceRow({ kind: k, open: 0 });
+    if (!id) continue;
+    const ovProbe = overviewScene({
+      deck: 0, decksView: fixView, frame: { deck: 0, w: 1, h: 1, lens: 'none', cells: [[46, 0, 0, 0]] },
+      devices: [{ x: 0, y: 0, deck: 0, kind: k, cond: 255, oper: 1, open: 0 }], marks: [],
+    });
+    if (!ovProbe.includes('pl-furniture')) continue;
+    // …and the SAME piece must reach the Room Zoom through ITS route, which is the glyph.
+    const g = Object.keys(GLYPH_TO_ITEM).find((ch) => GLYPH_TO_ITEM[ch] === id);
+    if (!g || !itemForGlyph(g.charCodeAt(0))) continue;
+    kind = k; code = g.charCodeAt(0);
   }
-  assert.ok(code, 'no glyph code is furniture on BOTH surfaces — the ordering assertion would be vacuous');
+  assert.ok(kind >= 0 && code,
+    'no piece is furniture on BOTH surfaces — the ordering assertion would be vacuous');
 
-  // The frame carries the FURNITURE at an ordinary device colour; the condemnation travels on the
-  // `marks` channel beside it. (It used to be `[[code, 26, 0, 0]]` — one cell carrying both — and
-  // that cell only existed because pass 4 was patched to produce it.)
+  // The frame carries the FURNITURE glyph (for the Room Zoom) and the `devices` row carries the same
+  // piece (for the plate); the condemnation travels on the `marks` channel beside both.
   const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 8, 0, 0]] };
+  const devs = [{ x: 0, y: 0, deck: 0, kind, cond: 255, oper: 1, open: 0 }];
   const chan = decodeMarks({ type: 'marks', cells: [[0, 0, 0, 3]] });
 
   // The Room Zoom's pure model reports it and its pure layer draws it…
@@ -3589,7 +3604,7 @@ test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, a
   // …and the Overview's real composer agrees, byte for byte, on the same tile. The two surfaces
   // share `mark-overlay.js` precisely so a condemned desk cannot read one way in the schematic and
   // another in the room.
-  const ov = overviewScene({ deck: 0, decksView: fixView, frame, crew: [], marks: chan });
+  const ov = overviewScene({ deck: 0, decksView: fixView, frame, devices: devs, marks: chan });
   assert.deepEqual(marks(ov).map((k) => k.kind), ['strip']);
 
   // ORDER on the Overview, driven rather than scanned, and now unconditional.
@@ -4282,22 +4297,44 @@ test('a ground stack on a door tile does NOT erase the door (and still erases a 
   }
 });
 
-// THE OTHER SURFACE. The Overview `continue`s on `!itemId`, so an unskinned glyph there is not a
-// chip — it is silently absent, which is worse to find. Same fix, different failure mode.
+// THE OTHER SURFACE. The Overview skips a row whose piece is empty, so an unskinned device there is
+// not a chip — it is silently absent, which is worse to find. Same fix, different failure mode.
+//
+// ⚠️⚠️ THE PROBE IS A `devices` ROW, NOT A FRAME GLYPH, AND THE THIRD LEG CHANGED ITS ANSWER.
+// The side elevation draws every deck, so it cannot read `frame` (which carries one) — it reads the
+// `devices` channel (`ship-fittings.js`). Two consequences, and the second is a real loss:
+//   · CLOSED vs OPEN is still expressed, because `open` IS on the channel: `itemForDeviceRow` picks
+//     the leaf for a shut door and nothing for an open doorway, exactly as the glyphs did.
+//   · **LOCKED IS NOT.** `Device.IsLocked` is on the `WireFormat.Devices.cs` "deliberately left out"
+//     list, so a locked door reaches the plate as an ordinary `Door` row and draws `door-sliding`
+//     instead of `door-blast`. The leg that asserted the blast door is therefore RE-AIMED at what is
+//     now true — a locked door still DRAWS, it just draws as a plain door — and the loss itself is
+//     pinned by name in `device-sprite-coverage.test.js`'s unreachable-art census, so deleting this
+//     comment cannot make it disappear quietly.
 // MUTATION: `dev('Door', '+')` → `dev('Door', null)` in items/index.js ⇒ RED.
 test('the OVERVIEW composer draws a closed door too — it was silently absent, not chipped', () => {
-  const probe = (ch) => overviewScene({
-    deck: DECK1, decksView: fixView, crew: [], marks: [],
-    frame: { deck: DECK1, w: 1, h: 1, lens: 'none', cells: [[ch.charCodeAt(0), 8, 0, 0]] },
+  const probe = (kind, open) => overviewScene({
+    deck: DECK1, decksView: fixView, marks: [],
+    frame: { deck: DECK1, w: 1, h: 1, lens: 'none', cells: [[46, 0, 0, 0]] },
+    devices: [{ x: 0, y: 0, deck: DECK1, kind, cond: 255, oper: 1, open }],
   });
-  assert.ok(!probe('z').includes('class="pl-furniture"'),
-    'control: an unskinned glyph drew a furniture layer on the Overview — the probe proves nothing');
-  assert.ok(probe('+').includes('class="pl-furniture"'),
-    'THE OVERVIEW DREW NOTHING for a closed door. `furnitureLayer` does `if (!itemId) continue`, so '
-    + 'the tile is not a chip here, it is absent from the schematic entirely.');
-  assert.ok(probe('X').includes('class="pl-furniture"'), 'nor for a locked one');
-  assert.ok(!probe('/').includes('class="pl-furniture"'),
+  const DOOR = DEVICE_KIND_NAMES.indexOf('Door');
+  assert.ok(DOOR >= 0, 'the fixture cannot find DeviceKind.Door');
+  assert.ok(!probe(250, 0).includes('class="pl-furniture"'),
+    'control: an unskinned kind drew a furniture layer on the Overview — the probe proves nothing');
+  assert.ok(probe(DOOR, 0).includes('class="pl-furniture"'),
+    'THE OVERVIEW DREW NOTHING for a closed door. `fittingLayer` skips an empty piece, so the tile '
+    + 'is not a chip here, it is absent from the drawing entirely.');
+  assert.ok(!probe(DOOR, 1).includes('class="pl-furniture"'),
     'an OPEN doorway drew a leaf on the Overview — see NO_DEVICE_GLYPH_ART for why it must not');
+  // THE LOCKED DOOR, stated as it now is: the channel cannot say "locked", so the plate draws the
+  // ordinary leaf. It must still draw SOMETHING — a route the player cannot see is worse than a
+  // route drawn with the wrong lock.
+  assert.equal(itemForDeviceRow({ kind: DOOR, open: 0 }), 'door-sliding',
+    'a shut door no longer resolves to the sliding leaf');
+  assert.equal(itemIdForGlyphChar('X'), 'door-blast',
+    'the LOCKED-door glyph no longer skins the blast door — the Room Zoom lost it too, which would '
+    + 'make the plate\'s loss total rather than partial');
 });
 
 // ART MUST NOT MAKE A DOOR REMOVABLE. `demolishTarget`'s device branch excludes `STRUCTURE_CODES`,

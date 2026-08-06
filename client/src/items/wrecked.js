@@ -111,15 +111,15 @@ import { item, roundedRectPath, r3, INK } from './helpers.js';
 import { gearPath } from './resources.js';
 import { ITEMS, ITEM_IDS, placeholderItem } from './index.js';
 import {
-  paintFitting, line as fLine, disc as fDisc, curve as fCurve,
+  paintFitting, line as fLine, disc as fDisc, curve as fCurve, FITTING_IDS,
 } from './fittings.js';
 // — lane/paper-resources — the eight redrawn ground stacks re-run their own pristine painter, the
 // same way the nine fittings twins re-run theirs. One import, one direction.
-import { paintResource } from './paper-resources.js';
+import { paintResource, PAPER_RESOURCE_IDS } from './paper-resources.js';
 // — lane/paper-fixtures —
-import { paintPaperFixture } from './paper-fixtures.js';
+import { paintPaperFixture, FIXTURE_IDS } from './paper-fixtures.js';
 // — lane/paper-machines — the thirteen machine twins live in the block at the end of this file.
-import { paintMachine } from './machines.js';
+import { paintMachine, MACHINE_IDS } from './machines.js';
 
 // ── the layer primitive ──────────────────────────────────────────────────────────────────────
 
@@ -1801,6 +1801,32 @@ export function isWreckedItemId(id) {
  * @param {object} [opts] forwarded to the harness: `{ w, h, idPrefix, index }`
  * @returns {string} an SVG `<g>…</g>` fragment
  */
+/** The pristine ids drawn by one of the four PAPER catalogues — the set that wears the treatment. */
+const PAPER_CATALOGUE_IDS = new Set([
+  ...FITTING_IDS, ...MACHINE_IDS, ...FIXTURE_IDS, ...PAPER_RESOURCE_IDS,
+]);
+
+/**
+ * THE TWINS THAT WEAR THE SKETCH TREATMENT — 2026-08-05, the owner's `strong` ruling.
+ *
+ * A twin is treated IF AND ONLY IF ITS OWN PAINTING IS IN THE PAPER IDIOM, which takes TWO facts and
+ * not one: the pristine piece must be drawn by a paper catalogue, AND the twin must be repo-authored
+ * against that drawing rather than transcribed from the warm mock (`mockLabel === null`, which is
+ * this file's own long-standing ledger of the distinction). Both are read from data here; neither is
+ * a list, so a new paper piece or a retired mock twin moves this set on its own.
+ *
+ * ⛔ AND THE SECOND FACT IS NOT A TECHNICALITY — IT IS A DEFECT THIS PACKAGE FOUND AND DID NOT
+ * CREATE. Twenty-one of the thirty-four fittings still have their WARM MOCK twin: `dining-table`'s
+ * pristine drawing is the paper fitting and its twin is the 2026-07-28 mock transcription, painted
+ * in `#33281b`. Treating those would put a freehand hand on warm art and break the palette closure
+ * (`#3a2c1e` on the chair's twin — measured, which is how this was found). The mismatch is FILED for
+ * the owner: it is visible today, and the treatment makes it more so, because the pristine piece is
+ * now conspicuously hand-drawn beside a twin that is not.
+ */
+const SKETCHED_TWINS = new Set(
+  [...PAPER_CATALOGUE_IDS].filter((id) => WRECKED[id] && WRECKED[id].mockLabel == null),
+);
+
 export function buildWrecked(pristineId, opts = {}) {
   const entry = typeof pristineId === 'string' ? WRECKED[pristineId] : undefined;
   if (!entry) return placeholderItem(opts);
@@ -1809,7 +1835,15 @@ export function buildWrecked(pristineId, opts = {}) {
   // but reserved for namespace prefixes, and it is a combinator-adjacent character in CSS — cheap to
   // avoid, expensive to debug. The PUBLIC id keeps the colon (`wreckedItemId`), where nothing parses
   // it as markup.
-  return item(`wrecked-${pristineId}`, opts, (s) => entry.paint(s));
+  //
+  // ⭐ THE SKETCH SEED IS THE PRISTINE ID, NOT `wrecked-<id>`, AND THAT IS A MEASUREMENT DECISION AS
+  // MUCH AS A VISUAL ONE. A twin re-runs its own pristine painter and then adds damage, so the two
+  // fragments share an element PREFIX; seeded identically, the treatment draws that prefix with the
+  // identical hand and the whole difference between `sketch(pristine)` and `sketch(twin)` is the
+  // damage. Seeded differently, every stroke of both pieces would differ and the distinguishability
+  // guard in `sketch-adoption.test.js` would be measuring the seed instead of the damage.
+  return item(`wrecked-${pristineId}`, opts, (s) => entry.paint(s),
+    { sketched: SKETCHED_TWINS.has(pristineId), seed: pristineId });
 }
 
 /** The mock's remaining-condition badge for a twin (`'12%'` / `'—'`), or `undefined`. */

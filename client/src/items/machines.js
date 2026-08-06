@@ -411,11 +411,13 @@ function envFor(s, id, state, facing) {
   };
 }
 
-/** The harness: an item fragment whose painter draws in the machine's own centimetres. */
+/** The harness: an item fragment whose painter draws in the machine's own centimetres.
+ *  `sketched: true` — the owner's 2026-08-05 ruling; the seam is `helpers.item()`. */
 function machine(id, opts, paint) {
   // `env.facing` arrives from `helpers.item` — the same seam `fittings.fitting` and
   // `paper-fixtures.fixture` use, so all four catalogues turn through one mechanism.
-  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); });
+  return item(id, opts, (s, env) => { paint(s, envFor(s, id, env.state, env.facing)); },
+    { sketched: true });
 }
 
 /** Points along a LEVEL arc, in cm — for a sector or a curved rail on a horizontal plane. */

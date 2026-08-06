@@ -134,7 +134,16 @@ test('M1-L DRIVEN: the wreck Overview draws EIGHT named compartments on deck 0 a
   // the 11-character clip budget measured further down — because a prose column has no clip at all.
   const named = compartmentLines(WVIEW, 0, [], null);
   assert.equal(named.length, 8, 'the compartments column does not name all eight');
-  assert.equal((svg.match(/class="pl-room"/g) || []).length, 8, 'deck 0 no longer draws 8 compartments');
+  // ⭐⭐ THE COUNT IS PER-DECK NOW, BECAUSE THE PLATE DRAWS EVERY DECK AT ONCE. The bare
+  // `class="pl-room"` count reads 16 on the wreck (8 + 8) and always will — the side elevation's
+  // whole premise is that both decks are visible — so counting it would be counting the SHIP, not
+  // the deck. `data-deck` is emitted on every compartment group precisely so a census can say which
+  // one it means; the claim under test ("deck 0 draws eight named compartments") is unchanged.
+  const onDeck = (d) => (svg.match(new RegExp(`data-anchor="[^"]*" data-deck="${d}"`, 'g')) || []).length;
+  assert.equal(onDeck(0), 8, 'deck 0 no longer draws 8 compartments');
+  assert.equal(onDeck(1), 8, 'deck 1 is not drawn beside it — the elevation lost its second band');
+  assert.equal((svg.match(/class="pl-room[ "]/g) || []).length, 16,
+    'the plate draws neither 16 compartments nor a shape this census understands');
   assert.equal((svg.match(/class="pl-hall"/g) || []).length, 0);
   assert.equal((svg.match(/class="pl-addroom"/g) || []).length, 0);
   assert.ok(!svg.includes('ADD ROOM'), 'the scene still paints an ADD ROOM affordance');
@@ -501,23 +510,25 @@ test('M1-L: the PURPOSE mark keeps the EXACT set the glow had — a widened flag
   // the number this test always asserted.
   // MEASURED on `--ship wreck` with the signal still reading `occupied`: it goes 3 → 8 on deck 0 and
   // 0 → 8 on DECK 1, which is unpowered, airless, sealed, and dead by owner decision (OD-E).
-  const marks = (svg) => (svg.match(/data-purpose="1"/g) || []).length;
+  // ⚠️ THE SCENE IS ONE DRAWING OF THE WHOLE SHIP NOW, so the census is scoped by `data-deck` rather
+  // than by which deck was passed in. `deck` no longer selects what is drawn — it selects which band
+  // is marked ACTIVE — so re-rendering per deck would have measured the same 16 compartments twice.
+  // Every NUMBER below is the number this test always asserted.
+  const svg = overviewScene({ deck: 0, decksView: WVIEW, frame: null, marks: [] });
+  const marksOn = (d) => (svg.match(new RegExp(`data-deck="${d}" data-purpose="1"`, 'g')) || []).length;
   for (const d of WVIEW) {
-    const svg = overviewScene({ deck: d.deck, decksView: WVIEW, frame: null, crew: [], marks: [] });
     const purposed = d.slots.filter((s) => s.roomType !== 0).length;
-    assert.equal(marks(svg), purposed,
-      `deck ${d.deck} marks ${marks(svg)} tiles for ${purposed} purposed compartments. The mark is a `
-      + 'claim about the ship\'s state, not about its floor plan.');
+    assert.equal(marksOn(d.deck), purposed,
+      `deck ${d.deck} marks ${marksOn(d.deck)} tiles for ${purposed} purposed compartments. The mark `
+      + 'is a claim about the ship\'s state, not about its floor plan.');
   }
   // The two decisive numbers, written out so a future edit cannot drift them quietly.
   const deck1 = WVIEW.find((d) => (d.deck | 0) === 1);
   assert.equal(deck1.slots.filter((s) => s.roomType !== 0).length, 0, 'the wreck\'s dead deck gained a purposed room');
-  const svg1 = overviewScene({ deck: 1, decksView: WVIEW, frame: null, crew: [], marks: [] });
-  assert.equal(marks(svg1), 0,
+  assert.equal(marksOn(1), 0,
     'the DEAD DECK is marked purposed in all eight tiles — `occupied` is back in the predicate');
   // NON-VACUITY: deck 0 really is marked, so "0 on deck 1" is not "the signal is switched off".
-  const svg0 = overviewScene({ deck: 0, decksView: WVIEW, frame: null, crew: [], marks: [] });
-  assert.equal(marks(svg0), 3,
+  assert.equal(marksOn(0), 3,
     'deck 0 lost its purpose marks too — this test is measuring a dead layer, not a correct predicate');
 });
 

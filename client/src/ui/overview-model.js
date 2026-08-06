@@ -56,7 +56,7 @@
 // key, and when it does the click falls through to the hit rule — clicking a room ENTERS it, which
 // is where the tool now lives. That is the right outcome, not a leak.
 
-import { makeTransform } from './overview-scene.js';
+import { makeShipTransform } from './overview-scene.js';
 // ⭐ M3-12 — `isIncapableOf` is a PURE mask reader, not a cache reach: it takes a row that has
 // already been decoded and answers a question about the sim's own `Citizen.WorkIncapable` byte. The
 // "no wire access" rule above is about `Hud.*` (the live caches), which this file still never
@@ -68,28 +68,77 @@ import { isIncapableOf } from '../wire/messages.js';
 /* eslint-disable no-multi-spaces */
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Click → tile projection (IX-O-19). The scene draws in a 1300×561 viewBox; the caller maps a DOM
-// click to viewBox coords (via the SVG CTM) and hands them here with the deck's transform + frame.
+// Click → tile projection (IX-O-19). The scene draws in the plate's own viewBox; the caller maps a
+// DOM click to viewBox coords (via the SVG CTM) and hands them here with the SHIP transform + frame.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The integer sim tile a viewBox point fell in, or null when out of the frame bounds. `transform`
- * is `makeTransform(slots, frame)` (its `.invert` recovers the fractional tile). PURE.
- * @param {{invert:(x:number,y:number)=>[number,number]}|null} transform
- * @param {number} vx @param {number} vy   point in the scene's 1300×561 viewBox space
+ * The integer sim tile a viewBox point fell in, AND THE DECK IT IS ON, or null when out of the frame
+ * bounds. `transform` is `makeShipTransform(decksView, frame)` — its `.invert` recovers the
+ * fractional tile and the band the point landed in. PURE.
+ *
+ * ⭐⭐ `deck` IS NEW AND IT IS NOT OPTIONAL DECORATION. The plate draws EVERY deck at once now, so a
+ * press can land on a band the host is not projecting — and every designation command carries only
+ * `x`/`y` (the host supplies Z from its own `_deck`, `GameSession.cs:1128`). Without this field the
+ * surface would resolve a press on the lower deck to a tile coordinate and the host would apply it
+ * to the upper one: an order placed somewhere the player did not point, silently. `overview-view.js`
+ * reads it and moves the ORDER DECK instead.
+ *
+ * ⚠️ THE `{x, y}` SHAPE IS PRESERVED, so every existing reader keeps working unchanged; the field is
+ * APPENDED, never substituted.
+ *
+ * @param {{invert:(x:number,y:number)=>[number,number,number]}|null} transform
+ * @param {number} vx @param {number} vy   point in the scene's own viewBox space
  * @param {{w:number,h:number}|null} [frame]
- * @returns {{x:number,y:number}|null}
+ * @returns {{x:number,y:number,deck:number}|null}
  */
 export function tileAt(transform, vx, vy, frame) {
   if (!transform || typeof transform.invert !== 'function') return null;
-  const [tx, ty] = transform.invert(vx, vy);
+  // ⛔ OUTSIDE EVERY DRAWN BAND IS NOT A TILE. `invert` is TOTAL by contract (it is the round trip's
+  // inverse) and it CLAMPS to the floor, so it answers for the empty paper beside the hull too — see
+  // `hits`' header in `ship-elevation.js` for the armed-DIG defect that combination shipped for an
+  // hour. The bound is asked here, once, where the refusal belongs.
+  if (typeof transform.hits === 'function' && !transform.hits(vx, vy)) return null;
+  const [tx, ty, deck] = transform.invert(vx, vy);
   const x = Math.floor(tx), y = Math.floor(ty);
   if (frame && (x < 0 || y < 0 || x >= frame.w || y >= frame.h)) return null;
-  return { x, y };
+  return { x, y, deck: deck | 0 };
 }
 
-/** Convenience: build the deck transform for a decoded deck-view slot list + frame (re-export). */
-export { makeTransform };
+/** Convenience: build the whole-ship transform for a decoded deck view + frame (re-export). */
+export { makeShipTransform };
+
+/**
+ * ⭐⭐ THE CROSS-DECK PRESS RULE — what a designation press means when it lands on a band the host is
+ * not projecting. PURE, so the decision is one expression the test drives directly.
+ *
+ * ⛔ THE DEFECT IT CLOSES IS SPECIFIC AND SILENT. Every designation command on the wire carries only
+ * `x`/`y`; the host supplies Z from its OWN shown deck (`GameSession.cs:1128`,
+ * `Clamp(cmd.Y, …), _deck`). While the plate drew one deck that was safe by construction — the only
+ * band you could press WAS the shown deck. The elevation draws every deck, so a press on the lower
+ * band would have sent `dig 22,15` and the host would have applied it to the UPPER one: an order
+ * placed in a compartment the player did not point at, with a toast naming the tile they DID point
+ * at. That is the "shows one thing, orders another" defect the projection work exists to remove,
+ * arriving one layer up.
+ *
+ * THE RULE IS "MOVE THE ORDER DECK, DO NOT GUESS": a press on another band sends `Cmd.deck(delta)`
+ * and NO order, and says so. The second press — on a band that is now the active one — orders. Two
+ * presses is the honest cost of a single-deck command vocabulary, and it makes the deck rail's job
+ * available on the drawing itself, which is the affordance the rail was standing in for.
+ *
+ * @param {number} pressedDeck the deck `tileAt` resolved
+ * @param {number} activeDeck  the deck the host is projecting (`frame.deck`)
+ * @returns {{ok:true}|{ok:false, delta:number, line:string}}
+ */
+export function crossDeckPress(pressedDeck, activeDeck) {
+  const p = pressedDeck | 0, a = activeDeck | 0;
+  if (p === a) return { ok: true };
+  return {
+    ok: false,
+    delta: p - a,
+    line: '\u25b8 DECK ' + p + ' \u2014 ORDERS NOW LAND HERE. PRESS AGAIN TO ORDER.',
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The ORDERS bar (console-retirement WP-5) — the deck-scoped designation verbs.
@@ -859,9 +908,21 @@ export function compartmentStatus(slot, souls) {
  * the design's sentence are the two this ship cannot say.
  *
  * ⛔ AND NEITHER IS "looking down", WHICH THIS FUNCTION USED TO SAY. Review was right that it is a
- * false claim about the drawing: the plate is not a floor plan seen from above — it is a GRID OF
- * OBLIQUE CUTAWAYS whose cell ORDER is slot order, not ship geometry. "one to a cell" says exactly
- * what the reader is looking at and claims nothing about where the compartment is on the hull.
+ * false claim about the drawing: the plate is not a floor plan seen from above.
+ *
+ * ⚠️⚠️ "one to a cell" IS ALSO GONE, AND IT WENT WITH THE THING IT NAMED. That phrase was VR-P4's:
+ * the plate was a GRID of oblique cutaways and a compartment sat in a CELL of it. The side elevation
+ * has no grid and no cells — compartments TILE one continuous deck floor, sharing partition walls —
+ * so the sentence described a drawing that no longer exists. Replacing it with silence would have
+ * been worse than leaving it, because the caption is where the drawing's ONE honesty limit belongs:
+ *
+ * ⛔ **THE BAND IS THE DECK UNROLLED ALONG ITS WALK, NOT ALONG THE HULL.** A deck's compartments are
+ * laid out in SLOT ORDER, so two rooms at the same place along the ship (the wreck's `cryobay` and
+ * `reactor` both run tiles x 0..12) are drawn side by side. `ship-elevation.js`'s header carries the
+ * measurement that rejected the literally-true alternative — a real cutaway hides the far bank
+ * entirely — and this sentence is where a PLAYER is told. "in walking order" is the shortest true
+ * thing: it claims nothing about where a compartment sits on the hull, and it tells the reader what
+ * the left-to-right axis actually is, which is the question the drawing invites.
  *
  * ⛔ AND THE DECK COUNT IS THE COUNT, NOT THE TOP INDEX. It printed `totalDecks − 1` and the wreck
  * — which has TWO decks — read "deck 0 of 1". `decksView.length` is how many decks there are; the
@@ -870,7 +931,7 @@ export function compartmentStatus(slot, souls) {
 export function deckCaptionLine(deck, totalDecks, rooms) {
   const r = rooms | 0;
   return 'Deck ' + (deck | 0) + ' of ' + Math.max(1, totalDecks | 0) + ' — '
-    + r + ' compartment' + (r === 1 ? '' : 's') + ', one to a cell.';
+    + r + ' compartment' + (r === 1 ? '' : 's') + ', in walking order.';
 }
 
 /** The masthead's right-hand stats, in two spans. PURE — the same deck wording the caption uses. */

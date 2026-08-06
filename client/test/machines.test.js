@@ -33,7 +33,9 @@ import {
 } from '../src/items/machines.js';
 import { BOX, W } from '../src/items/fittings.js';
 import { DEPTH_RATIO, PX_PER_CM, HATCH, PAPER_FLAT, n as nn } from '../src/render/oblique.js';
-import { INK, PAPER, ATTEND } from '../src/items/helpers.js';
+import { INK, PAPER, ATTEND, SKETCH_LEVEL } from '../src/items/helpers.js';
+import { amplitudeBound, penSteps, LEVELS, CR_BULGE } from '../src/render/sketch.js';
+import { measurePiece, bodyExtent, attrsOf, strokedPaths } from './sketch-geom.js';
 import { WRECKED, buildWrecked } from '../src/items/wrecked.js';
 import { codeOnly } from './code-only.js';
 
@@ -41,7 +43,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(join(HERE, '..', 'src', 'items', 'machines.js'), 'utf8');
 
 const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
-const build = (id, opts = { idPrefix: 'm' }) => MC[camel(id)](opts);
+
+// ⚠️ `build` IS THE RAW FRAGMENT SINCE 2026-08-05 — the owner's `strong` sketch treatment ships on
+// this catalogue, and every projection assertion here works by finding a LITERAL projected
+// coordinate, which a freehand stroke does not emit. Pointed at treated output those scans match
+// nothing and pass VACUOUSLY (measured on this file: 14 tests went red and `E8-6`, `every def a
+// fragment registers`, and the whole hexagon control passed on zero matches). The geometry keeps
+// being asked of the geometry; `sketch-adoption.test.js` bridges the two with a bounded
+// both-directions displacement pin, and the four rules below carry an explicit TREATED leg.
+const build = (id, opts = { idPrefix: 'm' }) => MC[camel(id)]({ ...opts, sketch: false });
+/** What SHIPS: the same machine with the treatment on it. */
+const treated = (id, opts = { idPrefix: 'm' }) => MC[camel(id)](opts);
 
 /**
  * EVERY coordinate pair a fragment's path data contains, as `[x, y]` — walked command by command.
@@ -263,6 +275,51 @@ test('no stroke is drawn in paper — every line in the set is ink or the accent
   }
 });
 
+// ⭐ AND THE ONE RULE THE TREATMENT GENUINELY CHANGES, RESTATED RATHER THAN DROPPED.
+//
+//   OLD RULE: no stroke in the set is drawn in paper — paper on paper draws nothing.
+//   NEW RULE: the ONLY paper strokes are the treatment's KNOCKOUT, and a knockout is not invisible
+//             ink because it is a wider stroke UNDER an ink stroke on the same `d`. So: every paper
+//             `d` in the treated fragment must also be drawn in ink or the accent, and at a
+//             STRICTLY NARROWER weight. A paper stroke with no ink over it is the old defect, back.
+//
+// ⛔ THIS IS THE `strong` PRESET'S OWN COST AND IT IS NAMED HERE: `haloScope: 'all'` puts that
+// knockout under every element, so a piece's own top face bites the members drawn before it. That is
+// a VISUAL judgement (the owner's, on the sheet) and not a correctness one — what is pinned here is
+// only that no member was replaced by paper.
+test('the treated set\'s paper strokes are all knockouts — each one has ink over it, narrower', () => {
+  let halos = 0;
+  for (const id of MACHINE_IDS) {
+    const svg = treated(id).replace(/<pattern[\s\S]*?<\/pattern>/g, '');
+    const byPaint = new Map();
+    // ⚠️ THROUGH `strokedPaths`, WHICH RESOLVES A `<g stroke=…>`'s INHERITANCE. The knockout pass is
+    // emitted as a group with the colour on the GROUP; a scan of `stroke="…"` on path elements finds
+    // 48 of the 1000+ that ship, and the guard passes on the ones it can see.
+    for (const p of strokedPaths(svg)) {
+      if (!byPaint.has(p.stroke)) byPaint.set(p.stroke, new Map());
+      const prev = byPaint.get(p.stroke).get(p.d);
+      byPaint.get(p.stroke).set(p.d, prev == null ? p.width : Math.max(prev, p.width));
+    }
+    for (const paint of byPaint.keys()) {
+      assert.ok([INK, ATTEND, PAPER].includes(paint),
+        `${id} strokes in ${paint} — the treatment buys no colour, and there are three in this dialect`);
+    }
+    const paper = byPaint.get(PAPER) || new Map();
+    for (const [d, hw] of paper) {
+      halos += 1;
+      const ink = (byPaint.get(INK) || new Map()).get(d);
+      const acc = (byPaint.get(ATTEND) || new Map()).get(d);
+      const over = ink == null ? acc : (acc == null ? ink : Math.max(ink, acc));
+      assert.ok(over != null, `${id} draws a paper stroke with NOTHING over it: ${d.slice(0, 46)}…\n`
+        + 'That is paper on paper — the invisible-ink defect this rule has always been about.');
+      assert.ok(hw > over, `${id}: a knockout at ${hw} is not wider than the ${over} ink it carries — `
+        + 'equal weights make the member a paper blob and every count above still passes');
+    }
+  }
+  assert.ok(halos > 200, `only ${halos} knockout strokes across thirteen machines — at ${SKETCH_LEVEL} `
+    + 'the halo runs on every element, so this count near zero means the treatment is not applied');
+});
+
 // The other half of "a def that draws nothing": a `<pattern>` registered and never referenced. Five
 // of the thirteen are all-cylinder pieces with no side face, and `envFor`'s `hatch` is a GETTER so
 // they register none — a fact that survives only as long as nobody spreads that object.
@@ -426,6 +483,48 @@ test('nothing is drawn outside the box the piece is centred on', () => {
       assert.ok(outsideBoxCm(id, cx, cy) <= HEX_TOL, `${id}: its own box corner ${c} reads as outside`);
     }
   }
+});
+
+// ⭐ THE HEXAGON, RESTATED ON WHAT SHIPS — the tolerance is the amplitude, converted into the same
+// centimetres the rule is written in, and nothing else moves.
+//
+//   OLD RULE: every emitted point is inside the six half-planes of the piece's own projected box,
+//             within HEX_TOL (0.15 cm — the rounding of `n()`, not slack).
+//   NEW RULE: every point of the TREATED drawing, curves FLATTENED, is inside the same six
+//             half-planes within HEX_TOL + `amplitudeBound(SKETCH_LEVEL)` / `F.s` — the bound is in
+//             drawing units and this rule is in centimetres, so it is divided by the piece's own
+//             px-per-cm. A big machine therefore gets a SMALLER centimetre allowance than a small
+//             one, which is right: the treatment scales with the drawing.
+//
+// ⛔ THE HALF-PLANES ARE UNCHANGED. The hexagon is the projection; if a treated point needs more
+// than the amplitude to fit inside it, the drawing moved and that is the defect this reports.
+test('the treated drawing stays inside the hexagon too — plus the amplitude, in the piece\'s own cm', () => {
+  const AMP = amplitudeBound(SKETCH_LEVEL);
+  let worstRaw = 0;
+  let worstTreated = 0;
+  for (const id of MACHINE_IDS) {
+    const F = frameFor(id);
+    const tol = HEX_TOL + AMP / F.s;
+    assert.ok(tol < Math.min(SPECS[id].w, SPECS[id].h) * 0.25,
+      `${id}: the amplitude allowance is ${tol.toFixed(1)} cm on a ${SPECS[id].w}×${SPECS[id].h} cm `
+      + 'piece — a quarter of the object is not a tolerance');
+    for (const [x, y] of bodyExtent(build(id)).marks) {
+      worstRaw = Math.max(worstRaw, outsideBoxCm(id, x, y));
+    }
+    for (const [x, y] of bodyExtent(treated(id)).marks) {
+      const by = outsideBoxCm(id, x, y);
+      worstTreated = Math.max(worstTreated, by);
+      assert.ok(by <= tol, `${id} (treated) draws ${by.toFixed(2)} cm outside its declared `
+        + `${SPECS[id].w}×${SPECS[id].d}×${SPECS[id].h} cm box, against a limit of ${tol.toFixed(2)}.\n`
+        + 'The hexagon is the projection. If a treated point needs more than the amplitude to fit\n'
+        + 'inside it, the drawing moved — which is the one thing the treatment may not do.');
+    }
+  }
+  // NON-VACUITY: the treated set must actually SPEND some of the allowance, or the bound is measuring
+  // a treatment that moved nothing.
+  assert.ok(worstTreated > worstRaw + 0.5,
+    `treated overhang ${worstTreated.toFixed(2)} cm vs raw ${worstRaw.toFixed(2)} cm — the treatment `
+    + 'is not moving any point and this guard proves nothing');
 });
 
 test('roomBox puts a machine on a surface at exactly s px per centimetre', () => {
@@ -629,6 +728,38 @@ test('every round thing draws LEVEL: ry is exactly DEPTH_RATIO·rx, no heading a
   assert.ok(seen >= 30, `only ${seen} level ellipses across thirteen pieces — vacuously satisfied`);
 });
 
+// ⭐⭐ THE ROUND-THINGS RULE, AS AN INCLUSION TEST, BECAUSE THE TAG SCAN ABOVE GOES VACUOUS UNDER THE
+// TREATMENT — measured: the treated fragments contain ZERO `<ellipse>` elements, so the loop above
+// pointed at what ships would agree with a level ellipse, an upright one, and none at all.
+//   OLD RULE: for every `<ellipse>`, |ry − DEPTH_RATIO·rx| < 0.02.
+//   NEW RULE: every raw ellipse is still THERE as a freehand curve within `amplitudeBound(level, r)`
+//             in both directions, its drawn bounding box still reads level within the lump's own
+//             factor, and the COUNT is > 0 — which is the half a ratio rule can never state.
+test('the level ellipses SURVIVE the treatment on the machines too — inclusion, then ratio', () => {
+  const L = LEVELS[SKETCH_LEVEL];
+  const lo = (1 - L.lump) / ((1 + L.lump) * (1 + CR_BULGE));
+  const hi = ((1 + L.lump) * (1 + CR_BULGE)) / (1 - L.lump);
+  let round = 0;
+  for (const id of MACHINE_IDS) {
+    for (const r of measurePiece(build(id), id).rows) {
+      if ((r.nm !== 'ellipse' && r.nm !== 'circle') || r.kind === 'pass') continue;
+      round += 1;
+      assert.ok(Math.max(r.fwd, r.rev) <= r.bound,
+        `${id}: a round member's treated curve is ${Math.max(r.fwd, r.rev).toFixed(2)} from the `
+        + `ellipse it replaced, past the ${r.bound.toFixed(2)} bound`);
+      const a = attrsOf(r.src);
+      const rx = r.nm === 'circle' ? +a.r : +a.rx;
+      const ry = r.nm === 'circle' ? +a.r : (a.ry == null ? +a.rx : +a.ry);
+      const bb = bodyExtent(`<g>${r.out}</g>`).bb;
+      const got = (bb[3] - bb[1]) / (bb[2] - bb[0]);
+      assert.ok(got >= (ry / rx) * lo && got <= (ry / rx) * hi,
+        `${id}: a round member drew at h/w ${got.toFixed(3)} where its ellipse is `
+        + `${(ry / rx).toFixed(3)} — a lumpy level circle is still level`);
+    }
+  }
+  assert.ok(round >= 30, `only ${round} round members reached the treatment — the rule is vacuous`);
+});
+
 test('the stroke ramp stays inside the charter\'s 0.9–2.2, by mass', () => {
   const ramp = new Set(Object.values(W));
   for (const id of MACHINE_IDS) {
@@ -642,6 +773,29 @@ test('the stroke ramp stays inside the charter\'s 0.9–2.2, by mass', () => {
     }
   }
   assert.deepEqual(Object.values(W), [0.9, 1.1, 1.4, 1.8, 2.2], 'the ramp itself moved');
+});
+
+// ⭐ THE RAMP UNDER THE TREATMENT — RANGE WITH GAIN, stated as the CLOSED set the five rungs produce.
+//   OLD RULE: 0.9 ≤ w ≤ 2.2 and w is one of the shared steps.
+//   NEW RULE: w ∈ `penSteps(SKETCH_LEVEL, W)` — thirty values, floor 0.23 (the doubled pass over an
+//             interior hairline), ceiling 6.28 (a mass member's paper knockout). The 2.2 cap is
+//             GONE and the reason is named: `strong` widens every run into a knockout 1.9 units
+//             past its ink. The heaviest INK the set can draw is 4.38 and that is a different
+//             number on purpose.
+test('the treated machine ramp is the same five rungs, gained — a closed set with a floor', () => {
+  const allowed = new Set(penSteps(SKETCH_LEVEL, Object.values(W)));
+  const seen = new Set();
+  for (const id of MACHINE_IDS) {
+    const svg = treated(id).replace(/<pattern[\s\S]*?<\/pattern>/g, '');
+    for (const m of svg.matchAll(/stroke-width="([\d.]+)"/g)) {
+      const v = +m[1];
+      assert.ok(allowed.has(v), `${id} strokes at ${v}, which no rung can produce under ${SKETCH_LEVEL}`);
+      seen.add(v);
+    }
+  }
+  assert.ok(seen.size >= 12, `only ${seen.size} distinct weights ship — the ramp collapsed`);
+  assert.ok(Math.max(...seen) > 2.2 && Math.min(...seen) < 0.9,
+    'the treated ramp never leaves the OLD range in either direction, so the gain did nothing');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -851,7 +1005,10 @@ test('every machine twin paints its OWN pristine piece — measured, not trusted
   const pristine = new Map(MACHINE_IDS.map((id) => [id, tokens(build(id, { idPrefix: 'p' }))]));
   for (const id of MACHINE_IDS) {
     assert.ok(WRECKED[id], `${id} has no wrecked twin`);
-    const twin = tokens(buildWrecked(id, { idPrefix: 'w' }));
+    // ⚠️ RAW ON BOTH SIDES. A coordinate fingerprint is a statement about the PROJECTION, and the
+    // treatment is not allowed near it — comparing a raw pristine to a treated twin would measure
+    // the treatment and call it a swap. The treated fingerprint is a separate leg, below.
+    const twin = tokens(buildWrecked(id, { idPrefix: 'w', sketch: false }));
     const share = (other) => [...pristine.get(other)].filter((t) => twin.has(t)).length;
     const own = share(id);
     assert.ok(own > 0.8 * pristine.get(id).size,
