@@ -42,3 +42,7 @@ client/tools/shots-machines/
 # — lane/material-under-pawn —
 client/tools/shots-material-pawn/
 client/tools/shots-pawn-tween/
+# — lane/sketch-experiment (unmerged visual experiment) —
+client/tools/shots-sketch/
+# — lane/ship-drawn —
+client/tools/shots-ship-drawn/
