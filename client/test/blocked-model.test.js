@@ -38,7 +38,7 @@ import {
   BLOCKED_REASON_UNREACHABLE, BLOCKED_REASON_WORK_TYPE_OFF, BLOCKED_REASON_NO_ROUTE,
   BLOCKED_DETAIL_NONE, BLOCKED_CID_NONE, ITEM_WORDS, itemWords, blockedReasonSentence,
 } from '../src/wire/messages.js';
-import { roomBlockedTiles, roomTileRect } from '../src/ui/room-model.js';
+import { roomBlockedTiles, roomTileRect, roomInterior } from '../src/ui/room-model.js';
 import { blockedCellSvg, blockedBadgeSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/blocked-overlay.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { codeOnly } from './code-only.js';
@@ -55,7 +55,18 @@ const GAME_SESSION_CS = codeOnly(read(join(REPO, 'hosts/web/GameSession.cs')));
 const MAIN = codeOnly(read(join(CLIENT, 'src/main.js')));
 
 /** A room rect covering tiles [4..8) × [2..5) on deck 1 — the shape `roomTileRect` produces. */
-const ROOM = { deck: 1, rx: 4, ry: 2, rw: 4, rh: 3 };
+// ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+// wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+// fixture rect written as the tile range under test would have no interior at all and every leg
+// would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+// the tests address are unchanged.
+const ROOM = { deck: 1, rx: 3, ry: 1, rw: 6, rh: 5 };     // FLOOR = tiles x4..7, y2..4
+/** ⭐ THE ROOM'S **FLOOR** — `ROOM` above is the wire's wall-inclusive WINDOW and every room-scoped
+ *  clamp insets by one since the scene inset (2026-08-06). Every coordinate below is expressed
+ *  against the floor, because that is the rect the clamps actually test; `ROOM` itself is what the
+ *  model functions are still called with. */
+const FLOOR = roomInterior(ROOM);
+
 
 const msg = (cells) => ({ type: 'blocked', cells });
 
@@ -341,7 +352,7 @@ test('ITEM_WORDS is pinned EQUAL to ThawGate.ItemWords — one vocabulary, two s
 // hazard of a positional array: the decoder KEEPS WORKING and silently drops the field.
 // APPLY 2: drop `.Append(c.Detail…)` from `WireFormat.Blocked.cs` ⇒ the same red, from the host end.
 test('M3-13 mutation 1: a `detail` on the wire CHANGES THE RENDERED BADGE, driven end to end', () => {
-  const at = [ROOM.rx + 1, ROOM.ry + 1];
+  const at = [FLOOR.rx + 1, FLOOR.ry + 1];
   const generic = fold([[at[0], at[1], ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE]]);
   assert.equal(generic[0].reasonText, BLOCKED_REASON_TEXT.no_consumable,
     'premise: with no detail the badge keeps the sentence it has always had');
@@ -376,7 +387,7 @@ test('M3-13 mutation 1: a `detail` on the wire CHANGES THE RENDERED BADGE, drive
 // APPLY: emit `(int)ItemKind.Ice` (8) from `AddUnfixableRow` ⇒ this client has no word for it and
 // the badge must fall back to the generic sentence rather than render `undefined`.
 test('M3-13 mutation 2: an UNNAMEABLE detail degrades to the generic sentence, never `undefined`', () => {
-  const at = [ROOM.rx + 1, ROOM.ry + 1];
+  const at = [FLOOR.rx + 1, FLOOR.ry + 1];
   for (const detail of [0, 8, 99, -7, BLOCKED_DETAIL_NONE]) {
     const [tile] = fold([[at[0], at[1], ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, detail]]);
     assert.equal(tile.reasonText, BLOCKED_REASON_TEXT.no_consumable,
@@ -423,8 +434,8 @@ test('blockedReasonSentence: pure, total, and the same answer roomBlockedTiles r
 // MUTATION: key `seen` on `t.reasonName` alone in `blockedKeyHtml` ⇒ red (one row, not two).
 test('two rows with ONE reason code but two different sentences get TWO key rows', () => {
   const tiles = fold([
-    [ROOM.rx, ROOM.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, 5],   // Parts
-    [ROOM.rx + 1, ROOM.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, 6], // Ctrl module
+    [FLOOR.rx, FLOOR.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, 5],   // Parts
+    [FLOOR.rx + 1, FLOOR.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_NO_CONSUMABLE, 6], // Ctrl module
   ]);
   const html = blockedKeyHtml(tiles);
   assert.equal((html.match(/rz-key-row/g) || []).length, 2,
@@ -446,10 +457,10 @@ const row = (x, y, deck = ROOM.deck, order = BLOCKED_ORDER_DIG, reason = BLOCKED
 const fold = (cells) => roomBlockedTiles(decodeBlocked(msg(cells)), ROOM);
 
 test('roomBlockedTiles keeps an in-room row and composes its label', () => {
-  const out = fold([row(ROOM.rx + 1, ROOM.ry + 1, ROOM.deck, BLOCKED_ORDER_BUILD, BLOCKED_REASON_AIR)]);
+  const out = fold([row(FLOOR.rx + 1, FLOOR.ry + 1, ROOM.deck, BLOCKED_ORDER_BUILD, BLOCKED_REASON_AIR)]);
   assert.equal(out.length, 1);
-  assert.equal(out[0].tx, ROOM.rx + 1);
-  assert.equal(out[0].ty, ROOM.ry + 1);
+  assert.equal(out[0].tx, FLOOR.rx + 1);
+  assert.equal(out[0].ty, FLOOR.ry + 1);
   assert.equal(out[0].orderName, 'build');
   assert.equal(out[0].reasonName, 'air');
   assert.equal(out[0].reasonText, BLOCKED_REASON_TEXT.air,
@@ -462,30 +473,30 @@ test('roomBlockedTiles keeps an in-room row and composes its label', () => {
 // folding invisibly into a neighbour (the fifth trap shape's exact fixture mistake).
 // MUTATION: delete the deck test in roomBlockedTiles ⇒ red here and GREEN in the other two legs.
 test('LEG deck, BLINDED: a row on another deck is rejected, and it is the only row', () => {
-  const out = fold([row(ROOM.rx + 1, ROOM.ry + 1, ROOM.deck + 1)]);
+  const out = fold([row(FLOOR.rx + 1, FLOOR.ry + 1, ROOM.deck + 1)]);
   assert.deepEqual(out, [], 'a blocked order on ANOTHER DECK was drawn in this room');
 });
 
 // LEG 2, ALONE.
 // MUTATION: delete the `tx < rx || tx >= x1` test ⇒ red here and GREEN in the other two legs.
 test('LEG x-range, BLINDED: rows one tile past each horizontal edge are rejected, alone', () => {
-  assert.deepEqual(fold([row(ROOM.rx - 1, ROOM.ry + 1)]), [], 'a row one tile LEFT of the room was kept');
-  assert.deepEqual(fold([row(ROOM.rx + ROOM.rw, ROOM.ry + 1)]), [], 'a row one tile RIGHT of the room was kept');
+  assert.deepEqual(fold([row(FLOOR.rx - 1, FLOOR.ry + 1)]), [], 'a row one tile LEFT of the room was kept');
+  assert.deepEqual(fold([row(FLOOR.rx + FLOOR.rw, FLOOR.ry + 1)]), [], 'a row one tile RIGHT of the room was kept');
 });
 
 // LEG 3, ALONE.
 // MUTATION: delete the `ty < ry || ty >= y1` test ⇒ red here and GREEN in the other two legs.
 test('LEG y-range, BLINDED: rows one tile past each vertical edge are rejected, alone', () => {
-  assert.deepEqual(fold([row(ROOM.rx + 1, ROOM.ry - 1)]), [], 'a row one tile ABOVE the room was kept');
-  assert.deepEqual(fold([row(ROOM.rx + 1, ROOM.ry + ROOM.rh)]), [], 'a row one tile BELOW the room was kept');
+  assert.deepEqual(fold([row(FLOOR.rx + 1, FLOOR.ry - 1)]), [], 'a row one tile ABOVE the room was kept');
+  assert.deepEqual(fold([row(FLOOR.rx + 1, FLOOR.ry + FLOOR.rh)]), [], 'a row one tile BELOW the room was kept');
 });
 
 // The corners are the tiles an off-by-one on either bound reaches first, and both legs above use
 // mid-edge tiles, so this is not covered by them.
 test('the room rect is inclusive of all four corner tiles', () => {
   const corners = [
-    [ROOM.rx, ROOM.ry], [ROOM.rx + ROOM.rw - 1, ROOM.ry],
-    [ROOM.rx, ROOM.ry + ROOM.rh - 1], [ROOM.rx + ROOM.rw - 1, ROOM.ry + ROOM.rh - 1],
+    [FLOOR.rx, FLOOR.ry], [FLOOR.rx + FLOOR.rw - 1, FLOOR.ry],
+    [FLOOR.rx, FLOOR.ry + FLOOR.rh - 1], [FLOOR.rx + FLOOR.rw - 1, FLOOR.ry + FLOOR.rh - 1],
   ];
   assert.equal(fold(corners.map(([x, y]) => row(x, y))).length, 4,
     'a corner tile of the room was excluded — an off-by-one on a bound');
@@ -493,7 +504,7 @@ test('the room rect is inclusive of all four corner tiles', () => {
 
 // MUTATION: delete the `seen` set ⇒ red (two badges and two scrims stack on one tile).
 test('two rows on ONE tile fold to one badge — the host does not arbitrate, this does', () => {
-  const t = [ROOM.rx + 2, ROOM.ry + 2];
+  const t = [FLOOR.rx + 2, FLOOR.ry + 2];
   const out = fold([
     row(t[0], t[1], ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR),
     row(t[0], t[1], ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_APPROACH),
@@ -503,7 +514,7 @@ test('two rows on ONE tile fold to one badge — the host does not arbitrate, th
 });
 
 test('a row this client cannot name is still DRAWN, with an honest text', () => {
-  const out = fold([row(ROOM.rx + 1, ROOM.ry + 1, ROOM.deck, 99, 98)]);
+  const out = fold([row(FLOOR.rx + 1, FLOOR.ry + 1, ROOM.deck, 99, 98)]);
   assert.equal(out.length, 1, 'an unnameable row was dropped — silence again');
   assert.match(out[0].reasonText, /UNKNOWN/,
     'the fallback must SAY it does not know, not silently reuse another reason\'s sentence');
@@ -563,7 +574,7 @@ test('blockedCellSvg refuses a degenerate box rather than emitting a zero-size r
 // returns '' unconditionally with the whole suite green.
 // MUTATION: `return ''` at the top of blockedLayerSvg ⇒ red.
 test('blockedLayerSvg emits one group per tile, positioned room-locally, and pointer-events ON', () => {
-  const tiles = fold([row(ROOM.rx, ROOM.ry), row(ROOM.rx + 2, ROOM.ry + 1)]);
+  const tiles = fold([row(FLOOR.rx, FLOOR.ry), row(FLOOR.rx + 2, FLOOR.ry + 1)]);
   const svg = blockedLayerSvg(tiles, ROOM);
   assert.equal((svg.match(/class="rz-blocked /g) || []).length, 2, 'one group per blocked tile');
   assert.match(svg, /class="rz-blockeds" pointer-events="visiblePainted"/,
@@ -581,9 +592,9 @@ test('blockedLayerSvg emits one group per tile, positioned room-locally, and poi
 // MUTATION: `return ''` at the top of blockedKeyHtml ⇒ red.
 test('blockedKeyHtml counts the stuck orders and gives ONE row per distinct reason', () => {
   const tiles = fold([
-    row(ROOM.rx, ROOM.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR),
-    row(ROOM.rx + 1, ROOM.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR),
-    row(ROOM.rx + 2, ROOM.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_APPROACH),
+    row(FLOOR.rx, FLOOR.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR),
+    row(FLOOR.rx + 1, FLOOR.ry, ROOM.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR),
+    row(FLOOR.rx + 2, FLOOR.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_APPROACH),
   ]);
   const html = blockedKeyHtml(tiles);
   assert.match(html, /3 DIG\/STRIP ORDERS STUCK/,
@@ -612,7 +623,7 @@ test('blockedKeyHtml counts the stuck orders and gives ONE row per distinct reas
 // falls back to UNKNOWN). MUTATION 2: delete the `work_type_off` entry from BLOCKED_REASON_TEXT ⇒
 // red the same way, on a different half of the seam. Both were run.
 test('a work-type-off row reaches the key as WORDS, and they are M2-20\'s vocabulary', () => {
-  const tiles = fold([row(ROOM.rx, ROOM.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_WORK_TYPE_OFF)]);
+  const tiles = fold([row(FLOOR.rx, FLOOR.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_WORK_TYPE_OFF)]);
   assert.equal(tiles.length, 1, 'premise: the row is in the focused room');
   assert.equal(tiles[0].reasonName, 'work_type_off');
   assert.ok(!/UNKNOWN/.test(tiles[0].reasonText),
@@ -645,7 +656,7 @@ test('a work-type-off row reaches the key as WORDS, and they are M2-20\'s vocabu
 // back to UNKNOWN). MUTATION 2: delete the `no_route` entry from BLOCKED_REASON_TEXT ⇒ red the same
 // way, on the other half of the seam. Both were run.
 test('a no-route row reaches the key as WORDS, and they are not no_approach\'s', () => {
-  const tiles = fold([row(ROOM.rx, ROOM.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_ROUTE)]);
+  const tiles = fold([row(FLOOR.rx, FLOOR.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_ROUTE)]);
   assert.equal(tiles.length, 1, 'premise: the row is in the focused room');
   assert.equal(tiles[0].reasonName, 'no_route');
   assert.ok(!/UNKNOWN/.test(tiles[0].reasonText),
@@ -909,7 +920,9 @@ test('DRIVEN: an `unreachable` row draws its own badge and its own words', () =>
 // MUTATION: restore `hidden = !zoneKeyHtml(...)` in paintZoneKey ⇒ red.
 test('DRIVEN: the key box is shown for blocked orders even in a room with no zones', () => {
   prime();
-  driveBlocked([[RECT.rx, RECT.ry, RECT.deck, BLOCKED_ORDER_BUILD, BLOCKED_REASON_AIR]]);
+  // ⚠️ `RECT.rx, RECT.ry` IS THE WINDOW'S CORNER — a hull tile, dropped by the clamp since the scene
+  // inset. `+1,+1` is the room's own near-left FLOOR tile, which is what this leg was ever about.
+  driveBlocked([[RECT.rx + 1, RECT.ry + 1, RECT.deck, BLOCKED_ORDER_BUILD, BLOCKED_REASON_AIR]]);
   const box = blkDoc.getElementById('rz-zonekey');
   assert.equal(box.hidden, false,
     'the key box is hidden. This room has no stockpile zone, and before this channel the box was '
@@ -958,7 +971,7 @@ test('a blocked dispatch ALONE repaints the surface — the cache is not enough'
 // rather than only unit-tested against the fold.
 test('DRIVEN: a row on another deck does not reach the drawn layer', () => {
   prime();
-  driveBlocked([[RECT.rx, RECT.ry, RECT.deck + 1, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR]]);
+  driveBlocked([[RECT.rx + 1, RECT.ry + 1, RECT.deck + 1, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR]]);
   assert.ok(!layers().includes('rz-blocked'), 'another deck\'s blocked order was drawn in this room');
 });
 

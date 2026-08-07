@@ -101,7 +101,7 @@ function placed(id) {
   // before/after comparison is the flat and chip rows above; THIS row exists to answer the other
   // question, which nothing flat can: does the hand lie on the FLOOR PLANE and foreshorten with it,
   // or is it drawn in screen space?
-  const svg = materialLayerSvg(tiles, place, FOCUS);
+  const svg = materialLayerSvg(tiles, place);
   // ⚠️ THE CROP IS COMPUTED FROM `place`, NOT SCRAPED OUT OF THE EMITTED STRING. The first draft
   // read the first `translate(x y)` it found — which is the WALL path's own offset and does not
   // exist at all on the floor path (a floor tile is placed by `place.cell`, a matrix), so every

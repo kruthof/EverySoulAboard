@@ -34,7 +34,7 @@ import { dirname, join } from 'node:path';
 import { decode, decodeItems } from '../src/wire/messages.js';
 import {
   U, roomItemTiles, itemKindLabel, itemStackSlots, itemStackSvg, itemStackTileKeys,
-  itemIdForStockKind,
+  itemIdForStockKind, roomInterior,
 } from '../src/ui/room-model.js';
 import { ITEMS } from '../src/items/index.js';
 import { STOCK_KINDS } from '../src/ui/stock-filter-model.js';
@@ -51,7 +51,18 @@ const MAIN = codeOnly(read(join(CLIENT, 'src/main.js')));
 const ROOMZOOM = codeOnly(read(join(CLIENT, 'src/ui/roomzoom-view.js')));
 
 /** A room rect covering tiles [4..8) × [2..5) on deck 1 — the shape `roomTileRect` produces. */
-const ROOM = { deck: 1, rx: 4, ry: 2, rw: 4, rh: 3 };
+// ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+// wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+// fixture rect written as the tile range under test would have no interior at all and every leg
+// would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+// the tests address are unchanged.
+const ROOM = { deck: 1, rx: 3, ry: 1, rw: 6, rh: 5 };     // FLOOR = tiles x4..7, y2..4
+/** ⭐ THE ROOM'S **FLOOR** — `ROOM` above is the wire's wall-inclusive WINDOW and every room-scoped
+ *  clamp insets by one since the scene inset (2026-08-06). Every coordinate below is expressed
+ *  against the floor, because that is the rect the clamps actually test; `ROOM` itself is what the
+ *  model functions are still called with. */
+const FLOOR = roomInterior(ROOM);
+
 
 /** Build a host-shaped `items` message from `[x,y,deck,kind,count]` tuples. */
 const msg = (cells) => ({ type: 'items', cells });
@@ -357,7 +368,7 @@ test('itemStackSvg draws one group per tile inside the rz-items layer, in room-l
     + 'below would be vacuous');
   const INSET = 1.5;
   for (const [i, [tx, ty]] of [[4, 2], [7, 4]].entries()) {
-    const left = (tx - ROOM.rx) * U, top = (ty - ROOM.ry) * U;
+    const left = (tx - FLOOR.rx) * U, top = (ty - FLOOR.ry) * U;
     const r = rects[i];
     assert.ok(r.height > 0, `badge ${i}: a zero-height badge draws the number with no panel behind it`);
     assert.equal(r.y + r.height, top + U - INSET,
@@ -477,7 +488,7 @@ test('THE OVERFLOW SUMMARY IS DRAWN: a 4-kind tile says +3 KINDS, and does not d
   // in its own slot. A summary drawn over the neighbouring tile misattributes the whole overflow.
   const rects = badgeRects(svg);
   assert.equal(rects.length, 2, 'the badge parse found the wrong number of chips');
-  const left = (4 - ROOM.rx) * U, top = (2 - ROOM.ry) * U;
+  const left = (4 - FLOOR.rx) * U, top = (2 - FLOOR.ry) * U;
   assert.equal(rects[1].y + rects[1].height, top + U - 1.5, 'the summary chip is not bottom-anchored in its tile');
   assert.ok(rects[1].x >= left && rects[1].x + rects[1].width <= left + U, 'the summary chip spills out of its tile');
   assert.ok(rects[0].x + rects[0].width <= rects[1].x, 'the summary chip is drawn on top of the count beside it');

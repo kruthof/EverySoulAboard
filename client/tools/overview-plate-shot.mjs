@@ -77,6 +77,11 @@ await new Promise((res, rej) => {
 });
 await sleep(2500);
 
+// ⭐ THE ONE INTERIOR DERIVATION, imported rather than restated — `plateCensus` below compares the
+// plate's per-compartment census against the ROOM's, and the room's is clamped to the drawn floor.
+const { roomInterior } = await import('../src/ui/room-model.js');
+const { decodeSlot } = await import('../src/wire/messages.js');
+
 // ── STEP 0: THE INSTRUMENT CHECK, before any conclusion is drawn ──
 const decksMsg = latest.get('decks');
 if (!decksMsg) die(2, 'no `decks` message — the rig is not reading this host at all');
@@ -783,21 +788,27 @@ await png('4-work-tab.png');
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
 /**
- * How many fittings the PLATE drew into one compartment. The plate's half of the join.
+ * How many fittings the PLATE drew into one compartment's **FLOOR**, counted as DISTINCT TILES.
+ * The plate's half of the join.
  *
- * ⛔⛔ IT COUNTS DISTINCT `data-tile` VALUES, NOT `.pl-fit` ELEMENTS, AND THAT CHANGED ON 2026-08-06.
+ * ⭐⭐ HAND-MERGE, `lane/wreck-dressing` × `lane/scene-inset`, 2026-08-06. TWO INDEPENDENT
+ * CORRECTIONS LANDED ON THIS ONE CENSUS AND BOTH ARE KEPT — they answer different halves of "does
+ * the plate show what the room contains", and either one alone leaves the join reading a number the
+ * Room Zoom cannot produce. SUBTRACT THE RING FIRST, THEN DE-DUPLICATE: the two terms happen to
+ * commute today (a `data-tile` is either interior or it is not), but the filter is stated first
+ * because a later lane adding a per-ELEMENT term must put it BEFORE the `Set` or the dedupe will
+ * swallow it silently.
+ *
+ * ── (1) DISTINCT TILES, NOT ELEMENTS — `lane/wreck-dressing`, the outboard ruling.
  * The Room Zoom's masthead counts TILES — one machine, one entry — while the plate is free to draw a
  * machine more than once. The owner's outboard ruling made it do exactly that: a `SolarWing` wears
  * TWO drawings on this surface, the FEED standing on its own tile and the PANEL bolted to the hull
  * outside, and both are `.pl-fit` (deliberately — the press census is exhaustive over that class and
  * a piece a player can see must answer for its tile). Counting elements read **28 against the room's
  * 25** on `--ship wreck`'s reactor bay and this leg failed, naming the deck as the classic cause.
- *
  * ⇒ THE JOIN'S REAL CLAIM IS ABOUT TILES: *does the plate show what the room contains?* Two pictures
- * of one machine is not a discrepancy; a picture of a machine the room does not hold is. Counting
- * tiles asks that question and is unmoved by how many marks a surface spends on one of them.
+ * of one machine is not a discrepancy; a picture of a machine the room does not hold is.
  * ⚠️ It does NOT weaken the press census, which still walks every `.pl-fit` element individually.
- *
  * ⛔ AND STATE THE BLIND SPOT IT BUYS (CLAUDE.md's 9th shape — an instrument narrowed goes blind):
  * counting tiles cannot see EXTRA pieces drawn on a tile that already has one. A layer that hung
  * three wings on one feed, or drew every fitting twice, would read the same number as one that drew
@@ -805,10 +816,58 @@ await png('4-work-tab.png');
  * whose ink is unreachable is reported as "behind another fitting"), and
  * `overview-scene.test.js`'s outboard block counts pieces directly. Do not let a later lane read
  * "the join is green" as "the plate draws each thing once".
+ *
+ * ── (2) THE `- ring` TERM — `lane/scene-inset`, and it is not a fudge; it makes the two halves ask
+ * the same question. The plate assigns a fitting to a compartment with `covers(sp.rect, tx, ty)`
+ * against the wire's WALL-INCLUSIVE slot rect, so a piece standing on the compartment's HULL RING —
+ * in practice a CLOSED BOUNDARY DOOR — is counted as that room's. The Room Zoom's masthead is
+ * `roomCells(...)`, which is clamped to the DRAWN FLOOR, so it is not.
+ * ⚠️ AND THE ROOM ZOOM WAS ALREADY RIGHT ABOUT THE DRAWING BEFORE IT WAS RIGHT ABOUT THE COUNT.
+ * VR-P3's MINOR 4 made `furnitureSvg` refuse to stand a piece on a boundary door's tile — the cutaway
+ * draws that door as a plate in the wall plane, and a second warm door sprite in the same opening was
+ * the smear on `hall_d0_s1`. So the masthead used to COUNT a piece the room deliberately does not
+ * DRAW; the inset ended that, and this join is where the old disagreement surfaced. Measured on the
+ * live wreck before this term existed: `hall_d1_s0` plate 5 / room 4 and `hall_d0_s7` plate 1 / room
+ * 0, both by exactly one closed door; `cryobay` 26 / 26, unchanged.
+ * ⭐ IT IS DERIVED, PER COMPARTMENT, FROM THE PLATE'S OWN `data-tile` ATTRIBUTES against
+ * `roomInterior` of that slot's rect — never a constant, never a subtraction chosen to make a number
+ * fit. A piece missing for ANY OTHER reason still reddens by one.
+ * ⛔ FILED, NOT CLOSED: the two surfaces answer "whose fitting is this door" differently, and the
+ * long answer is the plate adopting the interior too. That is a Level-1 change and that package was
+ * Room Zoom; the disagreement is recorded here, in the instrument that can see it.
+ *
+ * ⭐ BOTH TERMS REPORT THEMSELVES on every run, separately, so a green join never hides which
+ * correction was doing the work on this ship.
  */
-const plateCensus = (anchor, deck) => evaluate(
-  `new Set([...document.querySelectorAll('.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]')]`
-  + `.map((e) => e.dataset.tile)).size`);
+async function plateCensus(anchor, deck) {
+  const slot = (decksMsg.decks || []).find((d) => (d.deck | 0) === (deck | 0))
+    ?.slots?.find((t) => String(t[5] ?? '') === String(anchor));
+  const all = await json(`JSON.stringify(Array.from(document.querySelectorAll(
+    '.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]'))
+    .map((e) => e.getAttribute('data-tile')))`) || [];
+  const tiles = (list) => new Set(list.filter((t) => t != null && t !== '')).size;
+  if (tiles(all) !== all.length) {
+    log(`     (plate: ${anchor} draws ${all.length} pieces on ${tiles(all)} tiles — a machine wearing `
+      + 'more than one drawing, e.g. a SolarWing\'s feed inboard and its panel on the hull)');
+  }
+  if (!slot) return tiles(all);
+  // ⚠️ THE SLOT TUPLE IS `[slotIndex, x, y, w, h, anchorName, …]` — `decodeSlot`'s own layout, and
+  // the first draft of this line read it as `[x, y, w, h, …]`. The rect came out shifted by one
+  // field, EVERY piece landed "on the ring", and every census read 0 — a subtraction that looked
+  // plausible and deleted the whole measurement. Read through the decoder rather than by index.
+  const sd = decodeSlot(slot);
+  const iv = roomInterior({ rx: sd.x, ry: sd.y, rw: sd.w, rh: sd.h });
+  const onFloor = all.filter((t) => {
+    const [tx, ty] = String(t || '').split(',').map(Number);
+    return Number.isFinite(tx) && Number.isFinite(ty)
+      && tx >= iv.rx && tx < iv.rx + iv.rw && ty >= iv.ry && ty < iv.ry + iv.rh;
+  });
+  if (onFloor.length !== all.length) {
+    log(`     (plate: ${all.length - onFloor.length} of ${anchor}'s pieces stand on its HULL RING — `
+      + 'boundary doors, which the Room Zoom draws as wall plates and does not count as fittings)');
+  }
+  return tiles(onFloor);
+}
 
 /**
  * What the opened Room Zoom says it holds. The room's half of the join.

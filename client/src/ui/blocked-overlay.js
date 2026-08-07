@@ -45,7 +45,7 @@
 
 /** Logical units per tile in the Room Zoom's layer space (room-model.js `U`). Imported rather than
  *  re-declared so a change to the grid pitch cannot silently halve this layer. */
-import { U } from './room-model.js';
+import { U, roomInterior } from './room-model.js';
 
 /** XML/HTML text escape. Local rather than imported: both builders emit markup and must never depend
  *  on a caller having sanitised a label. Reason text is ASCII today, but `<title>` and a key row both
@@ -214,7 +214,10 @@ export function blockedBadgeSvg(reason, text, unit) {
  */
 export function blockedLayerSvg(tiles, focus, unit = U, place = null) {
   if (!Array.isArray(tiles) || !tiles.length || !focus) return '';
-  const rx = focus.rx | 0, ry = focus.ry | 0;
+  // THE INTERIOR'S ORIGIN, for the `place`-less plan fallback only (2026-08-06, the scene inset).
+  // `roomBlockedTiles` is clamped to the interior, so the fallback offsets have to address the same
+  // rect — one origin, asked for, rather than two that agreed until the drawn rect moved.
+  const { rx, ry } = roomInterior(focus) || { rx: 0, ry: 0 };
   const out = [];
   // ⭐ ONE LEADER LABEL PER DISTINCT SENTENCE, and every tile keeps its outline. Twelve leaders
   // saying NO AIR over twelve adjacent tiles is a wall of type that hides the room it is explaining;

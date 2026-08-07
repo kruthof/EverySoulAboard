@@ -63,7 +63,7 @@ import {
   // inverted it gives the BYTE the `devices` channel carries, which is the identity the side
   // elevation resolves a fitting from. `itemForDeviceRow` / `itemIdForStockKind` are the two
   // derivations `ship-fittings.js` runs, imported here so this file drives the SHIPPED route.
-  DEVICE_KIND_NAMES, itemForDeviceRow, itemIdForStockKind,
+  DEVICE_KIND_NAMES, itemForDeviceRow, itemIdForStockKind, roomInterior,
 } from '../src/ui/room-model.js';
 
 /** `DeviceKind` NAME → its byte, off the one shipped table. */
@@ -715,7 +715,7 @@ test('THE OPEN GAP, MEASURED: exactly ONE ItemKind (MetalOre) still draws a raw-
   for (const k of ITEM_KINDS) {
     const g = FOR_ITEM[k];
     // Driven through the SHIPPING Room Zoom model: a 1x1 room whose only cell is this glyph.
-    const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+    const focus = { deck: 0, rx: -1, ry: -1, rw: 3, rh: 3 }   // the WINDOW around tile (0,0) — see roomInterior;
     const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[g.charCodeAt(0), 0, 0, 0]] };
     const cells = roomCells(frame, focus);
     // `roomCells` drops NON_FURNITURE codes entirely (no cell ⇒ no chip); an emitted cell with an
@@ -1064,6 +1064,10 @@ const DECKS_JSON =
 const ROOMS_JSON = '{"type":"rooms","rooms":[["quarters",1,0.209,512,101.3,293,96]]}';
 const VIEW = decksView(decodeDecks(decode(DECKS_JSON)), decodeRooms(decode(ROOMS_JSON)));
 const QUARTERS = roomTileRect(VIEW, 'quarters');
+/** ⭐ THE ROOM'S FLOOR. `QUARTERS` is the wire's wall-inclusive WINDOW; every room-scoped clamp
+ *  insets by one since the scene inset (2026-08-06), so a fixture laid out from the window's own
+ *  corner starts on hull and is dropped. */
+const QUARTERS_IN = roomInterior(QUARTERS);
 
 /**
  * ⭐ VR-P4 — A ONE-TILE OVERVIEW PROBE, PLACED INSIDE A COMPARTMENT.
@@ -1134,7 +1138,7 @@ function frameWith(placements, deck = 1, w = 24, h = 20) {
 test('the Room Zoom MODEL skins every covered kind — no unknown chip (roomCells, driven)', () => {
   // One tile per covered DeviceKind, laid out inside the room rect and read back through the real
   // `roomCells`. `itemId === ''` is precisely what makes `furnitureSvg` draw the dashed chip.
-  const placements = COVERED.map((k, i) => [QUARTERS.rx + (i % 10), QUARTERS.ry + Math.floor(i / 10), FOR_DEVICE[k]]);
+  const placements = COVERED.map((k, i) => [QUARTERS_IN.rx + (i % 10), QUARTERS_IN.ry + Math.floor(i / 10), FOR_DEVICE[k]]);
   assert.ok(placements.length >= 23, 'nothing to place — the covered set is empty');
   const cells = roomCells(frameWith(placements, QUARTERS.deck), QUARTERS);
   assert.equal(cells.length, placements.length, 'roomCells dropped tiles — the fixture is off-rect');
@@ -1208,7 +1212,7 @@ test('THE OWNER\'S BUG, driven through the SHIPPING Room Zoom: no dashed letter 
   // NON-VACUITY CONTROL FIRST, and it is the half that makes the rest mean anything: a glyph
   // NOTHING skins ('z') must still produce the chip. Without this the assertion below passes just as
   // well against a Room Zoom that lost its furniture layer entirely.
-  Hud.renderFrame(frameWith([[QUARTERS.rx, QUARTERS.ry, 'z']], QUARTERS.deck));
+  Hud.renderFrame(frameWith([[QUARTERS_IN.rx, QUARTERS_IN.ry, 'z']], QUARTERS.deck));
   api.exit(); api.enter('quarters');
   const control = rzDoc.getElementById('rz-layers').innerHTML;
   // ⭐ VR-P3 — THE CHIP'S DASH MOVED WITH THE DIALECT: it is the charter's UNBUILT/PLANNED spelling
@@ -1226,11 +1230,11 @@ test('THE OWNER\'S BUG, driven through the SHIPPING Room Zoom: no dashed letter 
   // to do with sprite coverage, and read as a coverage regression. The offset is +1 on both axes; the
   // non-vacuity check below is what keeps it honest if the room ever shrinks.
   const placements = COVERED.map((k, i) => [
-    QUARTERS.rx + 1 + (i % 10), QUARTERS.ry + 1 + Math.floor(i / 10), FOR_DEVICE[k],
+    QUARTERS_IN.rx + (i % 10), QUARTERS_IN.ry + Math.floor(i / 10), FOR_DEVICE[k],
   ]);
   for (const [x, y] of placements) {
-    assert.ok(x > QUARTERS.rx && x < QUARTERS.rx + QUARTERS.rw - 1
-      && y > QUARTERS.ry && y < QUARTERS.ry + QUARTERS.rh - 1,
+    assert.ok(x >= QUARTERS_IN.rx && x < QUARTERS_IN.rx + QUARTERS_IN.rw
+      && y >= QUARTERS_IN.ry && y < QUARTERS_IN.ry + QUARTERS_IN.rh,
     `the census placed a device on the room BOUNDARY at ${x},${y} — the cutaway plates a door there `
     + 'and this test would then read a de-duplication as a coverage hole. Grow the fixture room.');
   }
@@ -1265,7 +1269,7 @@ const CORPSE_GLYPH = "&";
 
 test("the CORPSE glyph reaches the Room Zoom's furniture layer at all (roomCells, driven)", () => {
   assert.equal(FOR_ITEM.Corpse, CORPSE_GLYPH, 'Glyphs.ForItem(Corpse) moved — re-derive this test');
-  const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+  const focus = { deck: 0, rx: -1, ry: -1, rw: 3, rh: 3 }   // the WINDOW around tile (0,0) — see roomInterior;
   const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[CORPSE_GLYPH.charCodeAt(0), 0, 0, 0]] };
   const cells = roomCells(frame, focus);
   // THE FIRST HALF IS THE ONE THAT WAS BROKEN, and it is asserted on its own because `!cells[0]` and
@@ -1327,7 +1331,7 @@ test('EVERY glyph the registry skins is drawn by BOTH surfaces — no surface fi
   }
   for (const g of skinned) {
     const code = g.charCodeAt(0);
-    const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+    const focus = { deck: 0, rx: -1, ry: -1, rw: 3, rh: 3 }   // the WINDOW around tile (0,0) — see roomInterior;
     const cells = roomCells({ deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 0, 0, 0]] }, focus);
     if (cells.length !== 1 || !cells[0].itemId) lost.roomZoom.push(JSON.stringify(g));
   }

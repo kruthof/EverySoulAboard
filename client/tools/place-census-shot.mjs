@@ -209,12 +209,57 @@ const screenOf = (tx, ty) => {
   const [sx, sy] = place.foot(tx, ty);
   return { x: layerBox.x + fit.offX + sx * fit.s, y: layerBox.y + fit.offY + sy * fit.s };
 };
+// ⭐⭐ ARMING IS A THREE-STEP WALK, NOT ONE CLICK — and this rig was DEAD ON THE TREE until
+// 2026-08-06 because it did not know that. The BUILD TRAY (2026-08-05) put every tool behind a
+// category rail and a leaf rail, so `[data-rztool]` does not exist in the DOM until the player has
+// navigated to it: `verifiedClick` found no target, clicked nothing thirty seconds, and the run
+// stopped at the gate with a message about the TOOL. `ring-press-shot.mjs` was repaired for exactly
+// this a day earlier and this file was not — the same staleness, in the other census.
+// ⛔ A TOOL CARD IS A **TOGGLE**, so it is pressed ONCE and then waited on. `verifiedClick` re-clicks
+// until its predicate reads true, which on a toggle is arm/disarm/arm/disarm forever.
+// The leaf is asked of the SHIPPED taxonomy so a re-shuffle moves this rig with it.
+const { trayLeafFor, categoryOf } = await import('../src/ui/build-tray-model.js');
+const LEAF = trayLeafFor(TOOL);
+if (!LEAF) die(chrome, 9, `\`${TOOL}\` is in no tray leaf — the taxonomy does not know this tool`);
 await verifiedClick({
-  what: `the ${TOOL.toUpperCase()} tool is armed`,
-  target: () => centre(`[data-rztool="${TOOL}"]`),
-  settled: async () => (await evaluate(`document.querySelector('[data-rztool="${TOOL}"]')?.getAttribute('aria-pressed')==='true'?1:0`)) === 1,
+  what: `the ${categoryOf(LEAF)} category is open`,
+  target: () => centre(`[data-rzcat="${categoryOf(LEAF)}"]`),
+  settled: async () => (await evaluate(
+    `document.querySelector('[data-rzcat="${categoryOf(LEAF)}"]')?.getAttribute('aria-pressed')==='true'?1:0`)) === 1,
   clickAt, log, chrome, code: 9,
 });
+let subBox = null;
+for (let i = 0; i < 20; i++) {
+  subBox = await centre(`[data-rzsub="${LEAF}"]`);
+  if (subBox || await centre(`[data-rztool="${TOOL}"]`)) break;
+  await sleep(150);
+}
+if (subBox) {
+  await verifiedClick({
+    what: `the ${LEAF} leaf is open`,
+    target: () => centre(`[data-rzsub="${LEAF}"]`),
+    settled: async () => (await evaluate(
+      `document.querySelector('[data-rzsub="${LEAF}"]')?.getAttribute('aria-pressed')==='true'?1:0`)) === 1,
+    clickAt, log, chrome, code: 9,
+  });
+}
+const cardSel = `.rz-card[data-rztool="${TOOL}"]`;
+const isArmed = async () => (await evaluate(
+  `document.querySelector(${JSON.stringify(cardSel)})?.classList.contains('on')?1:0`)) === 1;
+let armedOk = false;
+for (let attempt = 0; attempt < 3 && !armedOk; attempt++) {
+  // Scrolled into view first: a card past the rail's right edge still has a bounding rect, one that
+  // lies outside the viewport, so the press lands on nothing.
+  await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(cardSel)});
+    if (e && e.scrollIntoView) e.scrollIntoView({block:'nearest', inline:'center'}); return 1;})()`);
+  await sleep(250);
+  const box = await centre(cardSel);
+  if (!box) die(chrome, 9, `the ${TOOL} card is not in the tray after navigating to its leaf`);
+  await clickAt(box.x, box.y);
+  for (let i = 0; i < 20 && !armedOk; i++) { await sleep(150); armedOk = await isArmed(); }
+}
+if (!armedOk) die(chrome, 9, `${TOOL} never armed — the card was pressed but never wore \`.on\``);
+log(`  verified: ${TOOL} armed`);
 
 // ⭐ THE REPAINT RATE, MEASURED RATHER THAN ASSUMED. If `#rz-layers` is NOT being replaced during a
 // press then a green census below proves nothing about BUG-B — it proves the ship was idle. The

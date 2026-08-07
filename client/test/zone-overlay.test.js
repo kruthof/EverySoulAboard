@@ -28,7 +28,12 @@ import { ZONE_FLAG_BACKED_OFF } from '../src/wire/messages.js';
 import { BACKED_OFF_LABEL, roomZoneTiles, zoneLegendRows } from '../src/ui/zone-model.js';
 import { zoneKeyHtml, zoneLayerSvg } from '../src/ui/zone-overlay.js';
 
-const FOCUS = { deck: 0, rx: 10, ry: 5, rw: 4, rh: 3 };
+// ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+// wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+// fixture rect written as the tile range under test would have no interior at all and every leg
+// would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+// the tests address are unchanged.
+const FOCUS = { deck: 0, rx: 9, ry: 4, rw: 6, rh: 5 };    // FLOOR = tiles x10..13, y5..7
 const row = (x, y, mask, flags) => ({ x, y, deck: 0, mask, flags });
 const tilesFor = (...rows) => roomZoneTiles(rows, FOCUS);
 
@@ -321,7 +326,12 @@ test('VR-P3: the zone boundary is drawn no heavier than the order ring beside it
  * MUTATION: `DEPTH_RATIO.x` 0.4 → 0.5 in oblique.js ⇒ RED (the composed angle becomes ~40°).
  */
 test('VR-P3: the back-off hatch composes to 45° THROUGH the cabinet shear (measured, not assumed)', () => {
-  const focus = { deck: 0, rx: 0, ry: 0, rw: 4, rh: 3 };
+  // ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+  // wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+  // fixture rect written as the tile range under test would have no interior at all and every leg
+  // would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+  // the tests address are unchanged.
+  const focus = { deck: 0, rx: -1, ry: -1, rw: 6, rh: 5 };   // FLOOR = tiles x0..3, y0..2
   const scene = roomScene(focus);
   const unit = scene.s * 100;
   const place = scenePlacement(scene, focus, unit);

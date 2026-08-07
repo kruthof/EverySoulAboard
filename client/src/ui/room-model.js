@@ -339,54 +339,78 @@ export function resolvesByFloor(tool) {
 }
 
 /**
- * True when (tx,ty) is on the focus rect's PERIMETER RING — the wall-inclusive window's hull band.
- * Pure rect geometry, and deliberately NOT the pressability rule: see `isHullPocheTile`. PURE.
+ * ⭐⭐⭐ **THE TRUE INTERIOR** — the compartment's FLOOR, which is the focus rect minus its own hull
+ * ring. THE ONE DERIVATION every scene, placement, clamp and inverse in this file goes through.
+ *
+ * ── WHY THE RECT IS BIGGER THAN THE ROOM ─────────────────────────────────────────────────────
+ * The wire's slot rect is WALL-INCLUSIVE ON PURPOSE and the sim is not changing: `SlotGridPlanner`
+ * emits `SlotDescriptor { X = interior.X0 - 1, Y = interior.Y0 - 1, W = InteriorW + 2, H =
+ * InteriorH + 2 }` (`sim/Sim.Gen/SlotGridPlanner.cs:146`) and calls it *"the Room-Zoom clamp rect"*.
+ * That is a useful window — it is the box a door tile lives on, and the box a pawn mid-crossing
+ * stands in — but it is NOT the room's floor. THE CLIENT RE-INTERPRETS; the sim keeps its rect.
+ *
+ * ── WHY THE SCENE IS THE INTERIOR AND NOT THE WINDOW (owner ruling, 2026-08-06) ───────────────
+ * The stopgap this replaces drew the ring as flat hull POCHÉ and refused placement on it, which
+ * turned the visible wall-adjacent row into dead space. The owner, with the screenshot:
+ * *"that solution is not acceptable — the user should be able to place something directly at the
+ * wall."* He is right, and the poché was treating a coordinate accident as a room feature. With the
+ * scene inset, the cutaway's wall planes land EXACTLY where the ring tiles used to be drawn, the
+ * outermost floor row is drawn FLUSH against the wall, and a press there puts furniture against the
+ * wall — which is how anybody furnishes a room.
+ *
+ * ⭐ EVERYTHING FOLLOWS FROM ONE RECT. The viewBox, the metre arrows, the floor grid, the door
+ * plates, every channel clamp, the closed-form inverse and the masthead's m² are all derived from
+ * this — so there is no second place where "how big is this room" is decided.
+ *
+ * ⚠️ IDEMPOTENT, DELIBERATELY. The result carries `interior:true` and is returned unchanged when fed
+ * back in. Threading an already-inset rect into a channel clamp is the one mistake this refactor
+ * makes easy to commit, and a double inset would be SILENT — a room drawn two tiles small with its
+ * furniture one tile off. `room-model.test.js` pins the fixed point.
+ *
+ * ⚠️ A DEGENERATE RECT HAS NO INTERIOR AND SAYS SO. A 1- or 2-tile window clamps to `rw`/`rh` of 0
+ * rather than to a negative extent; `roomScene` then draws a 1-tile floor (so the SVG is still
+ * well-formed) while `areaM2` reads a truthful 0 and every clamp admits nothing.
+ *
+ * @param {{rx:number,ry:number,rw:number,rh:number}|null} focusRoom the wire's wall-inclusive rect
+ * @returns {{rx:number,ry:number,rw:number,rh:number,interior:true}|null}
+ * PURE.
  */
-export function isRingTile(tx, ty, focusRoom) {
-  if (!focusRoom) return false;
+export function roomInterior(focusRoom) {
+  if (!focusRoom) return null;
+  if (focusRoom.interior === true) return focusRoom;
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
-  const x1 = rx + (focusRoom.rw | 0) - 1, y1 = ry + (focusRoom.rh | 0) - 1;
-  return tx === rx || tx === x1 || ty === ry || ty === y1;
+  const rw = focusRoom.rw | 0, rh = focusRoom.rh | 0;
+  return {
+    ...focusRoom,
+    rx: rx + 1,
+    ry: ry + 1,
+    rw: Math.max(0, rw - 2),
+    rh: Math.max(0, rh - 2),
+    interior: true,
+  };
 }
 
 /**
- * ⭐⭐ **THE ONE FACT THAT DRIVES BOTH THE PICTURE AND THE PRESS**: is this tile DRAWN as hull poché?
- *
- * ⛔ IT REPLACES A RECT TEST, AND THE RECT TEST WAS A SECOND LEGALITY AUTHORITY THAT WENT STALE
- * SILENTLY (independent review, 2026-08-06). The first cut of the hull-ring fix refused placement on
- * `!clampTileToInterior(...)` — pure geometry, computed from the slot rect and nothing else. But the
- * ring is not permanently wall:
- *   • THE SIM ACCEPTS STRIPPING A RING WALL on a carved ship (`IsPressureHull` is false there —
- *     review drove it: strip accepted, the tile then went Blocked → ACCEPTED for placement). After
- *     that the tile IS floor, the cutaway draws it as floor, and a geometric clamp went on swallowing
- *     every press on it — no ghost, no command, no sentence. That is strictly WORSE than the defect
- *     the clamp was added for: the original at least got a refusal sentence back from the sim.
- *   • AND IT WAS ALREADY LIVE, before any strip, on the ring's DOOR tile: a doorway carries no poché
- *     (it is an opening, not wall), so the picture said "floor" while the clamp said NOT-SENT — where
- *     the sim would have answered "something is already standing here".
- *
- * ⭐ SO THE RULE IS NOW A STATEMENT ABOUT THE DRAWING, WHICH IS THE THING THE PLAYER CAN SEE: the
- * surface will not send a placement onto a tile it has just drawn as wall. It reads the SAME
- * `roomMaterialTiles` list the poché is built from, so a stripped wall becomes floor in the picture
- * and pressable in the same frame, by construction rather than by two rules agreeing.
- *
- * ⛔ AND IT IS STILL NOT A LEGALITY PREDICATE. It answers "did I draw a wall here", never "will the
- * sim accept this" — the sim remains the only authority on that, and every tile this returns false
- * for goes down the wire and gets the sim's own sentence back.
- *
- * @param {number} tx @param {number} ty
- * @param {{tx:number,ty:number,kind:string}[]} matTiles  `roomMaterialTiles` output
- * @param {{rx:number,ry:number,rw:number,rh:number}} focusRoom
- * PURE.
+ * The interior's half-open tile bounds — the loop form of `roomInterior`, for the channel clamps
+ * that walk a rect rather than testing one tile. ONE derivation, every reader. PURE.
  */
-export function isHullPocheTile(tx, ty, matTiles, focusRoom) {
-  if (!isRingTile(tx, ty, focusRoom)) return false;
-  if (!Array.isArray(matTiles)) return false;
-  for (const t of matTiles) {
-    if (t && t.kind === 'wall' && (t.tx | 0) === (tx | 0) && (t.ty | 0) === (ty | 0)) return true;
-  }
-  return false;
+function interiorBounds(focusRoom) {
+  const iv = roomInterior(focusRoom);
+  if (!iv) return { rx: 0, ry: 0, x1: 0, y1: 0 };
+  return { rx: iv.rx, ry: iv.ry, x1: iv.rx + iv.rw, y1: iv.ry + iv.rh };
 }
+
+// ⛔⛔ `isRingTile` AND `isHullPocheTile` ARE **DELETED** HERE (2026-08-06), quoted so a grep for
+// either lands on the reason rather than on a silence. They were the previous package's stopgap:
+// the hull ring was drawn as flat cut-wall poché inside the scene, and `isHullPocheTile` — read by
+// BOTH `materialLayerSvg` and `tileAt` so the picture and the press could not come apart — refused a
+// PLACE press on any tile drawn as wall. Both halves of that argument were sound; the OWNER
+// SUPERSEDED THE PREMISE by ruling that the wall-adjacent row must be placeable. With the scene inset
+// to the interior there is no ring in the drawing at all: nothing to hatch, nothing to refuse, and
+// the surface no longer needs a second opinion about what a wall is. The stale-clamp defect that
+// forced `isHullPocheTile` into existence (a STRIPPED ring wall became floor while a rect clamp went
+// on swallowing presses) cannot recur either — the ring is outside the scene whatever it is made of,
+// so there is no press to swallow and no ghost to withhold. `roomInterior` above is the whole rule.
 
 /**
  * The drag mode a Room-Zoom tool sweeps with (build-drag-model.js vocabulary). ORDER tools sweep a
@@ -649,8 +673,16 @@ const nn = obN;
  *            viewBox:{x:number,y:number,w:number,h:number}, viewBoxAttr:string}}
  */
 export function roomScene(focusRoom) {
-  const rw = Math.max(1, focusRoom ? focusRoom.rw | 0 : 1);
-  const rh = Math.max(1, focusRoom ? focusRoom.rh | 0 : 1);
+  // ⭐⭐ THE SCENE IS THE INTERIOR — the owner's 2026-08-06 ruling, and the structural half of it.
+  // `focusRoom` is the wire's WALL-INCLUSIVE window (`roomInterior`'s header carries the sim citation
+  // and the ruling); the cutaway draws the room's FLOOR, so its wall planes land exactly where the
+  // ring tiles used to be drawn and the outermost floor row is flush against them.
+  const iv = roomInterior(focusRoom);
+  const iw = iv ? iv.rw : 0, ih = iv ? iv.rh : 0;
+  // The DRAWN extent floors at 1: a degenerate window still has to produce a well-formed viewBox.
+  // `areaM2` below is NOT floored, because 1 m² of a room that has no floor is a lie and 0 is not.
+  const rw = Math.max(1, iw);
+  const rh = Math.max(1, ih);
   const s = ROOM_SCALE;
   const wM = rw * M_PER_TILE, dM = rh * M_PER_TILE, hM = ROOM_HEIGHT_M;
   const wPx = s * wM * 100, hPx = s * hM * 100;
@@ -662,20 +694,16 @@ export function roomScene(focusRoom) {
   const frame = roomFrame(wM, dM, hM, s, { x: x0, y: y0 });
   return Object.freeze({
     wM, dM, hM, s, frame, rw, rh,
-    // ⭐⭐ THE AREA IS THE INTERIOR'S, NOT THE DRAWN BOX'S — 2026-08-06, and it was a LIE of 60%.
+    // ⭐⭐ THE AREA IS NOW **STRUCTURAL**, not a correction applied on top of a wrong box.
     //
-    // `focusRoom`'s rect is the WALL-INCLUSIVE compartment window (`SlotGridPlanner`'s
-    // `SlotDescriptor`: `X = interior.X0 - 1`, `W = InteriorW + 2`), so `rw × rh` counts the 1-tile
-    // perimeter of HULL as room. Measured on the shipped cryo bay: the masthead read `96.0 M²` for a
-    // compartment whose floor is 10 × 6 = `60.0 M²`. The player is quoted the size of a box that
-    // includes its own walls, which is not a number anybody wants.
-    // ⛔ THE SCENE ITSELF STILL SPANS `rw × rh` and that is deliberate at this step: the cutaway's
-    // wall planes and its door plates are placed off that box, and insetting the SCENE is the
-    // design-true follow-up (FILED as A — origin +1, extent −2, with the channel-clamp inner/outer
-    // split and the golden churn priced). This line needs none of that to stop lying today.
-    // `Math.max(0, …)` because a 1- or 2-tile rect has no interior at all, and a NEGATIVE area is
-    // worse than a wrong one.
-    areaM2: Math.max(0, rw - 2) * Math.max(0, rh - 2) * M_PER_TILE * M_PER_TILE,
+    // It used to read `max(0, rw−2) × max(0, rh−2)` off the WALL-INCLUSIVE rect — the right number
+    // computed beside a scene that still spanned the walls, which is two ideas of "how big is this
+    // room" in one object. The scene IS the interior now, so the area is simply the scene's own
+    // extent and the drawing and the masthead cannot disagree by construction. (It is `iw × ih`
+    // rather than `rw × rh` for the degenerate case only: no floor ⇒ 0 m², never the floored 1.)
+    // The NUMBER is unchanged for every real compartment — the shipped cryo bay read `60.0 M²`
+    // before this package and reads `60.0 M²` after it; `room-model.test.js` joins the two.
+    areaM2: iw * ih * M_PER_TILE * M_PER_TILE,
     viewBox: Object.freeze({
       x: 0, y: 0,
       w: nn(x0 + wPx + depthX + SCENE_PAD.right),
@@ -708,8 +736,13 @@ export function roomScene(focusRoom) {
  */
 export function scenePlacement(scene, focusRoom, unit = U) {
   const P = scene.frame.project;
-  const rx = focusRoom ? focusRoom.rx | 0 : 0;
-  const ry = focusRoom ? focusRoom.ry | 0 : 0;
+  // ⭐ THE ORIGIN IS THE INTERIOR'S NEAR-LEFT FLOOR TILE, not the window's corner — the same one
+  // derivation `roomScene` sized the box with. Feeding this the raw rect draws every tile-addressed
+  // layer one tile up and one tile left of the floor it belongs on, which is the single mistake this
+  // inset makes easy; `roomInterior` is idempotent so an already-inset rect is safe here too.
+  const iv = roomInterior(focusRoom);
+  const rx = iv ? iv.rx : 0;
+  const ry = iv ? iv.ry : 0;
   const cm = M_PER_TILE * 100;
   const corners = (tx, ty) => {
     const x = ((tx | 0) - rx) * cm, y = ((ty | 0) - ry) * cm;
@@ -798,8 +831,13 @@ export function tileFromScenePoint(sx, sy, scene, focusRoom) {
   const xCm = (sx - f.x0 - 0.4 * s * yCm) / s;
   const cm = M_PER_TILE * 100;
   if (xCm < 0 || yCm < 0 || xCm >= scene.rw * cm || yCm >= scene.rh * cm) return null;
-  const tx = Math.floor(xCm / cm) + (focusRoom.rx | 0);
-  const ty = Math.floor(yCm / cm) + (focusRoom.ry | 0);
+  // The INTERIOR's origin — `scenePlacement`'s exact origin, so this really is its inverse. The
+  // `clampTileToRoom` line then re-states the bound on the tile it produced: `scene.rw` is FLOORED
+  // AT 1 for a degenerate window (see `roomScene`) while the interior may be 0 wide, and the box
+  // check above would let a point through a room that has no floor at all.
+  const iv = roomInterior(focusRoom);
+  const tx = Math.floor(xCm / cm) + iv.rx;
+  const ty = Math.floor(yCm / cm) + iv.ry;
   return clampTileToRoom(tx, ty, focusRoom) ? { x: tx, y: ty } : null;
 }
 
@@ -1052,12 +1090,31 @@ export function roomDimensionsSvg(scene) {
 export function roomDoorsSvg(scene, focusRoom, doors) {
   if (!Array.isArray(doors) || !doors.length) return '';
   const P = scene.frame.project;
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  // ⭐⭐ THE DOOR IS ON THE RING AND THE SCENE IS THE INTERIOR, SO THE TWO COORDINATES SPLIT — and
+  // this is the seam where getting it wrong is invisible in a unit test and obvious on screen.
+  //   • The coordinate that runs ALONG the wall is an INTERIOR one (`SlotGridPlanner` puts the door
+  //     at `doorX = r.CenterX`, a column of the room's own floor), so it is measured off the
+  //     interior origin — the exact origin `scenePlacement` uses, so a door plate and the tile
+  //     beneath it agree.
+  //   • The coordinate ACROSS the wall is a ring one and is never read: the plate is drawn ON the
+  //     wall plane (`x = 0` for the left wall, `y = scene.rh·cm` for the back), which is precisely
+  //     where the ring tile used to be drawn. That is the inset's whole point — the wall is now AT
+  //     the interior's edge, so the opening lands where the player sees the wall.
+  const iv = roomInterior(focusRoom);
+  const rx = iv.rx, ry = iv.ry;
   const cm = M_PER_TILE * 100, dh = 200; // a 2.0 m doorway in a 2.4 m wall
   const vbW = scene.viewBox ? scene.viewBox.w : 0;
   const out = [];
   for (const d of doors) {
     if (!d) continue;
+    // ⛔ A CORNER DOOR HAS NO WALL RUN TO SIT ON, AND IS DROPPED RATHER THAN DRAWN OFF THE PLANE.
+    // A door at a rect CORNER is on two ring rows at once, so its along-wall coordinate lands
+    // outside the interior span and every expression below would place it beyond the wall's end —
+    // a plate floating in the paper, or a label at a negative x. No shipped generator authors one
+    // (`SlotGridPlanner` centres every compartment door on its wall), so this is a guard on a shape
+    // the wire does not currently produce and it says so instead of pretending to draw it.
+    const along = (d.side === 'left' || d.side === 'right') ? (d.ty | 0) - ry : (d.tx | 0) - rx;
+    if (along < 0 || along >= ((d.side === 'left' || d.side === 'right') ? scene.rh : scene.rw)) continue;
     const x = ((d.tx | 0) - rx) * cm, y = ((d.ty | 0) - ry) * cm;
     let pts, lx, ly, anchor;
     if (d.side === 'left') {
@@ -1184,11 +1241,104 @@ export function roomDoorTiles(frame, focusRoom, dView) {
   return out;
 }
 
-/** True when (tx,ty) is inside the room's tile-rect (IX-Z-11). PURE. */
+/**
+ * ⭐⭐ True when (tx,ty) is on the room's **DRAWN FLOOR** — the INTERIOR (IX-Z-11, re-cut 2026-08-06).
+ *
+ * ⛔ ITS ANSWER CHANGED WITH THE SCENE INSET AND THE NAME DID NOT, so read this before quoting it.
+ * It used to be the half-open test on the wire's wall-inclusive window and therefore said `true` for
+ * 36 of a 12 × 8 compartment's 96 tiles that are solid hull. The scene now spans the interior, so
+ * this is the question every channel clamp is really asking — *"is this thing on floor I am drawing"*
+ * — and a designation, a zone, a stack, a mark or a blueprint sitting on the ring is not.
+ *
+ * ⛔ IT IS NOT THE CREW-MEMBERSHIP TEST. A pawn crossing a DOORWAY stands on a ring tile for the
+ * length of the crossing and must keep being drawn; that question is `tileInFocusRect` below, which
+ * is the one caller that still wants the whole window. The two are separate functions on purpose —
+ * one predicate serving both is how she would come to vanish in the door.
+ * PURE.
+ */
 export function clampTileToRoom(tx, ty, focusRoom) {
+  if (!focusRoom) return false;
+  const b = interiorBounds(focusRoom);
+  return tx >= b.rx && tx < b.x1 && ty >= b.ry && ty < b.y1;
+}
+
+/**
+ * ⭐⭐ **THE DOORWAY BAND** — true when (tx,ty) is anywhere in the wire's wall-inclusive window,
+ * interior plus its own hull ring. THE CREW-MEMBERSHIP RECT, and the only surviving reader of the
+ * raw slot rect as a rect.
+ *
+ * ⛔ IT EXISTS BECAUSE A DOOR OPENING LIVES **ON THE RING** (`SlotGridPlanner` puts the compartment's
+ * door at `doorY = TopWallY | BottomWallY`, i.e. the perimeter row), so a crew member walking in or
+ * out occupies a ring tile for the whole crossing. `roomCrew` admits her on this rect — exactly the
+ * rect it used before the inset, which is why the inset costs ZERO vanish frames — and
+ * `clampPosToFloor` then draws her standing IN the opening, on the wall line. Narrowing membership
+ * to `clampTileToRoom` instead would delete the figure mid-step and hand back the *"a figure you can
+ * see and cannot click"* defect `roomCrew`'s header already paid for once, in the other direction.
+ *
+ * ⚠️ MEMBERSHIP, NOT GEOMETRY: passing this test does NOT mean there is floor under her feet. The
+ * ring is outside the drawn scene, so the position is clamped before it is projected. That split —
+ * ADMIT on the window, DRAW on the floor — is the whole doorway mechanism.
+ * PURE.
+ */
+export function tileInFocusRect(tx, ty, focusRoom) {
   if (!focusRoom) return false;
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
   return tx >= rx && tx < rx + (focusRoom.rw | 0) && ty >= ry && ty < ry + (focusRoom.rh | 0);
+}
+
+/**
+ * ⭐⭐ THE DRAWN FLOOR IS A CLOSED BOX AND EVERY FIGURE IS DRAWN INSIDE IT — a fractional tile
+ * position clamped onto the interior's floor quad, INCLUDING its boundary.
+ *
+ * The bounds are `[rx − 0.5, rx + rw − 0.5]`, and the half tile is exact rather than slack:
+ * `scenePlacement.foot(x, ·)` projects `(x − rx)·cm + cm/2`, so `x = rx − 0.5` lands on scene x = 0
+ * (the LEFT WALL LINE) and `x = rx + rw − 0.5` lands on `rw·cm` (the right cut edge). A clamped
+ * figure therefore stands ON the wall she is passing through — in the doorway — and never behind it,
+ * inside it, or on a plane the drawing does not have. ZERO OFF-FLOOR DRAWS, by construction.
+ *
+ * ⚠️ IT APPLIES TO THE **TWEEN'S** POSITION, not only to the wire sample, or she would slide off the
+ * floor between two samples and snap back on the next one.
+ *
+ * ⚠️ AND IT IS A CLAMP, WHICH THIS FILE PREVIOUSLY DID NOT NEED. `roomCrew`'s header used to argue
+ * that membership-by-drawn-tile keeps the feet on the floor BY CONSTRUCTION and that no clamp was
+ * required. That argument was true while the scene spanned the whole window, and the inset retires
+ * it: the membership rect and the drawn floor are now different rects, so the guarantee has to be
+ * made rather than inherited. Said out loud instead of quietly dropped.
+ * PURE.
+ */
+export function clampPosToFloor(x, y, focusRoom) {
+  const iv = roomInterior(focusRoom);
+  const fx = Number.isFinite(x) ? x : 0, fy = Number.isFinite(y) ? y : 0;
+  if (!iv || iv.rw <= 0 || iv.rh <= 0) return { x: fx, y: fy };
+  return {
+    x: Math.min(Math.max(fx, iv.rx - 0.5), iv.rx + iv.rw - 0.5),
+    y: Math.min(Math.max(fy, iv.ry - 0.5), iv.ry + iv.rh - 0.5),
+  };
+}
+
+/**
+ * ⭐ THE INTERIOR TILE A FIGURE AT THIS POSITION IS DRAWN ON — `clampPosToFloor`, rounded, then
+ * pinned inside the half-open rect. The hit-test half of the doorway mechanism.
+ *
+ * ⛔ THE SECOND CLAMP IS NOT BELT-AND-BRACES. `Math.round` is half-UP, so the far boundary
+ * `rx + rw − 0.5` rounds to `rx + rw`, which is one past the last interior tile — the classic
+ * off-by-one at exactly the position a pawn standing in the back doorway occupies. Rounding alone
+ * would make her unhittable on the one tile the mechanism exists to keep hittable.
+ *
+ * ⚠️ THE COST, NAMED: a crew member in a doorway and a crew member on the interior tile in front of
+ * it resolve to the SAME hit tile, and `crewHitAtTile` returns the first of them in roster order.
+ * That is a one-tile ambiguity on two adjacent souls; the alternative is a figure the player can see
+ * and cannot click, which is strictly worse and is a defect this surface has already shipped once.
+ * PURE.
+ */
+export function drawnFloorTile(x, y, focusRoom) {
+  const p = clampPosToFloor(x, y, focusRoom);
+  const iv = roomInterior(focusRoom);
+  if (!iv || iv.rw <= 0 || iv.rh <= 0) return { x: Math.round(p.x), y: Math.round(p.y) };
+  return {
+    x: Math.min(Math.max(Math.round(p.x), iv.rx), iv.rx + iv.rw - 1),
+    y: Math.min(Math.max(Math.round(p.y), iv.ry), iv.ry + iv.rh - 1),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1424,8 +1574,17 @@ export function roomCells(frame, focusRoom, deviceCond, stockKinds) {
   if ((frame.deck | 0) !== (focusRoom.deck | 0)) return out;
   const dev = deviceCond instanceof Map ? deviceCond : new Map();
   const stock = stockKinds instanceof Map ? stockKinds : new Map();
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
-  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  // THE INTERIOR, since the scene inset — a glyph on the hull ring is not drawn and must not be read
+  // as a fitting in this room. (`furnitureSvg` stands these on `scenePlacement`'s tiles; a ring cell
+  // reaching it would stand a piece outboard of the wall the cutaway just drew.)
+  //
+  // ⭐ HAND-MERGE, `lane/wreck-dressing` × `lane/scene-inset`, 2026-08-06 — and BOTH halves are kept
+  // deliberately. The inset narrows WHICH tiles this loop visits; the stock rescue below changes
+  // WHAT a visited citizen tile resolves to. They compose without interacting: the rescue lives
+  // strictly inside the `code === CITIZEN_GLYPH_CODE` arm, which the inset can only ever reach
+  // FEWER of. ⇒ the rescue inherits the inset for free — a stack under a pawn ON THE HULL RING is
+  // now not restored either, which is correct, because the ring is not drawn.
+  const { rx, ry, x1, y1 } = interiorBounds(focusRoom);
   for (let ty = Math.max(0, ry); ty < Math.min(frame.h | 0, y1); ty++) {
     for (let tx = Math.max(0, rx); tx < Math.min(frame.w | 0, x1); tx++) {
       const cell = frame.cells[ty * frame.w + tx];
@@ -1502,12 +1661,19 @@ export function drawnTile(c) {
  *     while her body was still a full tile inside it, and the hit test at her drawn tile returned
  *     null: a figure you can see and cannot click.
  *
- * <b>Deciding on the drawn tile closes both, and closes them by CONSTRUCTION rather than by a
- * clamp:</b> `drawnTile` names the tile whose quad contains the feet (see its header), so if that
- * tile is in the room then the feet are on the room's floor — there is no position a member can
- * occupy that is off the floor, and no clamp is needed to keep her on it. Leaving, she stays drawn
- * until her body crosses the threshold; entering, she appears as it crosses, standing on the room's
- * edge, and slides in from there. She is never drawn where there is nothing to stand on.
+ * <b>Deciding on the drawn tile closes both:</b> `drawnTile` names the tile whose quad contains the
+ * feet (see its header). Leaving, she stays drawn until her body crosses the threshold; entering, she
+ * appears as it crosses, standing on the room's edge, and slides in from there.
+ *
+ * ⚠️⚠️ <b>THE "BY CONSTRUCTION, NO CLAMP IS NEEDED" HALF OF THAT ARGUMENT IS RETIRED BY THE SCENE
+ * INSET (2026-08-06)</b> and is quoted rather than deleted, because it was TRUE and is now FALSE for
+ * a reason worth carrying: *"if that tile is in the room then the feet are on the room's floor —
+ * there is no position a member can occupy that is off the floor."* That held while the scene spanned
+ * the whole wall-inclusive window. It does not hold now: this list still admits on the window (it
+ * must — a DOORWAY IS A RING TILE, `tileInFocusRect`) while the drawing spans only the interior. The
+ * guarantee is therefore MADE rather than inherited, by `clampPosToFloor` at the moment of
+ * projection, and it is the same guarantee: <b>she is never drawn where there is nothing to stand
+ * on</b> — in a doorway she stands ON the wall line, in the opening.
  *
  * <b>The two-source rule is PRESERVED, which is why this is one function and not two.</b>
  * `shipCrewRows`'s HERE flag and `_capHere` both read this list, so "HERE" still means exactly what
@@ -1525,7 +1691,14 @@ export function roomCrew(crew, focusRoom) {
   for (const c of crew) {
     if (!c || (c.deck | 0) !== (focusRoom.deck | 0)) continue;
     const d = drawnTile(c);
-    if (clampTileToRoom(d.x, d.y, focusRoom)) out.push(c);
+    // ⭐⭐ THE MEMBERSHIP RECT IS THE **WINDOW**, AND IT IS THE SAME RECT IT WAS BEFORE THE SCENE
+    // INSET — see `tileInFocusRect`. The scene shrank to the interior; this test deliberately did
+    // not, because a DOOR OPENING IS A RING TILE and a crew member crossing one has to stay drawn.
+    // Switching this line to `clampTileToRoom` (the new interior test) is mutation M-DOORWAY: she
+    // disappears for the length of every crossing, which is the exact "figure you can see and cannot
+    // click" defect in its mirror image. Where she is DRAWN is `clampPosToFloor`'s job, not this
+    // list's — admit on the window, draw on the floor.
+    if (tileInFocusRect(d.x, d.y, focusRoom)) out.push(c);
   }
   return out;
 }
@@ -1571,7 +1744,17 @@ export function roomCrew(crew, focusRoom) {
 export function crewHitAtTile(crew, focusRoom, tx, ty) {
   const x = tx | 0, y = ty | 0;
   for (const c of roomCrew(crew, focusRoom)) {
-    const d = drawnTile(c);
+    // ⭐ THE TILE MATCHED IS THE ONE SHE IS **DRAWN** ON, WHICH SINCE THE SCENE INSET IS NOT ALWAYS
+    // THE TILE SHE OCCUPIES. A crew member in a doorway stands on a ring tile — outside the scene,
+    // so `tileFromCanvasXY` can never return it and `drawnTile`'s answer would be a tile no press
+    // can produce: a figure standing in plain sight that nothing could select. `drawnFloorTile`
+    // applies the same clamp the FIGURE is placed with (`clampPosToFloor`), so the click and the
+    // feet stay one derivation. Its header carries the two-souls-one-tile cost.
+    const d = drawnFloorTile(
+      Number.isFinite(c.fx) ? c.fx : (c.x | 0),
+      Number.isFinite(c.fy) ? c.fy : (c.y | 0),
+      focusRoom,
+    );
     if (d.x === x && d.y === y) return c;
   }
   return null;
@@ -1800,8 +1983,12 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
       if (m && (m.deck | 0) === (focusRoom.deck | 0)) matAt.set((m.x | 0) + ',' + (m.y | 0), m);
     }
   }
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
-  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  // ⭐ THE INTERIOR, AND THAT IS WHAT RETIRED THE POCHÉ. Every tile of the wall-inclusive window's
+  // perimeter carries glyph 35, so before the inset this list was 36 hull tiles plus the room's real
+  // partitions and the layer needed a ring predicate to tell them apart. The ring is now outside the
+  // scene entirely: what reaches `materialLayerSvg` is exactly the INTERIOR partitions the player
+  // built, which is what this layer was always for.
+  const { rx, ry, x1, y1 } = interiorBounds(focusRoom);
   for (let ty = Math.max(0, ry); ty < Math.min(frame.h | 0, y1); ty++) {
     for (let tx = Math.max(0, rx); tx < Math.min(frame.w | 0, x1); tx++) {
       const cell = frame.cells[ty * frame.w + tx];
@@ -1901,8 +2088,7 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
 export function roomMarkTiles(marks, focusRoom) {
   const out = [];
   if (!Array.isArray(marks) || !focusRoom) return out;
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
-  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  const { rx, ry, x1, y1 } = interiorBounds(focusRoom);   // the DRAWN floor — see `clampTileToRoom`
   for (const m of marks) {
     if (!m || (m.deck | 0) !== (focusRoom.deck | 0)) continue;
     const tx = m.x | 0, ty = m.y | 0;
@@ -1939,7 +2125,9 @@ export function roomMarkTiles(marks, focusRoom) {
  */
 export function markLayerSvg(marks, focusRoom, unit = U, place = null) {
   if (!Array.isArray(marks) || !marks.length || !focusRoom) return '';
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  // THE INTERIOR'S ORIGIN, for the `place`-less plan fallback only — one origin, so the fallback
+  // offsets address the same tiles `roomMarkTiles` (also interior-clamped) hands this function.
+  const { rx, ry } = interiorBounds(focusRoom);
   const out = [];
   for (const m of marks) {
     if (!m || m.mark === 'stockpile') continue; // WP-3's zoneLayerSvg owns this tile — see above
@@ -2094,8 +2282,7 @@ export function itemKindLabel(kind) {
 export function roomItemTiles(items, focusRoom) {
   const out = [];
   if (!Array.isArray(items) || !focusRoom) return out;
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
-  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  const { rx, ry, x1, y1 } = interiorBounds(focusRoom);   // the DRAWN floor — see `clampTileToRoom`
   const byTile = new Map();
   for (const it of items) {
     if (!it || (it.deck | 0) !== (focusRoom.deck | 0)) continue;
@@ -2167,8 +2354,7 @@ export function itemIdForStockKind(kind) {
 export function roomDeviceConditions(devices, focusRoom) {
   const out = new Map();
   if (!Array.isArray(devices) || !focusRoom) return out;
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
-  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  const { rx, ry, x1, y1 } = interiorBounds(focusRoom);   // the DRAWN floor — see `clampTileToRoom`
   for (const d of devices) {
     if (!d || (d.deck | 0) !== (focusRoom.deck | 0)) continue;
     const tx = d.x | 0, ty = d.y | 0;
@@ -2364,8 +2550,7 @@ export function deviceKindName(kind) {
 export function roomBlockedTiles(blocked, focusRoom) {
   const out = [];
   if (!Array.isArray(blocked) || !focusRoom) return out;
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
-  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  const { rx, ry, x1, y1 } = interiorBounds(focusRoom);   // the DRAWN floor — see `clampTileToRoom`
   const seen = new Set();
   for (const b of blocked) {
     if (!b || (b.deck | 0) !== (focusRoom.deck | 0)) continue;
@@ -2467,7 +2652,8 @@ function chipSvg(text, cx, bottom, maxW, k = 1) {
  */
 export function itemStackSvg(tiles, focusRoom, unit = U, place = null) {
   if (!Array.isArray(tiles) || !tiles.length || !focusRoom || !(unit > 0)) return '';
-  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  // THE INTERIOR'S ORIGIN, for the `place`-less plan fallback only — see `markLayerSvg`.
+  const { rx, ry } = interiorBounds(focusRoom);
   const out = [];
   for (const t of tiles) {
     const slots = itemStackSlots(t && t.stacks);

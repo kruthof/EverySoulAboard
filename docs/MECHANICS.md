@@ -8307,10 +8307,23 @@ the Room Zoom draws too) and `solar-wing` bolted to the hull's outer skin
 - ⚠️ **THE MOUNT KEEPS `v`, AND THE FIRST CUT DID NOT.** `outboardPoint` originally used the band's
   FRONT edge (`O + u·BU`) on the argument that a side elevation cannot show depth into the beam. True
   of the DEPTH, false of the X: on an oblique floor `BV = [depthX, −depthY]`, so a tile at `v` draws
-  `v·depthX` to starboard. Measured on the wreck's three wings: a constant **−9.07 px = −0.879 tiles**
-  sternward of their own feeds (their `v` is 0.5188, the band's `depthX` 17.48 px), and up to −1.69
-  tiles for a tile at a compartment's back wall. Using `floorPoint(u, v)` costs one term and makes
-  `mountX − floorX` exactly **0.000000**.
+  `v·depthX` to starboard. Measured on the wreck's three wings: a constant **−9.067750 px = −0.958
+  tiles** sternward of their own feeds (their `v` is 0.51875, the band's `depthX` 17.48 px and its
+  `tileSize` 9.4617 px), and **−17.480 px = −1.847 tiles** for a tile at a compartment's back wall
+  (`v = 1`). Using `floorPoint(u, v)` costs one term and makes `mountX − floorX` exactly **0.000000**.
+  ⚠️ The two TILE figures read **−0.879** and **−1.69** here and at the seam until 2026-08-06 and both
+  were wrong — the px numbers beside them were right, only the division was not. Re-measured on this
+  tree; both sites now agree.
+- ⛔⛔ **AND THE FIX SHIPPED UNPINNED BEHIND A FABRICATED CITATION** — the package's third of that
+  shape, caught by re-verify. `ship-elevation.js` said *"Pinned by `THE WING HANGS OVER ITS OWN FEED`
+  in `overview-scene.test.js`"* and **no such test existed**: reverting `outboardPoint` to the pre-fix
+  expression left the node suite **1904/1904 green with the defect fully restored**, because a
+  CONSTANT offset moves all three wings together and every existing outboard leg (order, separation,
+  outside-the-bay, which-skin) survives it. The test the citation named now exists, in two legs on the
+  committed live `--ship wreck` capture, both exact `=== 0` — the drawn SVG's panel box against its
+  feed box, and `outboardPoint`'s x against `project`'s x in unrounded floats. Driven: mutated
+  **1904 pass / 2 fail of 1906**, the two failures naming −9.070000 px (SVG) and −9.067750 px (floats)
+  per wing; restored **1906/1906**.
 - ⚠️ **`solar-wing` GAVE UP GLYPH `'G'` IN THE SAME COMMIT** that `GLYPH_SUBSTITUTE` claimed it, or
   the ledger's non-shadowing guard would have refused. That ledger went **7 → 8**, and this is its
   first entry whose reason is *not* "the set has no piece for that kind".

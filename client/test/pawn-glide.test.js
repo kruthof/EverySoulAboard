@@ -39,7 +39,10 @@ import { decksView } from '../src/ui/decks-model.js';
 import { overviewScene, makeShipTransform, pawnLayerParts } from '../src/ui/overview-scene.js';
 import { pawnParts } from '../src/ui/roomzoom-view.js';
 import { makePawnLayer } from '../src/ui/pawn-layer.js';
-import { roomScene, scenePlacement, roomCrew, crewHitAtTile, drawnTile } from '../src/ui/room-model.js';
+import {
+  roomScene, scenePlacement, roomCrew, crewHitAtTile, drawnTile,
+  roomInterior, clampPosToFloor,
+} from '../src/ui/room-model.js';
 import { crewClickTarget } from '../src/ui/console-model.js';
 
 const FIX = JSON.parse(
@@ -251,7 +254,12 @@ test('roomzoom: the name plate and work tag ride WITH the gliding figure', () =>
 // it — a test that only re-stated `Math.round` could not have caught the original defect either.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-const ROOM = { deck: 0, rx: 4, ry: 5, rw: 3, rh: 3 };   // tiles x ∈ [4,6], y ∈ [5,7]
+// ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+// wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+// fixture rect written as the tile range under test would have no interior at all and every leg
+// would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+// the tests address are unchanged.
+const ROOM = { deck: 0, rx: 3, ry: 4, rw: 5, rh: 5 };   // FLOOR = tiles x ∈ [4,6], y ∈ [5,7]
 const soul = (over) => ({ cid: 1, name: 'Vega', role: 'crew', deck: 0, task: 'Idle', ...over });
 
 /** Is point p inside the parallelogram [a,b,c,d] (wound consistently)? Cross-product sign test. */
@@ -274,8 +282,12 @@ function insideQuad(p, quad) {
  */
 function roomFloorQuad(focus) {
   const place = scenePlacement(roomScene(focus), focus);
-  const x0 = focus.rx, y0 = focus.ry;
-  const x1 = focus.rx + focus.rw - 1, y1 = focus.ry + focus.rh - 1;
+  // ⭐ THE FLOOR, NOT THE WINDOW (2026-08-06). `focus` is the wire's wall-inclusive rect and the
+  // cutaway draws its interior; a quad built off `focus` itself describes a floor one tile larger
+  // than the one on screen, which would make every containment leg below pass for free.
+  const iv = roomInterior(focus);
+  const x0 = iv.rx, y0 = iv.ry;
+  const x1 = iv.rx + iv.rw - 1, y1 = iv.ry + iv.rh - 1;
   return [
     place.corners(x0, y0).nearLeft,
     place.corners(x1, y0).nearRight,
@@ -284,6 +296,16 @@ function roomFloorQuad(focus) {
   ];
 }
 
+/**
+ * ⚠️⚠️ THE THRESHOLD MOVED OUT BY ONE TILE AT THE SCENE INSET (2026-08-06) AND THAT IS THE DOORWAY
+ * MECHANISM, NOT A LOOSENING. The scene shrank to the interior; MEMBERSHIP deliberately did not,
+ * because a DOOR OPENING IS A RING TILE (`SlotGridPlanner` puts every compartment door on a
+ * perimeter row) and a crew member crossing one occupies it for the whole crossing. So she is
+ * admitted on the wall-inclusive WINDOW — exactly the rect this leg used before the inset — and her
+ * drawn POSITION is clamped onto the floor, which is asserted in its own leg below.
+ *
+ * MUTATION: `roomCrew` switches to `clampTileToRoom` ⇒ RED here (she vanishes in the doorway).
+ */
 test('LEAVING: she stays drawn until her BODY crosses — no vanish, and the click still lands', () => {
   // Sim tile already outside (7); body still a full tile inside (6.1). The reviewer's exit receipt.
   const leaving = soul({ x: 7, y: 5, fx: 6.1, fy: 5 });
@@ -292,19 +314,33 @@ test('LEAVING: she stays drawn until her BODY crosses — no vanish, and the cli
   assert.equal(crewHitAtTile([leaving], ROOM, 6, 5).cid, 1,
     'a figure you can see must be a figure you can click');
 
-  // …and she leaves the list exactly when the body crosses the threshold, not a tile early.
-  assert.equal(roomCrew([soul({ x: 7, y: 5, fx: 6.4, fy: 5 })], ROOM).length, 1, 'still on the floor at 6.4');
-  assert.equal(roomCrew([soul({ x: 7, y: 5, fx: 6.6, fy: 5 })], ROOM).length, 0, 'past the edge at 6.6');
+  // …she is STILL DRAWN while she is in the doorway (the ring column, x=7 of this window)…
+  assert.equal(roomCrew([soul({ x: 7, y: 5, fx: 6.6, fy: 5 })], ROOM).length, 1,
+    'she vanished on the threshold. That tile is where a door is; deleting the figure there is the '
+    + '"a figure you can see and cannot click" defect in its mirror image.');
+  assert.equal(roomCrew([soul({ x: 8, y: 5, fx: 7.4, fy: 5 })], ROOM).length, 1, 'still in the doorway');
+  // …and she leaves the room when she leaves the WINDOW, one tile past the drawn floor.
+  assert.equal(roomCrew([soul({ x: 8, y: 5, fx: 7.6, fy: 5 })], ROOM).length, 0,
+    'past the window at 7.6 — she is in the next compartment now');
 });
 
 test('ENTERING: she is never drawn where there is no floor', () => {
-  // Sim tile already inside (4); body still outside (3.1). The reviewer's entry receipt — this is
-  // the frame that drew a crew member standing on the back wall.
-  assert.equal(roomCrew([soul({ x: 4, y: 5, fx: 3.1, fy: 5 })], ROOM).length, 0,
-    'drawn 0.9 tile outside the room quad — there is no floor there, only the back wall');
-  assert.equal(roomCrew([soul({ x: 4, y: 5, fx: 3.4, fy: 5 })], ROOM).length, 0, 'still outside at 3.4');
-  assert.equal(roomCrew([soul({ x: 4, y: 5, fx: 3.6, fy: 5 })], ROOM).length, 1,
-    'she appears as the body crosses the threshold, standing on the room edge');
+  const iv = roomInterior(ROOM);
+  // Sim tile already inside; body still outside the WINDOW ⇒ not admitted at all.
+  assert.equal(roomCrew([soul({ x: 4, y: 5, fx: 2.4, fy: 5 })], ROOM).length, 0,
+    'a crew member a tile and a half outside the compartment is being drawn in it');
+  // On the doorway ring she IS admitted — and her feet are put ON THE WALL LINE, not outside it.
+  // This is the clamp doing the work the old membership rule used to do by construction.
+  const inDoor = soul({ x: 4, y: 5, fx: 3.1, fy: 5 });
+  assert.equal(roomCrew([inDoor], ROOM).length, 1, 'she is not admitted while crossing the threshold');
+  const p = clampPosToFloor(3.1, 5, ROOM);
+  assert.equal(p.x, iv.rx - 0.5,
+    `her feet are drawn at ${p.x}, which is ${(iv.rx - 0.5) - p.x} tile outside the floor quad — `
+    + 'there is nothing to stand on there but the wall');
+  assert.equal(p.y, 5, 'the along-wall coordinate was clamped too — she slid out of her doorway');
+  // …and once she is on real floor the clamp is inert, which is the half that keeps it honest.
+  assert.deepEqual(clampPosToFloor(4.6, 6, ROOM), { x: 4.6, y: 6 },
+    'the clamp is moving a figure who is already standing on the floor');
 });
 
 test('EVERY drawn member has her feet inside the room floor — swept across both boundaries', () => {
@@ -317,13 +353,17 @@ test('EVERY drawn member has her feet inside the room floor — swept across bot
   for (let k = -15; k <= (ROOM.rw - 1) * 10 + 15; k += 1) sweep.push(ROOM.rx + k / 10);   // x axis
   for (const f of sweep) {
     // one walker crossing on X (fy pinned to a middle row), one crossing on Y (fx pinned)
-    const fyRow = ROOM.ry + 1, fxCol = ROOM.rx + 1;
+    const fyRow = ROOM.ry + 2, fxCol = ROOM.rx + 2;
     const fOnY = ROOM.ry + (f - ROOM.rx);
     for (const [fx, fy] of [[f, fyRow], [fxCol, fOnY]]) {
       const c = soul({ x: Math.round(fx), y: Math.round(fy), fx, fy });
       if (roomCrew([c], ROOM).length === 0) { skipped += 1; continue; }
       drawn += 1;
-      const foot = place.foot(fx, fy);
+      // ⭐ THE POSITION IS PROJECTED **THROUGH THE CLAMP**, because that is what the surface does
+      // (`placePawns` and `pawnParts` both call it). Projecting the raw glide instead would be
+      // asserting a figure this view never draws — and would go red on every doorway frame.
+      const q = clampPosToFloor(fx, fy, ROOM);
+      const foot = place.foot(q.x, q.y);
       assert.ok(insideQuad(foot, quad),
         `a DRAWN member's feet landed outside the room floor at fx=${fx} fy=${fy} → ${foot}`);
     }
@@ -395,7 +435,8 @@ test('overview: a gliding pawn is drawn ONCE, on her OWN band, never between two
 
 test('a crew member with NO glide is filtered exactly as before the package', () => {
   assert.equal(roomCrew([soul({ x: 6, y: 5 })], ROOM).length, 1);
-  assert.equal(roomCrew([soul({ x: 7, y: 5 })], ROOM).length, 0);
+  assert.equal(roomCrew([soul({ x: 7, y: 5 })], ROOM).length, 1, 'the doorway ring is membership');
+  assert.equal(roomCrew([soul({ x: 8, y: 5 })], ROOM).length, 0, 'past the window ⇒ another room');
   assert.equal(roomCrew([soul({ x: 6, y: 5, fx: null, fy: 'x' })], ROOM).length, 1, 'junk ⇒ the sim tile');
   assert.equal(roomCrew([soul({ x: 6, y: 5, deck: 1, fx: 6, fy: 5 })], ROOM).length, 0, 'wrong deck');
 });
@@ -421,7 +462,12 @@ test('drawnTile is the tile the FEET are in, not a truncation', () => {
 });
 
 test('roomzoom click hits the pawn WHERE SHE IS DRAWN, mid-glide', () => {
-  const focus = { deck: 0, rx: 4, ry: 5, rw: 4, rh: 4 };
+  // ⚠️ A **WINDOW**, NOT THE FLOOR (2026-08-06, the scene inset). The wire's slot rect is
+  // wall-inclusive (`SlotGridPlanner.cs:146`) and every room-scoped clamp now insets by one, so a
+  // fixture rect written as the tile range under test would have no interior at all and every leg
+  // would go vacuously empty. The rect below is the window AROUND that same tile range — the tiles
+  // the tests address are unchanged.
+  const focus = { deck: 0, rx: 3, ry: 4, rw: 6, rh: 6 };   // FLOOR = tiles x4..7, y5..8
   // The live shape: the sim has already stepped her to (7,5); she is still drawn back on (6,5).
   const walker = { cid: 42, name: 'Rell', role: 'crew', deck: 0, x: 7, y: 5, fx: 6.1, fy: 5, task: 'Idle' };
 

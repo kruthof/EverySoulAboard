@@ -63,3 +63,7 @@ client/tools/shots-build-tray/
 client/tools/shots-persona/
 # — lane/draw-reveal (the build-completion draw-in: the frame sequence + its timeline.json) —
 client/tools/shots-draw-reveal/
+# — lane/scene-inset — the press map, the doorway crossing, and the owner's pictures
+client/tools/shots-ring-probe/
+client/tools/shots-doorway/
+client/tools/shots-scene-inset/
