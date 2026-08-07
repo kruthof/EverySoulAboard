@@ -40,6 +40,8 @@ import {
   zoomChrome, ZOOM_HINT_IDLE, ZOOM_HINT_ARMED,
   // The pawn-occlusion fallback (2026-08-05) — see its own section at the end of this file.
   DEVICE_REST_GLYPH, DEVICE_OPEN_GLYPH, itemForDeviceRow, DEVICE_KIND_NAMES,
+  // The STOCK half of the same rescue (2026-08-06) — see its own block at the end of this file.
+  roomStockKinds, roomItemTiles, itemIdForStockKind,
 } from '../src/ui/room-model.js';
 import { ITEMS, ITEM_IDS, isDeviceItem } from '../src/items/index.js';
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
@@ -6260,4 +6262,97 @@ test('the device-tile fallback resolves EVERY DeviceKind — the 29-kind round-t
     if (itemForDeviceRow(bad) !== '') fails.push(`itemForDeviceRow(${JSON.stringify(bad)}) is not ''`);
   }
   assert.deepEqual(fails, [], fails.join('\n'));
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE STOCK HALF OF THE PAWN-OCCLUSION RESCUE (2026-08-06)
+//
+// `GlyphMapper` pass 5 writes `Glyphs.Citizen` over the whole cell and does not care whether pass 3
+// put a PILE there or pass 4 put a MACHINE there. The machine half was closed on 2026-08-05; the
+// pile half was FILED as "any overdrawing glyph" and left open, and independent review then measured
+// what it costs: the live plate rig's content join is a ~50 % FLAKE, because the plate sources its
+// fittings from `devices`+`items` (which a pawn cannot blank) and the Room Zoom sources them from
+// the FRAME (which she can).
+//
+// ⛔ THE CONTENT DODGE WAS REFUSED BECAUSE IT IS NOT AVAILABLE. `--ship wreck`'s one crew member is
+// `AutoWander` and deck-confined, so there is no walkable tile in the pressurised core she does not
+// stand on; the reactor bay's rations, spoil, spares and gaskets were already on a walked row before
+// the 2026-08-06 relocation. Moving crates changes the flake's RATE, never its existence.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const POTATO_KIND = STOCK_KINDS.find((e) => e.name === 'Potato').kind;
+const CITIZEN = 64;
+
+/** A frame in `room`'s deck with a pawn standing on (5,7). */
+const pawnAt = (x, y) => frameWith([[x, y, String.fromCharCode(CITIZEN)]]);
+
+/** `roomItemTiles` input for one stack on a tile inside `room`. */
+const stackAt = (x, y, kind = POTATO_KIND, count = 3) =>
+  roomItemTiles([{ x, y, deck: room.deck, kind, count }], room);
+
+test('a pawn standing on a PILE no longer deletes it — the stock half of the rescue', () => {
+  const frame = pawnAt(5, 7);
+  // Without the map: the frame is all the reader has, and the tile is gone. That is the DEFECT,
+  // asserted so the fix below cannot be green for having always been green.
+  assert.equal(roomCells(frame, room).some((c) => c.tx === 5 && c.ty === 7), false,
+    'control: without the stock map a pawn still blanks the tile — if this fails the defect is '
+    + 'already closed somewhere else and the leg below proves nothing');
+  const cells = roomCells(frame, room, undefined, roomStockKinds(stackAt(5, 7)));
+  const back = cells.find((c) => c.tx === 5 && c.ty === 7);
+  assert.ok(back, 'the pile under the pawn was not restored');
+  assert.equal(back.itemId, itemIdForStockKind(POTATO_KIND),
+    'the restored tile wears the wrong art — it must be the SAME piece `itemIdForStockKind` gives '
+    + 'the plate, or the two surfaces draw one pile as two different things');
+  assert.equal(back.occluded, true, 'a restored row must be flagged, exactly as the device half is');
+});
+
+test('DEVICE BEFORE STOCK on one tile — the same precedence the plate already uses', () => {
+  // `ship-fittings.js deckFittings` writes the `items` channel and then lets `devices` OVERWRITE the
+  // same key. If this arm answered the pile, a machine standing on a heap would become a heap the
+  // moment someone walked past it — on ONE of the two surfaces.
+  const frame = pawnAt(5, 7);
+  const dev = new Map([['5,7', { kind: DEVICE_KIND_NAMES.indexOf('Terminal'), open: 0 }]]);
+  const cells = roomCells(frame, room, dev, roomStockKinds(stackAt(5, 7)));
+  const back = cells.find((c) => c.tx === 5 && c.ty === 7);
+  assert.equal(back.itemId, itemForDeviceRow({ kind: DEVICE_KIND_NAMES.indexOf('Terminal'), open: 0 }),
+    'a tile carrying BOTH a device and a pile answered the pile');
+});
+
+test('NO STALE GHOST: the rescue reads THIS frame\'s items, so a hauled pile is gone', () => {
+  // The design the fix is NOT: a "remember what was on this tile" memo also survives a pawn, and
+  // leaves a picture of a collected pile on screen for ever. Every answer comes from the CURRENT
+  // `items` payload, so an empty payload restores nothing — even with the pawn still standing there.
+  const frame = pawnAt(5, 7);
+  const gone = roomCells(frame, room, undefined, roomStockKinds(stackAt(9, 9)));   // a pile elsewhere
+  assert.equal(gone.some((c) => c.tx === 5 && c.ty === 7), false,
+    'a tile with no stack on it in THIS frame was still drawn — the rescue is caching');
+  assert.equal(roomCells(frame, room, undefined, roomStockKinds([])).some((c) => c.tx === 5 && c.ty === 7), false,
+    'an EMPTY items payload still restored a pile — the rescue is caching');
+});
+
+test('THE ARM IS CITIZEN-ONLY: a wall, a floor and an open doorway restore nothing', () => {
+  // ⛔ THE PRECEDENCE QUESTION THE WIDENING HAD TO ANSWER, answered by CONSTRUCTION rather than by
+  // argument: the stock arm lives past `NON_FURNITURE.has(code)` and past `code !== CITIZEN`, so no
+  // byte but 64 can reach it. A pile "under" a wall or an open doorway is the tile's own truth
+  // winning, exactly as the device half settled it.
+  const stock = roomStockKinds(stackAt(5, 7));
+  for (const [ch, what] of [['#', 'a wall'], ['.', 'a floor'], ['/', 'an open doorway']]) {
+    const cells = roomCells(frameWith([[5, 7, ch]]), room, undefined, stock);
+    const at = cells.find((c) => c.tx === 5 && c.ty === 7);
+    assert.ok(!at || !at.occluded,
+      `${what} at (5,7) restored a pile through the citizen arm — the widening reopened a `
+      + 'precedence question the device half had already settled');
+  }
+});
+
+test('roomStockKinds: topmost stack wins, and it is the HOST\'s order, not a client sort', () => {
+  const kinds = STOCK_KINDS.slice(0, 2).map((e) => e.kind);
+  const tiles = roomItemTiles([
+    { x: 5, y: 7, deck: room.deck, kind: kinds[0], count: 1 },
+    { x: 5, y: 7, deck: room.deck, kind: kinds[1], count: 9 },
+  ], room);
+  assert.equal(roomStockKinds(tiles).get('5,7'), kinds[0],
+    'roomStockKinds did not take the FIRST stack the host published — a client sort would be a '
+    + 'second authority over what "topmost" means (roomItemTiles\' own header)');
+  assert.equal(roomStockKinds(null).size, 0, 'roomStockKinds must be total: null in, empty map out');
 });

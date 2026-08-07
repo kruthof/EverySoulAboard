@@ -797,6 +797,14 @@ await png('4-work-tab.png');
  * of one machine is not a discrepancy; a picture of a machine the room does not hold is. Counting
  * tiles asks that question and is unmoved by how many marks a surface spends on one of them.
  * ⚠️ It does NOT weaken the press census, which still walks every `.pl-fit` element individually.
+ *
+ * ⛔ AND STATE THE BLIND SPOT IT BUYS (CLAUDE.md's 9th shape — an instrument narrowed goes blind):
+ * counting tiles cannot see EXTRA pieces drawn on a tile that already has one. A layer that hung
+ * three wings on one feed, or drew every fitting twice, would read the same number as one that drew
+ * each once. The press census is the instrument that still sees that (it walks elements, and a piece
+ * whose ink is unreachable is reported as "behind another fitting"), and
+ * `overview-scene.test.js`'s outboard block counts pieces directly. Do not let a later lane read
+ * "the join is green" as "the plate draws each thing once".
  */
 const plateCensus = (anchor, deck) => evaluate(
   `new Set([...document.querySelectorAll('.pl-fit[data-anchor=${JSON.stringify(String(anchor))}][data-deck="${deck}"]')]`
@@ -857,10 +865,19 @@ async function pressIntoRoom(what, anchor, deck, x, y) {
     problems.push('the Room Zoom masthead carries no "N OF M FITTINGS BUILT" clause, so the content '
       + `assertion has nothing to read (masthead ${JSON.stringify(r.mast)}, caption ${JSON.stringify(r.cap)})`);
   } else if (r.placed !== want) {
-    problems.push(`THE ROOM OPENED WITH THE WRONG CONTENTS: the plate draws ${want} fittings into `
+    problems.push(`THE ROOM OPENED WITH THE WRONG CONTENTS: the plate draws ${want} tiles into `
       + `"${anchor}" on band ${deck}, and the room it opened says ${r.placed} (${r.paths} svg paths). `
-      + 'The classic cause is the deck: `roomCells` returns NOTHING when the host is still projecting '
-      + 'the other deck, so a cross-band press must take the deck with it (`enterCompartment`).');
+      + 'TWO CAUSES, and the size of the gap tells them apart.\n'
+      + '  · OFF BY ONE OR TWO, and it comes and goes between runs → PAWN OCCLUSION. `GlyphMapper` '
+      + 'pass 5 writes `Glyphs.Citizen` over the whole cell, so a crew member standing on a fitting '
+      + 'erases it from the FRAME, which is the Room Zoom\'s source; the plate reads `devices`+`items`, '
+      + 'which she cannot blank. `roomCells` rescues both halves (device 2026-08-05, ground stack '
+      + '2026-08-06) — a gap here means a rescue arm is missing or is not being passed its map by '
+      + '`roomzoom-view.js`. ⚠️ THIS IS THE ~50%% FLAKE, and it is what this message used to blame on '
+      + 'the deck.\n'
+      + '  · EVERY FITTING MISSING (the room says 0) → THE DECK: `roomCells` returns NOTHING when the '
+      + 'host is still projecting the other deck, so a cross-band press must take the deck with it '
+      + '(`enterCompartment`).');
   }
   if (r.open) await leaveRoom();
   return { ...r, want, before, after };

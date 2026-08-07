@@ -565,15 +565,22 @@ export function makeShipTransform(decksView, frame) {
    * arithmetic. A solar wing is bolted to the plating, not standing in a room, so the plate hangs it
    * on the skin at its compartment's own position along the ship.
    *
-   * ⭐ `u` IS THE SAME `u` THE FLOOR USES, taken from `tileUV` — the identical function the click map
-   * inverts. So a wing on the reactor bay's third column hangs over the reactor bay's third column,
-   * and the press census can require the drawn piece to designate its own tile exactly as it does for
-   * an in-room fitting. Nothing here is a second derivation of position.
-   * ⚠️ `v` IS DROPPED, AND THAT IS THE HONEST READING RATHER THAN A SIMPLIFICATION. `v` is depth into
-   * the ship's BEAM; a side elevation has no way to show it on an outboard piece, because the piece
-   * is on the near skin or the far one and the drawing shows one silhouette either way. The tile's
-   * `u` (its position along the hull) is the whole of what a side view can say, and the layer says
-   * only that.
+   * ⭐ THE POINT IS `floorPoint(u, v)` — THE TILE'S OWN PROJECTED X, through the identical function
+   * the click map inverts. So a wing hangs directly over its own feed, and the press census can
+   * require the drawn piece to designate its own tile exactly as it does for an in-room fitting.
+   * Nothing here is a second derivation of position.
+   *
+   * ⛔⛔ IT DROPPED `v` UNTIL 2026-08-06 AND THE PANELS WERE VISIBLY OUT OF LINE. The first cut used
+   * `O + u·BU`, i.e. the band's FRONT edge, on the argument that *"a side elevation has no way to
+   * show depth into the beam"*. That argument is right about the DEPTH and wrong about the X: on an
+   * oblique floor the depth axis is not vertical — `BV = [depthX, −depthY]` — so a tile at `v` is
+   * drawn `v·depthX` to STARBOARD of the same tile at `v = 0`. Dropping `v` therefore hung every
+   * wing STERNWARD of the feed it belongs to. MEASURED on the wreck's three: a constant **−9.07 px =
+   * −0.879 tiles** (their `v` is 0.5188 and this band's `depthX` is 17.48 px), and up to −1.69 tiles
+   * for a tile at the back wall of a compartment.
+   * ⇒ Keeping `v` in the X costs one term and removes the misalignment entirely; what a side
+   * elevation still cannot say — WHICH skin, near or far — is unchanged and is still not claimed.
+   * Pinned by `THE WING HANGS OVER ITS OWN FEED` in `overview-scene.test.js`.
    *
    * WHICH SKIN: the band nearer the top of the bay mounts UP, everything else mounts DOWN. On the
    * two-deck wreck that is deck 1 → upper skin, deck 0 → lower skin. ⛔ The tie (a one-deck ship,
@@ -588,7 +595,7 @@ export function makeShipTransform(decksView, frame) {
     if (!d) return null;
     const uv = tileUV(tx, ty, deck);
     if (!uv) return null;
-    const x = d.plane.O[0] + uv[0] * d.plane.BU[0];
+    const x = floorPoint(d.plane, uv[0], uv[1])[0];
     const above = (d.band.y + d.band.h / 2) < (BAY.y + BAY.h / 2);
     return { x, y: hullSkinY(x, above), above };
   }

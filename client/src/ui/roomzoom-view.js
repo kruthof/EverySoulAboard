@@ -70,6 +70,8 @@ import {
   roomDoorsSvg, roomDoorTiles, tileClientBox, M_PER_TILE, ROOM_HEIGHT_M, ROOM_SCALE, RZ_ID,
   deckSlots, tileFromCanvasXY, roomCells, roomCrew, crewHitAtTile, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
+  // ⭐ THE STOCK HALF OF THE PAWN-OCCLUSION RESCUE (2026-08-06) — see `roomCells`.
+  roomStockKinds,
   roomBlockedTiles,
   demolishTarget, removeDecor, escStackRung,
   eraseTarget, tileOrders, roomMarkNameAt, roomTileZoned,
@@ -915,7 +917,7 @@ function repaint() {
   // count had. The number and the picture must not be able to disagree about how many things are in
   // the room — so they are derived from the same call, with the same arguments.
   _capPlaced = roomDesigns(designs, _focus).length
-    + roomCells(frame, _focus, _deviceCond).filter((c) => c.itemId).length;
+    + roomCells(frame, _focus, _deviceCond, roomStockKinds(_itemTiles)).filter((c) => c.itemId).length;
   _capHere = roomCrew(crew, _focus).length;
 
   paintCanvas(frame);
@@ -1015,7 +1017,9 @@ function paintLayers(frame, crew, designs, decor, selCid) {
   // writes `Glyphs.Citizen` over it — so a device with someone standing on it left the drawing.
   // The channel is the same Map this view already built for `cond`; see `room-model.js`'s
   // `itemForDeviceRow` for why this is a reading of the wire and not a cache or a re-derived rule.
-  const cells = roomCells(frame, _focus, _deviceCond);
+  // ⭐ AND THE STOCK MAP BESIDE IT, from the SAME `_itemTiles` the stack layer draws — a pawn blanks
+  // a pile's glyph exactly as she blanks a machine's, and the caption and the picture must agree.
+  const cells = roomCells(frame, _focus, _deviceCond, roomStockKinds(_itemTiles));
   const here = roomCrew(crew, _focus);
   const roster = Hud.getRoster();
   const aboard = roster && Array.isArray(roster.crew) ? roster.crew.length : here.length;

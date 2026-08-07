@@ -156,8 +156,12 @@ namespace Perilune.Tests
         /// <summary>Deck 1, slot 0 — the top-left hall, directly above the cryo bay. Not one of the
         /// three collapsed bottom-row slots (5/6/7), so it has a full 10×6 interior.</summary>
         private const string HallAnchor = "hall_d1_s0";
-        /// <summary>The vent's tile: the hall's <c>(X1, Y0)</c> corner, DIRECTLY ABOVE
-        /// <c>vent_cryo</c> at (10,1,0). Written out, not derived.</summary>
+        /// <summary>The vent's tile: the hall's <c>(X1, Y0)</c> corner. Written out, not derived.
+        /// ⚠️ THIS LINE SAID "DIRECTLY ABOVE <c>vent_cryo</c> at (10,1,0)" UNTIL 2026-08-06 and the
+        /// owner's declutter ruling moved that vent into the spine at (4,8,0). The tile here has NOT
+        /// moved; only the coincidence has. What the exemption actually rests on is the deck-1 vent's
+        /// NAME — see <see cref="TheFixtureIsTheShipTheseLiteralsDescribe"/>, which now asserts the
+        /// mechanism (the tap is trayed, and it lies inside the pod bay's own room).</summary>
         private static readonly Int3 VentTile = new Int3(10, 1, 1);
         /// <summary>The deck-0 tile under it — the one riser tap <c>WreckCutDeck1Risers</c> exempts.
         /// ⚠️ IT WAS ALSO <c>vent_cryo</c>'s tile until 2026-08-06; since the owner's declutter

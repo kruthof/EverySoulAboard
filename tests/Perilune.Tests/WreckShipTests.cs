@@ -1957,6 +1957,87 @@ namespace Perilune.Tests
         }
 
         /// <summary>
+        /// ⭐⭐ <b>THE CORE-PLANT ALCOVE STRADDLES THE DOORWAY AND LEAVES THE APRON CLEAR.</b>
+        ///
+        /// <para>⛔ THIS LEG EXISTS BECAUSE ITS ABSENCE WAS FOUND BY REVIEW.
+        /// <c>AuthoredShips.WreckCorePlantX0</c>'s doc claimed the property was "the property
+        /// <c>WreckShipTests</c> asserts" and NO TEST CONTAINED IT: moving <c>radiator_cryo</c> onto
+        /// the apron column ran 1983/1983 green. A comment that cites a guard is worth less than no
+        /// comment at all, because the next reader stops looking.</para>
+        ///
+        /// <para>BOTH HALVES, because either alone is satisfiable by the wrong ship:</para>
+        /// <list type="number">
+        ///   <item><b>THE COLUMNS ARE THE PLANNER'S.</b> <c>SlotGridPlanner.Carve</c> puts a
+        ///   compartment's door at its interior rect's <c>CenterX</c>, so the alcove must be
+        ///   <c>doorX ∓ 1</c> — DERIVED here from the planner and from the DOOR DEVICE ON THE BUILT
+        ///   SHIP, never from <c>AuthoredShips</c>' own expression, which would make this test
+        ///   unable to fail when that expression changes (this file's standing rule).</item>
+        ///   <item><b>NO RELOCATED DEVICE STANDS ON AN APRON TILE.</b> The apron is the doorway's own
+        ///   column across the spine's two rows — the tiles the pawn crosses on every trip in or out
+        ///   of the pod bay. A machine does not BLOCK a tile here (<c>machines.def</c>: every
+        ///   <c>blocks</c> is false), so this is not about passability: it is about not staging a
+        ///   worksite in a doorway, and about the drawing reading as an alcove BESIDE a door rather
+        ///   than a barricade across it.</item>
+        /// </list>
+        ///
+        /// <para>MUTATION, applied and observed: <c>radiator_cryo</c> authored at
+        /// <c>(doorX, SpineY1)</c> ⇒ RED here, naming the device and the tile.</para>
+        /// </summary>
+        [Test]
+        public void TheCorePlantAlcove_StraddlesTheDoorway_AndLeavesTheApronClear()
+        {
+            var sim = Boot();
+            var offenders = new List<string>();
+
+            // The doorway column, taken off the BUILT SHIP's own door device rather than from any
+            // authoring constant — slot 0's door is the one named `door_d0_s0`.
+            int doorX = int.MinValue;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+                if (devices[i].Name == "door_d0_s0") doorX = devices[i].Pos.X;
+            Assert.That(doorX, Is.Not.EqualTo(int.MinValue),
+                "precondition: the pod bay's door is not on the ship, so 'the apron' names nothing");
+
+            // 1. THE COLUMNS. Hand-written relation (doorX ∓ 1) against the shipped constants.
+            if (AuthoredShips.WreckCorePlantX0 != doorX - 1)
+                offenders.Add($"WreckCorePlantX0 is {AuthoredShips.WreckCorePlantX0}, not doorX-1 ({doorX - 1})");
+            if (AuthoredShips.WreckCorePlantX1 != doorX + 1)
+                offenders.Add($"WreckCorePlantX1 is {AuthoredShips.WreckCorePlantX1}, not doorX+1 ({doorX + 1})");
+
+            // 2. THE APRON. Both spine rows of the doorway's own column.
+            var apron = new[]
+            {
+                new Int3(doorX, SlotGridPlanner.SpineY0, 0),
+                new Int3(doorX, SlotGridPlanner.SpineY1, 0),
+            };
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (Simulation.IsUtilityOverlay(d.Kind)) continue;   // the trunk runs under everything
+                foreach (var a in apron)
+                    if (d.Pos == a)
+                        offenders.Add($"{d.Name} ({d.Kind}) stands on the pod bay's door apron at " +
+                                      $"{a.X},{a.Y},{a.Z} — that is the tile the crew member crosses on " +
+                                      "every trip in or out of the bay");
+            }
+
+            // 3. NON-VACUITY BY INCLUSION: the alcove really is occupied, or "the apron is clear" is
+            //    true of a corridor with nothing in it and this test measures nothing at all.
+            int inAlcove = 0;
+            foreach (var name in new[] { "vent_cryo", "scrubber_cryo", "radiator_cryo", "light_cryo" })
+                for (int i = 0; i < devices.Count; i++)
+                    if (devices[i].Name == name
+                        && (devices[i].Pos.X == doorX - 1 || devices[i].Pos.X == doorX + 1)
+                        && (devices[i].Pos.Y == SlotGridPlanner.SpineY0 || devices[i].Pos.Y == SlotGridPlanner.SpineY1))
+                        inAlcove++;
+            if (inAlcove != 4)
+                offenders.Add($"only {inAlcove} of the four relocated life-support machines stand in the " +
+                              "alcove columns, so 'the apron is clear' is satisfied by an empty corridor");
+
+            Assert.That(offenders, Is.Empty, string.Join("\n  ", offenders));
+        }
+
+        /// <summary>
         /// ⭐⭐ <b>DRIVEN: THE CAPSULES KEEP THEIR SIGNAL FOR THREE SIM-DAYS.</b> The ruling's one
         /// hard requirement. Sampled every sim-hour, not at the ends: a pod that lost power for six
         /// hours in the middle is exactly the failure this exists to catch, and an endpoint reading
@@ -2110,15 +2191,23 @@ namespace Perilune.Tests
         /// <para>MEASURED ON THIS TREE, both legs, `door_d0_s0` shut at tick 0, sampled every 12
         /// sim-hours to day 12:</para>
         /// <code>
-        ///   leg                   bay at h24   crosses heat_stroke_c (45)   crew dead by
-        ///   pre-ruling positions    10.0 °C      between h60 and h72          h84
-        ///   SHIPPED                 42.3 °C      between h24 and h36          h36
+        ///   leg                   bay at h24   first hour above 45   crew dead by
+        ///   pre-ruling positions    10.0 °C           h77                  h78
+        ///   SHIPPED                 42.3 °C           h28                  h28
         /// </code>
         ///
-        /// <para>⇒ <b>THE HAZARD IS NOT NEW — IT IS ~48 SIM-HOURS EARLIER.</b> The pre-ruling bay
-        /// cooks the same way once <c>radiator_cryo</c> wears through `fail` at ~h43. What the
-        /// ruling removes is the 43-hour grace. With the door OPEN — the state the ship BOOTS in —
-        /// neither peaks above 35 °C in twelve sim-days, which is the leg
+        /// <para>⛔⛔ <b>THE CONTROL WINDOW READ "between h60 and h72" UNTIL INDEPENDENT REVIEW
+        /// RECONSTRUCTED IT INDEPENDENTLY AND GOT h77.</b> The review was right and the error was
+        /// mine, and it was not a measurement error: it was a MISREADING OF MY OWN 12-HOURLY TABLE,
+        /// whose h72 row says <b>41.11 °C</b> — still below 45. A 12-hourly grid cannot locate a
+        /// crossing to better than 12 hours and I quoted it as if it could. Re-driven here at
+        /// ONE-HOUR sampling, both legs.</para>
+        ///
+        /// <para>⇒ <b>THE HAZARD IS NOT NEW — IT IS 49 SIM-HOURS EARLIER</b> (77 − 28), and the
+        /// conclusion is sharper for being right. The pre-ruling bay cooks the same way once
+        /// <c>radiator_cryo</c> wears through `fail` at ~h43; the ruling removes the grace, it does
+        /// not create the failure. With the door OPEN — the state the ship BOOTS in — neither leg
+        /// peaks above 35 °C in twelve sim-days, which is the leg
         /// <see cref="TheOpenDoorKeepsThePodBayHabitable_ForThreeSimDays"/> pins.</para>
         ///
         /// <para>⚠️ REACHABILITY IS NOT THE COMFORT IT LOOKS LIKE. Doors are MOSS-only (OD-N) and
@@ -2159,8 +2248,12 @@ namespace Perilune.Tests
         /// ship BOOTS in, the pod bay never becomes thermally dangerous. Driven to three sim-days,
         /// sampled hourly, against <c>needs.def</c>'s own two bounds rather than a literal.
         ///
-        /// <para>MEASURED: the bay climbs from 19.9 °C to a peak of 34.01 °C at h84 and turns over.
-        /// Eleven degrees of margin on the hottest hour of an unattended ship.</para>
+        /// <para>MEASURED, sampled EVERY SIM-HOUR for 288 of them: the bay climbs from 19.9 °C to a
+        /// peak of <b>34.08 °C at h80</b> and turns over — 10.9 degrees of margin on the hottest hour
+        /// of an unattended ship. The pre-ruling control peaks at <b>30.80 °C at h112</b>.
+        /// ⚠️ BOTH MAXIMA ARE HOURLY-SAMPLED AND SAY SO. An earlier draft read them off a 12-HOURLY
+        /// table (34.01 at h84 / 30.57 at h108) and called the result "the maximum over 288 samples";
+        /// a maximum taken from a coarser grid is a LOWER BOUND on the maximum, never the maximum.</para>
         /// </summary>
         [Test]
         public void TheOpenDoorKeepsThePodBayHabitable_ForThreeSimDays()

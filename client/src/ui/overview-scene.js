@@ -477,8 +477,16 @@ function fittingLayer(info, deck, fittings, attention, size, idPrefix) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** The `DeviceKind` byte of every kind in the outboard ledger, DERIVED from the pinned enum mirror
- *  rather than typed. A ledger key that names no `DeviceKind` yields nothing and is caught by
- *  `device-sprite-coverage.test.js`, which asserts every key is a real member. */
+ *  rather than typed.
+ *
+ *  ⛔ A LEDGER KEY THAT NAMES NO `DeviceKind` IS SILENTLY DROPPED HERE — `indexOf` answers -1 and the
+ *  `filter` removes it — so the piece simply never draws, for ever, with nothing red. This comment
+ *  used to say that was *"caught by `device-sprite-coverage.test.js`, which asserts every key is a
+ *  real member"*, and **that leg did not exist when the sentence was written** (the sibling
+ *  `GLYPH_SUBSTITUTE` ledger's does, which is why it read true). It exists now:
+ *  `OUTBOARD_ITEM_FOR_KIND: every KEY is a real DeviceKind and every VALUE is real art`, driven RED
+ *  by a bogus key. The silent drop is kept deliberately — a composer must not throw on a wire it
+ *  does not recognise — and the guard is what makes it safe. */
 const OUTBOARD_KIND_BYTES = new Map(
   Object.keys(OUTBOARD_ITEM_FOR_KIND)
     .map((name) => [DEVICE_KIND_NAMES.indexOf(name), OUTBOARD_ITEM_FOR_KIND[name]])

@@ -8301,6 +8301,16 @@ the Room Zoom draws too) and `solar-wing` bolted to the hull's outer skin
   against the Room Zoom's 25** in the reactor bay and the rig failed, naming the deck as the classic
   cause. Two pictures of one machine is not a discrepancy; a picture of a machine the room does not
   hold is. Fixed at `plateCensus`, and the press census still walks every element individually.
+  ⚠️ AND THE BLIND SPOT IT BUYS IS STATED AT THE SEAM (CLAUDE.md's 9th shape): a tile census cannot
+  see EXTRA pieces drawn on an already-occupied tile. The press census and `overview-scene.test.js`'s
+  outboard block are what still see that.
+- ⚠️ **THE MOUNT KEEPS `v`, AND THE FIRST CUT DID NOT.** `outboardPoint` originally used the band's
+  FRONT edge (`O + u·BU`) on the argument that a side elevation cannot show depth into the beam. True
+  of the DEPTH, false of the X: on an oblique floor `BV = [depthX, −depthY]`, so a tile at `v` draws
+  `v·depthX` to starboard. Measured on the wreck's three wings: a constant **−9.07 px = −0.879 tiles**
+  sternward of their own feeds (their `v` is 0.5188, the band's `depthX` 17.48 px), and up to −1.69
+  tiles for a tile at a compartment's back wall. Using `floorPoint(u, v)` costs one term and makes
+  `mountX − floorX` exactly **0.000000**.
 - ⚠️ **`solar-wing` GAVE UP GLYPH `'G'` IN THE SAME COMMIT** that `GLYPH_SUBSTITUTE` claimed it, or
   the ledger's non-shadowing guard would have refused. That ledger went **7 → 8**, and this is its
   first entry whose reason is *not* "the set has no piece for that kind".
@@ -8317,6 +8327,20 @@ rows at y 14/15.
 - **THE AIR HOLDS THROUGH A DOOR.** `AtmosphereSystem.DiffuseAcrossDoors` — built for B-3 (§13.1) —
   is what carries the corridor scrubber into the room the crew stand in. Driven: the bay boots at
   ~500 ppm CO2 and reads **< 50 ppm by h6**; with every scrubber removed it does not clean.
+- ⭐⭐ **AND THE RELOCATION FORCED THE STOCK HALF OF THE PAWN-OCCLUSION RESCUE (`roomCells`).**
+  `GlyphMapper` pass 5 writes `Glyphs.Citizen` over the whole cell whether pass 3 put a PILE there or
+  pass 4 put a MACHINE there. The machine half was closed on 2026-08-05; the pile half was FILED as
+  "any overdrawing glyph". Independent review measured the cost: the live plate rig's content join
+  was a **~50 % flake**, because the plate reads `devices`+`items` (which a pawn cannot blank) and
+  the Room Zoom reads the FRAME (which she can). ⛔ THE CONTENT DODGE — put the crates where nobody
+  walks — DOES NOT EXIST: the wreck's one crew member is `AutoWander` and deck-confined, so every
+  walkable tile in the pressurised core is one she stands on, and the reactor bay's rations, spoil,
+  spares and gaskets were already on a walked row. So the class is closed instead: the widening lives
+  INSIDE the existing citizen-only arm (so wall/floor/open-doorway precedence is untouched), DEVICE
+  BEFORE STOCK (the same precedence `deckFittings` already uses), and it reads THIS frame's `items`
+  payload so a hauled pile leaves no ghost. Driven live, 40 pawn-seconds inside the reactor bay per
+  leg: **without the arm the count drops 25 → 24 four times; with it, 0 drops in two legs**, and
+  5/5 consecutive full rig runs green.
 - **THE POWER HOLDS BECAUSE DECK 0 IS ONE NETWORK.** Driven, sampled hourly to three sim-days:
   **12 capsules powered / 8 operational / 7 intact-and-thawable**, crew alive, identical to the
   pre-ruling control. ⚠️ AND SAY THE HONEST HALF: `battery_cryo` boots with `StoredKWh` 0 and
@@ -8327,16 +8351,22 @@ rows at y 14/15.
   over the first sim-hour, `tank_reserve` still 0.195 and unfixable at h12. Timings differ by
   ≤ 0.006 sim-h.
 - ⚠️ **THE BAY IS WARMER, AND THAT IS THE COST.** A radiator acts on its own room, so the bay's heat
-  now leaves through its open door (40 W/K). Driven to twelve sim-days against a same-tree control:
-  the control sits pinned at 10.0 °C to h36 and peaks 30.57 °C at h108; the shipped bay climbs to
-  24 °C by h6 and peaks **34.01 °C at h84**, eleven degrees under `heat_stroke_c`. The exported heat
-  lands in the two compartments R-4 freezes — spine and reactor bay read 2–4 K warmer from h36, and
-  the reactor bay's `hypothermia_c` crossing moves ~h216 → ~h228.
+  now leaves through its open door (40 W/K). Driven to twelve sim-days against a same-tree control,
+  **sampled every sim-hour**: the control sits pinned at 10.0 °C to h36 and peaks **30.80 °C at
+  h112**; the shipped bay climbs to 24 °C by h6 and peaks **34.08 °C at h80**, 10.9 degrees under
+  `heat_stroke_c`. ⚠️ An earlier draft read both maxima off a 12-HOURLY table (34.01@h84 /
+  30.57@h108) and called the result "the maximum over 288 samples" — a maximum on a coarser grid is
+  a lower bound, not the maximum. The exported heat lands in the two compartments R-4 freezes:
+  **from h48** (not h36 — at h36 the gap is only +1.03 K spine / +0.44 K reactor) the spine runs
+  ~4.5 K warmer and the reactor bay 1.3 K warmer, both 3–4 K warmer by h72, and the reactor bay's
+  `hypothermia_c` crossing moves ~h216 → ~h228.
 - ⛔ **KNOWN LIMIT, DRIVEN: SHUT THE POD BAY'S DOOR AND IT COOKS.** Conduction drops 5× and the
-  capsules' ~0.94 kW has nowhere to go. Control (pre-ruling positions): 10.0 °C at h24, crosses
-  `heat_stroke_c` between h60 and h72, crew dead by h84. Shipped: **42.3 °C at h24, crosses between
-  h24 and h36, crew dead by h36.** ⇒ **the hazard is not new — it is ~48 sim-hours earlier**; the
-  pre-ruling bay cooks the same way once `radiator_cryo` wears through `fail` at ~h43. Reachable:
+  capsules' ~0.94 kW has nowhere to go. Sampled every sim-hour — control (pre-ruling positions):
+  10.0 °C at h24, first hour above 45 is **h77**, crew dead by h78. Shipped: **42.3 °C at h24, first
+  hour above 45 is h28, crew dead by h28.** ⇒ **the hazard is not new — it is 49 sim-hours earlier**;
+  the pre-ruling bay cooks the same way once `radiator_cryo` wears through `fail` at ~h43.
+  ⚠️ THIS WINDOW READ "between h60 and h72" UNTIL REVIEW RECONSTRUCTED IT: that was a misreading of
+  a 12-hourly table whose h72 row is 41.11 °C, i.e. below the threshold. Reachable:
   doors are MOSS-only (OD-N) and the gate wants a Terminal at Condition ≥ 0.20, but
   `MaintenanceSystem` lifts `term_moss` 0.14 → 1.000 at h1.778 once Repair is granted. Pinned by
   `WreckShipTests.KnownLimit_WithTheDoorShut_ThePodBayCrossesHeatStroke`, on

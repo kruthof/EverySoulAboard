@@ -183,8 +183,19 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
  * (`items/wear.js`'s header measures this: `SolarWing` alone is claimed by `solar-panel` AND
  * `solar-wing`, and `Battery` by three rows), so a derivation would have to pick arbitrarily and
  * would pick the retired warm piece as readily as the shipped one. Every entry is a decision with a
- * reason, exactly like `GLYPH_SUBSTITUTE`, and `device-sprite-coverage.test.js` pins the size of
- * this table so a second kind cannot be added by habit.
+ * reason, exactly like `GLYPH_SUBSTITUTE`.
+ *
+ * ⛔⛔ THE SENTENCE THAT STOOD HERE WAS A FABRICATED CITATION AND IS QUOTED RATHER THAN DELETED,
+ * because it is the exact shape that makes a lie readable: *"…and `device-sprite-coverage.test.js`
+ * pins the size of this table so a second kind cannot be added by habit."* **NO SUCH LEG EXISTED.**
+ * It read true to a reviewer because the SIBLING ledger twenty lines up really is pinned that way,
+ * in that file, by a leg with almost that wording. Measured before the legs were written: a BOGUS
+ * key and a SECOND REAL KIND (`Telescope`, which takes the wreck's plate from one hull piece to
+ * three) each left the client suite 1892/1892 GREEN.
+ * ⇒ THE TWO LEGS NOW EXIST and are named here rather than gestured at:
+ *   · `OUTBOARD_ITEM_FOR_KIND: every KEY is a real DeviceKind and every VALUE is real art`
+ *   · `OUTBOARD_ITEM_FOR_KIND is pinned to its SIZE — a kind does not go outboard by habit`
+ * Both were driven RED by the two mutations above and are green reverted.
  */
 export const OUTBOARD_ITEM_FOR_KIND = Object.freeze({
   // The only outboard machine in the game. `--ship wreck` authors three of them in the reactor bay

@@ -1371,6 +1371,41 @@ export function itemForDeviceRow(row) {
 }
 
 /**
+ * ⭐⭐ THE SAME LOSS, ON A PILE — the stock half of the pawn-occlusion rescue (2026-08-06).
+ *
+ * `GlyphMapper` pass 5 writes `Glyphs.Citizen` over the WHOLE cell, and it does not care whether
+ * pass 3 put a ground stack there or pass 4 put a device there. The device half of that loss was
+ * closed on 2026-08-05 (the header above); the STOCK half was left open, and the widening was FILED
+ * as *"any overdrawing glyph"* rather than taken.
+ *
+ * ⛔ IT WAS TAKEN ON 2026-08-06 BECAUSE THE ONLY ALTERNATIVE WAS NOT AVAILABLE. Independent review
+ * measured the live plate rig's content join as a **~50 % flake**: the plate sources fittings from
+ * `devices`+`items` (which a pawn cannot blank) while the Room Zoom sources them from the FRAME
+ * (which she can), so the two disagree by one whenever she stands on a stack. The obvious content
+ * dodge — put the stacks where nobody walks — DOES NOT EXIST on this ship: `--ship wreck`'s one crew
+ * member is `AutoWander` and deck-confined, so every walkable tile in the pressurised core is a tile
+ * she stands on, and the reactor bay's own `survival rations` / `hull spoil` / `spares` / `gaskets`
+ * were already on a walked row before any of this. Moving crates changes the flake's RATE and not
+ * its existence.
+ *
+ * @param {{tx:number,ty:number,stacks:{kind:number,count:number}[]}[]|null} itemTiles
+ *        `roomItemTiles` output — the SAME call the stack layer draws from, so the rescue and the
+ *        drawing cannot come to disagree about what is on a tile.
+ * @returns {Map<string,number>} "tx,ty" → the topmost stack's `ItemKind` byte
+ */
+export function roomStockKinds(itemTiles) {
+  const out = new Map();
+  if (!Array.isArray(itemTiles)) return out;
+  for (const t of itemTiles) {
+    if (!t || !Array.isArray(t.stacks) || !t.stacks.length) continue;
+    // TOPMOST = the host's own order, exactly as `roomItemTiles`' header states: the client does not
+    // sort, because a client sort would be a second authority over what "topmost" means.
+    out.set((t.tx | 0) + ',' + (t.ty | 0), t.stacks[0].kind | 0);
+  }
+  return out;
+}
+
+/**
  * The in-room furniture cells → item placements (VS-Z-19). Each non-floor/wall cell inside the room
  * rect on the room's deck becomes `{tx, ty, itemId, code}`; an unmapped glyph carries `itemId:''`
  * (the caller draws the unknown chip). Fog/blank cells are dropped. PURE.
@@ -1379,13 +1414,16 @@ export function itemForDeviceRow(row) {
  * @param {Map<string,object>} [deviceCond] the `devices` channel by "tx,ty" — OPTIONAL, and it is
  *   what lets a tile a crew member is standing on keep its device (see `itemForDeviceRow`). Rows it
  *   restores carry `occluded: true`, so a caller can tell "the frame said so" from "the channel did".
+ * @param {Map<string,number>} [stockKinds] `roomStockKinds` output — OPTIONAL, and the STOCK half of
+ *   the same rescue. Rows it restores also carry `occluded: true`.
  * @returns {{tx:number, ty:number, itemId:string, code:number, occluded?:boolean}[]}
  */
-export function roomCells(frame, focusRoom, deviceCond) {
+export function roomCells(frame, focusRoom, deviceCond, stockKinds) {
   const out = [];
   if (!frame || !focusRoom || !Array.isArray(frame.cells)) return out;
   if ((frame.deck | 0) !== (focusRoom.deck | 0)) return out;
   const dev = deviceCond instanceof Map ? deviceCond : new Map();
+  const stock = stockKinds instanceof Map ? stockKinds : new Map();
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
   const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
   for (let ty = Math.max(0, ry); ty < Math.min(frame.h | 0, y1); ty++) {
@@ -1398,8 +1436,25 @@ export function roomCells(frame, focusRoom, deviceCond) {
         // is optional so every other caller and every existing test keeps its two-argument shape;
         // without it this branch simply cannot fire and the behaviour is exactly what it was.
         if (code !== CITIZEN_GLYPH_CODE) continue;
-        const itemId = itemForDeviceRow(dev.get(tx + ',' + ty));
+        const key = tx + ',' + ty;
+        // ⛔⛔ THE WIDENING IS INSIDE THIS ARM, WHICH IS WHY IT ANSWERS NO NEW PRECEDENCE QUESTION.
+        // We are already past `NON_FURNITURE.has(code)` AND past `code !== CITIZEN_GLYPH_CODE`, so
+        // the only byte that can reach here is 64. WALL ('#'), FLOOR ('.') and the OPEN DOORWAY
+        // ('/') never do — they `continue` above, deliberately, because they are the tile's own
+        // truth and restoring a piece under them would put a door back in a doorway the sim says is
+        // open. The stock arm inherits that settled precedence untouched; it does not reopen it.
+        //
+        // ⭐ DEVICE BEFORE STOCK, and it is the SAME precedence the plate already uses:
+        // `ship-fittings.js` `deckFittings` writes the `items` channel first and then lets the
+        // `devices` channel OVERWRITE the same key. Two surfaces, one answer to "a machine standing
+        // on a pile is a machine".
+        const itemId = itemForDeviceRow(dev.get(key))
+          || (stock.has(key) ? itemIdForStockKind(stock.get(key)) : '');
         if (!itemId) continue;
+        // ⛔ AND IT IS NOT A CACHE, exactly as the device half is not: `stock` is built from THIS
+        // frame's `items` payload every repaint (`roomStockKinds(roomItemTiles(...))`), so a stack
+        // that has been hauled away is gone from the drawing on the next frame. A "remember what was
+        // on this tile" memo would survive a pawn AND leave a ghost of a collected pile for ever.
         out.push({ tx, ty, itemId, code, occluded: true });
         continue;
       }

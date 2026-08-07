@@ -48,7 +48,12 @@ import { dirname, join } from 'node:path';
 
 import { codeOnly } from './code-only.js';
 import { ITEMS, buildItem, RESOURCE_ITEM_BY_KIND_NAME } from '../src/items/index.js';
-import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar } from '../src/items/glyph-map.js';
+import {
+  GLYPH_SUBSTITUTE, GLYPH_TO_ITEM, itemIdForGlyphChar,
+  // ⭐ THE OUTBOARD LEDGER (owner ruling, 2026-08-06) — the SECOND hand table in that module, and
+  // until this file grew the two legs below it was the only one of the pair that nothing pinned.
+  OUTBOARD_ITEM_FOR_KIND,
+} from '../src/items/glyph-map.js';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
@@ -921,6 +926,91 @@ test('GLYPH_SUBSTITUTE is real, non-shadowing, and pinned to its size', () => {
     'GLYPH_SUBSTITUTE CHANGED SIZE. It only shrinks — an entry goes away when the warm set grows a\n' +
     'real piece for that kind. Adding one means a device now wears art that is not its own, on the\n' +
     'one standard surface; that is a decision for a commit message, not a default.');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE OUTBOARD LEDGER — `OUTBOARD_ITEM_FOR_KIND`, the second hand table in `items/glyph-map.js`.
+//
+// ⛔⛔ IT SHIPPED UNPINNED, AND TWO COMMENTS CLAIMED OTHERWISE. `glyph-map.js` said *"…and
+// `device-sprite-coverage.test.js` pins the size of this table so a second kind cannot be added by
+// habit"*, and `overview-scene.js`'s `OUTBOARD_KIND_BYTES` said *"…caught by
+// `device-sprite-coverage.test.js`, which asserts every key is a real member"*. NEITHER LEG EXISTED.
+// The claim read true to a reviewer because the SIBLING ledger (`GLYPH_SUBSTITUTE`, directly above)
+// really is pinned in exactly those two ways, in this file, twenty lines up.
+//
+// MEASURED, both directions, before these legs were written: adding a BOGUS key (`Wibble`) and
+// adding a SECOND REAL KIND (`Telescope`) each left the whole client suite 1892/1892 GREEN — and the
+// second one is semantically live, taking the wreck's plate from 0 to 2 extra pieces hung on the
+// hull. A ledger whose growth nothing notices is a default, not a decision.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('OUTBOARD_ITEM_FOR_KIND: every KEY is a real DeviceKind and every VALUE is real art', () => {
+  const bad = [];
+  for (const [kind, id] of Object.entries(OUTBOARD_ITEM_FOR_KIND)) {
+    // THE KEY. `DEVICE_KIND_NAMES` is the client's index→name mirror of `Device.cs`, pinned
+    // by-name-and-index in `prioritise-menu.test.js` — so this asks the SIM's own vocabulary, not a
+    // second list. `overview-scene.js` resolves the ledger through `DEVICE_KIND_NAMES.indexOf(name)`
+    // and silently drops a key that answers -1, which is exactly how a typo would hide.
+    if (!DEVICE_KIND_NAMES.includes(kind)) {
+      bad.push(`KEY "${kind}" is not a DeviceKind the sim has — the plate resolves this ledger by `
+        + 'name→index and drops a miss without a word, so this line would draw nothing for ever');
+      continue;
+    }
+    // THE VALUE — the same three questions `GLYPH_SUBSTITUTE`'s leg asks of its own values.
+    if (!ITEMS[id]) { bad.push(`OUTBOARD "${kind}" → "${id}": no such item`); continue; }
+    if (typeof ITEMS[id].build !== 'function') bad.push(`OUTBOARD "${id}" has no builder`);
+    if (buildItem(id, OPTS) === PLACEHOLDER) bad.push(`OUTBOARD "${id}" builds the placeholder`);
+    // ⭐ AND THE ONE QUESTION THE SIBLING DOES NOT ASK, because only this ledger can get it wrong:
+    // the piece must be the art of the kind it is hung for. `GLYPH_SUBSTITUTE` is a BORROW by
+    // definition; this table is not, and a value naming another kind's drawing would put a water
+    // tank on the hull with nothing to say so.
+    if (ITEMS[id].deviceKind !== kind) {
+      bad.push(`OUTBOARD "${kind}" → "${id}" whose deviceKind is ${JSON.stringify(ITEMS[id].deviceKind)}. `
+        + 'This ledger is not a borrow — the piece hung on the hull must be that kind\'s own art.');
+    }
+  }
+  assert.deepEqual(bad, [], bad.join('\n  '));
+});
+
+test('OUTBOARD_ITEM_FOR_KIND is pinned to its SIZE — a kind does not go outboard by habit', () => {
+  // ONE ENTRY: `SolarWing`, the only outboard machine in the game (owner ruling, 2026-08-06).
+  // ⚠️ THE NUMBER IS THE WHOLE ASSERTION, on `GLYPH_SUBSTITUTE`'s own precedent: every entry moves a
+  // machine OUT OF ITS ROOM and onto the ship's skin on the one standard surface, which is a
+  // content decision a player sees. Growing this table is legitimate — a second genuinely outboard
+  // kind (an antenna mast, a heat radiator panel) would belong here — but it must land in a commit
+  // message with its reason beside the entry, not in a diff nobody had to defend.
+  // ⛔ DRIVEN BOTH WAYS: with `Telescope: 'ring-array'` added, the wreck's plate hangs TWO MORE
+  // pieces on the hull and this goes red; without it, green.
+  assert.equal(Object.keys(OUTBOARD_ITEM_FOR_KIND).length, 1,
+    'OUTBOARD_ITEM_FOR_KIND CHANGED SIZE. Each entry takes a machine off the deck floor and bolts\n'
+    + 'it to the hull on the Level-1 plate. That is a decision for a commit message, not a default.');
+});
+
+test('the OUTBOARD kind resolves UNAMBIGUOUSLY through `ghostArtId`\'s fallback', () => {
+  // ⛔ THE LATENT DEFECT THIS PINS, AND WHY IT IS LATENT RATHER THAN LIVE. `build-tray-model.js`
+  // `ghostArtId` resolves a build tool's art kind → glyph → piece, and falls back to THE FIRST
+  // `functional` ITEMS ROW with a matching `deviceKind` when the kind's glyph names nothing. Giving
+  // `solar-wing` `glyph: null` (the 2026-08-06 ruling) put SolarWing on that fallback arm — and at
+  // the time there were TWO SolarWing rows, with the RETIRED warm `solar-panel` first in registry
+  // order. A SolarWing build tool would have ghosted the warm piece.
+  //
+  // ⭐ THE WARM PURGE DELETED `solar-panel`, so on this tree the fallback is unambiguous by
+  // construction. That is a fact about the REGISTRY, not about the ruling, and it is the fact worth
+  // pinning: the moment a second SolarWing row appears the ambiguity returns, silently, in a
+  // function neither this package nor the purge owns.
+  // ⚠️ NO SolarWing TOOL EXISTS TODAY (`build-tray-model.js`'s header: "NO tool on this palette is
+  // outboard"), so this is a pin on a road not yet travelled — stated so, rather than dressed up as
+  // a live path.
+  const rows = Object.keys(ITEMS).filter((id) => {
+    const e = ITEMS[id];
+    return e && e.kind === 'functional' && e.deviceKind === 'SolarWing';
+  });
+  assert.deepEqual(rows, ['solar-wing'],
+    'more than one functional ITEMS row claims DeviceKind.SolarWing: ' + JSON.stringify(rows) + '.\n'
+    + '`solar-wing` carries `glyph: null` since the outboard ruling, so `ghostArtId` cannot resolve\n'
+    + 'this kind through a glyph and falls back to the FIRST matching row in registry order. With two\n'
+    + 'rows that answer is positional — which is how the retired warm `solar-panel` would have been\n'
+    + 'ghosted for a wing before the warm purge deleted it.');
 });
 
 test('the derived table is a function of ITEMS — not of a hand mirror', () => {

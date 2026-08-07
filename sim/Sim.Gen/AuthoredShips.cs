@@ -1758,7 +1758,17 @@ namespace Perilune.Gen
         ///
         /// <para>⚠️ DERIVED FROM THE PLANNER, NEVER TYPED: a slot's door column is its interior
         /// <c>CenterX</c>, so these are <c>doorX ∓ 1</c>. A planner change that moves the doorway
-        /// moves the alcove with it, which is the property <c>WreckShipTests</c> asserts.</para>
+        /// moves the alcove with it.</para>
+        ///
+        /// <para>⛔⛔ <b>THE SENTENCE THAT CLOSED THIS PARAGRAPH WAS A FABRICATED CITATION</b> and is
+        /// quoted rather than deleted: *"…which is the property <c>WreckShipTests</c> asserts."*
+        /// <b>NO TEST CONTAINED IT.</b> Measured before the leg was written: moving
+        /// <c>radiator_cryo</c> ONTO the apron column (x = 5) ran <b>1983/1983 GREEN</b> — the
+        /// property this whole paragraph argues for was unguarded while the comment said it was
+        /// pinned. It is asserted now, by name, in
+        /// <c>WreckShipTests.TheCorePlantAlcove_StraddlesTheDoorway_AndLeavesTheApronClear</c>,
+        /// which checks BOTH halves: the columns really are the planner's <c>doorX ∓ 1</c>, and no
+        /// relocated device stands on an apron tile.</para>
         /// </summary>
         public static int WreckCorePlantX0 => SlotGridPlanner.InteriorRect(WreckCryoSlot).CenterX - 1;
 
@@ -2179,8 +2189,8 @@ namespace Perilune.Gen
             //     24    10.00   28.89          0       2       11.22   10.00      9.46    9.61
             //     48    16.38   31.71        516     524        7.53   11.98      5.20    6.54
             //     72    26.71   33.80       1540    1570        7.64   11.89      3.97    7.41
-            //     84    28.73   34.01 ←peak 2048    2090        7.47   11.27      3.70    7.33
-            //    108    30.57 ←peak 33.82   3086    3151        6.25    9.41      1.36    4.75
+            //     84    28.73   34.01       2048    2090        7.47   11.27      3.70    7.33
+            //    108    30.57   33.82       3086    3151        6.25    9.41      1.36    4.75
             //    168    23.94   25.50       5650    5772       -0.44    1.94     -5.04   -2.52
             //    288     9.80   10.63      10798   11040      -16.09  -14.26    -21.08  -19.17
             //
@@ -2188,13 +2198,18 @@ namespace Perilune.Gen
             // thermostatted room; it is a warm room cooled through its own doorway. The control's bay
             // sits pinned at EXACTLY 10.0 °C from h6 to h36 because `radiator_cryo` stood in it and
             // `ThermalSystem.cs:97` will not reject below `radiator_floor_k` (283.15 K); the shipped
-            // bay climbs to 24 °C by h6 and 29 °C by h24 and peaks at **34.01 °C at h84**.
-            // ⭐ IT NEVER APPROACHES THE ONLY THRESHOLD THAT BITES: `needs.def heat_stroke_c` is 45,
-            // and 34.01 is the maximum over 288 sampled sim-hours — eleven degrees of margin, on the
-            // hottest hour of the unattended ship. `SafetySystem.CanStageWorkerAt` and
-            // `NeedsSystem`'s `thermalDanger` are the two consumers and neither fires in any leg.
+            // bay climbs to 24 °C by h6 and 29 °C by h24.
+            // ⚠️ THE MAXIMA ARE **HOURLY-SAMPLED** AND ARE QUOTED AS SUCH — an earlier draft read them
+            // off the 12-HOURLY table above and understated both: **shipped 34.08 °C at h80** (not
+            // 34.01 at h84) and **control 30.80 °C at h112** (not 30.57 at h108). A maximum taken from
+            // a coarser grid is a lower bound on the maximum, and calling it "the maximum over 288
+            // samples" was the error. Re-sampled every sim-hour for 288 hours, both legs.
+            // ⭐ IT STILL NEVER APPROACHES THE ONLY THRESHOLD THAT BITES: `needs.def heat_stroke_c` is
+            // 45, so 34.08 leaves **10.9 degrees of margin on the hottest hour** of the unattended
+            // ship. `SafetySystem.CanStageWorkerAt` and `NeedsSystem`'s `thermalDanger` are the two
+            // consumers and neither fires in any leg.
             // ⛔ AND THE PEAK IS A PEAK, NOT AN ASYMPTOTE THE RUN WAS TOO SHORT TO SEE: the curve
-            // turns over at h84 and is back under the control's own peak by h132.
+            // turns over at h80 and is back under the control's own peak by h132.
             //
             // ⭐ THE ARITHMETIC BEHIND THE +3.4 K, so the next lane does not re-derive it. The bay's
             // dominant heat source was always the CAPSULES — `CryoPod` heat is 0.15 kW and eight of
@@ -2204,11 +2219,17 @@ namespace Perilune.Gen
             // an open door` instead of against a 5 kW radiator.
             //
             // ⭐ AND THE HEAT THE BAY EXPORTS IS NOT WASTED — IT LANDS IN THE TWO COMPARTMENTS R-4
-            // FREEZES. From h36 onward the spine reads 2–4 K WARMER and the reactor bay 2–3 K warmer
-            // than the control at every sample, and the reactor bay's `hypothermia_c` crossing moves
-            // from ~h216 to ~h228. (Before h36 the spine is COLDER, 10.00 against 17.43 at h6 — the
-            // radiator now clamps the CORRIDOR to its floor. Both directions are the same one
-            // mechanism and both are stated.)
+            // FREEZES. ⚠️ **FROM h48, NOT FROM h36**, and the earlier draft's "2–4 K warmer from h36"
+            // was false at the hour it named: at h36 the gap is only **+1.03 K** (spine) and
+            // **+0.44 K** (reactor bay). Measured, shipped minus control:
+            //     h36  spine +1.03  reactor +0.44      h72  spine +4.25  reactor +3.44
+            //     h48  spine +4.45  reactor +1.34     h132  spine +2.74  reactor +2.99
+            // ⇒ the honest sentence is: **from h48 the spine runs ~4.5 K warmer and the reactor bay
+            // 1.3 K warmer, and by h72 both are 3–4 K warmer**, holding to the end of the run. The
+            // reactor bay's `hypothermia_c` crossing moves from ~h216 to ~h228.
+            // (Before h48 the spine is COLDER — 10.00 against 17.43 at h6 — because the radiator now
+            // clamps the CORRIDOR to its floor. Both directions are the same one mechanism and both
+            // are stated.)
             //
             // ⛔ CO2 AND PRESSURE ARE UNCHANGED IN SHAPE AND WITHIN 3 % IN MAGNITUDE at every sample,
             // which is the leg that says `DiffuseAcrossDoors` really does carry a corridor scrubber
@@ -2223,16 +2244,23 @@ namespace Perilune.Gen
             // 0.94 kW keeps arriving, so the room's only remaining sink is its own hull. Driven, same
             // method, same probes, with `door_d0_s0` shut at tick 0 and BOTH legs run:
             //
-            //     leg                    bay at h24   crosses heat_stroke_c (45)   crew dead by
-            //     CONTROL, door shut       10.0 °C      between h60 and h72          h84
-            //     SHIPPED, door shut       42.3 °C      between h24 and h36          h36
+            //     leg                    bay at h24   first hour above 45   crew dead by
+            //     CONTROL, door shut       10.0 °C            h77                  h78
+            //     SHIPPED, door shut       42.3 °C            h28                  h28
             //
-            // ⇒ **THE HAZARD IS NOT NEW — IT IS ~48 SIM-HOURS EARLIER.** The pre-ruling bay survives
-            // a shut door only until `radiator_cryo` wears through `fail` at ~h43 and then cooks the
-            // same way; the ruling removes the 43-hour grace, it does not create the failure. Saying
-            // "the door-shut case is a regression" would be false and saying "nothing changed" would
-            // be worse. ⭐ WITH THE DOOR OPEN — the state the ship BOOTS in — neither leg ever crosses:
-            // control peaks at 30.57 °C, shipped at 34.01 °C.
+            // ⛔⛔ THE CONTROL WINDOW HERE READ "between h60 and h72" UNTIL INDEPENDENT REVIEW
+            // RECONSTRUCTED IT, AND IT WAS WRONG — quoted rather than deleted because the mistake is
+            // instructive. It was not a measurement error: it was a MISREADING OF MY OWN 12-HOURLY
+            // TABLE, whose h72 row says **41.11 °C**, i.e. still BELOW 45. Twelve-hourly sampling
+            // cannot locate a crossing to better than twelve hours and I quoted it as if it could.
+            // Re-driven at ONE-HOUR sampling, both legs: control h77, shipped h28.
+            // ⇒ **THE CONCLUSION SURVIVES AND GETS SHARPER: THE HAZARD IS NOT NEW — IT IS 49
+            // SIM-HOURS EARLIER** (77 − 28). The pre-ruling bay cooks the same way once
+            // `radiator_cryo` wears through `fail` at ~h43; the ruling removes the grace, it does not
+            // create the failure. Saying "the door-shut case is a regression" would be false and
+            // saying "nothing changed" would be worse.
+            // ⭐ WITH THE DOOR OPEN — the state the ship BOOTS in — neither leg ever crosses: control
+            // peaks at 30.80 °C (h112), shipped at 34.08 °C (h80).
             //
             // ⚠️ HOW REACHABLE IT IS, MEASURED RATHER THAN ASSUMED, because the reassuring version of
             // this paragraph is wrong. Doors are MOSS-only since OD-N and `MossGate.IsServerLive`
@@ -2644,16 +2672,33 @@ namespace Perilune.Gen
             //      A guard written to pin it went RED and was right to. RE-MEASURED HERE, driven on
             //      THIS tree, `ShipPlanBuilder.Build` + the default stack, no player input, probes
             //      at (9,6,0) / (16,9,0) / (7,14,0), sampled every 12 sim-hours to sim-day 12:
-            //          day    cryo bay      spine       reactor bay
-            //           1     10.0 °C      14.2 °C       10.0 °C
-            //           3     10.0 °C       8.2 °C       10.0 °C
-            //           6     10.0 °C       2.7 °C        9.7 °C
-            //          10     10.0 °C      -3.0 °C        4.6 °C
-            //          12     10.0 °C      -5.2 °C        2.3 °C
-            //      ⇒ the cryo bay is FLAT AT 10.0 °C throughout (`radiator_cryo` thermostats it —
-            //      the header's own finding, and it survives); the spine is still stageable at
-            //      day 12 and crosses `hypothermia_c` near sim-day 16 (EXTRAPOLATED from its
-            //      -0.55 °C/12 h slope — the only unsampled number in this block), not at day 6.
+            //      ⛔⛔ **THE TABLE BELOW IS STALE IN ALL THREE COLUMNS AS OF 2026-08-06** — annotated
+            //      rather than deleted, because the paragraph directly above it warns about exactly
+            //      this class of rot and the block's ARGUMENT (which site is thermally durable) still
+            //      rests on it. It describes the PRE-DECLUTTER ship, where `radiator_cryo` stood in
+            //      the pod bay. Re-driven on THIS tree, same probes, sampled every sim-hour:
+            //          day    cryo bay        spine          reactor bay
+            //                 was  ->  now    was  ->  now   was  ->  now
+            //           1     10.0     28.9   14.2     10.0   10.0      9.6
+            //           3     10.0     33.8    8.2     11.9   10.0      7.4
+            //           6     10.0     33.0    2.7      8.2    9.7      3.2
+            //          10     10.0     20.5   -3.0     -3.1    4.6     -6.7
+            //          12     10.0     10.6   -5.2    -14.3    2.3    -19.2
+            //      ⇒ THE CONCLUSION THIS BLOCK DRAWS FROM IT IS UNCHANGED: the cryo bay is the most
+            //      durable of the three sites at every sample on BOTH ships (it is the last to reach
+            //      any dangerous band, and it never crosses `hypothermia_c` inside 12 sim-days while
+            //      the other two do). What changed is that it is no longer FLAT, because its
+            //      thermostat is now in the corridor — see the ruling block above for the full A/B.
+            //      The old rows and their reasoning read:
+            //      *day 1/3/6/10/12 = cryo 10.0 throughout; spine 14.2 / 8.2 / 2.7 / -3.0 / -5.2;
+            //      reactor 10.0 / 10.0 / 9.7 / 4.6 / 2.3 ⇒ the cryo bay is FLAT AT 10.0 °C throughout
+            //      (`radiator_cryo` thermostats it — the header's own finding, and it survives); the
+            //      spine is still stageable at day 12 and crosses `hypothermia_c` near sim-day 16
+            //      (EXTRAPOLATED from its -0.55 °C/12 h slope — the only unsampled number in this
+            //      block), not at day 6.*
+            //      ⚠️ THE SPINE'S DAY-16 EXTRAPOLATION IS RETIRED, NOT UPDATED: on this tree it
+            //      crosses `hypothermia_c` between day 8 and day 9 (h192 = -1.31, h216 = -4.52,
+            //      h264 = -11.00), which is a MEASUREMENT and replaces the estimate.
             //      The same-tree PRE-FIX control has the spine unstageable at day 7 and the reactor
             //      bay at day 6, so the hazard is real; this package pushed it out, it did not
             //      remove it.
