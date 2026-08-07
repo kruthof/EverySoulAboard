@@ -4,15 +4,15 @@
 lands here, newest at the top, with its original date. The frozen pre-restructure record
 (through 2026-07-29, all § anchors intact) is `HANDOVER-2026-07.md`.*
 
-## Archived 2026-08-06 (session M ritual): EIGHT carried open items, retired under PROCESS §2
+## Archived 2026-08-06 (session M ritual): SIX carried open items, retired under PROCESS §2
 
-*None was owner-triaged or promoted within three sessions (they date from sessions F–L), so the ritual retires them
-here rather than letting them accumulate in the live file. Verbatim, each still true of `main` at `8014cb1` — a
-later session may promote any of them, but must re-derive it first:*
+*Five were neither owner-triaged nor promoted within three sessions (filed 08-03/08-04, sessions F–I), so the
+ritual retires them; the sixth (the spec banner, session L) retires because the rewrite it points at is already
+FILED — the open carried no information beyond the filing. Verbatim, each still true of `main` at `8014cb1` — a
+later session may promote any of them, but must re-derive it first. (Two items first drafted into this block —
+`rz-blockeds` pointer-events and zone `<title>` tooltips — were filed 2026-08-05 by `e298f2c`, session M itself;
+the three-session rule cannot reach them and they stay in the live carry.)*
 
-- `rz-blockeds` is the only layer painted ABOVE the Room Zoom's new standing tier that takes pointer events
-  (shadows nothing today — geometry, not a guarantee).
-- zone `<title>` tooltips are unreachable where a fitting covers the tile.
 - the Room Zoom furniture layer flickers ±1 piece at rest.
 - ContextAction is SILENT on refused device clicks.
 - MOSS-live stray clicks actuate doors, with no confirm and no undo.

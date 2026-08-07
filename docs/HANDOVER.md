@@ -105,13 +105,18 @@ ledger) and *Chronicle reachable* on **M4-7** (`persona-view.js:215-217` draws a
   knife-edge in the plate join, and a `0↔0` content-join branch said to be unexercised (the live rig reads
   `hall_d0_s7` 0 ↔ 0, so it may in fact be driven).
 - Carried, still live: the walkway strip compresses a deck's whole `ty` range (VR-P5 item 5) · an upright caption's
-  ink reads as pressable · save-tick event-loss family · D5 / spend-visible / Chronicle residuals. ⇒ **Eight older
-  carries, none owner-triaged or promoted in three sessions, moved to `docs/history/HANDOVER-archive.md` under
-  PROCESS §2** — they are recoverable, and this list is an archive, not a queue.
+  ink reads as pressable · save-tick event-loss family · D5 / spend-visible / Chronicle residuals · `rz-blockeds` is
+  the only layer above the standing tier taking pointer events (geometry, not a guarantee) · zone `<title>` tooltips
+  unreachable where a fitting covers the tile (both filed 08-05, `e298f2c` — too young to retire). ⇒ **Six older
+  carries moved to `docs/history/HANDOVER-archive.md` under PROCESS §2** — recoverable; an archive, not a queue.
 - ⚠️ **Two carried counts were WRONG — re-measured 2026-08-06** (the 10th shape, aimed at a HANDOVER): stale
   `styles.css:NNN` citations in `docs/` = **21** occurrences on 20 lines excluding `docs/history/`, 23 with it — the
-  old "~40" counted BARE `styles.css` mentions (41). **`client/tools` = 77 `.mjs` / 79 entries / 55 `*shot*.mjs`**,
+  old "~40" counted BARE `styles.css` mentions (42). **`client/tools` = 77 `.mjs` / 79 entries / 55 `*shot*.mjs`**,
   not "43"; nothing gates any of them.
+- The charter amendment shifted `perilune-m4.packages.md` line numbers by +29: four code sites cite `:1095` for
+  *"one click on anyone, FROM EITHER SURFACE"*, now at `:1175` (already `:1146`-stale pre-amendment). Comment-only,
+  no gate sees it; fix when next touching those files (`overview-view.js:2099`, `overview-model.test.js:3260/:3290`,
+  `persona-shot.mjs:277`).
 
 ## Next
 
