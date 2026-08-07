@@ -1869,3 +1869,130 @@ test('THE WING WEARS ITS WEAR: a wrecked wing draws its post-raid twin, outboard
     'a sound wing and a wrecked one draw byte-identical outboard art — the wear join does not reach '
     + 'this layer, and every wing on the plate lies about its condition');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ THE ALIGNMENT — the leg `ship-elevation.js`'s `outboardPoint` header CITED BEFORE IT EXISTED.
+//
+// ⛔⛔ THE PACKAGE'S THIRD FABRICATED CITATION, and it is recorded here rather than quietly fixed
+// because the shape is this wave's recurring failure. The header said, verbatim:
+// *"Pinned by `THE WING HANGS OVER ITS OWN FEED` in `overview-scene.test.js`."* **NO SUCH TEST
+// EXISTED ANYWHERE IN THE TREE.** Independent review proved the gap by reverting `outboardPoint`'s
+// x back to the pre-fix `O + u·BU` (i.e. dropping `v`) and running the whole node suite: **1904/1904
+// GREEN**, with the defect fully restored.
+//
+// ⛔ WHY THE EIGHT OUTBOARD TESTS ABOVE COULD NOT SEE IT, stated so a later lane does not assume
+// coverage from their count. They ask WHERE the piece is relative to the HULL (outside `BAY`, on the
+// right skin, on interpolated plating) and, at *"THE U POSITION IS THE TILE'S OWN"*, that three
+// wings draw in tile ORDER more than 8 px apart. **A CONSTANT OFFSET SURVIVES EVERY ONE OF THEM** —
+// it moves all three wings by the same amount, so the order holds, the gaps hold, and the pieces are
+// still outboard. Nothing compared a wing's x to its FEED's x, which is the whole claim.
+//
+// THE TWO LEGS BELOW ARE THAT COMPARISON, at the two places it can be wrong:
+//   · through the DRAWN SVG — the panel's own box against the feed's own box, both read off the
+//     emitted string, so the pin covers the composer as well as the transform; and
+//   · through the TRANSFORM — `outboardPoint(...).x` against `project(...)[0]`, unrounded floats.
+// Both are EXACT equality, and the SVG one can be: `overview-scene.js` emits both boxes as
+// `n(X - size/2)` with the SAME `size`, so identical inputs round to identical strings and the
+// difference of the two parsed numbers is exactly 0. (Comparing the pylon x to the feed's box
+// instead would have needed a `size / 2` term added back after rounding, which is quantised at
+// 0.01 — the reason this pair was chosen.)
+//
+// ⭐ THE MUTATION, RE-DRIVEN HERE PHYSICALLY RATHER THAN QUOTED. `outboardPoint`'s x reverted to
+// `d.plane.O[0] + uv[0] * d.plane.BU[0]`, whole node suite run, expression restored:
+//     mutated   1906 tests, 1904 pass, 2 fail  — and the 2 are exactly these legs, each naming a
+//               per-wing delta: SVG −9.070000 px, floats −9.067750 px, on all three wings
+//     restored  1906 tests, 1906 pass, 0 fail
+// RED FOR THE RIGHT REASON (TRAPS-3): a named nonzero offset per wing, not a crash and not a parse
+// failure. The 1904 that stay green under the mutation ARE the suite review found blind.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** The LIVE `--ship wreck` deck geometry — `client/tools/capture-wreck-decks.mjs`'s committed
+ *  capture, the same one `no-add-room.test.js` drives its M1-L claims from, with its own
+ *  refuse-to-write predicate. The hand `outboardScene` fixture above mirrors these spans; this leg
+ *  uses the capture itself so the alignment is asserted on the ship `./play.sh` boots. */
+const WRECK_CAP = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./fixtures/decks-wreck.json', import.meta.url)), 'utf8'),
+);
+const WRECK_VIEW = decksView(
+  decodeDecks(decode(JSON.stringify(WRECK_CAP.decks))),
+  decodeRooms(decode(JSON.stringify(WRECK_CAP.rooms))),
+);
+
+/** `--ship wreck`'s own three `SolarWing`s: `[tileX, tileY, conditionByte]`, deck 0.
+ *  ⚠️ NOT DERIVED FROM THE SHIP — read off a LIVE `--ship wreck` host's `devices` channel
+ *  (2026-08-06: `(2,12) cond 79 · (4,12) cond 46 · (6,12) cond 15`, the wire's own bytes for
+ *  `wing_a/b/c`'s 0.31 / 0.18 / 0.06). Written out by hand on this file's own precedent, so moving
+ *  the wings in `AuthoredShips.cs` fails the instrument check below instead of silently retargeting
+ *  the pin. */
+const WRECK_WINGS = [[2, 12, 79], [4, 12, 46], [6, 12, 15]];
+
+/** Every IN-ROOM `.pl-fit` (never `.pl-outboard`, whose class attribute differs), keyed
+ *  `"tx,ty|deck"` → the x of its emitted translate. The feed side of the comparison. */
+function feedBoxX(svg) {
+  const out = new Map();
+  for (const m of svg.matchAll(
+    /<g class="pl-fit" data-tile="(\d+),(\d+)" data-deck="(\d+)"[^>]*? transform="translate\(([-\d.]+) ([-\d.]+)\)"/g,
+  )) out.set(`${m[1]},${m[2]}|${m[3]}`, +m[4]);
+  return out;
+}
+
+test('THE WING HANGS OVER ITS OWN FEED', () => {
+  // The wreck's three wings on the wreck's own captured deck geometry.
+  const devices = WRECK_WINGS.map(([x, y, cond]) => ({ x, y, deck: 0, kind: 5, cond }));
+  const svg = overviewScene({ deck: 0, decksView: WRECK_VIEW, devices, items: [] });
+  const wings = outboardPieces(svg);
+  const feeds = feedBoxX(svg);
+
+  // ⛔ NON-VACUITY FIRST, AS AN INCLUSION TEST (CLAUDE.md's 4th shape). An empty selection — the
+  // wrong fixture, a swept-away compartment, a renamed class — must FAIL here, never pass the loop
+  // below by having nothing to compare. Both halves are named: the panels AND the feeds, because
+  // the outboard split is a COPY and a regression to a MOVE would leave `feeds` empty with three
+  // perfectly aligned panels to compare against nothing.
+  assert.equal(wings.length, 3,
+    `${wings.length} outboard pieces on the wreck's plate, not the 3 SolarWings --ship wreck authors`
+    + ' — this test is reading the wrong ship or the wrong layer, and every comparison below would'
+    + ' be vacuous.');
+  for (const [tx, ty] of WRECK_WINGS) {
+    assert.ok(feeds.has(`${tx},${ty}|0`),
+      `no IN-ROOM fitting was drawn on tile ${tx},${ty} — the wing's FEED is missing, so the plate `
+      + 'has gone back to MOVING the device onto the hull instead of copying it (the defect '
+      + "`device-sprite-coverage.test.js`'s \"a piece with real art is filtered out\" leg named).");
+  }
+
+  // ⭐ THE CLAIM. Both boxes are `n(X - size/2)` with the same `size`, so this is exact.
+  const bad = [];
+  for (const p of wings) {
+    const feed = feeds.get(`${p.tx},${p.ty}|${p.deck}`);
+    const delta = p.box.x - feed;
+    if (delta !== 0) {
+      bad.push(`tile ${p.tx},${p.ty} deck ${p.deck}: the PANEL's box starts at x ${p.box.x} and its `
+        + `FEED's at x ${feed} — the wing hangs ${delta.toFixed(6)} px `
+        + `${delta < 0 ? 'STERNWARD' : 'BOWWARD'} of the compartment it is wired to.`);
+    }
+  }
+  assert.deepEqual(bad, [], 'A WING IS NOT OVER ITS OWN FEED:\n  ' + bad.join('\n  ')
+    + '\n  This is the 2026-08-06 defect: `outboardPoint` dropped `v` from the x, and on an oblique'
+    + ' floor `BV = [depthX, -depthY]` — a tile at `v` draws `v·depthX` to starboard of the same tile'
+    + ' at v = 0. Keep `floorPoint(u, v)`; the band front edge is not the tile\'s x.');
+});
+
+test('THE WING HANGS OVER ITS OWN FEED: `outboardPoint`\'s x IS `project`\'s x, unrounded', () => {
+  // The same claim one layer down, where there is no 2-decimal serialisation to hide behind — and
+  // where a composer that stopped drawing feeds entirely could not make it pass vacuously.
+  const t = makeShipTransform(WRECK_VIEW, null);
+  assert.ok(t.deckInfo(0), 'the wreck capture draws no deck 0 — nothing below is measuring anything');
+  const bad = [];
+  for (const [tx, ty] of WRECK_WINGS) {
+    const mount = t.outboardPoint(tx + 0.5, ty + 0.5, 0);
+    const floor = t.project(tx + 0.5, ty + 0.5, 0);
+    if (!mount) { bad.push(`tile ${tx},${ty}: outboardPoint answered null on a drawn deck`); continue; }
+    if (mount.x - floor[0] !== 0) {
+      bad.push(`tile ${tx},${ty}: outboardPoint x ${mount.x} vs project x ${floor[0]} — delta `
+        + `${(mount.x - floor[0]).toFixed(6)} px`);
+    }
+  }
+  assert.deepEqual(bad, [],
+    'THE HULL MOUNT AND THE FLOOR POINT HAVE PARTED COMPANY:\n  ' + bad.join('\n  ')
+    + '\n  `outboardPoint` must be `floorPoint(u, v)`\'s x and nothing else — the identical function'
+    + ' the click map inverts. Any second derivation of position here is the misalignment returning.');
+});

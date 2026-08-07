@@ -190,8 +190,14 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
  * pins the size of this table so a second kind cannot be added by habit."* **NO SUCH LEG EXISTED.**
  * It read true to a reviewer because the SIBLING ledger twenty lines up really is pinned that way,
  * in that file, by a leg with almost that wording. Measured before the legs were written: a BOGUS
- * key and a SECOND REAL KIND (`Telescope`, which takes the wreck's plate from one hull piece to
- * three) each left the client suite 1892/1892 GREEN.
+ * key and a SECOND REAL KIND (`Telescope`) each left the client suite 1892/1892 GREEN.
+ * ⚠️ THE TELESCOPE MUTATION'S LIVENESS READ *"from one hull piece to three"* HERE AND *"0 to 2
+ * extra"* IN THE TEST FILE, AND NEITHER WAS THE SHIPPED SHIP'S NUMBER. Re-measured 2026-08-06 on a
+ * LIVE `--ship wreck` host — its `devices` channel (73 rows) fed through the real `overviewScene` —
+ * the plate hangs **3 pieces on the hull, and 4 with `Telescope: 'ring-array'` added**: the wreck
+ * authors exactly ONE Telescope (`telescope_1`, deck 1, tile 13,2, in `hall_d1_s1`) beside its three
+ * `SolarWing`s at (2,12)/(4,12)/(6,12) on deck 0. So the mutation is **3 → 4, one more piece** — it
+ * is semantically live, and that is the whole point; the count was simply never taken.
  * ⇒ THE TWO LEGS NOW EXIST and are named here rather than gestured at:
  *   · `OUTBOARD_ITEM_FOR_KIND: every KEY is a real DeviceKind and every VALUE is real art`
  *   · `OUTBOARD_ITEM_FOR_KIND is pinned to its SIZE — a kind does not go outboard by habit`

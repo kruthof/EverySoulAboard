@@ -575,12 +575,37 @@ export function makeShipTransform(decksView, frame) {
    * show depth into the beam"*. That argument is right about the DEPTH and wrong about the X: on an
    * oblique floor the depth axis is not vertical — `BV = [depthX, −depthY]` — so a tile at `v` is
    * drawn `v·depthX` to STARBOARD of the same tile at `v = 0`. Dropping `v` therefore hung every
-   * wing STERNWARD of the feed it belongs to. MEASURED on the wreck's three: a constant **−9.07 px =
-   * −0.879 tiles** (their `v` is 0.5188 and this band's `depthX` is 17.48 px), and up to −1.69 tiles
-   * for a tile at the back wall of a compartment.
+   * wing STERNWARD of the feed it belongs to. MEASURED on the wreck's three, re-measured 2026-08-06
+   * on this tree: a constant **−9.067750 px = −0.958 tiles** (their `v` is 0.51875, this band's
+   * `depthX` is 17.48 px and its `tileSize` 9.4617 px, so 17.48 × 0.51875 = 9.06775 and
+   * 9.06775 / 9.4617 = 0.9584), and **−17.480 px = −1.847 tiles** for a tile at the back wall of a
+   * compartment (`v = 1`).
+   * ⚠️ THE TWO TILE FIGURES HERE READ **−0.879** AND **−1.69** UNTIL 2026-08-06 AND BOTH WERE WRONG
+   * — 8 % and 8.5 % off the px figures standing beside them, which were right. Recorded rather than
+   * silently corrected: a px number and a tile number in one sentence are two claims, and only one
+   * of them had been divided by anything.
    * ⇒ Keeping `v` in the X costs one term and removes the misalignment entirely; what a side
    * elevation still cannot say — WHICH skin, near or far — is unchanged and is still not claimed.
-   * Pinned by `THE WING HANGS OVER ITS OWN FEED` in `overview-scene.test.js`.
+   *
+   * ⛔⛔ THE SENTENCE HERE WAS A FABRICATED CITATION UNTIL 2026-08-06 AND IS QUOTED RATHER THAN
+   * DELETED, because it is this package's THIRD of the shape and the wave's recurring failure:
+   * *"Pinned by `THE WING HANGS OVER ITS OWN FEED` in `overview-scene.test.js`."* **NO SUCH TEST
+   * EXISTED ANYWHERE IN THE TREE.** Review proved the gap by reverting this function's x to
+   * `O + u·BU` and running the whole node suite: **1904/1904 GREEN with the defect fully restored**.
+   * The eight outboard tests could not see it because a CONSTANT offset moves all three wings
+   * together — their order holds, their separation holds, and they are still outboard.
+   * ⇒ THE TWO LEGS NOW EXIST, in `overview-scene.test.js`, driven on the committed live
+   * `--ship wreck` capture (`fixtures/decks-wreck.json`) and both EXACT (`=== 0`):
+   *   · *THE WING HANGS OVER ITS OWN FEED* — the drawn SVG: the panel's box x against its feed's
+   *     box x, both read off the emitted string.
+   *   · *THE WING HANGS OVER ITS OWN FEED: `outboardPoint`'s x IS `project`'s x, unrounded* — the
+   *     same claim in floats, with no 2-decimal serialisation to hide behind.
+   * ⭐ RE-DRIVEN HERE, PHYSICALLY, ON THIS TREE: with the pre-fix expression restored the node suite
+   * reads **1904 pass / 2 fail of 1906**, and the two failures are exactly these legs, each naming a
+   * per-wing delta — −9.070000 px (SVG, the 2-decimal quantisation) and −9.067750 px (floats) on all
+   * three wings, a NAMED number and not a crash. Reverted: **1906/1906**. The 1904 that stay green
+   * under the mutation ARE the suite the review found blind, which is the receipt that this pin is
+   * the only instrument for the alignment.
    *
    * WHICH SKIN: the band nearer the top of the bay mounts UP, everything else mounts DOWN. On the
    * two-deck wreck that is deck 1 → upper skin, deck 0 → lower skin. ⛔ The tie (a one-deck ship,

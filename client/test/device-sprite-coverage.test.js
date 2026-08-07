@@ -940,8 +940,13 @@ test('GLYPH_SUBSTITUTE is real, non-shadowing, and pinned to its size', () => {
 //
 // MEASURED, both directions, before these legs were written: adding a BOGUS key (`Wibble`) and
 // adding a SECOND REAL KIND (`Telescope`) each left the whole client suite 1892/1892 GREEN — and the
-// second one is semantically live, taking the wreck's plate from 0 to 2 extra pieces hung on the
-// hull. A ledger whose growth nothing notices is a default, not a decision.
+// second one is semantically live. ⚠️ ITS LIVENESS WAS WRITTEN AS *"0 to 2 extra pieces"* HERE AND
+// AS *"one hull piece to three"* IN `glyph-map.js`, TWO FIGURES THAT DISAGREED WITH EACH OTHER AND
+// WITH THE SHIP. Re-measured 2026-08-06 on a LIVE `--ship wreck` host — its `devices` channel (73
+// rows) fed through the real `overviewScene` — the plate hangs **3** pieces on the hull and **4**
+// with `Telescope: 'ring-array'` added: three `SolarWing`s at (2,12)/(4,12)/(6,12) on deck 0, plus
+// the wreck's single `telescope_1` at (13,2) on deck 1. The mutation is **3 → 4, ONE more piece**.
+// A ledger whose growth nothing notices is a default, not a decision.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 test('OUTBOARD_ITEM_FOR_KIND: every KEY is a real DeviceKind and every VALUE is real art', () => {
@@ -979,8 +984,10 @@ test('OUTBOARD_ITEM_FOR_KIND is pinned to its SIZE — a kind does not go outboa
   // content decision a player sees. Growing this table is legitimate — a second genuinely outboard
   // kind (an antenna mast, a heat radiator panel) would belong here — but it must land in a commit
   // message with its reason beside the entry, not in a diff nobody had to defend.
-  // ⛔ DRIVEN BOTH WAYS: with `Telescope: 'ring-array'` added, the wreck's plate hangs TWO MORE
-  // pieces on the hull and this goes red; without it, green.
+  // ⛔ DRIVEN BOTH WAYS: with `Telescope: 'ring-array'` added, the live `--ship wreck` plate hangs
+  // ONE MORE piece on the hull — 3 → 4, the deck-1 `telescope_1` at tile (13,2), measured
+  // 2026-08-06 off the host's own `devices` channel — and this goes red; without it, green.
+  // (It read "TWO MORE" until then; see the block header for the re-measurement.)
   assert.equal(Object.keys(OUTBOARD_ITEM_FOR_KIND).length, 1,
     'OUTBOARD_ITEM_FOR_KIND CHANGED SIZE. Each entry takes a machine off the deck floor and bolts\n'
     + 'it to the hull on the Level-1 plate. That is a decision for a commit message, not a default.');

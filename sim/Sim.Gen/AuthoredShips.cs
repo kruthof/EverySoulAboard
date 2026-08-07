@@ -2226,7 +2226,10 @@ namespace Perilune.Gen
             //     h48  spine +4.45  reactor +1.34     h132  spine +2.74  reactor +2.99
             // ⇒ the honest sentence is: **from h48 the spine runs ~4.5 K warmer and the reactor bay
             // 1.3 K warmer, and by h72 both are 3–4 K warmer**, holding to the end of the run. The
-            // reactor bay's `hypothermia_c` crossing moves from ~h216 to ~h228.
+            // reactor bay's `hypothermia_c` crossing moves from ~h216 (control, off the 12-hourly
+            // grid this A/B was sampled on) to **h226** (shipped, re-driven HOURLY on 2026-08-06:
+            // h225 = -9.95, h226 = -10.07 — see the durability table in the stock-siting block for
+            // the full run).
             // (Before h48 the spine is COLDER — 10.00 against 17.43 at h6 — because the radiator now
             // clamps the CORRIDOR to its floor. Both directions are the same one mechanism and both
             // are stated.)
@@ -2676,18 +2679,31 @@ namespace Perilune.Gen
             //      rather than deleted, because the paragraph directly above it warns about exactly
             //      this class of rot and the block's ARGUMENT (which site is thermally durable) still
             //      rests on it. It describes the PRE-DECLUTTER ship, where `radiator_cryo` stood in
-            //      the pod bay. Re-driven on THIS tree, same probes, sampled every sim-hour:
-            //          day    cryo bay        spine          reactor bay
-            //                 was  ->  now    was  ->  now   was  ->  now
-            //           1     10.0     28.9   14.2     10.0   10.0      9.6
-            //           3     10.0     33.8    8.2     11.9   10.0      7.4
-            //           6     10.0     33.0    2.7      8.2    9.7      3.2
-            //          10     10.0     20.5   -3.0     -3.1    4.6     -6.7
-            //          12     10.0     10.6   -5.2    -14.3    2.3    -19.2
-            //      ⇒ THE CONCLUSION THIS BLOCK DRAWS FROM IT IS UNCHANGED: the cryo bay is the most
-            //      durable of the three sites at every sample on BOTH ships (it is the last to reach
-            //      any dangerous band, and it never crosses `hypothermia_c` inside 12 sim-days while
-            //      the other two do). What changed is that it is no longer FLAT, because its
+            //      the pod bay. Re-driven on THIS tree, same probes, sampled every sim-hour to h288:
+            //          day  (hour)   cryo bay        spine          reactor bay
+            //                        was  ->  now    was  ->  now   was  ->  now
+            //           1   (h24)    10.0     28.9   14.2     10.0   10.0      9.6
+            //           3   (h72)    10.0     33.8    8.2     11.9   10.0      7.4
+            //           6   (h144)   10.0     28.8    2.7      5.2    9.7      0.8
+            //          10   (h240)   10.0     15.9   -3.0     -7.6    4.6    -11.9
+            //          12   (h288)   10.0     10.6   -5.2    -14.3    2.3    -19.2
+            //      ⛔⛔ THE `now` COLUMN'S DAY-6 AND DAY-10 ROWS WERE OFF THEIR OWN LABELS UNTIL
+            //      2026-08-06 AND REVIEW CAUGHT IT. They read 33.0 / 8.2 / 3.2 and 20.5 / -3.1 / -6.7,
+            //      which are real samples from this same run at **h120 (day 5)** and **h204 (day
+            //      8.5)** — a table sampled hourly and then transcribed off the wrong rows, so two of
+            //      five rows did not reproduce at the day they were labelled with. RE-TAKEN AT THE
+            //      LABELLED HOURS (the hour is now printed beside the day so the next reader can
+            //      check a row without re-deriving which sample it came from); the three rows that
+            //      always did reproduce (1 / 3 / 12) are unchanged to the digit. ⚠️ Only the `now`
+            //      column was re-driven — `was` describes the PRE-DECLUTTER ship, which is not on
+            //      this tree and cannot be re-measured from it.
+            //      ⇒ THE CONCLUSION THIS BLOCK DRAWS FROM IT IS UNCHANGED, and it SURVIVES the
+            //      correction: the cryo bay is the most durable of the three sites at every sample
+            //      after the boot tick (all three start at 19.85 °C at h0; from h1 the cryo bay is
+            //      the warmest of the three at every one of the 288 hourly samples), it is the last
+            //      to reach any dangerous band, and it never crosses `hypothermia_c` inside 12
+            //      sim-days — its minimum over the whole run is +10.63 °C at h288 — while the other
+            //      two do. What changed is that it is no longer FLAT, because its
             //      thermostat is now in the corridor — see the ruling block above for the full A/B.
             //      The old rows and their reasoning read:
             //      *day 1/3/6/10/12 = cryo 10.0 throughout; spine 14.2 / 8.2 / 2.7 / -3.0 / -5.2;
@@ -2697,8 +2713,17 @@ namespace Perilune.Gen
             //      (EXTRAPOLATED from its -0.55 °C/12 h slope — the only unsampled number in this
             //      block), not at day 6.*
             //      ⚠️ THE SPINE'S DAY-16 EXTRAPOLATION IS RETIRED, NOT UPDATED: on this tree it
-            //      crosses `hypothermia_c` between day 8 and day 9 (h192 = -1.31, h216 = -4.52,
-            //      h264 = -11.00), which is a MEASUREMENT and replaces the estimate.
+            //      crosses `hypothermia_c` (-10 °C) at **h258, sim-day 10.75** — the first hourly
+            //      sample below the bound (h257 = -9.93, h258 = -10.07), which is a MEASUREMENT and
+            //      replaces the estimate. The reactor bay crosses first, at **h226 (day 9.4)**
+            //      (h225 = -9.95, h226 = -10.07); the cryo bay never does.
+            //      ⛔ THIS SENTENCE READ *"between day 8 and day 9 (h192 = -1.31, h216 = -4.52,
+            //      h264 = -11.00)"* UNTIL 2026-08-06 AND CONTRADICTED ITS OWN RECEIPTS — all three
+            //      quoted values re-measure to the digit, and the first two are ABOVE -10, so the
+            //      three numbers bracket the crossing between h216 and h264 and cannot put it at day
+            //      8–9. The conclusion the block draws is unaffected (the spine still crosses inside
+            //      12 sim-days and the cryo bay still does not); the crossing is simply two sim-days
+            //      later than the prose claimed. Re-driven hourly to h288, probes unchanged.
             //      The same-tree PRE-FIX control has the spine unstageable at day 7 and the reactor
             //      bay at day 6, so the hazard is real; this package pushed it out, it did not
             //      remove it.
