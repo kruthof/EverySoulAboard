@@ -212,6 +212,48 @@ test('THE INVERSE ROUND-TRIPS: every tile\'s own floor centre resolves back to t
   }
 });
 
+/**
+ * ⭐ **THE DEGENERATE WINDOW: A ROOM WITH NO FLOOR ANSWERS NO TILE** — send-back MINOR 3, 2026-08-06.
+ *
+ * `tileFromScenePoint`'s closing `clampTileToRoom` is not a restatement of the box check three lines
+ * above it; it is the guard for the one case where the two disagree. `roomScene` FLOORS the drawn
+ * extent at 1 so a degenerate window still emits a well-formed viewBox, while the interior it is
+ * derived from may be 0 wide — so the box check `xCm < scene.rw * cm` admits a whole tile's worth of
+ * points into a room that has no floor at all. Nothing in the suite drove that, and the review's
+ * mutation battery reverted the clamp in silence.
+ *
+ * A 2-wide window is cheap to author because this function's inputs are the SCENE and the RECT, not a
+ * ship: `roomScene` takes the rect directly and no fixture has to grow a two-tile compartment.
+ *
+ * MUTATION: `clampTileToRoom` → `tileInFocusRect` on that line ⇒ the point resolves to (6, …), which
+ * IS inside the wall-inclusive window, and this leg goes red.
+ */
+test('tileFromScenePoint: a 2-wide window has NO interior, so its scene resolves nothing', () => {
+  const flat = { deck: 1, rx: 5, ry: 7, rw: 2, rh: 8 };
+  const flatScene = roomScene(flat);
+  // Precondition — the two extents really do disagree, or this leg is about an ordinary room.
+  assert.equal(roomInterior(flat).rw, 0, 'the 2-wide window grew an interior');
+  assert.equal(flatScene.rw, 1, 'the drawn extent is not floored at 1, so the box check below cannot '
+    + 'over-admit and this whole leg is about a case that no longer exists');
+  assert.equal(flatScene.areaM2, 0);
+  // A point squarely inside the DRAWN floor box of that degenerate scene…
+  const flatPlace = scenePlacement(flatScene, flat);
+  const [px, py] = flatPlace.foot(roomInterior(flat).rx, roomInterior(flat).ry);
+  assert.equal(tileFromScenePoint(px, py, flatScene, flat), null,
+    'a press inside a floorless room resolved to a tile. The scene draws a 1-tile placeholder floor '
+    + 'there so the SVG stays well-formed; the press map must not follow it.');
+  // NON-VACUITY BY INCLUSION: the identical construction on a 3-wide window — one tile of real
+  // interior — DOES resolve, so the null above is the degeneracy and not a broken inverse.
+  const thin = { deck: 1, rx: 5, ry: 7, rw: 3, rh: 8 };
+  const thinScene = roomScene(thin);
+  const thinIn = roomInterior(thin);
+  assert.equal(thinIn.rw, 1);
+  const [qx, qy] = scenePlacement(thinScene, thin).foot(thinIn.rx, thinIn.ry);
+  assert.deepEqual(tileFromScenePoint(qx, qy, thinScene, thin), { x: thinIn.rx, y: thinIn.ry },
+    'the inverse cannot resolve a 1-tile-wide interior either, so the degenerate leg above proves '
+    + 'nothing about degeneracy');
+});
+
 test('THE INVERSE IS THE **OBLIQUE**, not a plan: depth SHEARS the answer', () => {
   const scene = roomScene(room);
   const place = scenePlacement(scene, room);
@@ -368,29 +410,84 @@ test('clampTileToRoom is the half-open rect test — and it is the INTERIOR, not
  * ⚠️ COMMENT-STRIPPED (`codeOnly`) WITH BOTH CONTROLS, TRAPS-1: a raw read that is merely quoted in a
  * header must not count, and a search that can find nothing looks exactly like a search that found
  * nothing.
+ *
+ * ⛔⛔ **THE SCAN IS SYNTACTIC AND ITS REACH IS STATED HERE RATHER THAN IMPLIED** — send-back MINOR 2,
+ * 2026-08-06, which planted two evaders against the first draft and got both past it green:
+ *   (a) a `const` ARROW consumer. The chunker split on `function` heads only, so an arrow planted
+ *       after `roomInterior`'s closing brace was ATTRIBUTED TO `roomInterior` — an exempt name — and
+ *       its raw reads were credited to the one function allowed to have them. Closed by splitting on
+ *       top-level `const NAME =` heads as well; a top-level `const` is the only other thing in this
+ *       file that can own a body, and function-local ones are indented so the `\n(?=…)` cannot see
+ *       them.
+ *   (b) a direct `tileInFocusRect(` CALL. The window predicate is the ONE legitimate way to read the
+ *       wall-inclusive rect without naming its fields, so a channel that reached for it evaded a scan
+ *       looking for `focusRoom.rw` entirely — and reading the window is exactly the defect: it is what
+ *       every one of the eleven interior clamps would degrade INTO. Closed by censusing the CALL
+ *       SITES as their own list, with their own two-name exemption.
+ *
+ * ⚠️ WHAT IT STILL CANNOT SEE, said out loud: a raw read in module top-level code that no head owns,
+ * an alias (`const r = focusRoom; r.rw`), and computed access (`focusRoom['rw']`). This is a guard
+ * against DRIFT — the tidy-up that re-reads the rect it sees three lines above — not against a
+ * determined author. The behavioural legs on each channel are what pin the behaviour.
  */
 test('ONLY three functions in room-model.js read the wall-inclusive rect directly', () => {
   const src = codeOnly(readFileSync(join(HERE, '../src/ui/room-model.js'), 'utf8'));
   const RAW = /focusRoom\.(rx|ry|rw|rh)\b/;
-  // Split on top-level function heads; the head's own name owns everything up to the next one.
-  const parts = src.split(/\n(?=(?:export )?function )/);
-  const offenders = [];
-  for (const chunk of parts) {
-    const m = /^(?:export )?function\s+([A-Za-z0-9_$]+)/.exec(chunk);
-    if (!m || !RAW.test(chunk)) continue;
-    offenders.push(m[1]);
-  }
-  assert.deepEqual(offenders.sort(), ['roomDoorTiles', 'roomInterior', 'tileInFocusRect'],
+  const WINDOW_CALL = /\btileInFocusRect\s*\(/;
+  // Split on top-level heads — `function` AND `const NAME =`; the head's own name owns everything up
+  // to the next one. Function-local declarations are indented, so this only ever cuts at file scope.
+  const HEAD = /\n(?=(?:export )?(?:function\s|const\s+[A-Za-z0-9_$]+\s*=))/;
+  const NAME = /^(?:export )?(?:function|const)\s+([A-Za-z0-9_$]+)/;
+  /** Both censuses in one pass, so a plant below is scored by the identical code. */
+  const census = (text) => {
+    const raw = [], win = [];
+    for (const chunk of text.split(HEAD)) {
+      const m = NAME.exec(chunk);
+      if (!m) continue;
+      if (RAW.test(chunk)) raw.push(m[1]);
+      if (WINDOW_CALL.test(chunk)) win.push(m[1]);
+    }
+    return { raw: raw.sort(), win: win.sort() };
+  };
+  const cens = census(src);
+  assert.deepEqual(cens.raw, ['roomDoorTiles', 'roomInterior', 'tileInFocusRect'],
     'a function in room-model.js reads the WALL-INCLUSIVE rect directly. Every channel clamp must go '
     + 'through `interiorBounds`/`clampTileToRoom`, or its layer is drawn — and its presses answered — '
     + 'one tile outboard of the wall the cutaway draws. If a new exemption is genuinely right, add it '
     + 'here WITH its reason beside the other three.');
-  // NON-VACUITY, an INCLUSION test: the scan really can find a raw read, and really does ignore a
-  // commented-out one.
-  const planted = 'export function __probe(focusRoom) { return focusRoom.rw | 0; }';
-  const withPlant = (src + '\n' + planted).split(/\n(?=(?:export )?function )/)
-    .filter((c) => RAW.test(c)).length;
-  assert.equal(withPlant, 4, 'the scan cannot see a fourth raw read — it is not measuring anything');
+  // …and the SECOND census: who CALLS the window predicate. Two names, and the second one is the
+  // whole doorway design — `roomCrew` admits on the window and `clampPosToFloor` draws on the floor.
+  assert.deepEqual(cens.win, ['roomCrew', 'tileInFocusRect'],
+    'something other than `roomCrew` calls `tileInFocusRect`. That is the wall-inclusive rect under '
+    + 'another name: a channel that admits on the WINDOW draws its layer on the hull ring. Only '
+    + 'CREW MEMBERSHIP is allowed to, because a door opening is a ring tile and a pawn mid-crossing '
+    + 'stands in one.');
+
+  // NON-VACUITY, INCLUSION TESTS — three plants, each the shape of a real evasion, each scored by
+  // `census` itself rather than by a second reader that could disagree with it.
+  //  (1) a plain function that reads the rect.
+  const p1 = census(src + '\nexport function __probe(focusRoom) { return focusRoom.rw | 0; }');
+  assert.deepEqual(p1.raw, ['__probe', 'roomDoorTiles', 'roomInterior', 'tileInFocusRect'],
+    'the scan cannot see a fourth raw read — it is not measuring anything');
+  //  (2) THE MINOR-2 EVADER (a): a const arrow planted INSIDE `roomInterior`'s chunk, immediately
+  //      before the next function head. Under the function-only chunker this was attributed to
+  //      `roomInterior` and vanished; it must now be named.
+  const ANCHOR = '\nfunction interiorBounds(';
+  assert.equal(src.split(ANCHOR).length, 2, 'the plant anchor is not unique in the source, so the '
+    + 'evader below is not being planted where the review planted it');
+  const arrow = '\nexport const __arrow = (focusRoom, tx, ty) => tx >= focusRoom.rx && ty >= focusRoom.ry;\n';
+  const p2 = census(src.replace(ANCHOR, arrow + ANCHOR));
+  assert.deepEqual(p2.raw, ['__arrow', 'roomDoorTiles', 'roomInterior', 'tileInFocusRect'],
+    'a `const` arrow consumer is invisible to the chunker — it is attributed to whichever function '
+    + 'precedes it, and planted after an EXEMPT one it reads the raw rect for free');
+  //  (3) THE MINOR-2 EVADER (b): a consumer that never names a field, and reaches the window through
+  //      the predicate instead.
+  const p3 = census(src + '\nexport function __caller(tx, ty, focusRoom) '
+    + '{ return tileInFocusRect(tx, ty, focusRoom); }');
+  assert.deepEqual(p3.win, ['__caller', 'roomCrew', 'tileInFocusRect'],
+    'a direct `tileInFocusRect` call outside the exemptions is not scored at all — the wall-inclusive '
+    + 'rect is reachable by name');
+  //  (4) TRAPS-1: a quoted read must not count as a live one.
   assert.equal(codeOnly('// const a = focusRoom.rw;\n').includes('focusRoom.rw'), false,
     '`codeOnly` is not stripping comments, so a quoted read would be scored as a live one');
 });
@@ -772,6 +869,78 @@ test('roomDesigns: the blueprint carries its PIECE and FACING, and an old row st
   const junk = roomDesigns({ cells: [[5, 7, 1, 3, 0, 0, 0, 17, 9]] }, room);
   assert.equal(junk[0].tool, '', 'a non-string tool element reached the decoded row');
   assert.equal(junk[0].facing, 1, 'facing is masked to 0..3 (9 & 3 === 1)');
+});
+
+/**
+ * ⭐⭐ `roomDesigns` CLAMPS TO THE **INTERIOR**, AND THIS IS THE LEG THE REVIEW FOUND MISSING
+ * (send-back MAJOR 1, 2026-08-06). The reviewer swept all eleven `clampTileToRoom(` sites, reverting
+ * each to `tileInFocusRect(` one at a time; this one survived with the whole suite green. Two tests
+ * above already drive `roomDesigns`, and neither can see it: the `room` fixture's out-of-rect cell
+ * sits at (1,1), which BOTH predicates reject, so the clamp was pinned only where the two agree.
+ *
+ * ⛔ WHY THIS CHANNEL PARTICULARLY. `roomDesigns` is the BLUEPRINT layer and it is directly
+ * downstream of the owner's ruling — *"the user should be able to place something directly at the
+ * wall"*. A press lands on the flush row, the sim answers with a design cell, and this function is
+ * what decides whether the ghost is drawn. Widened back to the window it would accept a design on a
+ * RING tile and `blueprintSvg` would stand that ghost on `scenePlacement`'s tile — which for a ring
+ * tile is outboard of the wall the cutaway has just drawn. The player would see a blueprint hanging
+ * in the hull.
+ *
+ * MUTATION: `clampTileToRoom` → `tileInFocusRect` at the `roomDesigns` clamp ⇒ RED here.
+ * MUTATION: the same line spelled as the RAW rect (`c[0] >= focusRoom.rx && …`) ⇒ RED here AND in
+ * the census, which is the pair the census alone could not answer.
+ */
+test('roomDesigns drops a BLUEPRINT standing on the HULL RING — the wall is not this room\'s floor', () => {
+  const f = slotFocus('hold');
+  const iv = roomInterior(f);
+  const ring = { x: f.rx, y: f.ry + 2 };            // the window's left column = hull
+  const inside = { x: iv.rx, y: iv.ry + 1 };        // the first FLOOR column, flush at that wall
+  // Precondition, an INCLUSION test: the two probes really are on opposite sides of the wall.
+  assert.equal(clampTileToRoom(ring.x, ring.y, f), false, 'the ring probe is on the drawn floor');
+  assert.equal(clampTileToRoom(inside.x, inside.y, f), true, 'the flush probe is NOT on the floor');
+  assert.equal(tileInFocusRect(ring.x, ring.y, f), true, 'the ring probe is outside the WINDOW too, '
+    + 'so this leg cannot tell the interior clamp from the membership one');
+  const cells = [
+    [ring.x, ring.y, DECK1, 3, 0, 0, 0, 'table', 0],     // a table blueprint, on the hull
+    [inside.x, inside.y, DECK1, 3, 0, 0, 0, 'table', 0], // …and one on real floor
+  ];
+  const got = roomDesigns({ cells }, f);
+  // NON-VACUITY BY INCLUSION first: the control blueprint on real floor must be REPORTED, or the
+  // assertion below is about a reader that reads nothing.
+  assert.ok(got.some((g) => g.x === inside.x && g.y === inside.y),
+    'the CONTROL blueprint flush against the wall was dropped too — that is the owner\'s own defect, '
+    + 'and it makes the ring assertion below vacuous');
+  assert.deepEqual(got.map((g) => [g.x, g.y]), [[inside.x, inside.y]],
+    'a build designation on the hull ring was reported as this room\'s. The scene draws no floor '
+    + 'there, so the blueprint ghost would be stood outboard of the wall the cutaway just drew.');
+});
+
+/**
+ * ⭐ `roomDecor` CLAMPS TO THE **INTERIOR** — the second leg the review found missing (send-back
+ * MAJOR 1). The test above it (`roomDecor clamps decor to the room + deck`) puts its out-of-rect rug
+ * at (0,0), which both predicates reject; reverting the clamp to `tileInFocusRect` left the suite
+ * green. Decor is drawn by `decorSvg` through the same `scenePlacement`, so the failure mode is the
+ * ring's: a rug laid on the hull.
+ *
+ * MUTATION: `clampTileToRoom` → `tileInFocusRect` at the `roomDecor` clamp ⇒ RED here.
+ */
+test('roomDecor drops a decor piece lying on the HULL RING', () => {
+  const f = slotFocus('hold');
+  const iv = roomInterior(f);
+  const ring = { x: f.rx, y: f.ry + 2 };
+  const inside = { x: iv.rx, y: iv.ry + 1 };
+  assert.equal(clampTileToRoom(ring.x, ring.y, f), false, 'the ring probe is on the drawn floor');
+  assert.equal(tileInFocusRect(ring.x, ring.y, f), true, 'the ring probe is outside the WINDOW too, '
+    + 'so this leg cannot tell the interior clamp from the membership one');
+  const decor = [
+    { deck: DECK1, x: ring.x, y: ring.y, itemId: 'rug' },
+    { deck: DECK1, x: inside.x, y: inside.y, itemId: 'rug' },
+  ];
+  const got = roomDecor(decor, f);
+  assert.ok(got.some((d) => d.x === inside.x && d.y === inside.y),
+    'the CONTROL rug on real floor was dropped too, so the assertion below is vacuous');
+  assert.deepEqual(got.map((d) => [d.x, d.y]), [[inside.x, inside.y]],
+    'a decor piece on the hull ring was reported as this room\'s — it would be laid on the wall.');
 });
 
 test('roomMaterialTiles skins every in-room wall + only non-default floors', () => {
@@ -4550,6 +4719,21 @@ test('VR-P3-a leg 3 (REVERSED): a PLACE click resolves on the FLOOR PLANE, so th
  * and no compartment's interior contains it. Leg 3c below MEASURES that, so the cost is a recorded
  * fact with a receipt instead of a surprise. FILED, not closed.
  *
+ * ⛔⛔ **AND THE ROUTE TO IT IS REACHABLE FROM THE SHIPPED UI — do not read this filing as "only a
+ * developer could get there"** (send-back MINOR 4, 2026-08-06; the first draft of this note said
+ * "the sim ACCEPTS stripping a ring wall" without saying who could ask). STRIP is a LIVE TOOL ON THE
+ * LEVEL-1 OVERVIEW: `overview-model.js`'s `ORDER_TOOLS` is `['dig', 'strip']`, the plate paints a
+ * button for each, and `overview-view.js`'s `orderPayloads` (:2243) lowers a strip press to
+ * `Cmd.strip(x, y, true)` — a press on a compartment's perimeter on the plate sends exactly that.
+ * So a player can create this state in two clicks without ever opening Room Zoom, and the cost is
+ * "an order you gave from one surface produces a tile the other surface cannot address".
+ *
+ * ⚠️ MITIGATION, MEASURED HERE RATHER THAN ASSUMED (re-derived on this tree, not quoted): across the
+ * fixture deck's 8 slots there are 240 distinct perimeter tiles and NOT ONE OF THEM IS FLOOR today —
+ * 196 `#`, 36 ` `, 5 `/`, 3 `+`. The lost state is therefore reachable but not currently occupied,
+ * which is why this is filed rather than blocking. Do not carry the number into a later lane without
+ * re-deriving it; a wreck whose hull has been opened has a different census.
+ *
  * MUTATION: `roomInterior` returns its argument unchanged ⇒ 3b's first leg goes red (the ring
  * resolves again). MUTATION: reinstate the `isPlaceTool && isHullPocheTile` gate ⇒ 3b's second leg
  * goes red (a wall-adjacent placement is swallowed).
@@ -4610,6 +4794,13 @@ test('THE RULING leg 3b: the hull ring resolves to NO TILE for every tool — an
  * there), and after the strip the tile is walkable floor. It is still not any compartment's interior
  * — the slot rect is authored by `SlotGridPlanner` and does not grow — so the Level-2 surface, which
  * draws compartment interiors, has nowhere to put it.
+ *
+ * ⛔ **AND THE PLAYER CAN ASK FOR IT FROM THE SHIPPED UI** (send-back MINOR 4): the LEVEL-1 OVERVIEW
+ * carries STRIP as a live tool — `ORDER_TOOLS = ['dig', 'strip']` (`overview-model.js`:162), lowered
+ * by `overview-view.js`'s `orderPayloads` (:2243) to `Cmd.strip(x, y, true)`. A press on a
+ * compartment's perimeter on the plate sends exactly that. So the cost is not developer-only: it is
+ * "an order given on one surface produces a tile the other surface cannot address". See the ruling
+ * block above for the measured mitigation (no perimeter tile on the fixture deck is floor today).
  *
  * ⛔ THIS LEG EXISTS TO STOP THAT BEING DISCOVERED BY A PLAYER. It is a RECORDED CONSEQUENCE of the
  * owner's ruling, not a defect this package chose to leave: closing it means deciding what a
