@@ -119,7 +119,9 @@ error (only a proportional floor pins scale) · **8th** a merged file's truth is
 neither lane could compute (re-derive censuses from the merged tree; merge `main` into the
 lane and re-run the FULL gate — a clean auto-merge is NOT a clean merge) · **9th** a
 correct finding that narrows an instrument creates a blind spot (ask what the narrowed
-instrument can no longer see).
+instrument can no longer see) · **10th** the FABRICATED CITATION — a comment naming a
+test (or quoting a figure) that does not exist reads as a pin; grep the cited title,
+then revert the cited behaviour and require the red (three in one lane, 2026-08-06).
 
 The core rule under all of them: **physically apply every mutation you name, watch it go
 red for the right reason, revert.** And: **a count you did not measure yourself is not
