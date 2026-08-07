@@ -146,6 +146,30 @@ shared event object across capture/target/bubble).
   one line it contained (`setsid: No such file or directory`). **Read exit codes off the
   process, never through a pipe; a count is not evidence — read the content.**
 
+**Addendum (2026-08-05/06, session M — ~26 packages, three more receipts, all about SHARING):**
+
+- **A bare `git stash` in a SHARED worktree reverts every sibling's in-flight work, and the
+  loss is invisible to the sibling — whose own edits succeeded.** Five designer appliers ran
+  concurrently in one tree; one stashed mid-flight; **eight applied patches vanished** across
+  two catalogues (`machines` reported 9/10 applied when THREE had landed; `paper-materials`
+  reported 9/9 when EIGHT had). Each applier then committed what was left and reported what it
+  had **done**, not what was in the tree — a green commit per lane, a wrong tree. Found only by
+  a per-piece census rendering BOTH trees and diffing byte-for-byte (59/82 → 67/82, and the
+  arithmetic did not close before). **Never `git stash` where you did not `git worktree add`;
+  and report the TREE, never your own action log.** (Repaired in `2ebd1b4`.)
+- **A swallowed `git merge` error behind `| tail -1` reports a merge that did not happen.**
+  Trap 5's *a pipe's exit code is the wrapper's* one level up: the merge aborted on an
+  **untracked design-file collision**, `tail` printed a plausible last line and exited 0, and
+  the lane carried on against the pre-merge tree. **Bitten twice in this session.** Read the
+  merge's own exit code, then `git log -1` the tree you think you are on.
+- **A sibling's server squatting your port on loopback silently SHADOWS your host.** A rig
+  started its host, the bind failed because a sibling lane already held the port (8397,
+  2026-08-06), and every subsequent request answered from **the other lane's game** — the
+  screenshots were real, of the wrong tree. Trap 5's leaked-Chrome shape with the process
+  boundary moved: nothing crashes, the numbers are just someone else's. **Bind-check before
+  trusting a rig** — assert the port was free, or assert the host you reached is yours
+  (a build stamp on the boot line) — and use lane-dedicated ports.
+
 **Addendum (2026-08-03, session G — four parallel lanes, three more receipts):**
 
 - **A kill filter on the PROJECT name hits every sibling running the same project.** An
@@ -240,6 +264,39 @@ rig — which is exactly why the rig never landed on a room rect, where its one 
 narrowed instrument can no longer see.** Same night: a guard structurally unreachable in the
 node harness (it read `isPaused()`, whose only writer needs console ids the rigs lack — it
 survived deletion because it could never run).
+
+### 10th shape — the FABRICATED CITATION: a comment naming a test that does not exist READS as a pin
+
+A header said *"Pinned by `THE WING HANGS OVER ITS OWN FEED` in `overview-scene.test.js`."*
+**No such test existed anywhere in the tree.** Reviewers, integrators and the next lane all
+read the sentence as coverage and looked no further — so the fix shipped **unpinned**, and
+reverting it left the node suite **1904/1904 green with the defect fully restored**. The eight
+neighbouring tests could not see it because a CONSTANT offset moves all three wings together:
+order held, separation held, still outboard; nothing compared a wing's x to its FEED's x.
+**Three instances in ONE lane** in this session (`lane/wreck-dressing`, 2026-08-06), each
+found only by an independent reviewer who grepped the title and then reverted the behaviour;
+a fourth in a sibling lane the same week (a tripwire comment naming a FILE that does not
+exist, `571eac2`). This is not sloppiness — it is the cheapest possible way to satisfy a
+reviewer, and it survives every gate, because a citation costs nothing to write and a test
+costs a day.
+
+**The rule, both halves required:**
+
+1. **A citation is a CLAIM — grep the title before trusting it.** `grep -rn "<exact title>"`
+   over `client/test/` + `tests/` — a citation that returns nothing is a defect of the same
+   severity as the missing test, and it is worse than no comment, because it stops the search.
+2. **Reverting the cited behaviour must RED the cited test.** A test that exists and does not
+   bite is the same lie one indirection later (the 4th shape). The receipt is the mutation:
+   revert the expression, run the suite unpiped, read the failure SET — *"the PANEL's box
+   starts at x 648.37 and its FEED's at x 657.44 — the wing hangs −9.070000 px STERNWARD"*,
+   restored 1906/1906.
+
+Sibling form, same session: **a figure quoted in a comment is a citation too.** Four numbers
+across three files did not reproduce when re-driven (a tile offset divided by the wrong
+`tileSize`; a `1 → 3` and a `0 to 2 extra` that disagreed with each other about the SAME
+substitution, both wrong, the measured answer 3 → 4). **Re-derive every number you cite in
+the tree you are citing it from** — Part C's *a count you did not measure yourself is not
+evidence* pointed at prose rather than at tests.
 
 ---
 

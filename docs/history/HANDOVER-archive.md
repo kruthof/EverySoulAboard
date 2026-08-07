@@ -4,6 +4,51 @@
 lands here, newest at the top, with its original date. The frozen pre-restructure record
 (through 2026-07-29, all § anchors intact) is `HANDOVER-2026-07.md`.*
 
+## Archived 2026-08-06 (session M ritual): the SEVEN OLDEST session-log rows, 2026-07-29 → 2026-08-02
+
+*Pruned from the live log so `HANDOVER.md` stays inside its line cap. These cover M1's close, M2 end to end,
+and M3 through its demo — all of it durably recorded in `ROADMAP.md` §2/§3, `TARGET.md` §3 and the M2/M3
+package charters. Verbatim:*
+
+| date | lane | player-visible outcome / result | gate |
+|---|---|---|---|
+| 07-29 | m1 wave + m2-1 + doc-restructure | machines visible · vent operable · honest first screen · work-priority state · doc spine | green, `pin/m2-a` |
+| 07-30 | fourteen lanes over three waves | **the RimWorld loop's first act + the DIRECT ORDER + M2 CLOSED (phase-1 exit gate MET)**; M3 chartered | green, `pin/m2-e` · `pin/m2-d` |
+| 07-31 | m3-batch · pod-identity · vacuum-ladder | **M3 gate cleared (OD-M); a direct order crosses the frontier**; playtest named 2026-08-07 | green, pins UNMOVED |
+| 07-31 B | pod-census · deck1-vent · od-n · cryo-system · moss-input · moss-hotkeys | **the thaw ladder authored · deck 1 one repair from air · OD-N/OD-O/OD-P · A POD CYCLES · the MOSS terminal types** | green, **`pin/m3-a`** |
+| 08-01 C | doc-anchor-sweep · thaw-cmd · moss-gate · pod-bay · thaw-blocked · board-fault · emergency-thaw | **the thaw is EARNED · the ship answers to MOSS · typed `pods` shows the bay · the badge names the item · the vent puzzle · the ship wakes one more soul by itself** | green, **`pin/m3-e`**, tests →1690/1180 |
+| 08-02 C | heater · skill-consumers · skill-display · sleeper-personas · rest | **a heater exists (and `place` was INERT — found+fixed) · who works changes how fast · the WORK tab shows it with ABSENT cells · seven written souls · crew SLEEP** | green, **`pin/m3-d` · `pin/m3-b` · `pin/m3-c`**, tests →1775/1205 |
+| 08-02 C | m3-demo | **⭐ THE M3 EXIT GATE HOLDS, MEASURED**: 43/43 — a second thaw earned and chosen · thaws 3–5 span 6.93 sim-h; 7 findings filed | demo, 18 shots |
+
+---
+
+## Archived 2026-08-06 (session M ritual): session K's current-state block, the VISUAL REDESIGN WAVE block, and the M4 owner batch
+
+*(Superseded by session M's rewrite. Gate then: main `e27e406`, 1889 dotnet + 1463 node,
+pins at M3-c. All three blocks are recoverable from git — the K block and the M4 batch at
+`e27e406:docs/HANDOVER.md` lines 8–67, the wave block at lines 114–209. What replaced them:*
+
+- *__The M4 §10 owner batch is ANSWERED__ — OD-S, 2026-08-05, all five items verbatim; it now
+  lives in `ROADMAP.md` §5 as a ledger row, which is its permanent home. The block's clause
+  "nothing in M4 implements before this + the playtest amendment" is spent: M4-2 and M4-9 both
+  shipped 08-05/06 under the ruling.*
+- *__Session K's block__ described M4-1 as a charter awaiting owner review. M4 is OPEN and two
+  of its packages are on `main`; the charter itself (`perilune-m4.packages.md`, 2132 lines) is
+  the durable artefact and needs no HANDOVER summary.*
+- *__The VISUAL REDESIGN WAVE block__ (session L) is closed as a wave. Its two headline opens
+  were both discharged by session M: __P2b__ ("the ~23 uncovered device rows still wear WARM
+  art") by THE WARM PURGE — registry 120 → 82, twins 80, `TWIN_SOURCE` total, every warm module
+  deleted; __VR-P5's item 5__ (the walkway strip compressing the deck's whole `ty` range) is
+  unchanged and carried forward. __P7__ (story prose gated on M4 mood/Persona) is carried.
+  VR-P5's four owner questions — the locked door on the plate, one-deck fog, the stuck order on
+  the inactive band, `--ship grid` overflow — are carried forward unchanged into the live file's
+  owner list. The wave's per-package narrative lives in its merge commits.*
+- *Everything still live from any of the three blocks was carried into session M's rewritten
+  lists rather than dropped; a ★ finding neither owner-triaged nor promoted within three
+  sessions is retired here by PROCESS §2, not in the live file.)*
+
+---
+
 ## Archived 2026-08-01 (session C): the 2026-07-31 session-B current-state block
 
 *Archived verbatim when session C rewrote the block. The package records live on in

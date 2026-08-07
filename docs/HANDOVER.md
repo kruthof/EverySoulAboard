@@ -1,255 +1,133 @@
 # HANDOVER — current state
 
-*This file is REWRITTEN every session (hard cap ~120 lines + the log): the end-of-session
-ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Everything
-older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved) and
-`docs/history/HANDOVER-archive.md` (rolling).*
+*REWRITTEN every session (hard cap ~120 lines + the log): the ritual in `docs/PROCESS.md` §1 replaces this block and
+appends one log row. Older content: `docs/history/HANDOVER-archive.md` (rolling) and
+`docs/history/HANDOVER-2026-07.md` (frozen, all § anchors intact).*
 
-## Current state (2026-08-04, session K CLOSED — M4 CHARTERED IN FULL, playtest in 3 days)
+## Current state (2026-08-06, session M CLOSED — the game wears the owner's paper and it BUILDS; M4 is OPEN, two of its packages shipped)
 
-**Gate on `main` (`a7cc2b4`): the merge's tree is byte-identical to its gated lane tree
-(tree-hash-verified, `44a6de89…`); the lane ran the FULL `./ci.sh` at its FINAL commit —
-1889 dotnet + 1312 node, twin MATCH `7bdd0d6f7756dfdc` (re-measure before quoting). Pin
-table (CLAUDE.md authoritative, UNCHANGED): P1 `7bdd0d6f7756dfdc` · P2 `cb09b584a5f15e52`
-· P3 `43a1a5c25713faec` · P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`. Docs-only lane;
-`git diff 2e4ce40 -- tests/Perilune.Tests/Golden/ ci.sh content/` = 0 lines.**
+**Gate on `main` (`8014cb1`): ~26 independently reviewed packages over two days, each behind its own full `./ci.sh`.
+Both suites re-measured in the close-out lane AT THIS COMMIT: dotnet **1984/1984** and node **1917/1917**, 0 fail
+either side (the dotnet line is de-DE — `Fehler: 0, erfolgreich: 1984`; parse it, TRAPS-3). Re-measure before
+quoting.** ⭐⭐ **PIN M4-b (tag `pin/m4-b`) — THE FIRST MENTAL BREAK MOVED THREE PINS.** P1 →
+**`7c70c1befe848cc7`** (twin MATCH) · P2 → **`55437c9e5f5d4c95`** · P3 → **`6f1fcfda3312c87a`** · P4
+`661fcdd4b89f1e87` and P5 `558a1c0a4985f5ea` HELD (two paths each). Cause: FOLD WIDENING + THE DWELL COUNTER (CITZ
+v9→v10, five hashed fields), **not behaviour** — the 2×2's third cell returns the old pin to the digit with the ladder
+live. **CLAUDE.md's table is authoritative** and carries the receipts. ⛔ No pin sees a tier, a reset rule or any
+behaviour: `MentalBreakTests` (40 legs, one BLINDED leg per claim gate) + `HowSheIsTests` (10) are the ONLY
+instruments.
 
-**M4 IS CHARTERED — `docs/design/perilune-m4.packages.md` (2132 lines, M3 house format,
-citations re-measured on `2e4ce40`).** Forced pick under PROCESS §2 (sessions I+J were
-both `rows: none`, so the topmost unmerged ROADMAP row — M4-1 — was mandatory) and named
-by OD-R's binds cell (the M4-1/M5-1 charters written at M4 open, against the three
-registers). One Opus implementer + one independent reviewer; ONE SEND-BACK (5 MAJOR + 11
-MINOR, all fixed and re-verified) + 4 post-approval nits, every verdict enforced. What it
-contains:
-- **M4-1's Persona design IS the charter's §5**: layout, tabs, orders, transcript, the
-  `controls.js` T-key THIRD DOOR (invisible to the `CREW_INTERACTION` census — it bypasses
-  hud.js), the mount (body-level sibling, MOSS-takeover precedent), Rell's unauthored
-  identity (ruled: M4-3 authors her a sheet, REVERSING M3-8's refusal — and that reddens
-  `SleeperPersonaTests.cs:493-494` by construction, named in MUTATIONS), "Incapable Of",
-  empty-relationships copy, per-person history without a cid on Chronicle lines. Design
-  questions **(a)–(h)** each ruled-or-forked with a routing box (charter's call vs owner
-  batch). Keymap census MEASURED: `E` recommended for Persona (`P` is bound —
-  `toggleSprites`, `controls.js:282`; the reviewer caught the charter claiming it free).
-- **⭐⭐ THE TWoM-GAMEPLAY SECTION (OD-R's mandate)**: deterministic break ladder — RW§4's
-  one-tunable→three-tier DERIVATION adopted (not re-litigable), break roster from OD-R's
-  verbs (refuse/stop/withdraw), a dwell/DECAYING-counter over hashed mood (hard reset was
-  DEFEATED by the measured mood sawtooth — review finding; the leaky integrator is the
-  recommended fix, fork (h)), the per-person tunable's HOME priced as fork (g) (traits
-  may NOT be the source — `PersonaSheet` is host-owned/unhashed, a hashed break reading it
-  is a cross-host determinism violation; the `SleeperAptitudes`-precedent hashed byte is
-  recommended), catharsis analogue priced, sleep-freeze clause. Emergent-triage and grief
-  registers chartered; TARGET §2 honoured (no dice, no misery meters, no fed bars).
-- **Pin chain `M4-a…c`** (M4-4 real-or-delete · the first break · social ignition), each
-  with its VACUITY stated (under OD-H no pinned fixture works — instrument tables name
-  `MentalBreakTests`-to-be etc. as the sole cover, M3-9's lesson) · **conflict matrix +
-  12 couplings** (the three pinned lists move in ONE commit with M4-2; M4-2/M4-8 ordering
-  tension — `openPersonaForSelected` belongs in `ship-state.js`, which WP-9 creates) ·
-  **M5-1 forward charter** (the ending = survivors-and-cost payoff on M3-5's shipped
-  state) · **§10 owner batch, five items, silence defaults stated** (below) · playtest
-  clause: **the 08-07 findings amend this charter BEFORE M4-2 implements.**
+**WHAT THE GAME IS NOW.** **One visual language, end to end** — paper/ink/oxblood on the Level-1 **ship plate** (a
+side-elevation cutaway of both decks, live miniature tiles), the Level-2 **room cutaway** now **INSET TO THE TRUE
+INTERIOR** so a wall reads as a wall and a piece places **flush against it**, MOSS, the catalogues, the pawns; **THE
+WARM PURGE finished it** — registry **120 → 82 rows / 80 twins**, all five paper catalogues, `TWIN_SOURCE` TOTAL
+80/80, warm modules deleted; sketch ships at **`strong`** catalogue-wide at the one `item()` seam, and a 171-agent
+fan-out polished **67 of 82** pieces. **The build loop feels like one**: the press reaches the sim and **the sim says
+why when it refuses** (2/30 presses landed before, 30/30 after) · a **ghost** stands on the hovered tile and **[E]
+rotates it** (`Device.Facing`, DEVC v7) · a placed piece is a **BLUEPRINT** wearing `AWAITING A BUILDER` until a pawn
+assembles it (`BuildKind.Device`, BULD v3) · the **tray** says what every card costs · a finished piece **draws itself
+onto paper**. **ONE DOOR TO A PERSON** — the **Persona window** ships (M4-2, key `U`; `CREW_INTERACTION` is a
+one-element census), six bands, every line named to a wire source or written as an honest empty. **MOOD GATES
+BEHAVIOUR** (M4-9, MECHANICS §13.51): a deterministic three-tier ladder over hashed mood with a DWELL and no roll —
+she refuses the dangerous order, stops working, withdraws; override **graduated by tier**; the **HOW SHE IS** band and
+a Chronicle line say so — OD-R's TWoM half, live. **The wreck is dressed**: solars **OUTBOARD** each over its own
+feed; the cryo bay is 12 capsules and a terminal; pawns glide sub-tile at 60 fps over a carpet that survives
+underfoot.
 
-## Open on the owner (playtest 2026-08-07; then the M4 batch — default-to-recommendation after three days)
+⭐⭐ **OD-S (2026-08-05) — the M4 §10 batch ACCEPTED VERBATIM, and M4 is OPEN** (`ROADMAP.md` §5 is its permanent home):
+M4-9 builds the first break now · `Health`/`Morale`/`Archetype` REAL · override graduated by tier ·
+`CryoSystem`-seeded bonds · severity tie kept. **The economy STAYS PARKED** — OD-B untouched, the faucet ruling still
+open. ⛔ **It re-sequences the plan**: the charter's *"the 08-07 playtest amends before M4-2 implements"* is spent —
+both packages are merged, so **the playtest amends M4-3 onward**. Also owner-ruled: sketch = `strong` · scene inset
+over poché · the warm purge (*"replace all old items with our new ones"*) · solars outboard · cryo bay decluttered ·
+nine gallery pieces keep `main`'s art, lamp-sconce redrawn.
 
-- **⭐⭐ THE M4 OWNER BATCH (`perilune-m4.packages.md` §10, five items, each with silence
-  default): 1** who builds the first mental break (REC: ninth package M4-9 / silence:
-  defer to M5) · **2** `Citizen.Health`/`Morale`/`Archetype` real-or-delete (REC: real,
-  RW§6.1 safety-net shape / silence: keep-and-stop-showing; NO zero-pin option exists) ·
-  **3** may a player order override a break (REC: graduated by tier / silence: RimWorld's
-  no) · **4** may thawed sleepers arrive with real SOCL bonds (REC: yes, seeded in
-  `CryoSystem` / silence: no — bonds stay prose, Feud cut, D-3 unclosed) · **5**
-  Chronicle severity tie (REC = silence: keep it, earliest wins). Plus the M4-1 design
-  itself is under owner review (design questions (a)–(h) are the charter's calls,
-  overridable there).
-- Carried from 08-02/08-03 (unchanged): maintenance vs furnishing budget · NO-CONSUMABLE
-  badge unreachable in the OPENING state · ACCEPTS row 10 chips boot lit · FLOOR default
-  + toast ratify · furniture as a real pawn job · bench wait · heater tier · rung-1 ·
-  vacuum services class · UI list. (The Chronicle severity tie moved INTO the M4 batch,
-  item 5.)
+⚠️ **THE M4 EXIT GATE IS PARTIAL, TWO NAMED PACKAGES SHORT.** All four questions are answered (*who · what · why* by
+M4-2, *how she is* by M4-9's band); *no `◇ SAMPLE` anywhere* waits on **M4-3** (`panels.js` still carries the SAMPLE
+ledger) and *Chronicle reachable* on **M4-7** (`persona-view.js:215-217` draws an honest empty, not her lines).
 
-## Open — unscheduled (★ new session K; receipts in the merge commits + the M4 charter §12/§13)
+## Open on the owner
 
-- ★ NEW (session K, filed by the charter lane): the post-M3-9 MOOD ENVELOPE is stale in
-  THREE docs (MECHANICS §13.4's numbers pre-date REST; the break package's FIRST required
-  measurement is day-means + envelope + sawtooth AMPLITUDE + PERIOD — nothing may be
-  tuned before it) · D-3's premise ("Fatigue has no reducer") is stale post-M3-9, may be
-  partly self-healing, nobody has looked · `SocialSystem.cs:150`'s `_roll.NextFloat()` is
-  a runtime-roll SHAPE TARGET §2 forbids in outcomes (filed, not ruled; the break ladder
-  is forbidden from copying it) · M4-5/M4-6/M4-8 move no TARGET row (checklist gap) ·
-  `CitizenMemory.Episodic` as a wire channel is the better long answer for per-person
-  history (a package, not a clause) · `CmdKind.Operate` removal is CHECK-BEFORE-DELETING
-  in M4-8 · M3's coupling 7 undercounted the MOSS doors (three, not one — charter §12.16).
+- **The 2026-08-07 playtest is the next event**; its findings amend M4-3 onward (OD-S).
+- **The economy faucet ruling** (OD-B) — E1–E4 stay parked until it lands.
+- From the plate (VR-P5, unchanged): a LOCKED DOOR draws as an ordinary one (`Device.IsLocked` is off the `devices`
+  channel — *worth a wire field?*) · FOG IS ONE DECK · a stuck order on the inactive band shows no outline (*does the
+  `compartments` column go ship-wide?*) · `--ship grid` overflows the bay and says so.
+- **Wreck has no vertical air** (standing, OD-E's mechanical half): deck-1 halls stay 0 kPa forever.
+- Carried: maintenance vs furnishing budget · NO-CONSUMABLE badge unreachable at boot · FLOOR default + toast ·
+  furniture as a pawn job · bench wait · heater tier · rung-1 · vacuum services class · shrine shelf's oxblood frame ·
+  radar shows own-ship only · **P7** (story prose needs sim+wire data that does not exist — gated on M4).
 
-- Carried: Room Zoom furniture layer flickers ±1 piece at rest · ContextAction SILENCE on
-  refused device clicks · MOSS-live stray clicks actuate doors, no confirm/undo · klaxon
-  dominant ring producer (~28/day) · save-tick event-loss family (§13.44.5 + §13.45.5 +
-  brownout compat band) · HELP is now FOURTEEN lines in the ~7-line pane (the ▾ sign +
-  footer mitigate; the pane is still 22vh) · pushed `pods`/terminal-state channel would
-  retire the poll · carried/reserved Parts make the build refusal an upper bound · ledger
-  staleness ≤1.2 s toast race (benign) · mixed FLOOR sweep overcounts · D5 family /
-  spend-visible / Chronicle residuals (stateful PowerSystem · episode-boundary saves ·
-  `IsWanting` sawtooth · no pin covers the wreck · fault-log right-edge clip).
-- ★ (session I): the CREW-tab `▾ N MORE` precedent has NO DOM test (`hud.js` `updateCrewMore`
-  unexercised — found reading it as the precedent) · the clearance guard is
-  PADDING-SHAPED (`padBottomPx` reads `padding-bottom` only; a margin/spacer/border
-  clearance would silently reintroduce the slack regression — IX-M16's prose is the only
-  cover) · `_updateConsoleMore` does O(rows) rect reads per scroll event + a
-  `getComputedStyle` per render (unmeasured) · `.crew-more`/`.moss-more` share a
-  byte-identical declaration prefix (cost two reviewers a false-green anchor each) ·
-  `background` vs `background-color` longhand can copy the selected fill past the colour
-  legs (the shadow channel still separates) · `.rz-mini-slot.cur` is the alphabet's
-  remaining spelling (measured NOT a collision — no hover rule to borrow from) · vents:
-  the BOARD FAULT column reads `DeviceFault.BlocksActuation` ≡ `Faulted` today,
-  predicate-vs-field UNPINNED (an inert mutation, said out loud) · OPEN-is-not-air
-  asymmetry (`vent_d1` prints OPEN while injecting nothing at rate 0 — honest about the
-  shutter, filed) · MECHANICS §13.31 tier-table line refs were stale on main and are
-  +43 lines worse.
-- Tooling ★: `vents-shot.mjs` filed (the vents verb has no Chrome witness; client path is
-  doors', asserted through the real screen module) · carried: gate-sentences-shot +
-  commission-shot count-diff `prompt()` defect · onboarding-shot flake · work-tab-shot
-  `waitFor` · 17 rigs verify dismissal by hand · NOTHING GATES client/tools (43 tools) ·
-  stale "seventeen" counts in `palette-layout.test.js` (the new "twenty" makes the
-  contradiction visible) · zoom-pawn-shot §5b exits 0 unmeasured on `--ship wreck`
-  (declared convention, loudly logged).
+## Open — FILED, an archive not a queue (★ new this session; receipts in the merge commits)
 
-## ⭐⭐ THE VISUAL REDESIGN WAVE (2026-08-04/05, owner-directed, THIS BRANCH `lane/visual-redesign`)
-
-**The complete client restyle to the owner's Claude Design spec** (`design-import/*.dc.html`,
-imported verbatim; charter + adopted rulings E1–E11: `docs/design/perilune-visual-redesign.charter.md`).
-Six packages, each implemented by one Opus agent and APPROVED by an independent reviewer
-(every package took ≥1 send-back; every verdict enforced): **VR-A** paper/ink/oxblood tokens +
-Instrument Serif + the six-way stylesheet split + the pure cabinet-oblique kit (`oblique.js`) ·
-**VR-P5** two-pass halo ink pawns (repaint ×1.46, measured) · **VR-P2** the 30-fitting catalogue
-(registry 71→80, twins 70→79, six defect classes fixed; 2 invisible-ink MAJORs caught by
-render-probe) · **VR-P6** MOSS on paper (ALL six views survive, CRT deleted) · **VR-P4** the ship
-plate (live miniature tiles, one projection for drawing+clicks — 1296/1296 correct live presses;
-alert/caveat un-clipped; painters driven to DOM, which caught ORDER STUCK never rendering) ·
-**VR-P3** the room cutaway (1 tile = 1 m; assembly-seam census; D5 sentence threading pinned;
-vacuum accent per-clause). Ruling E4 held: NO playtest-earned affordance dropped — all re-housed
-in the dash dialect (oxblood `8 5` = queued order · solid oxblood = fault · ink `6 5` = unbuilt).
-Node suite 1312 → **1463**; sim pins UNMOVED ×5 at every merge (client-only wave).
-**MERGED TO MAIN 2026-08-05, owner-directed** ("we can merge it now to main") — fast-forward,
-so the main tree IS the gated lane tree at `64ba593` (final full gate exit 0, twin MATCH).
-
-**Open from the wave (filed by reviewers, receipts in the merge commits):**
-- ⭐ **P2b HAS RISEN**: the ~23 uncovered device rows (cryo pods, doors, solar, fabricator…),
-  12 materials, 9 resources and all 70 legacy wrecked twins still wear WARM art — and the new
-  plate miniatures + cutaway make them the drawing's subject; a wrecked room mixes two palettes.
-- **P7 (the owner's core goal)**: the `aboard`/`compartments` story prose needs sim+wire data
-  that does not exist (gated on M4 mood/Persona); the columns render honest wire data only.
-- ~~**VR-P3-a**~~ **CLOSED 2026-08-05** (owner-reported as "not all squares work"), with the
-  owner's band defect, in one reviewed follow-up. Measured before: 16 of 18 cryo-bay fittings
-  designated a tile 1–3 rows back and 2 designated none at all. Every STANDING piece (fittings,
-  the unknown chip, ground stacks, decor) now carries `data-tile` + `pointer-events="visiblePainted"`
-  through one shared `standingPiece`, and one `tileAt` resolves `e.target` first, bare floor
-  falling through to the closed-form inverse. After: 18/18, 12/12 stacks, 4/4 life support.
-  **Residuals filed here, not closed:** an UPRIGHT CAPTION'S INK reads as pressable and designates
-  the floor beneath it — the blocked layer's leader badge is now `pointer-events="none"`, which is
-  the rule "a caption is not a target" and is MEASURED INERT on the wreck (72/72 of its ink points
-  have no `data-tile` under them, so the press still answers the floor tile, `strip x:34,y:5`);
-  closing it needs a "not a target" concept the surface does not have. · `rz-blockeds` is the only
-  layer painted ABOVE the new tier that takes pointer events (shadows nothing today — geometry, not
-  a guarantee). · zone `<title>` tooltips are now unreachable where a fitting covers the tile.
-- **The Overview readout band** (owner-reported same day) **CLOSED**: the radar hung 27 px — 18 % —
-  out of its column at every viewport (a CSS specificity loss, not a missing rule), and 490 px of
-  the band was incompressible. Now `min(150px,11vw)` + clamps, drop point 1359 → 818 px.
-  ⚠️ **The measured floor is 580 px**: at 540 `#ov-compart` clips its own content, at 500 spans
-  escape. The 258 px ledger track is its own max-content and cannot shrink — a KNOWN LIMIT.
-- ★ NEW (**VR-P5 the ship drawn**, `lane/ship-drawn` — the Level-1 plate is now a SIDE-ELEVATION
-  CUTAWAY of the whole ship, both decks drawn at once from the all-deck `devices`+`items` channels).
-  **Four owner decisions and one inherited limit, all filed rather than closed:**
-  1. **A LOCKED DOOR DRAWS AS AN ORDINARY ONE ON THE PLATE.** `Device.IsLocked` is deliberately not
-     on the `devices` channel (`WireFormat.Devices.cs`' "left out" list calls it a different
-     feature), so `door-blast` is the ONE piece of the 35-name glyph table the new source cannot
-     reach — censused by name, both directions, in `ship-fittings.test.js`. Un-exercised on
-     `--ship wreck` today (glyph 88 is in neither deck's census). A locked door is a fact about a
-     ROUTE and Level 1 is where a player looks for routes; closing it is a one-element append to
-     the `devices` tuple. **Owner: is that worth a wire field?**
-  2. **FOG IS STILL ONE DECK.** `devices`/`items` carry every deck, but ABSENCE on them is not
-     distinguishable from "explored and empty" — only the `frame` says fogged POSITIVELY, and the
-     host projects one deck (`GameSession.RenderFrame`). So the unsurveyed cross-hatch is available
-     only for the active band; the drawing stamps `data-survey` per band so it never claims to know
-     more than it does. (Moot on the wreck today: all sixteen compartments read `fogged 0/96`.)
-  3. **A STUCK ORDER ON THE INACTIVE BAND SHOWS NO OUTLINE** until the player steps to that deck —
-     the D5 arm follows the ORDER deck because it is paired with the `compartments` column's oxblood
-     sentence (ruling E4: one row rendered twice). Widening the outline alone would put a warning on
-     the plate that nothing explains. **Owner: does the `compartments` column go ship-wide?**
-  4. **`--ship grid` (8 decks) OVERFLOWS THE BAY AND SAYS SO.** The band floor binds at 31.9 px and
-     the stack is 478 px in a 165.5 px bay; `bandLayout` returns `overflows: true` so the degradation
-     is visible rather than inferred. `grid` is the economy fixture and is never offered to a player
-     (CLAUDE.md), so this is recorded, not fixed.
-  5. **THE WALKWAY STRIP COMPRESSES THE DECK'S WHOLE `ty` RANGE — INHERITED, NOT NEW.** `tileExtent`
-     unions the slots' box with the FRAME, so the ~7.84 px spine strip's inverse addresses **all 18
-     `ty` rows** of a 45×18 deck (measured on the census fixture) while only 2 rows / 90 tiles are
-     really walkway. What the census pins is `invert ∘ project` (exact, 1620/1620); a PRESS is the
-     other composition and is not. VR-P4's `bandInvert` had the same shape (still on `main`, measured
-     at 87.9 % same-structure by review); the elevation improves the strip's AREA, not the class.
-     Closing it means giving the spine its own `ty` axis — a design question about what a corridor IS
-     on this plate. The Room Zoom has no such compression.
-  Also from this package's review: the plate rig's room-entry leg was a **4th-shape hole** — it
-  asked `body.roomzoom-open || /ROOM ZOOM/i.test(toast)`, which the FAILURE string "ROOM ZOOM
-  UNAVAILABLE" satisfies and which cannot see "opened EMPTY". Replaced with a live content join
-  (the plate's per-compartment fitting census vs the opened room's masthead) plus a
-  distinguishability control; both verified by mutation. And `ship-elevation.test.js`' exhaustive
-  round-trip census is **blind to the region-boundary epsilon it was credited with catching** — it
-  projects tile CENTRES and only a front-edge CORNER lands on `v = V_SPINE` (9th shape; the one
-  instrument is the REGION BOUNDARY test, driven both ways).
-- Owner-eye items: stool drawn as tripod (catalogue's caption honoured, silhouette win) · shrine
-  shelf's permanently-oxblood frame vs the accent dialect · pawn props anchored outside the doc's
-  arm line · the radar shows own-ship only (no contact channel exists) · short viewports let the
-  readout band grow at the plate's expense (playtest eye — the band fix moved WIDTH only, the
-  `max-height:min(46vh,340px)` seam is untouched) · design-doc fixture slips (E7).
-- Tooling/debt: `zoom-pawn-shot` exit code doesn't track its own `FAILURES: n` · chip id collision
-  on prefix-less `pawnChip` call sites (pre-existing) · pawn sprite overflows its viewBox for
-  270/1944 modifier combos (cosmetic; comment at `pawn-svg.js:365` still overclaims) · E10 bench
-  not committed · deprecated-console amber ramp has a duplicated rung (`--amber-1`≡`--amber-2`;
-  base.css's consumer note should read 13 console / 7 overview / 0 elsewhere) · ~40 stale
-  `styles.css:NNN` citations remain across docs/ (M4 charter's five are FIXED; translation table
-  in `client/styles/base.css`) · no standing verbatim instrument for the split (filed, not built)
-  · MOSS `>` echo vs `›` prompt · PROGRAM gutter marker overlaps 1-digit line numbers ·
-  `perilune-moss-terminal.spec.md` §4 carries a SUPERSEDED banner, full rewrite filed.
-
-## ⭐⭐ PIN M4-b (2026-08-06, session M) — THE FIRST MENTAL BREAK MOVED THREE PINS
-
-**M4-9 merged: P1 `7bdd0d6f7756dfdc` → `7c70c1befe848cc7` (twin MATCH) · P2 `cb09b584a5f15e52` →
-`55437c9e5f5d4c95` · P3 `43a1a5c25713faec` → `6f1fcfda3312c87a` · P4/P5 HELD (two paths each).**
-Cause: FOLD WIDENING + THE DWELL COUNTER (CITZ v9→v10, five hashed fields), NOT behaviour — the
-2×2's third cell returns the old pin to the digit with the ladder live (CLAUDE.md carries the full
-narrative; tag `pin/m4-b`). ⚠️ P1's crew end BELOW the minor threshold (−37.06 vs −34.15): the hold
-is a WINDOW. ⛔ No pin sees a tier, a reset rule or any behaviour — `MentalBreakTests` (40 legs,
-one BLINDED leg per claim gate) + `HowSheIsTests` (10) are the ONLY instruments.
-- FILED for M5 (charter's own ruling): the wreck left alone NEVER reaches rung 1 (21 sim-days,
-  peak dwell 111 150/864 000; crew die day 19 of AIR). The PLAYER-reachable path ships today: a
-  crew member held on a standing order starves all three needs → mood −75.00 exactly → EXTREME
-  break at tick 750 899 (~20.9 sim-h); released control −31.07, dwell 0.
-- Residual: no leg-count/nameof guard on MentalBreakTests' 40 legs (two were once spliced out and
-  restored; a recurrence would be silent). Filed rig flake: persona-shot ~1-in-3 on M4-2's [U]
-  step, false-RED only (close = wait on the SELECTION, M4-2's seam).
+- ★ **`OFF_PIECE_RESIDUAL`** — 10 pre-existing twins whose damage lands 4.8–13.7 px off their own ink, all predating
+  2026-08-06. ⛔ A redraw must **RE-ANCHOR, never ledger**: per-row measured ceiling + inclusion arm, so a row cannot
+  worsen and a fixed row must LEAVE (`client/test/wrecked.test.js:456-509`).
+- **Stateful-`PowerSystem` pin lane still HELD** — residual 2 (a save on an episode's OPENING tick, 1–11 ticks per
+  ~36 000, permanent and compounding), behind the M4 pin chain.
+- ★ **M4-9: the wreck left alone NEVER breaks anyone** — 21 sim-days, peak dwell 111 150/864 000; crew die of AIR on
+  day 19. The player path ships (held order → mood −75.00 → EXTREME at ~20.9 sim-h); scarcity tuning is **M5**'s. And
+  `MentalBreakTests`' 40 legs have no leg-count/`nameof` guard — two were once spliced out.
+- ★ **Shut the cryo bay's door and it cooks** (pre-existing, wreck-dressing round 1): shipped crosses `heat_stroke_c`
+  between **h24 and h36** vs the control's h60–h72 — ~48 sim-h earlier, and reachable.
+- ★ **Level-1/Level-2 disagree about whose fitting a BOUNDARY DOOR is** — the plate assigns it to the compartment
+  (wall-inclusive `covers`), the Room Zoom does not (`roomCells` clamps to drawn floor); the join subtracts the ring
+  **derived per compartment** (`client/tools/overview-plate-shot.mjs:840-869`).
+- ★ **Leg 3c — a STRIPPED ring wall is unaddressable in the Room Zoom and the Level-1 STRIP tool can produce one**
+  (`client/src/ui/overview-view.js:2243`). Mitigation measured: over the fixture deck's 8 slots, **240 distinct
+  perimeter tiles, NOT ONE floor** (`client/test/room-model.test.js:4734`, leg `:4815`, re-derived on `8014cb1`). ⛔ A
+  **FIXTURE fact** — re-derive before relying.
+- ★ **The scene-inset clamp census is blind to the destructured read** (`const { rx, ry } = focusRoom`) — harmless
+  today (all 11 clamp sites have behavioural legs, measured), but a 12th written that way would be invisible to both
+  censuses; the census header should carry the warning.
+- ★ **Wing-leg brittleness** (reviewer MINOR, filed): `THE WING HANGS OVER ITS OWN FEED`
+  (`client/test/overview-scene.test.js:1939`) asserts alignment **∧** equal-size, so a legitimate unequal-size wing
+  false-reds with the wrong message; the float leg (`:1979`) is the primary pin.
+- ★ **`overview-plate-shot.mjs`'s dedupe self-report over-discloses** — computed on pre-ring-filter `all` (`:857-861`)
+  while the returned count dedupes `onFloor` (`:869`). Imprecise, not wrong.
+- ★ **The plate's build-ghost glyph is consumed by no test** — `ghostLayer`'s oxblood `#`/`/`
+  (`client/src/ui/overview-scene.js:698-717`); `pl-ghost`/`ghostLayer` appear nowhere under `client/test/` or
+  `client/tools/`. ⚠️ The earlier `:601` citation was WRONG; that line is prose.
+- ★ **DEMOLISH is silent on a device a crew member stands on** (`client/src/ui/room-model.js:2832-2845`, filed there
+  with its close): the occlusion fallback DRAWS the capsule and the verb refuses it — *invisible feedback is
+  FUNCTIONAL* pointing the other way; the close is a signature change.
+- ★ **Telescope substitution liveness** (the plate goes **3 → 4** hull pieces on `--ship wreck`) was driven live in
+  round 2 (`ef3dfb1`); round 3's re-verify took it by construction.
+- ★ **`doorway-cross-shot.mjs` reports message→repaint ENTRY LATENCY as honest, not a defect** (`:373`, `:404`);
+  `--latency-cap` (default 20 frames = the tween's 250 ms ceiling) separates it from a VANISH, and at cap 0 it
+  reclassifies nothing else.
+- ★ **Rig/guard debt**: `persona-shot.mjs` flakes ~1 run in 3 on M4-2's `[U]` step (false-RED only; close = wait on
+  the SELECTION — `:37`) · the draw-reveal keyframes are **invisible to the node gate** (no CSS engine; the text guard
+  at `client/test/draw-reveal.test.js:1011-1033` is the only cover) · **six hand-mirrored copies of one positional
+  `devices` parser** (23 dotnet failures on one widening) · treated repaint is priced — the cryo bay went **702 → 5480
+  paths** (inside 16 ms at 7 fittings; the PLATE was priced OUT at 20.82 px, miniatures go raw) · blueprint/facing
+  fold-neutrality is a **VACUOUS hold** (no pinned fixture authors a blueprint or rotates), CLAUDE.md's rate-term class.
+- ⚠️ **Two review notes I could NOT re-derive at close-out — unverified, re-measure before quoting**: an `N.5`
+  rounding knife-edge in the plate join, and a `0↔0` content-join branch said to be unexercised (the live rig reads
+  `hall_d0_s7` 0 ↔ 0, so it may in fact be driven).
+- Carried: the walkway strip compresses a deck's whole `ty` range (VR-P5 item 5) · an upright caption's ink reads as
+  pressable · `rz-blockeds` is the only layer above the new tier taking pointer events · zone `<title>` tooltips
+  unreachable under a fitting · furniture flickers ±1 piece · ContextAction silence on refused device clicks ·
+  MOSS-live stray clicks actuate doors, no confirm/undo · klaxon dominant ring producer · save-tick event-loss family ·
+  HELP is fourteen lines in a ~7-line pane · D5 / spend-visible / Chronicle residuals · ~40 stale `styles.css:NNN`
+  citations in `docs/` · NOTHING GATES `client/tools` (43) · `perilune-moss-terminal.spec.md` §4 is SUPERSEDED.
 
 ## Next
 
-1. **The playtest 2026-08-07.** All three pre-playtest ⭐ rulings are in; the chain test's
-   action recipe IS the playtest script (DoorsVerbTests, ~6.7 sim-h at speed). **Its
-   findings amend the M4 charter before M4-2 implements** (the charter's §1 exposure
-   table names which sections are most revisable).
-2. **The owner: review the M4-1 Persona design and answer the §10 batch** (five items,
-   silence defaults stated; default-to-recommendation after three days per ROADMAP's
-   standing rule). Nothing in M4 implements before this + the playtest amendment.
-3. After that, M4's merge order opens at `perilune-m4.packages.md` §3 (M4-2 first unless
-   batch item 1 = A inserts M4-9's pin lane; the M4-2/M4-8 ordering tension is chartered).
-4. ⛔ The former "candidate small lanes" (`vents-shot.mjs` · CREW-tab DOM test ·
-   `.crew-more` rename) stay META-WORK under PROCESS §2 — FILED, not session work.
+1. **The 2026-08-07 owner playtest is the next event**, and nothing is scheduled ahead of it. Its findings **amend
+  M4-3 onward** (OD-S) — M4-2 and M4-9 are merged and are not revisable by it; file them as HANDOVER lines and
+  charter amendments, never as new lanes.
+2. **Then the M4 queue per `perilune-m4.packages.md` §3**: **M4-3** the dossier stops lying (carries OD-S item 4's
+  seeded bonds) → **M4-4** Health/Morale real (OD-S item 2) → M4-5 · M4-6 → **M4-7** Chronicle reachable → **M4-8**
+  WP-9 console deletion. **M4-3 and M4-7 are the two the M4 exit gate is short.**
+3. **The held pin lane: stateful `PowerSystem`** (residual 2) — one standing pin lane at a time; check `git tag pin/*`
+  first, `pin/m4-b` is the chain's head. ⛔ Rig hardening, guards-about-guards, renames and DOM tests for shipped
+  affordances stay META-WORK under PROCESS §2: they ride inside a lane that moves a row, or they stay filed.
 
 ## Session log (append one row per session; prune when > ~40 rows)
 
 | date | lane | player-visible outcome / result | gate |
 |---|---|---|---|
-| 07-29 | m1 wave + m2-1 + doc-restructure | machines visible · vent operable · honest first screen · work-priority state · doc spine | green, `pin/m2-a` |
-| 07-30 | fourteen lanes over three waves | **the RimWorld loop's first act + the DIRECT ORDER + M2 CLOSED (phase-1 exit gate MET)**; M3 chartered | green, `pin/m2-e` · `pin/m2-d` |
-| 07-31 | m3-batch · pod-identity · vacuum-ladder | **M3 gate cleared (OD-M); a direct order crosses the frontier**; playtest named 2026-08-07 | green, pins UNMOVED |
-| 07-31 B | pod-census · deck1-vent · od-n · cryo-system · moss-input · moss-hotkeys | **the thaw ladder authored · deck 1 one repair from air · OD-N/OD-O/OD-P · A POD CYCLES · the MOSS terminal types** | green, **`pin/m3-a`** |
-| 08-01 C | doc-anchor-sweep · thaw-cmd · moss-gate · pod-bay · thaw-blocked · board-fault · emergency-thaw | **the thaw is EARNED · the ship answers to MOSS · typed `pods` shows the bay · the badge names the item · the vent puzzle · the ship wakes one more soul by itself** | green, **`pin/m3-e`**, tests →1690/1180 |
-| 08-02 C | heater · skill-consumers · skill-display · sleeper-personas · rest | **a heater exists (and `place` was INERT — found+fixed) · who works changes how fast · the WORK tab shows it with ABSENT cells · seven written souls · crew SLEEP** | green, **`pin/m3-d` · `pin/m3-b` · `pin/m3-c`**, tests →1775/1205 |
-| 08-02 C | m3-demo | **⭐ THE M3 EXIT GATE HOLDS, MEASURED**: 43/43 — a second thaw earned and chosen · thaws 3–5 span 6.93 sim-h; 7 findings filed | demo, 18 shots |
 | 08-02 D | commission · repair-reserve · ladder-pacing · vacuum-visible | **⭐ THE PLAYTEST IS UNBLOCKED**: typed `commission` · reserve of 4 · decay in DAYS with warning · vacuum VISIBLE · **T13 DONE — the whole arc witnessed unmodified** | green ×4 + final gate, pins UNMOVED, tests →1801/1218 |
 | 08-03 E | chronicle-signal · spend-visible · dock-labels · roomzoom-build · d5-dropped-orders | **the log tells the story · the order names its price · NO AIR survives docks · TOOLS ▸ · ⭐ D5 ROOT-CAUSED — NO WAY TO WALK TO IT** | green ×5 + final gate, pins UNMOVED ×5, tests →1831/1240 |
 | 08-03 F | faultlog-dedupe · whyline-shot-flake · d5-drop-reason | **each fault ONCE · the rig stops coin-flipping · ⭐ the sim SAYS WHY it let go (§13.25 b3 closed, b3-R named)** | green ×3 + final gate `dbaff5f`, pins UNMOVED ×5, tests →1841/1247 |
@@ -259,3 +137,4 @@ one BLINDED leg per claim gate) + `HowSheIsTests` (10) are the ONLY instruments.
 | 08-04 J | twom-axis-drift-guardrails + twom-gameplay-pillar (docs-only, owner-direct) | **OD-R — the game is RimWorld × Factorio × THIS WAR OF MINE, and TWoM is a GAMEPLAY PILLAR** (owner amended same day: "more than a tone"; three follow-ups adopted — emergent triage from real scarcity · deterministic mental breaks gate BEHAVIOUR (T12's missing half) · lands inside M4+M5; nothing implementable before the M4-1 charter) · **the drift check the owner asked for**: PROCESS §2 lane-selection gate + `rows:` disclosure, HANDOVER's meta-work candidates demoted behind owner triage | docs-only ×2, full gate exit 0 each, doc-sentinel tests green; rows: none (owner-directed ruling batch) |
 | 08-04/05 L | **THE VISUAL REDESIGN** (owner-directed, `lane/visual-redesign`, MERGED to main 08-05 by owner ruling): vr-foundation · vr-pawns · vr-fittings · vr-moss · vr-overview · vr-roomzoom | **the whole client is the owner's paper/ink/oxblood design** — one oblique kit draws plate tiles, room cutaway and 30 fittings; ink figures; MOSS on paper with every view alive; every playtest affordance re-housed (E4), dash dialect replaces the amber/red hues (E3); registry 71→80; ⭐ every package survived independent adversarial review (A: shadow-theme guard hole · P5: clip-erased chips · P2: 2 invisible-ink members · P6: row-side grid break + unknown-dressed-as-zero · P4: off-screen alert + split coordinate systems + unpinned painters · P3: unguarded assembly seam) — all fixed and re-verified | 6 in-lane full gates + 4 integration re-gates + final gate, pins UNMOVED ×5 every time, tests →1889/1463; rows: none (owner-directed) |
 | 08-04 K | m4-1-persona-design (forced topmost row after two `none` sessions) | **M4 CHARTERED IN FULL — THE PERSON** (`perilune-m4.packages.md`, 2132 lines): the Persona design with (a)–(h) ruled-or-forked (keymap census says `E`; the T-key third door named; Rell ruled authored, its pin move named) · **⭐⭐ OD-R's TWoM-gameplay section — the deterministic break ladder priced in hashed fields** (review DEFEATED the hard-reset counter with the measured sawtooth; decaying counter recommended; the tunable's unhashed-trait trap named) · M5-1 forward charter · five-item owner batch with silence defaults; 1 send-back (5 MAJOR + 11 MINOR) + 4 nits, all enforced | docs-only, full gate exit 0 in-lane at FINAL commit, twin MATCH, pins UNMOVED ×5, merge tree ≡ lane tree; rows: M4-1 (T16 + T12's OD-R half → chartered) |
+| 08-05/06 M | **THE OWNER-DIRECTED WAVE + M4 OPENS** (~26 reviewed packages): responsive band+radar · tile picking · pawn glide + 60 fps tween · capsules/cells · four paper catalogues · carpet-under-pawn · build-ghost + [E] rotation · build-feel + BLUEPRINTS · **M4-2 THE PERSONA WINDOW** · sketch-strong catalogue-wide + `perilune-art-style.md` · 171-agent designer fan-out (67/82) + owner gallery ruling · build tray · draw-reveal · **M4-9 THE FIRST MENTAL BREAK** · place-in-vacuum · **THE WARM PURGE** · scene-inset · wreck-dressing | **the game wears the owner's paper end to end and it BUILDS**: a wall reads as a wall and a piece places flush against it · a press that refuses says why (2/30 → 30/30) · a placed piece is a blueprint that draws itself in when a pawn finishes it · ONE DOOR to a person (key `U`) · ⭐⭐ **MOOD GATES BEHAVIOUR — she refuses, stops, withdraws** · registry 120 → 82 rows / 80 twins, all paper · solars outboard, cryo bay decluttered. **OD-S**: the M4 §10 batch accepted verbatim, M4 OPEN, economy still parked, the 08-07 playtest re-sequenced to amend M4-3 onward | full gate per merge; final `8014cb1` node 1917 re-measured / dotnet 1984; ⭐⭐ **`pin/m4-b` — P1/P2/P3 MOVED**, P4/P5 held; rows: **T12** (mood gates behaviour) · **T16** (Persona window SHIPPED) · **T8** (the build refusal + blueprint wait say why) · M4 gate → PARTIAL (M4-3 + M4-7 short) |
