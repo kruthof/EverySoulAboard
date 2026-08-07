@@ -161,6 +161,35 @@ where the spread becomes a person rather than a row.
 > (`CLAUDE.md:84-85`), the standard-surface invariant, and TARGET §2's anti-goals. Those are decided;
 > a playtest finding against one of them is an owner-decision request, not an amendment.
 
+> ### ⭐⭐ AMENDED IN PLACE 2026-08-06 — **OD-S ANSWERED §10, AND THE CLAUSE ABOVE IS SPENT: THE PLAYTEST NOW AMENDS M4-3 ONWARD**
+>
+> Recorded here, in §1, because the clause above is written as a live imperative (*"its findings
+> AMEND it before M4-2 implements"*) and a session picking up M4-3 reads this file before it reads
+> `ROADMAP.md`. Same precedent as §2's M4-b amendment: dated, in place, the superseded sentence kept
+> rather than deleted.
+>
+> **OD-S (owner-direct, 2026-08-05; the ledger row is `ROADMAP.md` §5, which is its permanent home)
+> ACCEPTED THE §10 BATCH VERBATIM, all five items** — **1** the first break BUILDS NOW as **M4-9**
+> (option A) · **2** `Citizen.Health`/`Morale`/`Archetype` go **REAL** · **3** a player order MAY
+> override a break, **graduated by tier** · **4** thawed sleepers arrive with **real SOCL bonds,
+> seeded in `CryoSystem`** · **5** the Chronicle severity tie is **KEPT, earliest wins**. **The
+> economy STAYS PARKED** (OD-B untouched; the faucet ruling is still open on the owner).
+>
+> ⛔ **AND THE SEQUENCE MOVED.** **M4-2 merged 2026-08-05 and M4-9 merged 2026-08-06**, both before
+> the playtest. So the clause above no longer describes the world: ⇒ **the 2026-08-07 playtest's
+> findings amend M4-3 ONWARD, and never M4-2 or M4-9, which are on `main`.** The exposure table
+> stands for everything still unbuilt — **M4-5**'s onboarding rewrite is now the highest-variance row
+> in it, since M4-1's layout question (a) and the break tiers have both been answered by shipping
+> code. §10 item 1's *"a new package is the first thing to lose"* is spent: the package was built.
+>
+> ⚠️ **Two consequences for a reader of the rest of this file.** (i) §2's *"the five pins as
+> `CLAUDE.md` states them today"* predates M4-b — the shipped values are **P1 `7c70c1befe848cc7` · P2
+> `55437c9e5f5d4c95` · P3 `6f1fcfda3312c87a` · P4 `661fcdd4b89f1e87` · P5 `558a1c0a4985f5ea`**, and
+> that block's own *RE-MEASURE BEFORE QUOTING* still governs. (ii) The **M4 exit gate is PARTIAL, not
+> met**: the window answers all four of its questions (*who · what · why* from M4-2, *how she is*
+> from M4-9's HOW SHE IS band), but *no `◇ SAMPLE` anywhere* waits on **M4-3** and *Chronicle
+> reachable* on **M4-7**. Those two are what the gate is short.
+
 ---
 
 ## 2. THE PIN CHAIN

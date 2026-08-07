@@ -94,7 +94,7 @@ ordinals.
   refusals carry the ladder; content authoring for the chain depths is new M3 scope).
 - **M4:** ✅ **CHARTERED IN FULL, 2026-08-04 — `docs/design/perilune-m4.packages.md`**
   (queue, seams, pin rows `M4-a…c`, conflict matrix + 12 couplings, and a **five-item
-  owner batch — OPEN, every item with a stated silence default**; written against OD-R's
+  owner batch — ANSWERED 2026-08-05 by OD-S, all five verbatim**; written against OD-R's
   three registers per the binds cell: M4-1's Persona design IS the charter's §5, with the
   TWoM-gameplay section — deterministic break ladder priced in hashed fields, design
   questions (a)–(h) ruled-or-forked — and an M5-1 forward charter. ⭐ **THE §10 BATCH IS

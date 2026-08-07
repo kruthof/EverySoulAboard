@@ -4,6 +4,24 @@
 lands here, newest at the top, with its original date. The frozen pre-restructure record
 (through 2026-07-29, all § anchors intact) is `HANDOVER-2026-07.md`.*
 
+## Archived 2026-08-06 (session M ritual): EIGHT carried open items, retired under PROCESS §2
+
+*None was owner-triaged or promoted within three sessions (they date from sessions F–L), so the ritual retires them
+here rather than letting them accumulate in the live file. Verbatim, each still true of `main` at `8014cb1` — a
+later session may promote any of them, but must re-derive it first:*
+
+- `rz-blockeds` is the only layer painted ABOVE the Room Zoom's new standing tier that takes pointer events
+  (shadows nothing today — geometry, not a guarantee).
+- zone `<title>` tooltips are unreachable where a fitting covers the tile.
+- the Room Zoom furniture layer flickers ±1 piece at rest.
+- ContextAction is SILENT on refused device clicks.
+- MOSS-live stray clicks actuate doors, with no confirm and no undo.
+- the klaxon is the dominant ring producer (~28/day).
+- HELP is FOURTEEN lines in a ~7-line pane (the ▾ sign + footer mitigate; the pane is still 22vh).
+- `perilune-moss-terminal.spec.md` §4 carries a SUPERSEDED banner; a full rewrite is filed.
+
+---
+
 ## Archived 2026-08-06 (session M ritual): the SEVEN OLDEST session-log rows, 2026-07-29 → 2026-08-02
 
 *Pruned from the live log so `HANDOVER.md` stays inside its line cap. These cover M1's close, M2 end to end,
@@ -26,7 +44,7 @@ package charters. Verbatim:*
 
 *(Superseded by session M's rewrite. Gate then: main `e27e406`, 1889 dotnet + 1463 node,
 pins at M3-c. All three blocks are recoverable from git — the K block and the M4 batch at
-`e27e406:docs/HANDOVER.md` lines 8–67, the wave block at lines 114–209. What replaced them:*
+`e27e406:docs/HANDOVER.md` lines 8–67, the wave block at lines 114–154 (that file is 188 lines). What replaced them:*
 
 - *__The M4 §10 owner batch is ANSWERED__ — OD-S, 2026-08-05, all five items verbatim; it now
   lives in `ROADMAP.md` §5 as a ledger row, which is its permanent home. The block's clause

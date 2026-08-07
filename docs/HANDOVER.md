@@ -27,12 +27,11 @@ why when it refuses** (2/30 presses landed before, 30/30 after) · a **ghost** s
 rotates it** (`Device.Facing`, DEVC v7) · a placed piece is a **BLUEPRINT** wearing `AWAITING A BUILDER` until a pawn
 assembles it (`BuildKind.Device`, BULD v3) · the **tray** says what every card costs · a finished piece **draws itself
 onto paper**. **ONE DOOR TO A PERSON** — the **Persona window** ships (M4-2, key `U`; `CREW_INTERACTION` is a
-one-element census), six bands, every line named to a wire source or written as an honest empty. **MOOD GATES
-BEHAVIOUR** (M4-9, MECHANICS §13.51): a deterministic three-tier ladder over hashed mood with a DWELL and no roll —
-she refuses the dangerous order, stops working, withdraws; override **graduated by tier**; the **HOW SHE IS** band and
-a Chronicle line say so — OD-R's TWoM half, live. **The wreck is dressed**: solars **OUTBOARD** each over its own
-feed; the cryo bay is 12 capsules and a terminal; pawns glide sub-tile at 60 fps over a carpet that survives
-underfoot.
+one-element census), six bands, every line named to a wire source or an honest empty. **MOOD GATES BEHAVIOUR** (M4-9,
+MECHANICS §13.51): a deterministic three-tier ladder over hashed mood with a DWELL and no roll — she refuses the
+dangerous order, stops working, withdraws; override **graduated by tier**; the **HOW SHE IS** band and a Chronicle
+line say so — OD-R's TWoM half, live. **The wreck is dressed**: solars **OUTBOARD** each over its own feed; the cryo
+bay is 12 capsules and a terminal; pawns glide sub-tile at 60 fps over a carpet that survives underfoot.
 
 ⭐⭐ **OD-S (2026-08-05) — the M4 §10 batch ACCEPTED VERBATIM, and M4 is OPEN** (`ROADMAP.md` §5 is its permanent home):
 M4-9 builds the first break now · `Health`/`Morale`/`Archetype` REAL · override graduated by tier ·
@@ -56,7 +55,7 @@ ledger) and *Chronicle reachable* on **M4-7** (`persona-view.js:215-217` draws a
 - **Wreck has no vertical air** (standing, OD-E's mechanical half): deck-1 halls stay 0 kPa forever.
 - Carried: maintenance vs furnishing budget · NO-CONSUMABLE badge unreachable at boot · FLOOR default + toast ·
   furniture as a pawn job · bench wait · heater tier · rung-1 · vacuum services class · shrine shelf's oxblood frame ·
-  radar shows own-ship only · **P7** (story prose needs sim+wire data that does not exist — gated on M4).
+  radar shows own-ship only · **P7** (story prose needs sim+wire data that does not exist).
 
 ## Open — FILED, an archive not a queue (★ new this session; receipts in the merge commits)
 
@@ -66,51 +65,53 @@ ledger) and *Chronicle reachable* on **M4-7** (`persona-view.js:215-217` draws a
 - **Stateful-`PowerSystem` pin lane still HELD** — residual 2 (a save on an episode's OPENING tick, 1–11 ticks per
   ~36 000, permanent and compounding), behind the M4 pin chain.
 - ★ **M4-9: the wreck left alone NEVER breaks anyone** — 21 sim-days, peak dwell 111 150/864 000; crew die of AIR on
-  day 19. The player path ships (held order → mood −75.00 → EXTREME at ~20.9 sim-h); scarcity tuning is **M5**'s. And
+  day 19. The player path ships (held order → mood −75.00 → EXTREME at ~20.9 sim-h); scarcity tuning is **M5**'s.
   `MentalBreakTests`' 40 legs have no leg-count/`nameof` guard — two were once spliced out.
 - ★ **Shut the cryo bay's door and it cooks** (pre-existing, wreck-dressing round 1): shipped crosses `heat_stroke_c`
   between **h24 and h36** vs the control's h60–h72 — ~48 sim-h earlier, and reachable.
 - ★ **Level-1/Level-2 disagree about whose fitting a BOUNDARY DOOR is** — the plate assigns it to the compartment
   (wall-inclusive `covers`), the Room Zoom does not (`roomCells` clamps to drawn floor); the join subtracts the ring
-  **derived per compartment** (`client/tools/overview-plate-shot.mjs:840-869`).
+  **derived per compartment** (`overview-plate-shot.mjs:858-868`).
 - ★ **Leg 3c — a STRIPPED ring wall is unaddressable in the Room Zoom and the Level-1 STRIP tool can produce one**
   (`client/src/ui/overview-view.js:2243`). Mitigation measured: over the fixture deck's 8 slots, **240 distinct
   perimeter tiles, NOT ONE floor** (`client/test/room-model.test.js:4734`, leg `:4815`, re-derived on `8014cb1`). ⛔ A
   **FIXTURE fact** — re-derive before relying.
 - ★ **The scene-inset clamp census is blind to the destructured read** (`const { rx, ry } = focusRoom`) — harmless
-  today (all 11 clamp sites have behavioural legs, measured), but a 12th written that way would be invisible to both
-  censuses; the census header should carry the warning.
+  today (all 11 clamp sites have behavioural legs), but a 12th written that way is invisible to both censuses; the
+  census header should say so.
 - ★ **Wing-leg brittleness** (reviewer MINOR, filed): `THE WING HANGS OVER ITS OWN FEED`
   (`client/test/overview-scene.test.js:1939`) asserts alignment **∧** equal-size, so a legitimate unequal-size wing
   false-reds with the wrong message; the float leg (`:1979`) is the primary pin.
-- ★ **`overview-plate-shot.mjs`'s dedupe self-report over-discloses** — computed on pre-ring-filter `all` (`:857-861`)
+- ★ **`overview-plate-shot.mjs`'s dedupe self-report over-discloses** — computed on pre-ring-filter `all` (`:849-852`)
   while the returned count dedupes `onFloor` (`:869`). Imprecise, not wrong.
 - ★ **The plate's build-ghost glyph is consumed by no test** — `ghostLayer`'s oxblood `#`/`/`
-  (`client/src/ui/overview-scene.js:698-717`); `pl-ghost`/`ghostLayer` appear nowhere under `client/test/` or
-  `client/tools/`. ⚠️ The earlier `:601` citation was WRONG; that line is prose.
-- ★ **DEMOLISH is silent on a device a crew member stands on** (`client/src/ui/room-model.js:2832-2845`, filed there
-  with its close): the occlusion fallback DRAWS the capsule and the verb refuses it — *invisible feedback is
-  FUNCTIONAL* pointing the other way; the close is a signature change.
+  (`overview-scene.js:698-717`); `pl-ghost`/`ghostLayer` appear nowhere under `client/test/` or `client/tools/`.
+  ⚠️ The earlier `:601` citation was WRONG; that line is prose.
+- ★ **DEMOLISH is silent on a device a crew member stands on** (`room-model.js:2832-2845`, filed there with its
+  close): the fallback DRAWS the capsule and the verb refuses it — *invisible feedback is FUNCTIONAL* pointing the
+  other way; the close is a signature change.
 - ★ **Telescope substitution liveness** (the plate goes **3 → 4** hull pieces on `--ship wreck`) was driven live in
   round 2 (`ef3dfb1`); round 3's re-verify took it by construction.
 - ★ **`doorway-cross-shot.mjs` reports message→repaint ENTRY LATENCY as honest, not a defect** (`:373`, `:404`);
-  `--latency-cap` (default 20 frames = the tween's 250 ms ceiling) separates it from a VANISH, and at cap 0 it
+  `--latency-cap` (default 20 frames = the tween's 250 ms ceiling) separates it from a VANISH; at cap 0 it
   reclassifies nothing else.
 - ★ **Rig/guard debt**: `persona-shot.mjs` flakes ~1 run in 3 on M4-2's `[U]` step (false-RED only; close = wait on
-  the SELECTION — `:37`) · the draw-reveal keyframes are **invisible to the node gate** (no CSS engine; the text guard
-  at `client/test/draw-reveal.test.js:1011-1033` is the only cover) · **six hand-mirrored copies of one positional
-  `devices` parser** (23 dotnet failures on one widening) · treated repaint is priced — the cryo bay went **702 → 5480
-  paths** (inside 16 ms at 7 fittings; the PLATE was priced OUT at 20.82 px, miniatures go raw) · blueprint/facing
-  fold-neutrality is a **VACUOUS hold** (no pinned fixture authors a blueprint or rotates), CLAUDE.md's rate-term class.
-- ⚠️ **Two review notes I could NOT re-derive at close-out — unverified, re-measure before quoting**: an `N.5`
-  rounding knife-edge in the plate join, and a `0↔0` content-join branch said to be unexercised (the live rig reads
+  the SELECTION — `:37`) · the draw-reveal keyframes are **invisible to the node gate** (no CSS engine;
+  `draw-reveal.test.js:1011-1033`'s text guard is the only cover) · **six hand-mirrored copies of one positional
+  `devices` parser** (23 dotnet failures on one widening) · treated repaint is priced — the cryo bay went **702 →
+  5480 paths** (inside 16 ms at 7 fittings; the PLATE was priced OUT at 20.82 px) · blueprint/facing fold-neutrality
+  is a **VACUOUS hold** (no pinned fixture authors a blueprint or rotates), CLAUDE.md's rate-term class.
+- ⚠️ **Two review notes I could NOT re-derive at close-out — unverified, re-measure first**: an `N.5` rounding
+  knife-edge in the plate join, and a `0↔0` content-join branch said to be unexercised (the live rig reads
   `hall_d0_s7` 0 ↔ 0, so it may in fact be driven).
-- Carried: the walkway strip compresses a deck's whole `ty` range (VR-P5 item 5) · an upright caption's ink reads as
-  pressable · `rz-blockeds` is the only layer above the new tier taking pointer events · zone `<title>` tooltips
-  unreachable under a fitting · furniture flickers ±1 piece · ContextAction silence on refused device clicks ·
-  MOSS-live stray clicks actuate doors, no confirm/undo · klaxon dominant ring producer · save-tick event-loss family ·
-  HELP is fourteen lines in a ~7-line pane · D5 / spend-visible / Chronicle residuals · ~40 stale `styles.css:NNN`
-  citations in `docs/` · NOTHING GATES `client/tools` (43) · `perilune-moss-terminal.spec.md` §4 is SUPERSEDED.
+- Carried, still live: the walkway strip compresses a deck's whole `ty` range (VR-P5 item 5) · an upright caption's
+  ink reads as pressable · save-tick event-loss family · D5 / spend-visible / Chronicle residuals. ⇒ **Eight older
+  carries, none owner-triaged or promoted in three sessions, moved to `docs/history/HANDOVER-archive.md` under
+  PROCESS §2** — they are recoverable, and this list is an archive, not a queue.
+- ⚠️ **Two carried counts were WRONG — re-measured 2026-08-06** (the 10th shape, aimed at a HANDOVER): stale
+  `styles.css:NNN` citations in `docs/` = **21** occurrences on 20 lines excluding `docs/history/`, 23 with it — the
+  old "~40" counted BARE `styles.css` mentions (41). **`client/tools` = 77 `.mjs` / 79 entries / 55 `*shot*.mjs`**,
+  not "43"; nothing gates any of them.
 
 ## Next
 
